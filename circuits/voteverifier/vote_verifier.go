@@ -148,7 +148,7 @@ func (c VerifyVoteCircuit) checkInputsHash(api frontend.API) {
 	if err != nil {
 		circuits.FrontendError(api, "failed to create hash function", err)
 	}
-	if err := h.Write(circuits.VoteVerifierInputs(api, c.Process, c.Vote)...); err != nil {
+	if err := h.Write(circuits.EmulatedVoteVerifierInputs(c.Process, c.Vote)...); err != nil {
 		circuits.FrontendError(api, "failed to hash inputs", err)
 	}
 	flag := h.AssertSumIsEqualFlag(c.InputsHash)
