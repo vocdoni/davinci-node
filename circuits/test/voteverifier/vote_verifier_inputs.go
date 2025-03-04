@@ -3,7 +3,9 @@ package voteverifiertest
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"log"
 	"math/big"
+	"time"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -49,6 +51,8 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 	VoteVerifierTestResults, voteverifier.VerifyVoteCircuit,
 	[]voteverifier.VerifyVoteCircuit, error,
 ) {
+	now := time.Now()
+	log.Println("VoteVerifier inputs generation start")
 	circomPlaceholder, err := circuits.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
 	if err != nil {
 		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
@@ -160,7 +164,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			CircomProof: recursiveProof.Proof,
 		})
 	}
-
+	log.Printf("VoteVerifier inputs generation ends, it tooks %s\n", time.Since(now))
 	return VoteVerifierTestResults{
 			InputsHashes:     inputsHashes,
 			EncryptionPubKey: encryptionKey,
