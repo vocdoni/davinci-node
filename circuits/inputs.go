@@ -30,8 +30,9 @@ func CircomInputs(api frontend.API,
 	return inputs
 }
 
-// VoteVerifierInputs returns all values that are hashed to produce the public
-// input needed to verify VoteVerifier, in a predefined order:
+// EmulatedVoteVerifierInputs returns all values that are hashed to produce the
+// public input needed to verify VoteVerifier, in a predefined order and as
+// emulated elements of the BN254 curve. The inputs are:
 //
 //	Process.ID
 //	Process.CensusRoot
@@ -41,7 +42,7 @@ func CircomInputs(api frontend.API,
 //	EmulatedVote.Commitment
 //	EmulatedVote.Nullifier
 //	EmulatedVote.Ballot (in RTE format)
-func VoteVerifierInputs(api frontend.API,
+func EmulatedVoteVerifierInputs(
 	process Process[emulated.Element[sw_bn254.ScalarField]],
 	vote EmulatedVote[sw_bn254.ScalarField],
 ) []emulated.Element[sw_bn254.ScalarField] {
@@ -51,14 +52,24 @@ func VoteVerifierInputs(api frontend.API,
 	return inputs
 }
 
+func VoteVerifierInputs(
+	process Process[frontend.Variable],
+	vote Vote[frontend.Variable],
+) []frontend.Variable {
+	inputs := []frontend.Variable{}
+	inputs = append(inputs, process.Serialize()...)
+	inputs = append(inputs, vote.SerializeAsVars()...)
+	return inputs
+}
+
 func CalculateVotersHashes(api frontend.API,
 	process Process[emulated.Element[sw_bn254.ScalarField]],
 	votes []EmulatedVote[sw_bn254.ScalarField],
 ) VotersHashes {
 	// initialize the hashes of the voters
 	votersHashes := [VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
-	for i := 0; i < VotesPerBatch; i++ {
-		votersHashes[i] = VoterHashFn(api, VoteVerifierInputs(api, process, votes[i])...)
+	for i := range VotesPerBatch {
+		votersHashes[i] = VoterHashFn(api, EmulatedVoteVerifierInputs(process, votes[i])...)
 	}
 	return VotersHashes{votersHashes}
 }

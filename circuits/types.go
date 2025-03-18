@@ -313,6 +313,20 @@ func (v Vote[T]) ToEmulatedVote(api frontend.API) EmulatedVote[sw_bn254.ScalarFi
 	}
 }
 
+func (v Vote[T]) SerializeAsVars() []frontend.Variable {
+	// enforce that T is frontend.Variable
+	_, ok := any(v).(Vote[frontend.Variable])
+	if !ok {
+		panic("Vote type assertion failed")
+	}
+	list := []frontend.Variable{}
+	list = append(list, v.Address)
+	list = append(list, v.Commitment)
+	list = append(list, v.Nullifier)
+	list = append(list, v.Ballot.SerializeVars()...)
+	return list
+}
+
 type Ballot [FieldsPerBallot]elgamal.Ciphertext
 
 func NewBallot() *Ballot {

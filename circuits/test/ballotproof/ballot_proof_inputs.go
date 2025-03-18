@@ -6,8 +6,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"math/big"
+	"time"
 
 	gecdsa "github.com/consensys/gnark-crypto/ecc/secp256k1/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
@@ -176,6 +178,8 @@ type VoterProofResult struct {
 // the user and generates a proof of a valid vote. It returns a *VoterProofResult
 // and an error if it fails.
 func BallotProofForTest(address, processId []byte, encryptionKey ecc.Point) (*VoterProofResult, error) {
+	now := time.Now()
+	log.Println("BallotProof inputs generation start")
 	// generate random fields
 	fields := GenBallotFieldsForTest(circuits.MockMaxCount, circuits.MockMaxValue, circuits.MockMinValue, circuits.MockForceUniqueness > 0)
 	// encrypt the fields
@@ -245,6 +249,7 @@ func BallotProofForTest(address, processId []byte, encryptionKey ecc.Point) (*Vo
 	if err != nil {
 		return nil, fmt.Errorf("create circom proof: %w", err)
 	}
+	log.Printf("Ballot proof generation ends, it tooks %s", time.Since(now))
 	return &VoterProofResult{
 		ProcessID:  ffProcessID,
 		Address:    ffAddress,
