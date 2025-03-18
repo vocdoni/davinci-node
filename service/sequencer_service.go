@@ -18,6 +18,7 @@ type SequencerService struct {
 // and update the ongoing state with the new ones. The batchTimeWindow defines how long a batch can wait
 // until processed (either the batch becomes full of votes or the time window expires).
 func NewSequencer(stg *storage.Storage, batchTimeWindow time.Duration) *SequencerService {
+	log.Infow("creating sequencer service", "batchTimeWindow", batchTimeWindow)
 	s, err := sequencer.New(stg, batchTimeWindow)
 	if err != nil {
 		log.Fatalf("failed to create sequencer: %v", err)

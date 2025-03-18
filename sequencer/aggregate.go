@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"maps"
+
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
@@ -24,7 +26,7 @@ import (
 // Parameters:
 //   - pid: The process ID to register
 func (s *Sequencer) AddProcessID(pid []byte) {
-	if pid == nil || len(pid) == 0 {
+	if len(pid) == 0 {
 		log.Warnw("attempted to add empty process ID")
 		return
 	}
@@ -48,7 +50,7 @@ func (s *Sequencer) AddProcessID(pid []byte) {
 // Parameters:
 //   - pid: The process ID to unregister
 func (s *Sequencer) DelProcessID(pid []byte) {
-	if pid == nil || len(pid) == 0 {
+	if len(pid) == 0 {
 		return
 	}
 
@@ -96,9 +98,7 @@ func (s *Sequencer) processPendingBatches() {
 	// Copy pids to avoid locking the map for too long
 	s.pidsLock.RLock()
 	pids := make(map[string]time.Time, len(s.pids))
-	for k, v := range s.pids {
-		pids[k] = v
-	}
+	maps.Copy(pids, s.pids)
 	s.pidsLock.RUnlock()
 
 	// Iterate over the process IDs and process the ones that are ready
@@ -120,6 +120,7 @@ func (s *Sequencer) processPendingBatches() {
 			"maxTimeWindow", s.maxTimeWindow,
 		)
 
+		startTime := time.Now()
 		if err := s.aggregateBatch([]byte(pid)); err != nil {
 			log.Warnw("failed to aggregate batch",
 				"error", err.Error(),
@@ -127,13 +128,13 @@ func (s *Sequencer) processPendingBatches() {
 			)
 			continue
 		}
+		log.Infow("batch aggregated successfully", "processID", fmt.Sprintf("%x", pid), "took(s)", time.Since(startTime).Seconds())
 
 		// Update the last update time
 		s.pidsLock.Lock()
 		s.pids[pid] = time.Now()
 		s.pidsLock.Unlock()
 
-		log.Infow("batch aggregated successfully", "processID", fmt.Sprintf("%x", pid))
 	}
 }
 
@@ -146,7 +147,7 @@ func (s *Sequencer) processPendingBatches() {
 //
 // Returns an error if the aggregation process fails at any step.
 func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
-	if pid == nil || len(pid) == 0 {
+	if len(pid) == 0 {
 		return fmt.Errorf("process ID cannot be empty")
 	}
 
@@ -172,8 +173,8 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	aggBallots := make([]*storage.AggregatorBallot, 0, len(ballots))
 
 	// Transform each ballot's proof for the aggregator circuit
-	for i := 0; i < len(ballots); i++ {
-		var transformErr error
+	var transformErr error
+	for i := range ballots {
 		proofs[i], transformErr = stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](ballots[i].Proof)
 		if transformErr != nil {
 			return fmt.Errorf("failed to transform proof for recursion (ballot %d): %w", i, transformErr)

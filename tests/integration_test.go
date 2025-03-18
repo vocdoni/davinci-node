@@ -7,9 +7,9 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -17,7 +17,7 @@ import (
 
 func init() {
 	log.Init(log.LogLevelDebug, "stdout", nil)
-	if err := service.DownloadArtifacts(20 * time.Minute); err != nil {
+	if err := service.DownloadArtifacts(30 * time.Minute); err != nil {
 		log.Errorw(err, "failed to download artifacts")
 	}
 }
@@ -32,6 +32,16 @@ func TestIntegration(t *testing.T) {
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
 
+	var (
+		pid           *types.ProcessID
+		encryptionKey *types.EncryptionKey
+		ballotMode    *types.BallotMode
+		signers       []*ethereum.SignKeys
+		proofs        []*types.CensusProof
+		root          []byte
+		participants  []*api.CensusParticipant
+	)
+
 	c.Run("create organization", func(c *qt.C) {
 		orgAddr := createOrganization(c, contracts)
 		t.Logf("Organization address: %s", orgAddr.String())
@@ -39,29 +49,31 @@ func TestIntegration(t *testing.T) {
 
 	c.Run("create process", func(c *qt.C) {
 		// Create census with 10 participants
-		root, participants, signers := createCensus(c, cli, 10)
+		root, participants, signers = createCensus(c, cli, 10)
 
 		// Generate proof for first participant
-		proof := generateCensusProof(c, cli, root, participants[0].Key)
-		c.Assert(proof, qt.Not(qt.IsNil))
-		c.Assert(proof.Siblings, qt.IsNotNil)
+		proofs = make([]*types.CensusProof, 10)
+		for i := range participants {
+			proofs[i] = generateCensusProof(c, cli, root, participants[i].Key)
+			c.Assert(proofs[i], qt.Not(qt.IsNil))
+			c.Assert(proofs[i].Siblings, qt.IsNotNil)
+		}
+		// Check the first proof key is the same as the participant key and signer address
+		qt.Assert(t, proofs[0].Key.String(), qt.DeepEquals, participants[0].Key.String())
+		qt.Assert(t, string(proofs[0].Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
 
-		// Check the proof key is the same as the participant key and signer address
-		qt.Assert(t, proof.Key.String(), qt.DeepEquals, participants[0].Key.String())
-		qt.Assert(t, string(proof.Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
-
-		ballotMode := types.BallotMode{
-			MaxCount:        2,
-			MaxValue:        new(types.BigInt).SetUint64(100),
+		ballotMode = &types.BallotMode{
+			MaxCount:        1,
+			MaxValue:        new(types.BigInt).SetUint64(2),
 			MinValue:        new(types.BigInt).SetUint64(0),
 			ForceUniqueness: false,
 			CostFromWeight:  false,
 			CostExponent:    1,
-			MaxTotalCost:    new(types.BigInt).SetUint64(100),
-			MinTotalCost:    new(types.BigInt).SetUint64(100),
+			MaxTotalCost:    new(types.BigInt).SetUint64(2),
+			MinTotalCost:    new(types.BigInt).SetUint64(0),
 		}
 
-		pid, _ := createProcess(c, contracts, cli, root, ballotMode)
+		pid, encryptionKey = createProcess(c, contracts, cli, root, *ballotMode)
 		t.Logf("Process ID: %s", pid.String())
 	})
 
@@ -70,21 +82,6 @@ func TestIntegration(t *testing.T) {
 		c.Assert(ballotproof.Artifacts.LoadAll(), qt.IsNil)
 		c.Assert(voteverifier.Artifacts.LoadAll(), qt.IsNil)
 
-		// create census with 10 participants
-		root, _, signers := createCensus(c, cli, 10)
-		// create process
-		mockMode := circuits.MockBallotMode()
-		ballotMode := types.BallotMode{
-			MaxCount:        uint8(mockMode.MaxCount.Uint64()),
-			ForceUniqueness: mockMode.ForceUniqueness.Uint64() == 1,
-			MaxValue:        (*types.BigInt)(mockMode.MaxValue),
-			MinValue:        (*types.BigInt)(mockMode.MinValue),
-			MaxTotalCost:    (*types.BigInt)(mockMode.MaxTotalCost),
-			MinTotalCost:    (*types.BigInt)(mockMode.MinTotalCost),
-			CostFromWeight:  mockMode.CostFromWeight.Uint64() == 1,
-			CostExponent:    uint8(mockMode.CostExp.Uint64()),
-		}
-		pid, encryptionKey := createProcess(c, contracts, cli, root, ballotMode)
 		// generate a vote for the first participant
 		vote := createVote(c, pid, encryptionKey, signers[0])
 		// generate census proof for first participant

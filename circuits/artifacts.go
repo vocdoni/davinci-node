@@ -36,6 +36,7 @@ func init() {
 			BaseDir = filepath.Join(home, ".cache", "davinci-artifacts")
 		}
 	}
+	log.Infow("using artifact cache directory", "dir", BaseDir)
 
 	// Create BaseDir if it doesn't exist.
 	if err := os.MkdirAll(BaseDir, 0o755); err != nil {
@@ -48,6 +49,7 @@ func init() {
 // cache or download it from the remote URL provided. It also checks the hash
 // of the content to ensure its integrity.
 type Artifact struct {
+	Name      string
 	RemoteURL string
 	Hash      []byte
 	Content   []byte
@@ -237,8 +239,31 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 		return fmt.Errorf("error parsing the file URL provided: %w", err)
 	}
 
+	// Create a SHA256 hasher for integrity check
+	hasher := sha256.New()
+
 	// Destination file paths
 	path := filepath.Join(BaseDir, hex.EncodeToString(expectedHash))
+
+	// If file exists, read it and write to the hasher, then jump to the hash check
+	if _, err := os.Stat(path); err == nil {
+		existingFile, err := os.Open(path)
+		if err == nil {
+			if _, err := io.Copy(hasher, existingFile); err != nil {
+				existingFile.Close()
+				return fmt.Errorf("error hashing existing file: %w", err)
+			}
+			existingFile.Close()
+			computedHash := hasher.Sum(nil)
+			if !bytes.Equal(computedHash, expectedHash) {
+				log.Warnf("hash mismatch: expected %x, got %x", expectedHash, computedHash)
+			} else {
+				log.Debugw("artifact found", "path", path)
+				return nil
+			}
+		}
+	}
+
 	partialPath := path + ".partial"
 	parentDir := filepath.Dir(path)
 	if _, err := os.Stat(parentDir); err != nil {
@@ -285,13 +310,14 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 	}
 	defer fd.Close()
 
-	// Create a SHA256 hasher for integrity check
-	hasher := sha256.New()
 	if startByte > 0 {
 		// Hash existing content to continue validation
 		existingFile, err := os.Open(partialPath)
 		if err == nil {
-			io.Copy(hasher, existingFile)
+			if _, err := io.Copy(hasher, existingFile); err != nil {
+				existingFile.Close()
+				return fmt.Errorf("error hashing existing file: %w", err)
+			}
 			existingFile.Close()
 		}
 	}
@@ -314,7 +340,10 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 	// Log progress every 10 seconds
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-
+	u, err := url.Parse(fileUrl)
+	if err != nil {
+		return fmt.Errorf("error parsing URL: %w", err)
+	}
 	for {
 		select {
 		case err := <-done:
@@ -329,7 +358,7 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 			if pr.contentLength > 0 {
 				percentage = (float64(total) / float64(pr.contentLength)) * 100
 			}
-			log.Debugw("download artifacts", "url", fileUrl,
+			log.Debugw("download artifacts", "host", u.Host, "path", u.Path,
 				"downloaded", fmt.Sprintf("%.2fMiB", downloadedMiB),
 				"progress", fmt.Sprintf("%.2f%%", percentage))
 		}
@@ -338,13 +367,15 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 finished:
 	computedHash := hasher.Sum(nil)
 	if !bytes.Equal(computedHash, expectedHash) {
-		os.Remove(partialPath) // Delete invalid file
+		_ = os.Remove(partialPath) // Delete invalid file
 		return fmt.Errorf("hash mismatch: expected %x, got %x", expectedHash, computedHash)
 	}
 
 	// Rename .partial file to final destination
-	if err := os.Rename(partialPath, path); err != nil {
-		return fmt.Errorf("error renaming file: %w", err)
+	if _, err := os.Stat(partialPath); err == nil {
+		if err := os.Rename(partialPath, path); err != nil {
+			return fmt.Errorf("error renaming file: %w", err)
+		}
 	}
 
 	return nil

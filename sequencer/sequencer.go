@@ -56,6 +56,8 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 	if batchTimeWindow <= 0 {
 		return nil, fmt.Errorf("batch time window must be positive")
 	}
+	// Store the start time
+	startTime := time.Now()
 
 	// Load vote verifier artifacts
 	vvArtifacts := voteverifier.Artifacts
@@ -64,12 +66,22 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 	}
 
 	// Decode the vote verifier circuit definition
+	log.Debugw("reading cicuit artifact",
+		"circuit", "voteVerifier",
+		"type", "ccs",
+		"size", len(vvArtifacts.CircuitDefinition()),
+	)
 	voteCcs := groth16.NewCS(ecc.BLS12_377)
 	if _, err := voteCcs.ReadFrom(bytes.NewReader(vvArtifacts.CircuitDefinition())); err != nil {
 		return nil, fmt.Errorf("failed to read vote verifier definition: %w", err)
 	}
 
 	// Decode the vote verifier proving key
+	log.Debugw("reading cicuit artifact",
+		"circuit", "voteVerifier",
+		"type", "pk",
+		"size", len(vvArtifacts.ProvingKey()),
+	)
 	votePk := groth16.NewProvingKey(ecc.BLS12_377)
 	if _, err := votePk.ReadFrom(bytes.NewReader(vvArtifacts.ProvingKey())); err != nil {
 		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
@@ -82,18 +94,31 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 	}
 
 	// Decode the aggregator circuit definition
+	log.Debugw("reading cicuit artifact",
+		"circuit", "aggregator",
+		"type", "ccs",
+		"size", len(aggArtifacts.CircuitDefinition()),
+	)
 	aggCcs := groth16.NewCS(ecc.BW6_761)
 	if _, err := aggCcs.ReadFrom(bytes.NewReader(aggArtifacts.CircuitDefinition())); err != nil {
 		return nil, fmt.Errorf("failed to read aggregator circuit definition: %w", err)
 	}
 
 	// Decode the aggregator proving key
+	log.Debugw("reading cicuit artifact",
+		"circuit", "aggregator",
+		"type", "pk",
+		"size", len(aggArtifacts.ProvingKey()),
+	)
 	aggPk := groth16.NewProvingKey(ecc.BW6_761)
 	if _, err := aggPk.ReadFrom(bytes.NewReader(aggArtifacts.ProvingKey())); err != nil {
 		return nil, fmt.Errorf("failed to read aggregator proving key: %w", err)
 	}
 
-	log.Debugw("sequencer initialized", "batchTimeWindow", batchTimeWindow)
+	log.Debugw("sequencer initialized",
+		"batchTimeWindow", batchTimeWindow,
+		"took(s)", time.Since(startTime).Seconds(),
+	)
 
 	return &Sequencer{
 		stg:                          stg,
