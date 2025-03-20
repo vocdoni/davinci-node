@@ -19,6 +19,21 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 )
 
+var (
+	// AggregatorTickerInterval is the interval at which the aggregator will check for new ballots to process.
+	// This value can be changed before starting the sequencer.
+	AggregatorTickerInterval = 10 * time.Second
+
+	// NewProcessMonitorInterval is the interval at which the sequencer will check for new processes to participate in.
+	// This value can be changed before starting the sequencer.
+	NewProcessMonitorInterval = 60 * time.Second
+
+	// ParticipateInAllProcesses determines if the sequencer should process ballots from all processes that are registered.
+	// This is a temporary flag to simplify testing and will be removed in the future. The Sequencer caller must somehow
+	// decide which processes to participate in.
+	ParticipateInAllProcesses = true
+)
+
 // Sequencer is a worker that takes verified ballots and aggregates them into a single proof.
 // It processes ballots and creates batches of proofs for efficient verification.
 type Sequencer struct {
@@ -83,7 +98,7 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 		"size", len(vvArtifacts.ProvingKey()),
 	)
 	votePk := groth16.NewProvingKey(ecc.BLS12_377)
-	if _, err := votePk.ReadFrom(bytes.NewReader(vvArtifacts.ProvingKey())); err != nil {
+	if _, err := votePk.UnsafeReadFrom(bytes.NewReader(vvArtifacts.ProvingKey())); err != nil {
 		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
 	}
 
@@ -111,7 +126,7 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 		"size", len(aggArtifacts.ProvingKey()),
 	)
 	aggPk := groth16.NewProvingKey(ecc.BW6_761)
-	if _, err := aggPk.ReadFrom(bytes.NewReader(aggArtifacts.ProvingKey())); err != nil {
+	if _, err := aggPk.UnsafeReadFrom(bytes.NewReader(aggArtifacts.ProvingKey())); err != nil {
 		return nil, fmt.Errorf("failed to read aggregator proving key: %w", err)
 	}
 
@@ -152,10 +167,13 @@ func (s *Sequencer) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start ballot processor: %w", err)
 	}
 
-	if err := s.startAggregateProcessor(); err != nil {
+	if err := s.startAggregateProcessor(AggregatorTickerInterval); err != nil {
 		s.cancel() // Clean up if we fail to start completely
 		return fmt.Errorf("failed to start aggregate processor: %w", err)
 	}
+
+	// Start monitoring for new processes
+	go s.monitorNewProcesses(s.ctx, NewProcessMonitorInterval)
 
 	log.Infow("sequencer started successfully")
 	return nil
@@ -170,4 +188,85 @@ func (s *Sequencer) Stop() error {
 		log.Infow("sequencer stopped")
 	}
 	return nil
+}
+
+// monitorNewProcesses periodically checks for new processes and registers them with the sequencer.
+func (s *Sequencer) monitorNewProcesses(ctx context.Context, tickerInterval time.Duration) {
+	ticker := time.NewTicker(tickerInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			procesList, err := s.stg.ListProcesses()
+			if err != nil {
+				log.Errorw(err, "failed to list processes")
+				continue
+			}
+			for _, proc := range procesList {
+				if ParticipateInAllProcesses && !s.ExistsProcessID(proc) {
+					s.AddProcessID(proc)
+				}
+			}
+		}
+	}
+}
+
+// AddProcessID registers a process ID with the sequencer for ballot processing.
+// Only ballots belonging to registered process IDs will be processed.
+// If the process ID is already registered, this operation has no effect.
+//
+// Parameters:
+//   - pid: The process ID to register
+func (s *Sequencer) AddProcessID(pid []byte) {
+	if len(pid) == 0 {
+		log.Warnw("attempted to add empty process ID")
+		return
+	}
+
+	s.pidsLock.Lock()
+	defer s.pidsLock.Unlock()
+
+	pidStr := string(pid)
+	if _, exists := s.pids[pidStr]; exists {
+		log.Debugw("process ID already registered", "processID", fmt.Sprintf("%x", pid))
+		return
+	}
+
+	s.pids[pidStr] = time.Now()
+	log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
+}
+
+// DelProcessID unregisters a process ID from the sequencer.
+// If the process ID is not registered, this operation has no effect.
+//
+// Parameters:
+//   - pid: The process ID to unregister
+func (s *Sequencer) DelProcessID(pid []byte) {
+	if len(pid) == 0 {
+		return
+	}
+
+	s.pidsLock.Lock()
+	defer s.pidsLock.Unlock()
+
+	if _, exists := s.pids[string(pid)]; exists {
+		delete(s.pids, string(pid))
+		log.Infow("process ID unregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
+	}
+}
+
+// ExistsProcessID checks if a process ID is registered with the sequencer.
+func (s *Sequencer) ExistsProcessID(pid []byte) bool {
+	if len(pid) == 0 {
+		return false
+	}
+
+	s.pidsLock.RLock()
+	defer s.pidsLock.RUnlock()
+
+	_, exists := s.pids[string(pid)]
+	return exists
 }

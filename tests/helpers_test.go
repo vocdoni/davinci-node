@@ -24,6 +24,7 @@ import (
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -76,7 +77,9 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *st
 	kv := memdb.New()
 	stg := storage.New(kv)
 
-	vp := service.NewSequencer(stg, time.Second*10)
+	sequencer.AggregatorTickerInterval = time.Second * 2
+	sequencer.NewProcessMonitorInterval = time.Second * 5
+	vp := service.NewSequencer(stg, time.Second*30)
 	if err := vp.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
@@ -194,10 +197,12 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	c.Assert(resp.ProcessID, qt.Not(qt.IsNil))
 	c.Assert(resp.EncryptionPubKey[0], qt.Not(qt.IsNil))
 	c.Assert(resp.EncryptionPubKey[1], qt.Not(qt.IsNil))
+
 	encryptionKeys := &types.EncryptionKey{
 		X: (*big.Int)(&resp.EncryptionPubKey[0]),
 		Y: (*big.Int)(&resp.EncryptionPubKey[1]),
 	}
+
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
 		Status:         0,
 		OrganizationId: contracts.AccountAddress(),

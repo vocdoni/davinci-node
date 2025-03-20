@@ -2,16 +2,17 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
+	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -23,6 +24,7 @@ func init() {
 }
 
 func TestIntegration(t *testing.T) {
+	numBallots := 2
 	c := qt.New(t)
 
 	// Setup
@@ -48,11 +50,11 @@ func TestIntegration(t *testing.T) {
 	})
 
 	c.Run("create process", func(c *qt.C) {
-		// Create census with 10 participants
-		root, participants, signers = createCensus(c, cli, 10)
+		// Create census with numBallot participants
+		root, participants, signers = createCensus(c, cli, numBallots)
 
 		// Generate proof for first participant
-		proofs = make([]*types.CensusProof, 10)
+		proofs = make([]*types.CensusProof, numBallots)
 		for i := range participants {
 			proofs[i] = generateCensusProof(c, cli, root, participants[i].Key)
 			c.Assert(proofs[i], qt.Not(qt.IsNil))
@@ -62,15 +64,16 @@ func TestIntegration(t *testing.T) {
 		qt.Assert(t, proofs[0].Key.String(), qt.DeepEquals, participants[0].Key.String())
 		qt.Assert(t, string(proofs[0].Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
 
+		mockMode := circuits.MockBallotMode()
 		ballotMode = &types.BallotMode{
-			MaxCount:        1,
-			MaxValue:        new(types.BigInt).SetUint64(2),
-			MinValue:        new(types.BigInt).SetUint64(0),
-			ForceUniqueness: false,
-			CostFromWeight:  false,
-			CostExponent:    1,
-			MaxTotalCost:    new(types.BigInt).SetUint64(2),
-			MinTotalCost:    new(types.BigInt).SetUint64(0),
+			MaxCount:        uint8(mockMode.MaxCount.Uint64()),
+			ForceUniqueness: mockMode.ForceUniqueness.Uint64() == 1,
+			MaxValue:        (*types.BigInt)(mockMode.MaxValue),
+			MinValue:        (*types.BigInt)(mockMode.MinValue),
+			MaxTotalCost:    (*types.BigInt)(mockMode.MaxTotalCost),
+			MinTotalCost:    (*types.BigInt)(mockMode.MinTotalCost),
+			CostFromWeight:  mockMode.CostFromWeight.Uint64() == 1,
+			CostExponent:    uint8(mockMode.CostExp.Uint64()),
 		}
 
 		pid, encryptionKey = createProcess(c, contracts, cli, root, *ballotMode)
@@ -78,34 +81,49 @@ func TestIntegration(t *testing.T) {
 	})
 
 	c.Run("create vote", func(c *qt.C) {
-		// load ballot proof artifacts
-		c.Assert(ballotproof.Artifacts.LoadAll(), qt.IsNil)
-		c.Assert(voteverifier.Artifacts.LoadAll(), qt.IsNil)
-
-		// generate a vote for the first participant
-		vote := createVote(c, pid, encryptionKey, signers[0])
-		// generate census proof for first participant
-		censusProof := generateCensusProof(c, cli, root, signers[0].Address().Bytes())
-		c.Assert(censusProof, qt.Not(qt.IsNil))
-		c.Assert(censusProof.Siblings, qt.IsNotNil)
-		vote.CensusProof = *censusProof
-
-		body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
-		c.Assert(err, qt.IsNil)
-		c.Assert(status, qt.Equals, 200)
-		c.Log("Vote created", string(body))
+		for i := range signers {
+			// generate a vote for the first participant
+			vote := createVote(c, pid, encryptionKey, signers[i])
+			// generate census proof for first participant
+			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
+			c.Assert(censusProof, qt.Not(qt.IsNil))
+			c.Assert(censusProof.Siblings, qt.IsNotNil)
+			vote.CensusProof = *censusProof
+			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+			c.Assert(err, qt.IsNil)
+			c.Assert(status, qt.Equals, 200)
+			c.Logf("Vote %d created", i)
+		}
 
 		// wait to process the vote
-		voteWaiter, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+		voteWaiter, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
+		done := false
 		for {
+			if done {
+				break
+			}
 			select {
 			case <-voteWaiter.Done():
 				c.Fatal("timeout waiting for vote to be processed")
 			default:
-				if stg.CountVerifiedBallots(pid.Marshal()) == 1 {
-					return
+				if stg.CountVerifiedBallots(pid.Marshal()) == numBallots {
+					break
 				}
+				time.Sleep(time.Second)
+			}
+		}
+		t.Logf("All votes processed, waiting for aggregation")
+
+		for {
+			_, _, err := stg.NextBallotBatch(pid.Marshal())
+			switch {
+			case err == nil:
+				log.Debug("aggregated ballot batch found")
+				return
+			case !errors.Is(err, storage.ErrNoMoreElements):
+				c.Fatalf("unexpected error: %v", err)
+			default:
 				time.Sleep(time.Second)
 			}
 		}

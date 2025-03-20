@@ -258,7 +258,7 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 			if !bytes.Equal(computedHash, expectedHash) {
 				log.Warnf("hash mismatch: expected %x, got %x", expectedHash, computedHash)
 			} else {
-				log.Debugw("artifact found", "path", path)
+				log.Debugw("circuits artifact found", "hash", hex.EncodeToString(expectedHash))
 				return nil
 			}
 		}

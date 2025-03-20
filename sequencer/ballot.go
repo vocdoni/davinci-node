@@ -7,6 +7,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
+	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -58,6 +59,11 @@ func (s *Sequencer) startBallotProcessor() error {
 						return
 					}
 				}
+				continue
+			}
+
+			// Skip processing if the process is not registered
+			if !s.ExistsProcessID(ballot.ProcessID) {
 				continue
 			}
 
@@ -216,7 +222,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		Commitment:      commitment,
 		EncryptedBallot: b.EncryptedBallot,
 		Address:         address,
-		Proof:           proof,
+		Proof:           proof.(*groth16_bls12377.Proof),
 		InputsHash:      inputHash,
 	}, nil
 }

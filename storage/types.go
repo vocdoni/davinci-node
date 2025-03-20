@@ -3,7 +3,9 @@ package storage
 import (
 	"math/big"
 
-	"github.com/consensys/gnark/backend/groth16"
+	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
+	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
+
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
@@ -24,14 +26,14 @@ type EncryptionKeys struct {
 }
 
 type VerifiedBallot struct {
-	ProcessID       types.HexBytes `json:"processId"`
-	VoterWeight     *big.Int       `json:"voterWeight"`
-	Nullifier       *big.Int       `json:"nullifier"`
-	Commitment      *big.Int       `json:"commitment"`
-	EncryptedBallot elgamal.Ballot `json:"encryptedBallot"`
-	Address         *big.Int       `json:"address"`
-	InputsHash      *big.Int       `json:"inputsHash"`
-	Proof           groth16.Proof  `json:"proof"`
+	ProcessID       types.HexBytes          `json:"processId"`
+	VoterWeight     *big.Int                `json:"voterWeight"`
+	Nullifier       *big.Int                `json:"nullifier"`
+	Commitment      *big.Int                `json:"commitment"`
+	EncryptedBallot elgamal.Ballot          `json:"encryptedBallot"`
+	Address         *big.Int                `json:"address"`
+	InputsHash      *big.Int                `json:"inputsHash"`
+	Proof           *groth16_bls12377.Proof `json:"proof"`
 }
 
 type Ballot struct {
@@ -60,10 +62,11 @@ func (b *Ballot) Valid() bool {
 }
 
 type AggregatorBallotBatch struct {
-	ProcessID types.HexBytes      `json:"processId"`
-	Proof     groth16.Proof       `json:"proof"`
-	Ballots   []*AggregatorBallot `json:"ballots"`
+	ProcessID types.HexBytes        `json:"processId"`
+	Proof     *groth16_bw6761.Proof `json:"proof"`
+	Ballots   []*AggregatorBallot   `json:"ballots"`
 }
+
 type AggregatorBallot struct {
 	Nullifier       *big.Int       `json:"nullifiers"`
 	Commitment      *big.Int       `json:"commitments"`

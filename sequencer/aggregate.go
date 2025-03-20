@@ -8,6 +8,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
+	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
@@ -19,51 +20,6 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-// AddProcessID registers a process ID with the sequencer for ballot processing.
-// Only ballots belonging to registered process IDs will be processed.
-// If the process ID is already registered, this operation has no effect.
-//
-// Parameters:
-//   - pid: The process ID to register
-func (s *Sequencer) AddProcessID(pid []byte) {
-	if len(pid) == 0 {
-		log.Warnw("attempted to add empty process ID")
-		return
-	}
-
-	pidStr := string(pid)
-	s.pidsLock.Lock()
-	defer s.pidsLock.Unlock()
-
-	if _, exists := s.pids[pidStr]; exists {
-		log.Debugw("process ID already registered", "processID", fmt.Sprintf("%x", pid))
-		return
-	}
-
-	s.pids[pidStr] = time.Now()
-	log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
-}
-
-// DelProcessID unregisters a process ID from the sequencer.
-// If the process ID is not registered, this operation has no effect.
-//
-// Parameters:
-//   - pid: The process ID to unregister
-func (s *Sequencer) DelProcessID(pid []byte) {
-	if len(pid) == 0 {
-		return
-	}
-
-	pidStr := string(pid)
-	s.pidsLock.Lock()
-	defer s.pidsLock.Unlock()
-
-	if _, exists := s.pids[pidStr]; exists {
-		delete(s.pids, pidStr)
-		log.Infow("process ID unregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
-	}
-}
-
 // startAggregateProcessor starts a background goroutine that periodically checks
 // for batches of verified ballots that are ready to be aggregated into a single proof.
 // A batch is considered ready when either:
@@ -71,13 +27,12 @@ func (s *Sequencer) DelProcessID(pid []byte) {
 // 2. The time since the last update exceeds maxTimeWindow
 //
 // The processor runs until the sequencer's context is canceled.
-func (s *Sequencer) startAggregateProcessor() error {
-	const tickInterval = 10 * time.Second
-	ticker := time.NewTicker(tickInterval)
+func (s *Sequencer) startAggregateProcessor(tickerInterval time.Duration) error {
+	ticker := time.NewTicker(tickerInterval)
 
 	go func() {
 		defer ticker.Stop()
-		log.Infow("aggregate processor started", "tickInterval", tickInterval)
+		log.Infow("aggregate processor started", "tickInterval", tickerInterval)
 
 		for {
 			select {
@@ -108,7 +63,7 @@ func (s *Sequencer) processPendingBatches() {
 		timeSinceUpdate := time.Since(lastUpdate)
 
 		// Skip if the batch is not ready
-		if ballotCount < types.VotesPerBatch && timeSinceUpdate <= s.maxTimeWindow {
+		if ballotCount == 0 || (ballotCount < types.VotesPerBatch && timeSinceUpdate <= s.maxTimeWindow) {
 			continue
 		}
 
@@ -157,7 +112,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		return fmt.Errorf("failed to pull verified ballots: %w", err)
 	}
 
-	if len(ballots) < 1 {
+	if len(ballots) == 0 {
 		log.Warnw("no ballots to aggregate", "processID", fmt.Sprintf("%x", pid))
 		return nil
 	}
@@ -173,9 +128,10 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	aggBallots := make([]*storage.AggregatorBallot, 0, len(ballots))
 
 	// Transform each ballot's proof for the aggregator circuit
+	startTime := time.Now()
 	var transformErr error
 	for i := range ballots {
-		proofs[i], transformErr = stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](ballots[i].Proof)
+		proofs[i], transformErr = stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](groth16.Proof(ballots[i].Proof))
 		if transformErr != nil {
 			return fmt.Errorf("failed to transform proof for recursion (ballot %d): %w", i, transformErr)
 		}
@@ -209,18 +165,22 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		return fmt.Errorf("failed to create witness: %w", err)
 	}
 
-	proof, err := groth16.Prove(s.aggregateCcs, s.aggregateProvingKey, witness)
+	log.Debugw("inputs ready for aggregation", "took", time.Since(startTime).String())
+	log.Debugw("generating aggregate proof...")
+	startTime = time.Now()
+	proof, err := groth16.Prove(s.aggregateCcs, s.aggregateProvingKey, witness, stdgroth16.GetNativeProverOptions(ecc.BN254.ScalarField(), ecc.BW6_761.ScalarField()))
 	if err != nil {
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)
 	}
-
+	log.Debugw("aggregate proof generated", "took", time.Since(startTime).String())
 	// Store the aggregated batch
 	abb := storage.AggregatorBallotBatch{
 		ProcessID: pid,
-		Proof:     proof,
+		Proof:     proof.(*groth16_bw6761.Proof),
 		Ballots:   aggBallots,
 	}
 
+	log.Debugw("pushing aggregated batch to storage")
 	if err := s.stg.PushBallotBatch(&abb); err != nil {
 		return fmt.Errorf("failed to push ballot batch: %w", err)
 	}
