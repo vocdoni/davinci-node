@@ -11,6 +11,9 @@ import (
 
 // PushBallot stores a new ballot into the pending ballots queue.
 func (s *Storage) PushBallot(b *Ballot) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
 	val, err := encodeArtifact(b)
 	if err != nil {
 		return fmt.Errorf("encode ballot: %w", err)
@@ -111,7 +114,8 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 	var keys [][]byte
 	if err := rd.Iterate(processID, func(k, v []byte) bool {
 		key := append(processID, k...)
-		if maxCount > 0 && len(res) >= maxCount {
+		if len(res) == maxCount {
+			log.Warnf("max count reached")
 			return false
 		}
 		// Skip if already reserved
@@ -120,14 +124,9 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 		}
 		var vb VerifiedBallot
 		if err := decodeArtifact(v, &vb); err != nil {
-			log.Warnw("failed to decode verified ballot", "key", hex.EncodeToString(key), "error", err.Error())
 			return true
 		}
-		// Set reservation before adding to results
-		if err := s.setReservation(verifiedBallotReservPrefix, key); err != nil {
-			log.Warnw("failed to set reservation for verified ballot", "key", hex.EncodeToString(key), "error", err.Error())
-			return true
-		}
+
 		// Make a copy of the key to avoid any potential modification
 		keyCopy := make([]byte, len(key))
 		copy(keyCopy, key)
@@ -136,6 +135,13 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 		return true
 	}); err != nil {
 		return nil, nil, fmt.Errorf("iterate ballots: %w", err)
+	}
+
+	for _, k := range keys {
+		if err := s.setReservation(verifiedBallotReservPrefix, k); err != nil {
+			log.Warnw("failed to set reservation for verified ballot", "key", hex.EncodeToString(k), "error", err.Error())
+			// TODO: Remove key and res from the list
+		}
 	}
 
 	// Return ErrNotFound if we found no ballots at all
@@ -147,15 +153,18 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 }
 
 // CountVerifiedBallots returns the number of verified ballots for a given
-// processID.
+// processID which are not reserved.
 func (s *Storage) CountVerifiedBallots(processID []byte) int {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	count := 0
-	if err := rd.Iterate(processID, func(_, _ []byte) bool {
-		count++
+	if err := rd.Iterate(processID, func(k, _ []byte) bool {
+		key := append(processID, k...)
+		if !s.isReserved(verifiedBallotReservPrefix, key) {
+			count++
+		}
 		return true
 	}); err != nil {
 		log.Warnw("failed to count verified ballots", "error", err.Error())
@@ -165,6 +174,9 @@ func (s *Storage) CountVerifiedBallots(processID []byte) int {
 
 // PushBallotBatch pushes an aggregated ballot batch to the aggregator queue.
 func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
 	val, err := encodeArtifact(abb)
 	if err != nil {
 		return fmt.Errorf("encode batch: %w", err)
@@ -180,6 +192,7 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 
 // NextBallotBatch returns the next aggregated ballot batch for a given
 // processID, sets a reservation.
+// Returns ErrNoMoreElements if no more elements are available.
 func (s *Storage) NextBallotBatch(processID []byte) (*AggregatorBallotBatch, []byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()

@@ -2,7 +2,7 @@ services:
   geth-genesis:
     image: "ethereum/client-go:latest"
     command: --datadir=/chain init /files/genesis.json
-    #command: --dev dumpgenesis
+    # command: --dev dumpgenesis
     volumes:
       - ./files:/files
       - geth:/chain

@@ -62,7 +62,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidSignature.Withf("invalid vote signature").Write(w)
 		return
 	}
-	// push the ballot to the processor storage queue to be verified, aggregated
+	// push the ballot to the sequencer storage queue to be verified, aggregated
 	// and published
 	if err := a.storage.PushBallot(&storage.Ballot{
 		ProcessID:        vote.ProcessID,

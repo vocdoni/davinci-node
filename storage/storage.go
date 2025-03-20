@@ -94,10 +94,11 @@ func (s *Storage) recover() error {
 // all reservation entries. This ensures that no item remains "reserved" after
 // a crash.
 func (s *Storage) clearAllReservations(prefix []byte) error {
-	rd := prefixeddb.NewPrefixedReader(s.db, prefix)
+	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
+	defer wTx.Discard()
 	var keysToDelete [][]byte
 	// Collect all keys to delete
-	if err := rd.Iterate(nil, func(k, _ []byte) bool {
+	if err := wTx.Iterate(nil, func(k, _ []byte) bool {
 		kCopy := make([]byte, len(k))
 		copy(kCopy, k)
 		keysToDelete = append(keysToDelete, kCopy)
@@ -107,15 +108,12 @@ func (s *Storage) clearAllReservations(prefix []byte) error {
 	}
 	// Delete them in a write transaction
 	if len(keysToDelete) > 0 {
-		wTx := s.db.WriteTx()
-		pwt := prefixeddb.NewPrefixedWriteTx(wTx, prefix)
 		for _, kk := range keysToDelete {
-			if err := pwt.Delete(kk); err != nil {
-				pwt.Discard()
+			if err := wTx.Delete(kk); err != nil {
 				return fmt.Errorf("failed to delete reservation key %x: %w", kk, err)
 			}
 		}
-		if err := pwt.Commit(); err != nil {
+		if err := wTx.Commit(); err != nil {
 			return fmt.Errorf("failed to commit reservation deletion: %w", err)
 		}
 	}
@@ -155,9 +153,10 @@ func (s *Storage) ReleaseStaleReservations(maxAge time.Duration) error {
 }
 
 func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Duration) error {
-	rd := prefixeddb.NewPrefixedReader(s.db, prefix)
+	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
+	defer wTx.Discard()
 	var staleKeys [][]byte
-	if err := rd.Iterate(nil, func(k, v []byte) bool {
+	if err := wTx.Iterate(nil, func(k, v []byte) bool {
 		r := &reservationRecord{}
 		if err := decodeArtifact(v, r); err != nil {
 			staleKeys = append(staleKeys, append([]byte(nil), k...))
@@ -174,14 +173,11 @@ func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Dur
 		return nil
 	}
 
-	wTx := s.db.WriteTx()
 	for _, sk := range staleKeys {
-		pwt := prefixeddb.NewPrefixedWriteTx(wTx, prefix)
-		if err := pwt.Delete(sk); err != nil {
-			pwt.Discard()
+		if err := wTx.Delete(sk); err != nil {
 			return fmt.Errorf("delete stale reservation: %w", err)
 		}
-		if err := pwt.Commit(); err != nil {
+		if err := wTx.Commit(); err != nil {
 			return fmt.Errorf("commit stale deletion: %w", err)
 		}
 	}
@@ -193,12 +189,12 @@ func (s *Storage) setReservation(prefix, key []byte) error {
 	if err != nil {
 		return err
 	}
-	if _, err := prefixeddb.NewPrefixedReader(s.db, prefix).Get(key); err == nil {
+	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
+	defer wTx.Discard()
+	if _, err := wTx.Get(key); err == nil {
 		return ErrKeyAlreadyExists
 	}
-	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), prefix)
 	if err := wTx.Set(key, val); err != nil {
-		wTx.Discard()
 		return err
 	}
 	return wTx.Commit()
@@ -210,9 +206,10 @@ func (s *Storage) isReserved(prefix, key []byte) bool {
 }
 
 func (s *Storage) deleteArtifact(prefix, key []byte) error {
-	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), prefix)
+	// instance a write transaction with the prefix provided
+	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
+	defer wTx.Discard()
 	if err := wTx.Delete(key); err != nil {
-		wTx.Discard()
 		return err
 	}
 	return wTx.Commit()
@@ -234,13 +231,15 @@ func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 		key = hash[:maxKeySize]
 	}
 
+	// instance a write transaction with the prefix provided
+	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
+	defer wTx.Discard()
+
 	// check if key already exists
-	if _, err := prefixeddb.NewPrefixedReader(s.db, prefix).Get(key); err == nil {
+	if _, err := wTx.Get(key); err == nil {
 		return ErrKeyAlreadyExists
 	}
 
-	// instance a write transaction with the prefix provided
-	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), prefix)
 	// store the artifact in the database with the key generated
 	if err := wTx.Set(key, data); err != nil {
 		return err
@@ -256,14 +255,14 @@ func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 func (s *Storage) getArtifact(prefix []byte, key []byte, out any) error {
 	var data []byte
 	var err error
-
+	db := prefixeddb.NewPrefixedDatabase(s.db, prefix)
 	if key != nil {
-		data, err = prefixeddb.NewPrefixedReader(s.db, prefix).Get(key)
+		data, err = db.Get(key)
 		if err != nil {
 			return ErrNotFound
 		}
 	} else {
-		if err := prefixeddb.NewPrefixedReader(s.db, prefix).Iterate(nil, func(_, value []byte) bool {
+		if err := db.Iterate(nil, func(_, value []byte) bool {
 			data = value
 			return false
 		}); err != nil {

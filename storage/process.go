@@ -11,6 +11,9 @@ import (
 // Process retrieves the process data from the storage.
 // It returns nil data and ErrNotFound if the metadata is not found.
 func (s *Storage) Process(pid *types.ProcessID) (*types.Process, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
 	p := &types.Process{}
 	if err := s.getArtifact(processPrefix, pid.Marshal(), p); err != nil {
 		return nil, err
@@ -18,8 +21,11 @@ func (s *Storage) Process(pid *types.ProcessID) (*types.Process, error) {
 	return p, nil
 }
 
-// SeProcess stores a process and its metadata into the storage.
+// SetProcess stores a process and its metadata into the storage.
 func (s *Storage) SetProcess(data *types.Process) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
 	if data == nil {
 		return fmt.Errorf("nil process data")
 	}
@@ -28,6 +34,9 @@ func (s *Storage) SetProcess(data *types.Process) error {
 
 // ListProcesses returns the list of process IDs stored in the storage (by SetProcessMetadata) as a list of byte slices.
 func (s *Storage) ListProcesses() ([][]byte, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
 	pids, err := s.listArtifacts(processPrefix)
 	if err != nil {
 		return nil, err

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -13,7 +14,7 @@ import (
 // - ChainID (4 bytes)
 // - Address (20 bytes)
 // - Nonce (8 bytes)
-type ProcessID struct {
+type ProcessID struct { // TODO: change to []byte wrapper, it will simplify the code and SetBytes() can be removed
 	Address common.Address
 	Nonce   uint64
 	ChainID uint32
@@ -31,6 +32,14 @@ func (p *ProcessID) SetBytes(data []byte) *ProcessID {
 		}
 	}
 	return p
+}
+
+// BigInt returns a BigInt representation of the ProcessId.
+func (p *ProcessID) BigInt() *big.Int {
+	if p == nil {
+		return nil
+	}
+	return new(big.Int).SetBytes(p.Marshal())
 }
 
 // Marshal encodes ProcessId to bytes:
