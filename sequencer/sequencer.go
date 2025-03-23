@@ -207,6 +207,7 @@ func (s *Sequencer) monitorNewProcesses(ctx context.Context, tickerInterval time
 			}
 			for _, proc := range procesList {
 				if ParticipateInAllProcesses && !s.ExistsProcessID(proc) {
+					log.Infow("new process registered for sequencing", "processID", fmt.Sprintf("%x", proc))
 					s.AddProcessID(proc)
 				}
 			}

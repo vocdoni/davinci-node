@@ -29,7 +29,7 @@ func TestIntegration(t *testing.T) {
 
 	// Setup
 	ctx := context.Background()
-	apiSrv, stg, contracts := NewTestService(t, ctx)
+	apiSrv, seqSrv, stg, contracts := NewTestService(t, ctx)
 	_, port := apiSrv.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
@@ -77,7 +77,20 @@ func TestIntegration(t *testing.T) {
 		}
 
 		pid, encryptionKey = createProcess(c, contracts, cli, root, *ballotMode)
+
+		// Wait for the process to be registered
+		for {
+			if _, err := stg.Process(pid); err == nil {
+				break
+			}
+			time.Sleep(time.Millisecond * 200)
+		}
 		t.Logf("Process ID: %s", pid.String())
+
+		// Wait for the process to be registered in the sequencer
+		for !seqSrv.Sequencer.ExistsProcessID(pid.Marshal()) {
+			time.Sleep(time.Millisecond * 200)
+		}
 	})
 
 	c.Run("create vote", func(c *qt.C) {

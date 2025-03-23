@@ -14,6 +14,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -137,6 +138,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		}
 
 		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](ballots[i].InputsHash)
+		log.Debugw("ballot transformed for aggregation", "index", i, "inputsHash", ballots[i].InputsHash.String())
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
 			Nullifier:       ballots[i].Nullifier,
 			Commitment:      ballots[i].Commitment,
@@ -154,6 +156,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 
 	// Fill any remaining slots with dummy proofs if needed
 	if len(ballots) < types.VotesPerBatch {
+		log.Debugw("filling with dummy proofs", "count", types.VotesPerBatch-len(ballots))
 		if err := assignment.FillWithDummy(s.voteCcs, s.voteProvingKey, s.ballotVerifyingKeyCircomJSON, len(ballots)); err != nil {
 			return fmt.Errorf("failed to fill with dummy proofs: %w", err)
 		}
@@ -164,11 +167,18 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	if err != nil {
 		return fmt.Errorf("failed to create witness: %w", err)
 	}
-
 	log.Debugw("inputs ready for aggregation", "took", time.Since(startTime).String())
-	log.Debugw("generating aggregate proof...")
+
 	startTime = time.Now()
-	proof, err := groth16.Prove(s.aggregateCcs, s.aggregateProvingKey, witness, stdgroth16.GetNativeProverOptions(ecc.BN254.ScalarField(), ecc.BW6_761.ScalarField()))
+	proof, err := groth16.Prove(
+		s.aggregateCcs,
+		s.aggregateProvingKey,
+		witness,
+		stdgroth16.GetNativeProverOptions(
+			circuits.StateTransitionCurve.ScalarField(),
+			circuits.AggregatorCurve.ScalarField(),
+		),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)
 	}
@@ -211,4 +221,11 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	)
 
 	return nil
+}
+
+// MockT mimics testing.T behavior
+type MockT struct{}
+
+func (t *MockT) Errorf(format string, args ...interface{}) {
+	log.Debugf("Assertion Error: "+format, args...)
 }

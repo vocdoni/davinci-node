@@ -54,7 +54,7 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
-func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *storage.Storage, *web3.Contracts) {
+func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *service.SequencerService, *storage.Storage, *web3.Contracts) {
 	log.Infow("starting Geth docker compose")
 	compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
 	qt.Assert(t, err, qt.IsNil)
@@ -95,7 +95,7 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *st
 	qt.Assert(t, err, qt.IsNil)
 	t.Cleanup(api.Stop)
 
-	return api, stg, contracts
+	return api, vp, stg, contracts
 }
 
 func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.SignKeys) {

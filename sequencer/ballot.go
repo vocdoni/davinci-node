@@ -5,12 +5,12 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
+	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	gnarkecdsa "github.com/consensys/gnark/std/signature/ecdsa"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/mimc7"
@@ -204,12 +204,15 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 
 	// Generate the proof
-	witness, err := frontend.NewWitness(assignment, ecc.BLS12_377.ScalarField())
+	witness, err := frontend.NewWitness(assignment, circuits.VoteVerifierCurve.ScalarField())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create witness: %w", err)
 	}
 
-	proof, err := groth16.Prove(s.voteCcs, s.voteProvingKey, witness)
+	proof, err := groth16.Prove(s.voteCcs, s.voteProvingKey, witness, stdgroth16.GetNativeProverOptions(
+		circuits.AggregatorCurve.ScalarField(),
+		circuits.VoteVerifierCurve.ScalarField()))
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}

@@ -11,7 +11,7 @@ import (
 
 // SequencerService represents a service that handles background vote processing.
 type SequencerService struct {
-	sequencer *sequencer.Sequencer
+	Sequencer *sequencer.Sequencer
 }
 
 // NewSequencer creates a new sequencer instance. It will verify new votes, aggregate them into batches,
@@ -24,18 +24,18 @@ func NewSequencer(stg *storage.Storage, batchTimeWindow time.Duration) *Sequence
 		log.Fatalf("failed to create sequencer: %v", err)
 	}
 	return &SequencerService{
-		sequencer: s,
+		Sequencer: s,
 	}
 }
 
 // Start begins the vote processing service. It returns an error if the service is already running.
 func (ss *SequencerService) Start(ctx context.Context) error {
-	return ss.sequencer.Start(ctx)
+	return ss.Sequencer.Start(ctx)
 }
 
 // Stop halts the vote processing service.
 func (ss *SequencerService) Stop() {
-	if err := ss.sequencer.Stop(); err != nil {
+	if err := ss.Sequencer.Stop(); err != nil {
 		log.Warnw("sequencer service stopped", "error", err)
 	}
 }
