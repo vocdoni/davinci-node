@@ -2,9 +2,8 @@ package sequencer
 
 import (
 	"fmt"
-	"time"
-
 	"maps"
+	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"

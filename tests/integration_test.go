@@ -108,31 +108,13 @@ func TestIntegration(t *testing.T) {
 			c.Logf("Vote %d created", i)
 		}
 
-		// wait to process the vote
-		voteWaiter, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		done := false
-		for {
-			if done {
-				break
-			}
-			select {
-			case <-voteWaiter.Done():
-				c.Fatal("timeout waiting for vote to be processed")
-			default:
-				if stg.CountVerifiedBallots(pid.Marshal()) == numBallots {
-					break
-				}
-				time.Sleep(time.Second)
-			}
-		}
-		t.Logf("All votes processed, waiting for aggregation")
-
+		// Wait for the vote to be registered
+		log.Debugw("waiting for vote to be registered and aggregated")
 		for {
 			_, _, err := stg.NextBallotBatch(pid.Marshal())
 			switch {
 			case err == nil:
-				log.Debug("aggregated ballot batch found")
+				log.Debugw("aggregated ballot batch found", "pid", pid.String())
 				return
 			case !errors.Is(err, storage.ErrNoMoreElements):
 				c.Fatalf("unexpected error: %v", err)

@@ -212,7 +212,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	proof, err := groth16.Prove(s.voteCcs, s.voteProvingKey, witness, stdgroth16.GetNativeProverOptions(
 		circuits.AggregatorCurve.ScalarField(),
 		circuits.VoteVerifierCurve.ScalarField()))
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}

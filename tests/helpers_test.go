@@ -64,7 +64,7 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *se
 	})
 	ctx2, cancel := context.WithCancel(ctx)
 	t.Cleanup(cancel)
-	err = compose.Up(ctx2, tc.Wait(true))
+	err = compose.Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
 	qt.Assert(t, err, qt.IsNil)
 
 	log.Infow("deploying contracts")

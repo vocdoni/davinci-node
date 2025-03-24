@@ -57,7 +57,7 @@ func main() {
 	}
 
 	// Hash list to store the hashes of the generated artifacts
-	var hashList = map[string]string{}
+	hashList := map[string]string{}
 
 	// Create the destination folder if it doesn't exist
 	if err := os.MkdirAll(destination, 0o755); err != nil {
