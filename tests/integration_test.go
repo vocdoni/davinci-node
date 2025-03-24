@@ -2,35 +2,47 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
+	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 func init() {
 	log.Init(log.LogLevelDebug, "stdout", nil)
-	if err := service.DownloadArtifacts(20 * time.Minute); err != nil {
+	if err := service.DownloadArtifacts(30 * time.Minute); err != nil {
 		log.Errorw(err, "failed to download artifacts")
 	}
 }
 
 func TestIntegration(t *testing.T) {
+	numBallots := 2
 	c := qt.New(t)
 
 	// Setup
 	ctx := context.Background()
-	apiSrv, stg, contracts := NewTestService(t, ctx)
+	apiSrv, seqSrv, stg, contracts := NewTestService(t, ctx)
 	_, port := apiSrv.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
+
+	var (
+		pid           *types.ProcessID
+		encryptionKey *types.EncryptionKey
+		ballotMode    *types.BallotMode
+		signers       []*ethereum.SignKeys
+		proofs        []*types.CensusProof
+		root          []byte
+		participants  []*api.CensusParticipant
+	)
 
 	c.Run("create organization", func(c *qt.C) {
 		orgAddr := createOrganization(c, contracts)
@@ -38,43 +50,22 @@ func TestIntegration(t *testing.T) {
 	})
 
 	c.Run("create process", func(c *qt.C) {
-		// Create census with 10 participants
-		root, participants, signers := createCensus(c, cli, 10)
+		// Create census with numBallot participants
+		root, participants, signers = createCensus(c, cli, numBallots)
 
 		// Generate proof for first participant
-		proof := generateCensusProof(c, cli, root, participants[0].Key)
-		c.Assert(proof, qt.Not(qt.IsNil))
-		c.Assert(proof.Siblings, qt.IsNotNil)
-
-		// Check the proof key is the same as the participant key and signer address
-		qt.Assert(t, proof.Key.String(), qt.DeepEquals, participants[0].Key.String())
-		qt.Assert(t, string(proof.Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
-
-		ballotMode := types.BallotMode{
-			MaxCount:        2,
-			MaxValue:        new(types.BigInt).SetUint64(100),
-			MinValue:        new(types.BigInt).SetUint64(0),
-			ForceUniqueness: false,
-			CostFromWeight:  false,
-			CostExponent:    1,
-			MaxTotalCost:    new(types.BigInt).SetUint64(100),
-			MinTotalCost:    new(types.BigInt).SetUint64(100),
+		proofs = make([]*types.CensusProof, numBallots)
+		for i := range participants {
+			proofs[i] = generateCensusProof(c, cli, root, participants[i].Key)
+			c.Assert(proofs[i], qt.Not(qt.IsNil))
+			c.Assert(proofs[i].Siblings, qt.IsNotNil)
 		}
+		// Check the first proof key is the same as the participant key and signer address
+		qt.Assert(t, proofs[0].Key.String(), qt.DeepEquals, participants[0].Key.String())
+		qt.Assert(t, string(proofs[0].Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
 
-		pid, _ := createProcess(c, contracts, cli, root, ballotMode)
-		t.Logf("Process ID: %s", pid.String())
-	})
-
-	c.Run("create vote", func(c *qt.C) {
-		// load ballot proof artifacts
-		c.Assert(ballotproof.Artifacts.LoadAll(), qt.IsNil)
-		c.Assert(voteverifier.Artifacts.LoadAll(), qt.IsNil)
-
-		// create census with 10 participants
-		root, _, signers := createCensus(c, cli, 10)
-		// create process
 		mockMode := circuits.MockBallotMode()
-		ballotMode := types.BallotMode{
+		ballotMode = &types.BallotMode{
 			MaxCount:        uint8(mockMode.MaxCount.Uint64()),
 			ForceUniqueness: mockMode.ForceUniqueness.Uint64() == 1,
 			MaxValue:        (*types.BigInt)(mockMode.MaxValue),
@@ -84,31 +75,50 @@ func TestIntegration(t *testing.T) {
 			CostFromWeight:  mockMode.CostFromWeight.Uint64() == 1,
 			CostExponent:    uint8(mockMode.CostExp.Uint64()),
 		}
-		pid, encryptionKey := createProcess(c, contracts, cli, root, ballotMode)
-		// generate a vote for the first participant
-		vote := createVote(c, pid, encryptionKey, signers[0])
-		// generate census proof for first participant
-		censusProof := generateCensusProof(c, cli, root, signers[0].Address().Bytes())
-		c.Assert(censusProof, qt.Not(qt.IsNil))
-		c.Assert(censusProof.Siblings, qt.IsNotNil)
-		vote.CensusProof = *censusProof
 
-		body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
-		c.Assert(err, qt.IsNil)
-		c.Assert(status, qt.Equals, 200)
-		c.Log("Vote created", string(body))
+		pid, encryptionKey = createProcess(c, contracts, cli, root, *ballotMode)
 
-		// wait to process the vote
-		voteWaiter, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
-		defer cancel()
+		// Wait for the process to be registered
 		for {
-			select {
-			case <-voteWaiter.Done():
-				c.Fatal("timeout waiting for vote to be processed")
+			if _, err := stg.Process(pid); err == nil {
+				break
+			}
+			time.Sleep(time.Millisecond * 200)
+		}
+		t.Logf("Process ID: %s", pid.String())
+
+		// Wait for the process to be registered in the sequencer
+		for !seqSrv.Sequencer.ExistsProcessID(pid.Marshal()) {
+			time.Sleep(time.Millisecond * 200)
+		}
+	})
+
+	c.Run("create vote", func(c *qt.C) {
+		for i := range signers {
+			// generate a vote for the first participant
+			vote := createVote(c, pid, encryptionKey, signers[i])
+			// generate census proof for first participant
+			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
+			c.Assert(censusProof, qt.Not(qt.IsNil))
+			c.Assert(censusProof.Siblings, qt.IsNotNil)
+			vote.CensusProof = *censusProof
+			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+			c.Assert(err, qt.IsNil)
+			c.Assert(status, qt.Equals, 200)
+			c.Logf("Vote %d created", i)
+		}
+
+		// Wait for the vote to be registered
+		log.Debugw("waiting for vote to be registered and aggregated")
+		for {
+			_, _, err := stg.NextBallotBatch(pid.Marshal())
+			switch {
+			case err == nil:
+				log.Debugw("aggregated ballot batch found", "pid", pid.String())
+				return
+			case !errors.Is(err, storage.ErrNoMoreElements):
+				c.Fatalf("unexpected error: %v", err)
 			default:
-				if stg.CountVerifiedBallots(pid.Marshal()) == 1 {
-					return
-				}
 				time.Sleep(time.Second)
 			}
 		}

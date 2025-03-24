@@ -24,6 +24,7 @@ import (
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -53,7 +54,7 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
-func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *storage.Storage, *web3.Contracts) {
+func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *service.SequencerService, *storage.Storage, *web3.Contracts) {
 	log.Infow("starting Geth docker compose")
 	compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
 	qt.Assert(t, err, qt.IsNil)
@@ -63,7 +64,7 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *st
 	})
 	ctx2, cancel := context.WithCancel(ctx)
 	t.Cleanup(cancel)
-	err = compose.Up(ctx2, tc.Wait(true))
+	err = compose.Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
 	qt.Assert(t, err, qt.IsNil)
 
 	log.Infow("deploying contracts")
@@ -76,7 +77,9 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *st
 	kv := memdb.New()
 	stg := storage.New(kv)
 
-	vp := service.NewVoteProcessor(stg)
+	sequencer.AggregatorTickerInterval = time.Second * 2
+	sequencer.NewProcessMonitorInterval = time.Second * 5
+	vp := service.NewSequencer(stg, time.Second*30)
 	if err := vp.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
@@ -92,7 +95,7 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *st
 	qt.Assert(t, err, qt.IsNil)
 	t.Cleanup(api.Stop)
 
-	return api, stg, contracts
+	return api, vp, stg, contracts
 }
 
 func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.SignKeys) {
@@ -194,10 +197,12 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	c.Assert(resp.ProcessID, qt.Not(qt.IsNil))
 	c.Assert(resp.EncryptionPubKey[0], qt.Not(qt.IsNil))
 	c.Assert(resp.EncryptionPubKey[1], qt.Not(qt.IsNil))
+
 	encryptionKeys := &types.EncryptionKey{
 		X: (*big.Int)(&resp.EncryptionPubKey[0]),
 		Y: (*big.Int)(&resp.EncryptionPubKey[1]),
 	}
+
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
 		Status:         0,
 		OrganizationId: contracts.AccountAddress(),

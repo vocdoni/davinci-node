@@ -1,14 +1,14 @@
 services:
   geth-genesis:
-    image: "ethereum/client-go:latest"
+    image: "ethereum/client-go:v1.14.12"
     command: --datadir=/chain init /files/genesis.json
-    #command: --dev dumpgenesis
+    # command: --dev dumpgenesis
     volumes:
       - ./files:/files
       - geth:/chain
 
   geth:
-    image: "ethereum/client-go:latest"
+    image: "ethereum/client-go:v1.14.12"
     command:
       - --http
       - --http.api=eth,net,web3
