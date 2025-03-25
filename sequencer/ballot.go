@@ -156,8 +156,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 
 	// Convert siblings to emulated elements
-	emulatedSiblings := [circuits.CensusProofMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
-	for i, s := range circuits.BigIntArrayToN(siblings, circuits.CensusProofMaxLevels) {
+	emulatedSiblings := [circuits.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+	for i, s := range circuits.BigIntArrayToN(siblings, circuits.CensusTreeMaxLevels) {
 		emulatedSiblings[i] = emulated.ValueOf[sw_bn254.ScalarField](s)
 	}
 

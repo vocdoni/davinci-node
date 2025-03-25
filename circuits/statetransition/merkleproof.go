@@ -17,7 +17,7 @@ import (
 type MerkleProof struct {
 	// Key + Value hashed through Siblings path, should produce Root hash
 	Root     frontend.Variable
-	Siblings [circuits.StateProofMaxLevels]frontend.Variable
+	Siblings [circuits.CensusTreeMaxLevels]frontend.Variable
 	Key      frontend.Variable
 	LeafHash frontend.Variable
 	Fnc      frontend.Variable // 0: inclusion, 1: non inclusion
@@ -76,7 +76,7 @@ func (mp *MerkleProof) String() string {
 type MerkleTransition struct {
 	// NewKey + NewValue hashed through Siblings path, should produce NewRoot hash
 	NewRoot     frontend.Variable
-	Siblings    [circuits.StateProofMaxLevels]frontend.Variable
+	Siblings    [circuits.CensusTreeMaxLevels]frontend.Variable
 	NewKey      frontend.Variable
 	NewLeafHash frontend.Variable
 
@@ -193,9 +193,9 @@ func (mp *MerkleTransition) IsNoop(api frontend.API) frontend.Variable {
 	return api.And(api.IsZero(mp.Fnc0), api.IsZero(mp.Fnc1))
 }
 
-func padSiblings(unpackedSiblings [][]byte) [circuits.StateProofMaxLevels]frontend.Variable {
-	paddedSiblings := [circuits.StateProofMaxLevels]frontend.Variable{}
-	for i := range circuits.StateProofMaxLevels {
+func padSiblings(unpackedSiblings [][]byte) [circuits.CensusTreeMaxLevels]frontend.Variable {
+	paddedSiblings := [circuits.CensusTreeMaxLevels]frontend.Variable{}
+	for i := range circuits.CensusTreeMaxLevels {
 		if i < len(unpackedSiblings) {
 			paddedSiblings[i] = arbo.BytesToBigInt(unpackedSiblings[i])
 		} else {

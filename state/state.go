@@ -76,7 +76,7 @@ type VotesProofs struct {
 func New(db db.Database, processId []byte) (*State, error) {
 	pdb := prefixeddb.NewPrefixedDatabase(db, processId)
 	tree, err := arbo.NewTree(arbo.Config{
-		Database: pdb, MaxLevels: circuits.StateProofMaxLevels,
+		Database: pdb, MaxLevels: circuits.CensusTreeMaxLevels,
 		HashFunction: HashFunc,
 	})
 	if err != nil {

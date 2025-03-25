@@ -348,7 +348,7 @@ const (
 	mockNullifiersOffset = 100
 	mockAddressesOffset  = 200
 	// maxKeyLen is ceil(maxLevels/8)
-	maxKeyLen = (circuits.StateProofMaxLevels + 7) / 8
+	maxKeyLen = (circuits.CensusTreeMaxLevels + 7) / 8
 )
 
 // newMockVote creates a new vote

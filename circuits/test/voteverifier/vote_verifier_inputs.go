@@ -66,7 +66,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 	testCensus, err := primitivestest.GenerateCensusProofForTest(primitivestest.CensusTestConfig{
 		Dir:           fmt.Sprintf("../assets/census%d", util.RandomInt(0, 1000)),
 		ValidSiblings: 10,
-		TotalSiblings: circuits.CensusProofMaxLevels,
+		TotalSiblings: circuits.CensusTreeMaxLevels,
 		KeyLen:        20,
 		Hash:          arbo.HashFunctionMiMC_BLS12_377,
 		BaseField:     arbo.BLS12377BaseField,
@@ -106,7 +106,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 		}
 		// transform siblings to gnark frontend.Variable
-		emulatedSiblings := [circuits.CensusProofMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+		emulatedSiblings := [circuits.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
 		for j, s := range testCensus.Proofs[i].Siblings {
 			emulatedSiblings[j] = emulated.ValueOf[sw_bn254.ScalarField](s)
 		}
