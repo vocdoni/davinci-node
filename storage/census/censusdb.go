@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"go.vocdoni.io/dvote/db"
@@ -110,7 +111,7 @@ func (c *CensusDB) New(censusID uuid.UUID) (*CensusRef, error) {
 	// Prepare a new census reference.
 	ref := &CensusRef{
 		ID:        censusID,
-		MaxLevels: types.CensusTreeMaxLevels,
+		MaxLevels: circuits.CensusTreeMaxLevels,
 		HashType:  string(defaultHashFunction.Type()),
 		LastUsed:  time.Now(),
 	}
@@ -118,7 +119,7 @@ func (c *CensusDB) New(censusID uuid.UUID) (*CensusRef, error) {
 	// Create the Merkle tree.
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     prefixeddb.NewPrefixedDatabase(c.db, censusPrefix(censusID)),
-		MaxLevels:    types.CensusTreeMaxLevels,
+		MaxLevels:    circuits.CensusTreeMaxLevels,
 		HashFunction: defaultHashFunction,
 	})
 	tree.HashFunction().Type()

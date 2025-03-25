@@ -63,7 +63,7 @@ func (s *Sequencer) processPendingBatches() {
 		timeSinceUpdate := time.Since(lastUpdate)
 
 		// Skip if the batch is not ready
-		if ballotCount == 0 || (ballotCount < types.VotesPerBatch && timeSinceUpdate <= s.maxTimeWindow) {
+		if ballotCount == 0 || (ballotCount < circuits.VotesPerBatch && timeSinceUpdate <= s.maxTimeWindow) {
 			continue
 		}
 
@@ -107,7 +107,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	// Pull verified ballots from storage
-	ballots, keys, err := s.stg.PullVerifiedBallots(pid, types.VotesPerBatch)
+	ballots, keys, err := s.stg.PullVerifiedBallots(pid, circuits.VotesPerBatch)
 	if err != nil {
 		return fmt.Errorf("failed to pull verified ballots: %w", err)
 	}
@@ -123,8 +123,8 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	)
 
 	// Prepare data structures for the aggregator circuit
-	proofs := [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
-	proofsInputHash := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
+	proofs := [circuits.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
+	proofsInputHash := [circuits.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
 	aggBallots := make([]*storage.AggregatorBallot, 0, len(ballots))
 
 	// Transform each ballot's proof for the aggregator circuit
@@ -154,8 +154,8 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	// Fill any remaining slots with dummy proofs if needed
-	if len(ballots) < types.VotesPerBatch {
-		log.Debugw("filling with dummy proofs", "count", types.VotesPerBatch-len(ballots))
+	if len(ballots) < circuits.VotesPerBatch {
+		log.Debugw("filling with dummy proofs", "count", circuits.VotesPerBatch-len(ballots))
 		if err := assignment.FillWithDummy(s.voteCcs, s.voteProvingKey, s.ballotVerifyingKeyCircomJSON, len(ballots)); err != nil {
 			return fmt.Errorf("failed to fill with dummy proofs: %w", err)
 		}

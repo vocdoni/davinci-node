@@ -46,7 +46,7 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 	dummyEmulatedBN254 := emulated.ValueOf[sw_bn254.ScalarField](1)
 	dummyEmulatedSecp256k1Fp := emulated.ValueOf[emulated.Secp256k1Fp](1)
 	dummyEmulatedSecp256k1Fr := emulated.ValueOf[emulated.Secp256k1Fr](1)
-	dummyEmulatedSiblings := [circuits.CensusProofMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+	dummyEmulatedSiblings := [circuits.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
 	for i := range dummyEmulatedSiblings {
 		dummyEmulatedSiblings[i] = dummyEmulatedBN254
 	}

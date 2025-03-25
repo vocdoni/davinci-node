@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -54,7 +55,7 @@ func (a *API) addCensusParticipants(w http.ResponseWriter, r *http.Request) {
 			p.Weight = new(types.BigInt).SetUint64(1)
 		}
 		leafKey := p.Key
-		if len(p.Key) > types.CensusKeyMaxLen {
+		if len(p.Key) > circuits.CensusKeyMaxLen {
 			leafKey = a.storage.CensusDB().HashAndTrunkKey(p.Key)
 			if leafKey == nil {
 				ErrGenericInternalServerError.WithErr(fmt.Errorf("failed to hash participant key")).Write(w)
@@ -188,7 +189,7 @@ func (a *API) getCensusProof(w http.ResponseWriter, r *http.Request) {
 	}
 
 	leafKey := key
-	if len(key) > types.CensusKeyMaxLen {
+	if len(key) > circuits.CensusKeyMaxLen {
 		leafKey = a.storage.CensusDB().HashAndTrunkKey(key)
 		if leafKey == nil {
 			ErrGenericInternalServerError.WithErr(fmt.Errorf("failed to hash participant key")).Write(w)
