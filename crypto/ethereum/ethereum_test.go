@@ -11,7 +11,7 @@ func TestSignKeysGeneration(t *testing.T) {
 	c := qt.New(t)
 	t.Parallel()
 
-	s := NewSignKeys()
+	s := NewSignKeys(nil)
 	c.Assert(s.Generate(), qt.IsNil)
 
 	pub, priv := s.HexString()
@@ -19,8 +19,8 @@ func TestSignKeysGeneration(t *testing.T) {
 	c.Assert(priv, qt.Not(qt.Equals), "")
 
 	// Test key import
-	imported := NewSignKeys()
-	c.Assert(imported.AddHexKey(priv), qt.IsNil)
+	imported := NewSignKeys(nil)
+	c.Assert(imported.SetHexKey(priv), qt.IsNil)
 
 	importedPub, importedPriv := imported.HexString()
 	c.Assert(importedPub, qt.Equals, pub)
@@ -43,8 +43,8 @@ func TestEthereumSigning(t *testing.T) {
 	}
 
 	// Create signing keys from known private key
-	s := NewSignKeys()
-	c.Assert(s.AddHexKey(testVector.privKey), qt.IsNil)
+	s := NewSignKeys(nil)
+	c.Assert(s.SetHexKey(testVector.privKey), qt.IsNil)
 
 	// Verify private key was imported correctly
 	_, priv := s.HexString()
@@ -78,7 +78,7 @@ func TestAddressRecovery(t *testing.T) {
 	}
 
 	// Generate keys
-	s := NewSignKeys()
+	s := NewSignKeys(nil)
 	c.Assert(s.Generate(), qt.IsNil)
 
 	// Get address from public key

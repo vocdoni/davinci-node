@@ -8,14 +8,12 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
-	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
 	"github.com/vocdoni/vocdoni-z-sandbox/api/client"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
@@ -30,6 +28,8 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3"
+	"go.vocdoni.io/dvote/db"
+	"go.vocdoni.io/dvote/db/metadb"
 )
 
 const testLocalAccountPrivKey = "0cebebc37477f513cd8f946ffced46e368aa4f9430250ce4507851edbba86b20" // defined in docker/files/genesis.json
@@ -74,7 +74,8 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *se
 	}
 	log.Infow("contracts deployed", "chainId", contracts.ChainID)
 
-	kv := memdb.New()
+	kv, err := metadb.New(db.TypePebble, t.TempDir())
+	qt.Assert(t, err, qt.IsNil)
 	stg := storage.New(kv)
 
 	sequencer.AggregatorTickerInterval = time.Second * 2
@@ -111,8 +112,8 @@ func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.Cen
 	// Generate random participants
 	signers := []*ethereum.SignKeys{}
 	censusParticipants := api.CensusParticipants{Participants: []*api.CensusParticipant{}}
-	for i := 0; i < size; i++ {
-		signer := ethereum.NewSignKeys()
+	for range size {
+		signer := ethereum.NewSignKeys(nil)
 		if err := signer.Generate(); err != nil {
 			c.Fatalf("failed to generate signer: %v", err)
 		}
@@ -234,13 +235,10 @@ func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, sign
 	c.Assert(err, qt.IsNil)
 	// convert the circom inputs hash to the field of the curve used by the
 	// circuit as input for MIMC hash
-	blsCircomInputsHash := crypto.SignatureHash(votedata.InputsHash, circuits.VoteVerifierCurve.ScalarField())
+	blsCircomInputsHash := crypto.BigIntToFFwithPadding(votedata.InputsHash, circuits.VoteVerifierCurve.ScalarField())
 	// sign the inputs hash with the private key
-	rSign, sSign, err := ballotprooftest.SignECDSAForTest(&signer.Private, blsCircomInputsHash)
+	rSign, sSign, err := ballotprooftest.SignECDSAForTest(signer.Private, blsCircomInputsHash)
 	c.Assert(err, qt.IsNil)
-
-	c.Assert(os.WriteFile("debug_proof.json", []byte(votedata.Proof), 0o644), qt.IsNil)
-	c.Assert(os.WriteFile("debug_pub_inputs.json", []byte(votedata.PubInputs), 0o644), qt.IsNil)
 
 	circomProof, _, err := circuits.Circom2GnarkProof(votedata.Proof, votedata.PubInputs)
 	c.Assert(err, qt.IsNil)

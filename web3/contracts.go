@@ -169,7 +169,7 @@ func (c *Contracts) AddWeb3Endpoint(web3rpc string) error {
 // SetAccountPrivateKey sets the private key to be used for signing transactions.
 func (c *Contracts) SetAccountPrivateKey(hexPrivKey string) error {
 	signer := ethereum.SignKeys{}
-	if err := signer.AddHexKey(hexPrivKey); err != nil {
+	if err := signer.SetHexKey(hexPrivKey); err != nil {
 		return fmt.Errorf("failed to add private key: %w", err)
 	}
 	c.signer = &signer
@@ -208,7 +208,7 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 		return nil, fmt.Errorf("no private key set")
 	}
 	bChainID := new(big.Int).SetUint64(c.ChainID)
-	auth, err := bind.NewKeyedTransactorWithChainID(&c.signer.Private, bChainID)
+	auth, err := bind.NewKeyedTransactorWithChainID(c.signer.Private, bChainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transactor: %w", err)
 	}

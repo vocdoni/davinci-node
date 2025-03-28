@@ -24,7 +24,7 @@ func init() {
 }
 
 func TestIntegration(t *testing.T) {
-	numBallots := 2
+	numBallots := 5
 	c := qt.New(t)
 
 	// Setup
@@ -33,6 +33,9 @@ func TestIntegration(t *testing.T) {
 	_, port := apiSrv.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
+
+	// Start sequencer batch time window
+	seqSrv.Sequencer.SetBatchTimeWindow(time.Second * 20)
 
 	var (
 		pid           *types.ProcessID
@@ -92,8 +95,8 @@ func TestIntegration(t *testing.T) {
 			time.Sleep(time.Millisecond * 200)
 		}
 	})
-
 	c.Run("create vote", func(c *qt.C) {
+		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
 			vote := createVote(c, pid, encryptionKey, signers[i])
@@ -106,20 +109,33 @@ func TestIntegration(t *testing.T) {
 			c.Assert(err, qt.IsNil)
 			c.Assert(status, qt.Equals, 200)
 			c.Logf("Vote %d created", i)
+			count++
 		}
+		c.Assert(count, qt.Equals, numBallots)
 
 		// Wait for the vote to be registered
-		log.Debugw("waiting for vote to be registered and aggregated")
+		t.Logf("Waiting for %d votes to be registered and aggregated", count)
+		aggregatedBallots := 0
 		for {
-			_, _, err := stg.NextBallotBatch(pid.Marshal())
+			vb, _, err := stg.NextBallotBatch(pid.Marshal())
 			switch {
 			case err == nil:
-				log.Debugw("aggregated ballot batch found", "pid", pid.String())
-				return
+				aggregatedBallots += len(vb.Ballots)
+				log.Debugw("aggregated ballot batch found",
+					"pid", pid.String(),
+					"ballotsInBatch", len(vb.Ballots),
+					"totalAggregatedBallots", aggregatedBallots,
+				)
+				if aggregatedBallots == numBallots {
+					break
+				}
 			case !errors.Is(err, storage.ErrNoMoreElements):
 				c.Fatalf("unexpected error: %v", err)
 			default:
 				time.Sleep(time.Second)
+			}
+			if aggregatedBallots == numBallots {
+				break
 			}
 		}
 	})

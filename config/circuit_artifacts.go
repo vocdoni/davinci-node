@@ -26,7 +26,7 @@ var (
 	VoteVerifierVerificationKeyURL  = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, VoteVerifierVerificationKeyHash)
 	VoteVerifierVerificationKeyHash = "10defd9081f4871cd8460638853e482481284540edc6987b7e32bd0a616d12e4"
 
-	AgregatorCircuitURL   = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorCircuitHash)
+	AggregatorCircuitURL  = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorCircuitHash)
 	AggregatorCircuitHash = "e509873d96b3066e1a914aec4373337f082b08adaee4a85b708b8a73568203c3"
 
 	AggregatorProvingKeyURL  = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorProvingKeyHash)

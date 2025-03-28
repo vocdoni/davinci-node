@@ -99,7 +99,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 		ballots = append(ballots, *voterProof.Ballot)
 		// convert the circom inputs hash to the field of the curve used by the
 		// circuit as input for MIMC hash
-		blsCircomInputsHash := crypto.SignatureHash(voterProof.InputsHash, circuits.VoteVerifierCurve.ScalarField())
+		blsCircomInputsHash := crypto.BigIntToFFwithPadding(voterProof.InputsHash, circuits.VoteVerifierCurve.ScalarField())
 		// sign the inputs hash with the private key
 		rSign, sSign, err := ballottest.SignECDSAForTest(voter.PrivKey, blsCircomInputsHash)
 		if err != nil {

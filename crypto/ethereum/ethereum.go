@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sync"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
@@ -29,28 +28,30 @@ const (
 // SignKeys represents an ECDSA pair of keys for signing.
 // Authorized addresses is a list of Ethereum like addresses which are checked on Verify
 type SignKeys struct {
-	Public     ecdsa.PublicKey
-	Private    ecdsa.PrivateKey
-	Authorized map[ethcommon.Address]bool
-	Lock       sync.RWMutex
+	Public  ecdsa.PublicKey
+	Private *ecdsa.PrivateKey
 }
 
-// Address represents an Ethereum like address
-type Address ethcommon.Address
-
-// NewSignKeys creates an ECDSA pair of keys for signing
-// and initializes the map for authorized keys
-func NewSignKeys() *SignKeys {
-	return &SignKeys{
-		Private: ecdsa.PrivateKey{},
+// NewSignKeys creates a new ECDSA signer. If privkey is nil, a new key pair is generated
+func NewSignKeys(privkey *ecdsa.PrivateKey) *SignKeys {
+	signer := &SignKeys{
+		Private: privkey,
 	}
+	if signer.Private == nil {
+		if err := signer.Generate(); err != nil {
+			panic(err)
+		}
+	} else {
+		signer.Public = signer.Private.PublicKey
+	}
+	return signer
 }
 
-// NewSignKeysBatch creates a set of eth random signing keys
+// NewSignKeysBatch creates a set of eth random signing keys.
 func NewSignKeysBatch(n int) []*SignKeys {
 	s := make([]*SignKeys, n)
 	for i := 0; i < n; i++ {
-		s[i] = NewSignKeys()
+		s[i] = NewSignKeys(nil)
 		if err := s[i].Generate(); err != nil {
 			panic(err)
 		}
@@ -64,18 +65,18 @@ func (k *SignKeys) Generate() error {
 	if err != nil {
 		return err
 	}
-	k.Private = *key
+	k.Private = key
 	k.Public = key.PublicKey
 	return nil
 }
 
-// AddHexKey imports a private hex key
-func (k *SignKeys) AddHexKey(privHex string) error {
+// SetHexKey imports a private hex key.
+func (k *SignKeys) SetHexKey(privHex string) error {
 	key, err := ethcrypto.HexToECDSA(util.TrimHex(privHex))
 	if err != nil {
 		return err
 	}
-	k.Private = *key
+	k.Private = key
 	k.Public = key.PublicKey
 	return nil
 }
@@ -83,18 +84,18 @@ func (k *SignKeys) AddHexKey(privHex string) error {
 // HexString returns the public compressed and private keys as hex strings
 func (k *SignKeys) HexString() (string, string) {
 	pubHexComp := fmt.Sprintf("%x", ethcrypto.CompressPubkey(&k.Public))
-	privHex := fmt.Sprintf("%x", ethcrypto.FromECDSA(&k.Private))
+	privHex := fmt.Sprintf("%x", ethcrypto.FromECDSA(k.Private))
 	return pubHexComp, privHex
 }
 
-// PublicKey returns the compressed public key
+// PublicKey returns the compressed public key as hex bytes.
 func (k *SignKeys) PublicKey() types.HexBytes {
 	return ethcrypto.CompressPubkey(&k.Public)
 }
 
 // PrivateKey returns the private key
-func (k *SignKeys) PrivateKey() types.HexBytes {
-	return ethcrypto.FromECDSA(&k.Private)
+func (k *SignKeys) PrivateKey() *ecdsa.PrivateKey {
+	return k.Private
 }
 
 // DecompressPubKey takes a compressed public key and returns it descompressed. If already decompressed, returns the same key.
@@ -141,19 +142,7 @@ func (k *SignKeys) SignEthereum(message []byte) ([]byte, error) {
 	if k.Private.D == nil {
 		return nil, errors.New("no private key available")
 	}
-	signature, err := ethcrypto.Sign(Hash(message), &k.Private)
-	if err != nil {
-		return nil, err
-	}
-	return signature, nil
-}
-
-// Sign signs a raw message. TxData is the full transaction payload (no HexString nor a Hash)
-func (k *SignKeys) Sign(txData []byte) ([]byte, error) {
-	if k.Private.D == nil {
-		return nil, errors.New("no private key available")
-	}
-	signature, err := ethcrypto.Sign(Hash(txData), &k.Private)
+	signature, err := ethcrypto.Sign(Hash(message), k.Private)
 	if err != nil {
 		return nil, err
 	}
@@ -183,8 +172,8 @@ func AddrFromBytes(addr []byte) ethcommon.Address {
 
 // PubKeyFromPrivateKey returns the hex public key given a hex private key
 func PubKeyFromPrivateKey(privHex string) (string, error) {
-	s := NewSignKeys()
-	if err := s.AddHexKey(privHex); err != nil {
+	s := NewSignKeys(nil)
+	if err := s.SetHexKey(privHex); err != nil {
 		return "", err
 	}
 	pub, _ := s.HexString()
@@ -192,10 +181,9 @@ func PubKeyFromPrivateKey(privHex string) (string, error) {
 }
 
 // PubKeyFromSignature recovers the ECDSA public key that created the signature of a message
-// public key is hex encoded
+// public key is hex encoded.
 func PubKeyFromSignature(message, signature []byte) ([]byte, error) {
-	if len(signature) < SignatureLength || len(signature) > SignatureLength+12 {
-		// TODO: investigate the exact size (and if a marging is required)
+	if len(signature) != SignatureLength {
 		return nil, fmt.Errorf("signature length not correct (%d)", len(signature))
 	}
 	if signature[64] > 1 {
@@ -212,7 +200,7 @@ func PubKeyFromSignature(message, signature []byte) ([]byte, error) {
 	return ethcrypto.CompressPubkey(pubKey), nil
 }
 
-// AddrFromSignature recovers the Ethereum address that created the signature of a message
+// AddrFromSignature recovers the Ethereum address that created the signature of a message.
 func AddrFromSignature(message, signature []byte) (ethcommon.Address, error) {
 	pub, err := PubKeyFromSignature(message, signature)
 	if err != nil {
@@ -221,14 +209,14 @@ func AddrFromSignature(message, signature []byte) (ethcommon.Address, error) {
 	return AddrFromPublicKey(pub)
 }
 
-// Hash data adding Ethereum prefix
+// Hash data adding Ethereum Message prefix.
 func Hash(data []byte) []byte {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%s%d%s", SigningPrefix, len(data), data)
 	return HashRaw(buf.Bytes())
 }
 
-// HashRaw hashes data with no prefix
+// HashRaw hashes data with no prefix.
 func HashRaw(data []byte) []byte {
 	return ethcrypto.Keccak256(data)
 }
