@@ -1,4 +1,4 @@
-// format package provides helper functions to transform points (x, y)
+// Package format provides helper functions to transform points (x, y)
 // from TwistedEdwards to Reduced TwistedEdwards and vice versa. These functions
 // are required because Gnark uses the Reduced TwistedEdwards formula while
 // Iden3 uses the standard TwistedEdwards formula.
@@ -13,7 +13,8 @@ import (
 
 var scalingFactor, _ = new(big.Int).SetString("6360561867910373094066688120553762416144456282423235903351243436111059670888", 10)
 
-// Convert Reduced TwistedEdwards x' to TwistedEdwards:
+// FromRTEtoTE converts a point from Reduced TwistedEdwards to TwistedEdwards coordinates.
+// It applies the transformation:
 //
 //	x = x'/(-f)
 //	y' = y
@@ -42,7 +43,8 @@ func FromRTEtoTE(x, y *big.Int) (*big.Int, *big.Int) {
 	return xRTEBigInt, y // x = x' / (-f) & y' = y
 }
 
-// Convert TwistedEdwards to Reduced TwistedEdwards:
+// FromTEtoRTE converts a point from TwistedEdwards to Reduced TwistedEdwards coordinates.
+// It applies the transformation:
 //
 //	x' = x*(-f)
 //	y = y'

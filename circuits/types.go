@@ -304,7 +304,7 @@ type Vote[T any] struct {
 	Commitment T
 }
 
-func (v Vote[T]) ToEmulatedVote(api frontend.API) EmulatedVote[sw_bn254.ScalarField] {
+func (v Vote[T]) ToEmulated(api frontend.API) EmulatedVote[sw_bn254.ScalarField] {
 	return EmulatedVote[sw_bn254.ScalarField]{
 		Nullifier:  *varToEmulatedElementBN254(api, v.Nullifier),
 		Ballot:     v.Ballot.ToEmulatedBallot(api),

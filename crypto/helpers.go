@@ -1,7 +1,10 @@
+// Package crypto provides cryptographic utilities and helper functions for the Vocdoni system.
+// It includes functions for working with finite fields, serialization, and other cryptographic operations.
 package crypto
 
 import "math/big"
 
+// SerializedFieldSize is the standard size in bytes for serialized field elements
 const SerializedFieldSize = 32 // bytes
 
 // BigIntToFFwithPadding transform the inputs bigInt to the field provided, if it is

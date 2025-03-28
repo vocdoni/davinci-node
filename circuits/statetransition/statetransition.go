@@ -218,7 +218,7 @@ func (circuit Circuit) ListVotes() []circuits.Vote[frontend.Variable] {
 func (circuit Circuit) ListVotesAsEmulated(api frontend.API) []circuits.EmulatedVote[sw_bn254.ScalarField] {
 	list := []circuits.EmulatedVote[sw_bn254.ScalarField]{}
 	for _, v := range circuit.Votes {
-		list = append(list, v.Vote.ToEmulatedVote(api))
+		list = append(list, v.ToEmulated(api))
 	}
 	return list
 }

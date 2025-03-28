@@ -1,10 +1,13 @@
+// Package ecc provides an interface and implementations for elliptic curve cryptography operations.
+// It defines a common interface for different elliptic curve implementations and provides
+// concrete implementations for various curves used in the Vocdoni system.
 package ecc
 
 import (
 	"math/big"
 )
 
-// Curve defines the common operations that can be performed on elliptic curve group elements.
+// Point defines the common operations that can be performed on elliptic curve group elements.
 // It represents the affine coordinates of a point on an elliptic curve and provides methods
 // for arithmetic operations, serialization, and comparison.
 type Point interface {
