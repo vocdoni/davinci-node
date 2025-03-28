@@ -2,10 +2,23 @@ version: "2"
 linters:
   enable:
     - goconst
-    - revive
+    #- revive // To be enabled...
   settings:
     lll:
       line-length: 130
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: add-constant
+          disabled: true
+        - name: use-errors-new
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+        - name: exported 
+          disabled: true
   exclusions:
     generated: lax
     paths:

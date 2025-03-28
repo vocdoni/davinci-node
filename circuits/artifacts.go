@@ -1,3 +1,6 @@
+// Package circuits provides functionality for working with zero-knowledge proof circuits
+// and their associated artifacts (circuit definitions, proving keys, and verification keys).
+// It includes utilities for loading, downloading, and verifying the integrity of these artifacts.
 package circuits
 
 import (

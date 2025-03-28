@@ -1,3 +1,5 @@
+// Package poseidon provides cryptographic hash functions based on the Poseidon hash algorithm.
+// It includes utilities for hashing large numbers of inputs efficiently.
 package poseidon
 
 import (
@@ -7,6 +9,11 @@ import (
 	"github.com/iden3/go-iden3-crypto/poseidon"
 )
 
+// MultiPoseidon computes the Poseidon hash of a variable number of big.Int inputs.
+// It handles large numbers of inputs by chunking them into groups of 16, hashing each chunk,
+// and then hashing the resulting hashes together. This allows for efficient hashing of
+// large input sets while maintaining the security properties of the Poseidon hash function.
+// Returns an error if more than 256 inputs are provided or if no inputs are provided.
 func MultiPoseidon(inputs ...*big.Int) (*big.Int, error) {
 	if len(inputs) > 256 {
 		return nil, fmt.Errorf("too many inputs")
