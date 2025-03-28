@@ -57,7 +57,7 @@ func UpdateCircuitArtifactsConfig(hashList map[string]string, configPath string)
 	}
 
 	// Write the modified content back to the file
-	if err := os.WriteFile(absConfigPath, []byte(modifiedContent), 0644); err != nil {
+	if err := os.WriteFile(absConfigPath, []byte(modifiedContent), 0o644); err != nil {
 		return fmt.Errorf("failed to write updated config file: %w", err)
 	}
 
@@ -127,7 +127,6 @@ func FindCircuitArtifactsFile() (string, error) {
 		}
 		return nil
 	})
-
 	if err != nil {
 		return "", fmt.Errorf("error searching for circuit_artifacts.go: %w", err)
 	}

@@ -127,7 +127,9 @@ func (c VerifyVoteCircuit) circomWitness(api frontend.API) groth16.Witness[sw_bn
 	if err != nil {
 		circuits.FrontendError(api, "failed to create emulated MiMC hash function: ", err)
 	}
-	hFn.Write(circuits.CircomInputs(api, c.Process, c.Vote, c.UserWeight)...)
+	if err := hFn.Write(circuits.CircomInputs(api, c.Process, c.Vote, c.UserWeight)...); err != nil {
+		circuits.FrontendError(api, "failed to hash circom inputs", err)
+	}
 	return groth16.Witness[sw_bn254.ScalarField]{
 		Public: []emulated.Element[sw_bn254.ScalarField]{hFn.Sum()},
 	}
