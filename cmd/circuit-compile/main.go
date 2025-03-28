@@ -31,10 +31,14 @@ var createdFiles []string
 func main() {
 	// Configuration flags
 	var destination string
+	var updateConfig bool
+	var configPath string
 	s3Config := NewDefaultS3Config()
 
 	// Define flags
 	flag.StringVar(&destination, "destination", "artifacts", "destination folder for the artifacts")
+	flag.BoolVar(&updateConfig, "update-config", false, "update circuit_artifacts.go file with new hashes")
+	flag.StringVar(&configPath, "config-path", "", "path to circuit_artifacts.go file (auto-detected if not specified)")
 
 	// S3 configuration flags
 	flag.BoolVar(&s3Config.Enabled, "s3.enabled", false, "enable S3 uploads")
@@ -57,6 +61,7 @@ func main() {
 	}
 
 	// Hash list to store the hashes of the generated artifacts
+	// Using the same names as in config/circuit_artifacts.go
 	hashList := map[string]string{}
 
 	// Create the destination folder if it doesn't exist
@@ -98,19 +103,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("error writing vote verifier constraint system: %v", err)
 	}
-	hashList["voteVerifierCircuit"] = hash
+	hashList["VoteVerifierCircuitHash"] = hash
 
 	hash, err = writePK(voteVerifierPk, destination)
 	if err != nil {
 		log.Fatalf("error writing vote verifier proving key: %v", err)
 	}
-	hashList["voteVerifierProvingKey"] = hash
+	hashList["VoteVerifierProvingKeyHash"] = hash
 
 	hash, err = writeVK(voteVerifierVk, destination)
 	if err != nil {
 		log.Fatalf("error writing vote verifier verifying key: %v", err)
 	}
-	hashList["voteVerifierVerifyingKey"] = hash
+	hashList["VoteVerifierVerificationKeyHash"] = hash
 
 	log.Infow("vote verifier artifacts written to disk", "elapsed", time.Since(startTime).String())
 
@@ -150,19 +155,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("error writing aggregator constraint system: %v", err)
 	}
-	hashList["aggregatorCircuit"] = hash
+	hashList["AggregatorCircuitHash"] = hash
 
 	hash, err = writePK(aggregatePk, destination)
 	if err != nil {
 		log.Fatalf("error writing aggregator proving key: %v", err)
 	}
-	hashList["aggregatorProvingKey"] = hash
+	hashList["AggregatorProvingKeyHash"] = hash
 
 	hash, err = writeVK(aggregateVk, destination)
 	if err != nil {
 		log.Fatalf("error writing aggregator verifying key: %v", err)
 	}
-	hashList["aggregatorVerifyingKey"] = hash
+	hashList["AggregatorVerificationKeyHash"] = hash
 
 	log.Infow("aggregator artifacts written to disk", "elapsed", time.Since(startTime).String())
 
@@ -183,6 +188,44 @@ func main() {
 		if err := UploadFiles(ctx, createdFiles, s3Config); err != nil {
 			log.Warnw("failed to upload artifacts to S3", "error", err)
 		}
+	}
+
+	// Update circuit_artifacts.go file if enabled
+	if updateConfig {
+		log.Infow("updating circuit artifacts config file")
+
+		// Find the config file if path not specified
+		if configPath == "" {
+			var err error
+			configPath, err = FindCircuitArtifactsFile()
+			if err != nil {
+				log.Warnw("failed to find circuit_artifacts.go file", "error", err)
+				return
+			}
+			log.Infow("found circuit artifacts config file", "path", configPath)
+		}
+
+		// Check what changes would be made
+		changes, err := CheckHashChanges(hashList, configPath)
+		if err != nil {
+			log.Warnw("failed to check hash changes", "error", err)
+			return
+		}
+
+		if len(changes) == 0 {
+			log.Infow("no changes needed for circuit artifacts config file")
+			return
+		}
+
+		log.Infow("the following changes will be made to the config file", "changes", changes)
+
+		// Update the config file
+		if err := UpdateCircuitArtifactsConfig(hashList, configPath); err != nil {
+			log.Warnw("failed to update circuit artifacts config file", "error", err)
+			return
+		}
+
+		log.Infow("circuit artifacts config file updated successfully", "path", configPath)
 	}
 }
 

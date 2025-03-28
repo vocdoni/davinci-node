@@ -11,7 +11,7 @@ import (
 var Artifacts = circuits.NewCircuitArtifacts(
 	&circuits.Artifact{
 		Name:      "aggregator ccs",
-		RemoteURL: config.AgregatorCircuitURL,
+		RemoteURL: config.AggregatorCircuitURL,
 		Hash:      types.HexStringToHexBytes(config.AggregatorCircuitHash),
 	},
 	&circuits.Artifact{

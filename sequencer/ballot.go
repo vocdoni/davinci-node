@@ -111,6 +111,9 @@ func (s *Sequencer) startBallotProcessor() error {
 //
 // Returns a verified ballot with the generated proof, or an error if validation fails.
 func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, error) {
+	s.workInProgressLock.RLock()
+	defer s.workInProgressLock.RUnlock()
+
 	if b == nil {
 		return nil, fmt.Errorf("ballot cannot be nil")
 	}
@@ -191,7 +194,11 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 			BallotMode:    ballotMode.BigIntsToEmulatedElementBN254(),
 		},
 		CensusSiblings: emulatedSiblings,
-		Msg:            emulated.ValueOf[emulated.Secp256k1Fr](crypto.SignatureHash(b.BallotInputsHash.BigInt().MathBigInt(), circuits.VoteVerifierCurve.ScalarField())),
+		Msg: emulated.ValueOf[emulated.Secp256k1Fr](
+			crypto.BigIntToFFwithPadding(b.BallotInputsHash.BigInt().MathBigInt(),
+				circuits.VoteVerifierCurve.ScalarField(),
+			),
+		),
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),

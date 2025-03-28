@@ -37,11 +37,12 @@ var (
 // Sequencer is a worker that takes verified ballots and aggregates them into a single proof.
 // It processes ballots and creates batches of proofs for efficient verification.
 type Sequencer struct {
-	stg      *storage.Storage
-	ctx      context.Context
-	cancel   context.CancelFunc
-	pids     map[string]time.Time // Maps process IDs to their last update time
-	pidsLock sync.RWMutex         // Protects access to the pids map
+	stg                *storage.Storage
+	ctx                context.Context
+	cancel             context.CancelFunc
+	pids               map[string]time.Time // Maps process IDs to their last update time
+	pidsLock           sync.RWMutex         // Protects access to the pids map
+	workInProgressLock sync.RWMutex         // Lock to block new work while processing a batch or a state transition
 
 	ballotVerifyingKeyCircomJSON []byte // Verification key for ballot proofs
 
@@ -51,9 +52,9 @@ type Sequencer struct {
 	voteProvingKey groth16.ProvingKey          // Key for generating vote proofs
 	voteCcs        constraint.ConstraintSystem // Constraint system for vote proofs
 
-	// maxTimeWindow is the maximum time window to wait for a batch to be processed.
+	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
 	// If this time elapses, the batch will be processed even if not full.
-	maxTimeWindow time.Duration
+	batchTimeWindow time.Duration
 }
 
 // New creates a new Sequencer instance that processes ballots and aggregates them into batches.
@@ -137,7 +138,7 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 
 	return &Sequencer{
 		stg:                          stg,
-		maxTimeWindow:                batchTimeWindow,
+		batchTimeWindow:              batchTimeWindow,
 		pids:                         make(map[string]time.Time),
 		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey, // TODO: replace with a proper VK path
 		aggregateProvingKey:          aggPk,
@@ -270,4 +271,10 @@ func (s *Sequencer) ExistsProcessID(pid []byte) bool {
 
 	_, exists := s.pids[string(pid)]
 	return exists
+}
+
+// SetBatchTimeWindow sets the maximum time window to wait for a batch to be processed.
+// If this time elapses, the batch will be processed even if not full.
+func (s *Sequencer) SetBatchTimeWindow(window time.Duration) {
+	s.batchTimeWindow = window
 }

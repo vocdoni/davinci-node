@@ -154,6 +154,119 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(keysEmpty, qt.IsNil)
 }
 
+// TestPullVerifiedBallotsReservation specifically tests that PullVerifiedBallots
+// correctly handles reservations and doesn't return the same ballots in subsequent calls.
+func TestPullVerifiedBallotsReservation(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	processID := types.ProcessID{
+		Address: common.Address{},
+		Nonce:   0,
+		ChainID: 0,
+	}
+
+	// Create 5 ballots with fixed data for deterministic testing
+	for i := 0; i < 5; i++ {
+		ballot := &Ballot{
+			ProcessID: processID.Marshal(),
+			Nullifier: bytes.Repeat([]byte{byte(i + 1)}, 32),
+			Address:   bytes.Repeat([]byte{byte(i + 1)}, 20),
+		}
+		c.Assert(st.PushBallot(ballot), qt.IsNil)
+	}
+
+	// Process all ballots and convert them to verified ballots
+	for i := 0; i < 5; i++ {
+		b, key, err := st.NextBallot()
+		c.Assert(err, qt.IsNil)
+		c.Assert(b, qt.IsNotNil)
+
+		verified := &VerifiedBallot{
+			ProcessID:   processID.Marshal(),
+			Nullifier:   b.Nullifier.BigInt().MathBigInt(),
+			VoterWeight: big.NewInt(int64(i+1) * 10), // Different weights for identification
+		}
+		c.Assert(st.MarkBallotDone(key, verified), qt.IsNil)
+	}
+
+	// Verify we have 5 verified ballots
+	c.Assert(st.CountVerifiedBallots(processID.Marshal()), qt.Equals, 5)
+
+	// Test 1: Pull 2 ballots
+	vbs1, keys1, err := st.PullVerifiedBallots(processID.Marshal(), 2)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(vbs1), qt.Equals, 2)
+	c.Assert(len(keys1), qt.Equals, 2)
+
+	// Store the weights to identify these ballots
+	weights1 := []int64{vbs1[0].VoterWeight.Int64(), vbs1[1].VoterWeight.Int64()}
+
+	// Test 2: Pull 2 more ballots - should get different ones
+	vbs2, keys2, err := st.PullVerifiedBallots(processID.Marshal(), 2)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(vbs2), qt.Equals, 2)
+	c.Assert(len(keys2), qt.Equals, 2)
+
+	// Verify the second pull returned different ballots than the first
+	weights2 := []int64{vbs2[0].VoterWeight.Int64(), vbs2[1].VoterWeight.Int64()}
+	for _, w1 := range weights1 {
+		for _, w2 := range weights2 {
+			c.Assert(w1, qt.Not(qt.Equals), w2, qt.Commentf("second pull returned a ballot from the first pull"))
+		}
+	}
+
+	// Test 3: Pull 2 more ballots - should get only 1 remaining
+	vbs3, keys3, err := st.PullVerifiedBallots(processID.Marshal(), 2)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(vbs3), qt.Equals, 1)
+	c.Assert(len(keys3), qt.Equals, 1)
+
+	// Verify the third pull returned a different ballot than the previous pulls
+	weight3 := vbs3[0].VoterWeight.Int64()
+	for _, w1 := range weights1 {
+		c.Assert(weight3, qt.Not(qt.Equals), w1)
+	}
+	for _, w2 := range weights2 {
+		c.Assert(weight3, qt.Not(qt.Equals), w2)
+	}
+
+	// Test 4: Pull again - should get ErrNotFound as all ballots are reserved
+	vbs4, keys4, err := st.PullVerifiedBallots(processID.Marshal(), 2)
+	c.Assert(err, qt.Equals, ErrNotFound)
+	c.Assert(vbs4, qt.IsNil)
+	c.Assert(keys4, qt.IsNil)
+
+	// Test 5: Mark one ballot as done and pull again - should get nothing as we need to release the reservation
+	c.Assert(st.MarkVerifiedBallotDone(keys1[0]), qt.IsNil)
+
+	// Verify count is now 0 because all ballots are either reserved or marked done
+	// When a ballot is marked done, it's completely removed from the database
+	c.Assert(st.CountVerifiedBallots(processID.Marshal()), qt.Equals, 0)
+
+	// Pull again - should still get ErrNotFound as all remaining ballots are still reserved
+	vbs5, keys5, err := st.PullVerifiedBallots(processID.Marshal(), 2)
+	c.Assert(err, qt.Equals, ErrNotFound)
+	c.Assert(vbs5, qt.IsNil)
+	c.Assert(keys5, qt.IsNil)
+
+	// Test 6: Release all reservations by clearing them (simulating a restart)
+	c.Assert(st.recover(), qt.IsNil)
+
+	// Now we should be able to pull the remaining 4 ballots
+	vbs6, keys6, err := st.PullVerifiedBallots(processID.Marshal(), 5)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(vbs6), qt.Equals, 4)
+	c.Assert(len(keys6), qt.Equals, 4)
+}
+
 func TestBallotBatchQueue(t *testing.T) {
 	c := qt.New(t)
 	tempDir := t.TempDir()

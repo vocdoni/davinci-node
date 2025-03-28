@@ -9,5 +9,5 @@ const (
 	// FieldsPerBallot is the number of fields in a ballot.
 	FieldsPerBallot = 8
 	// VotesPerBatch is the number of votes per zkSnark batch.
-	VotesPerBatch = 100
+	VotesPerBatch = 10
 )

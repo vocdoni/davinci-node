@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"go.vocdoni.io/dvote/db/prefixeddb"
@@ -89,7 +91,7 @@ func (s *Storage) MarkBallotDone(k []byte, vb *VerifiedBallot) error {
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedBallotPrefix)
 	// key with processID as prefix + unique portion from original key
-	combKey := append(vb.ProcessID, k...)
+	combKey := append(slices.Clone(vb.ProcessID), k...)
 	if err := wTx.Set(combKey, val); err != nil {
 		wTx.Discard()
 		return err
@@ -113,34 +115,48 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 	var res []*VerifiedBallot
 	var keys [][]byte
 	if err := rd.Iterate(processID, func(k, v []byte) bool {
-		key := append(processID, k...)
-		if len(res) == maxCount {
-			log.Warnf("max count reached")
+		// Check if we've already reached the maximum count
+		if len(res) >= maxCount {
 			return false
 		}
+
+		// Append the processID prefix to the key if missing (depends on the database implementation)
+		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
+			k = append(processID, k...)
+		}
+
 		// Skip if already reserved
-		if s.isReserved(verifiedBallotReservPrefix, key) {
+		if s.isReserved(verifiedBallotReservPrefix, k) {
 			return true
 		}
+
 		var vb VerifiedBallot
 		if err := decodeArtifact(v, &vb); err != nil {
 			return true
 		}
 
 		// Make a copy of the key to avoid any potential modification
-		keyCopy := make([]byte, len(key))
-		copy(keyCopy, key)
+		keyCopy := make([]byte, len(k))
+		copy(keyCopy, k)
 		res = append(res, &vb)
 		keys = append(keys, keyCopy)
+		// Continue iteration if we haven't reached maxCount
 		return true
 	}); err != nil {
 		return nil, nil, fmt.Errorf("iterate ballots: %w", err)
 	}
 
-	for _, k := range keys {
+	// Create reservations for all the keys we're returning
+	for i, k := range keys {
 		if err := s.setReservation(verifiedBallotReservPrefix, k); err != nil {
 			log.Warnw("failed to set reservation for verified ballot", "key", hex.EncodeToString(k), "error", err.Error())
-			// TODO: Remove key and res from the list
+			// Remove this key and its corresponding ballot from the results
+			// since we couldn't reserve it
+			if i < len(res) {
+				// Remove the item at index i
+				res = slices.Delete(res, i, i+1)
+				keys = slices.Delete(keys, i, i+1)
+			}
 		}
 	}
 
@@ -161,10 +177,15 @@ func (s *Storage) CountVerifiedBallots(processID []byte) int {
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	count := 0
 	if err := rd.Iterate(processID, func(k, _ []byte) bool {
-		key := append(processID, k...)
-		if !s.isReserved(verifiedBallotReservPrefix, key) {
-			count++
+		// Append the processID prefix to the key if missing (depends on the database implementation)
+		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
+			k = append(processID, k...)
 		}
+		// Skip if already reserved
+		if s.isReserved(verifiedBallotReservPrefix, k) {
+			return true
+		}
+		count++
 		return true
 	}); err != nil {
 		log.Warnw("failed to count verified ballots", "error", err.Error())
@@ -183,7 +204,7 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), aggregBatchPrefix)
 	key := hashKey(val)
-	if err := wTx.Set(append(abb.ProcessID, key...), val); err != nil {
+	if err := wTx.Set(append(slices.Clone(abb.ProcessID), key...), val); err != nil {
 		wTx.Discard()
 		return err
 	}
@@ -200,11 +221,14 @@ func (s *Storage) NextBallotBatch(processID []byte) (*AggregatorBallotBatch, []b
 	pr := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	var chosenKey, chosenVal []byte
 	if err := pr.Iterate(processID, func(k, v []byte) bool {
-		key := append(processID, k...)
-		if s.isReserved(aggregBatchReservPrefix, key) {
+		// Append the processID prefix to the key if missing (depends on the database implementation)
+		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
+			k = append(processID, k...)
+		}
+		if s.isReserved(aggregBatchReservPrefix, k) {
 			return true
 		}
-		chosenKey = key
+		chosenKey = k
 		chosenVal = v
 		return false
 	}); err != nil {

@@ -5,7 +5,6 @@ import (
 	"maps"
 	"time"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
 	"github.com/consensys/gnark/frontend"
@@ -63,7 +62,7 @@ func (s *Sequencer) processPendingBatches() {
 		timeSinceUpdate := time.Since(lastUpdate)
 
 		// Skip if the batch is not ready
-		if ballotCount == 0 || (ballotCount < circuits.VotesPerBatch && timeSinceUpdate <= s.maxTimeWindow) {
+		if ballotCount == 0 || (ballotCount < circuits.VotesPerBatch && timeSinceUpdate <= s.batchTimeWindow) {
 			continue
 		}
 
@@ -72,7 +71,7 @@ func (s *Sequencer) processPendingBatches() {
 			"processID", fmt.Sprintf("%x", pid),
 			"ballotCount", ballotCount,
 			"timeSinceUpdate", timeSinceUpdate.String(),
-			"maxTimeWindow", s.maxTimeWindow,
+			"batchTimeWindow", s.batchTimeWindow.String(),
 		)
 
 		startTime := time.Now()
@@ -102,6 +101,9 @@ func (s *Sequencer) processPendingBatches() {
 //
 // Returns an error if the aggregation process fails at any step.
 func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
+	s.workInProgressLock.Lock()
+	defer s.workInProgressLock.Unlock()
+
 	if len(pid) == 0 {
 		return fmt.Errorf("process ID cannot be empty")
 	}
@@ -113,11 +115,10 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	if len(ballots) == 0 {
-		log.Warnw("no ballots to aggregate", "processID", fmt.Sprintf("%x", pid))
 		return nil
 	}
 
-	log.Debugw("aggregating ballots",
+	log.Infow("aggregating ballots",
 		"processID", fmt.Sprintf("%x", pid),
 		"ballotCount", len(ballots),
 	)
@@ -137,7 +138,6 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		}
 
 		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](ballots[i].InputsHash)
-		log.Debugw("ballot transformed for aggregation", "index", i, "inputsHash", ballots[i].InputsHash.String())
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
 			Nullifier:       ballots[i].Nullifier,
 			Commitment:      ballots[i].Commitment,
@@ -162,7 +162,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	// Generate the aggregated proof
-	witness, err := frontend.NewWitness(assignment, ecc.BW6_761.ScalarField())
+	witness, err := frontend.NewWitness(assignment, circuits.AggregatorCurve.ScalarField())
 	if err != nil {
 		return fmt.Errorf("failed to create witness: %w", err)
 	}
@@ -214,17 +214,5 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		)
 	}
 
-	log.Infow("batch aggregated successfully",
-		"processID", fmt.Sprintf("%x", pid),
-		"ballotCount", len(ballots),
-	)
-
 	return nil
-}
-
-// MockT mimics testing.T behavior
-type MockT struct{}
-
-func (t *MockT) Errorf(format string, args ...interface{}) {
-	log.Debugf("Assertion Error: "+format, args...)
 }
