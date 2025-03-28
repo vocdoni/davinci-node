@@ -250,10 +250,14 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 		existingFile, err := os.Open(path)
 		if err == nil {
 			if _, err := io.Copy(hasher, existingFile); err != nil {
-				existingFile.Close()
+				if err := existingFile.Close(); err != nil {
+					return fmt.Errorf("error closing existing file: %w", err)
+				}
 				return fmt.Errorf("error hashing existing file: %w", err)
 			}
-			existingFile.Close()
+			if err := existingFile.Close(); err != nil {
+				return fmt.Errorf("error closing existing file: %w", err)
+			}
 			computedHash := hasher.Sum(nil)
 			if !bytes.Equal(computedHash, expectedHash) {
 				log.Warnf("hash mismatch: expected %x, got %x", expectedHash, computedHash)
@@ -289,7 +293,11 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 	if err != nil {
 		return fmt.Errorf("error performing the request: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			log.Warnw("error closing response body", "error", err)
+		}
+	}()
 
 	// Handle response codes
 	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusPartialContent {
@@ -308,17 +316,25 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 	if err != nil {
 		return fmt.Errorf("error opening artifact file: %w", err)
 	}
-	defer fd.Close()
+	defer func() {
+		if err := fd.Close(); err != nil {
+			log.Warnw("error closing file", "error", err)
+		}
+	}()
 
 	if startByte > 0 {
 		// Hash existing content to continue validation
 		existingFile, err := os.Open(partialPath)
 		if err == nil {
 			if _, err := io.Copy(hasher, existingFile); err != nil {
-				existingFile.Close()
+				if err := existingFile.Close(); err != nil {
+					return fmt.Errorf("error closing existing file: %w", err)
+				}
 				return fmt.Errorf("error hashing existing file: %w", err)
 			}
-			existingFile.Close()
+			if err := existingFile.Close(); err != nil {
+				return fmt.Errorf("error closing existing file: %w", err)
+			}
 		}
 	}
 

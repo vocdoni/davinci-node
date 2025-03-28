@@ -26,8 +26,12 @@ import (
 	"go.vocdoni.io/dvote/db/metadb"
 )
 
+const (
+	falseStr = "false"
+)
+
 func testCircuitCompile(t *testing.T, c frontend.Circuit) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 	// enable log to see nbConstraints
@@ -38,7 +42,7 @@ func testCircuitCompile(t *testing.T, c frontend.Circuit) {
 }
 
 func testCircuitProve(t *testing.T, circuit, witness frontend.Circuit) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
@@ -51,7 +55,7 @@ func testCircuitProve(t *testing.T, circuit, witness frontend.Circuit) {
 }
 
 func testCircuitExportSolidity(t *testing.T, c, w frontend.Circuit) {
-	if os.Getenv("RELEASE_SOLIDITY") == "" || os.Getenv("RELEASE_SOLIDITY") == "false" {
+	if os.Getenv("RELEASE_SOLIDITY") == "" || os.Getenv("RELEASE_SOLIDITY") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
@@ -100,7 +104,11 @@ func testCircuitExportSolidity(t *testing.T, c, w frontend.Circuit) {
 	// write proof into a file
 	prooffd, err := os.Create("statetransition_proof.json")
 	assert.NoError(err)
-	defer prooffd.Close()
+	defer func() {
+		if err := prooffd.Close(); err != nil {
+			t.Errorf("error closing proof file: %v", err)
+		}
+	}()
 	bProof, err := json.Marshal(p)
 	assert.NoError(err)
 	_, err = prooffd.Write(bProof)
@@ -108,7 +116,11 @@ func testCircuitExportSolidity(t *testing.T, c, w frontend.Circuit) {
 	// generate solidity verifier
 	solfd, err := os.Create("statetransition_verifier.sol")
 	assert.NoError(err)
-	defer solfd.Close()
+	defer func() {
+		if err := solfd.Close(); err != nil {
+			t.Errorf("error closing solidity file: %v", err)
+		}
+	}()
 	// write verifier
 	err = vk.ExportSolidity(solfd)
 	assert.NoError(err)
@@ -119,7 +131,11 @@ func testCircuitExportSolidity(t *testing.T, c, w frontend.Circuit) {
 	assert.NoError(err)
 	pubWitnessJSONfd, err := os.Create("statetransition_public_witness.json")
 	assert.NoError(err)
-	defer pubWitnessJSONfd.Close()
+	defer func() {
+		if err := pubWitnessJSONfd.Close(); err != nil {
+			t.Errorf("error closing public witness JSON file: %v", err)
+		}
+	}()
 	_, err = pubWitnessJSONfd.Write(jsonWitness)
 	assert.NoError(err)
 }

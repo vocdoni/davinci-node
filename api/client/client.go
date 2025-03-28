@@ -180,7 +180,11 @@ func (c *HTTPclient) Request(method string, jsonBody any, params []string, urlPa
 		break
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Warnw("failed to close response body", "error", err)
+		}
+	}()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("failed to read response body: %w", err)
