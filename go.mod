@@ -1,6 +1,6 @@
 module github.com/vocdoni/vocdoni-z-sandbox
 
-go 1.23.2
+go 1.24
 
 replace github.com/consensys/gnark => github.com/vocdoni/gnark-no-assert v0.0.0-20250227125709-fb44612f3d6d
 

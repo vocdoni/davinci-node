@@ -127,16 +127,14 @@ func TestIntegration(t *testing.T) {
 					"totalAggregatedBallots", aggregatedBallots,
 				)
 				if aggregatedBallots == numBallots {
-					break
+					goto done
 				}
 			case !errors.Is(err, storage.ErrNoMoreElements):
 				c.Fatalf("unexpected error: %v", err)
 			default:
 				time.Sleep(time.Second)
 			}
-			if aggregatedBallots == numBallots {
-				break
-			}
 		}
+	done:
 	})
 }

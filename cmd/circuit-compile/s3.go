@@ -86,7 +86,11 @@ func (u *S3Uploader) UploadFile(ctx context.Context, filePath string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("failed to open file %s: %w", filePath, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Warnw("failed to close file", "error", err)
+		}
+	}()
 
 	// Get the filename for use as the object key
 	fileName := filepath.Base(filePath)

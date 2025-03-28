@@ -53,7 +53,11 @@ func StoreConstraintSystem(cs constraint.ConstraintSystem, filepath string) erro
 	if err != nil {
 		return err
 	}
-	defer csFd.Close()
+	defer func() {
+		if err := csFd.Close(); err != nil {
+			log.Printf("error closing constraint system file: %v", err)
+		}
+	}()
 	if _, err := cs.WriteTo(csFd); err != nil {
 		return err
 	}
@@ -67,7 +71,11 @@ func StoreVerificationKey(vkey groth16.VerifyingKey, filepath string) error {
 	if err != nil {
 		return err
 	}
-	defer fd.Close()
+	defer func() {
+		if err := fd.Close(); err != nil {
+			log.Printf("error closing verification key file: %v", err)
+		}
+	}()
 	if _, err := vkey.WriteRawTo(fd); err != nil {
 		return err
 	}
@@ -82,7 +90,11 @@ func StoreProof(proof groth16.Proof, filepath string) error {
 	if err != nil {
 		return err
 	}
-	defer proofFd.Close()
+	defer func() {
+		if err := proofFd.Close(); err != nil {
+			log.Printf("error closing proof file: %v", err)
+		}
+	}()
 	if _, err := proof.WriteTo(proofFd); err != nil {
 		return err
 	}
@@ -97,7 +109,11 @@ func StoreWitness(witness witness.Witness, filepath string) error {
 	if err != nil {
 		return err
 	}
-	defer witnessFd.Close()
+	defer func() {
+		if err := witnessFd.Close(); err != nil {
+			log.Printf("error closing witness file: %v", err)
+		}
+	}()
 	bWitness, err := witness.MarshalBinary()
 	if err != nil {
 		return err

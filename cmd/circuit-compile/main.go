@@ -269,9 +269,13 @@ func writeToFile(to, ext string, writeFunc func(w io.Writer) error) (string, err
 	// Make sure we clean up the temp file if we encounter an error
 	success := false
 	defer func() {
-		tempFile.Close()
+		if err := tempFile.Close(); err != nil {
+			log.Warnw("failed to close temp file", "error", err)
+		}
 		if !success {
-			os.Remove(tempFilename)
+			if err := os.Remove(tempFilename); err != nil {
+				log.Warnw("failed to remove temp file", "error", err, "path", tempFilename)
+			}
 		}
 	}()
 

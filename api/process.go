@@ -61,7 +61,11 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		ErrGenericInternalServerError.Withf("could not create state: %v", err).Write(w)
 		return
 	}
-	defer st.Close()
+	defer func() {
+		if err := st.Close(); err != nil {
+			log.Warnw("failed to close state", "error", err)
+		}
+	}()
 
 	if err := st.Initialize(p.CensusRoot,
 		circuits.BallotModeToCircuit(p.BallotMode).Bytes(),
