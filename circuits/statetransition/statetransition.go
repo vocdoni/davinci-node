@@ -4,6 +4,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
+	"github.com/consensys/gnark/std/math/cmp"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
@@ -92,17 +93,71 @@ func (circuit Circuit) Define(api frontend.API) error {
 	return nil
 }
 
-func (circuit Circuit) CalculateAggregatorWitness(api frontend.API) (groth16.Witness[sw_bw6761.ScalarField], error) {
-	hashes := circuits.CalculateVotersHashes(api,
-		circuit.Process.VarsToEmulatedElementBN254(api),
-		circuit.ListVotesAsEmulated(api))
-	witness, err := hashes.ToWitnessBW6761(api)
-	if err != nil {
-		circuits.FrontendError(api, "failed to calculate voters hashes sum: ", err)
+func paddedElement(limb frontend.Variable) emulated.Element[sw_bw6761.ScalarField] {
+	return emulated.Element[sw_bw6761.ScalarField]{
+		Limbs: []frontend.Variable{limb, 0, 0, 0, 0, 0},
 	}
-	witness.Public = append(witness.Public, emulated.Element[sw_bw6761.ScalarField]{
-		Limbs: []frontend.Variable{circuit.NumNewVotes, 0, 0, 0, 0, 0}, // ValidVotes
-	})
+}
+
+func inputHashToElements(api frontend.API, isValid, inputsHash frontend.Variable) []emulated.Element[sw_bw6761.ScalarField] {
+	voterHash, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, inputsHash)
+	if err != nil {
+		return nil
+	}
+	finalElements := []emulated.Element[sw_bw6761.ScalarField]{}
+	for l, limb := range voterHash.Limbs {
+		dummyLimb := 0
+		if l == 0 {
+			dummyLimb = 1
+		}
+		finalLimb := api.Select(isValid, limb, dummyLimb)
+		finalElements = append(finalElements, paddedElement(finalLimb))
+	}
+	return finalElements
+}
+
+func (c Circuit) proofInputsHash(api frontend.API, idx int) frontend.Variable {
+	// init native mimc7 hash function
+	hFn, err := mimc7.NewMiMC(api)
+	if err != nil {
+		circuits.FrontendError(api, "failed to create mimc7 hash function: ", err)
+		return 0
+	}
+	// calculate the hash of the public inputs of the proof of the i-th vote
+	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, c.Votes[idx].Vote)...); err != nil {
+		circuits.FrontendError(api, "failed to write mimc7 hash function: ", err)
+		return 0
+	}
+	// transform the hash to an emulated element of the bn254 curve
+	return hFn.Sum()
+}
+
+func (c Circuit) CalculateAggregatorWitness(api frontend.API) (groth16.Witness[sw_bw6761.ScalarField], error) {
+	// The Aggregator witness is the hash of the public inputs of the proof
+	// of each vote that it aggregates. The public inputs of the proof of each
+	// vote are composed by a bit that indicates if the vote is valid or not
+	// as frontend.Variable, and the hash of the public-private inputs of the
+	// proof, which is an emulated.Element[sw_bn254.ScalarField].
+	// So, to calculate the witness we need to calculate each hash of the
+	// public inputs of the proof of each vote (it can be done using native
+	// mimc7 because this circuit should be work in the bn254 curve).
+
+	// calculate the number of valid votes (it should be the number of new
+	// votes plus the number of overwrites)
+	validVotes := api.Add(c.NumNewVotes, c.NumOverwrites)
+	// the witness should be a bw6761 element, and it should include the
+	// number of valid votes as public input
+	witness := groth16.Witness[sw_bw6761.ScalarField]{
+		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(validVotes)},
+	}
+	// iterate over votes inputs to calculate the votes hashes and append them
+	// to the witness
+	for i := range circuits.VotesPerBatch {
+		isValid := cmp.IsLess(api, i, validVotes)
+		inputsHash := c.proofInputsHash(api, i)
+		// transform the hash to an emulated element of the bn254 curve
+		witness.Public = append(witness.Public, inputHashToElements(api, isValid, inputsHash)...)
+	}
 	return witness, nil
 }
 
@@ -115,10 +170,12 @@ func (circuit Circuit) VerifyAggregatorProof(api frontend.API) {
 	verifier, err := groth16.NewVerifier[sw_bw6761.ScalarField, sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 verifier: ", err)
+		return
 	}
 	// verify the proof with the hash as input and the fixed verification key
-	if err := verifier.AssertProof(circuit.AggregatorVK, circuit.AggregatorProof, witness); err != nil {
+	if err := verifier.AssertProof(circuit.AggregatorVK, circuit.AggregatorProof, witness, groth16.WithCompleteArithmetic()); err != nil {
 		circuits.FrontendError(api, "failed to verify aggregated proof: ", err)
+		return
 	}
 }
 
