@@ -4,16 +4,15 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 )
 
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
-	Address    []byte
+	Address    *big.Int
 	Commitment *big.Int
-	Nullifier  []byte
+	Nullifier  *big.Int
 	Ballot     *elgamal.Ballot
 }
 
@@ -25,9 +24,9 @@ type Vote struct {
 //	vote.Ballot
 func (v *Vote) SerializeBigInts() []*big.Int {
 	list := []*big.Int{}
-	list = append(list, arbo.BytesToBigInt(v.Address))
+	list = append(list, v.Address)
 	list = append(list, v.Commitment)
-	list = append(list, arbo.BytesToBigInt(v.Nullifier))
+	list = append(list, v.Nullifier)
 	list = append(list, v.Ballot.BigInts()...)
 	return list
 }
@@ -44,9 +43,9 @@ func (o *State) AddVote(v *Vote) error {
 
 	// if nullifier exists, it's a vote overwrite, need to count the overwritten vote
 	// so it's later added to circuit.ResultsSub
-	if _, value, err := o.tree.Get(v.Nullifier); err == nil {
-		oldVote := elgamal.NewBallot(Curve)
-		if err := oldVote.Deserialize(value); err != nil {
+	if _, value, err := o.tree.GetBigInt(v.Nullifier); err == nil {
+		oldVote, err := elgamal.NewBallot(Curve).SetBigInts(value)
+		if err != nil {
 			return err
 		}
 		o.OverwriteSum.Add(o.OverwriteSum, oldVote)

@@ -22,7 +22,6 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 
-	"github.com/vocdoni/arbo"
 	"go.vocdoni.io/dvote/db/metadb"
 )
 
@@ -344,15 +343,15 @@ func newMockWitness(t *testing.T) *statetransition.Circuit {
 
 func newMockState(t *testing.T) *state.State {
 	s, err := state.New(metadb.NewTest(t),
-		[]byte{0xca, 0xfe, 0x00})
+		new(big.Int).SetBytes(util.RandomBytes(16)))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if err := s.Initialize(
-		util.RandomBytes(16),
-		circuits.MockBallotMode().Bytes(),
-		circuits.MockEncryptionKey().Bytes(),
+		new(big.Int).SetBytes(util.RandomBytes(16)),
+		circuits.MockBallotMode(),
+		circuits.MockEncryptionKey(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -369,8 +368,7 @@ const (
 
 // newMockVote creates a new vote
 func newMockVote(index, amount int64) *state.Vote {
-	nullifier := arbo.BigIntToBytes(maxKeyLen,
-		big.NewInt(int64(index)+int64(mockNullifiersOffset))) // mock
+	nullifier := big.NewInt(int64(index) + int64(mockNullifiersOffset)) // mock
 
 	// generate a public mocked key
 	publicKey, _, err := elgamal.GenerateKey(state.Curve)
@@ -388,8 +386,7 @@ func newMockVote(index, amount int64) *state.Vote {
 		panic(fmt.Errorf("error encrypting: %v", err))
 	}
 
-	address := arbo.BigIntToBytes(maxKeyLen,
-		big.NewInt(int64(index)+int64(mockAddressesOffset))) // mock
+	address := big.NewInt(int64(index) + int64(mockAddressesOffset)) // mock
 	commitment := big.NewInt(amount + 256)
 
 	return &state.Vote{

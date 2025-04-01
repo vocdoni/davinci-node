@@ -1,6 +1,7 @@
 package statetransitiontest
 
 import (
+	"log"
 	"os"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 )
 
 func TestStateTransitionCircuit(t *testing.T) {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
 		t.Skip("skipping circuit tests...")
 	}

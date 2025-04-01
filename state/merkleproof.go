@@ -1,9 +1,9 @@
 package state
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/vocdoni/arbo"
 )
@@ -11,49 +11,41 @@ import (
 // ArboProof stores the proof in arbo native types
 type ArboProof struct {
 	// Key+Value hashed through Siblings path, should produce Root hash
-	Root      []byte
-	Siblings  [][]byte
-	Key       []byte
-	Value     []byte
+	Root      *big.Int
+	Siblings  []*big.Int
+	Key       *big.Int
+	Value     *big.Int
 	Existence bool
 }
 
 // GenArboProof generates a ArboProof for the given key
-func (o *State) GenArboProof(k []byte) (*ArboProof, error) {
-	root, err := o.tree.Root()
-	if err != nil {
-		return nil, err
-	}
-	leafK, leafV, packedSiblings, existence, err := o.tree.GenProof(k)
-	if err != nil {
-		return nil, err
-	}
-	unpackedSiblings, err := arbo.UnpackSiblings(arbo.HashFunctionPoseidon, packedSiblings)
+func (o *State) GenArboProof(k *big.Int) (*ArboProof, error) {
+	proof, err := o.tree.GenerateGnarkVerifierProofBigInt(k)
 	if err != nil {
 		return nil, err
 	}
 	return &ArboProof{
-		Root:      root,
-		Siblings:  unpackedSiblings,
-		Key:       leafK,
-		Value:     leafV,
-		Existence: existence,
+		Root:      proof.Root,
+		Siblings:  proof.Siblings,
+		Key:       proof.Key,
+		Value:     proof.Value,
+		Existence: proof.Fnc.Cmp(big.NewInt(1)) == 0,
 	}, nil
 }
 
 // ArboProofsFromAddOrUpdate generates an ArboProof before adding (or updating) the given leaf,
 // and another ArboProof after updating, and returns both.
-func (o *State) ArboProofsFromAddOrUpdate(k []byte, v []byte) (*ArboProof, *ArboProof, error) {
+func (o *State) ArboProofsFromAddOrUpdate(k *big.Int, v []*big.Int) (*ArboProof, *ArboProof, error) {
 	mpBefore, err := o.GenArboProof(k)
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, _, err := o.tree.Get(k); errors.Is(err, arbo.ErrKeyNotFound) {
-		if err := o.tree.Add(k, v); err != nil {
+	if _, _, err := o.tree.GetBigInt(k); errors.Is(err, arbo.ErrKeyNotFound) {
+		if err := o.tree.AddBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("add key failed: %w", err)
 		}
 	} else {
-		if err := o.tree.Update(k, v); err != nil {
+		if err := o.tree.UpdateBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("update key failed: %w", err)
 		}
 	}
@@ -67,15 +59,15 @@ func (o *State) ArboProofsFromAddOrUpdate(k []byte, v []byte) (*ArboProof, *Arbo
 // ArboTransition stores a pair of leaves and root hashes, and a single path common to both proofs
 type ArboTransition struct {
 	// NewKey + NewValue hashed through Siblings path, should produce NewRoot hash
-	NewRoot  []byte
-	Siblings [][]byte
-	NewKey   []byte
-	NewValue []byte
+	NewRoot  *big.Int
+	Siblings []*big.Int
+	NewKey   *big.Int
+	NewValue *big.Int
 
 	// OldKey + OldValue hashed through same Siblings should produce OldRoot hash
-	OldRoot  []byte
-	OldKey   []byte
-	OldValue []byte
+	OldRoot  *big.Int
+	OldKey   *big.Int
+	OldValue *big.Int
 	IsOld0   int
 	Fnc0     int
 	Fnc1     int
@@ -102,7 +94,7 @@ func ArboTransitionFromArboProofPair(before, after *ArboProof) *ArboTransition {
 	}
 
 	isOld0 := 0
-	if bytes.Equal(before.Key, []byte{}) && bytes.Equal(before.Value, []byte{}) {
+	if before.Key.Cmp(big.NewInt(0)) == 0 && before.Value.Cmp(big.NewInt(0)) == 0 {
 		isOld0 = 1
 	}
 
@@ -122,7 +114,7 @@ func ArboTransitionFromArboProofPair(before, after *ArboProof) *ArboTransition {
 
 // ArboTransitionFromAddOrUpdate adds or updates a key in the tree,
 // and returns a ArboTransition.
-func ArboTransitionFromAddOrUpdate(o *State, k []byte, v []byte) (*ArboTransition, error) {
+func ArboTransitionFromAddOrUpdate(o *State, k *big.Int, v ...*big.Int) (*ArboTransition, error) {
 	mpBefore, mpAfter, err := o.ArboProofsFromAddOrUpdate(k, v)
 	if err != nil {
 		return &ArboTransition{}, err
@@ -137,10 +129,10 @@ func ArboTransitionFromNoop(o *State) (*ArboTransition, error) {
 		return &ArboTransition{}, err
 	}
 	mp := &ArboProof{
-		Root:      root,
-		Siblings:  [][]byte{},
-		Key:       []byte{},
-		Value:     []byte{},
+		Root:      arbo.BytesToBigInt(root),
+		Siblings:  []*big.Int{},
+		Key:       big.NewInt(0),
+		Value:     big.NewInt(0),
 		Existence: false,
 	}
 	return ArboTransitionFromArboProofPair(mp, mp), nil

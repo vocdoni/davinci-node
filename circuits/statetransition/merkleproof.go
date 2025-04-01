@@ -25,7 +25,9 @@ type MerkleProof struct {
 
 // MerkleProofFromArboProof converts an ArboProof into a MerkleProof
 func MerkleProofFromArboProof(p *state.ArboProof) MerkleProof {
-	leafHash, err := state.HashFunc.Hash(p.Key, p.Value, []byte{1})
+	bkey := state.HashFunc.SafeBigInt(p.Key)
+	bvalue := arbo.BigIntToBytes(state.HashFunc.Len(), p.Value)
+	leafHash, err := state.HashFunc.Hash(bkey, bvalue, []byte{1})
 	if err != nil {
 		panic(err) // TODO: proper error handling
 	}
@@ -34,9 +36,9 @@ func MerkleProofFromArboProof(p *state.ArboProof) MerkleProof {
 		fnc = 1 // non-inclusion
 	}
 	return MerkleProof{
-		Root:     arbo.BytesToBigInt(p.Root),
+		Root:     p.Root,
 		Siblings: padSiblings(p.Siblings),
-		Key:      arbo.BytesToBigInt(p.Key),
+		Key:      p.Key,
 		LeafHash: arbo.BytesToBigInt(leafHash),
 		Fnc:      fnc,
 	}
@@ -90,21 +92,25 @@ type MerkleTransition struct {
 }
 
 func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransition, error) {
-	oldLeafHash, err := state.HashFunc.Hash(at.OldKey, at.OldValue, []byte{1})
+	bOldKey := state.HashFunc.SafeBigInt(at.OldKey)
+	bOldValue := arbo.BigIntToBytes(state.HashFunc.Len(), at.OldValue)
+	oldLeafHash, err := state.HashFunc.Hash(bOldKey, bOldValue, []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
 	}
-	newLeafHash, err := state.HashFunc.Hash(at.NewKey, at.NewValue, []byte{1})
+	bNewKey := state.HashFunc.SafeBigInt(at.NewKey)
+	bNewValue := arbo.BigIntToBytes(state.HashFunc.Len(), at.NewValue)
+	newLeafHash, err := state.HashFunc.Hash(bNewKey, bNewValue, []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
 	}
 	return MerkleTransition{
-		NewRoot:     arbo.BytesToBigInt(at.NewRoot),
+		NewRoot:     at.NewRoot,
 		Siblings:    padSiblings(at.Siblings),
-		NewKey:      arbo.BytesToBigInt(at.NewKey),
+		NewKey:      at.NewKey,
 		NewLeafHash: arbo.BytesToBigInt(newLeafHash),
-		OldRoot:     arbo.BytesToBigInt(at.OldRoot),
-		OldKey:      arbo.BytesToBigInt(at.OldKey),
+		OldRoot:     at.OldRoot,
+		OldKey:      at.OldKey,
 		OldLeafHash: arbo.BytesToBigInt(oldLeafHash),
 		IsOld0:      at.IsOld0,
 		Fnc0:        at.Fnc0,
@@ -193,11 +199,11 @@ func (mp *MerkleTransition) IsNoop(api frontend.API) frontend.Variable {
 	return api.And(api.IsZero(mp.Fnc0), api.IsZero(mp.Fnc1))
 }
 
-func padSiblings(unpackedSiblings [][]byte) [circuits.CensusTreeMaxLevels]frontend.Variable {
+func padSiblings(unpackedSiblings []*big.Int) [circuits.CensusTreeMaxLevels]frontend.Variable {
 	paddedSiblings := [circuits.CensusTreeMaxLevels]frontend.Variable{}
 	for i := range circuits.CensusTreeMaxLevels {
 		if i < len(unpackedSiblings) {
-			paddedSiblings[i] = arbo.BytesToBigInt(unpackedSiblings[i])
+			paddedSiblings[i] = unpackedSiblings[i]
 		} else {
 			paddedSiblings[i] = big.NewInt(0)
 		}

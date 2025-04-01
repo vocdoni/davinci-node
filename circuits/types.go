@@ -44,6 +44,22 @@ func (bm BallotMode[T]) Serialize() []T {
 	}
 }
 
+func (bm BallotMode[T]) Deserialize(values []T) (BallotMode[T], error) {
+	if len(values) != 8 {
+		return BallotMode[T]{}, fmt.Errorf("invalid input length for BallotMode: expected 8 values")
+	}
+	return BallotMode[T]{
+		MaxCount:        values[0],
+		ForceUniqueness: values[1],
+		MaxValue:        values[2],
+		MinValue:        values[3],
+		MaxTotalCost:    values[4],
+		MinTotalCost:    values[5],
+		CostExp:         values[6],
+		CostFromWeight:  values[7],
+	}, nil
+}
+
 // Bytes returns 8*32 bytes representing BallotMode components.
 // Returns an empty slice if T is not *big.Int.
 func (bm BallotMode[T]) Bytes() []byte {
@@ -141,6 +157,15 @@ type EncryptionKey[T any] struct {
 
 func (k EncryptionKey[T]) Serialize() []T {
 	return []T{k.PubKey[0], k.PubKey[1]}
+}
+
+func (k EncryptionKey[T]) Deserialize(values []T) (EncryptionKey[T], error) {
+	if len(values) != 2 {
+		return EncryptionKey[T]{}, fmt.Errorf("invalid input length for EncryptionKey: expected 2 values")
+	}
+	return EncryptionKey[T]{
+		PubKey: [2]T{values[0], values[1]},
+	}, nil
 }
 
 // SerializeAsTE returns the EncryptionKey in Twisted Edwards format

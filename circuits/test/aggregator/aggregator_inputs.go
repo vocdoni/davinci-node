@@ -112,9 +112,9 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 	votes := []state.Vote{}
 	for i := range nValidVotes {
 		votes = append(votes, state.Vote{
-			Address:    vvInputs.Addresses[i].Bytes(),
+			Address:    vvInputs.Addresses[i],
 			Commitment: vvInputs.Commitments[i],
-			Nullifier:  vvInputs.Nullifiers[i].Bytes(),
+			Nullifier:  vvInputs.Nullifiers[i],
 			Ballot:     &vvInputs.Ballots[i],
 		})
 	}

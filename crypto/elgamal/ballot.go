@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -77,6 +78,25 @@ func (z *Ballot) BigInts() []*big.Int {
 		list = append(list, c1x, c1y, c2x, c2y)
 	}
 	return list
+}
+
+func (z *Ballot) SetBigInts(list []*big.Int) (*Ballot, error) {
+	if z.CurveType == "" || slices.Contains(curves.Curves(), z.CurveType) == false {
+		return nil, fmt.Errorf("unsupported curve type: %s", z.CurveType)
+	}
+	if len(list) != 8*4 {
+		return nil, fmt.Errorf("expected 8*4 BigInts, got %d", len(list))
+	}
+	z.Ciphertexts = [circuits.FieldsPerBallot]*Ciphertext{}
+	for i := range z.Ciphertexts {
+		c1x, c1y := list[i*4], list[i*4+1]
+		c2x, c2y := list[i*4+2], list[i*4+3]
+		z.Ciphertexts[i] = &Ciphertext{
+			C1: curves.New(z.CurveType).SetPoint(c1x, c1y),
+			C2: curves.New(z.CurveType).SetPoint(c2x, c2y),
+		}
+	}
+	return z, nil
 }
 
 // Serialize returns a slice of len N*4*32 bytes,

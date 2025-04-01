@@ -6,7 +6,6 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
@@ -36,9 +35,9 @@ func GenerateWitness(o *state.State) (*statetransition.Circuit, error) {
 	witness.Process.EncryptionKey.PubKey[1] = o.Process.EncryptionKey.PubKey[1]
 
 	for i, v := range o.PaddedVotes() {
-		witness.Votes[i].Nullifier = arbo.BytesToBigInt(v.Nullifier)
+		witness.Votes[i].Nullifier = v.Nullifier
 		witness.Votes[i].Ballot = *v.Ballot.ToGnark()
-		witness.Votes[i].Address = arbo.BytesToBigInt(v.Address)
+		witness.Votes[i].Address = v.Address
 		witness.Votes[i].Commitment = v.Commitment
 		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
 	}
