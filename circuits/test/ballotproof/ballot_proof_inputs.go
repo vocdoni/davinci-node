@@ -11,7 +11,6 @@ import (
 	"math/big"
 	"time"
 
-	gecdsa "github.com/consensys/gnark-crypto/ecc/secp256k1/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/babyjub"
@@ -21,12 +20,12 @@ import (
 	"github.com/iden3/go-rapidsnark/witness"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ballotsignature"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
@@ -53,21 +52,11 @@ func GenECDSAaccountForTest() (*ecdsa.PrivateKey, ecdsa.PublicKey, common.Addres
 // SignECDSAForTest signs the data with the private key provided and returns the R and
 // S values of the signature.
 func SignECDSAForTest(privKey *ecdsa.PrivateKey, data []byte) (*big.Int, *big.Int, error) {
-	signer := ethereum.NewSignKeys(privKey)
-	sigBin, err := signer.SignEthereum(data)
+	signature, err := ballotsignature.SignEthereumMessage(data, privKey)
 	if err != nil {
 		return nil, nil, err
 	}
-	// truncate the signature to 64 bytes (the first 32 bytes are the R value,
-	// the second 32 bytes are the S value)
-	sigBin = sigBin[:64]
-	var sig gecdsa.Signature
-	if _, err := sig.SetBytes(sigBin); err != nil {
-		return nil, nil, err
-	}
-	r, s := new(big.Int), new(big.Int)
-	r.SetBytes(sig.R[:])
-	s.SetBytes(sig.S[:])
+	r, s := signature.BigInt()
 	return r, s, nil
 }
 
