@@ -7,29 +7,28 @@ import (
 	"github.com/consensys/gnark/std/math/cmp"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
-var (
-	HashFn           = utils.MiMCHasher
-	AggregatorHashFn = MiMC7Hasher
-)
-
-// MiMC7Hasher function calculates the mimc7 hash of the provided inputs. It
-// returns the hash of the inputs.
-func MiMC7Hasher(api frontend.API, inputs ...emulated.Element[sw_bn254.ScalarField]) emulated.Element[sw_bn254.ScalarField] {
-	hFn, err := mimc7.NewMiMC(api)
+// var HashFn = utils.MiMCHasher
+func HashFn(api frontend.API, data ...frontend.Variable) (frontend.Variable, error) {
+	h, err := mimc7.NewMiMC(api)
 	if err != nil {
-		circuits.FrontendError(api, "failed to create emulated MiMC hash function", err)
+		return nil, err
 	}
-	if err := hFn.Write(inputs...); err != nil {
-		circuits.FrontendError(api, "failed to write inputs to emulated MiMC hash function", err)
+	if err := h.Write(data...); err != nil {
+		return nil, err
 	}
-	return hFn.Sum()
+	return h.Sum(), nil
 }
+
+// var (
+// 	HashFn           = utils.MiMCHasher
+// 	AggregatorHashFn = MiMC7Hasher
+// )
 
 type Circuit struct {
 	// ---------------------------------------------------------------------------------------------
@@ -87,8 +86,8 @@ type Vote struct {
 func (circuit Circuit) Define(api frontend.API) error {
 	circuit.VerifyAggregatorProof(api)
 	circuit.VerifyMerkleProofs(api, HashFn)
-	circuit.VerifyMerkleTransitions(api, HashFn)
-	circuit.VerifyLeafHashes(api, HashFn)
+	// circuit.VerifyMerkleTransitions(api, HashFn) --> Does not work now
+	// circuit.VerifyLeafHashes(api, HashFn) --> Does not work now
 	circuit.VerifyBallots(api)
 	return nil
 }

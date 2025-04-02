@@ -205,12 +205,14 @@ func (o *State) EndBatch() error {
 	// add Ballots
 	for i := range o.VotesProofs.Ballot {
 		if i < len(o.Votes()) {
-			o.VotesProofs.Ballot[i], err = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].Nullifier, o.Votes()[i].Ballot.BigInts()...)
+			v := o.Votes()[i]
+			o.VotesProofs.Ballot[i], err = ArboTransitionFromAddOrUpdate(o, v.Nullifier, v.Ballot.BigInts()...)
 		} else {
 			o.VotesProofs.Ballot[i], err = ArboTransitionFromNoop(o)
 		}
 		if err != nil {
+			log.Println(o.Votes()[i].Nullifier, o.Votes()[i].Ballot.BigInts())
+			log.Println("Error getting Ballot proof:", err)
 			return err
 		}
 	}
@@ -224,6 +226,7 @@ func (o *State) EndBatch() error {
 			o.VotesProofs.Commitment[i], err = ArboTransitionFromNoop(o)
 		}
 		if err != nil {
+			log.Println("Error getting Commitment proof:", err)
 			return err
 		}
 	}
@@ -233,6 +236,7 @@ func (o *State) EndBatch() error {
 	o.VotesProofs.ResultsAdd, err = ArboTransitionFromAddOrUpdate(o,
 		KeyResultsAdd, o.NewResultsAdd.BigInts()...)
 	if err != nil {
+		log.Println("Error getting ResultsAdd proof:", err)
 		return fmt.Errorf("ResultsAdd: %w", err)
 	}
 

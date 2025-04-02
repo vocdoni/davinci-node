@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"testing"
@@ -270,6 +271,7 @@ func TestCircuitMerkleTransitionsCompile(t *testing.T) {
 }
 
 func TestCircuitMerkleTransitionsProve(t *testing.T) {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	witness := newMockWitness(t)
 	testCircuitProve(t, &CircuitMerkleTransitions{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),

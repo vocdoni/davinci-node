@@ -25,9 +25,9 @@ type MerkleProof struct {
 
 // MerkleProofFromArboProof converts an ArboProof into a MerkleProof
 func MerkleProofFromArboProof(p *state.ArboProof) MerkleProof {
-	bkey := state.HashFunc.SafeBigInt(p.Key)
+	// bkey := state.HashFunc.SafeBigInt(p.Key)
 	bvalue := arbo.BigIntToBytes(state.HashFunc.Len(), p.Value)
-	leafHash, err := state.HashFunc.Hash(bkey, bvalue, []byte{1})
+	leafHash, err := state.HashFunc.Hash(p.Key.Bytes(), bvalue, []byte{1})
 	if err != nil {
 		panic(err) // TODO: proper error handling
 	}
@@ -92,15 +92,11 @@ type MerkleTransition struct {
 }
 
 func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransition, error) {
-	bOldKey := state.HashFunc.SafeBigInt(at.OldKey)
-	bOldValue := arbo.BigIntToBytes(state.HashFunc.Len(), at.OldValue)
-	oldLeafHash, err := state.HashFunc.Hash(bOldKey, bOldValue, []byte{1})
+	oldLeafHash, err := state.HashFunc.Hash(at.OldKey.Bytes(), arbo.SwapEndianness(at.OldValue.Bytes()), []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
 	}
-	bNewKey := state.HashFunc.SafeBigInt(at.NewKey)
-	bNewValue := arbo.BigIntToBytes(state.HashFunc.Len(), at.NewValue)
-	newLeafHash, err := state.HashFunc.Hash(bNewKey, bNewValue, []byte{1})
+	newLeafHash, err := state.HashFunc.Hash(at.NewKey.Bytes(), arbo.SwapEndianness(at.NewValue.Bytes()), []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
 	}
@@ -108,10 +104,10 @@ func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransit
 		NewRoot:     at.NewRoot,
 		Siblings:    padSiblings(at.Siblings),
 		NewKey:      at.NewKey,
-		NewLeafHash: arbo.BytesToBigInt(newLeafHash),
+		NewLeafHash: new(big.Int).SetBytes(newLeafHash),
 		OldRoot:     at.OldRoot,
 		OldKey:      at.OldKey,
-		OldLeafHash: arbo.BytesToBigInt(oldLeafHash),
+		OldLeafHash: new(big.Int).SetBytes(oldLeafHash),
 		IsOld0:      at.IsOld0,
 		Fnc0:        at.Fnc0,
 		Fnc1:        at.Fnc1,
@@ -127,7 +123,6 @@ func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransit
 // and returns mp.NewRoot
 func (mp *MerkleTransition) Verify(api frontend.API, hFn utils.Hasher, oldRoot frontend.Variable) frontend.Variable {
 	api.Println("verify transition", mp.String()) // TODO: remove this debug log
-
 	api.AssertIsEqual(oldRoot, mp.OldRoot)
 
 	root := smt.ProcessorWithLeafHash(api, hFn,
