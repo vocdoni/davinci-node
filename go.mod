@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
-	github.com/consensys/gnark v0.11.1-0.20241210204654-a1e66c1d6b4d
+	github.com/consensys/gnark v0.12.1-0.20250320152310-b51a3d4535cb
 	github.com/consensys/gnark-crypto v0.16.1-0.20250217214835-5ed804970f85
 	github.com/ethereum/go-ethereum v1.14.12
 	github.com/frankban/quicktest v1.14.6
@@ -27,7 +27,7 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20241217102805-a7c0c5f8c359
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
 	github.com/vocdoni/contracts-z v0.0.0-20250124164653-964d70f468a8
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250224104040-dc49009f3e9e
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250402083705-f675bc1c3582
 	go.vocdoni.io/dvote v1.10.2-0.20241024102542-c1ce6d744bc5
 	golang.org/x/sync v0.11.0
 )
