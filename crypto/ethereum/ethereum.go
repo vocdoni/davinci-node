@@ -23,6 +23,8 @@ const (
 	PubKeyLengthBytesUncompressed = 65
 	// SigningPrefix is the prefix added when hashing
 	SigningPrefix = "\u0019Ethereum Signed Message:\n"
+	// HashLength is the size of a keccak256 hash
+	HashLength = 32
 )
 
 // SignKeys represents an ECDSA pair of keys for signing.

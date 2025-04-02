@@ -56,7 +56,7 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	}
 	c := qt.New(t)
 	data := []VoterTestData{}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		// generate voter account
 		privKey, pubKey, address, err := ballottest.GenECDSAaccountForTest()
 		c.Assert(err, qt.IsNil)

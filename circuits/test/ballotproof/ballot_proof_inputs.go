@@ -26,6 +26,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
@@ -52,16 +53,14 @@ func GenECDSAaccountForTest() (*ecdsa.PrivateKey, ecdsa.PublicKey, common.Addres
 // SignECDSAForTest signs the data with the private key provided and returns the R and
 // S values of the signature.
 func SignECDSAForTest(privKey *ecdsa.PrivateKey, data []byte) (*big.Int, *big.Int, error) {
-	sigBin, err := ethcrypto.Sign(data, privKey)
+	signer := ethereum.NewSignKeys(privKey)
+	sigBin, err := signer.SignEthereum(data)
 	if err != nil {
 		return nil, nil, err
 	}
 	// truncate the signature to 64 bytes (the first 32 bytes are the R value,
 	// the second 32 bytes are the S value)
 	sigBin = sigBin[:64]
-	if valid := ethcrypto.VerifySignature(ethcrypto.CompressPubkey(&privKey.PublicKey), data, sigBin); !valid {
-		return nil, nil, fmt.Errorf("invalid signature")
-	}
 	var sig gecdsa.Signature
 	if _, err := sig.SetBytes(sigBin); err != nil {
 		return nil, nil, err
