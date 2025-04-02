@@ -59,9 +59,10 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	// verify the signature of the vote
 	if !vote.Signature.Verify(vote.BallotInputsHash.BigInt().MathBigInt(), vote.PublicKey) {
-		ErrInvalidSignature.Withf("invalid vote signature").Write(w)
+		ErrInvalidSignature.Write(w)
 		return
 	}
+
 	// push the ballot to the sequencer storage queue to be verified, aggregated
 	// and published
 	if err := a.storage.PushBallot(&storage.Ballot{

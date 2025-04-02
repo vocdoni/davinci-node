@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	qt "github.com/frankban/quicktest"
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
@@ -19,6 +21,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ballotsignature"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -228,16 +231,16 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	return pid, encryptionKeys
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, signer *ethereum.SignKeys) api.Vote {
+func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, privKey *ecdsa.PrivateKey) api.Vote {
 	bbjEncKey := new(bjj.BJJ).SetPoint(encKey.X, encKey.Y)
-	address := signer.Address().Bytes()
-	votedata, err := ballotprooftest.BallotProofForTest(address, pid.Marshal(), bbjEncKey)
+	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
+	votedata, err := ballotprooftest.BallotProofForTest(address.Bytes(), pid.Marshal(), bbjEncKey)
 	c.Assert(err, qt.IsNil)
 	// convert the circom inputs hash to the field of the curve used by the
 	// circuit as input for MIMC hash
 	blsCircomInputsHash := crypto.BigIntToFFwithPadding(votedata.InputsHash, circuits.VoteVerifierCurve.ScalarField())
 	// sign the inputs hash with the private key
-	rSign, sSign, err := ballotprooftest.SignECDSAForTest(signer.Private, blsCircomInputsHash)
+	rSign, sSign, err := ballotprooftest.SignECDSAForTest(privKey, blsCircomInputsHash)
 	c.Assert(err, qt.IsNil)
 
 	circomProof, _, err := circuits.Circom2GnarkProof(votedata.Proof, votedata.PubInputs)
@@ -250,8 +253,8 @@ func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, sign
 		Ballot:           votedata.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: votedata.InputsHash.Bytes(),
-		PublicKey:        signer.PublicKey(),
-		Signature: types.BallotSignature{
+		PublicKey:        ethcrypto.CompressPubkey(&privKey.PublicKey),
+		Signature: ballotsignature.Signature{
 			R: rSign.Bytes(),
 			S: sSign.Bytes(),
 		},
