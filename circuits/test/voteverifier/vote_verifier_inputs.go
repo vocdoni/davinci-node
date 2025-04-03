@@ -19,6 +19,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"go.vocdoni.io/dvote/util"
 )
 
@@ -38,7 +39,7 @@ type VoteVerifierTestResults struct {
 // VoterTestData struct includes the information required to generate the test
 // inputs for the VerifyVoteCircuit.
 type VoterTestData struct {
-	PrivKey *ecdsa.PrivateKey
+	PrivKey *ethereum.Signer
 	PubKey  ecdsa.PublicKey
 	Address common.Address
 }

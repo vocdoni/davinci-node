@@ -3,7 +3,6 @@ package tests
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,9 +20,8 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ballotsignature"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
@@ -102,7 +100,7 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *se
 	return api, vp, stg, contracts
 }
 
-func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.SignKeys) {
+func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.Signer) {
 	// Create a new census
 	body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewCensusEndpoint)
 	c.Assert(err, qt.IsNil)
@@ -113,16 +111,15 @@ func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.Cen
 	c.Assert(err, qt.IsNil)
 
 	// Generate random participants
-	signers := []*ethereum.SignKeys{}
+	signers := []*ethereum.Signer{}
 	censusParticipants := api.CensusParticipants{Participants: []*api.CensusParticipant{}}
 	for range size {
-		signer := ethereum.NewSignKeys(nil)
-		if err := signer.Generate(); err != nil {
+		signer, err := ethereum.NewSigner()
+		if err != nil {
 			c.Fatalf("failed to generate signer: %v", err)
 		}
-		key := signer.Address().Bytes()
 		censusParticipants.Participants = append(censusParticipants.Participants, &api.CensusParticipant{
-			Key:    key,
+			Key:    signer.Address().Bytes(),
 			Weight: new(types.BigInt).SetUint64(circuits.MockWeight),
 		})
 		signers = append(signers, signer)
@@ -231,7 +228,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	return pid, encryptionKeys
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, privKey *ecdsa.PrivateKey) api.Vote {
+func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, privKey *ethereum.Signer) api.Vote {
 	bbjEncKey := new(bjj.BJJ).SetPoint(encKey.X, encKey.Y)
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	votedata, err := ballotprooftest.BallotProofForTest(address.Bytes(), pid.Marshal(), bbjEncKey)
@@ -254,9 +251,9 @@ func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, priv
 		BallotProof:      circomProof,
 		BallotInputsHash: votedata.InputsHash.Bytes(),
 		PublicKey:        ethcrypto.CompressPubkey(&privKey.PublicKey),
-		Signature: ballotsignature.Signature{
-			R: rSign.Bytes(),
-			S: sSign.Bytes(),
+		Signature: ethereum.ECDSASignature{
+			R: rSign,
+			S: sSign,
 		},
 	}
 }

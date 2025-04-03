@@ -2,6 +2,7 @@ package web3
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -10,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	bindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc"
 )
@@ -35,7 +36,7 @@ type Contracts struct {
 	processes          *bindings.ProcessRegistry
 	web3pool           *rpc.Web3Pool
 	cli                *rpc.Client
-	signer             *ethereum.SignKeys
+	signer             *ethereum.Signer
 
 	knownProcesses        map[string]struct{}
 	lastWatchProcessBlock uint64
@@ -168,11 +169,11 @@ func (c *Contracts) AddWeb3Endpoint(web3rpc string) error {
 
 // SetAccountPrivateKey sets the private key to be used for signing transactions.
 func (c *Contracts) SetAccountPrivateKey(hexPrivKey string) error {
-	signer := ethereum.SignKeys{}
-	if err := signer.SetHexKey(hexPrivKey); err != nil {
+	signer, err := ethereum.NewSignerFromHex(hexPrivKey)
+	if err != nil {
 		return fmt.Errorf("failed to add private key: %w", err)
 	}
-	c.signer = &signer
+	c.signer = signer
 	return nil
 }
 
@@ -186,7 +187,11 @@ func (c *Contracts) SignMessage(msg []byte) ([]byte, error) {
 	if c.signer == nil {
 		return nil, fmt.Errorf("no private key set")
 	}
-	return c.signer.SignEthereum(msg)
+	signature, err := c.signer.Sign(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign message: %w", err)
+	}
+	return signature.Bytes(), nil
 }
 
 // AccountNonce returns the nonce of the account used to sign transactions.
@@ -208,7 +213,7 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 		return nil, fmt.Errorf("no private key set")
 	}
 	bChainID := new(big.Int).SetUint64(c.ChainID)
-	auth, err := bind.NewKeyedTransactorWithChainID(c.signer.Private, bChainID)
+	auth, err := bind.NewKeyedTransactorWithChainID((*ecdsa.PrivateKey)(c.signer), bChainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transactor: %w", err)
 	}

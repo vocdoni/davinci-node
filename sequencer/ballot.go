@@ -204,8 +204,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),
 		},
 		Signature: gnarkecdsa.Signature[emulated.Secp256k1Fr]{
-			R: emulated.ValueOf[emulated.Secp256k1Fr](b.Signature.R.BigInt().MathBigInt()),
-			S: emulated.ValueOf[emulated.Secp256k1Fr](b.Signature.S.BigInt().MathBigInt()),
+			R: emulated.ValueOf[emulated.Secp256k1Fr](b.Signature.R),
+			S: emulated.ValueOf[emulated.Secp256k1Fr](b.Signature.S),
 		},
 		CircomProof: b.BallotProof,
 	}

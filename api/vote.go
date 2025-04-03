@@ -58,7 +58,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// verify the signature of the vote
-	if !vote.Signature.Verify(vote.BallotInputsHash.BigInt().MathBigInt(), vote.PublicKey) {
+	if !vote.Signature.VerifyBLS12377(vote.BallotInputsHash.BigInt().MathBigInt(), vote.PublicKey) {
 		ErrInvalidSignature.Write(w)
 		return
 	}
