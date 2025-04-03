@@ -38,14 +38,14 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 	// generate users accounts and census
 	vvData := []voteverifiertest.VoterTestData{}
 	for range nValidVotes {
-		privKey, pubKey, address, err := ballottest.GenECDSAaccountForTest()
+		s, err := ballottest.GenECDSAaccountForTest()
 		if err != nil {
 			return nil, nil, nil, err
 		}
 		vvData = append(vvData, voteverifiertest.VoterTestData{
-			PrivKey: privKey,
-			PubKey:  pubKey,
-			Address: address,
+			PrivKey: s,
+			PubKey:  s.PublicKey,
+			Address: s.Address(),
 		})
 	}
 	// generate vote verifier circuit and inputs

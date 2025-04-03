@@ -8,8 +8,8 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ballotsignature"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -46,7 +46,7 @@ type Ballot struct {
 	Address          types.HexBytes                                        `json:"address"`
 	BallotInputsHash types.HexBytes                                        `json:"ballotInputsHash"`
 	BallotProof      recursion.Proof[sw_bn254.G1Affine, sw_bn254.G2Affine] `json:"ballotProof"`
-	Signature        ballotsignature.Signature                             `json:"signature"`
+	Signature        ethereum.ECDSASignature                               `json:"signature"`
 	CensusProof      types.CensusProof                                     `json:"censusProof"`
 	PubKey           types.HexBytes                                        `json:"publicKey"`
 }

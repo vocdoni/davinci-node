@@ -1,7 +1,6 @@
 package ballotprooftest
 
 import (
-	"crypto/ecdsa"
 	"crypto/rand"
 	_ "embed"
 	"encoding/json"
@@ -11,8 +10,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/iden3/go-iden3-crypto/poseidon"
@@ -20,12 +17,12 @@ import (
 	"github.com/iden3/go-rapidsnark/witness"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ballotsignature"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
@@ -40,24 +37,23 @@ var TestCircomVerificationKey []byte
 
 // GenECDSAaccountForTest generates a new ECDSA account and returns the private
 // key, public key and address.
-func GenECDSAaccountForTest() (*ecdsa.PrivateKey, ecdsa.PublicKey, common.Address, error) {
+func GenECDSAaccountForTest() (*ethereum.Signer, error) {
 	// generate ecdsa keys and address (privKey and publicKey)
-	privKey, err := ethcrypto.GenerateKey()
+	privKey, err := ethereum.NewSigner()
 	if err != nil {
-		return nil, ecdsa.PublicKey{}, common.Address{}, err
+		return nil, err
 	}
-	return privKey, privKey.PublicKey, ethcrypto.PubkeyToAddress(privKey.PublicKey), nil
+	return privKey, nil
 }
 
 // SignECDSAForTest signs the data with the private key provided and returns the R and
 // S values of the signature.
-func SignECDSAForTest(privKey *ecdsa.PrivateKey, data []byte) (*big.Int, *big.Int, error) {
-	signature, err := ballotsignature.SignEthereumMessage(data, privKey)
+func SignECDSAForTest(privKey *ethereum.Signer, data []byte) (*big.Int, *big.Int, error) {
+	signature, err := privKey.Sign(data)
 	if err != nil {
 		return nil, nil, err
 	}
-	r, s := signature.BigInt()
-	return r, s, nil
+	return signature.R, signature.S, nil
 }
 
 // GenEncryptionKeyForTest generates a new encryption key for testing

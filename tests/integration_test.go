@@ -9,7 +9,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -41,7 +41,7 @@ func TestIntegration(t *testing.T) {
 		pid           *types.ProcessID
 		encryptionKey *types.EncryptionKey
 		ballotMode    *types.BallotMode
-		signers       []*ethereum.SignKeys
+		signers       []*ethereum.Signer
 		proofs        []*types.CensusProof
 		root          []byte
 		participants  []*api.CensusParticipant
@@ -99,7 +99,7 @@ func TestIntegration(t *testing.T) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote := createVote(c, pid, encryptionKey, signers[i].PrivateKey())
+			vote := createVote(c, pid, encryptionKey, signers[i])
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
