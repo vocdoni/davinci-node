@@ -184,9 +184,7 @@ func TestWebBrowserSignatureVerification(t *testing.T) {
 	expectedAddr := common.HexToAddress("0xbF7b6386ECb6b8bFCc548D2C51F142a513DEb752")
 
 	// Remove the '0x' prefix if present
-	if strings.HasPrefix(signatureHex, "0x") {
-		signatureHex = signatureHex[2:]
-	}
+	signatureHex = strings.TrimPrefix(signatureHex, "0x")
 
 	// Decode signature
 	signatureBytes, err := hex.DecodeString(signatureHex)

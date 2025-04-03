@@ -21,8 +21,8 @@ func TestNewSigner(t *testing.T) {
 	privKey := (*ecdsa.PrivateKey)(signer)
 	c.Assert(privKey, qt.Not(qt.IsNil))
 	c.Assert(privKey.D, qt.Not(qt.IsNil))
-	c.Assert(privKey.PublicKey.X, qt.Not(qt.IsNil))
-	c.Assert(privKey.PublicKey.Y, qt.Not(qt.IsNil))
+	c.Assert(privKey.X, qt.Not(qt.IsNil))
+	c.Assert(privKey.Y, qt.Not(qt.IsNil))
 }
 
 func TestNewSignerFromHex(t *testing.T) {
