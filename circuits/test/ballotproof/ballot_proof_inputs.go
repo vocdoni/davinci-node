@@ -48,12 +48,8 @@ func GenECDSAaccountForTest() (*ethereum.Signer, error) {
 
 // SignECDSAForTest signs the data with the private key provided and returns the R and
 // S values of the signature.
-func SignECDSAForTest(privKey *ethereum.Signer, data []byte) (*big.Int, *big.Int, error) {
-	signature, err := privKey.Sign(data)
-	if err != nil {
-		return nil, nil, err
-	}
-	return signature.R, signature.S, nil
+func SignECDSAForTest(privKey *ethereum.Signer, data []byte) (*ethereum.ECDSASignature, error) {
+	return privKey.Sign(data)
 }
 
 // GenEncryptionKeyForTest generates a new encryption key for testing

@@ -39,14 +39,14 @@ type VerifiedBallot struct {
 
 type Ballot struct {
 	ProcessID        types.HexBytes                                        `json:"processId"`
-	VoterWeight      types.HexBytes                                        `json:"voterWeight"`
+	VoterWeight      *big.Int                                              `json:"voterWeight"`
 	EncryptedBallot  elgamal.Ballot                                        `json:"encryptedBallot"`
-	Nullifier        types.HexBytes                                        `json:"nullifier"`
-	Commitment       types.HexBytes                                        `json:"commitment"`
-	Address          types.HexBytes                                        `json:"address"`
-	BallotInputsHash types.HexBytes                                        `json:"ballotInputsHash"`
+	Nullifier        *big.Int                                              `json:"nullifier"`
+	Commitment       *big.Int                                              `json:"commitment"`
+	Address          *big.Int                                              `json:"address"`
+	BallotInputsHash *big.Int                                              `json:"ballotInputsHash"`
 	BallotProof      recursion.Proof[sw_bn254.G1Affine, sw_bn254.G2Affine] `json:"ballotProof"`
-	Signature        ethereum.ECDSASignature                               `json:"signature"`
+	Signature        *ethereum.ECDSASignature                              `json:"signature"`
 	CensusProof      types.CensusProof                                     `json:"censusProof"`
 	PubKey           types.HexBytes                                        `json:"publicKey"`
 }

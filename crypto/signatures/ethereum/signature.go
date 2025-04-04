@@ -25,7 +25,8 @@ const (
 	HashLength = 32
 )
 
-// ECDSASignature represents an Ethereum ECDSA signature with R and S components
+// ECDSASignature represents an Ethereum ECDSA signature with R and S components.
+// The components are stored as big.Int values within the secp256k1 curve field.
 type ECDSASignature struct {
 	R        *big.Int `json:"r"`
 	S        *big.Int `json:"s"`
@@ -67,6 +68,26 @@ func (sig *ECDSASignature) Bytes() []byte {
 	copy(s[32-len(sBytes):], sBytes)
 
 	return append(r, append(s, sig.recovery)...)
+}
+
+// SetBytes sets the ECDSASignature from a byte slice. The byte slice should be
+// at least 65 bytes long, where the first 64 bytes are the R and S values.
+func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
+	if len(signature) < SignatureMinLength {
+		return nil
+	}
+	var sigStruct gecdsa.Signature
+	if _, err := sigStruct.SetBytes(signature[:64]); err != nil {
+		return nil
+	}
+	sig.R = new(big.Int).SetBytes(sigStruct.R[:])
+	sig.S = new(big.Int).SetBytes(sigStruct.S[:])
+	if len(signature) == SignatureLength {
+		sig.recovery = signature[64]
+	} else {
+		sig.recovery = 0
+	}
+	return sig
 }
 
 // VerifyBLS12377 checks if the signature is valid for the given input and public key.

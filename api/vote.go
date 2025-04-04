@@ -7,6 +7,7 @@ import (
 
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
@@ -18,6 +19,13 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	vote := &Vote{}
 	if err := json.NewDecoder(r.Body).Decode(vote); err != nil {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
+		return
+	}
+	// sanity checks
+	if vote.Ballot == nil || vote.Nullifier == nil || vote.Commitment == nil ||
+		vote.CensusProof.Key == nil || vote.CensusProof.Weight == nil ||
+		vote.BallotInputsHash == nil || vote.PublicKey == nil || vote.Signature == nil {
+		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
 	// get the process from the storage
@@ -51,14 +59,19 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	proof, err := circuits.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.VerifyingKey(),
 		vote.BallotProof,
-		[]string{vote.BallotInputsHash.BigInt().String()},
+		[]string{vote.BallotInputsHash.String()},
 	)
 	if err != nil {
 		ErrInvalidBallotProof.Withf("could not verify and convert proof: %v", err).Write(w)
 		return
 	}
 	// verify the signature of the vote
-	if !vote.Signature.VerifyBLS12377(vote.BallotInputsHash.BigInt().MathBigInt(), vote.PublicKey) {
+	signature := new(ethereum.ECDSASignature).SetBytes(vote.Signature)
+	if signature == nil {
+		ErrMalformedBody.Withf("could not decode signature: %v", err).Write(w)
+		return
+	}
+	if !signature.VerifyBLS12377(vote.BallotInputsHash.MathBigInt(), vote.PublicKey) {
 		ErrInvalidSignature.Write(w)
 		return
 	}
@@ -67,14 +80,14 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// and published
 	if err := a.storage.PushBallot(&storage.Ballot{
 		ProcessID:        vote.ProcessID,
-		VoterWeight:      vote.CensusProof.Weight.Bytes(),
+		VoterWeight:      vote.CensusProof.Weight.MathBigInt(),
 		EncryptedBallot:  *vote.Ballot,
-		Nullifier:        vote.Nullifier,
-		Commitment:       vote.Commitment,
-		Address:          vote.CensusProof.Key,
-		BallotInputsHash: vote.BallotInputsHash,
+		Nullifier:        vote.Nullifier.MathBigInt(),
+		Commitment:       vote.Commitment.MathBigInt(),
+		Address:          vote.CensusProof.Key.BigInt().MathBigInt(),
+		BallotInputsHash: vote.BallotInputsHash.MathBigInt(),
 		BallotProof:      proof.Proof,
-		Signature:        vote.Signature,
+		Signature:        signature,
 		CensusProof:      vote.CensusProof,
 		PubKey:           vote.PublicKey,
 	}); err != nil {

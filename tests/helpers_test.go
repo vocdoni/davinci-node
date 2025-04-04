@@ -237,7 +237,7 @@ func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, priv
 	// circuit as input for MIMC hash
 	blsCircomInputsHash := crypto.BigIntToFFwithPadding(votedata.InputsHash, circuits.VoteVerifierCurve.ScalarField())
 	// sign the inputs hash with the private key
-	rSign, sSign, err := ballotprooftest.SignECDSAForTest(privKey, blsCircomInputsHash)
+	signature, err := ballotprooftest.SignECDSAForTest(privKey, blsCircomInputsHash)
 	c.Assert(err, qt.IsNil)
 
 	circomProof, _, err := circuits.Circom2GnarkProof(votedata.Proof, votedata.PubInputs)
@@ -245,15 +245,12 @@ func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, priv
 
 	return api.Vote{
 		ProcessID:        pid.Marshal(),
-		Commitment:       votedata.Commitment.Bytes(),
-		Nullifier:        votedata.Nullifier.Bytes(),
+		Commitment:       (*types.BigInt)(votedata.Commitment),
+		Nullifier:        (*types.BigInt)(votedata.Nullifier),
 		Ballot:           votedata.Ballot,
 		BallotProof:      circomProof,
-		BallotInputsHash: votedata.InputsHash.Bytes(),
+		BallotInputsHash: (*types.BigInt)(votedata.InputsHash),
 		PublicKey:        ethcrypto.CompressPubkey(&privKey.PublicKey),
-		Signature: ethereum.ECDSASignature{
-			R: rSign,
-			S: sSign,
-		},
+		Signature:        signature.Bytes(),
 	}
 }
