@@ -69,6 +69,26 @@ func (sig *ECDSASignature) Bytes() []byte {
 	return append(r, append(s, sig.recovery)...)
 }
 
+// SetBytes sets the ECDSASignature from a byte slice. The byte slice should be
+// at least 65 bytes long, where the first 64 bytes are the R and S values.
+func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
+	if len(signature) < SignatureMinLength {
+		return nil
+	}
+	var sigStruct gecdsa.Signature
+	if _, err := sigStruct.SetBytes(signature[:64]); err != nil {
+		return nil
+	}
+	sig.R.SetBytes(sigStruct.R[:])
+	sig.S.SetBytes(sigStruct.S[:])
+	if len(signature) == SignatureLength {
+		sig.recovery = signature[64]
+	} else {
+		sig.recovery = 0
+	}
+	return sig
+}
+
 // VerifyBLS12377 checks if the signature is valid for the given input and public key.
 // The public key should be an ecdsa public key compressed in bytes. The input
 // should be a big integer that will be converted in a byte slice ensuring that

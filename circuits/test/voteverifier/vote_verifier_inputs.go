@@ -102,7 +102,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 		// circuit as input for MIMC hash
 		blsCircomInputsHash := crypto.BigIntToFFwithPadding(voterProof.InputsHash, circuits.VoteVerifierCurve.ScalarField())
 		// sign the inputs hash with the private key
-		rSign, sSign, err := ballottest.SignECDSAForTest(voter.PrivKey, blsCircomInputsHash)
+		signature, err := ballottest.SignECDSAForTest(voter.PrivKey, blsCircomInputsHash)
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 		}
@@ -158,8 +158,8 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 				Y: emulated.ValueOf[emulated.Secp256k1Fp](voter.PubKey.Y),
 			},
 			Signature: gnarkecdsa.Signature[emulated.Secp256k1Fr]{
-				R: emulated.ValueOf[emulated.Secp256k1Fr](rSign),
-				S: emulated.ValueOf[emulated.Secp256k1Fr](sSign),
+				R: emulated.ValueOf[emulated.Secp256k1Fr](signature.R),
+				S: emulated.ValueOf[emulated.Secp256k1Fr](signature.S),
 			},
 			// circom proof
 			CircomProof: recursiveProof.Proof,
