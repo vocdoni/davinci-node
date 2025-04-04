@@ -175,6 +175,97 @@ func TestAddrFromSignature(t *testing.T) {
 	c.Assert(err, qt.Not(qt.IsNil))
 }
 
+func TestECDSASignature_SetBytes(t *testing.T) {
+	c := qt.New(t)
+
+	// Generate a test signature
+	privKey, err := ethcrypto.GenerateKey()
+	c.Assert(err, qt.IsNil)
+
+	msg := []byte("test set bytes message")
+	ethSig, err := ethcrypto.Sign(HashMessage(msg), privKey)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(ethSig), qt.Equals, SignatureLength)
+
+	// Test SetBytes with 65-byte signature (with recovery byte)
+	sig := &ECDSASignature{
+		R: new(big.Int),
+		S: new(big.Int),
+	}
+	result := sig.SetBytes(ethSig)
+	c.Assert(result, qt.Not(qt.IsNil))
+	c.Assert(result, qt.Equals, sig) // Should return itself
+	c.Assert(sig.recovery, qt.Equals, ethSig[64])
+
+	// Verify that the signature can correctly verify the message
+	pubKey := ethcrypto.FromECDSAPub(&privKey.PublicKey)
+	c.Assert(sig.Verify(msg, pubKey), qt.IsTrue)
+
+	// Test SetBytes with 64-byte signature (without recovery byte)
+	sig64 := &ECDSASignature{
+		R: new(big.Int),
+		S: new(big.Int),
+	}
+	result = sig64.SetBytes(ethSig[:64])
+	c.Assert(result, qt.Not(qt.IsNil))
+	c.Assert(sig64.recovery, qt.Equals, byte(0)) // Recovery byte should be 0 for 64-byte signature
+
+	// Verify the 64-byte signature
+	c.Assert(sig64.Verify(msg, pubKey), qt.IsTrue)
+
+	// Test with a signature that's too short
+	invalidSig := &ECDSASignature{
+		R: new(big.Int),
+		S: new(big.Int),
+	}
+	result = invalidSig.SetBytes(ethSig[:SignatureMinLength-1])
+	c.Assert(result, qt.IsNil) // Should return nil for invalid input
+}
+
+func TestECDSASignature_SetBytesWebBrowserSignature(t *testing.T) {
+	c := qt.New(t)
+
+	// Use the web browser signature from TestWebBrowserSignatureVerification
+	message := []byte("Hello world!")
+	signatureHex := "0x4fe294db29ddda38c1a4d170db34adc0f7431d7b0cbb0ae8adb6b4ea94f1bde159352a6ab3c16f62b5fa3d84bfc21d65aa2aacb3a841034f928053b4a6fcf7c21c"
+	expectedAddr := common.HexToAddress("0xbF7b6386ECb6b8bFCc548D2C51F142a513DEb752")
+
+	// Remove the '0x' prefix if present
+	signatureHex = strings.TrimPrefix(signatureHex, "0x")
+
+	// Decode signature
+	signatureBytes, err := hex.DecodeString(signatureHex)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(signatureBytes), qt.Equals, SignatureLength)
+
+	// Test with 65-byte signature using SetBytes
+	sig65 := &ECDSASignature{
+		R: new(big.Int),
+		S: new(big.Int),
+	}
+	result := sig65.SetBytes(signatureBytes)
+	c.Assert(result, qt.Not(qt.IsNil))
+	c.Assert(sig65.recovery, qt.Equals, signatureBytes[64])
+
+	// Verify the address can be recovered
+	recoveredAddr, err := AddrFromSignature(message, sig65.Bytes())
+	c.Assert(err, qt.IsNil)
+	c.Assert(recoveredAddr, qt.Equals, expectedAddr)
+
+	// Test with 64-byte signature (without recovery byte)
+	sig64 := &ECDSASignature{
+		R: new(big.Int),
+		S: new(big.Int),
+	}
+	result = sig64.SetBytes(signatureBytes[:64])
+	c.Assert(result, qt.Not(qt.IsNil))
+	c.Assert(sig64.recovery, qt.Equals, byte(0))
+
+	// Make sure the R and S components match between the 65-byte and 64-byte versions
+	c.Assert(sig64.R.Cmp(sig65.R), qt.Equals, 0)
+	c.Assert(sig64.S.Cmp(sig65.S), qt.Equals, 0)
+}
+
 func TestWebBrowserSignatureVerification(t *testing.T) {
 	c := qt.New(t)
 
