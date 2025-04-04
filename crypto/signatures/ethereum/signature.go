@@ -25,7 +25,8 @@ const (
 	HashLength = 32
 )
 
-// ECDSASignature represents an Ethereum ECDSA signature with R and S components
+// ECDSASignature represents an Ethereum ECDSA signature with R and S components.
+// The components are stored as big.Int values within the secp256k1 curve field.
 type ECDSASignature struct {
 	R        *big.Int `json:"r"`
 	S        *big.Int `json:"s"`
@@ -79,8 +80,8 @@ func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
 	if _, err := sigStruct.SetBytes(signature[:64]); err != nil {
 		return nil
 	}
-	sig.R.SetBytes(sigStruct.R[:])
-	sig.S.SetBytes(sigStruct.S[:])
+	sig.R = new(big.Int).SetBytes(sigStruct.R[:])
+	sig.S = new(big.Int).SetBytes(sigStruct.S[:])
 	if len(signature) == SignatureLength {
 		sig.recovery = signature[64]
 	} else {
