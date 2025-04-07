@@ -51,10 +51,11 @@ func main() {
 	contracts := &web3.Contracts{}
 
 	if *sepolia {
-		contracts, err = web3.LoadContracts(&web3.Addresses{
+		contracts, err := web3.New(rpcs)
+		contracts.LoadContracts(&web3.Addresses{
 			OrganizationRegistry: common.HexToAddress(sepoliaOrgRegistry),
 			ProcessRegistry:      common.HexToAddress(sepoliaProcessRegistry),
-		}, rpcs[0])
+		})
 		if err != nil {
 			log.Fatal(err)
 		}
