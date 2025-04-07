@@ -5,21 +5,24 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	flag "github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/vocdoni-z-sandbox/config"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3"
+	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc/chainlist"
 )
 
 const (
-	defaultNetwork   = "sepolia"
+	defaultNetwork   = "sep"
 	defaultAPIHost   = "0.0.0.0"
 	defaultAPIPort   = 8080
 	defaultBatchTime = 60
@@ -29,94 +32,227 @@ const (
 	monitorInterval  = 2 * time.Second
 )
 
-var (
-	// Version is the build version, set at build time with -ldflags.
-	Version = "dev"
-)
+// Version is the build version, set at build time with -ldflags
+var Version = "dev"
+
+// Config holds the application configuration
+type Config struct {
+	Web3  Web3Config
+	API   APIConfig
+	Batch BatchConfig
+	Log   LogConfig
+}
+
+// Web3Config holds Ethereum-related configuration
+type Web3Config struct {
+	PrivKey           string   `mapstructure:"privkey"`
+	Network           string   `mapstructure:"network"`
+	Rpc               []string `mapstructure:"rpc"`
+	ProcessAddr       string   `mapstructure:"process"`
+	OrganizationsAddr string   `mapstructure:"orgs"`
+	ResultsAddr       string   `mapstructure:"results"`
+}
+
+// APIConfig holds the API-specific configuration
+type APIConfig struct {
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
+}
+
+// BatchConfig holds batch processing configuration
+type BatchConfig struct {
+	Time int `mapstructure:"time"`
+}
+
+// LogConfig holds logging configuration
+type LogConfig struct {
+	Level  string `mapstructure:"level"`
+	Output string `mapstructure:"output"`
+}
+
+// Services holds all the running services
+type Services struct {
+	Contracts  *web3.Contracts
+	Storage    *storage.Storage
+	ProcessMon *service.ProcessMonitor
+	API        *service.APIService
+	Sequencer  *service.SequencerService
+}
 
 func main() {
-	// Parse command line flags
-	privKey := flag.String("privkey", "", "private key to use for the Ethereum account (required)")
-	network := flag.String("network", defaultNetwork, fmt.Sprintf("network to use %v", config.AvailableNetworks))
-	w3rpc := flag.StringSlice("w3rpc", []string{}, "web3 rpc endpoint(s), comma-separated")
-	apiHost := flag.String("apiHost", defaultAPIHost, "API host")
-	apiPort := flag.Int("apiPort", defaultAPIPort, "API port")
-	batchTime := flag.Int("batchTime", defaultBatchTime, "sequencer batch time window in seconds")
-	processRegistry := flag.String("processRegistry", "", "custom process registry contract address (overrides network default)")
-	orgRegistry := flag.String("orgRegistry", "", "custom organization registry contract address (overrides network default)")
-	resultsRegistry := flag.String("resultsRegistry", "", "custom results registry contract address (overrides network default)")
-	logLevel := flag.String("logLevel", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
-	logOutput := flag.String("logOutput", defaultLogOutput, "log output (stdout, stderr or filepath)")
+	// Load configuration
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
 
+	// Initialize logging
+	log.Init(cfg.Log.Level, cfg.Log.Output, nil)
+	log.Infow("starting davinci-sequencer", "version", Version)
+
+	// Validate configuration
+	if err := validateConfig(cfg); err != nil {
+		log.Fatalf("Invalid configuration: %v", err)
+	}
+
+	// Get contract addresses
+	addresses, err := getContractAddresses(cfg)
+	if err != nil {
+		log.Fatalf("Failed to get contract addresses: %v", err)
+	}
+
+	// Create context with cancellation for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup services
+	services, err := setupServices(ctx, cfg, addresses)
+	if err != nil {
+		log.Fatalf("Failed to setup services: %v", err)
+	}
+	defer shutdownServices(services)
+
+	// Wait for shutdown signal
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	sig := <-sigCh
+	log.Infow("received signal, shutting down", "signal", sig.String())
+}
+
+// loadConfig loads configuration from flags, environment variables, and defaults
+func loadConfig() (*Config, error) {
+	v := viper.New()
+
+	// Set up default values
+	v.SetDefault("web3.network", defaultNetwork)
+	v.SetDefault("web3.rpc", []string{})
+	v.SetDefault("api.host", defaultAPIHost)
+	v.SetDefault("api.port", defaultAPIPort)
+	v.SetDefault("batch.time", defaultBatchTime)
+	v.SetDefault("log.level", defaultLogLevel)
+	v.SetDefault("log.output", defaultLogOutput)
+
+	// Configure flags
+	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
+	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", config.AvailableNetworks))
+	flag.StringSliceP("web3.rpc", "w", []string{}, "web3 rpc endpoint(s), comma-separated")
+	flag.StringP("api.host", "a", defaultAPIHost, "API host")
+	flag.IntP("api.port", "p", defaultAPIPort, "API port")
+	flag.IntP("batch.time", "b", defaultBatchTime, "sequencer batch time window in seconds")
+	flag.String("web3.process", "", "custom process registry contract address (overrides network default)")
+	flag.String("web3.orgs", "", "custom organization registry contract address (overrides network default)")
+	flag.String("web3.results", "", "custom results registry contract address (overrides network default)")
+	flag.StringP("log.level", "l", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
+	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
+
+	// Configure usage information
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "davinci-sequencer v%s\n\n", Version)
 		fmt.Fprintf(os.Stderr, "Usage: davinci-sequencer [flags]\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEnvironment variables are also available with the same name as flags,\n")
+		fmt.Fprintf(os.Stderr, "  except for dashes (-) and dots (.) which are replaced by underscores (_).\n")
+		fmt.Fprintf(os.Stderr, "  For example, DAVINCI_WEB3_PRIVKEY or DAVINCI_API_HOST\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  # Start with sepolia network and default settings\n")
-		fmt.Fprintf(os.Stderr, "  davinci-sequencer --privkey=0x123...\n\n")
+		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123...\n\n")
 		fmt.Fprintf(os.Stderr, "  # Start with custom RPC endpoints\n")
-		fmt.Fprintf(os.Stderr, "  davinci-sequencer --privkey=0x123... --w3rpc=https://rpc1.com,https://rpc2.com\n\n")
+		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.rpc=https://rpc1.com,https://rpc2.com\n\n")
 		fmt.Fprintf(os.Stderr, "  # Start with custom contract addresses\n")
-		fmt.Fprintf(os.Stderr, "  davinci-sequencer --privkey=0x123... --processRegistry=0x456... --orgRegistry=0x789...\n")
+		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.process_registry=0x456... --web3.org_registry=0x789...\n")
 	}
 
+	// Parse flags
+	flag.CommandLine.SortFlags = false
 	flag.Parse()
 
-	// Initialize logging
-	log.Init(*logLevel, *logOutput, nil)
+	// Configure Viper to use environment variables
+	v.SetEnvPrefix("DAVINCI")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
 
-	log.Infow("starting davinci-sequencer", "version", Version)
+	// Bind flags to Viper
+	if err := v.BindPFlags(flag.CommandLine); err != nil {
+		return nil, fmt.Errorf("error binding flags: %w", err)
+	}
 
-	// Validate required flags
-	if *privKey == "" {
-		log.Fatal("private key is required")
+	// Create config struct
+	cfg := &Config{}
+
+	// Unmarshal configuration into struct
+	if err := v.Unmarshal(cfg); err != nil {
+		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// validateConfig validates the loaded configuration
+func validateConfig(cfg *Config) error {
+	// Validate required fields
+	if cfg.Web3.PrivKey == "" {
+		return fmt.Errorf("private key is required (use --privkey flag or DAVINCI_PRIVKEY environment variable)")
 	}
 
 	// Validate network
 	validNetwork := false
 	for _, n := range config.AvailableNetworks {
-		if *network == n {
+		if cfg.Web3.Network == n {
 			validNetwork = true
 			break
 		}
 	}
 	if !validNetwork {
-		log.Fatalf("invalid network %s, available networks: %v", *network, config.AvailableNetworks)
+		return fmt.Errorf("invalid network %s, available networks: %v", cfg.Web3.Network, config.AvailableNetworks)
 	}
 
-	// Select the contract addresses based on network
-	networkConfig, ok := config.DefaultConfig[*network]
+	return nil
+}
+
+// getContractAddresses returns the contract addresses based on configuration
+func getContractAddresses(cfg *Config) (*web3.Addresses, error) {
+	// Get default contract addresses for selected network
+	networkConfig, ok := config.DefaultConfig[cfg.Web3.Network]
 	if !ok {
-		log.Fatalf("no configuration found for network %s", *network)
+		return nil, fmt.Errorf("no configuration found for network %s", cfg.Web3.Network)
 	}
 
-	// Override contract addresses if specified
+	// Override with custom addresses if provided
 	processRegistryAddr := networkConfig.ProcessRegistrySmartContract
-	if *processRegistry != "" {
-		processRegistryAddr = *processRegistry
+	if cfg.Web3.ProcessAddr != "" {
+		processRegistryAddr = cfg.Web3.ProcessAddr
 	}
 
 	orgRegistryAddr := networkConfig.OrganizationRegistrySmartContract
-	if *orgRegistry != "" {
-		orgRegistryAddr = *orgRegistry
+	if cfg.Web3.OrganizationsAddr != "" {
+		orgRegistryAddr = cfg.Web3.OrganizationsAddr
 	}
 
 	resultsAddr := networkConfig.ResultsSmartContract
-	if *resultsRegistry != "" {
-		resultsAddr = *resultsRegistry
+	if cfg.Web3.ResultsAddr != "" {
+		resultsAddr = cfg.Web3.ResultsAddr
 	}
 
+	// Log the contract addresses being used
 	log.Infow("using contract addresses",
-		"network", *network,
+		"network", cfg.Web3.Network,
 		"processRegistry", processRegistryAddr,
 		"orgRegistry", orgRegistryAddr,
 		"resultsRegistry", resultsAddr)
 
-	// Create context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Create the addresses struct
+	return &web3.Addresses{
+		ProcessRegistry:      common.HexToAddress(processRegistryAddr),
+		OrganizationRegistry: common.HexToAddress(orgRegistryAddr),
+		ResultsRegistry:      common.HexToAddress(resultsAddr),
+	}, nil
+}
+
+// setupServices initializes and starts all required services
+func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) (*Services, error) {
+	services := &Services{}
 
 	// Download circuit artifacts
 	log.Info("downloading circuit artifacts")
@@ -124,89 +260,93 @@ func main() {
 		log.Warnw("failed to download some artifacts", "error", err)
 	}
 
-	// Create storage
+	// Initialize storage
 	log.Info("initializing storage")
-	stg := storage.New(memdb.New())
+	services.Storage = storage.New(memdb.New())
 
-	// Initialize contracts
+	// Initialize web3 contracts
 	log.Info("initializing web3 contracts")
-	var contracts *web3.Contracts
-	var err error
 
 	// Default RPC endpoints by network if not provided by user
-	if len(*w3rpc) == 0 {
-		// Default RPC endpoints for supported networks
-		defaultRPCs := map[string][]string{
-			"sepolia": {
-				"https://rpc.ankr.com/eth_sepolia",
-				"https://sepolia.gateway.tenderly.co",
-				"https://eth-sepolia.public.blastapi.io",
-			},
+	w3rpc := cfg.Web3.Rpc
+	if len(w3rpc) == 0 {
+		log.Infow("no RPC endpoints provided, using chainlist.org", "network", cfg.Web3.Network)
+		list, err := chainlist.ChainList()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get chain list: %w", err)
 		}
-
-		if endpoints, ok := defaultRPCs[*network]; ok && len(endpoints) > 0 {
-			log.Infow("using default RPC endpoints for network", "network", *network)
-			*w3rpc = endpoints
-		} else {
-			log.Fatal("no RPC endpoints provided and no defaults available for the selected network")
+		id, ok := list[cfg.Web3.Network]
+		if !ok {
+			return nil, fmt.Errorf("network %s not found in chain list", cfg.Web3.Network)
 		}
+		endpoints, err := chainlist.EndpointList(0, cfg.Web3.Network, 10)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get endpoints for network %s: %w", cfg.Web3.Network, err)
+		}
+		log.Infow("using endpoints from chain list", "chainID", id, "network", cfg.Web3.Network, "endpoints", endpoints)
+		w3rpc = endpoints
 	}
 
-	// Initialize with the first endpoint
-	addresses := &web3.Addresses{
-		ProcessRegistry:      common.HexToAddress(processRegistryAddr),
-		OrganizationRegistry: common.HexToAddress(orgRegistryAddr),
-		ResultsRegistry:      common.HexToAddress(resultsAddr),
-	}
-
-	contracts, err = web3.LoadContracts(addresses, (*w3rpc)[0])
+	// Initialize web3 contracts
+	var err error
+	services.Contracts, err = web3.New(w3rpc)
 	if err != nil {
-		log.Fatalf("failed to initialize contracts: %v", err)
+		return nil, fmt.Errorf("failed to initialize web3 client: %w", err)
 	}
 
-	// Add additional RPC endpoints
-	for i := 1; i < len(*w3rpc); i++ {
-		if err := contracts.AddWeb3Endpoint((*w3rpc)[i]); err != nil {
-			log.Warnw("failed to add RPC endpoint", "endpoint", (*w3rpc)[i], "error", err)
-		}
+	// Load contract bindings
+	if err := services.Contracts.LoadContracts(addresses); err != nil {
+		return nil, fmt.Errorf("failed to initialize contracts: %w", err)
 	}
 
-	// Set the account private key
-	if err := contracts.SetAccountPrivateKey(*privKey); err != nil {
-		log.Fatalf("failed to set account private key: %v", err)
+	// Set account private key
+	if err := services.Contracts.SetAccountPrivateKey(cfg.Web3.PrivKey); err != nil {
+		return nil, fmt.Errorf("failed to set account private key: %w", err)
 	}
 
-	log.Infow("contracts initialized", "chainId", contracts.ChainID, "account", contracts.AccountAddress().Hex())
+	log.Infow("contracts initialized",
+		"chainId", services.Contracts.ChainID,
+		"account", services.Contracts.AccountAddress().Hex())
 
-	// Start the process monitor
+	// Start process monitor
 	log.Info("starting process monitor")
-	pm := service.NewProcessMonitor(contracts, stg, monitorInterval)
-	if err := pm.Start(ctx); err != nil {
-		log.Fatalf("failed to start process monitor: %v", err)
+	services.ProcessMon = service.NewProcessMonitor(services.Contracts, services.Storage, monitorInterval)
+	if err := services.ProcessMon.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}
-	defer pm.Stop()
 
-	// Start the API service
-	log.Infow("starting API service", "host", *apiHost, "port", *apiPort)
-	api := service.NewAPI(stg, *apiHost, *apiPort)
-	if err := api.Start(ctx); err != nil {
-		log.Fatalf("failed to start API service: %v", err)
+	// Start API service
+	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
+	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port)
+	if err := services.API.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start API service: %w", err)
 	}
-	defer api.Stop()
 
-	// Start the sequencer service
-	log.Infow("starting sequencer service", "batchTimeWindow", time.Duration(*batchTime)*time.Second)
-	seq := service.NewSequencer(stg, time.Duration(*batchTime)*time.Second)
-	if err := seq.Start(ctx); err != nil {
-		log.Fatalf("failed to start sequencer service: %v", err)
+	// Start sequencer service
+	log.Infow("starting sequencer service", "batchTimeWindow", time.Duration(cfg.Batch.Time)*time.Second)
+	services.Sequencer = service.NewSequencer(services.Storage, time.Duration(cfg.Batch.Time)*time.Second)
+	if err := services.Sequencer.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start sequencer service: %w", err)
 	}
-	defer seq.Stop()
 
 	log.Info("davinci-sequencer is running")
+	return services, nil
+}
 
-	// Wait for interrupt signal
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	sig := <-sigCh
-	log.Infow("received signal, shutting down", "signal", sig.String())
+// shutdownServices gracefully shuts down all services
+func shutdownServices(services *Services) {
+	if services == nil {
+		return
+	}
+
+	// Stop services in reverse order of startup
+	if services.Sequencer != nil {
+		services.Sequencer.Stop()
+	}
+	if services.API != nil {
+		services.API.Stop()
+	}
+	if services.ProcessMon != nil {
+		services.ProcessMon.Stop()
+	}
 }

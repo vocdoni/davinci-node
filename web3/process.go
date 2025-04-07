@@ -78,7 +78,7 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, Context: ctxQuery}, nil, nil)
 				cancel()
 				if err != nil || iter == nil {
-					log.Warnw("failed to filter process created, retrying", "err", err)
+					log.Debugw("failed to filter process created, retrying", "err", err)
 					continue
 				}
 				for iter.Next() {
