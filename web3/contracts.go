@@ -44,35 +44,54 @@ type Contracts struct {
 	lastWatchOrgBlock     uint64
 }
 
-// LoadContracts creates a new Contracts instance with the given web3 endpoint.
-func LoadContracts(addresses *Addresses, web3rpc string) (*Contracts, error) {
+// New creates a new Contracts instance with the given web3 endpoints.
+// It initializes the web3 pool and the client, and sets up the known processes
+func New(web3rpcs []string) (*Contracts, error) {
 	w3pool := rpc.NewWeb3Pool()
-	chainID, err := w3pool.AddEndpoint(web3rpc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to add web3 endpoint: %w", err)
+	var chainID *uint64
+	for _, rpc := range web3rpcs {
+		cID, err := w3pool.AddEndpoint(rpc)
+		if err != nil {
+			log.Warnw("skipping web3 endpoint", "rpc", rpc, "error", err)
+			continue
+		}
+		if chainID == nil {
+			chainID = &cID
+		}
+		if *chainID != cID {
+			return nil, fmt.Errorf("web3 endpoints have different chain IDs: %d and %d", *chainID, cID)
+		}
 	}
-	cli, err := w3pool.Client(chainID)
+	if chainID == nil {
+		return nil, fmt.Errorf("no web3 endpoints provided")
+	}
+	cli, err := w3pool.Client(*chainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
-	organizations, err := bindings.NewOrganizationRegistry(addresses.OrganizationRegistry, cli)
-	if err != nil {
-		return nil, fmt.Errorf("failed to bind organization registry: %w", err)
-	}
-	process, err := bindings.NewProcessRegistry(addresses.ProcessRegistry, cli)
-	if err != nil {
-		return nil, fmt.Errorf("failed to bind process registry: %w", err)
-	}
 	return &Contracts{
-		ContractsAddresses: addresses,
-		organizations:      organizations,
-		processes:          process,
-		ChainID:            chainID,
+		ChainID:            *chainID,
 		web3pool:           w3pool,
 		cli:                cli,
 		knownProcesses:     make(map[string]struct{}),
 		knownOrganizations: make(map[string]struct{}),
 	}, nil
+}
+
+// LoadContracts loads the contracts from the given addresses.
+func (c *Contracts) LoadContracts(addresses *Addresses) error {
+	organizations, err := bindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
+	if err != nil {
+		return fmt.Errorf("failed to bind organization registry: %w", err)
+	}
+	process, err := bindings.NewProcessRegistry(addresses.ProcessRegistry, c.cli)
+	if err != nil {
+		return fmt.Errorf("failed to bind process registry: %w", err)
+	}
+	c.ContractsAddresses = addresses
+	c.processes = process
+	c.organizations = organizations
+	return nil
 }
 
 // DeployContracts deploys new contracts and returns the bindings.

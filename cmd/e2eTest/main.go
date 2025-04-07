@@ -18,19 +18,8 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3"
+	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc/chainlist"
 )
-
-var rpcs = []string{
-	"wss://sepolia.drpc.org",
-	"https://sepolia.gateway.tenderly.co",
-	"https://rpc.ankr.com/eth_sepolia",
-	"https://eth-sepolia.public.blastapi.io",
-	"https://1rpc.io/sepolia",
-	"https://eth-sepolia-public.unifra.io",
-	"https://rpc.sepolia.ethpandaops.io",
-	"https://rpc-sepolia.rockx.com",
-	"wss://sepolia.gateway.tenderly.co",
-}
 
 const (
 	sepoliaProcessRegistry = "0x3d0b39c0239329955b9F0E8791dF9Aa84133c861"
@@ -51,11 +40,18 @@ func main() {
 	contracts := &web3.Contracts{}
 
 	if *sepolia {
-		contracts, err = web3.LoadContracts(&web3.Addresses{
+		rpcs, err := chainlist.EndpointList(0, "sep", 10)
+		if err != nil {
+			log.Fatal(err)
+		}
+		contracts, err := web3.New(rpcs)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err = contracts.LoadContracts(&web3.Addresses{
 			OrganizationRegistry: common.HexToAddress(sepoliaOrgRegistry),
 			ProcessRegistry:      common.HexToAddress(sepoliaProcessRegistry),
-		}, rpcs[0])
-		if err != nil {
+		}); err != nil {
 			log.Fatal(err)
 		}
 
