@@ -1,0 +1,17 @@
+services:
+  vocdoninode:
+    build:
+      context: ./
+    env_file: .env
+    environment:
+      - DAVINCI_DATADIR=/app/run
+    volumes:
+      - run:/app/run
+    ports:
+      - "9090:9090"                     # REST API gateway
+    sysctls:
+      net.core.somaxconn: 8128
+    restart: ${RESTART:-no}
+
+volumes:
+  run: {}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -12,35 +13,39 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/vocdoni-z-sandbox/config"
+	"github.com/vocdoni/vocdoni-z-sandbox/internal"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc/chainlist"
+	"go.vocdoni.io/dvote/db"
+	"go.vocdoni.io/dvote/db/metadb"
 )
 
 const (
 	defaultNetwork   = "sep"
 	defaultAPIHost   = "0.0.0.0"
-	defaultAPIPort   = 8080
+	defaultAPIPort   = 9090
 	defaultBatchTime = 60
 	defaultLogLevel  = "info"
 	defaultLogOutput = "stdout"
+	defaultDatadir   = ".davinci" // Will be prefixed with user's home directory
 	artifactsTimeout = 5 * time.Minute
 	monitorInterval  = 2 * time.Second
 )
 
 // Version is the build version, set at build time with -ldflags
-var Version = "dev"
+var Version = internal.Version
 
 // Config holds the application configuration
 type Config struct {
-	Web3  Web3Config
-	API   APIConfig
-	Batch BatchConfig
-	Log   LogConfig
+	Web3    Web3Config
+	API     APIConfig
+	Batch   BatchConfig
+	Log     LogConfig
+	Datadir string
 }
 
 // Web3Config holds Ethereum-related configuration
@@ -125,6 +130,13 @@ func loadConfig() (*Config, error) {
 	v := viper.New()
 
 	// Set up default values
+	// Get user's home directory for default datadir
+	userHomeDir, err := os.UserHomeDir()
+	if err != nil {
+		userHomeDir = "."
+	}
+	defaultDatadirPath := filepath.Join(userHomeDir, defaultDatadir)
+
 	v.SetDefault("web3.network", defaultNetwork)
 	v.SetDefault("web3.rpc", []string{})
 	v.SetDefault("api.host", defaultAPIHost)
@@ -132,6 +144,7 @@ func loadConfig() (*Config, error) {
 	v.SetDefault("batch.time", defaultBatchTime)
 	v.SetDefault("log.level", defaultLogLevel)
 	v.SetDefault("log.output", defaultLogOutput)
+	v.SetDefault("datadir", defaultDatadirPath)
 
 	// Configure flags
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
@@ -145,6 +158,7 @@ func loadConfig() (*Config, error) {
 	flag.String("web3.results", "", "custom results registry contract address (overrides network default)")
 	flag.StringP("log.level", "l", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
 	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
+	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
 
 	// Configure usage information
 	flag.Usage = func() {
@@ -261,8 +275,12 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	}
 
 	// Initialize storage
-	log.Info("initializing storage")
-	services.Storage = storage.New(memdb.New())
+	log.Infow("initializing storage", "datadir", cfg.Datadir, "type", db.TypePebble)
+	kv, err := metadb.New(db.TypePebble, cfg.Datadir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize storage: %w", err)
+	}
+	services.Storage = storage.New(kv)
 
 	// Initialize web3 contracts
 	log.Info("initializing web3 contracts")
@@ -288,7 +306,6 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	}
 
 	// Initialize web3 contracts
-	var err error
 	services.Contracts, err = web3.New(w3rpc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize web3 client: %w", err)
