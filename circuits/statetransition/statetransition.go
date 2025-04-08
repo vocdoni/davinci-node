@@ -180,11 +180,16 @@ func (circuit Circuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hashe
 	for i := range circuit.VotesProofs.Ballot {
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
 	}
+	api.Println("ballot proofs verified, root is", util.PrettyHex(root))
 	for i := range circuit.VotesProofs.Commitment {
 		root = circuit.VotesProofs.Commitment[i].Verify(api, hFn, root)
 	}
+	api.Println("commitment proofs verified, root is", util.PrettyHex(root))
 	root = circuit.ResultsProofs.ResultsAdd.Verify(api, hFn, root)
+	api.Println("add results proofs verified, root is", util.PrettyHex(root))
 	root = circuit.ResultsProofs.ResultsSub.Verify(api, hFn, root)
+	api.Println("sub results proofs verified, root is", util.PrettyHex(root))
+
 	api.Println("and final root is", util.PrettyHex(root), "should be equal to RootHashAfter", util.PrettyHex(circuit.RootHashAfter))
 	api.AssertIsEqual(root, circuit.RootHashAfter)
 }
@@ -209,14 +214,10 @@ func (circuit Circuit) VerifyLeafHashes(api frontend.API, hFn utils.Hasher) {
 		circuit.VotesProofs.Ballot[i].VerifyOverwrittenBallot(api, hFn, v.OverwrittenBallot.SerializeVars()...)
 	}
 	// Results
-	circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn,
-		circuit.Results.OldResultsAdd.SerializeVars()...)
-	circuit.ResultsProofs.ResultsSub.VerifyOldLeafHash(api, hFn,
-		circuit.Results.OldResultsSub.SerializeVars()...)
-	circuit.ResultsProofs.ResultsAdd.VerifyNewLeafHash(api, hFn,
-		circuit.Results.NewResultsAdd.SerializeVars()...)
-	circuit.ResultsProofs.ResultsSub.VerifyNewLeafHash(api, hFn,
-		circuit.Results.NewResultsSub.SerializeVars()...)
+	circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsAdd.SerializeVars()...)
+	circuit.ResultsProofs.ResultsSub.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsSub.SerializeVars()...)
+	circuit.ResultsProofs.ResultsAdd.VerifyNewLeafHash(api, hFn, circuit.Results.NewResultsAdd.SerializeVars()...)
+	circuit.ResultsProofs.ResultsSub.VerifyNewLeafHash(api, hFn, circuit.Results.NewResultsSub.SerializeVars()...)
 }
 
 // VerifyBallots counts the ballots using homomorphic encrpytion
@@ -225,40 +226,16 @@ func (circuit Circuit) VerifyBallots(api frontend.API) {
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0
 
 	for i, b := range circuit.VotesProofs.Ballot {
-		ballotSum.Add(api, ballotSum,
-			circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].Ballot, zero))
-
-		overwrittenSum.Add(api, overwrittenSum,
-			circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
-
+		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].Ballot, zero))
+		overwrittenSum.Add(api, overwrittenSum, circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
 		ballotCount = api.Add(ballotCount, api.Select(b.IsInsertOrUpdate(api), 1, 0))
 		overwrittenCount = api.Add(overwrittenCount, api.Select(b.IsUpdate(api), 1, 0))
 	}
 
 	circuit.Results.NewResultsAdd.AssertIsEqual(api,
-		circuits.NewBallot().Add(api,
-			&circuit.Results.OldResultsAdd,
-			ballotSum))
+		circuits.NewBallot().Add(api, &circuit.Results.OldResultsAdd, ballotSum))
 	circuit.Results.NewResultsSub.AssertIsEqual(api,
-		circuits.NewBallot().Add(api,
-			&circuit.Results.OldResultsSub,
-			overwrittenSum))
+		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, overwrittenSum))
 	api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
 	api.AssertIsEqual(circuit.NumOverwrites, overwrittenCount)
-}
-
-func (circuit Circuit) ListVotes() []circuits.Vote[frontend.Variable] {
-	list := []circuits.Vote[frontend.Variable]{}
-	for _, v := range circuit.Votes {
-		list = append(list, v.Vote)
-	}
-	return list
-}
-
-func (circuit Circuit) ListVotesAsEmulated(api frontend.API) []circuits.EmulatedVote[sw_bn254.ScalarField] {
-	list := []circuits.EmulatedVote[sw_bn254.ScalarField]{}
-	for _, v := range circuit.Votes {
-		list = append(list, v.ToEmulated(api))
-	}
-	return list
 }
