@@ -25,9 +25,10 @@ type MerkleProof struct {
 
 // MerkleProofFromArboProof converts an ArboProof into a MerkleProof
 func MerkleProofFromArboProof(p *state.ArboProof) MerkleProof {
-	bkey := state.HashFunc.SafeBigInt(p.Key)
-	bvalue := arbo.BigIntToBytes(state.HashFunc.Len(), p.Value)
-	leafHash, err := state.HashFunc.Hash(bkey, bvalue, []byte{1})
+	// bvalue := arbo.BigIntToBytes(state.HashFunc.Len(), p.Value)
+	bKey := state.HashFunc.SafeBigInt(p.Key)
+	bValue := state.HashFunc.SafeBigInt(p.Value)
+	leafHash, err := state.HashFunc.Hash(bKey, bValue, []byte{1})
 	if err != nil {
 		panic(err) // TODO: proper error handling
 	}
@@ -67,7 +68,11 @@ func (mp *MerkleProof) Verify(api frontend.API, hFn utils.Hasher, root frontend.
 
 // VerifyLeafHash asserts that smt.Hash1(mp.Key, values...) matches mp.LeafHash
 func (mp *MerkleProof) VerifyLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) {
-	api.AssertIsEqual(mp.LeafHash, smt.Hash1(api, hFn, mp.Key, values...))
+	encodedValue, err := hFn(api, values...)
+	if err != nil {
+		panic(err) // TODO: proper error handling
+	}
+	api.AssertIsEqual(mp.LeafHash, smt.Hash1(api, hFn, mp.Key, encodedValue))
 }
 
 func (mp *MerkleProof) String() string {
@@ -92,14 +97,18 @@ type MerkleTransition struct {
 }
 
 func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransition, error) {
+	// bOldKey := arbo.ExplicitZero(at.OldKey.Bytes())
+	// bOldValue := arbo.SwapEndianness(at.OldValue.Bytes())
 	bOldKey := state.HashFunc.SafeBigInt(at.OldKey)
-	bOldValue := arbo.BigIntToBytes(state.HashFunc.Len(), at.OldValue)
+	bOldValue := state.HashFunc.SafeBigInt(at.OldValue)
 	oldLeafHash, err := state.HashFunc.Hash(bOldKey, bOldValue, []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
 	}
+	// bNewKey := arbo.ExplicitZero(at.NewKey.Bytes())
+	// bNewValue := arbo.SwapEndianness(at.NewValue.Bytes())
 	bNewKey := state.HashFunc.SafeBigInt(at.NewKey)
-	bNewValue := arbo.BigIntToBytes(state.HashFunc.Len(), at.NewValue)
+	bNewValue := state.HashFunc.SafeBigInt(at.NewValue)
 	newLeafHash, err := state.HashFunc.Hash(bNewKey, bNewValue, []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
@@ -127,7 +136,6 @@ func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransit
 // and returns mp.NewRoot
 func (mp *MerkleTransition) Verify(api frontend.API, hFn utils.Hasher, oldRoot frontend.Variable) frontend.Variable {
 	api.Println("verify transition", mp.String()) // TODO: remove this debug log
-
 	api.AssertIsEqual(oldRoot, mp.OldRoot)
 
 	root := smt.ProcessorWithLeafHash(api, hFn,
@@ -165,9 +173,12 @@ func (mp *MerkleTransition) VerifyOverwrittenBallot(api frontend.API, hFn utils.
 }
 
 func verifyLeafHash(api frontend.API, hFn utils.Hasher, key, leafHash, skip frontend.Variable, values ...frontend.Variable) {
-	api.AssertIsEqual(leafHash,
-		api.Select(skip, leafHash, // used to skip the assert, for example when MerkleTransition is NOOP or not an UPDATE
-			smt.Hash1(api, hFn, key, values...)))
+	encodedValue, err := hFn(api, values...)
+	if err != nil {
+		panic(err) // TODO: proper error handling
+	}
+	// used to skip the assert, for example when MerkleTransition is NOOP or not an UPDATE
+	api.AssertIsEqual(leafHash, api.Select(skip, leafHash, smt.Hash1(api, hFn, key, encodedValue)))
 }
 
 func (mp *MerkleTransition) String() string {

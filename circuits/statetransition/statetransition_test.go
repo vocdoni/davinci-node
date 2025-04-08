@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"testing"
@@ -25,9 +26,11 @@ import (
 	"go.vocdoni.io/dvote/db/metadb"
 )
 
-const (
-	falseStr = "false"
-)
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
+const falseStr = "false"
 
 func testCircuitCompile(t *testing.T, c frontend.Circuit) {
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {

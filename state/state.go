@@ -18,7 +18,7 @@ import (
 
 var (
 	// HashFunc is the hash function used in the state tree.
-	HashFunc = arbo.HashFunctionMimc7
+	HashFunc = arbo.HashFunctionMultiPoseidon
 	// Curve is the curve used for the encryption
 	Curve = curves.New(bjj.CurveType)
 )

@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
-	github.com/consensys/gnark v0.11.1-0.20241210204654-a1e66c1d6b4d
+	github.com/consensys/gnark v0.12.1-0.20250320152310-b51a3d4535cb
 	github.com/consensys/gnark-crypto v0.16.1-0.20250217214835-5ed804970f85
 	github.com/ethereum/go-ethereum v1.14.12
 	github.com/frankban/quicktest v1.14.6

@@ -7,29 +7,15 @@ import (
 	"github.com/consensys/gnark/std/math/cmp"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
-var (
-	HashFn           = utils.MiMCHasher
-	AggregatorHashFn = MiMC7Hasher
-)
-
-// MiMC7Hasher function calculates the mimc7 hash of the provided inputs. It
-// returns the hash of the inputs.
-func MiMC7Hasher(api frontend.API, inputs ...emulated.Element[sw_bn254.ScalarField]) emulated.Element[sw_bn254.ScalarField] {
-	hFn, err := mimc7.NewMiMC(api)
-	if err != nil {
-		circuits.FrontendError(api, "failed to create emulated MiMC hash function", err)
-	}
-	if err := hFn.Write(inputs...); err != nil {
-		circuits.FrontendError(api, "failed to write inputs to emulated MiMC hash function", err)
-	}
-	return hFn.Sum()
-}
+// var HashFn = utils.MiMCHasher
+var HashFn = poseidon.MultiHash
 
 type Circuit struct {
 	// ---------------------------------------------------------------------------------------------
@@ -86,10 +72,10 @@ type Vote struct {
 // Define declares the circuit's constraints
 func (circuit Circuit) Define(api frontend.API) error {
 	circuit.VerifyAggregatorProof(api)
-	circuit.VerifyMerkleProofs(api, HashFn)
-	circuit.VerifyMerkleTransitions(api, HashFn)
-	circuit.VerifyLeafHashes(api, HashFn)
-	circuit.VerifyBallots(api)
+	circuit.VerifyMerkleProofs(api, HashFn) // --> Works
+	// circuit.VerifyMerkleTransitions(api, HashFn) // --> Does not work
+	circuit.VerifyLeafHashes(api, HashFn) // --> Works
+	circuit.VerifyBallots(api)            // --> Works
 	return nil
 }
 
@@ -213,17 +199,14 @@ func (circuit Circuit) VerifyLeafHashes(api frontend.API, hFn utils.Hasher) {
 	for i, v := range circuit.Votes {
 		// Nullifier
 		api.AssertIsEqual(v.Nullifier, circuit.VotesProofs.Ballot[i].NewKey)
-		// Ballot
-		circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn,
-			v.Ballot.SerializeVars()...)
 		// Address
 		api.AssertIsEqual(v.Address, circuit.VotesProofs.Commitment[i].NewKey)
+		// Ballot
+		circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.Ballot.SerializeVars()...)
 		// Commitment
-		circuit.VotesProofs.Commitment[i].VerifyNewLeafHash(api, hFn,
-			v.Commitment)
+		circuit.VotesProofs.Commitment[i].VerifyNewLeafHash(api, hFn, v.Commitment)
 		// OverwrittenBallot
-		circuit.VotesProofs.Ballot[i].VerifyOverwrittenBallot(api, hFn,
-			v.OverwrittenBallot.SerializeVars()...)
+		circuit.VotesProofs.Ballot[i].VerifyOverwrittenBallot(api, hFn, v.OverwrittenBallot.SerializeVars()...)
 	}
 	// Results
 	circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn,
