@@ -38,13 +38,14 @@ func main() {
 
 	var err error
 	contracts := &web3.Contracts{}
+	*privKey = util.TrimHex(*privKey)
 
 	if *sepolia {
 		rpcs, err := chainlist.EndpointList("sep", 10)
 		if err != nil {
 			log.Fatal(err)
 		}
-		contracts, err := web3.New(rpcs)
+		contracts, err = web3.New(rpcs)
 		if err != nil {
 			log.Fatal(err)
 		}

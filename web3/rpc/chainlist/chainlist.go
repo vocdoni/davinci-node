@@ -9,11 +9,15 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 )
 
 const (
 	// jsonRPCVersion is the standard JSON-RPC version used in requests and responses
 	jsonRPCVersion = "2.0"
+
+	requiredEthLogsBlocks = 50001 // Number of blocks to check for eth_getLogs
 )
 
 var (
@@ -154,7 +158,7 @@ func initialize() error {
 type healthCheckFunc func(ctx context.Context, endpoint string, timeout time.Duration, chainID uint64) bool
 
 // isHealthyEndpoint checks if an RPC endpoint responds correctly to both eth_blockNumber and eth_getLogs requests
-var isHealthyEndpoint healthCheckFunc = func(ctx context.Context, endpoint string, timeout time.Duration, chainID uint64) bool {
+var isHealthyEndpoint healthCheckFunc = func(bctx context.Context, endpoint string, timeout time.Duration, chainID uint64) bool {
 	// Set up client with timeout
 	client := &http.Client{
 		Timeout: timeout,
@@ -173,6 +177,11 @@ var isHealthyEndpoint healthCheckFunc = func(ctx context.Context, endpoint strin
 		return false
 	}
 
+	// Create a context with timeout for the request
+	ctx, cancel := context.WithTimeout(bctx, time.Second*5)
+	defer cancel()
+
+	// Create the HTTP request
 	blockNumHttpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(blockNumReqBody))
 	if err != nil {
 		return false
@@ -217,7 +226,7 @@ var isHealthyEndpoint healthCheckFunc = func(ctx context.Context, endpoint strin
 	}
 
 	// Step 2: Check eth_getLogs support
-	// Calculate fromBlock as blockNumber - 5001 blocks
+	// Calculate fromBlock as blockNumber - requiredEthLogsBlocks
 	var fromBlock string
 	// Parse blockNumber hex string to integer
 	var blockNumber uint64
@@ -232,10 +241,9 @@ var isHealthyEndpoint healthCheckFunc = func(ctx context.Context, endpoint strin
 
 	// Calculate fromBlock
 	if blockNumber > 5001 {
-		// If blockNumber > 5001, subtract 5001 blocks
-		fromBlock = fmt.Sprintf("0x%x", blockNumber-5001)
+		fromBlock = fmt.Sprintf("0x%x", blockNumber-requiredEthLogsBlocks)
 	} else {
-		// If blockNumber <= 5001, use 0x0 as fromBlock
+		// If blockNumber <= requiredEthLogsBlocks, use 0x0 as fromBlock
 		fromBlock = "0x0"
 	}
 
@@ -243,7 +251,7 @@ var isHealthyEndpoint healthCheckFunc = func(ctx context.Context, endpoint strin
 	getLogsParams := map[string]interface{}{
 		"fromBlock": fromBlock,
 		"toBlock":   "latest",
-		"address":   "0x1d0b39c0239329955b9F0E8791dF9Aa84133c861",
+		"address":   "0x1d0b39c0239329955b9F0E8791dF9Aa84133c861", // Dummy address
 	}
 
 	getLogsReq := jsonRPCRequest{
@@ -418,6 +426,7 @@ func EndpointList(chainName string, numEndpoints int) ([]string, error) {
 				return
 			default:
 				healthy := isHealthyEndpoint(ctx, endpoint, defaultTimeout, chain.ChainID)
+				log.Debugw("RPC health check", "url", endpoint, "healthy", healthy)
 				resultChan <- result{url: endpoint, healthy: healthy}
 			}
 		}(url)
