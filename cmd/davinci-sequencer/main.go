@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -198,6 +199,11 @@ func loadConfig() (*Config, error) {
 	// Unmarshal configuration into struct
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+
+	// Set the environment variable for the circuit artifacts dir (it is handled differently because we are using it for the tests too).
+	if err := os.Setenv("DAVINCI_ARTIFACTS_DIR", path.Join(cfg.Datadir, "artifacts")); err != nil {
+		log.Warnw("failed to set DAVINCI_ARTIFACTS_DIR environment variable", "error", err)
 	}
 
 	return cfg, nil
