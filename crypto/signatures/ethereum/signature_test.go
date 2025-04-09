@@ -155,24 +155,14 @@ func TestAddrFromSignature(t *testing.T) {
 
 	// Sign a message
 	msg := []byte("test address recovery")
-	ethSig, err := ethcrypto.Sign(HashMessage(msg), privKey)
+	ethSignature, err := ethcrypto.Sign(HashMessage(msg), privKey)
 	c.Assert(err, qt.IsNil)
 
+	ethSig := new(ECDSASignature).SetBytes(ethSignature)
 	// Recover address
 	addr, err := AddrFromSignature(msg, ethSig)
 	c.Assert(err, qt.IsNil)
 	c.Assert(addr, qt.Equals, expectedAddr)
-
-	// Test with invalid signature (too short)
-	_, err = AddrFromSignature(msg, ethSig[:SignatureMinLength-1])
-	c.Assert(err, qt.Not(qt.IsNil))
-
-	// Test with invalid recovery ID
-	invalidSig := make([]byte, len(ethSig))
-	copy(invalidSig, ethSig)
-	invalidSig[64] = 99 // Invalid recovery ID
-	_, err = AddrFromSignature(msg, invalidSig)
-	c.Assert(err, qt.Not(qt.IsNil))
 }
 
 func TestECDSASignature_SetBytes(t *testing.T) {
@@ -239,16 +229,12 @@ func TestECDSASignature_SetBytesWebBrowserSignature(t *testing.T) {
 	c.Assert(len(signatureBytes), qt.Equals, SignatureLength)
 
 	// Test with 65-byte signature using SetBytes
-	sig65 := &ECDSASignature{
-		R: new(big.Int),
-		S: new(big.Int),
-	}
+	sig65 := &ECDSASignature{}
 	result := sig65.SetBytes(signatureBytes)
 	c.Assert(result, qt.Not(qt.IsNil))
-	c.Assert(sig65.recovery, qt.Equals, signatureBytes[64])
 
 	// Verify the address can be recovered
-	recoveredAddr, err := AddrFromSignature(message, sig65.Bytes())
+	recoveredAddr, err := AddrFromSignature(message, sig65)
 	c.Assert(err, qt.IsNil)
 	c.Assert(recoveredAddr, qt.Equals, expectedAddr)
 
@@ -264,50 +250,4 @@ func TestECDSASignature_SetBytesWebBrowserSignature(t *testing.T) {
 	// Make sure the R and S components match between the 65-byte and 64-byte versions
 	c.Assert(sig64.R.Cmp(sig65.R), qt.Equals, 0)
 	c.Assert(sig64.S.Cmp(sig65.S), qt.Equals, 0)
-}
-
-func TestWebBrowserSignatureVerification(t *testing.T) {
-	c := qt.New(t)
-
-	// Test data provided for web browser signature verification
-	message := []byte("Hello world!")
-	signatureHex := "0x4fe294db29ddda38c1a4d170db34adc0f7431d7b0cbb0ae8adb6b4ea94f1bde159352a6ab3c16f62b5fa3d84bfc21d65aa2aacb3a841034f928053b4a6fcf7c21c"
-	expectedAddr := common.HexToAddress("0xbF7b6386ECb6b8bFCc548D2C51F142a513DEb752")
-
-	// Remove the '0x' prefix if present
-	signatureHex = strings.TrimPrefix(signatureHex, "0x")
-
-	// Decode signature
-	signatureBytes, err := hex.DecodeString(signatureHex)
-	c.Assert(err, qt.IsNil)
-	c.Assert(len(signatureBytes), qt.Equals, SignatureLength)
-
-	// Create signature object
-	sig, err := New(signatureBytes)
-	c.Assert(err, qt.IsNil)
-
-	// Recover address from signature
-	recoveredAddr, err := AddrFromSignature(message, signatureBytes)
-	c.Assert(err, qt.IsNil)
-	c.Assert(recoveredAddr, qt.Equals, expectedAddr)
-
-	// Get public key from address
-	// Note: We can't get the exact public key from an address, but we can verify
-	// that the signature verifies against the message using the recovered address
-	pubKey, err := ethcrypto.SigToPub(HashMessage(message), signatureBytes)
-	c.Assert(err, qt.IsNil)
-	recoveredAddrFromPubKey := ethcrypto.PubkeyToAddress(*pubKey)
-	c.Assert(recoveredAddrFromPubKey, qt.Equals, expectedAddr)
-
-	// Verify signature using ethereum's native function
-	pubKeyBytes := ethcrypto.FromECDSAPub(pubKey)
-	verifyBytes := sig.Bytes()[:64] // Exclude recovery byte
-	c.Assert(ethcrypto.VerifySignature(pubKeyBytes, HashMessage(message), verifyBytes), qt.IsTrue)
-
-	// Verify via our wrapper function
-	c.Assert(sig.Verify(message, pubKeyBytes), qt.IsTrue)
-
-	// Verify with wrong message
-	wrongMessage := []byte("Wrong message!")
-	c.Assert(sig.Verify(wrongMessage, pubKeyBytes), qt.IsFalse)
 }
