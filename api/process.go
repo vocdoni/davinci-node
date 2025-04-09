@@ -28,7 +28,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract the address from the signature
-	address, err := ethereum.AddrFromSignature([]byte(fmt.Sprintf("%d%d", p.ChainID, p.Nonce)), p.Signature)
+	address, err := ethereum.AddrFromSignature(fmt.Appendf(nil, "%d%d", p.ChainID, p.Nonce), new(ethereum.ECDSASignature).SetBytes(p.Signature))
 	if err != nil {
 		ErrInvalidSignature.Withf("could not extract address from signature: %v", err).Write(w)
 		return

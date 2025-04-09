@@ -78,7 +78,7 @@ func TestSign(t *testing.T) {
 	c.Assert(ethcrypto.VerifySignature(pubKey, HashMessage(message), sigBytes[:64]), qt.IsTrue)
 
 	// Try to recover the address from the signature
-	recoveredAddr, err := AddrFromSignature(message, sigBytes)
+	recoveredAddr, err := AddrFromSignature(message, signature)
 	c.Assert(err, qt.IsNil)
 	expectedAddr := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	c.Assert(recoveredAddr, qt.Equals, expectedAddr)

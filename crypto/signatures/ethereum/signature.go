@@ -38,15 +38,11 @@ func New(signature []byte) (*ECDSASignature, error) {
 	if len(signature) < SignatureMinLength {
 		return nil, fmt.Errorf("signature length is less than %d", SignatureMinLength)
 	}
-	var sig gecdsa.Signature
-	if _, err := sig.SetBytes(signature[:64]); err != nil {
-		return nil, fmt.Errorf("could not set bytes: %w", err)
+	sig := new(ECDSASignature).SetBytes(signature)
+	if sig == nil {
+		return nil, fmt.Errorf("wrong signature bytes")
 	}
-	return &ECDSASignature{
-		R:        new(big.Int).SetBytes(sig.R[:]),
-		S:        new(big.Int).SetBytes(sig.S[:]),
-		recovery: signature[64],
-	}, nil
+	return sig, nil
 }
 
 // Valid method checks if the ECDSASignature is valid. A signature is valid if
@@ -84,6 +80,9 @@ func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
 	sig.S = new(big.Int).SetBytes(sigStruct.S[:])
 	if len(signature) == SignatureLength {
 		sig.recovery = signature[64]
+		if sig.recovery > 1 {
+			sig.recovery -= 27
+		}
 	} else {
 		sig.recovery = 0
 	}
@@ -121,20 +120,11 @@ func (sig *ECDSASignature) String() string {
 }
 
 // AddrFromSignature recovers the Ethereum address that created the signature of a message.
-func AddrFromSignature(message, signature []byte) (common.Address, error) {
-	if len(signature) < SignatureMinLength {
-		return common.Address{}, fmt.Errorf("signature too short (%d)", len(signature))
+func AddrFromSignature(message []byte, signature *ECDSASignature) (common.Address, error) {
+	if signature == nil || !signature.Valid() {
+		return common.Address{}, fmt.Errorf("signature is nil")
 	}
-	// Use recovery ID byte only if signature length is 65 bytes
-	if len(signature) == SignatureLength {
-		if signature[64] > 1 {
-			signature[64] -= 27
-		}
-		if signature[64] > 1 {
-			return common.Address{}, fmt.Errorf("bad recover ID byte")
-		}
-	}
-	pubKey, err := ethcrypto.SigToPub(HashMessage(message), signature)
+	pubKey, err := ethcrypto.SigToPub(HashMessage(message), signature.Bytes())
 	if err != nil {
 		return common.Address{}, fmt.Errorf("sigToPub %w", err)
 	}
