@@ -297,7 +297,7 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 		if !ok {
 			return nil, fmt.Errorf("network %s not found in chain list", cfg.Web3.Network)
 		}
-		endpoints, err := chainlist.EndpointList(0, cfg.Web3.Network, 10)
+		endpoints, err := chainlist.EndpointList(cfg.Web3.Network, 10)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get endpoints for network %s: %w", cfg.Web3.Network, err)
 		}

@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const (
+	// jsonRPCVersion is the standard JSON-RPC version used in requests and responses
+	jsonRPCVersion = "2.0"
+)
+
 var (
 	// randShuffle allows tests to override the default shuffle implementation
 	randShuffle = rand.Shuffle
@@ -146,68 +151,219 @@ func initialize() error {
 }
 
 // healthCheckFunc is the function type for checking endpoint health
-type healthCheckFunc func(ctx context.Context, endpoint string, timeout time.Duration) bool
+type healthCheckFunc func(ctx context.Context, endpoint string, timeout time.Duration, chainID uint64) bool
 
-// isHealthyEndpoint checks if an RPC endpoint responds correctly to a basic eth_blockNumber request
-var isHealthyEndpoint healthCheckFunc = func(ctx context.Context, endpoint string, timeout time.Duration) bool {
-	// Create JSON-RPC request payload
-	req := jsonRPCRequest{
-		JSONRPC: "2.0",
-		Method:  "eth_blockNumber",
-		Params:  []any{},
-		ID:      1,
-	}
-
-	// Marshal the request to JSON
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return false
-	}
-
-	// Create HTTP request with context
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return false
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
+// isHealthyEndpoint checks if an RPC endpoint responds correctly to both eth_blockNumber and eth_getLogs requests
+var isHealthyEndpoint healthCheckFunc = func(ctx context.Context, endpoint string, timeout time.Duration, chainID uint64) bool {
 	// Set up client with timeout
 	client := &http.Client{
 		Timeout: timeout,
 	}
 
-	// Make the request
-	resp, err := client.Do(httpReq)
+	// Step 1: Check eth_blockNumber
+	blockNumReq := jsonRPCRequest{
+		JSONRPC: jsonRPCVersion,
+		Method:  "eth_blockNumber",
+		Params:  []any{},
+		ID:      1,
+	}
+
+	blockNumReqBody, err := json.Marshal(blockNumReq)
+	if err != nil {
+		return false
+	}
+
+	blockNumHttpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(blockNumReqBody))
+	if err != nil {
+		return false
+	}
+	blockNumHttpReq.Header.Set("Content-Type", "application/json")
+
+	blockNumResp, err := client.Do(blockNumHttpReq)
 	if err != nil {
 		return false
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
+		if err := blockNumResp.Body.Close(); err != nil {
 			fmt.Printf("failed to close response body: %v", err)
 		}
 	}()
 
 	// Check status code
-	if resp.StatusCode != http.StatusOK {
+	if blockNumResp.StatusCode != http.StatusOK {
 		return false
 	}
 
 	// Parse the response
-	var rpcResp jsonRPCResponse
-	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+	var blockNumRpcResp jsonRPCResponse
+	if err := json.NewDecoder(blockNumResp.Body).Decode(&blockNumRpcResp); err != nil {
 		return false
 	}
 
 	// Check for valid response (JSONRPC 2.0, no error, has result)
-	return rpcResp.JSONRPC == "2.0" && rpcResp.Error == nil && rpcResp.Result != nil
+	if blockNumRpcResp.JSONRPC != jsonRPCVersion || blockNumRpcResp.Error != nil || blockNumRpcResp.Result == nil {
+		return false
+	}
+
+	// Check if the block number is greater than 0x0
+	blockNumberStr, ok := blockNumRpcResp.Result.(string)
+	if !ok {
+		return false
+	}
+
+	// Block number should start with "0x" and be greater than "0x0"
+	if len(blockNumberStr) <= 2 || blockNumberStr == "0x0" {
+		return false
+	}
+
+	// Step 2: Check eth_getLogs support
+	// Calculate fromBlock as blockNumber - 5001 blocks
+	var fromBlock string
+	// Parse blockNumber hex string to integer
+	var blockNumber uint64
+	if len(blockNumberStr) > 2 && blockNumberStr[:2] == "0x" {
+		_, err = fmt.Sscanf(blockNumberStr[2:], "%x", &blockNumber)
+		if err != nil {
+			return false
+		}
+	} else {
+		return false // Invalid block number format
+	}
+
+	// Calculate fromBlock
+	if blockNumber > 5001 {
+		// If blockNumber > 5001, subtract 5001 blocks
+		fromBlock = fmt.Sprintf("0x%x", blockNumber-5001)
+	} else {
+		// If blockNumber <= 5001, use 0x0 as fromBlock
+		fromBlock = "0x0"
+	}
+
+	// Create eth_getLogs request
+	getLogsParams := map[string]interface{}{
+		"fromBlock": fromBlock,
+		"toBlock":   "latest",
+		"address":   "0x1d0b39c0239329955b9F0E8791dF9Aa84133c861",
+	}
+
+	getLogsReq := jsonRPCRequest{
+		JSONRPC: jsonRPCVersion,
+		Method:  "eth_getLogs",
+		Params:  []any{getLogsParams},
+		ID:      1,
+	}
+
+	getLogsReqBody, err := json.Marshal(getLogsReq)
+	if err != nil {
+		return false
+	}
+
+	getLogsHttpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(getLogsReqBody))
+	if err != nil {
+		return false
+	}
+	getLogsHttpReq.Header.Set("Content-Type", "application/json")
+
+	getLogsResp, err := client.Do(getLogsHttpReq)
+	if err != nil {
+		return false
+	}
+	defer func() {
+		if err := getLogsResp.Body.Close(); err != nil {
+			fmt.Printf("failed to close response body: %v", err)
+		}
+	}()
+
+	// Check status code
+	if getLogsResp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	// Parse the response
+	var getLogsRpcResp jsonRPCResponse
+	if err := json.NewDecoder(getLogsResp.Body).Decode(&getLogsRpcResp); err != nil {
+		return false
+	}
+
+	// Check for valid response (JSONRPC 2.0, no error)
+	// Note: the result can be an empty array, which is valid
+	if getLogsRpcResp.JSONRPC != jsonRPCVersion || getLogsRpcResp.Error != nil {
+		return false
+	}
+
+	// Step 3: Check eth_chainId
+	chainIdReq := jsonRPCRequest{
+		JSONRPC: jsonRPCVersion,
+		Method:  "eth_chainId",
+		Params:  []any{},
+		ID:      1,
+	}
+
+	chainIdReqBody, err := json.Marshal(chainIdReq)
+	if err != nil {
+		return false
+	}
+
+	chainIdHttpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(chainIdReqBody))
+	if err != nil {
+		return false
+	}
+	chainIdHttpReq.Header.Set("Content-Type", "application/json")
+
+	chainIdResp, err := client.Do(chainIdHttpReq)
+	if err != nil {
+		return false
+	}
+	defer func() {
+		if err := chainIdResp.Body.Close(); err != nil {
+			fmt.Printf("failed to close response body: %v", err)
+		}
+	}()
+
+	// Check status code
+	if chainIdResp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	// Parse the response
+	var chainIdRpcResp jsonRPCResponse
+	if err := json.NewDecoder(chainIdResp.Body).Decode(&chainIdRpcResp); err != nil {
+		return false
+	}
+
+	// Check for valid response (JSONRPC 2.0, no error, has result)
+	if chainIdRpcResp.JSONRPC != jsonRPCVersion || chainIdRpcResp.Error != nil || chainIdRpcResp.Result == nil {
+		return false
+	}
+
+	// Check if chain ID matches expected value
+	chainIdHex, ok := chainIdRpcResp.Result.(string)
+	if !ok {
+		return false
+	}
+
+	// Convert hex string to uint64
+	// Remove "0x" prefix if present
+	if len(chainIdHex) > 2 && chainIdHex[:2] == "0x" {
+		chainIdHex = chainIdHex[2:]
+	}
+
+	// Parse the hex value
+	var endpointChainId uint64
+	_, err = fmt.Sscanf(chainIdHex, "%x", &endpointChainId)
+	if err != nil {
+		return false
+	}
+
+	// Verify chain ID matches expected value
+	return endpointChainId == chainID
 }
 
 // EndpointList returns a randomly ordered slice of HTTP endpoints for a chain,
-// identified either by chainID or shortName. If chainID is non-zero, it looks up
-// by chainID, otherwise it uses the shortName. It returns at most numEndpoints entries.
+// identified either by chain short name. It returns at most numEndpoints entries.
 // If there are not enough endpoints available, it returns all available endpoints.
 // Only healthy endpoints that respond correctly to an eth_blockNumber request are returned.
-func EndpointList(chainID uint64, shortName string, numEndpoints int) ([]string, error) {
+func EndpointList(chainName string, numEndpoints int) ([]string, error) {
 	// Ensure we've fetched the data
 	chainListInfo.Do(func() {
 		initErr = initialize()
@@ -218,24 +374,13 @@ func EndpointList(chainID uint64, shortName string, numEndpoints int) ([]string,
 	}
 
 	chainMutex.RLock()
+	defer chainMutex.RUnlock()
+	// Check if the chain exists
 	var chain *Chain
-	if chainID != 0 {
-		var ok bool
-		chain, ok = chainsByID[chainID]
-		if !ok {
-			chainMutex.RUnlock()
-			return nil, fmt.Errorf("chain ID %d not found", chainID)
-		}
-	} else if shortName != "" {
-		var ok bool
-		chain, ok = chainsByShortName[shortName]
-		if !ok {
-			chainMutex.RUnlock()
-			return nil, fmt.Errorf("chain with short name %q not found", shortName)
-		}
-	} else {
-		chainMutex.RUnlock()
-		return nil, fmt.Errorf("either chainID or shortName must be provided")
+	var ok bool
+	chain, ok = chainsByShortName[chainName]
+	if !ok {
+		return nil, fmt.Errorf("chain with short name %q not found", chainName)
 	}
 
 	// Extract HTTP URLs
@@ -243,7 +388,6 @@ func EndpointList(chainID uint64, shortName string, numEndpoints int) ([]string,
 	for _, rpc := range chain.RPC {
 		urls = append(urls, rpc.URL)
 	}
-	chainMutex.RUnlock()
 
 	// Shuffle the URLs
 	randShuffle(len(urls), func(i, j int) {
@@ -273,7 +417,7 @@ func EndpointList(chainID uint64, shortName string, numEndpoints int) ([]string,
 				// Early cancellation if we already have enough endpoints
 				return
 			default:
-				healthy := isHealthyEndpoint(ctx, endpoint, defaultTimeout)
+				healthy := isHealthyEndpoint(ctx, endpoint, defaultTimeout, chain.ChainID)
 				resultChan <- result{url: endpoint, healthy: healthy}
 			}
 		}(url)

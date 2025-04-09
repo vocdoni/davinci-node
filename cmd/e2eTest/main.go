@@ -40,7 +40,7 @@ func main() {
 	contracts := &web3.Contracts{}
 
 	if *sepolia {
-		rpcs, err := chainlist.EndpointList(0, "sep", 10)
+		rpcs, err := chainlist.EndpointList("sep", 10)
 		if err != nil {
 			log.Fatal(err)
 		}

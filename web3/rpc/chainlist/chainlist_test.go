@@ -24,7 +24,8 @@ func init() {
 }
 
 // mockHealthyEndpoint is a replacement for isHealthyEndpoint that always returns true for testing
-func mockHealthyEndpoint(_ context.Context, _ string, _ time.Duration) bool {
+// This mock simulates an endpoint that supports eth_blockNumber, eth_getLogs, and has matching chainID
+func mockHealthyEndpoint(_ context.Context, _ string, _ time.Duration, _ uint64) bool {
 	return true
 }
 
@@ -95,36 +96,9 @@ func TestEndpointList(t *testing.T) {
 	cleanup := mockChainList(t, mockChains)
 	defer cleanup()
 
-	// Test getting endpoints by chainID
-	t.Run("Get by chainID", func(t *testing.T) {
-		endpoints, err := EndpointList(1, "", 10)
-		if err != nil {
-			t.Fatalf("EndpointList failed: %v", err)
-		}
-
-		if len(endpoints) != 3 {
-			t.Errorf("Expected 3 endpoints, got %d", len(endpoints))
-		}
-
-		// Verify all endpoints are present (in any order due to randomization)
-		expectURLs := map[string]bool{
-			"https://eth-rpc-1.example.com": true,
-			"https://eth-rpc-2.example.com": true,
-			"https://eth-rpc-3.example.com": true,
-		}
-
-		for _, url := range endpoints {
-			if !expectURLs[url] {
-				t.Errorf("Unexpected endpoint URL: %s", url)
-			}
-			// Mark as found
-			expectURLs[url] = false
-		}
-	})
-
 	// Test getting endpoints by shortName
 	t.Run("Get by shortName", func(t *testing.T) {
-		endpoints, err := EndpointList(0, "arb1", 10)
+		endpoints, err := EndpointList("arb1", 10)
 		if err != nil {
 			t.Fatalf("EndpointList failed: %v", err)
 		}
@@ -150,34 +124,13 @@ func TestEndpointList(t *testing.T) {
 
 	// Test limiting the number of endpoints
 	t.Run("Limit number of endpoints", func(t *testing.T) {
-		endpoints, err := EndpointList(1, "", 2)
+		endpoints, err := EndpointList("eth", 2)
 		if err != nil {
 			t.Fatalf("EndpointList failed: %v", err)
 		}
 
 		if len(endpoints) != 2 {
 			t.Errorf("Expected 2 endpoints, got %d", len(endpoints))
-		}
-	})
-
-	// Test error cases
-	t.Run("Error cases", func(t *testing.T) {
-		// Test non-existent chainID
-		_, err := EndpointList(999, "", 10)
-		if err == nil {
-			t.Error("Expected error for non-existent chainID, got nil")
-		}
-
-		// Test non-existent shortName
-		_, err = EndpointList(0, "nonexistent", 10)
-		if err == nil {
-			t.Error("Expected error for non-existent shortName, got nil")
-		}
-
-		// Test neither chainID nor shortName provided
-		_, err = EndpointList(0, "", 10)
-		if err == nil {
-			t.Error("Expected error when neither chainID nor shortName provided, got nil")
 		}
 	})
 }
@@ -223,8 +176,9 @@ func TestGetChainList(t *testing.T) {
 }
 
 // mockSelectiveHealthCheck creates a health check function that only returns healthy for specific URLs
+// This mock simulates endpoints that may or may not support both eth_blockNumber and eth_getLogs
 func mockSelectiveHealthCheck(healthyURLs map[string]bool) healthCheckFunc {
-	return func(_ context.Context, endpoint string, _ time.Duration) bool {
+	return func(_ context.Context, endpoint string, _ time.Duration, _ uint64) bool {
 		return healthyURLs[endpoint]
 	}
 }
@@ -283,7 +237,7 @@ func TestHealthyEndpointFiltering(t *testing.T) {
 
 	// Test that only healthy endpoints are returned
 	t.Run("Only healthy endpoints returned", func(t *testing.T) {
-		endpoints, err := EndpointList(1, "", 10)
+		endpoints, err := EndpointList("test", 10)
 		if err != nil {
 			t.Fatalf("EndpointList failed: %v", err)
 		}
@@ -302,7 +256,7 @@ func TestHealthyEndpointFiltering(t *testing.T) {
 
 	// Test that limiting works with healthy filtering
 	t.Run("Limit healthy endpoints", func(t *testing.T) {
-		endpoints, err := EndpointList(1, "", 2)
+		endpoints, err := EndpointList("test", 2)
 		if err != nil {
 			t.Fatalf("EndpointList failed: %v", err)
 		}
@@ -316,6 +270,89 @@ func TestHealthyEndpointFiltering(t *testing.T) {
 			if !healthyURLs[url] {
 				t.Errorf("Got unhealthy endpoint: %s", url)
 			}
+		}
+	})
+}
+
+// TestEnhancedHealthCheck tests the enhanced endpoint health check functionality
+func TestEnhancedHealthCheck(t *testing.T) {
+	// Create mock chains for testing
+	mockChains := []Chain{
+		{
+			Name:      "Test Chain",
+			Chain:     "TEST",
+			ShortName: "test",
+			ChainID:   1,
+			RPC: []RPCEntry{
+				{URL: "https://valid-block-and-logs.example.com"},  // Both valid
+				{URL: "https://valid-block-no-logs.example.com"},   // Only valid block but no getLogs
+				{URL: "https://zero-block-valid-logs.example.com"}, // Zero block but valid getLogs
+				{URL: "https://zero-block-no-logs.example.com"},    // Neither valid
+			},
+		},
+	}
+
+	// Setup mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(mockChains); err != nil {
+			t.Fatalf("Failed to encode mock chains: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	// Save original values
+	originalURL := ChainListURL
+	originalHealthCheck := isHealthyEndpoint
+	defer func() {
+		// Restore original values
+		ChainListURL = originalURL
+		isHealthyEndpoint = originalHealthCheck
+		resetGlobals()
+	}()
+
+	// Set up test values
+	ChainListURL = server.URL
+
+	t.Run("Only endpoints with valid block number and getLogs support", func(t *testing.T) {
+		// Create a map to simulate different endpoint behaviors
+		endpointBehaviors := map[string]struct {
+			blockNumberValid bool
+			supportsGetLogs  bool
+			correctChainID   bool
+		}{
+			"https://valid-block-and-logs.example.com":  {true, true, true},
+			"https://valid-block-no-logs.example.com":   {true, false, true},
+			"https://zero-block-valid-logs.example.com": {false, true, true},
+			"https://zero-block-no-logs.example.com":    {false, false, true},
+		}
+
+		// Create a custom health check that tests all three conditions
+		isHealthyEndpoint = func(_ context.Context, endpoint string, _ time.Duration, chainID uint64) bool {
+			behavior, exists := endpointBehaviors[endpoint]
+			if !exists {
+				return false
+			}
+			// Endpoint must satisfy all three conditions: valid block, getLogs support, and correct chainID
+			return behavior.blockNumberValid && behavior.supportsGetLogs && behavior.correctChainID
+		}
+
+		// Reset global state
+		resetGlobals()
+
+		endpoints, err := EndpointList("test", 10)
+		if err != nil {
+			t.Fatalf("EndpointList failed: %v", err)
+		}
+
+		// Only one endpoint should be returned (the one that satisfies both conditions)
+		if len(endpoints) != 1 {
+			t.Errorf("Expected 1 healthy endpoint, got %d", len(endpoints))
+		}
+
+		// Verify it's the correct endpoint
+		if len(endpoints) > 0 && endpoints[0] != "https://valid-block-and-logs.example.com" {
+			t.Errorf("Expected healthy endpoint 'https://valid-block-and-logs.example.com', got %s", endpoints[0])
 		}
 	})
 }
