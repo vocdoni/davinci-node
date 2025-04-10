@@ -9,7 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 )
+
+func init() {
+	// Initialize the logger to avoid log output during tests
+	log.Init("debug", "stdout", nil)
+}
 
 func TestNew(t *testing.T) {
 	c := qt.New(t)
@@ -32,7 +38,7 @@ func TestNew(t *testing.T) {
 	c.Assert(sig.recovery, qt.Equals, ethSig[64])
 
 	// Test invalid signature (too short)
-	shortSig := ethSig[:SignatureMinLength-1]
+	shortSig := ethSig[:SignatureLength-2]
 	_, err = New(shortSig)
 	c.Assert(err, qt.Not(qt.IsNil))
 }
@@ -90,7 +96,8 @@ func TestECDSASignature_Bytes(t *testing.T) {
 	// Check values
 	c.Assert(new(big.Int).SetBytes(r).Cmp(sig.R), qt.Equals, 0)
 	c.Assert(new(big.Int).SetBytes(s).Cmp(sig.S), qt.Equals, 0)
-	c.Assert(recovery, qt.Equals, sig.recovery)
+	// The recovery byte in the output is adjusted to Ethereum standard (27-30)
+	c.Assert(recovery, qt.Equals, sig.recovery+27)
 
 	// Create a new signature from these bytes
 	recoveredSig, err := New(bytes)
@@ -208,7 +215,7 @@ func TestECDSASignature_SetBytes(t *testing.T) {
 		R: new(big.Int),
 		S: new(big.Int),
 	}
-	result = invalidSig.SetBytes(ethSig[:SignatureMinLength-1])
+	result = invalidSig.SetBytes(ethSig[:SignatureLength-2])
 	c.Assert(result, qt.IsNil) // Should return nil for invalid input
 }
 
@@ -250,4 +257,39 @@ func TestECDSASignature_SetBytesWebBrowserSignature(t *testing.T) {
 	// Make sure the R and S components match between the 65-byte and 64-byte versions
 	c.Assert(sig64.R.Cmp(sig65.R), qt.Equals, 0)
 	c.Assert(sig64.S.Cmp(sig65.S), qt.Equals, 0)
+}
+
+// TestAddrFromClientSignature tests the recovery of an Ethereum address from a client-generated signature
+func TestAddrFromClientSignature(t *testing.T) {
+	c := qt.New(t)
+
+	// Test data provided by the user
+	payloadToSign := []byte("1115511163")
+	signatureHex := "0xfc57ab89119a0fffecde10d9de81cf67ce7336301ee5d2f6eefea7c9489bca644eecb440da2c6d109f53677b5d75875c1207b53e4296cba8f3e3bb52904d77f91b"
+	expectedAddr := common.HexToAddress("0xA62E32147e9c1EA76DA552Be6E0636F1984143AF")
+
+	// Remove the '0x' prefix if present
+	signatureHex = strings.TrimPrefix(signatureHex, "0x")
+
+	// Decode signature
+	signatureBytes, err := hex.DecodeString(signatureHex)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(signatureBytes), qt.Equals, SignatureLength)
+
+	// Create signature object using SetBytes
+	sig := &ECDSASignature{}
+	result := sig.SetBytes(signatureBytes)
+	c.Assert(result, qt.Not(qt.IsNil))
+
+	// Print signature components for debugging
+	t.Logf("Original signature: %s", hex.EncodeToString(signatureBytes))
+	t.Logf("R: %s", sig.R.Text(16))
+	t.Logf("S: %s", sig.S.Text(16))
+	t.Logf("V: %d", sig.recovery)
+	t.Logf("Reconstructed: %s", hex.EncodeToString(sig.Bytes()))
+
+	// Attempt to recover the address
+	recoveredAddr, err := AddrFromSignature(payloadToSign, sig)
+	c.Assert(err, qt.IsNil)
+	c.Assert(recoveredAddr, qt.Equals, expectedAddr)
 }

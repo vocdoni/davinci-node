@@ -18,7 +18,7 @@ import (
 
 func init() {
 	log.Init(log.LogLevelDebug, "stdout", nil)
-	if err := service.DownloadArtifacts(30 * time.Minute); err != nil {
+	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
 		log.Errorw(err, "failed to download artifacts")
 	}
 }

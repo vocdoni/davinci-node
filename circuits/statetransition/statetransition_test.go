@@ -20,6 +20,7 @@ import (
 	statetransitiontest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/statetransition"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 
 	"github.com/vocdoni/arbo"
@@ -364,7 +365,7 @@ const (
 	mockNullifiersOffset = 100
 	mockAddressesOffset  = 200
 	// maxKeyLen is ceil(maxLevels/8)
-	maxKeyLen = (circuits.CensusTreeMaxLevels + 7) / 8
+	maxKeyLen = (types.CensusTreeMaxLevels + 7) / 8
 )
 
 // newMockVote creates a new vote
@@ -378,7 +379,7 @@ func newMockVote(index, amount int64) *state.Vote {
 		panic(fmt.Errorf("error generating public key: %v", err))
 	}
 
-	fields := [circuits.FieldsPerBallot]*big.Int{}
+	fields := [types.FieldsPerBallot]*big.Int{}
 	for i := range fields {
 		fields[i] = big.NewInt(int64(amount + int64(i)))
 	}
@@ -407,7 +408,7 @@ func debugLog(t *testing.T, witness *statetransition.Circuit) {
 	t.Log("public: RootHashAfter", util.PrettyHex(witness.RootHashAfter))
 	t.Log("public: NumVotes", util.PrettyHex(witness.NumNewVotes))
 	t.Log("public: NumOverwrites", util.PrettyHex(witness.NumOverwrites))
-	for name, mts := range map[string][circuits.VotesPerBatch]statetransition.MerkleTransition{
+	for name, mts := range map[string][types.VotesPerBatch]statetransition.MerkleTransition{
 		"Ballot":     witness.VotesProofs.Ballot,
 		"Commitment": witness.VotesProofs.Commitment,
 	} {

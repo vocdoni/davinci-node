@@ -58,7 +58,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
-	return contractProcess2Process(&process), nil
+	return contractProcess2Process(&process)
 }
 
 // MonitorProcessCreation monitors the creation of new processes by polling the ProcessRegistry contract every interval.
@@ -157,24 +157,19 @@ func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<
 	return ch2, nil
 }
 
-func contractProcess2Process(contractProcess *bindings.ProcessRegistryProcess) *types.Process {
+func contractProcess2Process(contractProcess *bindings.ProcessRegistryProcess) (*types.Process, error) {
 	mode := types.BallotMode{
 		ForceUniqueness: contractProcess.BallotMode.ForceUniqueness,
-		CostFromWeight:  false, // missing in contract
+		CostFromWeight:  contractProcess.BallotMode.CostFromWeight,
 		MaxCount:        contractProcess.BallotMode.MaxCount,
 		CostExponent:    contractProcess.BallotMode.CostExponent,
+		MaxValue:        (*types.BigInt)(contractProcess.BallotMode.MaxValue),
+		MinValue:        (*types.BigInt)(contractProcess.BallotMode.MinValue),
+		MaxTotalCost:    (*types.BigInt)(contractProcess.BallotMode.MaxTotalCost),
+		MinTotalCost:    (*types.BigInt)(contractProcess.BallotMode.MinTotalCost),
 	}
-	if contractProcess.BallotMode.MaxValue != nil {
-		mode.MaxValue = (*types.BigInt)(contractProcess.BallotMode.MaxValue)
-	}
-	if contractProcess.BallotMode.MinValue != nil {
-		mode.MinValue = (*types.BigInt)(contractProcess.BallotMode.MinValue)
-	}
-	if contractProcess.BallotMode.MaxTotalCost != nil {
-		mode.MaxTotalCost = (*types.BigInt)(contractProcess.BallotMode.MaxTotalCost)
-	}
-	if contractProcess.BallotMode.MinTotalCost != nil {
-		mode.MinTotalCost = (*types.BigInt)(contractProcess.BallotMode.MinTotalCost)
+	if err := mode.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid ballot mode: %w", err)
 	}
 	census := types.Census{
 		CensusRoot:   contractProcess.Census.CensusRoot[:],
@@ -195,7 +190,7 @@ func contractProcess2Process(contractProcess *bindings.ProcessRegistryProcess) *
 		MetadataURI: contractProcess.MetadataURI,
 		BallotMode:  &mode,
 		Census:      &census,
-	}
+	}, nil
 }
 
 func process2ContractProcess(process *types.Process) *bindings.ProcessRegistryProcess {

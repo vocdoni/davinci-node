@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // MarshalJSON serializes the Ballot to JSON.
@@ -51,12 +51,12 @@ func (z *Ballot) UnmarshalJSON(data []byte) error {
 	}
 	z.CurveType = tmp.CurveType
 
-	if len(tmp.Ciphertexts) != circuits.FieldsPerBallot {
-		return fmt.Errorf("expected %d ciphertexts, got %d", circuits.FieldsPerBallot, len(tmp.Ciphertexts))
+	if len(tmp.Ciphertexts) != types.FieldsPerBallot {
+		return fmt.Errorf("expected %d ciphertexts, got %d", types.FieldsPerBallot, len(tmp.Ciphertexts))
 	}
 
 	// Create a new array for the ciphertexts.
-	var cts [circuits.FieldsPerBallot]*Ciphertext
+	var cts [types.FieldsPerBallot]*Ciphertext
 	// Only unmarshal if the curve type is set. Else we assume the ballot is not initialized.
 	if z.CurveType != "" {
 		for i, raw := range tmp.Ciphertexts {
@@ -168,11 +168,11 @@ func (z *Ballot) UnmarshalCBOR(buf []byte) error {
 	}
 	z.CurveType = tmp.CurveType
 
-	if len(tmp.Ciphertexts) != circuits.FieldsPerBallot {
-		return fmt.Errorf("expected %d ciphertexts, got %d", circuits.FieldsPerBallot, len(tmp.Ciphertexts))
+	if len(tmp.Ciphertexts) != types.FieldsPerBallot {
+		return fmt.Errorf("expected %d ciphertexts, got %d", types.FieldsPerBallot, len(tmp.Ciphertexts))
 	}
 
-	z.Ciphertexts = [circuits.FieldsPerBallot]*Ciphertext{}
+	z.Ciphertexts = [types.FieldsPerBallot]*Ciphertext{}
 	// Only unmarshal if the curve type is set. Else we assume the ballot is not initialized.
 	if z.CurveType != "" {
 		for i, raw := range tmp.Ciphertexts {

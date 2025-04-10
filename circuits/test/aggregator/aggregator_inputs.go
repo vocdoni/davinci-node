@@ -18,6 +18,7 @@ import (
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	voteverifiertest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // AggregatorTestResults struct includes relevant data after AggregatorCircuit
@@ -63,8 +64,8 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 		return nil, nil, nil, err
 	}
 	// generate voters proofs
-	proofs := [circuits.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
-	proofsInputsHashes := [circuits.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
+	proofs := [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
+	proofsInputsHashes := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
 	for i := range vvAssigments {
 		// parse the witness to the circuit
 		fullWitness, err := frontend.NewWitness(&vvAssigments[i], circuits.VoteVerifierCurve.ScalarField())
@@ -102,10 +103,10 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 	}
 	// create final placeholder
 	finalPlaceholder := &aggregator.AggregatorCircuit{
-		Proofs:          [circuits.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
+		Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
 		VerificationKey: fixedVk,
 	}
-	for i := range circuits.VotesPerBatch {
+	for i := range types.VotesPerBatch {
 		finalPlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](vvCCS)
 	}
 	// TODO: drop this compat-code when previous circuits are also refactored and can do Votes = vvInputs.Votes

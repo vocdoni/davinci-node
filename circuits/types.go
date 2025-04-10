@@ -122,6 +122,7 @@ func DeserializeBallotMode(data []byte) (BallotMode[*big.Int], error) {
 
 // BallotModeToCircuit converts a BallotMode to a circuit BallotMode which can
 // be implemented with different base types.
+// Before calling this function, the BallotMode must be validated.
 func BallotModeToCircuit(b types.BallotMode) BallotMode[*big.Int] {
 	return BallotMode[*big.Int]{
 		MaxCount:        big.NewInt(int64(b.MaxCount)),
@@ -327,7 +328,7 @@ func (v Vote[T]) SerializeAsVars() []frontend.Variable {
 	return list
 }
 
-type Ballot [FieldsPerBallot]elgamal.Ciphertext
+type Ballot [types.FieldsPerBallot]elgamal.Ciphertext
 
 func NewBallot() *Ballot {
 	z := &Ballot{}
@@ -411,7 +412,7 @@ type EmulatedCiphertext[F emulated.FieldParams] struct {
 
 // EmulatedBallot is a copy of the Ballot struct, but using the
 // EmulatedCiphertext type
-type EmulatedBallot[F emulated.FieldParams] [FieldsPerBallot]EmulatedCiphertext[F]
+type EmulatedBallot[F emulated.FieldParams] [types.FieldsPerBallot]EmulatedCiphertext[F]
 
 // EmulatedVote is a copy of the Vote struct, but using the emulated.Element
 // type as generic type for the Address, Commitment and Nullifier fields, and

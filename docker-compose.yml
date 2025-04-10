@@ -1,5 +1,5 @@
 services:
-  vocdoninode:
+  sequencer:
     build:
       context: ./
     env_file: .env

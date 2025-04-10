@@ -12,6 +12,7 @@ import (
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
@@ -67,8 +68,8 @@ type ProcessProofs struct {
 type VotesProofs struct {
 	ResultsAdd *ArboTransition
 	ResultsSub *ArboTransition
-	Ballot     [circuits.VotesPerBatch]*ArboTransition
-	Commitment [circuits.VotesPerBatch]*ArboTransition
+	Ballot     [types.VotesPerBatch]*ArboTransition
+	Commitment [types.VotesPerBatch]*ArboTransition
 }
 
 // New creates or opens a State stored in the passed database.
@@ -76,7 +77,7 @@ type VotesProofs struct {
 func New(db db.Database, processId []byte) (*State, error) {
 	pdb := prefixeddb.NewPrefixedDatabase(db, processId)
 	tree, err := arbo.NewTree(arbo.Config{
-		Database: pdb, MaxLevels: circuits.CensusTreeMaxLevels,
+		Database: pdb, MaxLevels: types.CensusTreeMaxLevels,
 		HashFunction: HashFunc,
 	})
 	if err != nil {
@@ -272,7 +273,7 @@ func (o *State) Votes() []*Vote {
 
 func (o *State) OverwrittenBallots() []*elgamal.Ballot {
 	v := slices.Clone(o.overwrittenBallots)
-	for len(v) < circuits.VotesPerBatch {
+	for len(v) < types.VotesPerBatch {
 		v = append(v, elgamal.NewBallot(Curve))
 	}
 	return v
@@ -280,7 +281,7 @@ func (o *State) OverwrittenBallots() []*elgamal.Ballot {
 
 func (o *State) PaddedVotes() []*Vote {
 	v := slices.Clone(o.votes)
-	for len(v) < circuits.VotesPerBatch {
+	for len(v) < types.VotesPerBatch {
 		v = append(v, &Vote{
 			Address:    []byte{0x00},
 			Commitment: big.NewInt(0),

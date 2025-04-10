@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
@@ -42,7 +43,7 @@ type Circuit struct {
 	// ---------------------------------------------------------------------------------------------
 	// SECRET INPUTS
 	Process circuits.Process[frontend.Variable]
-	Votes   [circuits.VotesPerBatch]Vote
+	Votes   [types.VotesPerBatch]Vote
 	Results Results
 
 	ProcessProofs ProcessProofs
@@ -68,8 +69,8 @@ type ProcessProofs struct {
 }
 
 type VotesProofs struct {
-	Ballot     [circuits.VotesPerBatch]MerkleTransition // Key is Nullifier, LeafHash is smt.Hash1(Ballot.Serialize())
-	Commitment [circuits.VotesPerBatch]MerkleTransition // Key is Address, LeafHash is smt.Hash1(Commitment)
+	Ballot     [types.VotesPerBatch]MerkleTransition // Key is Nullifier, LeafHash is smt.Hash1(Ballot.Serialize())
+	Commitment [types.VotesPerBatch]MerkleTransition // Key is Address, LeafHash is smt.Hash1(Commitment)
 }
 
 type ResultsProofs struct {
