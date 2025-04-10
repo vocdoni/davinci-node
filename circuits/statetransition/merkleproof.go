@@ -20,7 +20,6 @@ type MerkleProof struct {
 	Siblings [circuits.CensusTreeMaxLevels]frontend.Variable
 	Key      frontend.Variable
 	LeafHash frontend.Variable
-	Fnc      frontend.Variable // 0: inclusion, 1: non inclusion
 }
 
 // MerkleProofFromArboProof converts an ArboProof into a MerkleProof
@@ -31,16 +30,11 @@ func MerkleProofFromArboProof(p *state.ArboProof) MerkleProof {
 	if err != nil {
 		panic(err) // TODO: proper error handling
 	}
-	fnc := 0 // inclusion
-	if !p.Existence {
-		fnc = 1 // non-inclusion
-	}
 	return MerkleProof{
 		Root:     p.Root,
 		Siblings: padSiblings(p.Siblings),
 		Key:      p.Key,
 		LeafHash: arbo.BytesToBigInt(leafHash),
-		Fnc:      fnc,
 	}
 }
 
