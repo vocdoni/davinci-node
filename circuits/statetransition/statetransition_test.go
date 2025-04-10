@@ -339,8 +339,11 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 
 func newMockWitness(t *testing.T) *statetransition.Circuit {
 	return newMockTransitionWithVotes(t, newMockState(t),
+		newMockVote(0, 10),
 		newMockVote(1, 10),
 		newMockVote(2, 20),
+		newMockVote(3, 20),
+		newMockVote(4, 20),
 	)
 }
 
