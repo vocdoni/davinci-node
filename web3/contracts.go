@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -19,6 +20,12 @@ import (
 const (
 	// web3QueryTimeout is the timeout for web3 queries.
 	web3QueryTimeout = 10 * time.Second
+
+	// maxPastBlocksToWatch is the maximum number of past blocks to watch for events.
+	maxPastBlocksToWatch = 9990
+
+	// currentBlockIntervalUpdate is the interval to update the current block.
+	currentBlockIntervalUpdate = 5 * time.Second
 )
 
 // Addresses contains the addresses of the contracts deployed in the network.
@@ -37,6 +44,10 @@ type Contracts struct {
 	web3pool           *rpc.Web3Pool
 	cli                *rpc.Client
 	signer             *ethereum.Signer
+
+	currentBlock           uint64
+	currentBlockLastUpdate time.Time
+	currentBlockMutex      sync.Mutex
 
 	knownProcesses        map[string]struct{}
 	lastWatchProcessBlock uint64
@@ -69,13 +80,58 @@ func New(web3rpcs []string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
+
+	// get the last block number
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	lastBlock, err := cli.BlockNumber(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block number: %w", err)
+	}
+
+	log.Infow("web3 client initialized",
+		"chainID", *chainID,
+		"lastBlock", lastBlock,
+		"numEndpoints", len(web3rpcs),
+		"numBlocksToWatch", maxPastBlocksToWatch,
+	)
+
+	// calculate the start block to watch
+	startBlock := int64(lastBlock) - maxPastBlocksToWatch
+	if startBlock < 0 {
+		startBlock = 0
+	}
+
 	return &Contracts{
-		ChainID:            *chainID,
-		web3pool:           w3pool,
-		cli:                cli,
-		knownProcesses:     make(map[string]struct{}),
-		knownOrganizations: make(map[string]struct{}),
+		ChainID:                *chainID,
+		web3pool:               w3pool,
+		cli:                    cli,
+		knownProcesses:         make(map[string]struct{}),
+		knownOrganizations:     make(map[string]struct{}),
+		lastWatchProcessBlock:  uint64(startBlock),
+		lastWatchOrgBlock:      uint64(startBlock),
+		currentBlock:           lastBlock,
+		currentBlockLastUpdate: time.Now(),
 	}, nil
+}
+
+// CurrentBlock returns the current block number for the chain.
+func (c *Contracts) CurrentBlock() uint64 {
+	c.currentBlockMutex.Lock()
+	defer c.currentBlockMutex.Unlock()
+	now := time.Now()
+	if c.currentBlockLastUpdate.Add(currentBlockIntervalUpdate).Before(now) {
+		ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+		defer cancel()
+		block, err := c.cli.BlockNumber(ctx)
+		if err != nil {
+			log.Warnw("failed to get block number", "error", err)
+			return c.currentBlock
+		}
+		c.currentBlock = block
+		c.currentBlockLastUpdate = now
+	}
+	return c.currentBlock
 }
 
 // LoadContracts loads the contracts from the given addresses.

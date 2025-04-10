@@ -74,13 +74,18 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 				log.Warnw("exiting monitor process creation")
 				return
 			case <-ticker.C:
+				end := c.CurrentBlock()
+				if end <= c.lastWatchProcessBlock {
+					continue
+				}
 				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, Context: ctxQuery}, nil, nil)
+				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, End: &end, Context: ctxQuery}, nil, nil)
 				cancel()
 				if err != nil || iter == nil {
 					log.Debugw("failed to filter process created, retrying", "err", err)
 					continue
 				}
+				c.lastWatchProcessBlock = end
 				for iter.Next() {
 					processID := fmt.Sprintf("%x", iter.Event.ProcessID)
 					if _, exists := c.knownProcesses[processID]; exists {
@@ -93,7 +98,7 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 						continue
 					}
 					process.ID = iter.Event.ProcessID[:]
-					c.lastWatchProcessBlock = iter.Event.Raw.BlockNumber
+					log.Debugw("new process found", "processId", process.ID, "blockNumber", iter.Event.Raw.BlockNumber)
 					ch <- process
 				}
 			}

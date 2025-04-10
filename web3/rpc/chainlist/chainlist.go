@@ -15,7 +15,7 @@ const (
 	// jsonRPCVersion is the standard JSON-RPC version used in requests and responses
 	jsonRPCVersion = "2.0"
 
-	requiredEthLogsBlocks = 50001 // Number of blocks to check for eth_getLogs
+	requiredEthLogsBlocks = 9990 // Number of blocks to check for eth_getLogs
 )
 
 var (
@@ -24,7 +24,7 @@ var (
 	// ChainListURL is the URL to get the chain metadata from an external source.
 	ChainListURL = "https://chainlist.org/rpcs.json"
 	// defaultTimeout is the default timeout for RPC health checks
-	defaultTimeout = 3 * time.Second
+	defaultTimeout = 5 * time.Second
 )
 
 var (
@@ -176,7 +176,7 @@ var isHealthyEndpoint healthCheckFunc = func(bctx context.Context, endpoint stri
 	}
 
 	// Create a context with timeout for the request
-	ctx, cancel := context.WithTimeout(bctx, time.Second*5)
+	ctx, cancel := context.WithTimeout(bctx, timeout)
 	defer cancel()
 
 	// Create the HTTP request

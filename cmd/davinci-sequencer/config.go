@@ -22,7 +22,7 @@ const (
 	defaultLogOutput = "stdout"
 	defaultDatadir   = ".davinci" // Will be prefixed with user's home directory
 	artifactsTimeout = 5 * time.Minute
-	monitorInterval  = 2 * time.Second
+	monitorInterval  = 10 * time.Second
 )
 
 // Version is the build version, set at build time with -ldflags
