@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 
 	"github.com/vocdoni/arbo"
@@ -40,11 +41,15 @@ func (o *State) ArboProofsFromAddOrUpdate(k *big.Int, v []*big.Int) (*ArboProof,
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, _, err := o.tree.GetBigInt(k); errors.Is(err, arbo.ErrKeyNotFound) {
+	bv, _ := arbo.EncodeBigIntValues(HashFunc, v...)
+	if _, oldValue, err := o.tree.GetBigInt(k); errors.Is(err, arbo.ErrKeyNotFound) {
+		log.Println("adding key", k, "->", arbo.BytesToBigInt(bv))
 		if err := o.tree.AddBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("add key failed: %w", err)
 		}
 	} else {
+		oldbv, _ := arbo.EncodeBigIntValues(HashFunc, oldValue...)
+		log.Println("updating key", k, "->", arbo.BytesToBigInt(bv), "old value", arbo.BytesToBigInt(oldbv))
 		if err := o.tree.UpdateBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("update key failed: %w", err)
 		}
