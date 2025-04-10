@@ -108,11 +108,6 @@ func ArboTransitionFromArboProofPair(before, after *arbo.GnarkVerifierProof) *Ar
 		fnc0, fnc1 = 1, 1
 	}
 
-	isOld0 := 0
-	if before.Key.Cmp(big.NewInt(0)) == 0 && before.Value.Cmp(big.NewInt(0)) == 0 {
-		isOld0 = 1
-	}
-
 	oldKey := before.Key
 	oldValue := before.Value
 	if !beforeIsInclusion {
@@ -144,7 +139,7 @@ func ArboTransitionFromArboProofPair(before, after *arbo.GnarkVerifierProof) *Ar
 		NewRoot:  after.Root,
 		NewKey:   newKey,
 		NewValue: newValue,
-		IsOld0:   isOld0,
+		IsOld0:   int(before.IsOld0.Int64()),
 		Fnc0:     fnc0,
 		Fnc1:     fnc1,
 	}
