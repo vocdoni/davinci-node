@@ -27,7 +27,7 @@ func FrontendError(api frontend.API, msg string, trace error) {
 // with zeros.
 func BigIntArrayToN(arr []*big.Int, n int) []*big.Int {
 	bigArr := make([]*big.Int, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if i < len(arr) {
 			bigArr[i] = arr[i]
 		} else {

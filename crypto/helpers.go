@@ -14,8 +14,11 @@ const SerializedFieldSize = 32 // bytes
 // representation.
 func BigIntToFFwithPadding(input, base *big.Int) []byte {
 	hash := BigToFF(base, input).Bytes()
-	for len(hash) < SerializedFieldSize {
-		hash = append([]byte{0}, hash...)
+	// fill with zeros at the beginning of the bytes representation
+	// to make it 32 bytes
+	zeros := SerializedFieldSize - len(hash)
+	if zeros > 0 {
+		hash = append(make([]byte, zeros), hash...)
 	}
 	return hash
 }

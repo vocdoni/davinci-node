@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 )
 
 // BigInt is a big.Int wrapper which marshals JSON to a string representation of
@@ -104,4 +105,9 @@ func (i *BigInt) Equal(j *BigInt) bool {
 		return (i == nil) == (j == nil)
 	}
 	return i.MathBigInt().Cmp(j.MathBigInt()) == 0
+}
+
+func (i *BigInt) ToFF(iv *big.Int) *BigInt {
+	ff := crypto.BigToFF(iv, i.MathBigInt())
+	return (*BigInt)(ff)
 }

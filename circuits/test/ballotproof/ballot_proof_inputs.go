@@ -19,7 +19,6 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
@@ -192,7 +191,7 @@ func BallotProofForTest(address, processId []byte, encryptionKey ecc.Point) (*Vo
 		commitment,
 		nullifier,
 	)
-	bigCircomInputs = append(bigCircomInputs, BallotFromRTEtoTE(ballot).BigInts()...)
+	bigCircomInputs = append(bigCircomInputs, ballot.FromRTEtoTE().BigInts()...)
 	bigCircomInputs = append(bigCircomInputs, big.NewInt(int64(circuits.MockWeight)))
 	circomInputsHash, err := mimc7.Hash(bigCircomInputs, nil)
 	if err != nil {
@@ -214,7 +213,7 @@ func BallotProofForTest(address, processId []byte, encryptionKey ecc.Point) (*Vo
 		"process_id":       ffProcessID.String(),
 		"pk":               []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
 		"k":                k.String(),
-		"cipherfields":     circuits.BigIntArrayToStringArray(BallotFromRTEtoTE(ballot).BigInts(), circuits.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
+		"cipherfields":     circuits.BigIntArrayToStringArray(ballot.FromRTEtoTE().BigInts(), circuits.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
 		"nullifier":        nullifier.String(),
 		"commitment":       commitment.String(),
 		"secret":           crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(secret)).String(),
@@ -240,15 +239,4 @@ func BallotProofForTest(address, processId []byte, encryptionKey ecc.Point) (*Vo
 		PubInputs:  circomPubInputs,
 		InputsHash: circomInputsHash,
 	}, nil
-}
-
-func BallotFromRTEtoTE(rteBallot *elgamal.Ballot) *elgamal.Ballot {
-	teBallot := elgamal.NewBallot(curves.New(rteBallot.CurveType))
-	for i := range rteBallot.Ciphertexts {
-		teBallot.Ciphertexts[i].C1 = teBallot.Ciphertexts[i].C1.SetPoint(
-			format.FromRTEtoTE(rteBallot.Ciphertexts[i].C1.Point()))
-		teBallot.Ciphertexts[i].C2 = teBallot.Ciphertexts[i].C2.SetPoint(
-			format.FromRTEtoTE(rteBallot.Ciphertexts[i].C2.Point()))
-	}
-	return teBallot
 }
