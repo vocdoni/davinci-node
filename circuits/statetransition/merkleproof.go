@@ -25,8 +25,7 @@ type MerkleProof struct {
 
 // MerkleProofFromArboProof converts an ArboProof into a MerkleProof
 func MerkleProofFromArboProof(p *state.ArboProof) MerkleProof {
-	// bvalue := arbo.BigIntToBytes(state.HashFunc.Len(), p.Value)
-	bKey := state.HashFunc.SafeBigInt(p.Key)
+	bKey := state.EncodeKey(p.Key)
 	bValue := state.HashFunc.SafeBigInt(p.Value)
 	leafHash, err := state.HashFunc.Hash(bKey, bValue, []byte{1})
 	if err != nil {
@@ -97,17 +96,13 @@ type MerkleTransition struct {
 }
 
 func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransition, error) {
-	// bOldKey := arbo.ExplicitZero(at.OldKey.Bytes())
-	// bOldValue := arbo.SwapEndianness(at.OldValue.Bytes())
-	bOldKey := state.HashFunc.SafeBigInt(at.OldKey)
+	bOldKey := state.EncodeKey(at.OldKey)
 	bOldValue := state.HashFunc.SafeBigInt(at.OldValue)
 	oldLeafHash, err := state.HashFunc.Hash(bOldKey, bOldValue, []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
 	}
-	// bNewKey := arbo.ExplicitZero(at.NewKey.Bytes())
-	// bNewValue := arbo.SwapEndianness(at.NewValue.Bytes())
-	bNewKey := state.HashFunc.SafeBigInt(at.NewKey)
+	bNewKey := state.EncodeKey(at.NewKey)
 	bNewValue := state.HashFunc.SafeBigInt(at.NewValue)
 	newLeafHash, err := state.HashFunc.Hash(bNewKey, bNewValue, []byte{1})
 	if err != nil {

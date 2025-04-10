@@ -380,3 +380,8 @@ func (o *State) AggregatorWitnessHash() (*big.Int, error) {
 	}
 	return hash, nil
 }
+
+func EncodeKey(key *big.Int) []byte {
+	maxKeyLen := arbo.MaxKeyLen(circuits.StateTreeMaxLevels, HashFunc.Len())
+	return arbo.BigIntToBytes(maxKeyLen, key)
+}
