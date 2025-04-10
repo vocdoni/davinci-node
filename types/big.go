@@ -28,6 +28,23 @@ func (i *BigInt) UnmarshalText(data []byte) error {
 	return (*big.Int)(i).UnmarshalText(data)
 }
 
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// It supports both string and numeric JSON representations.
+func (i *BigInt) UnmarshalJSON(data []byte) error {
+	if i == nil {
+		return fmt.Errorf("cannot unmarshal into nil BigInt")
+	}
+
+	// If it's a string representation (with double quotes)
+	if len(data) > 0 && data[0] == '"' {
+		// Remove the quotes and use UnmarshalText
+		return i.UnmarshalText(data[1 : len(data)-1])
+	}
+
+	// If it's a numeric representation (without quotes)
+	return i.UnmarshalText(data)
+}
+
 // MarshalCBOR explicitly encodes BigInt as a CBOR text string.
 func (i *BigInt) MarshalCBOR() ([]byte, error) {
 	// get the textual representation.

@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 const (
@@ -46,7 +47,7 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 	dummyEmulatedBN254 := emulated.ValueOf[sw_bn254.ScalarField](1)
 	dummyEmulatedSecp256k1Fp := emulated.ValueOf[emulated.Secp256k1Fp](1)
 	dummyEmulatedSecp256k1Fr := emulated.ValueOf[emulated.Secp256k1Fr](1)
-	dummyEmulatedSiblings := [circuits.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+	dummyEmulatedSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
 	for i := range dummyEmulatedSiblings {
 		dummyEmulatedSiblings[i] = dummyEmulatedBN254
 	}

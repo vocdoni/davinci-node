@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
 )
 
 const (
@@ -426,7 +424,6 @@ func EndpointList(chainName string, numEndpoints int) ([]string, error) {
 				return
 			default:
 				healthy := isHealthyEndpoint(ctx, endpoint, defaultTimeout, chain.ChainID)
-				log.Debugw("RPC health check", "url", endpoint, "healthy", healthy)
 				resultChan <- result{url: endpoint, healthy: healthy}
 			}
 		}(url)

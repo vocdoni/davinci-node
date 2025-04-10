@@ -8,9 +8,9 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/arbo"
 	gelgamal "github.com/vocdoni/gnark-crypto-primitives/elgamal"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // sizes in bytes needed to serialize a Ballot
@@ -18,7 +18,7 @@ const (
 	sizeCoord            = crypto.SerializedFieldSize
 	sizePoint            = 2 * sizeCoord
 	sizeCiphertext       = 2 * sizePoint
-	SerializedBallotSize = circuits.FieldsPerBallot * sizeCiphertext
+	SerializedBallotSize = types.FieldsPerBallot * sizeCiphertext
 )
 
 // BigIntsPerCiphertext is 4 since each Ciphertext has C1.X, C1.Y, C2.X and

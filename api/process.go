@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
+	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -26,11 +28,16 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
 	}
-
 	// Extract the address from the signature
 	address, err := ethereum.AddrFromSignature(fmt.Appendf(nil, "%d%d", p.ChainID, p.Nonce), new(ethereum.ECDSASignature).SetBytes(p.Signature))
 	if err != nil {
 		ErrInvalidSignature.Withf("could not extract address from signature: %v", err).Write(w)
+		return
+	}
+
+	// Validate the ballot mode
+	if err := p.BallotMode.Validate(); err != nil {
+		ErrMalformedBody.Withf("invalid ballot mode: %v", err).Write(w)
 		return
 	}
 
@@ -49,10 +56,19 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 	x, y := publicKey.Point()
 
-	// Store the encryption keys
+	// Store the encryption keys or retrieve them if they already exist
 	if err := a.storage.SetEncryptionKeys(pid, publicKey, privateKey); err != nil {
-		ErrGenericInternalServerError.Withf("could not store encryption keys: %v", err).Write(w)
-		return
+		if errors.Is(err, storage.ErrKeyAlreadyExists) {
+			pub, _, err := a.storage.EncryptionKeys(pid)
+			if err != nil {
+				ErrGenericInternalServerError.Withf("could not retrieve encryption keys: %v", err).Write(w)
+				return
+			}
+			x, y = pub.Point()
+		} else {
+			ErrGenericInternalServerError.Withf("could not store encryption keys: %v", err).Write(w)
+			return
+		}
 	}
 
 	// Initialize the state
@@ -88,6 +104,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 
 	// Write the response
 	log.Infow("new process setup",
+		"address", address.String(),
 		"processId", pr.ProcessID.String(),
 		"pubKeyX", pr.EncryptionPubKey[0].String(),
 		"pubKeyY", pr.EncryptionPubKey[1].String(),

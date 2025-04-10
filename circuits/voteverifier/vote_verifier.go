@@ -68,6 +68,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 type VerifyVoteCircuit struct {
@@ -82,7 +83,7 @@ type VerifyVoteCircuit struct {
 	Vote           circuits.EmulatedVote[sw_bn254.ScalarField]
 	Process        circuits.Process[emulated.Element[sw_bn254.ScalarField]]
 	UserWeight     emulated.Element[sw_bn254.ScalarField]
-	CensusSiblings [circuits.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
+	CensusSiblings [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
 	// The following variables are private inputs and they are used to verify
 	// the user identity ownership
 	Msg       emulated.Element[emulated.Secp256k1Fr]

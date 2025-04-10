@@ -23,6 +23,7 @@ import (
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // Keeps track of files created during program execution
@@ -130,10 +131,10 @@ func main() {
 	}
 	// create final placeholder
 	aggregatePlaceholder := &aggregator.AggregatorCircuit{
-		Proofs:          [circuits.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
+		Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
 		VerificationKey: fixedVk,
 	}
-	for i := range circuits.VotesPerBatch {
+	for i := range types.VotesPerBatch {
 		aggregatePlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](voteVerifierCCS)
 	}
 

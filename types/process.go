@@ -113,10 +113,10 @@ func (o *OrganizationInfo) String() string {
 // ProcessSetup is the struct to create a new voting process
 type ProcessSetup struct {
 	CensusRoot HexBytes   `json:"censusRoot"`
-	BallotMode BallotMode `json:"ballotRules"`
+	BallotMode BallotMode `json:"ballotMode"`
 	Nonce      uint64     `json:"nonce"`
 	ChainID    uint32     `json:"chainId"`
-	Signature  []byte     `json:"signature"`
+	Signature  HexBytes   `json:"signature"`
 }
 
 // ProcessSetupResponse represents the response of a voting process

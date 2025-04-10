@@ -5,8 +5,8 @@ import (
 	"math/big"
 
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // Vote describes a vote with homomorphic ballot
@@ -38,7 +38,7 @@ func (o *State) AddVote(v *Vote) error {
 	if o.dbTx == nil {
 		return fmt.Errorf("need to StartBatch() first")
 	}
-	if len(o.votes) >= circuits.VotesPerBatch {
+	if len(o.votes) >= types.VotesPerBatch {
 		return fmt.Errorf("too many votes for this batch")
 	}
 

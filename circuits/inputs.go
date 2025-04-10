@@ -4,6 +4,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // CircomInputs returns all values that are hashed to produce the public input
@@ -67,8 +68,8 @@ func CalculateVotersHashes(api frontend.API,
 	votes []EmulatedVote[sw_bn254.ScalarField],
 ) VotersHashes {
 	// initialize the hashes of the voters
-	votersHashes := [VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
-	for i := range VotesPerBatch {
+	votersHashes := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
+	for i := range types.VotesPerBatch {
 		votersHashes[i] = VoterHashFn(api, EmulatedVoteVerifierInputs(process, votes[i])...)
 	}
 	return VotersHashes{votersHashes}

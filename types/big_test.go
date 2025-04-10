@@ -36,3 +36,17 @@ func TestBigMarshalUnmarshalCBOR(t *testing.T) {
 	c.Assert(cbor.Unmarshal(bBigInt, &unmarshaled), qt.IsNil)
 	c.Assert(unmarshaled["bi"], qt.DeepEquals, bi)
 }
+
+func TestBigUnmarshalJSONNumeric(t *testing.T) {
+	c := qt.New(t)
+
+	// Test with string representation
+	var biString BigInt
+	c.Assert(json.Unmarshal([]byte(`"123456789"`), &biString), qt.IsNil)
+	c.Assert(biString.String(), qt.Equals, "123456789")
+
+	// Test with numeric representation
+	var biNumeric BigInt
+	c.Assert(json.Unmarshal([]byte(`123456789`), &biNumeric), qt.IsNil)
+	c.Assert(biNumeric.String(), qt.Equals, "123456789")
+}

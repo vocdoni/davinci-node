@@ -2,14 +2,15 @@
 package ethereum
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math/big"
 
 	gecc "github.com/consensys/gnark-crypto/ecc"
-	gecdsa "github.com/consensys/gnark-crypto/ecc/secp256k1/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 )
 
 const (
@@ -17,8 +18,6 @@ const (
 	SignatureLength = ethcrypto.SignatureLength
 	// CompressedPubKeyLength is the size of a compressed public key
 	CompressedPubKeyLength = 33
-	// SignatureMinLength is the minimum length of a signature (without recovery byte)
-	SignatureMinLength = ethcrypto.SignatureLength - 1
 	// SigningPrefix is the prefix added when hashing Ethereum messages
 	SigningPrefix = "\u0019Ethereum Signed Message:\n"
 	// HashLength is the size of a keccak256 hash
@@ -35,8 +34,8 @@ type ECDSASignature struct {
 
 // New creates a new ECDSASignature from raw signature byte payload.
 func New(signature []byte) (*ECDSASignature, error) {
-	if len(signature) < SignatureMinLength {
-		return nil, fmt.Errorf("signature length is less than %d", SignatureMinLength)
+	if len(signature) < SignatureLength-1 {
+		return nil, fmt.Errorf("signature length is less than %d", SignatureLength-1)
 	}
 	sig := new(ECDSASignature).SetBytes(signature)
 	if sig == nil {
@@ -53,6 +52,8 @@ func (sig *ECDSASignature) Valid() bool {
 
 // Bytes returns the bytes of the binary representation of the signature, which
 // is built by appending the R and S values as byte slices and the recovery byte.
+// The recovery byte is adjusted to the Ethereum standard format (27-30) for compatibility
+// with ethcrypto.SigToPub().
 func (sig *ECDSASignature) Bytes() []byte {
 	rBytes := sig.R.Bytes()
 	sBytes := sig.S.Bytes()
@@ -63,29 +64,45 @@ func (sig *ECDSASignature) Bytes() []byte {
 	copy(r[32-len(rBytes):], rBytes)
 	copy(s[32-len(sBytes):], sBytes)
 
-	return append(r, append(s, sig.recovery)...)
+	// Add 27 to the recovery value to match Ethereum standard
+	// Internal representation is 0-3, but Ethereum expects 27-30
+	v := sig.recovery
+	if v < 4 {
+		v += 27
+	}
+
+	return append(r, append(s, v)...)
 }
 
 // SetBytes sets the ECDSASignature from a byte slice. The byte slice should be
 // at least 65 bytes long, where the first 64 bytes are the R and S values.
 func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
-	if len(signature) < SignatureMinLength {
+	if len(signature) < SignatureLength-1 {
 		return nil
 	}
-	var sigStruct gecdsa.Signature
-	if _, err := sigStruct.SetBytes(signature[:64]); err != nil {
-		return nil
-	}
-	sig.R = new(big.Int).SetBytes(sigStruct.R[:])
-	sig.S = new(big.Int).SetBytes(sigStruct.S[:])
+	//var sigStruct gecdsa.Signature
+	//if _, err := sigStruct.SetBytes(signature[:64]); err != nil {
+	//	return nil
+	//}
+	sig.R = new(big.Int).SetBytes(signature[:32])
+	sig.S = new(big.Int).SetBytes(signature[32:64])
+
 	if len(signature) == SignatureLength {
-		sig.recovery = signature[64]
-		if sig.recovery > 1 {
-			sig.recovery -= 27
+		// Make a copy of the recovery byte to avoid modifying the input array
+		v := signature[64]
+		// Handle Ethereum's "magic" recovery values (27, 28, etc.)
+		if v >= 27 {
+			v -= 27
 		}
+		if v > 3 {
+			// Invalid recovery byte
+			return nil
+		}
+		sig.recovery = v
 	} else {
 		sig.recovery = 0
 	}
+
 	return sig
 }
 
@@ -124,7 +141,17 @@ func AddrFromSignature(message []byte, signature *ECDSASignature) (common.Addres
 	if signature == nil || !signature.Valid() {
 		return common.Address{}, fmt.Errorf("signature is nil")
 	}
-	pubKey, err := ethcrypto.SigToPub(HashMessage(message), signature.Bytes())
+
+	// Get signature bytes and ensure recovery byte is in range 0-3 for SigToPub
+	sigBytes := signature.Bytes()
+
+	// SigToPub expects recovery values in range 0-3, while we output 27-30 in Bytes()
+	if sigBytes[64] >= 27 {
+		sigBytes[64] -= 27
+	}
+
+	log.Debugw("AddrFromSignature", "message", string(message), "signature", hex.EncodeToString(sigBytes))
+	pubKey, err := ethcrypto.SigToPub(HashMessage(message), sigBytes)
 	if err != nil {
 		return common.Address{}, fmt.Errorf("sigToPub %w", err)
 	}
