@@ -46,7 +46,7 @@ func main() {
 			}
 		}
 		// compose the encryption key with the coords from the inputs
-		encryptionKey := new(bjj.BJJ).SetPoint(inputs.EncryptionKey.X, inputs.EncryptionKey.Y)
+		encryptionKey := new(bjj.BJJ).SetPoint(inputs.EncryptionKey[0].MathBigInt(), inputs.EncryptionKey[1].MathBigInt())
 		// encrypt the ballot
 		ballot, err := elgamal.NewBallot(encryptionKey).Encrypt(fields, encryptionKey, inputs.K.MathBigInt())
 		if err != nil {
