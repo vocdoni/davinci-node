@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	// HashFunc is the hash function used in the state tree.
-	HashFunc = arbo.HashFunctionMultiPoseidon
+	// HashFn is the hash function used in the state tree.
+	HashFn = arbo.HashFunctionMultiPoseidon
 	// Curve is the curve used for the encryption
 	Curve = curves.New(bjj.CurveType)
 )
@@ -39,13 +39,12 @@ type State struct {
 	db        db.Database
 	dbTx      db.WriteTx
 
-	// TODO: unexport these, add ArboProofs and only export those via a method
-	OldResultsAdd      *elgamal.Ballot
-	OldResultsSub      *elgamal.Ballot
-	NewResultsAdd      *elgamal.Ballot
-	NewResultsSub      *elgamal.Ballot
-	BallotSum          *elgamal.Ballot
-	OverwriteSum       *elgamal.Ballot
+	oldResultsAdd      *elgamal.Ballot
+	oldResultsSub      *elgamal.Ballot
+	newResultsAdd      *elgamal.Ballot
+	newResultsSub      *elgamal.Ballot
+	ballotSum          *elgamal.Ballot
+	overwriteSum       *elgamal.Ballot
 	overwrittenBallots []*elgamal.Ballot
 	ballotCount        int
 	overwriteCount     int
@@ -57,6 +56,9 @@ type State struct {
 	ProcessProofs  ProcessProofs
 	VotesProofs    VotesProofs
 }
+
+// ProcessProofs stores the Merkle proofs for the process, including the ID
+// census root, ballot mode, and encryption key proofs.
 type ProcessProofs struct {
 	ID            *ArboProof
 	CensusRoot    *ArboProof
@@ -64,6 +66,8 @@ type ProcessProofs struct {
 	EncryptionKey *ArboProof
 }
 
+// VotesProofs stores the Merkle proofs for the votes, including the results
+// add and sub proofs, as well as the ballot and commitment proofs.
 type VotesProofs struct {
 	ResultsAdd *ArboTransition
 	ResultsSub *ArboTransition
@@ -78,7 +82,7 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     pdb,
 		MaxLevels:    circuits.StateTreeMaxLevels,
-		HashFunction: HashFunc,
+		HashFunction: HashFn,
 	})
 	if err != nil {
 		return nil, err
@@ -92,8 +96,8 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 }
 
 // Initialize creates a new State, initialized with the passed parameters.
-//
-// after Initialize, caller is expected to StartBatch, AddVote, EndBatch, StartBatch...
+// After Initialize, caller is expected to StartBatch, AddVote, EndBatch,
+// StartBatch...
 func (o *State) Initialize(
 	censusRoot *big.Int,
 	ballotMode circuits.BallotMode[*big.Int],
@@ -134,24 +138,24 @@ func (o *State) Close() error {
 // and creates a new write transaction in the db
 func (o *State) StartBatch() error {
 	o.dbTx = o.db.WriteTx()
-	if o.OldResultsAdd == nil {
-		o.OldResultsAdd = elgamal.NewBallot(Curve)
+	if o.oldResultsAdd == nil {
+		o.oldResultsAdd = elgamal.NewBallot(Curve)
 	}
-	if o.OldResultsSub == nil {
-		o.OldResultsSub = elgamal.NewBallot(Curve)
+	if o.oldResultsSub == nil {
+		o.oldResultsSub = elgamal.NewBallot(Curve)
 	}
-	if o.NewResultsAdd == nil {
-		o.NewResultsAdd = elgamal.NewBallot(Curve)
+	if o.newResultsAdd == nil {
+		o.newResultsAdd = elgamal.NewBallot(Curve)
 	}
-	if o.NewResultsSub == nil {
-		o.NewResultsSub = elgamal.NewBallot(Curve)
+	if o.newResultsSub == nil {
+		o.newResultsSub = elgamal.NewBallot(Curve)
 	}
 	{
 		_, v, err := o.tree.GetBigInt(KeyResultsAdd)
 		if err != nil {
 			return err
 		}
-		if o.OldResultsAdd, err = o.OldResultsAdd.SetBigInts(v); err != nil {
+		if o.oldResultsAdd, err = o.oldResultsAdd.SetBigInts(v); err != nil {
 			return fmt.Errorf("OldResultsAdd: %w", err)
 		}
 	}
@@ -160,13 +164,13 @@ func (o *State) StartBatch() error {
 		if err != nil {
 			return err
 		}
-		if o.OldResultsSub, err = o.OldResultsSub.SetBigInts(v); err != nil {
+		if o.oldResultsSub, err = o.oldResultsSub.SetBigInts(v); err != nil {
 			return fmt.Errorf("OldResultsSub: %w", err)
 		}
 	}
 
-	o.BallotSum = elgamal.NewBallot(Curve)
-	o.OverwriteSum = elgamal.NewBallot(Curve)
+	o.ballotSum = elgamal.NewBallot(Curve)
+	o.overwriteSum = elgamal.NewBallot(Curve)
 	o.ballotCount = 0
 	o.overwriteCount = 0
 	o.overwrittenBallots = []*elgamal.Ballot{}
@@ -174,6 +178,11 @@ func (o *State) StartBatch() error {
 	return nil
 }
 
+// EndBatch commits the current batch to the database and generates the Merkle
+// proofs for the current batch. It also updates the results of the state tree
+// with the new results. The results are calculated by adding the old results
+// with the new results. The function returns an error if the commit fails or
+// if the Merkle proofs cannot be generated.
 func (o *State) EndBatch() error {
 	var err error
 	// RootHashBefore
@@ -181,7 +190,6 @@ func (o *State) EndBatch() error {
 	if err != nil {
 		return err
 	}
-
 	// first get MerkleProofs, since they need to belong to RootHashBefore, i.e. before MerkleTransitions
 	if o.ProcessProofs.ID, err = o.GenArboProof(KeyProcessID); err != nil {
 		log.Println("Error getting ID proof:", err)
@@ -200,7 +208,9 @@ func (o *State) EndBatch() error {
 		return err
 	}
 
-	// now build ordered chain of MerkleTransitions
+	// now build ordered chain of MerkleTransitions. The order should be the
+	// same that the circuit will process them, so that the MerkleProofs are
+	// in the same order as the MerkleTransitions
 
 	// add Ballots
 	for i := range o.VotesProofs.Ballot {
@@ -214,7 +224,6 @@ func (o *State) EndBatch() error {
 			return err
 		}
 	}
-
 	// add Commitments
 	for i := range o.VotesProofs.Commitment {
 		if i < len(o.Votes()) {
@@ -227,30 +236,29 @@ func (o *State) EndBatch() error {
 			return err
 		}
 	}
-
 	// update ResultsAdd
-	o.NewResultsAdd = o.NewResultsAdd.Add(o.OldResultsAdd, o.BallotSum)
+	o.newResultsAdd = o.newResultsAdd.Add(o.oldResultsAdd, o.ballotSum)
 	o.VotesProofs.ResultsAdd, err = ArboTransitionFromAddOrUpdate(o,
-		KeyResultsAdd, o.NewResultsAdd.BigInts()...)
+		KeyResultsAdd, o.newResultsAdd.BigInts()...)
 	if err != nil {
 		return fmt.Errorf("ResultsAdd: %w", err)
 	}
-
 	// update ResultsSub
-	o.NewResultsSub = o.NewResultsSub.Add(o.OldResultsSub, o.OverwriteSum)
+	o.newResultsSub = o.newResultsSub.Add(o.oldResultsSub, o.overwriteSum)
 	o.VotesProofs.ResultsSub, err = ArboTransitionFromAddOrUpdate(o,
-		KeyResultsSub, o.NewResultsSub.BigInts()...)
+		KeyResultsSub, o.newResultsSub.BigInts()...)
 	if err != nil {
 		return fmt.Errorf("ResultsSub: %w", err)
 	}
-
 	return o.dbTx.Commit()
 }
 
+// Root method returns the root of the tree as a byte array.
 func (o *State) Root() ([]byte, error) {
 	return o.tree.Root()
 }
 
+// RootAsBigInt method returns the root of the tree as a big.Int.
 func (o *State) RootAsBigInt() (*big.Int, error) {
 	root, err := o.tree.Root()
 	if err != nil {
@@ -259,18 +267,43 @@ func (o *State) RootAsBigInt() (*big.Int, error) {
 	return arbo.BytesToBigInt(root), nil
 }
 
+// BallotCount returns the number of ballots added in the current batch.
 func (o *State) BallotCount() int {
 	return o.ballotCount
 }
 
+// OldResultsAdd returns the old results add ballot of the current batch.
+func (o *State) OldResultsAdd() *elgamal.Ballot {
+	return o.oldResultsAdd
+}
+
+// OldResultsSub returns the old results sub ballot of the current batch.
+func (o *State) OldResultsSub() *elgamal.Ballot {
+	return o.oldResultsSub
+}
+
+// NewResultsAdd returns the new results add ballot of the current batch.
+func (o *State) NewResultsAdd() *elgamal.Ballot {
+	return o.newResultsAdd
+}
+
+// NewResultsSub returns the new results sub ballot of the current batch.
+func (o *State) NewResultsSub() *elgamal.Ballot {
+	return o.newResultsSub
+}
+
+// OverwriteCount returns the number of ballots overwritten in the current
+// batch.
 func (o *State) OverwriteCount() int {
 	return o.overwriteCount
 }
 
+// Votes returns the votes added in the current batch.
 func (o *State) Votes() []*Vote {
 	return o.votes
 }
 
+// OverwrittenBallots returns the overwritten ballots in the current batch.
 func (o *State) OverwrittenBallots() []*elgamal.Ballot {
 	v := slices.Clone(o.overwrittenBallots)
 	for len(v) < circuits.VotesPerBatch {
@@ -279,6 +312,9 @@ func (o *State) OverwrittenBallots() []*elgamal.Ballot {
 	return v
 }
 
+// PaddedVotes returns the votes added in the current batch, padded to
+// circuits.VotesPerBatch. The padding is done by adding empty votes with zero
+// values.
 func (o *State) PaddedVotes() []*Vote {
 	v := slices.Clone(o.votes)
 	for len(v) < circuits.VotesPerBatch {
@@ -307,6 +343,7 @@ func (o *State) ProcessSerializeBigInts() []*big.Int {
 	return list
 }
 
+// ProccessID returns the process ID of the state as a big.Int.
 func (o *State) ProcessID() *big.Int {
 	_, v, err := o.tree.GetBigInt(KeyProcessID)
 	if err != nil {
@@ -315,6 +352,7 @@ func (o *State) ProcessID() *big.Int {
 	return v[0]
 }
 
+// CensusRoot returns the census root of the state as a big.Int.
 func (o *State) CensusRoot() *big.Int {
 	_, v, err := o.tree.GetBigInt(KeyCensusRoot)
 	if err != nil {
@@ -323,6 +361,8 @@ func (o *State) CensusRoot() *big.Int {
 	return v[0]
 }
 
+// BallotMode returns the ballot mode of the state as a
+// circuits.BallotMode[*big.Int].
 func (o *State) BallotMode() circuits.BallotMode[*big.Int] {
 	_, v, err := o.tree.GetBigInt(KeyBallotMode)
 	if err != nil {
@@ -335,6 +375,8 @@ func (o *State) BallotMode() circuits.BallotMode[*big.Int] {
 	return bm
 }
 
+// EncryptionKey returns the encryption key of the state as a
+// circuits.EncryptionKey[*big.Int].
 func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
 	_, v, err := o.tree.GetBigInt(KeyEncryptionKey)
 	if err != nil {
@@ -361,7 +403,8 @@ func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
 // to calculate a subhash of each process+vote, then hashes all subhashes
 // and returns the final hash
 func (o *State) AggregatorWitnessHash() (*big.Int, error) {
-	// TODO: move this func somewhere else, along with other similar funcs used by other circuits
+	// TODO: move this func somewhere else, along with other similar funcs used
+	// by other circuits
 	subhashes := []*big.Int{}
 	for _, v := range o.PaddedVotes() {
 		inputs := []*big.Int{}
@@ -381,7 +424,9 @@ func (o *State) AggregatorWitnessHash() (*big.Int, error) {
 	return hash, nil
 }
 
+// EncodeKey encodes a key to a byte array using the maximum key length for the
+// current number of levels in the state tree and the hash function length.
 func EncodeKey(key *big.Int) []byte {
-	maxKeyLen := arbo.MaxKeyLen(circuits.StateTreeMaxLevels, HashFunc.Len())
+	maxKeyLen := arbo.MaxKeyLen(circuits.StateTreeMaxLevels, HashFn.Len())
 	return arbo.BigIntToBytes(maxKeyLen, key)
 }

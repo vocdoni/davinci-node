@@ -42,11 +42,22 @@ func GenerateWitness(o *state.State) (*statetransition.Circuit, error) {
 		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
 	}
 
-	witness.ProcessProofs = statetransition.ProcessProofs{
-		ID:            statetransition.MerkleProofFromArboProof(o.ProcessProofs.ID),
-		CensusRoot:    statetransition.MerkleProofFromArboProof(o.ProcessProofs.CensusRoot),
-		BallotMode:    statetransition.MerkleProofFromArboProof(o.ProcessProofs.BallotMode),
-		EncryptionKey: statetransition.MerkleProofFromArboProof(o.ProcessProofs.EncryptionKey),
+	witness.ProcessProofs = statetransition.ProcessProofs{}
+	witness.ProcessProofs.ID, err = statetransition.MerkleProofFromArboProof(o.ProcessProofs.ID)
+	if err != nil {
+		return nil, err
+	}
+	witness.ProcessProofs.CensusRoot, err = statetransition.MerkleProofFromArboProof(o.ProcessProofs.CensusRoot)
+	if err != nil {
+		return nil, err
+	}
+	witness.ProcessProofs.BallotMode, err = statetransition.MerkleProofFromArboProof(o.ProcessProofs.BallotMode)
+	if err != nil {
+		return nil, err
+	}
+	witness.ProcessProofs.EncryptionKey, err = statetransition.MerkleProofFromArboProof(o.ProcessProofs.EncryptionKey)
+	if err != nil {
+		return nil, err
 	}
 
 	// add Ballots
@@ -78,10 +89,10 @@ func GenerateWitness(o *state.State) (*statetransition.Circuit, error) {
 	}
 
 	witness.Results = statetransition.Results{
-		OldResultsAdd: *o.OldResultsAdd.ToGnark(),
-		OldResultsSub: *o.OldResultsSub.ToGnark(),
-		NewResultsAdd: *o.NewResultsAdd.ToGnark(),
-		NewResultsSub: *o.NewResultsSub.ToGnark(),
+		OldResultsAdd: *o.OldResultsAdd().ToGnark(),
+		OldResultsSub: *o.OldResultsSub().ToGnark(),
+		NewResultsAdd: *o.NewResultsAdd().ToGnark(),
+		NewResultsSub: *o.NewResultsSub().ToGnark(),
 	}
 
 	// update stats

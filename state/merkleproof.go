@@ -3,11 +3,9 @@ package state
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
 // ArboProof stores the proof in arbo native types
@@ -21,7 +19,6 @@ type ArboProof struct {
 
 // GenArboProof generates a ArboProof for the given key
 func (o *State) GenArboProof(k *big.Int) (*ArboProof, error) {
-	fmt.Println("\nGenArboProof", k)
 	proof, err := o.tree.GenerateGnarkVerifierProofBigInt(k)
 	if err != nil {
 		return nil, err
@@ -37,27 +34,15 @@ func (o *State) GenArboProof(k *big.Int) (*ArboProof, error) {
 // ArboProofsFromAddOrUpdate generates an ArboProof before adding (or updating) the given leaf,
 // and another ArboProof after updating, and returns both.
 func (o *State) ArboProofsFromAddOrUpdate(k *big.Int, v []*big.Int) (*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error) {
-	fmt.Println("\nArboProofsFromAddOrUpdate for key", util.PrettyHex(k), len(v))
 	mpBefore, err := o.tree.GenerateGnarkVerifierProofBigInt(k)
 	if err != nil {
 		return nil, nil, err
 	}
-	fmt.Println("ArboProofsFromAddOrUpdate mpBefore",
-		"Key", util.PrettyHex(mpBefore.Key),
-		"Value", util.PrettyHex(mpBefore.Value),
-		"OldKey", util.PrettyHex(mpBefore.OldKey),
-		"OldValue", util.PrettyHex(mpBefore.OldValue),
-		"Root", util.PrettyHex(mpBefore.Root),
-	)
-	bv, _ := arbo.EncodeBigIntValues(HashFunc, v...)
-	if _, oldValue, err := o.tree.GetBigInt(k); errors.Is(err, arbo.ErrKeyNotFound) {
-		log.Println("adding key", k, "->", arbo.BytesToBigInt(bv))
+	if _, _, err := o.tree.GetBigInt(k); errors.Is(err, arbo.ErrKeyNotFound) {
 		if err := o.tree.AddBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("add key failed: %w", err)
 		}
 	} else {
-		oldbv, _ := arbo.EncodeBigIntValues(HashFunc, oldValue...)
-		log.Println("updating key", k, "->", arbo.BytesToBigInt(bv), "old value", arbo.BytesToBigInt(oldbv))
 		if err := o.tree.UpdateBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("update key failed: %w", err)
 		}
@@ -107,7 +92,6 @@ func ArboTransitionFromArboProofPair(before, after *arbo.GnarkVerifierProof) *Ar
 	case beforeIsInclusion && !afterIsInclusion: // inclusion, exclusion = DELETE
 		fnc0, fnc1 = 1, 1
 	}
-
 	oldKey := before.Key
 	oldValue := before.Value
 	if !beforeIsInclusion {
@@ -120,17 +104,6 @@ func ArboTransitionFromArboProofPair(before, after *arbo.GnarkVerifierProof) *Ar
 		newKey = after.OldKey
 		newValue = after.OldValue
 	}
-
-	fmt.Println("ArboTransitionFromArboProofPair",
-		"before.Key", util.PrettyHex(oldKey),
-		"before.Value", util.PrettyHex(oldValue),
-		"after.Key", util.PrettyHex(newKey),
-		"after.Value", util.PrettyHex(newValue),
-		"isOld0", util.PrettyHex(isOld0),
-		"Fnc0", util.PrettyHex(fnc0),
-		"Fnc1", util.PrettyHex(fnc1),
-	)
-
 	return &ArboTransition{
 		Siblings: before.Siblings,
 		OldRoot:  before.Root,

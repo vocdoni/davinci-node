@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/big"
 	"os"
 	"testing"
@@ -25,10 +24,6 @@ import (
 
 	"go.vocdoni.io/dvote/db/metadb"
 )
-
-func init() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-}
 
 const falseStr = "false"
 
