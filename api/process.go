@@ -18,6 +18,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
 // newProcess creates a new voting process
@@ -117,7 +118,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 // GET /process/{processId}
 func (a *API) process(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal the process ID
-	pidBytes, err := hex.DecodeString(chi.URLParam(r, ProcessURLParam))
+	pidBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, ProcessURLParam)))
 	if err != nil {
 		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
 		return

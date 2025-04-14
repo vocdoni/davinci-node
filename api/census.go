@@ -135,7 +135,7 @@ func (a *API) getCensusSize(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		size = ref.Size()
-	} else if root, err := hex.DecodeString(chi.URLParam(r, CensusURLParam)); err == nil {
+	} else if root, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, CensusURLParam))); err == nil {
 		if size, err = a.storage.CensusDB().SizeByRoot(root); err != nil {
 			ErrGenericInternalServerError.WithErr(err).Write(w)
 			return
@@ -166,7 +166,7 @@ func (a *API) deleteCensus(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) getCensusProof(w http.ResponseWriter, r *http.Request) {
 	rootHex := chi.URLParam(r, CensusURLParam)
-	root, err := hex.DecodeString(rootHex)
+	root, err := hex.DecodeString(util.TrimHex(rootHex))
 	if err != nil {
 		ErrInvalidCensusID.WithErr(err).Write(w)
 		return
