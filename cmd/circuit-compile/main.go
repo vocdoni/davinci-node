@@ -15,11 +15,13 @@ import (
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
+	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	flag "github.com/spf13/pflag"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -125,14 +127,14 @@ func main() {
 	////////////////////////////////////////
 	log.Infow("compiling aggregator circuit...")
 	startTime = time.Now()
-	fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierVk)
+	voteVerifierFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierVk)
 	if err != nil {
 		log.Fatalf("failed to fix vote verifier verification key: %v", err)
 	}
 	// create final placeholder
 	aggregatePlaceholder := &aggregator.AggregatorCircuit{
 		Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
-		VerificationKey: fixedVk,
+		VerificationKey: voteVerifierFixedVk,
 	}
 	for i := range types.VotesPerBatch {
 		aggregatePlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](voteVerifierCCS)
@@ -171,6 +173,54 @@ func main() {
 	hashList["AggregatorVerificationKeyHash"] = hash
 
 	log.Infow("aggregator artifacts written to disk", "elapsed", time.Since(startTime).String())
+
+	////////////////////////////////////////
+	// Statetransition Circuit Compilation
+	////////////////////////////////////////
+	log.Infow("compiling statetransition circuit...")
+	startTime = time.Now()
+	aggregatorFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregateVk)
+	if err != nil {
+		log.Fatalf("failed to fix vote verifier verification key: %v", err)
+	}
+	// create final placeholder
+	statetransitionPlaceholder := &statetransition.StateTransitionCircuit{
+		AggregatorProof: stdgroth16.PlaceholderProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](aggregateCCS),
+		AggregatorVK:    aggregatorFixedVk,
+	}
+	statetransitionCCS, err := frontend.Compile(circuits.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, statetransitionPlaceholder)
+	if err != nil {
+		log.Fatalf("failed to compile statetransition circuit: %v", err)
+	}
+	// Setup Aggregator circuit
+	statetransitionPk, statetransitionVk, err := groth16.Setup(statetransitionCCS)
+	if err != nil {
+		log.Fatalf("error setting up statetransition circuit: %v", err)
+	}
+	log.Infow("statetransition circuit compiled", "elapsed", time.Since(startTime).String())
+
+	// Write the aggregator artifacts to disk
+	startTime = time.Now()
+	log.Infow("writing statetransition artifacts to disk...")
+	hash, err = writeCS(statetransitionCCS, destination)
+	if err != nil {
+		log.Fatalf("error writing statetransition constraint system: %v", err)
+	}
+	hashList["StateTransitionCircuitHash"] = hash
+
+	hash, err = writePK(statetransitionPk, destination)
+	if err != nil {
+		log.Fatalf("error writing statetransition proving key: %v", err)
+	}
+	hashList["StateTransitionProvingKeyHash"] = hash
+
+	hash, err = writeVK(statetransitionVk, destination)
+	if err != nil {
+		log.Fatalf("error writing statetransition verifying key: %v", err)
+	}
+	hashList["StateTransitionVerificationKeyHash"] = hash
+
+	log.Infow("statetransition artifacts written to disk", "elapsed", time.Since(startTime).String())
 
 	////////////////////////////////////////
 	// Print hash list and upload files
