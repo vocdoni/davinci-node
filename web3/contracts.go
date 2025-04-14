@@ -2,15 +2,17 @@ package web3
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	bindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc"
 )
@@ -18,6 +20,12 @@ import (
 const (
 	// web3QueryTimeout is the timeout for web3 queries.
 	web3QueryTimeout = 10 * time.Second
+
+	// maxPastBlocksToWatch is the maximum number of past blocks to watch for events.
+	maxPastBlocksToWatch = 9990
+
+	// currentBlockIntervalUpdate is the interval to update the current block.
+	currentBlockIntervalUpdate = 5 * time.Second
 )
 
 // Addresses contains the addresses of the contracts deployed in the network.
@@ -35,7 +43,11 @@ type Contracts struct {
 	processes          *bindings.ProcessRegistry
 	web3pool           *rpc.Web3Pool
 	cli                *rpc.Client
-	signer             *ethereum.SignKeys
+	signer             *ethereum.Signer
+
+	currentBlock           uint64
+	currentBlockLastUpdate time.Time
+	currentBlockMutex      sync.Mutex
 
 	knownProcesses        map[string]struct{}
 	lastWatchProcessBlock uint64
@@ -43,35 +55,99 @@ type Contracts struct {
 	lastWatchOrgBlock     uint64
 }
 
-// LoadContracts creates a new Contracts instance with the given web3 endpoint.
-func LoadContracts(addresses *Addresses, web3rpc string) (*Contracts, error) {
+// New creates a new Contracts instance with the given web3 endpoints.
+// It initializes the web3 pool and the client, and sets up the known processes
+func New(web3rpcs []string) (*Contracts, error) {
 	w3pool := rpc.NewWeb3Pool()
-	chainID, err := w3pool.AddEndpoint(web3rpc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to add web3 endpoint: %w", err)
+	var chainID *uint64
+	for _, rpc := range web3rpcs {
+		cID, err := w3pool.AddEndpoint(rpc)
+		if err != nil {
+			log.Warnw("skipping web3 endpoint", "rpc", rpc, "error", err)
+			continue
+		}
+		if chainID == nil {
+			chainID = &cID
+		}
+		if *chainID != cID {
+			return nil, fmt.Errorf("web3 endpoints have different chain IDs: %d and %d", *chainID, cID)
+		}
 	}
-	cli, err := w3pool.Client(chainID)
+	if chainID == nil {
+		return nil, fmt.Errorf("no web3 endpoints provided")
+	}
+	cli, err := w3pool.Client(*chainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
-	organizations, err := bindings.NewOrganizationRegistry(addresses.OrganizationRegistry, cli)
+
+	// get the last block number
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	lastBlock, err := cli.BlockNumber(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to bind organization registry: %w", err)
+		return nil, fmt.Errorf("failed to get block number: %w", err)
 	}
-	process, err := bindings.NewProcessRegistry(addresses.ProcessRegistry, cli)
-	if err != nil {
-		return nil, fmt.Errorf("failed to bind process registry: %w", err)
+
+	log.Infow("web3 client initialized",
+		"chainID", *chainID,
+		"lastBlock", lastBlock,
+		"numEndpoints", len(web3rpcs),
+		"numBlocksToWatch", maxPastBlocksToWatch,
+	)
+
+	// calculate the start block to watch
+	startBlock := int64(lastBlock) - maxPastBlocksToWatch
+	if startBlock < 0 {
+		startBlock = 0
 	}
+
 	return &Contracts{
-		ContractsAddresses: addresses,
-		organizations:      organizations,
-		processes:          process,
-		ChainID:            chainID,
-		web3pool:           w3pool,
-		cli:                cli,
-		knownProcesses:     make(map[string]struct{}),
-		knownOrganizations: make(map[string]struct{}),
+		ChainID:                *chainID,
+		web3pool:               w3pool,
+		cli:                    cli,
+		knownProcesses:         make(map[string]struct{}),
+		knownOrganizations:     make(map[string]struct{}),
+		lastWatchProcessBlock:  uint64(startBlock),
+		lastWatchOrgBlock:      uint64(startBlock),
+		currentBlock:           lastBlock,
+		currentBlockLastUpdate: time.Now(),
 	}, nil
+}
+
+// CurrentBlock returns the current block number for the chain.
+func (c *Contracts) CurrentBlock() uint64 {
+	c.currentBlockMutex.Lock()
+	defer c.currentBlockMutex.Unlock()
+	now := time.Now()
+	if c.currentBlockLastUpdate.Add(currentBlockIntervalUpdate).Before(now) {
+		ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+		defer cancel()
+		block, err := c.cli.BlockNumber(ctx)
+		if err != nil {
+			log.Warnw("failed to get block number", "error", err)
+			return c.currentBlock
+		}
+		c.currentBlock = block
+		c.currentBlockLastUpdate = now
+	}
+	return c.currentBlock
+}
+
+// LoadContracts loads the contracts from the given addresses.
+func (c *Contracts) LoadContracts(addresses *Addresses) error {
+	organizations, err := bindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
+	if err != nil {
+		return fmt.Errorf("failed to bind organization registry: %w", err)
+	}
+	process, err := bindings.NewProcessRegistry(addresses.ProcessRegistry, c.cli)
+	if err != nil {
+		return fmt.Errorf("failed to bind process registry: %w", err)
+	}
+	c.ContractsAddresses = addresses
+	c.processes = process
+	c.organizations = organizations
+	return nil
 }
 
 // DeployContracts deploys new contracts and returns the bindings.
@@ -168,11 +244,11 @@ func (c *Contracts) AddWeb3Endpoint(web3rpc string) error {
 
 // SetAccountPrivateKey sets the private key to be used for signing transactions.
 func (c *Contracts) SetAccountPrivateKey(hexPrivKey string) error {
-	signer := ethereum.SignKeys{}
-	if err := signer.SetHexKey(hexPrivKey); err != nil {
+	signer, err := ethereum.NewSignerFromHex(hexPrivKey)
+	if err != nil {
 		return fmt.Errorf("failed to add private key: %w", err)
 	}
-	c.signer = &signer
+	c.signer = signer
 	return nil
 }
 
@@ -186,7 +262,11 @@ func (c *Contracts) SignMessage(msg []byte) ([]byte, error) {
 	if c.signer == nil {
 		return nil, fmt.Errorf("no private key set")
 	}
-	return c.signer.SignEthereum(msg)
+	signature, err := c.signer.Sign(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign message: %w", err)
+	}
+	return signature.Bytes(), nil
 }
 
 // AccountNonce returns the nonce of the account used to sign transactions.
@@ -208,7 +288,7 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 		return nil, fmt.Errorf("no private key set")
 	}
 	bChainID := new(big.Int).SetUint64(c.ChainID)
-	auth, err := bind.NewKeyedTransactorWithChainID(c.signer.Private, bChainID)
+	auth, err := bind.NewKeyedTransactorWithChainID((*ecdsa.PrivateKey)(c.signer), bChainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transactor: %w", err)
 	}

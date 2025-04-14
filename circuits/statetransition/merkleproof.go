@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
@@ -17,7 +18,7 @@ import (
 type MerkleProof struct {
 	// Key + Value hashed through Siblings path, should produce Root hash
 	Root     frontend.Variable
-	Siblings [circuits.CensusTreeMaxLevels]frontend.Variable
+	Siblings [types.CensusTreeMaxLevels]frontend.Variable
 	Key      frontend.Variable
 	LeafHash frontend.Variable
 }
@@ -77,7 +78,7 @@ func (mp *MerkleProof) String() string {
 type MerkleTransition struct {
 	// NewKey + NewValue hashed through Siblings path, should produce NewRoot hash
 	NewRoot     frontend.Variable
-	Siblings    [circuits.CensusTreeMaxLevels]frontend.Variable
+	Siblings    [types.CensusTreeMaxLevels]frontend.Variable
 	NewKey      frontend.Variable
 	NewLeafHash frontend.Variable
 	// OldKey + OldValue hashed through same Siblings should produce OldRoot hash
@@ -211,9 +212,9 @@ func (mp *MerkleTransition) IsNoop(api frontend.API) frontend.Variable {
 // padStateSiblings pads the unpacked siblings to the maximum number of levels
 // in the census tree, filling with 0s if needed. It returns a fixed-size array
 // of the maximum number of levels of frontend.Variable.
-func padStateSiblings(unpackedSiblings []*big.Int) [circuits.CensusTreeMaxLevels]frontend.Variable {
-	paddedSiblings := [circuits.CensusTreeMaxLevels]frontend.Variable{}
-	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, circuits.CensusTreeMaxLevels) {
+func padStateSiblings(unpackedSiblings []*big.Int) [types.CensusTreeMaxLevels]frontend.Variable {
+	paddedSiblings := [types.CensusTreeMaxLevels]frontend.Variable{}
+	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, types.CensusTreeMaxLevels) {
 		paddedSiblings[i] = v
 	}
 	return paddedSiblings

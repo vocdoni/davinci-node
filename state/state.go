@@ -12,6 +12,7 @@ import (
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
@@ -71,8 +72,8 @@ type ProcessProofs struct {
 type VotesProofs struct {
 	ResultsAdd *ArboTransition
 	ResultsSub *ArboTransition
-	Ballot     [circuits.VotesPerBatch]*ArboTransition
-	Commitment [circuits.VotesPerBatch]*ArboTransition
+	Ballot     [types.VotesPerBatch]*ArboTransition
+	Commitment [types.VotesPerBatch]*ArboTransition
 }
 
 // New creates or opens a State stored in the passed database.
@@ -81,7 +82,7 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 	pdb := prefixeddb.NewPrefixedDatabase(db, processId.Bytes())
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     pdb,
-		MaxLevels:    circuits.StateTreeMaxLevels,
+		MaxLevels:    types.StateTreeMaxLevels,
 		HashFunction: HashFn,
 	})
 	if err != nil {
@@ -306,7 +307,7 @@ func (o *State) Votes() []*Vote {
 // OverwrittenBallots returns the overwritten ballots in the current batch.
 func (o *State) OverwrittenBallots() []*elgamal.Ballot {
 	v := slices.Clone(o.overwrittenBallots)
-	for len(v) < circuits.VotesPerBatch {
+	for len(v) < types.VotesPerBatch {
 		v = append(v, elgamal.NewBallot(Curve))
 	}
 	return v
@@ -317,7 +318,7 @@ func (o *State) OverwrittenBallots() []*elgamal.Ballot {
 // values.
 func (o *State) PaddedVotes() []*Vote {
 	v := slices.Clone(o.votes)
-	for len(v) < circuits.VotesPerBatch {
+	for len(v) < types.VotesPerBatch {
 		v = append(v, &Vote{
 			Address:    big.NewInt(0),
 			Commitment: big.NewInt(0),
@@ -427,6 +428,6 @@ func (o *State) AggregatorWitnessHash() (*big.Int, error) {
 // EncodeKey encodes a key to a byte array using the maximum key length for the
 // current number of levels in the state tree and the hash function length.
 func EncodeKey(key *big.Int) []byte {
-	maxKeyLen := arbo.MaxKeyLen(circuits.StateTreeMaxLevels, HashFn.Len())
+	maxKeyLen := arbo.MaxKeyLen(types.StateTreeMaxLevels, HashFn.Len())
 	return arbo.BigIntToBytes(maxKeyLen, key)
 }

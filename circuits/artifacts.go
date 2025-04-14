@@ -28,19 +28,17 @@ import (
 var BaseDir string
 
 func init() {
-	if dir := os.Getenv("DAVINCI_ARTIFACTS_DIR"); dir != "" {
-		BaseDir = dir
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			log.Warnf("unable to access user home directory, using temporary directory: %v", err)
-			BaseDir = filepath.Join(os.TempDir(), "davinci-artifacts")
+	if BaseDir == "" {
+		if dir := os.Getenv("DAVINCI_ARTIFACTS_DIR"); dir != "" {
+			BaseDir = dir
 		} else {
-			BaseDir = filepath.Join(home, ".cache", "davinci-artifacts")
+			userHomeDir, err := os.UserHomeDir()
+			if err != nil {
+				userHomeDir = "."
+			}
+			BaseDir = filepath.Join(userHomeDir, ".davinci", "artifacts")
 		}
 	}
-	log.Infow("using artifact cache directory", "dir", BaseDir)
-
 	// Create BaseDir if it doesn't exist.
 	if err := os.MkdirAll(BaseDir, 0o755); err != nil {
 		log.Errorf("failed to create BaseDir %s: %v", BaseDir, err)
@@ -265,7 +263,7 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 			if !bytes.Equal(computedHash, expectedHash) {
 				log.Warnf("hash mismatch: expected %x, got %x", expectedHash, computedHash)
 			} else {
-				log.Debugw("circuits artifact found", "hash", hex.EncodeToString(expectedHash))
+				log.Debugw("artifact found", "hash", hex.EncodeToString(expectedHash), "path", filepath.Dir(path))
 				return nil
 			}
 		}
@@ -377,7 +375,8 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 			if pr.contentLength > 0 {
 				percentage = (float64(total) / float64(pr.contentLength)) * 100
 			}
-			log.Debugw("download artifacts", "host", u.Host, "path", u.Path,
+			log.Debugw("downloading...", "host", u.Host, "path", u.Path,
+				"dir", parentDir,
 				"downloaded", fmt.Sprintf("%.2fMiB", downloadedMiB),
 				"progress", fmt.Sprintf("%.2f%%", percentage))
 		}
@@ -396,6 +395,12 @@ finished:
 			return fmt.Errorf("error renaming file: %w", err)
 		}
 	}
+	log.Debugw("downloaded artifact",
+		"path", path,
+		"hash", hex.EncodeToString(expectedHash),
+		"progress", "100%",
+		"size", fmt.Sprintf("%.2fMiB", float64(pr.contentLength)/(1024*1024)),
+	)
 
 	return nil
 }

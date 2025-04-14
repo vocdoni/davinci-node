@@ -13,12 +13,13 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 type AggregatorCircuit struct {
-	ValidProofs        frontend.Variable                                              `gnark:",public"`
-	ProofsInputsHashes [circuits.VotesPerBatch]emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
-	Proofs             [circuits.VotesPerBatch]groth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
+	ValidProofs        frontend.Variable                                           `gnark:",public"`
+	ProofsInputsHashes [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
+	Proofs             [types.VotesPerBatch]groth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
 	VerificationKey    groth16.VerifyingKey[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT] `gnark:"-"`
 }
 

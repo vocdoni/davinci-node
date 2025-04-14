@@ -19,6 +19,8 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"go.vocdoni.io/dvote/util"
 )
 
@@ -38,7 +40,7 @@ type VoteVerifierTestResults struct {
 // VoterTestData struct includes the information required to generate the test
 // inputs for the VerifyVoteCircuit.
 type VoterTestData struct {
-	PrivKey *ecdsa.PrivateKey
+	PrivKey *ethereum.Signer
 	PubKey  ecdsa.PublicKey
 	Address common.Address
 }
@@ -66,7 +68,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 	testCensus, err := primitivestest.GenerateCensusProofForTest(primitivestest.CensusTestConfig{
 		Dir:           fmt.Sprintf("../assets/census%d", util.RandomInt(0, 1000)),
 		ValidSiblings: 10,
-		TotalSiblings: circuits.CensusTreeMaxLevels,
+		TotalSiblings: types.CensusTreeMaxLevels,
 		KeyLen:        20,
 		Hash:          arbo.HashFunctionMiMC_BLS12_377,
 		BaseField:     arbo.BLS12377BaseField,
@@ -101,12 +103,12 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 		// circuit as input for MIMC hash
 		blsCircomInputsHash := crypto.BigIntToFFwithPadding(voterProof.InputsHash, circuits.VoteVerifierCurve.ScalarField())
 		// sign the inputs hash with the private key
-		rSign, sSign, err := ballottest.SignECDSAForTest(voter.PrivKey, blsCircomInputsHash)
+		signature, err := ballottest.SignECDSAForTest(voter.PrivKey, blsCircomInputsHash)
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 		}
 		// transform siblings to gnark frontend.Variable
-		emulatedSiblings := [circuits.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+		emulatedSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
 		for j, s := range testCensus.Proofs[i].Siblings {
 			emulatedSiblings[j] = emulated.ValueOf[sw_bn254.ScalarField](s)
 		}
@@ -157,8 +159,8 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 				Y: emulated.ValueOf[emulated.Secp256k1Fp](voter.PubKey.Y),
 			},
 			Signature: gnarkecdsa.Signature[emulated.Secp256k1Fr]{
-				R: emulated.ValueOf[emulated.Secp256k1Fr](rSign),
-				S: emulated.ValueOf[emulated.Secp256k1Fr](sSign),
+				R: emulated.ValueOf[emulated.Secp256k1Fr](signature.R),
+				S: emulated.ValueOf[emulated.Secp256k1Fr](signature.S),
 			},
 			// circom proof
 			CircomProof: recursiveProof.Proof,

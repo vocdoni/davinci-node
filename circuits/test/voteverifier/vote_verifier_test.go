@@ -18,13 +18,13 @@ import (
 func TestVerifySingleVoteCircuit(t *testing.T) {
 	c := qt.New(t)
 	// generate voter account
-	privKey, pubKey, address, err := ballottest.GenECDSAaccountForTest()
+	s, err := ballottest.GenECDSAaccountForTest()
 	c.Assert(err, qt.IsNil)
 	_, placeholder, assignments, err := VoteVerifierInputsForTest([]VoterTestData{
 		{
-			PrivKey: privKey,
-			PubKey:  pubKey,
-			Address: address,
+			PrivKey: s,
+			PubKey:  s.PublicKey,
+			Address: s.Address(),
 		},
 	}, nil)
 	c.Assert(err, qt.IsNil)
@@ -56,11 +56,11 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	}
 	c := qt.New(t)
 	data := []VoterTestData{}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		// generate voter account
-		privKey, pubKey, address, err := ballottest.GenECDSAaccountForTest()
+		s, err := ballottest.GenECDSAaccountForTest()
 		c.Assert(err, qt.IsNil)
-		data = append(data, VoterTestData{privKey, pubKey, address})
+		data = append(data, VoterTestData{s, s.PublicKey, s.Address()})
 	}
 	_, placeholder, assignments, err := VoteVerifierInputsForTest(data, nil)
 	c.Assert(err, qt.IsNil)

@@ -9,7 +9,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -18,7 +18,7 @@ import (
 
 func init() {
 	log.Init(log.LogLevelDebug, "stdout", nil)
-	if err := service.DownloadArtifacts(30 * time.Minute); err != nil {
+	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
 		log.Errorw(err, "failed to download artifacts")
 	}
 }
@@ -41,7 +41,7 @@ func TestIntegration(t *testing.T) {
 		pid           *types.ProcessID
 		encryptionKey *types.EncryptionKey
 		ballotMode    *types.BallotMode
-		signers       []*ethereum.SignKeys
+		signers       []*ethereum.Signer
 		proofs        []*types.CensusProof
 		root          []byte
 		participants  []*api.CensusParticipant

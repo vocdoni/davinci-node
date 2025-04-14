@@ -58,6 +58,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
+	"github.com/consensys/gnark/std/hash/sha3"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/std/signature/ecdsa"
@@ -66,6 +67,8 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 type VerifyVoteCircuit struct {
@@ -80,7 +83,7 @@ type VerifyVoteCircuit struct {
 	Vote           circuits.EmulatedVote[sw_bn254.ScalarField]
 	Process        circuits.Process[emulated.Element[sw_bn254.ScalarField]]
 	UserWeight     emulated.Element[sw_bn254.ScalarField]
-	CensusSiblings [circuits.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
+	CensusSiblings [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
 	// The following variables are private inputs and they are used to verify
 	// the user identity ownership
 	Msg       emulated.Element[emulated.Secp256k1Fr]
@@ -166,9 +169,34 @@ func (c VerifyVoteCircuit) checkInputsHash(api frontend.API) {
 // public key and message provided, and that the derived address matches the
 // provided address.
 func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
-	// check the signature of the circom inputs hash provided as Secp256k1
-	// emulated element
-	validSign := c.PublicKey.SignIsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &c.Msg, &c.Signature)
+	// we need to prefix the message with the Ethereum signing prefix
+	// and the length of the message to be signed
+	prefix := utils.BytesFromString(fmt.Sprintf("%s%d", ethereum.SigningPrefix, ethereum.HashLength), len(ethereum.SigningPrefix)+2)
+
+	// first convert the message to bytes and swap the endianness of the content (the hash of the data to be signed)
+	content, err := utils.BytesFromElement(api, c.Msg)
+	if err != nil {
+		circuits.FrontendError(api, "failed to convert message to bytes", err)
+	}
+	content = utils.SwapEndianness(content)
+
+	// concatenate the prefix and content to create the hash to be signed
+	msg := utils.Bytes(append(prefix[:], content[:]...))
+	keccak, err := sha3.NewLegacyKeccak256(api)
+	if err != nil {
+		circuits.FrontendError(api, "failed to create hash function", err)
+	}
+	keccak.Write(msg)
+
+	// we need to swap the endianess again and convert the bytes back to the emulated secp256k1 field
+	hash := utils.SwapEndianness(keccak.Sum())
+	emulatedHash, err := utils.U8ToElem[emulated.Secp256k1Fr](api, hash)
+	if err != nil {
+		circuits.FrontendError(api, "failed to convert hash to emulated element", err)
+	}
+
+	// check the signature of the circom inputs hash provided as Secp256k1 emulated element
+	validSign := c.PublicKey.SignIsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
 	// if the inputs are valid, ensure that thre result of the verification
 	// is 1, otherwise, the result does not matter so force it to be 1
 	api.AssertIsEqual(api.Select(c.IsValid, validSign, 1), 1)

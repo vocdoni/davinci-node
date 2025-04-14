@@ -142,9 +142,9 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	hashInputs = append(hashInputs, root)
 	hashInputs = append(hashInputs, ballotMode.Serialize()...)
 	hashInputs = append(hashInputs, encryptionKey.Serialize()...)
-	hashInputs = append(hashInputs, b.Address.BigInt().MathBigInt())
-	hashInputs = append(hashInputs, b.Commitment.BigInt().MathBigInt())
-	hashInputs = append(hashInputs, b.Nullifier.BigInt().MathBigInt())
+	hashInputs = append(hashInputs, b.Address)
+	hashInputs = append(hashInputs, b.Commitment)
+	hashInputs = append(hashInputs, b.Nullifier)
 	hashInputs = append(hashInputs, b.EncryptedBallot.BigInts()...)
 
 	inputHash, err := mimc7.Hash(hashInputs, nil)
@@ -159,8 +159,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 
 	// Convert siblings to emulated elements
-	emulatedSiblings := [circuits.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
-	for i, s := range circuits.BigIntArrayToN(siblings, circuits.CensusTreeMaxLevels) {
+	emulatedSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+	for i, s := range circuits.BigIntArrayToN(siblings, types.CensusTreeMaxLevels) {
 		emulatedSiblings[i] = emulated.ValueOf[sw_bn254.ScalarField](s)
 	}
 
@@ -170,23 +170,17 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		return nil, fmt.Errorf("failed to decompress voter public key: %w", err)
 	}
 
-	// Transform ballot data to big integers
-	address := b.Address.BigInt().MathBigInt()
-	commitment := b.Commitment.BigInt().MathBigInt()
-	nullifier := b.Nullifier.BigInt().MathBigInt()
-	voterWeight := b.VoterWeight.BigInt().MathBigInt()
-
 	// Create the circuit assignment
 	assignment := voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address:    emulated.ValueOf[sw_bn254.ScalarField](address),
-			Commitment: emulated.ValueOf[sw_bn254.ScalarField](commitment),
-			Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](nullifier),
+			Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
+			Commitment: emulated.ValueOf[sw_bn254.ScalarField](b.Commitment),
+			Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](b.Nullifier),
 			Ballot:     *b.EncryptedBallot.ToGnarkEmulatedBN254(),
 		},
-		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](voterWeight),
+		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 			ID:            emulated.ValueOf[sw_bn254.ScalarField](processID),
 			CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](root),
@@ -195,7 +189,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		},
 		CensusSiblings: emulatedSiblings,
 		Msg: emulated.ValueOf[emulated.Secp256k1Fr](
-			crypto.BigIntToFFwithPadding(b.BallotInputsHash.BigInt().MathBigInt(),
+			crypto.BigIntToFFwithPadding(b.BallotInputsHash,
 				circuits.VoteVerifierCurve.ScalarField(),
 			),
 		),
@@ -204,8 +198,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),
 		},
 		Signature: gnarkecdsa.Signature[emulated.Secp256k1Fr]{
-			R: emulated.ValueOf[emulated.Secp256k1Fr](b.Signature.R.BigInt().MathBigInt()),
-			S: emulated.ValueOf[emulated.Secp256k1Fr](b.Signature.S.BigInt().MathBigInt()),
+			R: emulated.ValueOf[emulated.Secp256k1Fr](b.Signature.R),
+			S: emulated.ValueOf[emulated.Secp256k1Fr](b.Signature.S),
 		},
 		CircomProof: b.BallotProof,
 	}
@@ -226,11 +220,11 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	// Create and return the verified ballot
 	return &storage.VerifiedBallot{
 		ProcessID:       b.ProcessID,
-		VoterWeight:     voterWeight,
-		Nullifier:       nullifier,
-		Commitment:      commitment,
+		VoterWeight:     b.VoterWeight,
+		Nullifier:       b.Nullifier,
+		Commitment:      b.Commitment,
 		EncryptedBallot: b.EncryptedBallot,
-		Address:         address,
+		Address:         b.Address,
 		Proof:           proof.(*groth16_bls12377.Proof),
 		InputsHash:      inputHash,
 	}, nil

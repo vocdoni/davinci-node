@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	qt "github.com/frankban/quicktest"
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
@@ -20,7 +21,7 @@ import (
 	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
@@ -99,7 +100,7 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *se
 	return api, vp, stg, contracts
 }
 
-func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.SignKeys) {
+func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.Signer) {
 	// Create a new census
 	body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewCensusEndpoint)
 	c.Assert(err, qt.IsNil)
@@ -110,16 +111,15 @@ func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.Cen
 	c.Assert(err, qt.IsNil)
 
 	// Generate random participants
-	signers := []*ethereum.SignKeys{}
+	signers := []*ethereum.Signer{}
 	censusParticipants := api.CensusParticipants{Participants: []*api.CensusParticipant{}}
 	for range size {
-		signer := ethereum.NewSignKeys(nil)
-		if err := signer.Generate(); err != nil {
+		signer, err := ethereum.NewSigner()
+		if err != nil {
 			c.Fatalf("failed to generate signer: %v", err)
 		}
-		key := signer.Address().Bytes()
 		censusParticipants.Participants = append(censusParticipants.Participants, &api.CensusParticipant{
-			Key:    key,
+			Key:    signer.Address().Bytes(),
 			Weight: new(types.BigInt).SetUint64(circuits.MockWeight),
 		})
 		signers = append(signers, signer)
@@ -228,16 +228,16 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	return pid, encryptionKeys
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, signer *ethereum.SignKeys) api.Vote {
+func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, privKey *ethereum.Signer) api.Vote {
 	bbjEncKey := new(bjj.BJJ).SetPoint(encKey.X, encKey.Y)
-	address := signer.Address().Bytes()
-	votedata, err := ballotprooftest.BallotProofForTest(address, pid.Marshal(), bbjEncKey)
+	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
+	votedata, err := ballotprooftest.BallotProofForTest(address.Bytes(), pid.Marshal(), bbjEncKey)
 	c.Assert(err, qt.IsNil)
 	// convert the circom inputs hash to the field of the curve used by the
 	// circuit as input for MIMC hash
 	blsCircomInputsHash := crypto.BigIntToFFwithPadding(votedata.InputsHash, circuits.VoteVerifierCurve.ScalarField())
 	// sign the inputs hash with the private key
-	rSign, sSign, err := ballotprooftest.SignECDSAForTest(signer.Private, blsCircomInputsHash)
+	signature, err := ballotprooftest.SignECDSAForTest(privKey, blsCircomInputsHash)
 	c.Assert(err, qt.IsNil)
 
 	circomProof, _, err := circuits.Circom2GnarkProof(votedata.Proof, votedata.PubInputs)
@@ -245,15 +245,12 @@ func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, sign
 
 	return api.Vote{
 		ProcessID:        pid.Marshal(),
-		Commitment:       votedata.Commitment.Bytes(),
-		Nullifier:        votedata.Nullifier.Bytes(),
+		Commitment:       (*types.BigInt)(votedata.Commitment),
+		Nullifier:        (*types.BigInt)(votedata.Nullifier),
 		Ballot:           votedata.Ballot,
 		BallotProof:      circomProof,
-		BallotInputsHash: votedata.InputsHash.Bytes(),
-		PublicKey:        signer.PublicKey(),
-		Signature: types.BallotSignature{
-			R: rSign.Bytes(),
-			S: sSign.Bytes(),
-		},
+		BallotInputsHash: (*types.BigInt)(votedata.InputsHash),
+		PublicKey:        ethcrypto.CompressPubkey(&privKey.PublicKey),
+		Signature:        signature.Bytes(),
 	}
 }

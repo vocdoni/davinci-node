@@ -12,18 +12,19 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 type Ballot struct {
-	CurveType   string                                `json:"curveType"`
-	Ciphertexts [circuits.FieldsPerBallot]*Ciphertext `json:"ciphertexts"`
+	CurveType   string                             `json:"curveType"`
+	Ciphertexts [types.FieldsPerBallot]*Ciphertext `json:"ciphertexts"`
 }
 
 // NewBallot creates a new Ballot for the given curve.
 func NewBallot(curve ecc.Point) *Ballot {
 	z := &Ballot{
 		CurveType:   curve.Type(),
-		Ciphertexts: [circuits.FieldsPerBallot]*Ciphertext{},
+		Ciphertexts: [types.FieldsPerBallot]*Ciphertext{},
 	}
 	for i := range z.Ciphertexts {
 		z.Ciphertexts[i] = NewCiphertext(curve)
@@ -51,7 +52,7 @@ func (z *Ballot) Valid() bool {
 
 // Encrypt encrypts a message using the public key provided as elliptic curve point.
 // The randomness k can be provided or nil to generate a new one.
-func (z *Ballot) Encrypt(message [circuits.FieldsPerBallot]*big.Int, publicKey ecc.Point, k *big.Int) (*Ballot, error) {
+func (z *Ballot) Encrypt(message [types.FieldsPerBallot]*big.Int, publicKey ecc.Point, k *big.Int) (*Ballot, error) {
 	for i := range z.Ciphertexts {
 		if _, err := z.Ciphertexts[i].Encrypt(message[i], publicKey, k); err != nil {
 			return nil, err
@@ -87,7 +88,7 @@ func (z *Ballot) SetBigInts(list []*big.Int) (*Ballot, error) {
 	if len(list) != 8*4 {
 		return nil, fmt.Errorf("expected 8*4 BigInts, got %d", len(list))
 	}
-	z.Ciphertexts = [circuits.FieldsPerBallot]*Ciphertext{}
+	z.Ciphertexts = [types.FieldsPerBallot]*Ciphertext{}
 	for i := range z.Ciphertexts {
 		c1x, c1y := list[i*4], list[i*4+1]
 		c2x, c2y := list[i*4+2], list[i*4+3]

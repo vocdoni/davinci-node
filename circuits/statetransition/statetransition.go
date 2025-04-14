@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // HashFn is the hash function used in the circuit. It should the equivalent
@@ -25,7 +26,7 @@ type Circuit struct {
 	NumOverwrites  frontend.Variable `gnark:",public"`
 	// Private data inputs
 	Process circuits.Process[frontend.Variable]
-	Votes   [circuits.VotesPerBatch]Vote
+	Votes   [types.VotesPerBatch]Vote
 	Results Results
 	// Private merkle proofs inputs
 	ProcessProofs ProcessProofs
@@ -58,9 +59,9 @@ type ProcessProofs struct {
 // commitments.
 type VotesProofs struct {
 	// Key is Nullifier, LeafHash is smt.Hash1(encoded(Ballot.Serialize()))
-	Ballot [circuits.VotesPerBatch]MerkleTransition
+	Ballot [types.VotesPerBatch]MerkleTransition
 	// Key is Address, LeafHash is smt.Hash1(encoded(Commitment))
-	Commitment [circuits.VotesPerBatch]MerkleTransition
+	Commitment [types.VotesPerBatch]MerkleTransition
 }
 
 // ResultsProofs struct contains the Merkle transition proofs for the addition
@@ -162,7 +163,7 @@ func (c Circuit) CalculateAggregatorWitness(api frontend.API) (groth16.Witness[s
 	}
 	// iterate over votes inputs to calculate the votes hashes and append them
 	// to the witness
-	for i := range circuits.VotesPerBatch {
+	for i := range types.VotesPerBatch {
 		isValid := cmp.IsLess(api, i, validVotes)
 		inputsHash := c.proofInputsHash(api, i)
 		// transform the hash to an emulated element of the bn254 curve into

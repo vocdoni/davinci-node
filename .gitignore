@@ -1,2 +1,5 @@
 *.pprof
 artifacts
+.env
+debug_*
+*.log

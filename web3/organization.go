@@ -51,13 +51,18 @@ func (c *Contracts) MonitorOrganizationCreatedByPolling(ctx context.Context, int
 				log.Warnw("exiting monitor organizations creation")
 				return
 			case <-ticker.C:
+				end := c.CurrentBlock()
+				if end <= c.lastWatchOrgBlock {
+					continue
+				}
 				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.organizations.FilterOrganizationCreated(&bind.FilterOpts{Start: c.lastWatchOrgBlock, Context: ctxQuery}, nil, nil)
+				iter, err := c.organizations.FilterOrganizationCreated(&bind.FilterOpts{Start: c.lastWatchOrgBlock, End: &end, Context: ctxQuery}, nil, nil)
 				cancel()
 				if err != nil || iter == nil {
 					log.Warnw("failed to filter organization created, retrying", "err", err)
 					continue
 				}
+				c.lastWatchOrgBlock = end
 				for iter.Next() {
 					id := fmt.Sprintf("%x", iter.Event.Id)
 					if _, exists := c.knownOrganizations[id]; exists {
@@ -70,7 +75,6 @@ func (c *Contracts) MonitorOrganizationCreatedByPolling(ctx context.Context, int
 						continue
 					}
 					org.ID = iter.Event.Id
-					c.lastWatchOrgBlock = iter.Event.Raw.BlockNumber
 					ch <- org
 				}
 			}

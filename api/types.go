@@ -30,14 +30,15 @@ type CensusParticipants struct {
 
 // Vote is the struct to represent a vote in the system. It will be provided by
 // the user to cast a vote in a process.
+// TODO: use directly types.BigInt instead of HexBytes
 type Vote struct {
-	ProcessID        types.HexBytes        `json:"processId"`
-	Commitment       types.HexBytes        `json:"commitment"`
-	Nullifier        types.HexBytes        `json:"nullifier"`
-	CensusProof      types.CensusProof     `json:"censusProof"`
-	Ballot           *elgamal.Ballot       `json:"ballot"`
-	BallotProof      *parser.CircomProof   `json:"ballotProof"`
-	BallotInputsHash types.HexBytes        `json:"ballotInputsHash"`
-	PublicKey        types.HexBytes        `json:"publicKey"`
-	Signature        types.BallotSignature `json:"signature"`
+	ProcessID        types.HexBytes      `json:"processId"`
+	Commitment       *types.BigInt       `json:"commitment"`
+	Nullifier        *types.BigInt       `json:"nullifier"`
+	CensusProof      types.CensusProof   `json:"censusProof"`
+	Ballot           *elgamal.Ballot     `json:"ballot"`
+	BallotProof      *parser.CircomProof `json:"ballotProof"`
+	BallotInputsHash *types.BigInt       `json:"ballotInputsHash"`
+	PublicKey        types.HexBytes      `json:"publicKey"`
+	Signature        types.HexBytes      `json:"signature"`
 }

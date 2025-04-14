@@ -37,13 +37,13 @@ func TestBallotQueue(t *testing.T) {
 	// Create ballots with fixed data for deterministic testing
 	ballot1 := &Ballot{
 		ProcessID: processID.Marshal(),
-		Nullifier: bytes.Repeat([]byte{1}, 32),
-		Address:   bytes.Repeat([]byte{1}, 20),
+		Nullifier: new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
+		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
 	}
 	ballot2 := &Ballot{
 		ProcessID: processID.Marshal(),
-		Nullifier: bytes.Repeat([]byte{2}, 32),
-		Address:   bytes.Repeat([]byte{2}, 20),
+		Nullifier: new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
+		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
 	}
 
 	// Push the ballots
@@ -57,12 +57,12 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(b1key, qt.IsNotNil)
 
 	// Store the first ballot's nullifier to track which one we got
-	firstNullifier := string(b1.Nullifier)
+	firstNullifier := b1.Nullifier.String()
 
 	// Mark the first ballot done, provide a verified ballot
 	verified1 := &VerifiedBallot{
 		ProcessID:   processID.Marshal(),
-		Nullifier:   b1.Nullifier.BigInt().MathBigInt(),
+		Nullifier:   b1.Nullifier,
 		VoterWeight: big.NewInt(42),
 	}
 	c.Assert(st.MarkBallotDone(b1key, verified1), qt.IsNil)
@@ -75,7 +75,7 @@ func TestBallotQueue(t *testing.T) {
 
 	// Verify we got a different ballot than the first one
 	c.Assert(
-		string(b2.Nullifier),
+		b2.Nullifier.String(),
 		qt.Not(qt.Equals),
 		firstNullifier,
 		qt.Commentf("second ballot should be different from first"),
@@ -84,7 +84,7 @@ func TestBallotQueue(t *testing.T) {
 	// Mark second ballot done as well
 	verified2 := &VerifiedBallot{
 		ProcessID:   processID.Marshal(),
-		Nullifier:   b2.Nullifier.BigInt().MathBigInt(),
+		Nullifier:   b2.Nullifier,
 		VoterWeight: big.NewInt(24),
 	}
 	c.Assert(st.MarkBallotDone(b2key, verified2), qt.IsNil)
@@ -177,8 +177,8 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		ballot := &Ballot{
 			ProcessID: processID.Marshal(),
-			Nullifier: bytes.Repeat([]byte{byte(i + 1)}, 32),
-			Address:   bytes.Repeat([]byte{byte(i + 1)}, 20),
+			Nullifier: new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 32)),
+			Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
 		}
 		c.Assert(st.PushBallot(ballot), qt.IsNil)
 	}
@@ -191,7 +191,7 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 
 		verified := &VerifiedBallot{
 			ProcessID:   processID.Marshal(),
-			Nullifier:   b.Nullifier.BigInt().MathBigInt(),
+			Nullifier:   b.Nullifier,
 			VoterWeight: big.NewInt(int64(i+1) * 10), // Different weights for identification
 		}
 		c.Assert(st.MarkBallotDone(key, verified), qt.IsNil)

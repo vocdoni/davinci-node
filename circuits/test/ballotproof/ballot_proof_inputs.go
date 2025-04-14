@@ -1,7 +1,6 @@
 package ballotprooftest
 
 import (
-	"crypto/ecdsa"
 	"crypto/rand"
 	_ "embed"
 	"encoding/json"
@@ -11,9 +10,6 @@ import (
 	"math/big"
 	"time"
 
-	gecdsa "github.com/consensys/gnark-crypto/ecc/secp256k1/ecdsa"
-	"github.com/ethereum/go-ethereum/common"
-	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/iden3/go-iden3-crypto/poseidon"
@@ -26,6 +22,8 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
@@ -40,36 +38,19 @@ var TestCircomVerificationKey []byte
 
 // GenECDSAaccountForTest generates a new ECDSA account and returns the private
 // key, public key and address.
-func GenECDSAaccountForTest() (*ecdsa.PrivateKey, ecdsa.PublicKey, common.Address, error) {
+func GenECDSAaccountForTest() (*ethereum.Signer, error) {
 	// generate ecdsa keys and address (privKey and publicKey)
-	privKey, err := ethcrypto.GenerateKey()
+	privKey, err := ethereum.NewSigner()
 	if err != nil {
-		return nil, ecdsa.PublicKey{}, common.Address{}, err
+		return nil, err
 	}
-	return privKey, privKey.PublicKey, ethcrypto.PubkeyToAddress(privKey.PublicKey), nil
+	return privKey, nil
 }
 
 // SignECDSAForTest signs the data with the private key provided and returns the R and
 // S values of the signature.
-func SignECDSAForTest(privKey *ecdsa.PrivateKey, data []byte) (*big.Int, *big.Int, error) {
-	sigBin, err := ethcrypto.Sign(data, privKey)
-	if err != nil {
-		return nil, nil, err
-	}
-	// truncate the signature to 64 bytes (the first 32 bytes are the R value,
-	// the second 32 bytes are the S value)
-	sigBin = sigBin[:64]
-	if valid := ethcrypto.VerifySignature(ethcrypto.CompressPubkey(&privKey.PublicKey), data, sigBin); !valid {
-		return nil, nil, fmt.Errorf("invalid signature")
-	}
-	var sig gecdsa.Signature
-	if _, err := sig.SetBytes(sigBin); err != nil {
-		return nil, nil, err
-	}
-	r, s := new(big.Int), new(big.Int)
-	r.SetBytes(sig.R[:])
-	s.SetBytes(sig.S[:])
-	return r, s, nil
+func SignECDSAForTest(privKey *ethereum.Signer, data []byte) (*ethereum.ECDSASignature, error) {
+	return privKey.Sign(data)
 }
 
 // GenEncryptionKeyForTest generates a new encryption key for testing
@@ -85,8 +66,8 @@ func GenEncryptionKeyForTest() ecc.Point {
 // GenBallotFieldsForTest generates a list of n random fields between min and max
 // values. If unique is true, the fields will be unique.
 // The items between n and NFields are padded with big.Int(0)
-func GenBallotFieldsForTest(n, max, min int, unique bool) [circuits.FieldsPerBallot]*big.Int {
-	fields := [circuits.FieldsPerBallot]*big.Int{}
+func GenBallotFieldsForTest(n, max, min int, unique bool) [types.FieldsPerBallot]*big.Int {
+	fields := [types.FieldsPerBallot]*big.Int{}
 	for i := 0; i < len(fields); i++ {
 		fields[i] = big.NewInt(0)
 	}
@@ -220,7 +201,7 @@ func BallotProofForTest(address, processId []byte, encryptionKey ecc.Point) (*Vo
 	}
 	// init circom inputs
 	circomInputs := map[string]any{
-		"fields":           circuits.BigIntArrayToStringArray(fields[:], circuits.FieldsPerBallot),
+		"fields":           circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
 		"max_count":        fmt.Sprint(circuits.MockMaxCount),
 		"force_uniqueness": fmt.Sprint(circuits.MockForceUniqueness),
 		"max_value":        fmt.Sprint(circuits.MockMaxValue),
@@ -234,7 +215,7 @@ func BallotProofForTest(address, processId []byte, encryptionKey ecc.Point) (*Vo
 		"process_id":       ffProcessID.String(),
 		"pk":               []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
 		"k":                k.String(),
-		"cipherfields":     circuits.BigIntArrayToStringArray(BallotFromRTEtoTE(ballot).BigInts(), circuits.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
+		"cipherfields":     circuits.BigIntArrayToStringArray(BallotFromRTEtoTE(ballot).BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
 		"nullifier":        nullifier.String(),
 		"commitment":       commitment.String(),
 		"secret":           crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(secret)).String(),

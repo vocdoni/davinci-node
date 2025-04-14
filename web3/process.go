@@ -58,7 +58,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
-	return contractProcess2Process(&process), nil
+	return contractProcess2Process(&process)
 }
 
 // MonitorProcessCreation monitors the creation of new processes by polling the ProcessRegistry contract every interval.
@@ -74,13 +74,18 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 				log.Warnw("exiting monitor process creation")
 				return
 			case <-ticker.C:
-				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, Context: ctxQuery}, nil, nil)
-				cancel()
-				if err != nil || iter == nil {
-					log.Warnw("failed to filter process created, retrying", "err", err)
+				end := c.CurrentBlock()
+				if end <= c.lastWatchProcessBlock {
 					continue
 				}
+				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
+				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, End: &end, Context: ctxQuery}, nil, nil)
+				cancel()
+				if err != nil || iter == nil {
+					log.Debugw("failed to filter process created, retrying", "err", err)
+					continue
+				}
+				c.lastWatchProcessBlock = end
 				for iter.Next() {
 					processID := fmt.Sprintf("%x", iter.Event.ProcessID)
 					if _, exists := c.knownProcesses[processID]; exists {
@@ -93,7 +98,7 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 						continue
 					}
 					process.ID = iter.Event.ProcessID[:]
-					c.lastWatchProcessBlock = iter.Event.Raw.BlockNumber
+					log.Debugw("new process found", "processId", process.ID, "blockNumber", iter.Event.Raw.BlockNumber)
 					ch <- process
 				}
 			}
@@ -157,24 +162,19 @@ func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<
 	return ch2, nil
 }
 
-func contractProcess2Process(contractProcess *bindings.ProcessRegistryProcess) *types.Process {
+func contractProcess2Process(contractProcess *bindings.ProcessRegistryProcess) (*types.Process, error) {
 	mode := types.BallotMode{
 		ForceUniqueness: contractProcess.BallotMode.ForceUniqueness,
-		CostFromWeight:  false, // missing in contract
+		CostFromWeight:  contractProcess.BallotMode.CostFromWeight,
 		MaxCount:        contractProcess.BallotMode.MaxCount,
 		CostExponent:    contractProcess.BallotMode.CostExponent,
+		MaxValue:        (*types.BigInt)(contractProcess.BallotMode.MaxValue),
+		MinValue:        (*types.BigInt)(contractProcess.BallotMode.MinValue),
+		MaxTotalCost:    (*types.BigInt)(contractProcess.BallotMode.MaxTotalCost),
+		MinTotalCost:    (*types.BigInt)(contractProcess.BallotMode.MinTotalCost),
 	}
-	if contractProcess.BallotMode.MaxValue != nil {
-		mode.MaxValue = (*types.BigInt)(contractProcess.BallotMode.MaxValue)
-	}
-	if contractProcess.BallotMode.MinValue != nil {
-		mode.MinValue = (*types.BigInt)(contractProcess.BallotMode.MinValue)
-	}
-	if contractProcess.BallotMode.MaxTotalCost != nil {
-		mode.MaxTotalCost = (*types.BigInt)(contractProcess.BallotMode.MaxTotalCost)
-	}
-	if contractProcess.BallotMode.MinTotalCost != nil {
-		mode.MinTotalCost = (*types.BigInt)(contractProcess.BallotMode.MinTotalCost)
+	if err := mode.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid ballot mode: %w", err)
 	}
 	census := types.Census{
 		CensusRoot:   contractProcess.Census.CensusRoot[:],
@@ -195,7 +195,7 @@ func contractProcess2Process(contractProcess *bindings.ProcessRegistryProcess) *
 		MetadataURI: contractProcess.MetadataURI,
 		BallotMode:  &mode,
 		Census:      &census,
-	}
+	}, nil
 }
 
 func process2ContractProcess(process *types.Process) *bindings.ProcessRegistryProcess {
