@@ -364,8 +364,6 @@ func newMockState(t *testing.T) *state.State {
 const (
 	mockNullifiersOffset = 100
 	mockAddressesOffset  = 200
-	// maxKeyLen is ceil(maxLevels/8)
-	maxKeyLen = (types.CensusTreeMaxLevels + 7) / 8
 )
 
 // newMockVote creates a new vote

@@ -149,20 +149,20 @@ func (mp *MerkleTransition) Verify(api frontend.API, hFn utils.Hasher, oldRoot f
 
 // VerifyOldLeafHash asserts that smt.Hash1(mp.OldKey, values...) matches mp.OldLeafHash,
 // only when the MerkleTransition is not a NOOP
-func (mp *MerkleTransition) VerifyOldLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) {
-	verifyLeafHash(api, hFn, mp.OldKey, mp.OldLeafHash, mp.IsNoop(api), values...)
+func (mp *MerkleTransition) VerifyOldLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) error {
+	return verifyLeafHash(api, hFn, mp.OldKey, mp.OldLeafHash, mp.IsNoop(api), values...)
 }
 
 // VerifyNewLeafHash asserts that smt.Hash1(mp.NewKey, values...) matches mp.NewLeafHash,
 // only when the MerkleTransition is not a NOOP
-func (mp *MerkleTransition) VerifyNewLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) {
-	verifyLeafHash(api, hFn, mp.NewKey, mp.NewLeafHash, mp.IsNoop(api), values...)
+func (mp *MerkleTransition) VerifyNewLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) error {
+	return verifyLeafHash(api, hFn, mp.NewKey, mp.NewLeafHash, mp.IsNoop(api), values...)
 }
 
 // VerifyOverwrittenBallot asserts that smt.Hash1(mp.OldKey, values...) matches mp.OldLeafHash,
 // only when the MerkleTransition is an UPDATE
-func (mp *MerkleTransition) VerifyOverwrittenBallot(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) {
-	verifyLeafHash(api, hFn, mp.OldKey, mp.OldLeafHash, api.IsZero(mp.IsUpdate(api)), values...)
+func (mp *MerkleTransition) VerifyOverwrittenBallot(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) error {
+	return verifyLeafHash(api, hFn, mp.OldKey, mp.OldLeafHash, api.IsZero(mp.IsUpdate(api)), values...)
 }
 
 func verifyLeafHash(

@@ -82,7 +82,7 @@ func (z *Ballot) BigInts() []*big.Int {
 }
 
 func (z *Ballot) SetBigInts(list []*big.Int) (*Ballot, error) {
-	if z.CurveType == "" || slices.Contains(curves.Curves(), z.CurveType) == false {
+	if z.CurveType == "" || !slices.Contains(curves.Curves(), z.CurveType) {
 		return nil, fmt.Errorf("unsupported curve type: %s", z.CurveType)
 	}
 	if len(list) != 8*4 {
