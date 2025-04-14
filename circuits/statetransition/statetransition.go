@@ -233,19 +233,19 @@ func (circuit Circuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hashe
 func (circuit Circuit) VerifyLeafHashes(api frontend.API, hFn utils.Hasher) {
 	// Process
 	if err := circuit.ProcessProofs.ID.VerifyLeafHash(api, hFn, circuit.Process.ID); err != nil {
-		circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+		circuits.FrontendError(api, "failed to verify process id process proof leaf hash: ", err)
 		return
 	}
 	if err := circuit.ProcessProofs.CensusRoot.VerifyLeafHash(api, hFn, circuit.Process.CensusRoot); err != nil {
-		circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+		circuits.FrontendError(api, "failed to verify census root process proof leaf hash: ", err)
 		return
 	}
 	if err := circuit.ProcessProofs.BallotMode.VerifyLeafHash(api, hFn, circuit.Process.BallotMode.Serialize()...); err != nil {
-		circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+		circuits.FrontendError(api, "failed to verify ballot mode process proof leaf hash: ", err)
 		return
 	}
 	if err := circuit.ProcessProofs.EncryptionKey.VerifyLeafHash(api, hFn, circuit.Process.EncryptionKey.Serialize()...); err != nil {
-		circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+		circuits.FrontendError(api, "failed to verify encryption key process proof leaf hash: ", err)
 		return
 	}
 	// Votes
@@ -256,40 +256,40 @@ func (circuit Circuit) VerifyLeafHashes(api frontend.API, hFn utils.Hasher) {
 		api.AssertIsEqual(v.Address, circuit.VotesProofs.Commitment[i].NewKey)
 		// Ballot
 		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.Ballot.SerializeVars()...); err != nil {
-			circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
 			return
 		}
 		// Commitment
 		if err := circuit.VotesProofs.Commitment[i].VerifyNewLeafHash(api, hFn, v.Commitment); err != nil {
-			circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+			circuits.FrontendError(api, "failed to verify commitment vote proof leaf hash: ", err)
 			return
 		}
 		// OverwrittenBallot
 		if err := circuit.VotesProofs.Ballot[i].VerifyOverwrittenBallot(api, hFn, v.OverwrittenBallot.SerializeVars()...); err != nil {
-			circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
 			return
 		}
 	}
 	// Results
 	if err := circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsAdd.SerializeVars()...); err != nil {
-		circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+		circuits.FrontendError(api, "failed to verify add results proof old leaf hash: ", err)
 		return
 	}
 	if err := circuit.ResultsProofs.ResultsSub.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsSub.SerializeVars()...); err != nil {
-		circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+		circuits.FrontendError(api, "failed to verify sub results proof old leaf hash: ", err)
 		return
 	}
 	if err := circuit.ResultsProofs.ResultsAdd.VerifyNewLeafHash(api, hFn, circuit.Results.NewResultsAdd.SerializeVars()...); err != nil {
-		circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+		circuits.FrontendError(api, "failed to verify add results proof new leaf hash: ", err)
 		return
 	}
 	if err := circuit.ResultsProofs.ResultsSub.VerifyNewLeafHash(api, hFn, circuit.Results.NewResultsSub.SerializeVars()...); err != nil {
-		circuits.FrontendError(api, "failed to verify old leaf hash: ", err)
+		circuits.FrontendError(api, "failed to verify sub results proof new leaf hash: ", err)
 		return
 	}
 }
 
-// VerifyBallots counts the ballots using homomorphic encrpytion and checks
+// VerifyBallots counts the ballots using homomorphic encryption and checks
 // that the number of ballots is equal to the number of new votes and
 // overwrites. It uses the Ballot structure to count the ballots.
 func (circuit Circuit) VerifyBallots(api frontend.API) {
