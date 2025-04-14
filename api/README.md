@@ -45,6 +45,7 @@ API errors are returned with appropriate HTTP status codes and a JSON body with 
 | 40009 | 400         | Invalid ballot proof                       |
 | 40010 | 400         | Invalid census ID                          |
 | 40011 | 404         | Census not found                           |
+| 40012 | 400         | Key length exceeded                        |
 | 50001 | 500         | Marshaling (server-side) JSON failed       |
 | 50002 | 500         | Internal server error                      |
 
@@ -82,7 +83,7 @@ Creates a new voting process setup and returns it. The process is not permanentl
     "minTotalCost": "bigintStr"
   },
   "nonce": "number",
-  "chainID": "number",
+  "chainId": "number",
   "signature": "hexBytes"
 }
 ```
@@ -90,7 +91,7 @@ Creates a new voting process setup and returns it. The process is not permanentl
 **Response Body**:
 ```json
 {
-  "processID": "hexBytes",
+  "processId": "hexBytes",
   "encryptionPubKey": ["bigintStr", "bigintStr"],
   "stateRoot": "hexBytes"
 }
@@ -205,12 +206,12 @@ Creates a new census.
 **Errors**:
 - 50002: Internal server error
 
-#### POST /censuses/{censusID}/participants
+#### POST /censuses/{censusId}/participants
 
 Adds participants to an existing census.
 
 **URL Parameters**:
-- censusID: Census UUID
+- censusId: Census UUID
 
 **Request Body**:
 ```json
@@ -232,12 +233,12 @@ Adds participants to an existing census.
 - 40011: Census not found
 - 50002: Internal server error
 
-#### GET /censuses/{censusID}/participants
+#### GET /censuses/{censusId}/participants
 
 Gets the list of participants in a census.
 
 **URL Parameters**:
-- censusID: Census UUID
+- censusId: Census UUID
 
 **Response Body**:
 ```json
@@ -256,12 +257,12 @@ Gets the list of participants in a census.
 - 40010: Invalid census ID
 - 50002: Internal server error
 
-#### GET /censuses/{censusID}/root
+#### GET /censuses/{censusId}/root
 
 Gets the Merkle root of a census.
 
 **URL Parameters**:
-- censusID: Census UUID
+- censusId: Census UUID
 
 **Response Body**:
 ```json
@@ -274,12 +275,12 @@ Gets the Merkle root of a census.
 - 40010: Invalid census ID
 - 50002: Internal server error
 
-#### GET /censuses/{censusID}/size
+#### GET /censuses/{censusId}/size
 
 Gets the number of participants in a census.
 
 **URL Parameters**:
-- censusID: Census UUID or census merkle root (hex encoded)
+- censusId: Census UUID or census merkle root (hex encoded)
 
 **Response Body**:
 ```json
@@ -292,12 +293,12 @@ Gets the number of participants in a census.
 - 40010: Invalid census ID
 - 50002: Internal server error
 
-#### DELETE /censuses/{censusID}
+#### DELETE /censuses/{censusId}
 
 Deletes a census.
 
 **URL Parameters**:
-- censusID: Census UUID
+- censusId: Census UUID
 
 **Response**: Empty response with HTTP 200 OK status
 

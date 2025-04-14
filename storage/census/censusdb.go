@@ -169,15 +169,14 @@ func (c *CensusDB) writeReference(ref *CensusRef) error {
 // HashAndTrunk computes the hash of a key and truncates it to the required length.
 // Returns nil if the hash function fails. Panics if the hash output is too short.
 func (c *CensusDB) HashAndTrunkKey(key []byte) []byte {
-	length := defaultHashFunction.Len() / 8
 	hash, err := defaultHashFunction.Hash(key)
 	if err != nil {
 		return nil
 	}
-	if len(hash) < length {
+	if len(hash) < types.CensusKeyMaxLen {
 		panic("hash function output is too short, maxlevels is too high")
 	}
-	return hash[:length]
+	return hash[:types.CensusKeyMaxLen]
 }
 
 // HashLen returns the length of the hash function output in bytes.

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
 func (a *API) newCensus(w http.ResponseWriter, r *http.Request) {
@@ -53,15 +54,11 @@ func (a *API) addCensusParticipants(w http.ResponseWriter, r *http.Request) {
 		if p.Weight == nil {
 			p.Weight = new(types.BigInt).SetUint64(1)
 		}
-		leafKey := p.Key
 		if len(p.Key) > types.CensusKeyMaxLen {
-			leafKey = a.storage.CensusDB().HashAndTrunkKey(p.Key)
-			if leafKey == nil {
-				ErrGenericInternalServerError.WithErr(fmt.Errorf("failed to hash participant key")).Write(w)
-				return
-			}
+			ErrKeyLengthExceeded.WithErr(fmt.Errorf("max allowed size is %d bytes", types.CensusKeyMaxLen)).Write(w)
+			return
 		}
-		keys = append(keys, leafKey)
+		keys = append(keys, p.Key)
 		values = append(values, arbo.BigIntToBytes(a.storage.CensusDB().HashLen(), p.Weight.MathBigInt()))
 	}
 
@@ -92,12 +89,7 @@ func (a *API) getCensusParticipants(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Implement pagination properly
-	keys := make([][]byte, 0)
-	values := make([][]byte, 0)
-	err = ref.Tree().Iterate(nil, func(k []byte, v []byte) {
-		keys = append(keys, k)
-		values = append(values, v)
-	})
+	keys, values, err := ref.FetchKeysAndValues()
 	if err != nil {
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
@@ -107,7 +99,7 @@ func (a *API) getCensusParticipants(w http.ResponseWriter, r *http.Request) {
 	for i := range keys {
 		participants[i] = CensusParticipant{
 			Key:    keys[i],
-			Weight: (*types.BigInt)(arbo.BytesToBigInt(values[i])),
+			Weight: values[i],
 		}
 	}
 
@@ -181,7 +173,7 @@ func (a *API) getCensusProof(w http.ResponseWriter, r *http.Request) {
 	}
 
 	keyHex := r.URL.Query().Get("key")
-	key, err := hex.DecodeString(keyHex)
+	key, err := hex.DecodeString(util.TrimHex(keyHex))
 	if err != nil {
 		ErrMalformedBody.WithErr(err).Write(w)
 		return
