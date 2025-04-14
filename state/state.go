@@ -403,10 +403,10 @@ func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
 //
 // to calculate a subhash of each process+vote, then hashes all subhashes
 // and returns the final hash
-func (o *State) AggregatorWitnessHash() (*big.Int, error) {
+func (o *State) AggregatorWitnessHashes() ([]*big.Int, error) {
 	// TODO: move this func somewhere else, along with other similar funcs used
 	// by other circuits
-	subhashes := []*big.Int{}
+	hashes := []*big.Int{}
 	for _, v := range o.PaddedVotes() {
 		inputs := []*big.Int{}
 		inputs = append(inputs, o.ProcessSerializeBigInts()...)
@@ -415,14 +415,9 @@ func (o *State) AggregatorWitnessHash() (*big.Int, error) {
 		if err != nil {
 			return nil, err
 		}
-		subhashes = append(subhashes, h)
+		hashes = append(hashes, h)
 	}
-
-	hash, err := mimc7.Hash(subhashes, nil)
-	if err != nil {
-		return nil, err
-	}
-	return hash, nil
+	return hashes, nil
 }
 
 // EncodeKey encodes a key to a byte array using the maximum key length for the

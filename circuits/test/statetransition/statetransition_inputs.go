@@ -102,10 +102,6 @@ func StateTransitionInputsForTest(processId []byte, nValidVoters int) (
 		return nil, nil, nil, fmt.Errorf("aggregator vk: %w", err)
 	}
 	circuitPlaceholder.AggregatorVK = fixedVk
-	// // fill placeholder and witness with dummy circuits
-	// if err := aggregator.FillWithDummyFixed(finalPlaceholder, finalAssigments, agCCS, nValidVoters); err != nil {
-	// 	return nil, nil, nil, err
-	// }
 	return &StateTransitionTestResults{
 		Process: agInputs.Process,
 		Votes:   agInputs.Votes,
