@@ -74,11 +74,8 @@ func StateTransitionInputsForTest(processId []byte, nValidVoters int) (
 	}
 
 	// init final assignments stuff
-	s := newState(
-		agInputs.Process.ID.Bytes(),
-		agInputs.Process.CensusRoot.Bytes(),
-		circuits.MockBallotMode().Bytes(),
-		agInputs.Process.EncryptionKey.Bytes())
+	s := newState(agInputs.Process.ID, agInputs.Process.CensusRoot,
+		circuits.MockBallotMode(), agInputs.Process.EncryptionKey)
 
 	if err := s.StartBatch(); err != nil {
 		return nil, nil, nil, fmt.Errorf("start batch: %w", err)
@@ -105,17 +102,15 @@ func StateTransitionInputsForTest(processId []byte, nValidVoters int) (
 		return nil, nil, nil, fmt.Errorf("aggregator vk: %w", err)
 	}
 	circuitPlaceholder.AggregatorVK = fixedVk
-	// // fill placeholder and witness with dummy circuits
-	// if err := aggregator.FillWithDummyFixed(finalPlaceholder, finalAssigments, agCCS, nValidVoters); err != nil {
-	// 	return nil, nil, nil, err
-	// }
 	return &StateTransitionTestResults{
 		Process: agInputs.Process,
 		Votes:   agInputs.Votes,
 	}, circuitPlaceholder, witness, nil
 }
 
-func newState(processId, censusRoot, ballotMode, encryptionKey []byte) *state.State {
+func newState(processId, censusRoot *big.Int, ballotMode circuits.BallotMode[*big.Int],
+	encryptionKey circuits.EncryptionKey[*big.Int],
+) *state.State {
 	dir, err := os.MkdirTemp(os.TempDir(), "statetransition")
 	if err != nil {
 		panic(err)

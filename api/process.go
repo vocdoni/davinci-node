@@ -72,7 +72,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Initialize the state
-	st, err := state.New(memdb.New(), pid.Marshal())
+	st, err := state.New(memdb.New(), pid.BigInt())
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not create state: %v", err).Write(w)
 		return
@@ -83,9 +83,9 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if err := st.Initialize(p.CensusRoot,
-		circuits.BallotModeToCircuit(p.BallotMode).Bytes(),
-		circuits.EncryptionKeyFromECCPoint(publicKey).Bytes()); err != nil {
+	if err := st.Initialize(p.CensusRoot.BigInt().MathBigInt(),
+		circuits.BallotModeToCircuit(p.BallotMode),
+		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
 		ErrGenericInternalServerError.Withf("could not initialize state: %v", err).Write(w)
 		return
 	}

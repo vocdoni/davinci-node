@@ -8,6 +8,7 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
@@ -20,36 +21,29 @@ type MerkleProof struct {
 	Siblings [types.CensusTreeMaxLevels]frontend.Variable
 	Key      frontend.Variable
 	LeafHash frontend.Variable
-	Fnc      frontend.Variable // 0: inclusion, 1: non inclusion
 }
 
 // MerkleProofFromArboProof converts an ArboProof into a MerkleProof
-func MerkleProofFromArboProof(p *state.ArboProof) MerkleProof {
-	leafHash, err := state.HashFunc.Hash(p.Key, p.Value, []byte{1})
+func MerkleProofFromArboProof(p *state.ArboProof) (MerkleProof, error) {
+	bKey := state.EncodeKey(p.Key)
+	bValue := state.HashFn.SafeBigInt(p.Value)
+	leafHash, err := state.HashFn.Hash(bKey, bValue, []byte{1})
 	if err != nil {
-		panic(err) // TODO: proper error handling
-	}
-	fnc := 0 // inclusion
-	if !p.Existence {
-		fnc = 1 // non-inclusion
+		return MerkleProof{}, fmt.Errorf("failed to hash leaf: %w", err)
 	}
 	return MerkleProof{
-		Root:     arbo.BytesToBigInt(p.Root),
-		Siblings: padSiblings(p.Siblings),
-		Key:      arbo.BytesToBigInt(p.Key),
+		Root:     p.Root,
+		Siblings: padStateSiblings(p.Siblings),
+		Key:      p.Key,
 		LeafHash: arbo.BytesToBigInt(leafHash),
-		Fnc:      fnc,
-	}
+	}, nil
 }
 
 // Verify uses smt.Verifier to verify that:
 //   - mp.Root matches passed root
 //   - mp.LeafHash at position Key belongs to mp.Root
 func (mp *MerkleProof) Verify(api frontend.API, hFn utils.Hasher, root frontend.Variable) {
-	api.Println("verify proof", mp.String()) // TODO: remove this debug log
-
 	api.AssertIsEqual(root, mp.Root)
-
 	smt.VerifierWithLeafHash(api, hFn,
 		1,
 		mp.Root,
@@ -63,9 +57,17 @@ func (mp *MerkleProof) Verify(api frontend.API, hFn utils.Hasher, root frontend.
 	)
 }
 
-// VerifyLeafHash asserts that smt.Hash1(mp.Key, values...) matches mp.LeafHash
-func (mp *MerkleProof) VerifyLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) {
-	api.AssertIsEqual(mp.LeafHash, smt.Hash1(api, hFn, mp.Key, values...))
+// VerifyLeafHash asserts that smt.Hash1(mp.Key, values...) matches mp.LeafHash.
+// It encodes the values using the provided hash function hFn in the same way
+// that arbo does when it works with big.Ints. It returns an error if the
+// encoding fails.
+func (mp *MerkleProof) VerifyLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) error {
+	encodedValue, err := hFn(api, values...)
+	if err != nil {
+		return fmt.Errorf("encode the values of the leaf: %w", err)
+	}
+	api.AssertIsEqual(mp.LeafHash, smt.Hash1(api, hFn, mp.Key, encodedValue))
+	return nil
 }
 
 func (mp *MerkleProof) String() string {
@@ -79,7 +81,6 @@ type MerkleTransition struct {
 	Siblings    [types.CensusTreeMaxLevels]frontend.Variable
 	NewKey      frontend.Variable
 	NewLeafHash frontend.Variable
-
 	// OldKey + OldValue hashed through same Siblings should produce OldRoot hash
 	OldRoot     frontend.Variable
 	OldKey      frontend.Variable
@@ -89,22 +90,32 @@ type MerkleTransition struct {
 	Fnc1        frontend.Variable
 }
 
+// MerkleTransitionFromArboTransition converts an ArboTransition into a
+// MerkleTransition. It calculates the old and new leaf hashes using the
+// EncodeKey and Hash functions from the state package. The leaf hashes are
+// transformed using arbo helper functions to ensure they are in the correct
+// endianess. The function also pads the siblings to the maximum number of
+// levels in the census tree. It returns an error if the hashing fails.
 func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransition, error) {
-	oldLeafHash, err := state.HashFunc.Hash(at.OldKey, at.OldValue, []byte{1})
+	bOldKey := state.EncodeKey(at.OldKey)
+	bOldValue := state.HashFn.SafeBigInt(at.OldValue)
+	oldLeafHash, err := state.HashFn.Hash(bOldKey, bOldValue, []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
 	}
-	newLeafHash, err := state.HashFunc.Hash(at.NewKey, at.NewValue, []byte{1})
+	bNewKey := state.EncodeKey(at.NewKey)
+	bNewValue := state.HashFn.SafeBigInt(at.NewValue)
+	newLeafHash, err := state.HashFn.Hash(bNewKey, bNewValue, []byte{1})
 	if err != nil {
 		return MerkleTransition{}, err
 	}
 	return MerkleTransition{
-		NewRoot:     arbo.BytesToBigInt(at.NewRoot),
-		Siblings:    padSiblings(at.Siblings),
-		NewKey:      arbo.BytesToBigInt(at.NewKey),
+		NewRoot:     at.NewRoot,
+		Siblings:    padStateSiblings(at.Siblings),
+		NewKey:      at.NewKey,
 		NewLeafHash: arbo.BytesToBigInt(newLeafHash),
-		OldRoot:     arbo.BytesToBigInt(at.OldRoot),
-		OldKey:      arbo.BytesToBigInt(at.OldKey),
+		OldRoot:     at.OldRoot,
+		OldKey:      at.OldKey,
 		OldLeafHash: arbo.BytesToBigInt(oldLeafHash),
 		IsOld0:      at.IsOld0,
 		Fnc0:        at.Fnc0,
@@ -120,10 +131,7 @@ func MerkleTransitionFromArboTransition(at *state.ArboTransition) (MerkleTransit
 //
 // and returns mp.NewRoot
 func (mp *MerkleTransition) Verify(api frontend.API, hFn utils.Hasher, oldRoot frontend.Variable) frontend.Variable {
-	api.Println("verify transition", mp.String()) // TODO: remove this debug log
-
 	api.AssertIsEqual(oldRoot, mp.OldRoot)
-
 	root := smt.ProcessorWithLeafHash(api, hFn,
 		mp.OldRoot,
 		mp.Siblings[:],
@@ -135,33 +143,41 @@ func (mp *MerkleTransition) Verify(api frontend.API, hFn utils.Hasher, oldRoot f
 		mp.Fnc0,
 		mp.Fnc1,
 	)
-
 	api.AssertIsEqual(root, mp.NewRoot)
 	return mp.NewRoot
 }
 
 // VerifyOldLeafHash asserts that smt.Hash1(mp.OldKey, values...) matches mp.OldLeafHash,
 // only when the MerkleTransition is not a NOOP
-func (mp *MerkleTransition) VerifyOldLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) {
-	verifyLeafHash(api, hFn, mp.OldKey, mp.OldLeafHash, mp.IsNoop(api), values...)
+func (mp *MerkleTransition) VerifyOldLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) error {
+	return verifyLeafHash(api, hFn, mp.OldKey, mp.OldLeafHash, mp.IsNoop(api), values...)
 }
 
 // VerifyNewLeafHash asserts that smt.Hash1(mp.NewKey, values...) matches mp.NewLeafHash,
 // only when the MerkleTransition is not a NOOP
-func (mp *MerkleTransition) VerifyNewLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) {
-	verifyLeafHash(api, hFn, mp.NewKey, mp.NewLeafHash, mp.IsNoop(api), values...)
+func (mp *MerkleTransition) VerifyNewLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) error {
+	return verifyLeafHash(api, hFn, mp.NewKey, mp.NewLeafHash, mp.IsNoop(api), values...)
 }
 
 // VerifyOverwrittenBallot asserts that smt.Hash1(mp.OldKey, values...) matches mp.OldLeafHash,
 // only when the MerkleTransition is an UPDATE
-func (mp *MerkleTransition) VerifyOverwrittenBallot(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) {
-	verifyLeafHash(api, hFn, mp.OldKey, mp.OldLeafHash, api.IsZero(mp.IsUpdate(api)), values...)
+func (mp *MerkleTransition) VerifyOverwrittenBallot(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) error {
+	return verifyLeafHash(api, hFn, mp.OldKey, mp.OldLeafHash, api.IsZero(mp.IsUpdate(api)), values...)
 }
 
-func verifyLeafHash(api frontend.API, hFn utils.Hasher, key, leafHash, skip frontend.Variable, values ...frontend.Variable) {
-	api.AssertIsEqual(leafHash,
-		api.Select(skip, leafHash, // used to skip the assert, for example when MerkleTransition is NOOP or not an UPDATE
-			smt.Hash1(api, hFn, key, values...)))
+func verifyLeafHash(
+	api frontend.API,
+	hFn utils.Hasher,
+	key, leafHash, skip frontend.Variable,
+	values ...frontend.Variable,
+) error {
+	encodedValue, err := hFn(api, values...)
+	if err != nil {
+		return fmt.Errorf("encode the values of the leaf: %w", err)
+	}
+	// used to skip the assert, for example when MerkleTransition is NOOP or not an UPDATE
+	api.AssertIsEqual(leafHash, api.Select(skip, leafHash, smt.Hash1(api, hFn, key, encodedValue)))
+	return nil
 }
 
 func (mp *MerkleTransition) String() string {
@@ -193,14 +209,13 @@ func (mp *MerkleTransition) IsNoop(api frontend.API) frontend.Variable {
 	return api.And(api.IsZero(mp.Fnc0), api.IsZero(mp.Fnc1))
 }
 
-func padSiblings(unpackedSiblings [][]byte) [types.CensusTreeMaxLevels]frontend.Variable {
+// padStateSiblings pads the unpacked siblings to the maximum number of levels
+// in the census tree, filling with 0s if needed. It returns a fixed-size array
+// of the maximum number of levels of frontend.Variable.
+func padStateSiblings(unpackedSiblings []*big.Int) [types.CensusTreeMaxLevels]frontend.Variable {
 	paddedSiblings := [types.CensusTreeMaxLevels]frontend.Variable{}
-	for i := range types.CensusTreeMaxLevels {
-		if i < len(unpackedSiblings) {
-			paddedSiblings[i] = arbo.BytesToBigInt(unpackedSiblings[i])
-		} else {
-			paddedSiblings[i] = big.NewInt(0)
-		}
+	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, types.CensusTreeMaxLevels) {
+		paddedSiblings[i] = v
 	}
 	return paddedSiblings
 }

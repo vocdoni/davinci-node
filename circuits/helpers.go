@@ -23,11 +23,10 @@ func FrontendError(api frontend.API, msg string, trace error) {
 	api.AssertIsEqual(1, 0)
 }
 
-// BigIntArrayToN pads the big.Int array to n elements, if needed,
-// with zeros.
+// BigIntArrayToN pads the big.Int array to n elements, if needed, with zeros.
 func BigIntArrayToN(arr []*big.Int, n int) []*big.Int {
 	bigArr := make([]*big.Int, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if i < len(arr) {
 			bigArr[i] = arr[i]
 		} else {

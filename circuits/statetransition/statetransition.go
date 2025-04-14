@@ -4,56 +4,41 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
+	"github.com/consensys/gnark/std/math/cmp"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
-	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
-var (
-	HashFn           = utils.MiMCHasher
-	AggregatorHashFn = MiMC7Hasher
-)
-
-// MiMC7Hasher function calculates the mimc7 hash of the provided inputs. It
-// returns the hash of the inputs.
-func MiMC7Hasher(api frontend.API, inputs ...emulated.Element[sw_bn254.ScalarField]) emulated.Element[sw_bn254.ScalarField] {
-	hFn, err := mimc7.NewMiMC(api)
-	if err != nil {
-		circuits.FrontendError(api, "failed to create emulated MiMC hash function", err)
-	}
-	if err := hFn.Write(inputs...); err != nil {
-		circuits.FrontendError(api, "failed to write inputs to emulated MiMC hash function", err)
-	}
-	return hFn.Sum()
-}
+// HashFn is the hash function used in the circuit. It should the equivalent
+// hash function used in the state package (state.HashFn).
+var HashFn = poseidon.MultiHash
 
 type Circuit struct {
-	// ---------------------------------------------------------------------------------------------
-	// PUBLIC INPUTS
-
+	// Public inputs
 	RootHashBefore frontend.Variable `gnark:",public"`
 	RootHashAfter  frontend.Variable `gnark:",public"`
 	NumNewVotes    frontend.Variable `gnark:",public"`
 	NumOverwrites  frontend.Variable `gnark:",public"`
-
-	// ---------------------------------------------------------------------------------------------
-	// SECRET INPUTS
+	// Private data inputs
 	Process circuits.Process[frontend.Variable]
 	Votes   [types.VotesPerBatch]Vote
 	Results Results
-
+	// Private merkle proofs inputs
 	ProcessProofs ProcessProofs
 	VotesProofs   VotesProofs
 	ResultsProofs ResultsProofs
-
+	// Private recursive proof inputs
 	AggregatorProof groth16.Proof[sw_bw6761.G1Affine, sw_bw6761.G2Affine]
 	AggregatorVK    groth16.VerifyingKey[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl] `gnark:"-"`
 }
 
+// Results struct contains the ballot structs for addition and subtraction
+// after and before the aggregation.
 type Results struct {
 	OldResultsAdd circuits.Ballot
 	OldResultsSub circuits.Ballot
@@ -61,6 +46,8 @@ type Results struct {
 	NewResultsSub circuits.Ballot
 }
 
+// ProcessProofs struct contains the Merkle proofs for the process for the ID
+// CensusRoot, BallotMode and EncryptionKey.
 type ProcessProofs struct {
 	ID            MerkleProof
 	CensusRoot    MerkleProof
@@ -68,16 +55,23 @@ type ProcessProofs struct {
 	EncryptionKey MerkleProof
 }
 
+// VotesProofs struct contains the Merkle transition proofs for the ballots and
+// commitments.
 type VotesProofs struct {
-	Ballot     [types.VotesPerBatch]MerkleTransition // Key is Nullifier, LeafHash is smt.Hash1(Ballot.Serialize())
-	Commitment [types.VotesPerBatch]MerkleTransition // Key is Address, LeafHash is smt.Hash1(Commitment)
+	// Key is Nullifier, LeafHash is smt.Hash1(encoded(Ballot.Serialize()))
+	Ballot [types.VotesPerBatch]MerkleTransition
+	// Key is Address, LeafHash is smt.Hash1(encoded(Commitment))
+	Commitment [types.VotesPerBatch]MerkleTransition
 }
 
+// ResultsProofs struct contains the Merkle transition proofs for the addition
+// and subtraction of the results.
 type ResultsProofs struct {
 	ResultsAdd MerkleTransition
 	ResultsSub MerkleTransition
 }
 
+// Vote struct contains the circuits.Vote struct and the overwritten ballot.
 type Vote struct {
 	circuits.Vote[frontend.Variable]
 	OverwrittenBallot circuits.Ballot
@@ -93,20 +87,96 @@ func (circuit Circuit) Define(api frontend.API) error {
 	return nil
 }
 
-func (circuit Circuit) CalculateAggregatorWitness(api frontend.API) (groth16.Witness[sw_bw6761.ScalarField], error) {
-	hashes := circuits.CalculateVotersHashes(api,
-		circuit.Process.VarsToEmulatedElementBN254(api),
-		circuit.ListVotesAsEmulated(api))
-	witness, err := hashes.ToWitnessBW6761(api)
-	if err != nil {
-		circuits.FrontendError(api, "failed to calculate voters hashes sum: ", err)
+// paddedElement helper function returns an bw6761 curve emulated element with
+// the limb provided as the first limb and the rest as 0. This is used to
+// transform the mimc7 hash output to an emulated element of the bw6761 curve.
+func paddedElement(limb frontend.Variable) emulated.Element[sw_bw6761.ScalarField] {
+	return emulated.Element[sw_bw6761.ScalarField]{
+		Limbs: []frontend.Variable{limb, 0, 0, 0, 0, 0},
 	}
-	witness.Public = append(witness.Public, emulated.Element[sw_bw6761.ScalarField]{
-		Limbs: []frontend.Variable{circuit.NumNewVotes, 0, 0, 0, 0, 0}, // ValidVotes
-	})
+}
+
+// inputHashToElements transforms the mimc7 hash output to an array of emulated
+// elements of the bw6761 curve. It transform the hash output to an emulated
+// element of the bn254 curve, and then split each limb of the element to single
+// emulated element of the bw6761 curve. Each bn254 limb will be placed as the
+// first limb of the resulting bw6761 elements, and the rest of the limbs
+// will be set to 0. It also receives a flag to indicate if the current hash
+// comes from a valid vote or not. If the vote is not valid, the first limb
+// will be set to 1, and the rest will be set to 0.
+func inputHashToElements(api frontend.API, isValid, inputsHash frontend.Variable) []emulated.Element[sw_bw6761.ScalarField] {
+	voterHash, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, inputsHash)
+	if err != nil {
+		return nil
+	}
+	finalElements := []emulated.Element[sw_bw6761.ScalarField]{}
+	for l, limb := range voterHash.Limbs {
+		dummyLimb := 0
+		if l == 0 {
+			dummyLimb = 1
+		}
+		finalLimb := api.Select(isValid, limb, dummyLimb)
+		finalElements = append(finalElements, paddedElement(finalLimb))
+	}
+	return finalElements
+}
+
+// proofInputsHash calculates the mimc7 hash of the public inputs of the proof
+// of the i-th vote. It uses the native mimc7 hash function to calculate the
+// hash, and then transform the hash to an emulated element of the bw6761 curve.
+// The hash is calculated using the public inputs of the proof of the i-th vote.
+func (c Circuit) proofInputsHash(api frontend.API, idx int) frontend.Variable {
+	// init native mimc7 hash function
+	hFn, err := mimc7.NewMiMC(api)
+	if err != nil {
+		circuits.FrontendError(api, "failed to create mimc7 hash function: ", err)
+		return 0
+	}
+	// calculate the hash of the public inputs of the proof of the i-th vote
+	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, c.Votes[idx].Vote)...); err != nil {
+		circuits.FrontendError(api, "failed to write mimc7 hash function: ", err)
+		return 0
+	}
+	// transform the hash to an emulated element of the bn254 curve
+	return hFn.Sum()
+}
+
+// CalculateAggregatorWitness calculates the witness for the Aggregator proof.
+// The Aggregator witness is the hash of the public inputs of the proof of each
+// vote that it aggregates. The public inputs of the proof of each vote are
+// composed by the hash of the public-private inputs of the proof, which is an
+// emulated.Element[sw_bn254.ScalarField]. To calculate the witness we need to
+// calculate each hash of the public inputs of the proof of each vote (it can
+// be done using native mimc7 because this circuit should be work in the bn254
+// curve). But the witness should be an emulated element of the bw6761 curve,
+// that contains the hash as a emulated element of the bn254 curve. So we need
+// to transform the hash, first to an emulated element of the bn254 curve,
+// and then to an emulated element of the bw6761 curve.
+func (c Circuit) CalculateAggregatorWitness(api frontend.API) (groth16.Witness[sw_bw6761.ScalarField], error) {
+	// calculate the number of valid votes (it should be the number of new
+	// votes plus the number of overwrites)
+	validVotes := api.Add(c.NumNewVotes, c.NumOverwrites)
+	// the witness should be a bw6761 element, and it should include the
+	// number of valid votes as public input
+	witness := groth16.Witness[sw_bw6761.ScalarField]{
+		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(validVotes)},
+	}
+	// iterate over votes inputs to calculate the votes hashes and append them
+	// to the witness
+	for i := range types.VotesPerBatch {
+		isValid := cmp.IsLess(api, i, validVotes)
+		inputsHash := c.proofInputsHash(api, i)
+		// transform the hash to an emulated element of the bn254 curve into
+		// an emulated element of the bw6761 curve
+		witness.Public = append(witness.Public, inputHashToElements(api, isValid, inputsHash)...)
+	}
 	return witness, nil
 }
 
+// VerifyAggregatorProof verifies the Aggregator proof using the witness
+// calculated by the CalculateAggregatorWitness function. It uses the
+// groth16 verifier to verify the proof. The proof is verified using the
+// AggregatorVK, which is the verification key of the Aggregator proof.
 func (circuit Circuit) VerifyAggregatorProof(api frontend.API) {
 	witness, err := circuit.CalculateAggregatorWitness(api)
 	if err != nil {
@@ -116,24 +186,33 @@ func (circuit Circuit) VerifyAggregatorProof(api frontend.API) {
 	verifier, err := groth16.NewVerifier[sw_bw6761.ScalarField, sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 verifier: ", err)
+		return
 	}
 	// verify the proof with the hash as input and the fixed verification key
-	if err := verifier.AssertProof(circuit.AggregatorVK, circuit.AggregatorProof, witness); err != nil {
+	if err := verifier.AssertProof(circuit.AggregatorVK, circuit.AggregatorProof, witness, groth16.WithCompleteArithmetic()); err != nil {
 		circuits.FrontendError(api, "failed to verify aggregated proof: ", err)
+		return
 	}
 }
 
+// VerifyMerkleProofs verifies that the ProcessID, CensusRoot, BallotMode
+// and EncryptionKey belong to the RootHashBefore. It uses the MerkleProof
+// structure to verify the proofs. The proofs are verified using the Verify
+// function of the MerkleProof structure.
 func (circuit Circuit) VerifyMerkleProofs(api frontend.API, hFn utils.Hasher) {
-	api.Println("verify ProcessID, CensusRoot, BallotMode and EncryptionKey belong to RootHashBefore")
 	circuit.ProcessProofs.ID.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.CensusRoot.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.BallotMode.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.EncryptionKey.Verify(api, hFn, circuit.RootHashBefore)
 }
 
+// VerifyMerkleTransitions verifies that the chain of tree transitions is valid.
+// It first verifies the chain of tree transitions of the ballots, then the
+// chain of tree transitions of the commitments, and finally the chain of tree
+// transitions of the results. The order of the transitions is fundamental to
+// achieve the final root hash.
 func (circuit Circuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hasher) {
 	// verify chain of tree transitions, order here is fundamental.
-	api.Println("tree transition starts with RootHashBefore:", util.PrettyHex(circuit.RootHashBefore))
 	root := circuit.RootHashBefore
 	for i := range circuit.VotesProofs.Ballot {
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
@@ -143,83 +222,91 @@ func (circuit Circuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hashe
 	}
 	root = circuit.ResultsProofs.ResultsAdd.Verify(api, hFn, root)
 	root = circuit.ResultsProofs.ResultsSub.Verify(api, hFn, root)
-	api.Println("and final root is", util.PrettyHex(root), "should be equal to RootHashAfter", util.PrettyHex(circuit.RootHashAfter))
 	api.AssertIsEqual(root, circuit.RootHashAfter)
 }
 
+// VerifyLeafHashes verifies that the leaf hashes of the process, votes and
+// results are correct. It verifies that the leaf hashes of the process, votes
+// and results are equal to the leaf hashes of the proofs. It uses the
+// VerifyLeafHash function of the MerkleProof structure to verify the leaf
+// hashes.
 func (circuit Circuit) VerifyLeafHashes(api frontend.API, hFn utils.Hasher) {
 	// Process
-	circuit.ProcessProofs.ID.VerifyLeafHash(api, hFn, circuit.Process.ID)
-	circuit.ProcessProofs.CensusRoot.VerifyLeafHash(api, hFn, circuit.Process.CensusRoot)
-	circuit.ProcessProofs.BallotMode.VerifyLeafHash(api, hFn, circuit.Process.BallotMode.Serialize()...)
-	circuit.ProcessProofs.EncryptionKey.VerifyLeafHash(api, hFn, circuit.Process.EncryptionKey.Serialize()...)
+	if err := circuit.ProcessProofs.ID.VerifyLeafHash(api, hFn, circuit.Process.ID); err != nil {
+		circuits.FrontendError(api, "failed to verify process id process proof leaf hash: ", err)
+		return
+	}
+	if err := circuit.ProcessProofs.CensusRoot.VerifyLeafHash(api, hFn, circuit.Process.CensusRoot); err != nil {
+		circuits.FrontendError(api, "failed to verify census root process proof leaf hash: ", err)
+		return
+	}
+	if err := circuit.ProcessProofs.BallotMode.VerifyLeafHash(api, hFn, circuit.Process.BallotMode.Serialize()...); err != nil {
+		circuits.FrontendError(api, "failed to verify ballot mode process proof leaf hash: ", err)
+		return
+	}
+	if err := circuit.ProcessProofs.EncryptionKey.VerifyLeafHash(api, hFn, circuit.Process.EncryptionKey.Serialize()...); err != nil {
+		circuits.FrontendError(api, "failed to verify encryption key process proof leaf hash: ", err)
+		return
+	}
 	// Votes
 	for i, v := range circuit.Votes {
 		// Nullifier
 		api.AssertIsEqual(v.Nullifier, circuit.VotesProofs.Ballot[i].NewKey)
-		// Ballot
-		circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn,
-			v.Ballot.SerializeVars()...)
 		// Address
 		api.AssertIsEqual(v.Address, circuit.VotesProofs.Commitment[i].NewKey)
+		// Ballot
+		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.Ballot.SerializeVars()...); err != nil {
+			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
+			return
+		}
 		// Commitment
-		circuit.VotesProofs.Commitment[i].VerifyNewLeafHash(api, hFn,
-			v.Commitment)
+		if err := circuit.VotesProofs.Commitment[i].VerifyNewLeafHash(api, hFn, v.Commitment); err != nil {
+			circuits.FrontendError(api, "failed to verify commitment vote proof leaf hash: ", err)
+			return
+		}
 		// OverwrittenBallot
-		circuit.VotesProofs.Ballot[i].VerifyOverwrittenBallot(api, hFn,
-			v.OverwrittenBallot.SerializeVars()...)
+		if err := circuit.VotesProofs.Ballot[i].VerifyOverwrittenBallot(api, hFn, v.OverwrittenBallot.SerializeVars()...); err != nil {
+			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
+			return
+		}
 	}
 	// Results
-	circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn,
-		circuit.Results.OldResultsAdd.SerializeVars()...)
-	circuit.ResultsProofs.ResultsSub.VerifyOldLeafHash(api, hFn,
-		circuit.Results.OldResultsSub.SerializeVars()...)
-	circuit.ResultsProofs.ResultsAdd.VerifyNewLeafHash(api, hFn,
-		circuit.Results.NewResultsAdd.SerializeVars()...)
-	circuit.ResultsProofs.ResultsSub.VerifyNewLeafHash(api, hFn,
-		circuit.Results.NewResultsSub.SerializeVars()...)
+	if err := circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsAdd.SerializeVars()...); err != nil {
+		circuits.FrontendError(api, "failed to verify add results proof old leaf hash: ", err)
+		return
+	}
+	if err := circuit.ResultsProofs.ResultsSub.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsSub.SerializeVars()...); err != nil {
+		circuits.FrontendError(api, "failed to verify sub results proof old leaf hash: ", err)
+		return
+	}
+	if err := circuit.ResultsProofs.ResultsAdd.VerifyNewLeafHash(api, hFn, circuit.Results.NewResultsAdd.SerializeVars()...); err != nil {
+		circuits.FrontendError(api, "failed to verify add results proof new leaf hash: ", err)
+		return
+	}
+	if err := circuit.ResultsProofs.ResultsSub.VerifyNewLeafHash(api, hFn, circuit.Results.NewResultsSub.SerializeVars()...); err != nil {
+		circuits.FrontendError(api, "failed to verify sub results proof new leaf hash: ", err)
+		return
+	}
 }
 
-// VerifyBallots counts the ballots using homomorphic encrpytion
+// VerifyBallots counts the ballots using homomorphic encryption and checks
+// that the number of ballots is equal to the number of new votes and
+// overwrites. It uses the Ballot structure to count the ballots.
 func (circuit Circuit) VerifyBallots(api frontend.API) {
 	ballotSum, overwrittenSum, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0
 
 	for i, b := range circuit.VotesProofs.Ballot {
-		ballotSum.Add(api, ballotSum,
-			circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].Ballot, zero))
-
-		overwrittenSum.Add(api, overwrittenSum,
-			circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
-
+		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].Ballot, zero))
+		overwrittenSum.Add(api, overwrittenSum, circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
 		ballotCount = api.Add(ballotCount, api.Select(b.IsInsertOrUpdate(api), 1, 0))
 		overwrittenCount = api.Add(overwrittenCount, api.Select(b.IsUpdate(api), 1, 0))
 	}
 
 	circuit.Results.NewResultsAdd.AssertIsEqual(api,
-		circuits.NewBallot().Add(api,
-			&circuit.Results.OldResultsAdd,
-			ballotSum))
+		circuits.NewBallot().Add(api, &circuit.Results.OldResultsAdd, ballotSum))
 	circuit.Results.NewResultsSub.AssertIsEqual(api,
-		circuits.NewBallot().Add(api,
-			&circuit.Results.OldResultsSub,
-			overwrittenSum))
+		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, overwrittenSum))
 	api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
 	api.AssertIsEqual(circuit.NumOverwrites, overwrittenCount)
-}
-
-func (circuit Circuit) ListVotes() []circuits.Vote[frontend.Variable] {
-	list := []circuits.Vote[frontend.Variable]{}
-	for _, v := range circuit.Votes {
-		list = append(list, v.Vote)
-	}
-	return list
-}
-
-func (circuit Circuit) ListVotesAsEmulated(api frontend.API) []circuits.EmulatedVote[sw_bn254.ScalarField] {
-	list := []circuits.EmulatedVote[sw_bn254.ScalarField]{}
-	for _, v := range circuit.Votes {
-		list = append(list, v.ToEmulated(api))
-	}
-	return list
 }
