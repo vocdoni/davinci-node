@@ -10,7 +10,7 @@ import (
 type HexBytes []byte
 
 func (b *HexBytes) String() string {
-	return hex.EncodeToString(*b)
+	return "0x" + hex.EncodeToString(*b)
 }
 
 func (b *HexBytes) BigInt() *BigInt {
@@ -18,9 +18,11 @@ func (b *HexBytes) BigInt() *BigInt {
 }
 
 func (b HexBytes) MarshalJSON() ([]byte, error) {
-	enc := make([]byte, hex.EncodedLen(len(b))+2)
+	enc := make([]byte, hex.EncodedLen(len(b))+4)
 	enc[0] = '"'
-	hex.Encode(enc[1:], b)
+	enc[1] = '0'
+	enc[2] = 'x'
+	hex.Encode(enc[3:], b)
 	enc[len(enc)-1] = '"'
 	return enc, nil
 }

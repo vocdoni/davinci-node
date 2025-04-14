@@ -1,12 +1,16 @@
 package census
 
 import (
+	"bytes"
+	"encoding/binary"
+	"io"
 	"math/big"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // CensusRef is a reference to a census. It holds the Merkle tree.
@@ -79,6 +83,48 @@ func (cr *CensusRef) InsertBatch(keys, values [][]byte) ([]arbo.Invalid, error) 
 		return invalid, err
 	}
 	return invalid, cr.sendUpdateRoot(newRoot)
+}
+
+// FetchKeysAndValues fetches all keys and values from the Merkle tree.
+// Returns the keys as byte arrays and the values as BigInts.
+func (cr *CensusRef) FetchKeysAndValues() ([]types.HexBytes, []*types.BigInt, error) {
+	cr.treeMu.Lock()
+	defer cr.treeMu.Unlock()
+
+	buf := new(bytes.Buffer)
+	err := cr.tree.DumpWriter(nil, buf)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var keys []types.HexBytes
+	var values []*types.BigInt
+
+	for {
+		l := make([]byte, 3)
+		_, err = io.ReadFull(buf, l)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, nil, err
+		}
+		lenK := int(l[0])
+		k := make([]byte, lenK)
+		_, err = io.ReadFull(buf, k)
+		if err != nil {
+			return nil, nil, err
+		}
+		lenV := binary.LittleEndian.Uint16(l[1:3])
+		v := make([]byte, lenV)
+		_, err = io.ReadFull(buf, v)
+		if err != nil {
+			return nil, nil, err
+		}
+		keys = append(keys, k)
+		values = append(values, (*types.BigInt)(arbo.BytesToBigInt(v)))
+	}
+
+	return keys, values, nil
 }
 
 // Root safely returns the current Merkle tree root.
