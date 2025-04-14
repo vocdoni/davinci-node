@@ -188,11 +188,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 			BallotMode:    ballotMode.BigIntsToEmulatedElementBN254(),
 		},
 		CensusSiblings: emulatedSiblings,
-		Msg: emulated.ValueOf[emulated.Secp256k1Fr](
-			crypto.BigIntToFFwithPadding(b.BallotInputsHash,
-				circuits.VoteVerifierCurve.ScalarField(),
-			),
-		),
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),

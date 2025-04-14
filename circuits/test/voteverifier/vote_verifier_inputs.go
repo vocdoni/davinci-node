@@ -153,7 +153,6 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			},
 			CensusSiblings: emulatedSiblings,
 			// signature
-			Msg: emulated.ValueOf[emulated.Secp256k1Fr](blsCircomInputsHash),
 			PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 				X: emulated.ValueOf[emulated.Secp256k1Fp](voter.PubKey.X),
 				Y: emulated.ValueOf[emulated.Secp256k1Fp](voter.PubKey.Y),
