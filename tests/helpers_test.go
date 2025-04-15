@@ -56,7 +56,16 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 }
 
 func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *service.SequencerService, *storage.Storage, *web3.Contracts) {
-	log.Infow("starting Geth docker compose")
+	// Generate a random port for geth HTTP RPC
+	gethPort := util.RandomInt(10000, 20000)
+	gethURL := fmt.Sprintf("http://localhost:%d", gethPort)
+	// Set environment variables for docker-compose in the process environment
+	composeEnv := make(map[string]string)
+	composeEnv["GETH_PORT_8545"] = fmt.Sprintf("%d", gethPort)
+	composeEnv["GETH_PORT_8546"] = fmt.Sprintf("%d", gethPort+1)
+	composeEnv["GETH_PORT_8551"] = fmt.Sprintf("%d", gethPort+6)
+
+	// Create docker-compose instance
 	compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
 	qt.Assert(t, err, qt.IsNil)
 	t.Cleanup(func() {
@@ -65,11 +74,14 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *se
 	})
 	ctx2, cancel := context.WithCancel(ctx)
 	t.Cleanup(cancel)
-	err = compose.Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
+
+	// Start docker-compose
+	log.Infow("starting Geth docker compose", "gethPort", gethPort)
+	err = compose.WithEnv(composeEnv).Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
 	qt.Assert(t, err, qt.IsNil)
 
-	log.Infow("deploying contracts")
-	contracts, err := web3.DeployContracts("http://localhost:8545", testLocalAccountPrivKey)
+	log.Infow("deploying contracts", "url", gethURL)
+	contracts, err := web3.DeployContracts(gethURL, testLocalAccountPrivKey)
 	if err != nil {
 		log.Fatal(err)
 	}
