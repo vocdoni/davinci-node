@@ -86,7 +86,6 @@ type VerifyVoteCircuit struct {
 	CensusSiblings [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
 	// The following variables are private inputs and they are used to verify
 	// the user identity ownership
-	Msg       emulated.Element[emulated.Secp256k1Fr]
 	PublicKey ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]
 	Signature ecdsa.Signature[emulated.Secp256k1Fr]
 	// The ballot proof is passed as private inputs
@@ -120,10 +119,10 @@ func censusKeyValue(api frontend.API, address, weight emulated.Element[sw_bn254.
 	return key, value, nil
 }
 
-// circomWitness circuit method calculates the witness of the circom circuit
-// with the public-private inputs provided by the user. It hashes the inputs
+// circomHash circuit method calculates the hash of the public-private inputs
+// provided by the user to the circom circuit. It hashes the inputs
 // and generates the unique public input of the circom circuit.
-func (c VerifyVoteCircuit) circomWitness(api frontend.API) groth16.Witness[sw_bn254.ScalarField] {
+func (c VerifyVoteCircuit) circomHash(api frontend.API) emulated.Element[sw_bn254.ScalarField] {
 	// hash the circom public-private inputs and compare them with the unique
 	// public input of the circom circuit
 	hFn, err := mimc7.NewMiMC(api)
@@ -133,9 +132,7 @@ func (c VerifyVoteCircuit) circomWitness(api frontend.API) groth16.Witness[sw_bn
 	if err := hFn.Write(circuits.CircomInputs(api, c.Process, c.Vote, c.UserWeight)...); err != nil {
 		circuits.FrontendError(api, "failed to hash circom inputs", err)
 	}
-	return groth16.Witness[sw_bn254.ScalarField]{
-		Public: []emulated.Element[sw_bn254.ScalarField]{hFn.Sum()},
-	}
+	return hFn.Sum()
 }
 
 // checkInputsHash circuit method hashes the inputs provided by the user and
@@ -168,15 +165,23 @@ func (c VerifyVoteCircuit) checkInputsHash(api frontend.API) {
 // not return any value, but it asserts that the signature is valid for the
 // public key and message provided, and that the derived address matches the
 // provided address.
-func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
+func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API, circomHash emulated.Element[sw_bn254.ScalarField]) {
 	// we need to prefix the message with the Ethereum signing prefix
 	// and the length of the message to be signed
 	prefix := utils.BytesFromString(fmt.Sprintf("%s%d", ethereum.SigningPrefix, ethereum.HashLength), len(ethereum.SigningPrefix)+2)
 
-	// first convert the message to bytes and swap the endianness of the content (the hash of the data to be signed)
-	content, err := utils.BytesFromElement(api, c.Msg)
+	circomHashVar, err := utils.PackScalarToVar(api, circomHash)
 	if err != nil {
-		circuits.FrontendError(api, "failed to convert message to bytes", err)
+		circuits.FrontendError(api, "failed to pack circomHash", err)
+	}
+	circomHashSecp256, err := utils.UnpackVarToScalar[emulated.Secp256k1Fr](api, circomHashVar)
+	if err != nil {
+		circuits.FrontendError(api, "failed to unpack circomHash", err)
+	}
+	// first convert the message to bytes and swap the endianness of the content (the hash of the data to be signed)
+	content, err := utils.BytesFromElement(api, *circomHashSecp256)
+	if err != nil {
+		circuits.FrontendError(api, "failed to convert circomHash to bytes", err)
 	}
 	content = utils.SwapEndianness(content)
 
@@ -224,15 +229,17 @@ func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 // over the bn254 curve. As a circuit method, it does not return any value, but
 // it asserts that the proof is valid for the public inputs provided by the
 // user.
-func (c VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
+func (c VerifyVoteCircuit) verifyCircomProof(api frontend.API, circomHash emulated.Element[sw_bn254.ScalarField]) {
+	witness := groth16.Witness[sw_bn254.ScalarField]{
+		Public: []emulated.Element[sw_bn254.ScalarField]{circomHash},
+	}
 	// verify the ballot proof over the bn254 curve (used by circom)
 	verifier, err := groth16.NewVerifier[sw_bn254.ScalarField, sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl](api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create BN254 verifier", err)
 	}
 	validProof, err := verifier.ProofIsValid(c.CircomVerificationKey, c.CircomProof,
-		c.circomWitness(api), groth16.WithCompleteArithmetic(),
-	)
+		witness, groth16.WithCompleteArithmetic())
 	if err != nil {
 		circuits.FrontendError(api, "failed to verify circom proof", err)
 		api.AssertIsEqual(0, 1)
@@ -274,13 +281,15 @@ func (c VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
 }
 
 func (c VerifyVoteCircuit) Define(api frontend.API) error {
+	// calculate the hash of the circom circuit inputs
+	circomHash := c.circomHash(api)
 	// check the hash of the inputs provided by the user
 	c.checkInputsHash(api)
 	// verify the signature of the public inputs
-	c.verifySigForAddress(api)
+	c.verifySigForAddress(api, circomHash)
 	// verify the census proof
 	c.verifyCensusProof(api)
 	// verify the ballot proof
-	c.verifyCircomProof(api)
+	c.verifyCircomProof(api, circomHash)
 	return nil
 }

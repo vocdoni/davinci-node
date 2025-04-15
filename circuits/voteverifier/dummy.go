@@ -70,7 +70,6 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 			BallotMode: circuits.MockBallotModeEmulated(),
 		},
 		CensusSiblings: dummyEmulatedSiblings,
-		Msg:            dummyEmulatedSecp256k1Fr,
 		PublicKey: ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: dummyEmulatedSecp256k1Fp,
 			Y: dummyEmulatedSecp256k1Fp,

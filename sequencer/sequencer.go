@@ -159,7 +159,7 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 		"size", len(sttArtifacts.ProvingKey()),
 	)
 	sttPk := groth16.NewProvingKey(circuits.StateTransitionCurve)
-	if _, err := aggPk.UnsafeReadFrom(bytes.NewReader(sttArtifacts.ProvingKey())); err != nil {
+	if _, err := sttPk.UnsafeReadFrom(bytes.NewReader(sttArtifacts.ProvingKey())); err != nil {
 		return nil, fmt.Errorf("failed to read statetransition proving key: %w", err)
 	}
 
