@@ -88,7 +88,6 @@ func (s *Sequencer) processPendingBatches() {
 		s.pidsLock.Lock()
 		s.pids[pid] = time.Now()
 		s.pidsLock.Unlock()
-
 	}
 }
 
