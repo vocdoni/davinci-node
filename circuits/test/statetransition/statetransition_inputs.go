@@ -88,7 +88,7 @@ func StateTransitionInputsForTest(processId []byte, nValidVoters int) (
 	if err := s.EndBatch(); err != nil {
 		return nil, nil, nil, fmt.Errorf("end batch: %w", err)
 	}
-	witness, err := GenerateWitness(s)
+	witness, err := statetransition.GenerateWitness(s)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("generate witness: %w", err)
 	}
