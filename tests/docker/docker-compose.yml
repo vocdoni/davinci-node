@@ -24,9 +24,9 @@ services:
       - --dev
       - --ipcdisable
     ports:
-      - 8551:8551
-      - 8545:8545
-      - 8546:8546
+      - ${GETH_PORT_8545:-8545}:8545
+      - ${GETH_PORT_8546:-8546}:8546
+      - ${GETH_PORT_8551:-8551}:8551
     depends_on:
       geth-genesis:
         condition: service_completed_successfully
