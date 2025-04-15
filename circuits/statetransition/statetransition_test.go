@@ -175,7 +175,7 @@ func TestCircuitProve(t *testing.T) {
 }
 
 type CircuitCalculateAggregatorWitness struct {
-	statetransition.Circuit
+	statetransition.StateTransitionCircuit
 }
 
 func (circuit CircuitCalculateAggregatorWitness) Define(api frontend.API) error {
@@ -198,7 +198,7 @@ func TestCircuitCalculateAggregatorWitnessProve(t *testing.T) {
 }
 
 type CircuitAggregatorProof struct {
-	statetransition.Circuit
+	statetransition.StateTransitionCircuit
 }
 
 func (circuit CircuitAggregatorProof) Define(api frontend.API) error {
@@ -219,7 +219,7 @@ func TestCircuitAggregatorProofProve(t *testing.T) {
 }
 
 type CircuitBallots struct {
-	statetransition.Circuit
+	statetransition.StateTransitionCircuit
 }
 
 func (circuit CircuitBallots) Define(api frontend.API) error {
@@ -239,7 +239,7 @@ func TestCircuitBallotsProve(t *testing.T) {
 }
 
 type CircuitMerkleProofs struct {
-	statetransition.Circuit
+	statetransition.StateTransitionCircuit
 }
 
 func (circuit CircuitMerkleProofs) Define(api frontend.API) error {
@@ -259,7 +259,7 @@ func TestCircuitMerkleProofsProve(t *testing.T) {
 }
 
 type CircuitMerkleTransitions struct {
-	statetransition.Circuit
+	statetransition.StateTransitionCircuit
 }
 
 func (circuit CircuitMerkleTransitions) Define(api frontend.API) error {
@@ -281,7 +281,7 @@ func TestCircuitMerkleTransitionsProve(t *testing.T) {
 }
 
 type CircuitLeafHashes struct {
-	statetransition.Circuit
+	statetransition.StateTransitionCircuit
 }
 
 func (circuit CircuitLeafHashes) Define(api frontend.API) error {
@@ -302,7 +302,7 @@ func TestCircuitLeafHashesProve(t *testing.T) {
 	debugLog(t, witness)
 }
 
-func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) *statetransition.Circuit {
+func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) *statetransition.StateTransitionCircuit {
 	if err := s.StartBatch(); err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +341,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 	return witness
 }
 
-func newMockWitness(t *testing.T) *statetransition.Circuit {
+func newMockWitness(t *testing.T) *statetransition.StateTransitionCircuit {
 	return newMockTransitionWithVotes(t, newMockState(t),
 		newMockVote(0, 10),
 		newMockVote(1, 10),
@@ -405,7 +405,7 @@ func newMockVote(index, amount int64) *state.Vote {
 	}
 }
 
-func debugLog(t *testing.T, witness *statetransition.Circuit) {
+func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
 	// js, _ := json.MarshalIndent(witness, "", "  ")
 	// fmt.Printf("\n\n%s\n\n", js)
 	t.Log("public: RootHashBefore", util.PrettyHex(witness.RootHashBefore))

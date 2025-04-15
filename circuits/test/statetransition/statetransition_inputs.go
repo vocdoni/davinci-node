@@ -28,7 +28,7 @@ type StateTransitionTestResults struct {
 // and the assignments of a StateTransitionCircuit for the processId provided
 // generating nValidVoters. If something fails it returns an error.
 func StateTransitionInputsForTest(processId []byte, nValidVoters int) (
-	*StateTransitionTestResults, *statetransition.Circuit, *statetransition.Circuit, error,
+	*StateTransitionTestResults, *statetransition.StateTransitionCircuit, *statetransition.StateTransitionCircuit, error,
 ) {
 	// generate aggregator circuit and inputs
 	agInputs, agPlaceholder, agWitness, err := aggregatortest.AggregatorInputsForTest(processId, nValidVoters)

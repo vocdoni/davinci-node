@@ -12,9 +12,9 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 )
 
-func GenerateWitness(o *state.State) (*statetransition.Circuit, error) {
+func GenerateWitness(o *state.State) (*statetransition.StateTransitionCircuit, error) {
 	var err error
-	witness := &statetransition.Circuit{}
+	witness := &statetransition.StateTransitionCircuit{}
 
 	// RootHashBefore
 	witness.RootHashBefore = o.RootHashBefore
@@ -107,7 +107,7 @@ func GenerateWitness(o *state.State) (*statetransition.Circuit, error) {
 	return witness, nil
 }
 
-func CircuitPlaceholder() *statetransition.Circuit {
+func CircuitPlaceholder() *statetransition.StateTransitionCircuit {
 	proof, vk := DummyAggProofPlaceholder()
 	return CircuitPlaceholderWithProof(proof, vk)
 }
@@ -115,8 +115,8 @@ func CircuitPlaceholder() *statetransition.Circuit {
 func CircuitPlaceholderWithProof(
 	proof *groth16.Proof[sw_bw6761.G1Affine, sw_bw6761.G2Affine],
 	vk *groth16.VerifyingKey[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl],
-) *statetransition.Circuit {
-	return &statetransition.Circuit{
+) *statetransition.StateTransitionCircuit {
+	return &statetransition.StateTransitionCircuit{
 		AggregatorProof: *proof,
 		AggregatorVK:    *vk,
 	}

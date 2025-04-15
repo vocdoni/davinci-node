@@ -9,10 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -45,6 +46,9 @@ type Sequencer struct {
 	workInProgressLock sync.RWMutex         // Lock to block new work while processing a batch or a state transition
 
 	ballotVerifyingKeyCircomJSON []byte // Verification key for ballot proofs
+
+	statetransitionProvingKey groth16.ProvingKey          // Key for generating state transition proofs
+	statetransitionCcs        constraint.ConstraintSystem // Constraint system for state transition proofs
 
 	aggregateProvingKey groth16.ProvingKey          // Key for generating aggregate proofs
 	aggregateCcs        constraint.ConstraintSystem // Constraint system for aggregate proofs
@@ -87,7 +91,7 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 		"type", "ccs",
 		"size", len(vvArtifacts.CircuitDefinition()),
 	)
-	voteCcs := groth16.NewCS(ecc.BLS12_377)
+	voteCcs := groth16.NewCS(circuits.VoteVerifierCurve)
 	if _, err := voteCcs.ReadFrom(bytes.NewReader(vvArtifacts.CircuitDefinition())); err != nil {
 		return nil, fmt.Errorf("failed to read vote verifier definition: %w", err)
 	}
@@ -98,7 +102,7 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 		"type", "pk",
 		"size", len(vvArtifacts.ProvingKey()),
 	)
-	votePk := groth16.NewProvingKey(ecc.BLS12_377)
+	votePk := groth16.NewProvingKey(circuits.VoteVerifierCurve)
 	if _, err := votePk.UnsafeReadFrom(bytes.NewReader(vvArtifacts.ProvingKey())); err != nil {
 		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
 	}
@@ -115,7 +119,7 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 		"type", "ccs",
 		"size", len(aggArtifacts.CircuitDefinition()),
 	)
-	aggCcs := groth16.NewCS(ecc.BW6_761)
+	aggCcs := groth16.NewCS(circuits.AggregatorCurve)
 	if _, err := aggCcs.ReadFrom(bytes.NewReader(aggArtifacts.CircuitDefinition())); err != nil {
 		return nil, fmt.Errorf("failed to read aggregator circuit definition: %w", err)
 	}
@@ -126,9 +130,37 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 		"type", "pk",
 		"size", len(aggArtifacts.ProvingKey()),
 	)
-	aggPk := groth16.NewProvingKey(ecc.BW6_761)
+	aggPk := groth16.NewProvingKey(circuits.AggregatorCurve)
 	if _, err := aggPk.UnsafeReadFrom(bytes.NewReader(aggArtifacts.ProvingKey())); err != nil {
 		return nil, fmt.Errorf("failed to read aggregator proving key: %w", err)
+	}
+
+	// Load statetransition artifacts
+	sttArtifacts := statetransition.Artifacts
+	if err := sttArtifacts.LoadAll(); err != nil {
+		return nil, fmt.Errorf("failed to load statetransition artifacts: %w", err)
+	}
+
+	// Decode the statetransition circuit definition
+	log.Debugw("reading cicuit artifact",
+		"circuit", "statetransition",
+		"type", "ccs",
+		"size", len(sttArtifacts.CircuitDefinition()),
+	)
+	sttCcs := groth16.NewCS(circuits.StateTransitionCurve)
+	if _, err := sttCcs.ReadFrom(bytes.NewReader(sttArtifacts.CircuitDefinition())); err != nil {
+		return nil, fmt.Errorf("failed to read statetransition circuit definition: %w", err)
+	}
+
+	// Decode the statetransition proving key
+	log.Debugw("reading cicuit artifact",
+		"circuit", "statetransition",
+		"type", "pk",
+		"size", len(sttArtifacts.ProvingKey()),
+	)
+	sttPk := groth16.NewProvingKey(circuits.StateTransitionCurve)
+	if _, err := sttPk.UnsafeReadFrom(bytes.NewReader(sttArtifacts.ProvingKey())); err != nil {
+		return nil, fmt.Errorf("failed to read statetransition proving key: %w", err)
 	}
 
 	log.Debugw("sequencer initialized",
@@ -141,6 +173,8 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 		batchTimeWindow:              batchTimeWindow,
 		pids:                         make(map[string]time.Time),
 		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey, // TODO: replace with a proper VK path
+		statetransitionProvingKey:    sttPk,
+		statetransitionCcs:           sttCcs,
 		aggregateProvingKey:          aggPk,
 		aggregateCcs:                 aggCcs,
 		voteProvingKey:               votePk,
