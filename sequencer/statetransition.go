@@ -10,7 +10,6 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -115,7 +114,7 @@ func (s *Sequencer) processStateTransitionBatch(
 
 func (s *Sequencer) startStateFromSmartContract(pid *types.ProcessID) (*state.State, error) {
 	// initialize the process state
-	processState, err := state.New(memdb.New(), pid.BigInt())
+	processState, err := state.New(s.stg.StateDB(), pid.BigInt())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}

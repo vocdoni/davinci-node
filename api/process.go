@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
@@ -73,7 +72,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Initialize the state
-	st, err := state.New(memdb.New(), pid.BigInt())
+	st, err := state.New(a.storage.StateDB(), pid.BigInt())
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not create state: %v", err).Write(w)
 		return

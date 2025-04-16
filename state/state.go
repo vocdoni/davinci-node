@@ -88,7 +88,6 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return &State{
 		db:        pdb,
 		tree:      tree,

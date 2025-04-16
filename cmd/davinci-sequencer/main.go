@@ -118,13 +118,13 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 		return nil, fmt.Errorf("failed to download artifacts: %w", err)
 	}
 
-	// Initialize storage
+	// Initialize storage database
 	log.Infow("initializing storage", "datadir", cfg.Datadir, "type", db.TypePebble)
-	kv, err := metadb.New(db.TypePebble, cfg.Datadir)
+	storagedb, err := metadb.New(db.TypePebble, cfg.Datadir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
-	services.Storage = storage.New(kv)
+	services.Storage = storage.New(storagedb)
 
 	// Initialize web3 contracts
 	log.Info("initializing web3 contracts")
