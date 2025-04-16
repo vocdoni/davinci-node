@@ -131,7 +131,10 @@ func (o *State) Initialize(
 
 // Close the database, no more operations can be done after this.
 func (o *State) Close() error {
-	return o.db.Close()
+	if o.dbTx != nil {
+		o.dbTx.Discard()
+	}
+	return nil
 }
 
 // StartBatch resets counters and sums to zero,
