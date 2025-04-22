@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -8,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
 	"github.com/consensys/gnark/backend/groth16"
+	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
@@ -192,14 +195,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to compile statetransition circuit: %v", err)
 	}
-	// Setup Aggregator circuit
+	// Setup statetransition circuit
 	statetransitionPk, statetransitionVk, err := groth16.Setup(statetransitionCCS)
 	if err != nil {
 		log.Fatalf("error setting up statetransition circuit: %v", err)
 	}
 	log.Infow("statetransition circuit compiled", "elapsed", time.Since(startTime).String())
 
-	// Write the aggregator artifacts to disk
+	// Write the statetransition artifacts to disk
 	startTime = time.Now()
 	log.Infow("writing statetransition artifacts to disk...")
 	hash, err = writeCS(statetransitionCCS, destination)
@@ -221,6 +224,30 @@ func main() {
 	hashList["StateTransitionVerificationKeyHash"] = hash
 
 	log.Infow("statetransition artifacts written to disk", "elapsed", time.Since(startTime).String())
+
+	// Export the solidity verifier
+
+	// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
+	solidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
+	if err := solidityVk.Precompute(); err != nil {
+		log.Fatalf("failed to precompute vk: %v", err)
+	}
+
+	fd, err := os.Create(path.Join(destination, "vkey.sol"))
+	if err != nil {
+		log.Fatalf("failed to create vkey.sol: %v", err)
+	}
+	buf := bytes.NewBuffer(nil)
+	if err := solidityVk.ExportSolidity(buf); err != nil {
+		log.Fatalf("failed to export vk to Solidity: %v", err)
+	}
+	if _, err := fd.Write(buf.Bytes()); err != nil {
+		log.Fatalf("failed to write vkey.sol: %v", err)
+	}
+	if err := fd.Close(); err != nil {
+		log.Warnw("failed to close vkey.sol file", "error", err)
+	}
+	log.Infow("vkey.sol file created", "path", fd.Name())
 
 	////////////////////////////////////////
 	// Print hash list and upload files
