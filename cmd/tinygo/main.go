@@ -1,12 +1,11 @@
 package main
 
 import (
-	"encoding/hex"
-	"errors"
-	"fmt"
-	"math/big"
+   "encoding/hex"
+   "errors"
+   "math/big"
 
-	bjj "davinci-wasm/bjj"
+   bjj "davinci-wasm/bjj"
 )
 
 const (
@@ -119,9 +118,9 @@ func stringToPtr(s string) *byte {
 	return &bytes[0]
 }
 
-// The main entrypoint for WASI; kept empty to prevent deadlocks.
+// The main entrypoint; kept empty for WASM target
 func main() {
-	fmt.Println("WASI module initialized") // This won't be seen, but makes sure fmt is linked
+   // no-op
 }
 
 // EncryptWithK function encrypts a message using the public key provided as
