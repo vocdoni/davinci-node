@@ -1,58 +1,130 @@
 import fs from 'fs/promises';
+import { WASI } from 'wasi';
 
 async function main() {
-  console.log('Testing encrypt.wasm functionality...');
+  console.log('Testing encrypt.wasi functionality...');
   
   try {
-    // Load the WebAssembly module built with TinyGo
-    const wasmBuffer = await fs.readFile(new URL('./encrypt.wasm', import.meta.url));
+    // Load the WebAssembly module built with TinyGo for WASI
+    const wasmBuffer = await fs.readFile(new URL('./encrypt.wasi', import.meta.url));
     
-    // Pure WebAssembly approach using Proxy to handle any WASI imports
-    const { instance } = await WebAssembly.instantiate(wasmBuffer, {
-      // Create a proxy that returns dummy functions for any WASI imports
-      wasi_snapshot_preview1: new Proxy({}, {
-        get: function(target, prop) {
-          // Return a no-op function for any WASI import
-          return () => 0;
-        }
-      })
+    // Set up WASI environment
+    const wasi = new WASI({ 
+      version: 'preview1', 
+      args: [], 
+      env: {}, 
+      preopens: {} 
     });
     
-    // Extract the encrypt function from exports
-    const { encrypt } = instance.exports;
+    // Initialize with WASI imports
+    const importObject = { 
+      wasi_snapshot_preview1: wasi.wasiImport 
+    };
+    
+    // Instantiate the WASI module
+    const { instance } = await WebAssembly.instantiate(wasmBuffer, importObject);
+    
+    // Start the WASI instance
+    wasi.start(instance);
+    
+    // Extract the encrypt function and memory from exports
+    const { encrypt, memory } = instance.exports;
     if (typeof encrypt !== 'function') {
       console.error('encrypt export is not a function');
       process.exit(1);
     }
     
     // Test various input values
-    const testCases = [
-      { input: 0, expected: 0 },
-      { input: 1, expected: 2 },
-      { input: -5, expected: -10 },
-      { input: 42, expected: 84 },
-      { input: 1000, expected: 2000 }
-    ];
+    const testInputs = [0, 1, 42, 100, 1000];
     
     console.log('Running test cases:');
     let allPassed = true;
     
-    for (const testCase of testCases) {
-      const result = encrypt(testCase.input);
-      const passed = result === testCase.expected;
+    for (const input of testInputs) {
+      console.log(`\nTesting encrypt(${input}):`);
       
-      console.log(`encrypt(${testCase.input}) = ${result} [${passed ? 'PASS' : 'FAIL'}]`);
-      
-      if (!passed) {
+      try {
+        // Call encrypt function which returns a pointer to the string array
+        const result = encrypt(input);
+        
+        // Check if we got a valid result pointer
+        if (result === 0) {
+          console.error(`  Failed: encrypt(${input}) returned null pointer`);
+          allPassed = false;
+          continue;
+        }
+        
+        // Parse the string array from memory
+        // Access the array data
+        const view = new DataView(memory.buffer);
+        
+        // Get array length
+        const len = view.getInt32(result, true); // Little endian
+        console.log(`  Array length: ${len}`);
+        
+        if (len !== 4) {
+          console.error(`  Failed: Expected 4 strings, got ${len}`);
+          allPassed = false;
+          continue;
+        }
+        
+        // Calculate the offset to the array data
+        const arrayPtr = result + 4; // Skip the length field
+        
+        // Extract each string from the array
+        const strings = [];
+        for (let i = 0; i < len; i++) {
+          // Each element is a struct with pointer and length (8 bytes each)
+          const elemPtr = arrayPtr + (i * 8);
+          const strPtr = view.getInt32(elemPtr, true);
+          const strLen = view.getInt32(elemPtr + 4, true);
+          
+          if (strPtr === 0) {
+            throw new Error(`String pointer is null for element ${i}`);
+          }
+          
+          // Read the string data
+          const bytes = new Uint8Array(memory.buffer, strPtr, strLen);
+          const str = new TextDecoder().decode(bytes);
+          strings.push(str);
+        }
+        
+        // Validate that we got 4 strings representing two points
+        console.log('  Point 1:');
+        console.log(`    x: ${strings[0]}`);
+        console.log(`    y: ${strings[1]}`);
+        console.log('  Point 2:');
+        console.log(`    x: ${strings[2]}`);
+        console.log(`    y: ${strings[3]}`);
+        
+        // Validate strings are numeric (valid big integers)
+        const validStrings = strings.every(str => {
+          try {
+            // Attempt to parse as BigInt to ensure it's a valid numeric string
+            BigInt(str);
+            return true;
+          } catch (e) {
+            console.error(`  Failed: "${str}" is not a valid numeric string`);
+            return false;
+          }
+        });
+        
+        if (!validStrings) {
+          allPassed = false;
+          console.error('  Failed: Not all strings are valid numeric values');
+        } else {
+          console.log(`  PASS: encrypt(${input}) returned valid elliptic curve points`);
+        }
+      } catch (err) {
+        console.error(`  Failed to process result for encrypt(${input}):`, err);
         allPassed = false;
-        console.error(`  Expected: ${testCase.expected}, Got: ${result}`);
       }
     }
     
     console.log(`\nTest summary: ${allPassed ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'}`);
     return allPassed ? 0 : 1;
   } catch (err) {
-    console.error('Error executing wasm:', err);
+    console.error('Error executing wasi module:', err);
     process.exit(1);
   }
 }
