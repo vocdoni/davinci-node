@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -15,11 +16,37 @@ const (
 
 // Global variables to store result strings - will be accessed through getters
 var (
-	resultX1 = ""
-	resultY1 = ""
-	resultX2 = ""
-	resultY2 = ""
+	resultX1   = ""
+	resultY1   = ""
+	resultX2   = ""
+	resultY2   = ""
+	commitment = ""
+	nullifier  = ""
 )
+
+//export genCommitmentAndNullifier
+func genCommitmentAndNullifier(address, processID, secret string) int32 {
+	// Convert strings to byte slices
+	addressBytes, err := hex.DecodeString(trimHex(address))
+	if err != nil {
+		panic("failed to decode address")
+	}
+	processIDBytes, err := hex.DecodeString(trimHex(processID))
+	if err != nil {
+		panic("failed to decode processID")
+	}
+	secretBytes, err := hex.DecodeString(trimHex(secret))
+	if err != nil {
+		panic("failed to decode secret")
+	}
+	commitmentBI, nullifierBI, err := GenCommitmentAndNullifier(addressBytes, processIDBytes, secretBytes)
+	if err != nil {
+		panic("failed to generate commitment and nullifier")
+	}
+	commitment = commitmentBI.String()
+	nullifier = nullifierBI.String()
+	return 1 // Return success code
+}
 
 //export encrypt
 func encrypt(val int32) int32 {
@@ -69,6 +96,16 @@ func getResultX2() *byte {
 //export getResultY2
 func getResultY2() *byte {
 	return stringToPtr(resultY2)
+}
+
+//export getCommitment
+func getCommitment() *byte {
+	return stringToPtr(commitment)
+}
+
+//export getNullifier
+func getNullifier() *byte {
+	return stringToPtr(nullifier)
 }
 
 // Helper function to convert a Go string to a pointer to a C string
