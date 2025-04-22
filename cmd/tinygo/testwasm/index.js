@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { Go } from './wasm_exec.js';
 
 async function main() {
   try {
@@ -6,29 +7,16 @@ async function main() {
     // Load the WebAssembly module built with TinyGo
     const wasmBuffer = await fs.readFile(new URL('./encrypt.wasm', import.meta.url));
     
-    // Set up imports for TinyGo - provide both WASI and gojs proxies
-    const importObject = {
-      // Provide WASI imports required by TinyGo
-      wasi_snapshot_preview1: new Proxy({}, {
-        get: function(target, prop) {
-          console.log(`WASI function requested: ${prop}`);
-          return () => 0;
-        }
-      }),
-      // Provide gojs imports required by TinyGo string handling
-      gojs: new Proxy({}, {
-        get: function(target, prop) {
-          console.log(`gojs function requested: ${prop}`);
-          return () => 0;
-        }
-      }),
-      env: {
-        // Additional env imports that might be needed
-      }
-    };
+    // Set up the TinyGo runtime loader
+    const go = new Go();
     
     console.log('Instantiating WASM module...');
-    const { instance } = await WebAssembly.instantiate(wasmBuffer, importObject);
+    const { instance } = await WebAssembly.instantiate(wasmBuffer, go.importObject);
+    // Start the Go runtime (initializes memory, runs initializers)
+    // We don't await go.run since our program never calls proc_exit
+    go.run(instance).catch(e => {
+      // ignore wasmExit if it occurs
+    });
     
     // Extract functions and memory from exports
     const { 
@@ -89,8 +77,6 @@ async function main() {
     } catch (error) {
       console.error('\nError in encrypt function:');
       console.error(error);
-      console.log('\nThis error is expected if the required cryptographic dependencies');
-      console.log('are not properly included in the WASM build.');
     }
   } catch (err) {
     console.error('Error instantiating WASM module:', err);
@@ -98,4 +84,8 @@ async function main() {
   }
 }
 
-main();
+// Invoke main and handle any unexpected errors
+main().catch(err => {
+  console.error('Unhandled error in main():', err);
+  process.exit(1);
+});

@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "build": "tinygo build -o encrypt.wasm -target wasm ../main.go",
+    "build": "tinygo build -o encrypt.wasm -target wasm -scheduler=asyncify -no-debug ..",
     "start": "npm run build && node index.js"
   }
 }
