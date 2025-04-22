@@ -1,11 +1,11 @@
 package main
 
 import (
-   "encoding/hex"
-   "errors"
-   "math/big"
+	"encoding/hex"
+	"errors"
+	"math/big"
 
-   bjj "davinci-wasm/bjj"
+	bjj "davinci-wasm/bjj"
 )
 
 const (
@@ -118,10 +118,15 @@ func stringToPtr(s string) *byte {
 	return &bytes[0]
 }
 
-// The main entrypoint; kept empty for WASM target
-func main() {
-   // no-op
+// The main entrypoint will be conditionally compiled
+// For wasm builds, main is defined in main_wasm.go
+// This is only compiled for non-wasm builds
+func init() {
+	// initialization code if needed
 }
+
+// No main function defined here
+// main function is defined in main_wasm.go for wasm builds
 
 // EncryptWithK function encrypts a message using the public key provided as
 // elliptic curve point and the random k value provided. It returns the two
