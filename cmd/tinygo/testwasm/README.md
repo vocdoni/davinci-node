@@ -1,84 +1,88 @@
-<!-- README for testwasm directory -->
-# testwasm
+# Go to JavaScript via WebAssembly
 
-This directory demonstrates how to run a TinyGo-compiled WebAssembly module (`encrypt.wasm`) from Node.js
-without relying on the WASI interface or hand-rolled import stubs. Instead, it uses TinyGo’s own runtime loader
-(`wasm_exec.js`) to provide all required imports and bridge Go’s runtime into JavaScript.
+This example demonstrates how to expose Go functions to JavaScript/Node.js via WebAssembly.
+
+## Overview
+
+This project compiles Go code to WebAssembly (WASM) and makes Go functions callable from JavaScript. 
+It uses the standard Go compiler (not TinyGo) and the `syscall/js` package to create JavaScript bindings.
 
 ## Files
-- `encrypt.wasm` — The WebAssembly binary produced by TinyGo.
-- `wasm_exec.js` — TinyGo’s WebAssembly runtime loader, patched for ES module support.
-- `index.js` — Node.js script that:
-  1. Imports the `Go` loader from `wasm_exec.js`.
-  2. Instantiates the WASM module with `go.importObject`.
-  3. Runs the Go runtime with `go.run(instance)`.
-  4. Calls the exported `encrypt` function, reads its string results, and prints them.
-- `package.json` — npm scripts to build and start the demo.
 
-## Setup & Run
+- `encrypt.wasm` — WebAssembly module compiled from Go source files
+- `wasm_exec.js` — Go's official JavaScript support file for WebAssembly
+- `index.js` — Node.js example that:
+  1. Imports Go's `wasm_exec.js`
+  2. Loads and instantiates the WebAssembly module
+  3. Calls the exposed Go functions
+- `package.json` — npm configuration with build and run scripts
+
+## How It Works
+
+1. **Building the WebAssembly module**: Go code is compiled to WebAssembly using the `GOOS=js GOARCH=wasm` build flags.
+
+2. **JavaScript Bindings**: In `main_wasm.go`, Go functions are exposed to JavaScript using the `syscall/js` package:
+   ```go
+   js.Global().Set("functionName", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+     // Call Go function
+     return result
+   }))
+   ```
+
+3. **JavaScript Integration**: JavaScript code loads the `wasm_exec.js` support file, instantiates the WebAssembly module with the Go runtime, and calls the exposed functions via the global object.
+
+4. **Data Flow**: 
+   - Go → JavaScript: Result values from Go functions are made accessible via the global scope
+   - JavaScript → Go: Parameters are passed to Go functions as arguments
+
+## WebAssembly Runtime Architecture
+
+The integration works through these components:
+
+1. **Go Runtime**: The Go code is compiled to WebAssembly, maintaining Go's runtime and garbage collector.
+
+2. **JavaScript Glue**: The `wasm_exec.js` file provides the necessary JavaScript functions to instantiate and run the Go WebAssembly runtime.
+
+3. **Function Registration**: When the Go runtime starts, it registers JavaScript functions in the global scope.
+
+4. **Event Loop Handling**: The Go main function blocks with `select{}` to keep the WebAssembly instance alive, while JavaScript can continue to call the registered functions.
+
+## Available Functions
+
+### Encryption Functions
+- `encrypt(value)` - Encrypts a value using BabyJubJub elGamal encryption
+- `getResultX1()` - Returns the X coordinate of the first encryption point (C1)
+- `getResultY1()` - Returns the Y coordinate of the first encryption point (C1)
+- `getResultX2()` - Returns the X coordinate of the second encryption point (C2)
+- `getResultY2()` - Returns the Y coordinate of the second encryption point (C2)
+
+### Commitment and Nullifier Functions
+- `genCommitmentAndNullifier(address, processID, secret)` - Generates a commitment and nullifier
+- `getCommitment()` - Returns the generated commitment
+- `getNullifier()` - Returns the generated nullifier
+
+## Prerequisites
+
+- Go 1.20+ (for WebAssembly compilation)
+- Node.js 16+ (for running the JavaScript code)
+
+## Usage
+
 ```bash
 cd testwasm
 npm install
 npm run start
 ```
 
-## How It Works
+This will:
+1. Compile the Go code to WebAssembly
+2. Run the Node.js example
+3. Execute the cryptographic operations and display the results
 
-1. **WebAssembly Compilation**
-   - We compile the Go code via TinyGo:
-     ```bash
-     tinygo build \
-       -o encrypt.wasm \
-       -target wasm \
-       -scheduler asyncify \
-       -no-debug ..
-     ```
-   - Using `-scheduler=asyncify` ensures Go’s lightweight scheduler and the `syscall/js`
-     bridge work correctly in a single-threaded JavaScript environment.
+## Extending
 
-2. **Runtime Loader (`wasm_exec.js`)**
-   - TinyGo provides a `wasm_exec.js` loader that implements:
-     - **WASI syscalls** (e.g. `fd_write`, `proc_exit`, `random_get`) to handle I/O and exit.
-     - **`syscall/js` bridging** (e.g. `valueGet`, `valueSet`, BigInt conversions) to map between
-       Go values and JavaScript values.
-     - **Go scheduler** and **Asyncify hooks** to support gopher goroutines and async sleeping.
-   - We copied this loader into the `testwasm` folder and appended:
-     ```js
-     // After the IIFE:
-     const Go = global.Go;
-     export { Go };
-     ```
-   - This allows us to use it as an ES module:
-     ```js
-     import { Go } from './wasm_exec.js';
-     ```
+To add more Go functions:
 
-3. **Node.js Script (`index.js`)**
-   - Loads the WASM binary as a `Buffer`.
-   - Creates a `Go` instance:
-     ```js
-     const go = new Go();
-     ```
-   - Instantiates the module with `go.importObject`:
-     ```js
-     const { instance } = await WebAssembly.instantiate(wasmBuffer, go.importObject);
-     ```
-   - Runs the Go runtime:
-     ```js
-     await go.run(instance);
-     ```
-   - Calls `encrypt(val)` and reads back four null-terminated strings from memory.
-
-## Why This Was Necessary
-
-TinyGo’s WebAssembly output depends on a full Go runtime environment:
-- Low-level WASI syscalls for I/O and random numbers.
-- JavaScript bridging for `syscall/js`; particularly BigInt (i64) support.
-- A scheduler or Asyncify mechanism to manage goroutine lifecycles.
-
-Hand-rolling Proxy stubs for these imports was brittle and incomplete: BigInt conversions
-failed, and certain syscalls (`proc_exit`, `random_get`) were unimplemented or mis-typed,
-leading to runtime panics.
-
-By using TinyGo’s own `wasm_exec.js`, we satisfy all runtime requirements out of the box,
-ensuring correct initialization and seamless interop between Go and Node.js.
+1. Add a new exported function in the Go code
+2. Register it in the `registerCallbacks()` function in `main_wasm.go`
+3. Call the function from JavaScript via the global object
