@@ -59,7 +59,6 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	// add Ballots
 	for i := range witness.VotesProofs.Ballot {
 		witness.VotesProofs.Ballot[i], err = MerkleTransitionFromArboTransition(o.VotesProofs.Ballot[i])
@@ -67,7 +66,6 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 			return nil, err
 		}
 	}
-
 	// add Commitments
 	for i := range witness.VotesProofs.Commitment {
 		witness.VotesProofs.Commitment[i], err = MerkleTransitionFromArboTransition(o.VotesProofs.Commitment[i])
@@ -75,26 +73,22 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 			return nil, err
 		}
 	}
-
 	// update ResultsAdd
 	witness.ResultsProofs.ResultsAdd, err = MerkleTransitionFromArboTransition(o.VotesProofs.ResultsAdd)
 	if err != nil {
 		return nil, fmt.Errorf("ResultsAdd: %w", err)
 	}
-
 	// update ResultsSub
 	witness.ResultsProofs.ResultsSub, err = MerkleTransitionFromArboTransition(o.VotesProofs.ResultsSub)
 	if err != nil {
 		return nil, fmt.Errorf("ResultsSub: %w", err)
 	}
-
 	witness.Results = Results{
 		OldResultsAdd: *o.OldResultsAdd().ToGnark(),
 		OldResultsSub: *o.OldResultsSub().ToGnark(),
 		NewResultsAdd: *o.NewResultsAdd().ToGnark(),
 		NewResultsSub: *o.NewResultsSub().ToGnark(),
 	}
-
 	// update stats
 	witness.NumNewVotes = o.BallotCount()
 	witness.NumOverwrites = o.OverwriteCount()

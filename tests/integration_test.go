@@ -137,4 +137,28 @@ func TestIntegration(t *testing.T) {
 		}
 	done:
 	})
+
+	c.Run("wait for process votes", func(c *qt.C) {
+		stateTransitionProcessed := 0
+		for {
+			_, _, err := stg.NextStateTransitionBatch(pid.Marshal())
+			switch {
+			case err == nil:
+				log.Debugw("aggregated ballot batch found", "pid", pid.String())
+				stateTransitionProcessed++
+			case errors.Is(err, storage.ErrNoMoreElements):
+				if stateTransitionProcessed == 0 {
+					time.Sleep(time.Second)
+					continue
+				}
+				goto done
+			case !errors.Is(err, storage.ErrNoMoreElements):
+				c.Fatalf("unexpected error: %v", err)
+			default:
+				time.Sleep(time.Second)
+			}
+		}
+	done:
+		c.Logf("Process %s has been aggregated", pid.String())
+	})
 }

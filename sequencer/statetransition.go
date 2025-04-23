@@ -50,7 +50,7 @@ func (s *Sequencer) processPendingTransitions() {
 	// iterate over the process IDs and process the ones that are ready
 	for pid := range pids {
 		// check if there is a batch ready for processing
-		batch, _, err := s.stg.NextBallotBatch([]byte(pid))
+		batch, batchID, err := s.stg.NextBallotBatch([]byte(pid))
 		if err != nil {
 			if err != storage.ErrNoMoreElements {
 				log.Errorw(err, "failed to get next ballot batch")
@@ -58,7 +58,8 @@ func (s *Sequencer) processPendingTransitions() {
 			continue
 		}
 		// if the batch is nil, skip it
-		if batch == nil {
+		if batch == nil || len(batch.Ballots) == 0 {
+			log.Debugw("no ballots in batch", "batchID", batchID)
 			continue
 		}
 		// decode process ID and load metadata
@@ -68,17 +69,23 @@ func (s *Sequencer) processPendingTransitions() {
 			"ballotCount", len(batch.Ballots))
 		startTime := time.Now()
 		// process the batch to get the proof
-		// proof, err := s.processStateTransitionBatch(processID, batch)
-		_, err = s.processStateTransitionBatch(processID, batch)
+		proof, err := s.processStateTransitionBatch(processID, batch)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
 			continue
 		}
 		log.Debugw("state transition proof generated", "took", time.Since(startTime).String())
-
-		// TODO: publish the new state to the smart contract with the proof
-
-		// Update the last update time
+		// store the proof in the state transition storage
+		s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
+			ProcessID: batch.ProcessID,
+			Proof:     proof,
+		})
+		// mark the batch as done
+		if err := s.stg.MarkBallotBatchDone(batchID); err != nil {
+			log.Errorw(err, "failed to mark ballot batch as done")
+			continue
+		}
+		// update the last update time
 		s.pidsLock.Lock()
 		s.pids[pid] = time.Now()
 		s.pidsLock.Unlock()
@@ -100,12 +107,16 @@ func (s *Sequencer) processStateTransitionBatch(
 		return nil, fmt.Errorf("failed to generate assignments: %w", err)
 	}
 	// generate the state transition witness
-	witness, err := frontend.NewWitness(assignments, circuits.AggregatorCurve.ScalarField())
+	witness, err := frontend.NewWitness(assignments, circuits.StateTransitionCurve.ScalarField())
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate witness: %w", err)
 	}
 	// generate the proof
 	proof, err := groth16.Prove(s.statetransitionCcs, s.statetransitionProvingKey, witness)
+	// stdgroth16.GetNativeProverOptions(
+	// 	circuits.StateTransitionCurve.ScalarField(),
+	// 	circuits.AggregatorCurve.ScalarField(),
+	// ))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
@@ -119,9 +130,7 @@ func (s *Sequencer) startStateFromSmartContract(pid *types.ProcessID) (*state.St
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}
 	// TODO: restore the state from the smart contract
-	// return the state and the start batch to generate the state proofs before
-	// add the new ballots
-	return processState, nil
+	return processState, processState.Load()
 }
 
 func (s *Sequencer) stateBatchToWitness(
@@ -134,6 +143,10 @@ func (s *Sequencer) stateBatchToWitness(
 	}
 	// add the new ballots to the state
 	for _, v := range batch.Ballots {
+		log.Infow("adding vote to state",
+			"nullifier", v.Nullifier,
+			"address", v.Address,
+			"commitment", v.Commitment)
 		if err := processState.AddVote(&state.Vote{
 			Nullifier:  v.Nullifier,
 			Ballot:     &v.EncryptedBallot,
