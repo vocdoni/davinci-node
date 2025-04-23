@@ -12,6 +12,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -168,4 +169,18 @@ func (z *Ballot) ToGnarkEmulatedBN254() *circuits.EmulatedBallot[sw_bn254.Scalar
 		}
 	}
 	return eb
+}
+
+// FromRTEtoTE converts the Ballot from reduced twisted Edwards to twisted
+// Edwards format. It returns a new Ballot with the same Ciphertexts but in
+// twisted Edwards format.
+func (z *Ballot) FromRTEtoTE() *Ballot {
+	teBallot := NewBallot(curves.New(z.CurveType))
+	for i := range z.Ciphertexts {
+		teBallot.Ciphertexts[i].C1 = teBallot.Ciphertexts[i].C1.SetPoint(
+			format.FromRTEtoTE(z.Ciphertexts[i].C1.Point()))
+		teBallot.Ciphertexts[i].C2 = teBallot.Ciphertexts[i].C2.SetPoint(
+			format.FromRTEtoTE(z.Ciphertexts[i].C2.Point()))
+	}
+	return teBallot
 }
