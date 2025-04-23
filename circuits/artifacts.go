@@ -39,10 +39,6 @@ func init() {
 			BaseDir = filepath.Join(userHomeDir, ".davinci", "artifacts")
 		}
 	}
-	// Create BaseDir if it doesn't exist.
-	if err := os.MkdirAll(BaseDir, 0o755); err != nil {
-		log.Errorf("failed to create BaseDir %s: %v", BaseDir, err)
-	}
 }
 
 // Artifact is a struct that holds the remote URL, the hash of the content and
@@ -242,6 +238,11 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 
 	// Create a SHA256 hasher for integrity check
 	hasher := sha256.New()
+
+	// Create BaseDir if it doesn't exist.
+	if err := os.MkdirAll(BaseDir, 0o755); err != nil {
+		log.Errorf("failed to create base directory for storing circuit artifacts %s: %v", BaseDir, err)
+	}
 
 	// Destination file paths
 	path := filepath.Join(BaseDir, hex.EncodeToString(expectedHash))
