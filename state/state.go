@@ -129,6 +129,64 @@ func (o *State) Initialize(
 	return nil
 }
 
+// Load loads the state from the database. It will loads the census root,
+// ballot mode, encryption key, results add and results sub from the database.
+// The database and the process ID should be defined before calling this
+// function. If the state is not initialized or something fails to load, an
+// error is returned.
+func (o *State) Load() error {
+	if o.processID == nil || o.db == nil || o.tree == nil {
+		return fmt.Errorf("state not initialized")
+	}
+	// set the process ID
+	o.Process.ID = o.processID
+	// load census root
+	_, censusRoot, err := o.tree.GetBigInt(KeyCensusRoot)
+	if err != nil || len(censusRoot) != 1 {
+		return fmt.Errorf("failed to load census root: %w", err)
+	}
+	o.Process.CensusRoot = censusRoot[0]
+	// load ballot mode
+	_, ballotMode, err := o.tree.GetBigInt(KeyBallotMode)
+	if err != nil || len(ballotMode) != circuits.BallotModeSerializedLen {
+		return fmt.Errorf("failed to load ballot mode: %w", err)
+	}
+	o.Process.BallotMode, err = new(circuits.BallotMode[*big.Int]).Deserialize(ballotMode)
+	if err != nil {
+		return fmt.Errorf("failed to deserialize ballot mode: %w", err)
+	}
+	// load encryption key
+	_, encryptionKey, err := o.tree.GetBigInt(KeyEncryptionKey)
+	if err != nil || len(encryptionKey) != circuits.EncryptionKeySerializedLen {
+		return fmt.Errorf("failed to load encryption key: %w", err)
+	}
+	o.Process.EncryptionKey, err = new(circuits.EncryptionKey[*big.Int]).Deserialize(encryptionKey)
+	if err != nil {
+		return fmt.Errorf("failed to deserialize encryption key: %w", err)
+	}
+	// load results add
+	if o.oldResultsAdd == nil {
+		o.oldResultsAdd = elgamal.NewBallot(Curve)
+	}
+	if _, adds, err := o.tree.GetBigInt(KeyResultsAdd); err != nil || len(adds) > 0 {
+		if o.oldResultsAdd, err = o.oldResultsAdd.SetBigInts(adds); err != nil {
+			return fmt.Errorf("failed to deserialize results add: %w", err)
+		}
+	}
+	// load results sub
+	if o.oldResultsSub == nil {
+		o.oldResultsSub = elgamal.NewBallot(Curve)
+	}
+	if _, subs, err := o.tree.GetBigInt(KeyResultsSub); err != nil || len(subs) > 0 {
+		if o.oldResultsSub, err = o.oldResultsSub.SetBigInts(subs); err != nil {
+			return fmt.Errorf("failed to deserialize results sub: %w", err)
+		}
+	} else {
+		o.oldResultsSub = elgamal.NewBallot(Curve)
+	}
+	return nil
+}
+
 // Close the database, no more operations can be done after this.
 func (o *State) Close() error {
 	if o.dbTx != nil {
