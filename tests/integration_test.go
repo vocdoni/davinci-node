@@ -140,6 +140,6 @@ func TestIntegration(t *testing.T) {
 			}
 		}
 	done:
-		c.Logf("Process %s has been completed with %d", pid.String(), totalBallots)
+		c.Logf("Process %s has been completed with %d ballots.", pid.String(), totalBallots)
 	})
 }

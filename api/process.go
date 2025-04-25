@@ -72,9 +72,11 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// prepare inputs for the state ready for the state transition circuit
-	ffPID := crypto.BigToFF(circuits.StateTransitionCurve.BaseField(), pid.BigInt())
-	bigCensusProof := arbo.BytesToBigInt(p.CensusRoot)
+	// prepare inputs for the state ready for the state transition circuit:
+	// - the process ID that should be in the scalar field of the circuit curve
+	// - the census root that should be in encoded according to the arbo format
+	ffPID := crypto.BigToFF(circuits.StateTransitionCurve.ScalarField(), pid.BigInt())
+	bigCensusRoot := arbo.BytesToBigInt(p.CensusRoot)
 	// Initialize the state
 	st, err := state.New(a.storage.StateDB(), ffPID)
 	if err != nil {
@@ -87,7 +89,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if err := st.Initialize(bigCensusProof,
+	if err := st.Initialize(bigCensusRoot,
 		circuits.BallotModeToCircuit(p.BallotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
 		ErrGenericInternalServerError.Withf("could not initialize state: %v", err).Write(w)

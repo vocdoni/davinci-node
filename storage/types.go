@@ -14,6 +14,12 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
+// Process is the struct that contains the information of a process. It includes
+// the census root, the ballot mode, the metadata hash and the encryption key.
+// The census root is the root of the Merkle tree that contains the voters.
+// The ballot mode contains the parameters that define the ballot protocol for
+// the process. The metadata hash is the hash of the metadata of the process.
+// The encryption key is the public key used to encrypt the ballots.
 type Process struct {
 	CensusRoot    types.HexBytes   `json:"censusRoot"`
 	BallotMode    types.BallotMode `json:"ballotMode"`
@@ -21,12 +27,21 @@ type Process struct {
 	EncryptionKey EncryptionKeys   `json:"encryptionKey"`
 }
 
+// EncryptionKeys is the struct that contains the public key used to encrypt
+// the ballots. The public key is a point on the elliptic curve. It also
+// contains the private key, but it is not exported in the JSON.
 type EncryptionKeys struct {
 	X          *big.Int `json:"publicKeyX"`
 	Y          *big.Int `json:"publicKeyY"`
 	PrivateKey *big.Int `json:"-"`
 }
 
+// VerifiedBallot is the struct that contains the information of a ballot which
+// has been verified by the sequencer. It includes the process ID, the voter
+// weight, the nullifier, the commitment, the encrypted ballot, the address,
+// the inputs hash of the proof and the proof itself. The proof should be in
+// the BLS12-377 curve, which is the one used by the verifier circuit and
+// verified by the aggregator circuit.
 type VerifiedBallot struct {
 	ProcessID       types.HexBytes          `json:"processId"`
 	VoterWeight     *big.Int                `json:"voterWeight"`
@@ -38,6 +53,14 @@ type VerifiedBallot struct {
 	Proof           *groth16_bls12377.Proof `json:"proof"`
 }
 
+// Ballot is the struct that contains the information of a ballot. It includes
+// the process ID, the voter weight, the nullifier, the commitment, the
+// encrypted ballot, the address, the inputs hash of the proof and the proof
+// itself. The proof should be in the BN254 curve and ready for recursive
+// verification. It also includes the signature of the ballot, which is a
+// ECDSA signature. Finally, it includes the census proof, which proves that
+// the voter is in the census; and the public key of the voter, a compressed
+// ECDSA public key.
 type Ballot struct {
 	ProcessID        types.HexBytes                                        `json:"processId"`
 	VoterWeight      *big.Int                                              `json:"voterWeight"`
@@ -63,6 +86,10 @@ func (b *Ballot) Valid() bool {
 		b.Signature.Valid() && b.CensusProof.Valid()
 }
 
+// AggregatorBallot is the struct that contains the information of a ballot
+// which has been verified and aggregated in a batch by the sequencer. It
+// includes the nullifier, the commitment, the address and the encrypted
+// ballot.
 type AggregatorBallot struct {
 	Nullifier       *big.Int       `json:"nullifiers"`
 	Commitment      *big.Int       `json:"commitments"`
@@ -70,12 +97,22 @@ type AggregatorBallot struct {
 	EncryptedBallot elgamal.Ballot `json:"encryptedBallot"`
 }
 
+// AggregatorBallotBatch is the struct that contains the information of a
+// batch of ballots which have been verified and aggregated by the sequencer.
+// It includes the process ID, the proof of the batch and the ballots. The
+// proof should be in the BW6-761 curve, which is the one used by the
+// aggregator circuit and verified by the statetransition circuit.
 type AggregatorBallotBatch struct {
 	ProcessID types.HexBytes        `json:"processId"`
 	Proof     *groth16_bw6761.Proof `json:"proof"`
 	Ballots   []*AggregatorBallot   `json:"ballots"`
 }
 
+// StateTransitionBatch is the struct that contains the information of a
+// transition of the state after include a batch of ballots. It includes the
+// process ID, the proof of the batch and the ballots. The proof should be
+// in the BN254 curve, which is the one used to verify the transition by the
+// smart contract.
 type StateTransitionBatch struct {
 	ProcessID types.HexBytes       `json:"processId"`
 	Proof     *groth16_bn254.Proof `json:"proof"`
