@@ -130,7 +130,7 @@ func (s *Sequencer) loadState(pid *types.ProcessID) (*state.State, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}
-	return processState, processState.Load()
+	return processState, nil
 }
 
 func (s *Sequencer) stateBatchToWitness(
