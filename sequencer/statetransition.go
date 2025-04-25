@@ -42,7 +42,7 @@ func (s *Sequencer) startStateTransitionProcessor() error {
 }
 
 func (s *Sequencer) processPendingTransitions() {
-	// Copy pids to avoid locking the map for too long
+	// copy pids to avoid locking the map for too long
 	s.pidsLock.RLock()
 	pids := make(map[string]time.Time, len(s.pids))
 	maps.Copy(pids, s.pids)
@@ -76,11 +76,14 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 		log.Debugw("state transition proof generated", "took", time.Since(startTime).String())
 		// store the proof in the state transition storage
-		s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
+		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
 			ProcessID: batch.ProcessID,
 			Proof:     proof.(*groth16_bn254.Proof),
 			Ballots:   batch.Ballots,
-		})
+		}); err != nil {
+			log.Errorw(err, "failed to push state transition batch")
+			continue
+		}
 		// mark the batch as done
 		if err := s.stg.MarkBallotBatchDone(batchID); err != nil {
 			log.Errorw(err, "failed to mark ballot batch as done")
@@ -98,7 +101,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	batch *storage.AggregatorBallotBatch,
 ) (groth16.Proof, error) {
 	// initialize the process state
-	processState, err := s.startStateFromSmartContract(processID)
+	processState, err := s.loadState(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}
@@ -120,14 +123,13 @@ func (s *Sequencer) processStateTransitionBatch(
 	return proof, nil
 }
 
-func (s *Sequencer) startStateFromSmartContract(pid *types.ProcessID) (*state.State, error) {
+func (s *Sequencer) loadState(pid *types.ProcessID) (*state.State, error) {
 	// initialize the process state
 	ffPID := crypto.BigToFF(circuits.StateTransitionCurve.BaseField(), pid.BigInt())
 	processState, err := state.New(s.stg.StateDB(), ffPID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}
-	// TODO: restore the state from the smart contract
 	return processState, processState.Load()
 }
 
