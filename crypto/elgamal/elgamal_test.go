@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_iden3"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bn254"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 )
 
 func TestGenerateKey(t *testing.T) {
 	c := qt.New(t)
-	curve := curves.New(bjj.CurveType)
+	curve := curves.New(bn254.CurveType)
 
 	publicKey, privateKey, err := GenerateKey(curve)
 	c.Assert(err, qt.IsNil)
@@ -24,7 +23,6 @@ func TestGenerateKey(t *testing.T) {
 	testPoint.SetGenerator()
 	testPoint.ScalarMult(testPoint, privateKey)
 	c.Assert(testPoint.Equal(publicKey), qt.IsTrue)
-	t.Logf("Public Key: %s", publicKey.String())
 }
 
 func TestEncryptDecrypt(t *testing.T) {
