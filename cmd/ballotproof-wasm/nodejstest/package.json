@@ -1,0 +1,10 @@
+{
+  "name": "ballotproof-wasm-nodejs",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "build": "cd .. && GOGC=off GOOS=js GOARCH=wasm go build -ldflags=\"-s -w\" -o nodejstest/ballotproof.wasm .",
+    "start": "npm run build && node index.js"
+  }
+}
