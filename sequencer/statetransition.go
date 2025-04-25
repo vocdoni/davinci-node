@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/consensys/gnark/backend/groth16"
+	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
-
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -46,7 +47,6 @@ func (s *Sequencer) processPendingTransitions() {
 	pids := make(map[string]time.Time, len(s.pids))
 	maps.Copy(pids, s.pids)
 	s.pidsLock.RUnlock()
-
 	// iterate over the process IDs and process the ones that are ready
 	for pid := range pids {
 		// check if there is a batch ready for processing
@@ -78,7 +78,8 @@ func (s *Sequencer) processPendingTransitions() {
 		// store the proof in the state transition storage
 		s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
 			ProcessID: batch.ProcessID,
-			Proof:     proof,
+			Proof:     proof.(*groth16_bn254.Proof),
+			Ballots:   batch.Ballots,
 		})
 		// mark the batch as done
 		if err := s.stg.MarkBallotBatchDone(batchID); err != nil {
@@ -113,10 +114,6 @@ func (s *Sequencer) processStateTransitionBatch(
 	}
 	// generate the proof
 	proof, err := groth16.Prove(s.statetransitionCcs, s.statetransitionProvingKey, witness)
-	// stdgroth16.GetNativeProverOptions(
-	// 	circuits.StateTransitionCurve.ScalarField(),
-	// 	circuits.AggregatorCurve.ScalarField(),
-	// ))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
@@ -125,7 +122,8 @@ func (s *Sequencer) processStateTransitionBatch(
 
 func (s *Sequencer) startStateFromSmartContract(pid *types.ProcessID) (*state.State, error) {
 	// initialize the process state
-	processState, err := state.New(s.stg.StateDB(), pid.BigInt())
+	ffPID := crypto.BigToFF(circuits.StateTransitionCurve.BaseField(), pid.BigInt())
+	processState, err := state.New(s.stg.StateDB(), ffPID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}
@@ -143,10 +141,6 @@ func (s *Sequencer) stateBatchToWitness(
 	}
 	// add the new ballots to the state
 	for _, v := range batch.Ballots {
-		log.Infow("adding vote to state",
-			"nullifier", v.Nullifier,
-			"address", v.Address,
-			"commitment", v.Commitment)
 		if err := processState.AddVote(&state.Vote{
 			Nullifier:  v.Nullifier,
 			Ballot:     &v.EncryptedBallot,

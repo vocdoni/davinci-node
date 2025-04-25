@@ -8,7 +8,9 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
@@ -70,9 +72,11 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	// prepare inputs for the state ready for the state transition circuit
+	ffPID := crypto.BigToFF(circuits.StateTransitionCurve.BaseField(), pid.BigInt())
+	bigCensusProof := arbo.BytesToBigInt(p.CensusRoot)
 	// Initialize the state
-	st, err := state.New(a.storage.StateDB(), pid.BigInt())
+	st, err := state.New(a.storage.StateDB(), ffPID)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not create state: %v", err).Write(w)
 		return
@@ -83,7 +87,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if err := st.Initialize(p.CensusRoot.BigInt().MathBigInt(),
+	if err := st.Initialize(bigCensusProof,
 		circuits.BallotModeToCircuit(p.BallotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
 		ErrGenericInternalServerError.Withf("could not initialize state: %v", err).Write(w)

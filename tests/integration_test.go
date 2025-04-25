@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -16,11 +17,13 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-func init() {
+func TestMain(m *testing.M) {
 	log.Init(log.LogLevelDebug, "stdout", nil)
 	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
 		log.Errorw(err, "failed to download artifacts")
+		return
 	}
+	os.Exit(m.Run())
 }
 
 func TestIntegration(t *testing.T) {
@@ -112,42 +115,20 @@ func TestIntegration(t *testing.T) {
 			count++
 		}
 		c.Assert(count, qt.Equals, numBallots)
-
 		// Wait for the vote to be registered
 		t.Logf("Waiting for %d votes to be registered and aggregated", count)
-		aggregatedBallots := 0
-		for {
-			vb, _, err := stg.NextBallotBatch(pid.Marshal())
-			switch {
-			case err == nil:
-				aggregatedBallots += len(vb.Ballots)
-				log.Debugw("aggregated ballot batch found",
-					"pid", pid.String(),
-					"ballotsInBatch", len(vb.Ballots),
-					"totalAggregatedBallots", aggregatedBallots,
-				)
-				if aggregatedBallots == numBallots {
-					goto done
-				}
-			case !errors.Is(err, storage.ErrNoMoreElements):
-				c.Fatalf("unexpected error: %v", err)
-			default:
-				time.Sleep(time.Second)
-			}
-		}
-	done:
 	})
 
 	c.Run("wait for process votes", func(c *qt.C) {
-		stateTransitionProcessed := 0
+		totalBallots := 0
 		for {
-			_, _, err := stg.NextStateTransitionBatch(pid.Marshal())
+			stBatch, _, err := stg.NextStateTransitionBatch(pid.Marshal())
 			switch {
 			case err == nil:
 				log.Debugw("aggregated ballot batch found", "pid", pid.String())
-				stateTransitionProcessed++
+				totalBallots += len(stBatch.Ballots)
 			case errors.Is(err, storage.ErrNoMoreElements):
-				if stateTransitionProcessed == 0 {
+				if totalBallots < numBallots {
 					time.Sleep(time.Second)
 					continue
 				}
@@ -159,6 +140,6 @@ func TestIntegration(t *testing.T) {
 			}
 		}
 	done:
-		c.Logf("Process %s has been aggregated", pid.String())
+		c.Logf("Process %s has been completed with %d", pid.String(), totalBallots)
 	})
 }

@@ -3,8 +3,8 @@ package storage
 import (
 	"math/big"
 
-	"github.com/consensys/gnark/backend/groth16"
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
+	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
@@ -77,6 +77,7 @@ type AggregatorBallotBatch struct {
 }
 
 type StateTransitionBatch struct {
-	ProcessID types.HexBytes `json:"processId"`
-	Proof     groth16.Proof  `json:"proof"`
+	ProcessID types.HexBytes       `json:"processId"`
+	Proof     *groth16_bn254.Proof `json:"proof"`
+	Ballots   []*AggregatorBallot  `json:"ballots"`
 }
