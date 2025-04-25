@@ -17,6 +17,11 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
+const (
+	BallotModeSerializedLen    = 8
+	EncryptionKeySerializedLen = 2
+)
+
 // BallotMode is a struct that contains the common inputs for all the voters.
 // The values of this struct should be the same for all the voters in the same
 // process. Is a generic struct that can be used with any type of circuit input.

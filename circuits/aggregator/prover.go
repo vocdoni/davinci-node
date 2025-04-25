@@ -16,19 +16,19 @@ import (
 func (assignment AggregatorCircuit) Prove() (groth16.Proof, error) {
 	// load circuit artifacts content
 	if err := Artifacts.LoadAll(); err != nil {
-		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
+		return nil, fmt.Errorf("failed to load aggregator artifacts: %w", err)
 	}
 	// decode the circuit definition (constrain system)
 	ccs := groth16.NewCS(ecc.BW6_761)
 	ccsReader := bytes.NewReader(Artifacts.CircuitDefinition())
 	if _, err := ccs.ReadFrom(ccsReader); err != nil {
-		return nil, fmt.Errorf("failed to read vote verifier definition: %w", err)
+		return nil, fmt.Errorf("failed to read aggregator definition: %w", err)
 	}
 	// decode the proving key
 	pk := groth16.NewProvingKey(ecc.BW6_761)
 	pkReader := bytes.NewReader(Artifacts.ProvingKey())
 	if _, err := pk.ReadFrom(pkReader); err != nil {
-		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
+		return nil, fmt.Errorf("failed to read aggregator proving key: %w", err)
 	}
 	// calculate the witness with the assignment
 	witness, err := frontend.NewWitness(assignment, ecc.BW6_761.ScalarField())

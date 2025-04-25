@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -16,11 +17,13 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-func init() {
+func TestMain(m *testing.M) {
 	log.Init(log.LogLevelDebug, "stdout", nil)
 	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
 		log.Errorw(err, "failed to download artifacts")
+		return
 	}
+	os.Exit(m.Run())
 }
 
 func TestIntegration(t *testing.T) {
@@ -112,23 +115,24 @@ func TestIntegration(t *testing.T) {
 			count++
 		}
 		c.Assert(count, qt.Equals, numBallots)
-
 		// Wait for the vote to be registered
 		t.Logf("Waiting for %d votes to be registered and aggregated", count)
-		aggregatedBallots := 0
+	})
+
+	c.Run("wait for process votes", func(c *qt.C) {
+		totalBallots := 0
 		for {
-			vb, _, err := stg.NextBallotBatch(pid.Marshal())
+			stBatch, _, err := stg.NextStateTransitionBatch(pid.Marshal())
 			switch {
 			case err == nil:
-				aggregatedBallots += len(vb.Ballots)
-				log.Debugw("aggregated ballot batch found",
-					"pid", pid.String(),
-					"ballotsInBatch", len(vb.Ballots),
-					"totalAggregatedBallots", aggregatedBallots,
-				)
-				if aggregatedBallots == numBallots {
-					goto done
+				log.Debugw("aggregated ballot batch found", "pid", pid.String())
+				totalBallots += len(stBatch.Ballots)
+			case errors.Is(err, storage.ErrNoMoreElements):
+				if totalBallots < numBallots {
+					time.Sleep(time.Second)
+					continue
 				}
+				goto done
 			case !errors.Is(err, storage.ErrNoMoreElements):
 				c.Fatalf("unexpected error: %v", err)
 			default:
@@ -136,5 +140,6 @@ func TestIntegration(t *testing.T) {
 			}
 		}
 	done:
+		c.Logf("Process %s has been completed with %d ballots.", pid.String(), totalBallots)
 	})
 }

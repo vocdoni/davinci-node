@@ -281,3 +281,79 @@ func (s *Storage) MarkBallotBatchDone(k []byte) error {
 	}
 	return nil
 }
+
+func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
+	log.Debugw("push state transition batch", "processID", stb.ProcessID)
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	// encode the state transition batch
+	val, err := encodeArtifact(stb)
+	if err != nil {
+		return fmt.Errorf("encode state transition batch: %w", err)
+	}
+	// initialize the write transaction over the state transition prefix
+	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), stateTransitionPrefix)
+	// create the key by hashing the value
+	key := hashKey(val)
+	// set the key-value pair in the write transaction
+	if err := wTx.Set(append(slices.Clone(stb.ProcessID), key...), val); err != nil {
+		wTx.Discard()
+		return err
+	}
+	return wTx.Commit()
+}
+
+func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBatch, []byte, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	// initialize the read transaction over the state transition prefix
+	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
+	var chosenKey, chosenVal []byte
+	if err := pr.Iterate(processID, func(k, v []byte) bool {
+		// append the processID prefix to the key if missing
+		// (depends on the database implementation)
+		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
+			k = append(processID, k...)
+		}
+		// check if reserved
+		if s.isReserved(stateTransitionReservPrefix, k) {
+			return true
+		}
+		// store the first non-reserved state transition batch
+		chosenKey = k
+		chosenVal = v
+		return false
+	}); err != nil {
+		return nil, nil, fmt.Errorf("iterate state transition batches: %w", err)
+	}
+	// if no state transition batch is found, return nil and ErrNoMoreElements
+	if chosenVal == nil {
+		return nil, nil, ErrNoMoreElements
+	}
+	// decode the state transition batch found
+	var stb StateTransitionBatch
+	if err := decodeArtifact(chosenVal, &stb); err != nil {
+		return nil, nil, fmt.Errorf("decode state transition batch: %w", err)
+	}
+	// set reservation
+	if err := s.setReservation(stateTransitionReservPrefix, chosenKey); err != nil {
+		return nil, nil, ErrNoMoreElements
+	}
+	// return the state transition batch, the key and nil error
+	return &stb, chosenKey, nil
+}
+
+func (s *Storage) MarkStateTransitionBatchDone(k []byte) error {
+	log.Debugw("mark state transition batch done", "key", hex.EncodeToString(k))
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	// remove reservation
+	if err := s.deleteArtifact(stateTransitionReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete state transition reservation: %w", err)
+	}
+	// remove from state transition queue
+	if err := s.deleteArtifact(stateTransitionPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete state transition batch: %w", err)
+	}
+	return nil
+}

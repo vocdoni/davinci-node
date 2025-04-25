@@ -20,16 +20,19 @@ var (
 	ErrNoMoreElements   = errors.New("no more elements")
 
 	// Prefixes
-	ballotPrefix               = []byte("b/")
-	ballotReservationPrefix    = []byte("br/")
-	verifiedBallotPrefix       = []byte("vb/")
-	verifiedBallotReservPrefix = []byte("vbr/")
-	aggregBatchPrefix          = []byte("ag/")
-	aggregBatchReservPrefix    = []byte("agr/")
-	encryptionKeyPrefix        = []byte("ek/")
-	processPrefix              = []byte("p/")
+	ballotPrefix                = []byte("b/")
+	ballotReservationPrefix     = []byte("br/")
+	verifiedBallotPrefix        = []byte("vb/")
+	verifiedBallotReservPrefix  = []byte("vbr/")
+	aggregBatchPrefix           = []byte("ag/")
+	aggregBatchReservPrefix     = []byte("agr/")
+	stateTransitionPrefix       = []byte("st/")
+	stateTransitionReservPrefix = []byte("str/")
+	encryptionKeyPrefix         = []byte("ek/")
+	processPrefix               = []byte("p/")
 
 	censusDBprefix = []byte("cs_")
+	stateDBprefix  = []byte("st_")
 
 	maxKeySize = 12
 )
@@ -43,6 +46,7 @@ type reservationRecord struct {
 type Storage struct {
 	db         db.Database
 	censusDB   *census.CensusDB
+	stateDB    db.Database
 	globalLock sync.Mutex
 }
 
@@ -50,6 +54,7 @@ type Storage struct {
 func New(db db.Database) *Storage {
 	s := &Storage{
 		db:       db,
+		stateDB:  prefixeddb.NewPrefixedDatabase(db, stateDBprefix),
 		censusDB: census.NewCensusDB(prefixeddb.NewPrefixedDatabase(db, censusDBprefix)),
 	}
 	// clear stale reservations
@@ -297,4 +302,9 @@ func (s *Storage) listArtifacts(prefix []byte) ([][]byte, error) {
 // CensusDB returns the census database instance.
 func (s *Storage) CensusDB() *census.CensusDB {
 	return s.censusDB
+}
+
+// StateDB returns the state database instance.
+func (s *Storage) StateDB() db.Database {
+	return s.stateDB
 }

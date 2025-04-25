@@ -88,7 +88,6 @@ func (s *Sequencer) processPendingBatches() {
 		s.pidsLock.Lock()
 		s.pids[pid] = time.Now()
 		s.pidsLock.Unlock()
-
 	}
 }
 
@@ -136,7 +135,6 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		if transformErr != nil {
 			return fmt.Errorf("failed to transform proof for recursion (ballot %d): %w", i, transformErr)
 		}
-
 		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](ballots[i].InputsHash)
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
 			Nullifier:       ballots[i].Nullifier,
