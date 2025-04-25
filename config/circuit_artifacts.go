@@ -71,4 +71,9 @@ var (
 	StateTransitionVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, StateTransitionVerificationKeyHash)
 	// StateTransitionVerificationKeyHash is the hash of the statetransition verification key
 	StateTransitionVerificationKeyHash = "abeeb5dc48c18508dcdb0d5fd5124a960a150cb79dc698880528845a79edb2f6"
+
+	// BallotProofWasmHelperURL is the default URL for the WASM helper
+	BallotProofWasmHelperURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/ballotproof-wasm/ballotproof.wasm"
+	// BallotProofWasmHelperHash is the hash of the WASM helper
+	BallotProofWasmHelperHash = "4690fe8403a863cf525b2f21926a4947e51d9389f68ee041adf9df712c4aa9ae"
 )

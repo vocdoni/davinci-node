@@ -40,7 +40,7 @@ const testLocalAccountPrivKey = "0cebebc37477f513cd8f946ffced46e368aa4f9430250ce
 func setupAPI(ctx context.Context, db *storage.Storage) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
-	api := service.NewAPI(db, "127.0.0.1", tmpPort)
+	api := service.NewAPI(db, "127.0.0.1", tmpPort, "local")
 	if err := api.Start(ctx); err != nil {
 		return nil, err
 	}

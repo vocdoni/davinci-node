@@ -42,3 +42,23 @@ type Vote struct {
 	PublicKey        types.HexBytes      `json:"publicKey"`
 	Signature        types.HexBytes      `json:"signature"`
 }
+
+// ContractAddresses holds the smart contract addresses needed by the client
+type ContractAddresses struct {
+	ProcessRegistry      string `json:"process"`
+	OrganizationRegistry string `json:"organization"`
+	Results              string `json:"results"`
+}
+
+// BallotProofInfo contains all the information needed by a client to generate a ballot zkSNARK proof.
+type BallotProofInfo struct {
+	CircuitURL          string            `json:"circuitUrl"`
+	CircuitHash         string            `json:"circuitHash"`
+	WASMhelperURL       string            `json:"ballotProofWasmHelperUrl"`
+	WASMhelperHash      string            `json:"ballotProofWasmHelperHash"`
+	ProvingKeyURL       string            `json:"provingKeyUrl"`
+	ProvingKeyHash      string            `json:"provingKeyHash"`
+	VerificationKeyURL  string            `json:"verificationKeyUrl"`
+	VerificationKeyHash string            `json:"verificationKeyHash"`
+	Contracts           ContractAddresses `json:"contracts"`
+}
