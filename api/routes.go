@@ -17,6 +17,8 @@ const (
 	TestProcessEndpoint    = "/processes/test/{" + ProcessURLParam + "}"
 	// VotesEndpoint is the endpoint for submitting a vote
 	VotesEndpoint = "/votes"
+	// InfoEndpoint is the endpoint for getting ballot proof information
+	InfoEndpoint = "/info"
 
 	CensusURLParam = "censusID"
 	// NewCensusEndpoint is the endpoint for creating a new census

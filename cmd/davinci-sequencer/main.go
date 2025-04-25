@@ -178,7 +178,7 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 
 	// Start API service
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
-	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port)
+	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network)
 	if err := services.API.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start API service: %w", err)
 	}

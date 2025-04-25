@@ -17,14 +17,16 @@ type APIService struct {
 	cancel  context.CancelFunc
 	host    string
 	port    int
+	network string
 }
 
 // NewAPIService creates a new APIService instance.
-func NewAPI(storage *storage.Storage, host string, port int) *APIService {
+func NewAPI(storage *storage.Storage, host string, port int, network string) *APIService {
 	return &APIService{
 		storage: storage,
 		host:    host,
 		port:    port,
+		network: network,
 	}
 }
 
@@ -46,6 +48,7 @@ func (as *APIService) Start(ctx context.Context) error {
 		Host:    as.host,
 		Port:    as.port,
 		Storage: as.storage,
+		Network: as.network,
 	})
 	if err != nil {
 		as.cancel = nil

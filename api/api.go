@@ -22,12 +22,14 @@ type APIConfig struct {
 	Host    string
 	Port    int
 	Storage *stg.Storage // Optional: use existing storage instance
+	Network string       // Optional: web3 network shortname
 }
 
 // API type represents the API HTTP server with JWT authentication capabilities.
 type API struct {
 	router  *chi.Mux
 	storage *stg.Storage
+	network string
 }
 
 // New creates a new API instance with the given configuration.
@@ -41,6 +43,7 @@ func New(conf *APIConfig) (*API, error) {
 	}
 	a := &API{
 		storage: conf.Storage,
+		network: conf.Network,
 	}
 
 	// Initialize router
@@ -84,6 +87,8 @@ func (a *API) registerHandlers() {
 	// votes endpoints
 	log.Infow("register handler", "endpoint", VotesEndpoint, "method", "POST")
 	a.router.Post(VotesEndpoint, a.newVote)
+	log.Infow("register handler", "endpoint", InfoEndpoint, "method", "GET")
+	a.router.Get(InfoEndpoint, a.info)
 	// census endpoints
 	log.Infow("register handler", "endpoint", NewCensusEndpoint, "method", "POST")
 	a.router.Post(NewCensusEndpoint, a.newCensus)

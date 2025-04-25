@@ -12,6 +12,7 @@ This document describes the HTTP API endpoints for the Vocdoni Z Sandbox API ser
   - [Process Management](#process-management)
   - [Census Management](#census-management)
   - [Vote Management](#vote-management)
+  - [Ballot Proof Information](#ballot-proof-information)
 
 ## Base URL
 
@@ -61,6 +62,36 @@ Simple health check endpoint to verify the API server is running.
 
 **Errors**:
 - None
+
+### Information
+
+#### GET /info
+
+Returns information needed by the client to generate a ballot zkSNARK proof, including circuit URLs, hashes, and smart contract addresses.
+
+**Response Body**:
+```json
+{
+  "circuitUrl": "string",
+  "circuitHash": "hexString",
+  "provingKeyUrl": "string",
+  "provingKeyHash": "hexString",
+  "verificationKeyUrl": "string",
+  "verificationKeyHash": "hexString",
+  "ballotProofWasmHelperUrl": "string",
+  "ballotProofWasmHelperHash": "hexString"
+  "contracts": {
+    "process": "address",
+    "organization": "address",
+    "results": "address"
+  }
+}
+```
+
+**Errors**:
+- 50001: Marshaling server JSON failed
+- 50002: Internal server error (invalid network configuration)
+
 
 ### Process Management
 
@@ -170,7 +201,7 @@ Gets information about an existing voting process. It must exist in the smart co
             }
           }
         ],
-        "meta": {
+        "meta": {,
           "key": "string"
         }
       }
@@ -388,3 +419,4 @@ Register a new vote for a voting process.
 - 40008: Invalid census proof
 - 40009: Invalid ballot proof
 - 50002: Internal server error
+

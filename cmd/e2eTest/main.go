@@ -36,11 +36,13 @@ func main() {
 	flag.Parse()
 	log.Init("debug", "stdout", nil)
 
+	var network string
 	var err error
 	contracts := &web3.Contracts{}
 	*privKey = util.TrimHex(*privKey)
 
 	if *sepolia {
+		network = "sep"
 		rpcs, err := chainlist.EndpointList("sep", 10)
 		if err != nil {
 			log.Fatal(err)
@@ -87,7 +89,7 @@ func main() {
 	}
 
 	// start API service
-	api := service.NewAPI(stg, "0.0.0.0", 0)
+	api := service.NewAPI(stg, "0.0.0.0", 0, network)
 	if err := api.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
