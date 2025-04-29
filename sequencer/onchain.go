@@ -69,7 +69,6 @@ func (s *Sequencer) processOnChain() {
 		s.pids[pid] = time.Now()
 		s.pidsLock.Unlock()
 	}
-
 }
 
 func (s *Sequencer) pushToContract(proof *solidity.Groth16CommitmentProof, witness types.HexBytes) error {

@@ -36,7 +36,7 @@ func generateProofInputs(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("Invalid inputs: %v", err))
 	}
 	// pad the field values to the number of circuits.FieldsPerBallot
-	var fields = [types.FieldsPerBallot]*big.Int{}
+	fields := [types.FieldsPerBallot]*big.Int{}
 	for i := range fields {
 		if i < len(inputs.FieldValues) {
 			fields[i] = inputs.FieldValues[i].MathBigInt()
@@ -125,7 +125,7 @@ func generateProofInputs(args []js.Value) any {
 func main() {
 	// Create an object to hold the BallotProofWasm functions
 	ballotProofClass := js.ValueOf(map[string]any{})
-	
+
 	// Register the proofInputs function
 	ballotProofClass.Set(jsBallotProofInputs, js.FuncOf(func(this js.Value, args []js.Value) any {
 		return generateProofInputs(args)
@@ -133,7 +133,7 @@ func main() {
 
 	// Register the class in the global scope so it can be accessed from JavaScript
 	js.Global().Set(jsClassName, ballotProofClass)
-	
+
 	// Keep the Go program running
 	select {}
 }

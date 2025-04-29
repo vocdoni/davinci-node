@@ -212,6 +212,11 @@ func (s *Sequencer) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start state transition processor: %w", err)
 	}
 
+	if err := s.startOnchainProcessor(); err != nil {
+		s.cancel() // Clean up if we fail to start completely
+		return fmt.Errorf("failed to start on-chain processor: %w", err)
+	}
+
 	// Start monitoring for new processes
 	go s.monitorNewProcesses(s.ctx, NewProcessMonitorInterval)
 
