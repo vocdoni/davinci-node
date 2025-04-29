@@ -114,7 +114,8 @@ type AggregatorBallotBatch struct {
 // in the BN254 curve, which is the one used to verify the transition by the
 // smart contract.
 type StateTransitionBatch struct {
-	ProcessID types.HexBytes       `json:"processId"`
-	Proof     *groth16_bn254.Proof `json:"proof"`
-	Ballots   []*AggregatorBallot  `json:"ballots"`
+	ProcessID  types.HexBytes       `json:"processId"`
+	Proof      *groth16_bn254.Proof `json:"proof"`
+	PubWitness types.HexBytes       `json:"pubWitness"`
+	Ballots    []*AggregatorBallot  `json:"ballots"`
 }

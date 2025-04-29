@@ -71,7 +71,7 @@ func (s *Sequencer) processPendingTransitions() {
 			"ballotCount", len(batch.Ballots))
 		startTime := time.Now()
 		// process the batch to get the proof
-		proof, err := s.processStateTransitionBatch(processID, batch)
+		proof, pubWitness, err := s.processStateTransitionBatch(processID, batch)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
 			continue
@@ -79,9 +79,10 @@ func (s *Sequencer) processPendingTransitions() {
 		log.Debugw("state transition proof generated", "took", time.Since(startTime).String())
 		// store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
-			ProcessID: batch.ProcessID,
-			Proof:     proof.(*groth16_bn254.Proof),
-			Ballots:   batch.Ballots,
+			ProcessID:  batch.ProcessID,
+			Proof:      proof.(*groth16_bn254.Proof),
+			PubWitness: pubWitness,
+			Ballots:    batch.Ballots,
 		}); err != nil {
 			log.Errorw(err, "failed to push state transition batch")
 			continue
@@ -101,29 +102,42 @@ func (s *Sequencer) processPendingTransitions() {
 func (s *Sequencer) processStateTransitionBatch(
 	processID *types.ProcessID,
 	batch *storage.AggregatorBallotBatch,
-) (groth16.Proof, error) {
+) (groth16.Proof, []byte, error) {
 	// initialize the process state
 	processState, err := s.loadState(processID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create state: %w", err)
+		return nil, nil, fmt.Errorf("failed to create state: %w", err)
 	}
 	// generate the state transition assignments from the batch
 	assignments, err := s.stateBatchToWitness(processState, batch)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate assignments: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate assignments: %w", err)
 	}
 	// generate the state transition witness
 	witness, err := frontend.NewWitness(assignments, circuits.StateTransitionCurve.ScalarField())
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate witness: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate witness: %w", err)
 	}
 	// generate the proof with the opt for solidity verifier
 	proof, err := groth16.Prove(s.statetransitionCcs, s.statetransitionProvingKey,
 		witness, solidity.WithProverTargetSolidityVerifier(backend.GROTH16))
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate proof: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
-	return proof, nil
+
+	pubWitness, err := witness.Public()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to extract public witness: %w", err)
+	}
+	schema, err := frontend.NewSchema(assignments)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create schema: %w", err)
+	}
+	pubWitnessJSON, err := pubWitness.ToJSON(schema)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to convert public witness to JSON: %w", err)
+	}
+	return proof, pubWitnessJSON, nil
 }
 
 func (s *Sequencer) loadState(pid *types.ProcessID) (*state.State, error) {
