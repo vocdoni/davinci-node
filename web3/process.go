@@ -1,6 +1,7 @@
 package web3
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -59,6 +60,30 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
 	return contractProcess2Process(&process)
+}
+
+func (c *Contracts) SetProcessTransition(processID, oldRoot, newRoot, proof []byte) (*common.Hash, error) {
+	process, err := c.Process(processID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process: %w", err)
+	}
+	if !bytes.Equal(process.StateRoot, oldRoot) {
+		return nil, fmt.Errorf("process state root mismatch: %x != %x", process.StateRoot, oldRoot)
+	}
+
+	var pid [32]byte
+	copy(pid[:], processID)
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	var oldRoot32, newRoot32 [32]byte
+	copy(oldRoot32[:], oldRoot)
+	copy(newRoot32[:], newRoot)
+	tx, err := c.processes.SubmitStateTransition(&bind.TransactOpts{Context: ctx}, pid, oldRoot32, newRoot32, proof)
+	if err != nil {
+		return nil, fmt.Errorf("failed to submit state transition: %w", err)
+	}
+	hash := tx.Hash()
+	return &hash, nil
 }
 
 // MonitorProcessCreation monitors the creation of new processes by polling the ProcessRegistry contract every interval.
