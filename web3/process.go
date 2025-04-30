@@ -78,7 +78,12 @@ func (c *Contracts) SetProcessTransition(processID, oldRoot, newRoot, proof []by
 	var oldRoot32, newRoot32 [32]byte
 	copy(oldRoot32[:], oldRoot)
 	copy(newRoot32[:], newRoot)
-	tx, err := c.processes.SubmitStateTransition(&bind.TransactOpts{Context: ctx}, pid, oldRoot32, newRoot32, proof)
+	autOpts, err := c.authTransactOpts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transact options: %w", err)
+	}
+	autOpts.Context = ctx
+	tx, err := c.processes.SubmitStateTransition(autOpts, pid, oldRoot32, newRoot32, proof)
 	if err != nil {
 		return nil, fmt.Errorf("failed to submit state transition: %w", err)
 	}

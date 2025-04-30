@@ -18,6 +18,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
+	"github.com/vocdoni/vocdoni-z-sandbox/web3"
 )
 
 var (
@@ -39,6 +40,7 @@ var (
 // It processes ballots and creates batches of proofs for efficient verification.
 type Sequencer struct {
 	stg                *storage.Storage
+	contracts          *web3.Contracts // web3 contracts for on-chain interaction
 	ctx                context.Context
 	cancel             context.CancelFunc
 	pids               map[string]time.Time // Maps process IDs to their last update time
@@ -69,7 +71,7 @@ type Sequencer struct {
 //   - batchTimeWindow: Maximum time to wait before processing a batch even if not full
 //
 // Returns a configured Sequencer instance or an error if initialization fails.
-func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error) {
+func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.Duration) (*Sequencer, error) {
 	if stg == nil {
 		return nil, fmt.Errorf("storage cannot be nil")
 	}
@@ -170,6 +172,7 @@ func New(stg *storage.Storage, batchTimeWindow time.Duration) (*Sequencer, error
 
 	return &Sequencer{
 		stg:                          stg,
+		contracts:                    contracts,
 		batchTimeWindow:              batchTimeWindow,
 		pids:                         make(map[string]time.Time),
 		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey, // TODO: replace with a proper VK path

@@ -1,13 +1,14 @@
 package sequencer
 
 import (
+	"encoding/hex"
+	"fmt"
 	"maps"
 	"time"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/solidity"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 func (s *Sequencer) startOnchainProcessor() error {
@@ -48,6 +49,9 @@ func (s *Sequencer) processOnChain() {
 			}
 			continue
 		}
+		log.Infow("state transition batch ready for on-chain upload",
+			"pid", hex.EncodeToString([]byte(pid)),
+			"batchID", hex.EncodeToString(batchID))
 		// convert the gnark proof to a solidity proof
 		solidityCommitmentProof := new(solidity.Groth16CommitmentProof)
 		if err := solidityCommitmentProof.FromGnarkProof(batch.Proof); err != nil {
@@ -55,7 +59,7 @@ func (s *Sequencer) processOnChain() {
 			continue
 		}
 		// send the proof to the contract with the public witness
-		if err := s.pushToContract(solidityCommitmentProof, batch.PubWitness); err != nil {
+		if err := s.pushToContract([]byte(pid), solidityCommitmentProof, batch.Inputs); err != nil {
 			log.Errorw(err, "failed to push to contract")
 			continue
 		}
@@ -71,6 +75,32 @@ func (s *Sequencer) processOnChain() {
 	}
 }
 
-func (s *Sequencer) pushToContract(proof *solidity.Groth16CommitmentProof, witness types.HexBytes) error {
-	return nil
+func (s *Sequencer) pushToContract(processID []byte,
+	proof *solidity.Groth16CommitmentProof,
+	inputs storage.StateTransitionBatchProofInputs,
+) error {
+	// convert the proof to a solidity proof
+	abiProof, err := proof.ABIEncode()
+	if err != nil {
+		return fmt.Errorf("failed to encode proof: %w", err)
+	}
+	log.Debugw("proof ready to submit to the contract",
+		"commitments", proof.Commitments,
+		"commitmentPok", proof.CommitmentPok,
+		"proof", proof.Proof,
+		"inputs", inputs,
+		"abiProof", hex.EncodeToString(abiProof))
+	// submit the proof to the contract
+	txHash, err := s.contracts.SetProcessTransition(processID,
+		inputs.RootHashBefore.Bytes(),
+		inputs.RootHashAfter.Bytes(),
+		abiProof)
+	if err != nil {
+		return fmt.Errorf("failed to submit state transition: %w", err)
+	}
+	// wait for the transaction to be mined
+	// TODO: move this to the main function of this sequencer process to listen
+	// for events instead of waiting for the transaction to be mined to handle
+	// state transitions updates that come from other sequencers
+	return s.contracts.WaitTx(*txHash, time.Second*60)
 }

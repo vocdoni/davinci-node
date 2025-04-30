@@ -7,6 +7,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
+	"github.com/vocdoni/vocdoni-z-sandbox/web3"
 )
 
 // SequencerService represents a service that handles background vote processing.
@@ -17,9 +18,9 @@ type SequencerService struct {
 // NewSequencer creates a new sequencer instance. It will verify new votes, aggregate them into batches,
 // and update the ongoing state with the new ones. The batchTimeWindow defines how long a batch can wait
 // until processed (either the batch becomes full of votes or the time window expires).
-func NewSequencer(stg *storage.Storage, batchTimeWindow time.Duration) *SequencerService {
+func NewSequencer(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.Duration) *SequencerService {
 	log.Infow("creating sequencer service", "batchTimeWindow", batchTimeWindow)
-	s, err := sequencer.New(stg, batchTimeWindow)
+	s, err := sequencer.New(stg, contracts, batchTimeWindow)
 	if err != nil {
 		log.Fatalf("failed to create sequencer: %v", err)
 	}
