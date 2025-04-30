@@ -76,4 +76,9 @@ var (
 	BallotProofWasmHelperURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/ballotproof-wasm/ballotproof.wasm"
 	// BallotProofWasmHelperHash is the hash of the WASM helper
 	BallotProofWasmHelperHash = "4690fe8403a863cf525b2f21926a4947e51d9389f68ee041adf9df712c4aa9ae"
+
+	// BallotProofWasmExecJsURL is the default URL for the WASM exec JS
+	BallotProofWasmExecJsURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/ballotproof-wasm/wasm_exec.js"
+	// BallotProofWasmExecJsHash is the hash of the WASM exec JS
+	BallotProofWasmExecJsHash = "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
 )

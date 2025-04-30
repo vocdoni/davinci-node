@@ -52,13 +52,15 @@ type ContractAddresses struct {
 
 // BallotProofInfo contains all the information needed by a client to generate a ballot zkSNARK proof.
 type BallotProofInfo struct {
-	CircuitURL          string            `json:"circuitUrl"`
-	CircuitHash         string            `json:"circuitHash"`
-	WASMhelperURL       string            `json:"ballotProofWasmHelperUrl"`
-	WASMhelperHash      string            `json:"ballotProofWasmHelperHash"`
-	ProvingKeyURL       string            `json:"provingKeyUrl"`
-	ProvingKeyHash      string            `json:"provingKeyHash"`
-	VerificationKeyURL  string            `json:"verificationKeyUrl"`
-	VerificationKeyHash string            `json:"verificationKeyHash"`
-	Contracts           ContractAddresses `json:"contracts"`
+	CircuitURL           string            `json:"circuitUrl"`
+	CircuitHash          string            `json:"circuitHash"`
+	WASMhelperURL        string            `json:"ballotProofWasmHelperUrl"`
+	WASMhelperHash       string            `json:"ballotProofWasmHelperHash"`
+	WASMhelperExecJsURL  string            `json:"ballotProofWasmHelperExecJsUrl"`
+	WASMhelperExecJsHash string            `json:"ballotProofWasmHelperExecJsHash"`
+	ProvingKeyURL        string            `json:"provingKeyUrl"`
+	ProvingKeyHash       string            `json:"provingKeyHash"`
+	VerificationKeyURL   string            `json:"verificationKeyUrl"`
+	VerificationKeyHash  string            `json:"verificationKeyHash"`
+	Contracts            ContractAddresses `json:"contracts"`
 }

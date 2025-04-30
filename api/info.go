@@ -19,14 +19,16 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 
 	// Build the response with the necessary circuit information
 	response := &BallotProofInfo{
-		CircuitURL:          config.BallotProoCircuitURL,
-		CircuitHash:         config.BallotProofCircuitHash,
-		ProvingKeyURL:       config.BallotProofProvingKeyURL,
-		ProvingKeyHash:      config.BallotProofProvingKeyHash,
-		VerificationKeyURL:  config.BallotProofVerificationKeyURL,
-		VerificationKeyHash: config.BallotProofVerificationKeyHash,
-		WASMhelperURL:       config.BallotProofWasmHelperURL,
-		WASMhelperHash:      config.BallotProofWasmHelperHash,
+		CircuitURL:           config.BallotProoCircuitURL,
+		CircuitHash:          config.BallotProofCircuitHash,
+		ProvingKeyURL:        config.BallotProofProvingKeyURL,
+		ProvingKeyHash:       config.BallotProofProvingKeyHash,
+		VerificationKeyURL:   config.BallotProofVerificationKeyURL,
+		VerificationKeyHash:  config.BallotProofVerificationKeyHash,
+		WASMhelperURL:        config.BallotProofWasmHelperURL,
+		WASMhelperHash:       config.BallotProofWasmHelperHash,
+		WASMhelperExecJsURL:  config.BallotProofWasmExecJsURL,
+		WASMhelperExecJsHash: config.BallotProofWasmExecJsHash,
 		Contracts: ContractAddresses{
 			ProcessRegistry:      contracts.ProcessRegistrySmartContract,
 			OrganizationRegistry: contracts.OrganizationRegistrySmartContract,

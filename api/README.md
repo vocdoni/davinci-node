@@ -79,7 +79,9 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
   "verificationKeyUrl": "string",
   "verificationKeyHash": "hexString",
   "ballotProofWasmHelperUrl": "string",
-  "ballotProofWasmHelperHash": "hexString"
+  "ballotProofWasmHelperHash": "hexString",
+  "ballotProofWasmHelperExecJs": "string",
+  "ballotProofWasmHelperExecHash": "hexString",
   "contracts": {
     "process": "address",
     "organization": "address",
