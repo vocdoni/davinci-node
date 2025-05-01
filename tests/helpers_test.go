@@ -262,7 +262,7 @@ func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, priv
 		Ballot:           votedata.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: (*types.BigInt)(votedata.InputsHash),
-		PublicKey:        ethcrypto.CompressPubkey(&privKey.PublicKey),
+		Address:          address.Bytes(),
 		Signature:        signature.Bytes(),
 	}
 }
