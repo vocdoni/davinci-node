@@ -89,6 +89,7 @@ func generateProofInputs(args []js.Value) any {
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error hashing inputs: %v", err.Error()))
 	}
+	circomInputHashBytes := crypto.BigIntToFFwithPadding(circomInputHash, circuits.VoteVerifierCurve.ScalarField())
 	circomInputs := &CircomInputs{
 		Fields:          circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
 		MaxCount:        circuitBallotMode.MaxCount.String(),
@@ -108,7 +109,7 @@ func generateProofInputs(args []js.Value) any {
 		Nullifier:       nullifier.String(),
 		Commitment:      commitment.String(),
 		Secret:          inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
-		InputsHash:      circomInputHash.String(),
+		InputsHash:      circomInputHashBytes,
 	}
 	// encode result to json to return it
 	bRes, err := json.Marshal(&BallotProofWasmResult{
@@ -125,7 +126,7 @@ func generateProofInputs(args []js.Value) any {
 func main() {
 	// Create an object to hold the BallotProofWasm functions
 	ballotProofClass := js.ValueOf(map[string]any{})
-	
+
 	// Register the proofInputs function
 	ballotProofClass.Set(jsBallotProofInputs, js.FuncOf(func(this js.Value, args []js.Value) any {
 		return generateProofInputs(args)
@@ -133,7 +134,7 @@ func main() {
 
 	// Register the class in the global scope so it can be accessed from JavaScript
 	js.Global().Set(jsClassName, ballotProofClass)
-	
+
 	// Keep the Go program running
 	select {}
 }
