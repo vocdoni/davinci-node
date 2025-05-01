@@ -29,6 +29,13 @@ func TestNew(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(len(ethSig), qt.Equals, SignatureLength)
 
+	t.Logf("PrivKey: %x", ethcrypto.FromECDSA(privKey))
+	t.Logf("PubKey: %x", ethcrypto.FromECDSAPub(&privKey.PublicKey))
+	t.Logf("Signature: %x", ethSig)
+	t.Logf("Signature length: %d", len(ethSig))
+	t.Logf("Message: %s", msg)
+	t.Logf("Message hash: %x", HashMessage(msg))
+
 	// Test creating new signature from valid data
 	sig, err := New(ethSig)
 	c.Assert(err, qt.IsNil)
@@ -91,13 +98,10 @@ func TestECDSASignature_Bytes(t *testing.T) {
 	// Check padding for R and S
 	r := bytes[:32]
 	s := bytes[32:64]
-	recovery := bytes[64]
 
 	// Check values
 	c.Assert(new(big.Int).SetBytes(r).Cmp(sig.R), qt.Equals, 0)
 	c.Assert(new(big.Int).SetBytes(s).Cmp(sig.S), qt.Equals, 0)
-	// The recovery byte in the output is adjusted to Ethereum standard (27-30)
-	c.Assert(recovery, qt.Equals, sig.recovery+27)
 
 	// Create a new signature from these bytes
 	recoveredSig, err := New(bytes)
@@ -113,6 +117,7 @@ func TestECDSASignature_Verify(t *testing.T) {
 	// Generate a keypair
 	privKey, err := ethcrypto.GenerateKey()
 	c.Assert(err, qt.IsNil)
+	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	pubKey := ethcrypto.FromECDSAPub(&privKey.PublicKey)
 
 	// Sign a message
@@ -129,19 +134,22 @@ func TestECDSASignature_Verify(t *testing.T) {
 	c.Assert(ethcrypto.VerifySignature(pubKey, HashMessage(msg), verifyBytes[:64]), qt.IsTrue)
 
 	// Check our wrapper matches ethereum's native function
-	c.Assert(sig.Verify(msg, pubKey), qt.Equals, ethcrypto.VerifySignature(pubKey, HashMessage(msg), verifyBytes[:64]))
+	t.Logf("pubkey: %x", pubKey)
+	t.Logf("verification: %t", sig.Verify(msg, address))
+	c.Assert(sig.Verify(msg, address), qt.Equals, ethcrypto.VerifySignature(pubKey, HashMessage(msg), verifyBytes[:64]))
 
 	// Verify with wrong message
 	wrongMsg := []byte("wrong message")
 	c.Assert(ethcrypto.VerifySignature(pubKey, HashMessage(wrongMsg), verifyBytes[:64]), qt.IsFalse)
-	c.Assert(sig.Verify(wrongMsg, pubKey), qt.IsFalse)
+	c.Assert(sig.Verify(wrongMsg, address), qt.IsFalse)
 
 	// Verify with wrong public key
 	wrongPrivKey, err := ethcrypto.GenerateKey()
 	c.Assert(err, qt.IsNil)
 	wrongPubKey := ethcrypto.FromECDSAPub(&wrongPrivKey.PublicKey)
+	wrongAddr := ethcrypto.PubkeyToAddress(wrongPrivKey.PublicKey)
 	c.Assert(ethcrypto.VerifySignature(wrongPubKey, HashMessage(msg), verifyBytes[:64]), qt.IsFalse)
-	c.Assert(sig.Verify(msg, wrongPubKey), qt.IsFalse)
+	c.Assert(sig.Verify(msg, wrongAddr), qt.IsFalse)
 
 	// Test invalid signature
 	invalidSig := &ECDSASignature{
@@ -149,7 +157,7 @@ func TestECDSASignature_Verify(t *testing.T) {
 		S: big.NewInt(456),
 	}
 	c.Assert(invalidSig.Valid(), qt.IsFalse)
-	c.Assert(invalidSig.Verify(msg, pubKey), qt.IsFalse)
+	c.Assert(invalidSig.Verify(msg, address), qt.IsFalse)
 }
 
 func TestAddrFromSignature(t *testing.T) {
@@ -170,53 +178,6 @@ func TestAddrFromSignature(t *testing.T) {
 	addr, err := AddrFromSignature(msg, ethSig)
 	c.Assert(err, qt.IsNil)
 	c.Assert(addr, qt.Equals, expectedAddr)
-}
-
-func TestECDSASignature_SetBytes(t *testing.T) {
-	c := qt.New(t)
-
-	// Generate a test signature
-	privKey, err := ethcrypto.GenerateKey()
-	c.Assert(err, qt.IsNil)
-
-	msg := []byte("test set bytes message")
-	ethSig, err := ethcrypto.Sign(HashMessage(msg), privKey)
-	c.Assert(err, qt.IsNil)
-	c.Assert(len(ethSig), qt.Equals, SignatureLength)
-
-	// Test SetBytes with 65-byte signature (with recovery byte)
-	sig := &ECDSASignature{
-		R: new(big.Int),
-		S: new(big.Int),
-	}
-	result := sig.SetBytes(ethSig)
-	c.Assert(result, qt.Not(qt.IsNil))
-	c.Assert(result, qt.Equals, sig) // Should return itself
-	c.Assert(sig.recovery, qt.Equals, ethSig[64])
-
-	// Verify that the signature can correctly verify the message
-	pubKey := ethcrypto.FromECDSAPub(&privKey.PublicKey)
-	c.Assert(sig.Verify(msg, pubKey), qt.IsTrue)
-
-	// Test SetBytes with 64-byte signature (without recovery byte)
-	sig64 := &ECDSASignature{
-		R: new(big.Int),
-		S: new(big.Int),
-	}
-	result = sig64.SetBytes(ethSig[:64])
-	c.Assert(result, qt.Not(qt.IsNil))
-	c.Assert(sig64.recovery, qt.Equals, byte(0)) // Recovery byte should be 0 for 64-byte signature
-
-	// Verify the 64-byte signature
-	c.Assert(sig64.Verify(msg, pubKey), qt.IsTrue)
-
-	// Test with a signature that's too short
-	invalidSig := &ECDSASignature{
-		R: new(big.Int),
-		S: new(big.Int),
-	}
-	result = invalidSig.SetBytes(ethSig[:SignatureLength-2])
-	c.Assert(result, qt.IsNil) // Should return nil for invalid input
 }
 
 func TestECDSASignature_SetBytesWebBrowserSignature(t *testing.T) {

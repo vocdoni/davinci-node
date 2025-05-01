@@ -39,7 +39,7 @@ type Vote struct {
 	Ballot           *elgamal.Ballot     `json:"ballot"`
 	BallotProof      *parser.CircomProof `json:"ballotProof"`
 	BallotInputsHash *types.BigInt       `json:"ballotInputsHash"`
-	PublicKey        types.HexBytes      `json:"publicKey"`
+	Address          types.HexBytes      `json:"address"`
 	Signature        types.HexBytes      `json:"signature"`
 }
 
