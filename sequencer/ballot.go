@@ -165,7 +165,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 
 	// Process public key
-	pubKey, err := ethcrypto.DecompressPubkey(b.PubKey)
+	pubKey, err := ethcrypto.UnmarshalPubkey(b.PubKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress voter public key: %w", err)
 	}
