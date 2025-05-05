@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -20,6 +22,11 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	vote := &Vote{}
 	if err := json.NewDecoder(r.Body).Decode(vote); err != nil {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
+		return
+	}
+	// check that the ballot is valid (at least its curve type)
+	if !slices.Contains(curves.Curves(), vote.Ballot.CurveType) {
+		ErrMalformedBody.Withf("unsupported curve type: %s", vote.Ballot.CurveType).Write(w)
 		return
 	}
 	// sanity checks
@@ -77,7 +84,6 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidSignature.Write(w)
 		return
 	}
-
 	// push the ballot to the sequencer storage queue to be verified, aggregated
 	// and published
 	if err := a.storage.PushBallot(&storage.Ballot{
