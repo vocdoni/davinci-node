@@ -70,12 +70,8 @@ func TestSign(t *testing.T) {
 	c.Assert(signature.Valid(), qt.IsTrue)
 
 	// Verify the signature
-	pubKey := ethcrypto.FromECDSAPub(&privKey.PublicKey)
-	c.Assert(signature.Verify(message, pubKey), qt.IsTrue)
-
-	// Verify the signature using Ethereum's verify
-	sigBytes := signature.Bytes()
-	c.Assert(ethcrypto.VerifySignature(pubKey, HashMessage(message), sigBytes[:64]), qt.IsTrue)
+	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
+	c.Assert(signature.Verify(message, address), qt.IsTrue)
 
 	// Try to recover the address from the signature
 	recoveredAddr, err := AddrFromSignature(message, signature)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
@@ -24,7 +25,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// sanity checks
 	if vote.Ballot == nil || vote.Nullifier == nil || vote.Commitment == nil ||
 		vote.CensusProof.Key == nil || vote.CensusProof.Weight == nil ||
-		vote.BallotInputsHash == nil || vote.PublicKey == nil || vote.Signature == nil {
+		vote.BallotInputsHash == nil || vote.Address == nil || vote.Signature == nil {
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
@@ -71,7 +72,8 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not decode signature: %v", err).Write(w)
 		return
 	}
-	if !signature.VerifyBLS12377(vote.BallotInputsHash.MathBigInt(), vote.PublicKey) {
+	signatureOk, pubkey := signature.VerifyBLS12377(vote.BallotInputsHash.MathBigInt(), common.BytesToAddress(vote.Address))
+	if !signatureOk {
 		ErrInvalidSignature.Write(w)
 		return
 	}
@@ -89,7 +91,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		BallotProof:      proof.Proof,
 		Signature:        signature,
 		CensusProof:      vote.CensusProof,
-		PubKey:           vote.PublicKey,
+		PubKey:           pubkey,
 	}); err != nil {
 		ErrGenericInternalServerError.Withf("could not push ballot: %v", err).Write(w)
 		return

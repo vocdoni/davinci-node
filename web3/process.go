@@ -62,15 +62,30 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	return contractProcess2Process(&process)
 }
 
-func (c *Contracts) SetProcessTransition(processID, oldRoot, newRoot, proof []byte) (*common.Hash, error) {
+// StateRoot returns the state root of the process with the given ID. It
+// returns an error if the process does not exist or if there is an issue with
+// the contract call.
+func (c *Contracts) StateRoot(processID []byte) ([]byte, error) {
 	process, err := c.Process(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
-	if !bytes.Equal(process.StateRoot, oldRoot) {
-		return nil, fmt.Errorf("process state root mismatch: %x != %x", process.StateRoot, oldRoot)
-	}
+	return process.StateRoot, nil
+}
 
+// SetProcessTransition submits a state transition for the process with the
+// given ID. It verifies that the old root matches the current state root of
+// the process. It returns the transaction hash of the state transition
+// submission, or an error if the submission fails. The tx hash can be used to
+// track the status of the transaction on the blockchain.
+func (c *Contracts) SetProcessTransition(processID, oldRoot, newRoot, proof []byte) (*common.Hash, error) {
+	stateRoot, err := c.StateRoot(processID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process: %w", err)
+	}
+	if !bytes.Equal(stateRoot, oldRoot) {
+		return nil, fmt.Errorf("process state root mismatch: %x != %x", stateRoot, oldRoot)
+	}
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)

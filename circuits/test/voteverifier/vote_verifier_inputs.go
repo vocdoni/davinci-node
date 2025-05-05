@@ -65,7 +65,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 		bWeights = append(bWeights, new(big.Int).SetInt64(int64(circuits.MockWeight)).Bytes())
 	}
 	// generate a test census
-	testCensus, err := primitivestest.GenerateCensusProofForTest(primitivestest.CensusTestConfig{
+	testCensus, err := primitivestest.GenerateCensusProofLE(primitivestest.CensusTestConfig{
 		Dir:           fmt.Sprintf("../assets/census%d", util.RandomInt(0, 1000)),
 		ValidSiblings: 10,
 		TotalSiblings: types.CensusTreeMaxLevels,

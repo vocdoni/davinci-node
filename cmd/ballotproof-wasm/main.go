@@ -89,26 +89,28 @@ func generateProofInputs(args []js.Value) any {
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error hashing inputs: %v", err.Error()))
 	}
+	circomInputHashBytes := crypto.BigIntToFFwithPadding(circomInputHash, circuits.VoteVerifierCurve.ScalarField())
 	circomInputs := &CircomInputs{
-		Fields:          circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
-		MaxCount:        circuitBallotMode.MaxCount.String(),
-		ForceUniqueness: circuitBallotMode.ForceUniqueness.String(),
-		MaxValue:        circuitBallotMode.MaxValue.String(),
-		MinValue:        circuitBallotMode.MinValue.String(),
-		MaxTotalCost:    circuitBallotMode.MaxTotalCost.String(),
-		MinTotalCost:    circuitBallotMode.MinTotalCost.String(),
-		CostExp:         circuitBallotMode.CostExp.String(),
-		CostFromWeight:  circuitBallotMode.CostFromWeight.String(),
-		Address:         inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
-		Weight:          inputs.Weight.MathBigInt().String(),
-		ProcessID:       inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
-		PK:              []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
-		K:               inputs.K.MathBigInt().String(),
-		CipherFields:    circuits.BigIntArrayToStringArray(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
-		Nullifier:       nullifier.String(),
-		Commitment:      commitment.String(),
-		Secret:          inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
-		InputsHash:      circomInputHash.String(),
+		Fields:           circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
+		MaxCount:         circuitBallotMode.MaxCount.String(),
+		ForceUniqueness:  circuitBallotMode.ForceUniqueness.String(),
+		MaxValue:         circuitBallotMode.MaxValue.String(),
+		MinValue:         circuitBallotMode.MinValue.String(),
+		MaxTotalCost:     circuitBallotMode.MaxTotalCost.String(),
+		MinTotalCost:     circuitBallotMode.MinTotalCost.String(),
+		CostExp:          circuitBallotMode.CostExp.String(),
+		CostFromWeight:   circuitBallotMode.CostFromWeight.String(),
+		Address:          inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
+		Weight:           inputs.Weight.MathBigInt().String(),
+		ProcessID:        inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
+		PK:               []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
+		K:                inputs.K.MathBigInt().String(),
+		CipherFields:     circuits.BigIntArrayToStringArray(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
+		Nullifier:        nullifier.String(),
+		Commitment:       commitment.String(),
+		Secret:           inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
+		InputsHash:       circomInputHashBytes,
+		InputsHashBigInt: circomInputHash.String(),
 	}
 	// encode result to json to return it
 	bRes, err := json.Marshal(&BallotProofWasmResult{

@@ -49,6 +49,9 @@ func (s *Sequencer) processPendingTransitions() {
 	pids := make(map[string]time.Time, len(s.pids))
 	maps.Copy(pids, s.pids)
 	s.pidsLock.RUnlock()
+	// lock the processor to avoid concurrent workloads
+	s.workInProgressLock.Lock()
+	defer s.workInProgressLock.Unlock()
 	// iterate over the process IDs and process the ones that are ready
 	for pid := range pids {
 		// check if there is a batch ready for processing

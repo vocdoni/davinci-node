@@ -160,7 +160,8 @@ func (o *State) EndBatch() error {
 	if err != nil {
 		return err
 	}
-	// first get MerkleProofs, since they need to belong to RootHashBefore, i.e. before MerkleTransitions
+	// first get MerkleProofs, since they need to belong to RootHashBefore, i.e.
+	// before MerkleTransitions
 	if o.processProofs.ID, err = o.GenArboProof(KeyProcessID); err != nil {
 		log.Println("Error getting ID proof:", err)
 		return err

@@ -2,7 +2,7 @@
 package ethereum
 
 import (
-	"encoding/hex"
+	"bytes"
 	"fmt"
 	"math/big"
 
@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
 )
 
 const (
@@ -64,11 +63,11 @@ func (sig *ECDSASignature) Bytes() []byte {
 	copy(r[32-len(rBytes):], rBytes)
 	copy(s[32-len(sBytes):], sBytes)
 
-	// Add 27 to the recovery value to match Ethereum standard
+	// Subtract 27 from the recovery value to match Ethereum standard
 	// Internal representation is 0-3, but Ethereum expects 27-30
 	v := sig.recovery
-	if v < 4 {
-		v += 27
+	if v > 1 {
+		v -= 27
 	}
 
 	return append(r, append(s, v)...)
@@ -107,28 +106,33 @@ func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
 }
 
 // VerifyBLS12377 checks if the signature is valid for the given input and public key.
-// The public key should be an ecdsa public key compressed in bytes. The input
+// The public key should be an ecdsa address. The input
 // should be a big integer that will be converted in a byte slice ensuring that
 // the final value is in the expected scalar field (BLS12_377) and has the
 // expected size.
-func (sig *ECDSASignature) VerifyBLS12377(signedInput *big.Int, expectedPubKey []byte) bool {
+func (sig *ECDSASignature) VerifyBLS12377(signedInput *big.Int, expectedAddress common.Address) (bool, []byte) {
 	if !sig.Valid() {
-		return false
+		return false, nil
 	}
 	ffInput := crypto.BigIntToFFwithPadding(signedInput, gecc.BLS12_377.ScalarField())
-	sigBytes := sig.Bytes()
-	// Use only the R and S components (first 64 bytes) for verification
-	return ethcrypto.VerifySignature(expectedPubKey, HashMessage(ffInput), sigBytes[:64])
+	pubKey, err := ethcrypto.SigToPub(HashMessage(ffInput), sig.Bytes())
+	if err != nil {
+		return false, nil
+	}
+	return bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes()), ethcrypto.FromECDSAPub(pubKey)
 }
 
 // Verify checks if the signature is valid for the given input and public key.
-func (sig *ECDSASignature) Verify(signedInput []byte, expectedPubKey []byte) bool {
+func (sig *ECDSASignature) Verify(signedInput []byte, expectedAddress common.Address) bool {
 	if !sig.Valid() {
 		return false
 	}
-	sigBytes := sig.Bytes()
-	// Use only the R and S components (first 64 bytes) for verification
-	return ethcrypto.VerifySignature(expectedPubKey, HashMessage(signedInput), sigBytes[:64])
+	pubKey, err := ethcrypto.SigToPub(HashMessage(signedInput), sig.Bytes())
+	if err != nil {
+		return false
+	}
+	// Check if the public key matches the expected address
+	return bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes())
 }
 
 // String returns a string representation of the ECDSASignature, including
@@ -141,17 +145,7 @@ func AddrFromSignature(message []byte, signature *ECDSASignature) (common.Addres
 	if signature == nil || !signature.Valid() {
 		return common.Address{}, fmt.Errorf("signature is nil")
 	}
-
-	// Get signature bytes and ensure recovery byte is in range 0-3 for SigToPub
-	sigBytes := signature.Bytes()
-
-	// SigToPub expects recovery values in range 0-3, while we output 27-30 in Bytes()
-	if sigBytes[64] >= 27 {
-		sigBytes[64] -= 27
-	}
-
-	log.Debugw("AddrFromSignature", "message", string(message), "signature", hex.EncodeToString(sigBytes))
-	pubKey, err := ethcrypto.SigToPub(HashMessage(message), sigBytes)
+	pubKey, err := ethcrypto.SigToPub(HashMessage(message), signature.Bytes())
 	if err != nil {
 		return common.Address{}, fmt.Errorf("sigToPub %w", err)
 	}
