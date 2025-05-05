@@ -1,6 +1,7 @@
 package web3
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -59,6 +60,50 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
 	return contractProcess2Process(&process)
+}
+
+// StateRoot returns the state root of the process with the given ID. It
+// returns an error if the process does not exist or if there is an issue with
+// the contract call.
+func (c *Contracts) StateRoot(processID []byte) ([]byte, error) {
+	process, err := c.Process(processID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process: %w", err)
+	}
+	return process.StateRoot, nil
+}
+
+// SetProcessTransition submits a state transition for the process with the
+// given ID. It verifies that the old root matches the current state root of
+// the process. It returns the transaction hash of the state transition
+// submission, or an error if the submission fails. The tx hash can be used to
+// track the status of the transaction on the blockchain.
+func (c *Contracts) SetProcessTransition(processID, oldRoot, newRoot, proof []byte) (*common.Hash, error) {
+	stateRoot, err := c.StateRoot(processID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process: %w", err)
+	}
+	if !bytes.Equal(stateRoot, oldRoot) {
+		return nil, fmt.Errorf("process state root mismatch: %x != %x", stateRoot, oldRoot)
+	}
+	var pid [32]byte
+	copy(pid[:], processID)
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	var oldRoot32, newRoot32 [32]byte
+	copy(oldRoot32[:], oldRoot)
+	copy(newRoot32[:], newRoot)
+	autOpts, err := c.authTransactOpts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transact options: %w", err)
+	}
+	autOpts.Context = ctx
+	tx, err := c.processes.SubmitStateTransition(autOpts, pid, oldRoot32, newRoot32, proof)
+	if err != nil {
+		return nil, fmt.Errorf("failed to submit state transition: %w", err)
+	}
+	hash := tx.Hash()
+	return &hash, nil
 }
 
 // MonitorProcessCreation monitors the creation of new processes by polling the ProcessRegistry contract every interval.

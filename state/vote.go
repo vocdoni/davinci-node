@@ -41,8 +41,8 @@ func (o *State) AddVote(v *Vote) error {
 		return fmt.Errorf("too many votes for this batch")
 	}
 
-	// if nullifier exists, it's a vote overwrite, need to count the overwritten vote
-	// so it's later added to circuit.ResultsSub
+	// if nullifier exists, it's a vote overwrite, need to count the overwritten
+	// vote so it's later added to circuit.ResultsSub
 	if _, value, err := o.tree.GetBigInt(v.Nullifier); err == nil {
 		oldVote, err := elgamal.NewBallot(Curve).SetBigInts(value)
 		if err != nil {

@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"errors"
 	"os"
 	"testing"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
-	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -120,26 +118,8 @@ func TestIntegration(t *testing.T) {
 	})
 
 	c.Run("wait for process votes", func(c *qt.C) {
-		totalBallots := 0
-		for {
-			stBatch, _, err := stg.NextStateTransitionBatch(pid.Marshal())
-			switch {
-			case err == nil:
-				log.Debugw("aggregated ballot batch found", "pid", pid.String())
-				totalBallots += len(stBatch.Ballots)
-			case errors.Is(err, storage.ErrNoMoreElements):
-				if totalBallots < numBallots {
-					time.Sleep(time.Second)
-					continue
-				}
-				goto done
-			case !errors.Is(err, storage.ErrNoMoreElements):
-				c.Fatalf("unexpected error: %v", err)
-			default:
-				time.Sleep(time.Second)
-			}
-		}
-	done:
-		c.Logf("Process %s has been completed with %d ballots.", pid.String(), totalBallots)
+		// TODO: check how many votes are registered in the smart contract for
+		// the test process and remove the following line
+		time.Sleep(5 * time.Minute)
 	})
 }

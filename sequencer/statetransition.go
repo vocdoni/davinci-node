@@ -49,6 +49,9 @@ func (s *Sequencer) processPendingTransitions() {
 	pids := make(map[string]time.Time, len(s.pids))
 	maps.Copy(pids, s.pids)
 	s.pidsLock.RUnlock()
+	// lock the processor to avoid concurrent workloads
+	s.workInProgressLock.Lock()
+	defer s.workInProgressLock.Unlock()
 	// iterate over the process IDs and process the ones that are ready
 	for pid := range pids {
 		// check if there is a batch ready for processing
@@ -70,18 +73,36 @@ func (s *Sequencer) processPendingTransitions() {
 			"processID", processID.String(),
 			"ballotCount", len(batch.Ballots))
 		startTime := time.Now()
+		// initialize the process state
+		processState, err := s.loadState(processID)
+		if err != nil {
+			log.Errorw(err, "failed to load process state")
+			continue
+		}
 		// process the batch to get the proof
-		proof, err := s.processStateTransitionBatch(processID, batch)
+		proof, err := s.processStateTransitionBatch(processState, batch)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
 			continue
 		}
 		log.Debugw("state transition proof generated", "took", time.Since(startTime).String())
+		// get raw public inputs
+		rootHashAfter, err := processState.RootAsBigInt()
+		if err != nil {
+			log.Errorw(err, "failed to get root hash after")
+			continue
+		}
 		// store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
 			ProcessID: batch.ProcessID,
 			Proof:     proof.(*groth16_bn254.Proof),
 			Ballots:   batch.Ballots,
+			Inputs: storage.StateTransitionBatchProofInputs{
+				RootHashBefore: processState.RootHashBefore(),
+				RootHashAfter:  rootHashAfter,
+				NumNewVotes:    processState.BallotCount(),
+				NumOverwrites:  processState.OverwriteCount(),
+			},
 		}); err != nil {
 			log.Errorw(err, "failed to push state transition batch")
 			continue
@@ -99,17 +120,9 @@ func (s *Sequencer) processPendingTransitions() {
 }
 
 func (s *Sequencer) processStateTransitionBatch(
-	processID *types.ProcessID,
+	processState *state.State,
 	batch *storage.AggregatorBallotBatch,
 ) (groth16.Proof, error) {
-	// lock the processor to avoid concurrent workloads
-	s.workInProgressLock.Lock()
-	defer s.workInProgressLock.Unlock()
-	// initialize the process state
-	processState, err := s.loadState(processID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create state: %w", err)
-	}
 	// generate the state transition assignments from the batch
 	assignments, err := s.stateBatchToWitness(processState, batch)
 	if err != nil {

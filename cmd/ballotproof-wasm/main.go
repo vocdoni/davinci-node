@@ -36,7 +36,7 @@ func generateProofInputs(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("Invalid inputs: %v", err))
 	}
 	// pad the field values to the number of circuits.FieldsPerBallot
-	var fields = [types.FieldsPerBallot]*big.Int{}
+	fields := [types.FieldsPerBallot]*big.Int{}
 	for i := range fields {
 		if i < len(inputs.FieldValues) {
 			fields[i] = inputs.FieldValues[i].MathBigInt()
