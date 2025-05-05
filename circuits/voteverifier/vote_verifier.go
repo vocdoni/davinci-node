@@ -64,7 +64,7 @@ import (
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
 	address "github.com/vocdoni/gnark-crypto-primitives/emulated/ecdsa"
-	"github.com/vocdoni/gnark-crypto-primitives/tree/arbo"
+	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
@@ -274,7 +274,8 @@ func (c VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
 	}
 	// verify the census proof using the derived address and the user weight
 	// provided as leaf key-value, adn the root and siblings provided
-	flag := arbo.CheckInclusionProofFlag(api, utils.MiMCHasher, key, value, root, siblings)
+	flag := smt.InclusionVerifier(api, utils.MiMCHasher, root, siblings, key, value)
+
 	// if the inputs are valid, ensure that the result of the verification is 1,
 	// otherwise, the result does not matter so force it to be 1
 	api.AssertIsEqual(api.Select(c.IsValid, flag, 1), 1)

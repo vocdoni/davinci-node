@@ -102,6 +102,9 @@ func (s *Sequencer) processStateTransitionBatch(
 	processID *types.ProcessID,
 	batch *storage.AggregatorBallotBatch,
 ) (groth16.Proof, error) {
+	// lock the processor to avoid concurrent workloads
+	s.workInProgressLock.Lock()
+	defer s.workInProgressLock.Unlock()
 	// initialize the process state
 	processState, err := s.loadState(processID)
 	if err != nil {
