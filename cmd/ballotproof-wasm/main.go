@@ -105,7 +105,7 @@ func generateProofInputs(args []js.Value) any {
 		ProcessID:        inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
 		PK:               []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
 		K:                inputs.K.MathBigInt().String(),
-		CipherFields:     circuits.BigIntArrayToStringArray(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
+		Ballot:           ballot.FromRTEtoTE(),
 		Nullifier:        nullifier.String(),
 		Commitment:       commitment.String(),
 		Secret:           inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
