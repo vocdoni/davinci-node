@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
+	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -24,11 +23,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
 	}
-	// check that the ballot is valid (at least its curve type)
-	if !slices.Contains(curves.Curves(), vote.Ballot.CurveType) {
-		ErrMalformedBody.Withf("unsupported curve type: %s", vote.Ballot.CurveType).Write(w)
-		return
-	}
+
 	// sanity checks
 	if vote.Ballot == nil || vote.Nullifier == nil || vote.Commitment == nil ||
 		vote.CensusProof.Key == nil || vote.CensusProof.Weight == nil ||
@@ -36,6 +31,10 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
+
+	// hardcode the curve type to bjj gnark
+	vote.Ballot.CurveType = bjj.CurveType
+
 	// get the process from the storage
 	pid := new(types.ProcessID)
 	if err := pid.Unmarshal(vote.ProcessID); err != nil {
