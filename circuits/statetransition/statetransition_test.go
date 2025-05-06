@@ -317,6 +317,10 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 		t.Fatal(err)
 	}
 
+	if err := s.CommitBatch(); err != nil {
+		t.Fatal(err)
+	}
+
 	witness, err := statetransition.GenerateWitness(s)
 	if err != nil {
 		t.Fatal(err)

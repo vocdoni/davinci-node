@@ -102,6 +102,9 @@ func (o *State) Initialize(
 	ballotMode circuits.BallotMode[*big.Int],
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) error {
+	// initialize the write transaction
+	o.dbTx = o.db.WriteTx()
+	// TODO: Use AddBigIntWithTx when it's implemented
 	if err := o.tree.AddBigInt(KeyProcessID, o.processID); err != nil {
 		return err
 	}
@@ -131,10 +134,13 @@ func (o *State) Close() error {
 	return nil
 }
 
-// StartBatch resets counters and sums to zero,
-// and creates a new write transaction in the db
+// StartBatch resets counters and sums to zero, and creates a new write 
+// transaction in the db.
 func (o *State) StartBatch() error {
-	o.dbTx = o.db.WriteTx()
+	// initialize the write transaction if it doesn't exist
+	if o.dbTx == nil {
+		o.dbTx = o.db.WriteTx()
+	}
 	o.oldResultsAdd = elgamal.NewBallot(Curve)
 	o.oldResultsSub = elgamal.NewBallot(Curve)
 	o.newResultsAdd = elgamal.NewBallot(Curve)
@@ -154,6 +160,9 @@ func (o *State) StartBatch() error {
 // with the new results. The function returns an error if the commit fails or
 // if the Merkle proofs cannot be generated.
 func (o *State) EndBatch() error {
+	if o.dbTx == nil {
+		return fmt.Errorf("no batch started")
+	}
 	var err error
 	// RootHashBefore
 	o.rootHashBefore, err = o.RootAsBigInt()
@@ -223,7 +232,30 @@ func (o *State) EndBatch() error {
 	if err != nil {
 		return fmt.Errorf("ResultsSub: %w", err)
 	}
-	return o.dbTx.Commit()
+	return nil
+}
+
+// CommitBatch commits the current batch to the database and resets the state.
+func (o *State) CommitBatch() error {
+	if o.dbTx != nil {
+		return o.dbTx.Commit()
+	}
+	o.dbTx = nil
+	return nil
+}
+
+// RollbackBatch rolls back the current batch and resets the state. It is done
+// by discarding the current transaction and setting the dbTx to nil. This
+// function is used when the changes made in the current batch are not needed
+// anymore. It is important to note that this function does not reset the state
+// of the state tree, so the changes made in the current batch will still be
+// present in the state tree.
+func (o *State) RollbackBatch() error {
+	if o.dbTx != nil {
+		o.dbTx.Discard()
+	}
+	o.dbTx = nil
+	return nil
 }
 
 // Root method returns the root of the tree as a byte array.

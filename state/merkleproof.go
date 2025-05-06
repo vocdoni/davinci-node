@@ -31,13 +31,17 @@ func (o *State) GenArboProof(k *big.Int) (*ArboProof, error) {
 	}, nil
 }
 
-// ArboProofsFromAddOrUpdate generates an ArboProof before adding (or updating) the given leaf,
-// and another ArboProof after updating, and returns both.
-func (o *State) ArboProofsFromAddOrUpdate(k *big.Int, v []*big.Int) (*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error) {
+// ArboProofsFromAddOrUpdate generates an ArboProof before adding (or updating)
+// the given leaf, and another ArboProof after updating, and returns both.
+func (o *State) ArboProofsFromAddOrUpdate(k *big.Int, v []*big.Int) (
+	*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error,
+) {
 	mpBefore, err := o.tree.GenerateGnarkVerifierProofBigInt(k)
 	if err != nil {
 		return nil, nil, err
 	}
+	// TODO: Use GetBigIntWithTx, AddBigIntWithTx and UpdateBigIntWithTx when
+	// they're implemented
 	if _, _, err := o.tree.GetBigInt(k); errors.Is(err, arbo.ErrKeyNotFound) {
 		if err := o.tree.AddBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("add key failed: %w", err)
@@ -54,7 +58,8 @@ func (o *State) ArboProofsFromAddOrUpdate(k *big.Int, v []*big.Int) (*arbo.Gnark
 	return mpBefore, mpAfter, nil
 }
 
-// ArboTransition stores a pair of leaves and root hashes, and a single path common to both proofs
+// ArboTransition stores a pair of leaves and root hashes, and a single path
+// common to both proofs
 type ArboTransition struct {
 	// NewKey + NewValue hashed through Siblings path, should produce NewRoot hash
 	NewRoot  *big.Int
@@ -71,7 +76,8 @@ type ArboTransition struct {
 	Fnc1     int
 }
 
-// ArboTransitionFromArboProofPair generates a ArboTransition based on the pair of proofs passed
+// ArboTransitionFromArboProofPair generates a ArboTransition based on the pair
+// of proofs passed
 func ArboTransitionFromArboProofPair(before, after *arbo.GnarkVerifierProof) *ArboTransition {
 	beforeIsInclusion := before.Fnc.Cmp(big.NewInt(0)) == 0
 	afterIsInclusion := after.Fnc.Cmp(big.NewInt(0)) == 0
@@ -118,8 +124,8 @@ func ArboTransitionFromArboProofPair(before, after *arbo.GnarkVerifierProof) *Ar
 	}
 }
 
-// ArboTransitionFromAddOrUpdate adds or updates a key in the tree,
-// and returns a ArboTransition.
+// ArboTransitionFromAddOrUpdate adds or updates a key in the tree, and returns
+// a ArboTransition.
 func ArboTransitionFromAddOrUpdate(o *State, k *big.Int, v ...*big.Int) (*ArboTransition, error) {
 	mpBefore, mpAfter, err := o.ArboProofsFromAddOrUpdate(k, v)
 	if err != nil {
