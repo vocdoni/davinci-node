@@ -30,7 +30,6 @@ type CensusParticipants struct {
 
 // Vote is the struct to represent a vote in the system. It will be provided by
 // the user to cast a vote in a process.
-// TODO: use directly types.BigInt instead of HexBytes
 type Vote struct {
 	ProcessID        types.HexBytes      `json:"processId"`
 	Commitment       *types.BigInt       `json:"commitment"`
