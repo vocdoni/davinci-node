@@ -43,9 +43,8 @@ type Sequencer struct {
 	contracts          *web3.Contracts // web3 contracts for on-chain interaction
 	ctx                context.Context
 	cancel             context.CancelFunc
-	pids               map[string]time.Time // Maps process IDs to their last update time
-	pidsLock           sync.RWMutex         // Protects access to the pids map
-	workInProgressLock sync.RWMutex         // Lock to block new work while processing a batch or a state transition
+	pids               *ProcessIDMap // Maps process IDs to their last update time
+	workInProgressLock sync.RWMutex  // Lock to block new work while processing a batch or a state transition
 
 	ballotVerifyingKeyCircomJSON []byte // Verification key for ballot proofs
 
@@ -174,7 +173,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		stg:                          stg,
 		contracts:                    contracts,
 		batchTimeWindow:              batchTimeWindow,
-		pids:                         make(map[string]time.Time),
+		pids:                         NewProcessIDMap(),
 		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey, // TODO: replace with a proper VK path
 		statetransitionProvingKey:    sttPk,
 		statetransitionCcs:           sttCcs,
@@ -270,22 +269,9 @@ func (s *Sequencer) monitorNewProcesses(ctx context.Context, tickerInterval time
 // Parameters:
 //   - pid: The process ID to register
 func (s *Sequencer) AddProcessID(pid []byte) {
-	if len(pid) == 0 {
-		log.Warnw("attempted to add empty process ID")
-		return
+	if s.pids.Add(pid) {
+		log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
 	}
-
-	s.pidsLock.Lock()
-	defer s.pidsLock.Unlock()
-
-	pidStr := string(pid)
-	if _, exists := s.pids[pidStr]; exists {
-		log.Debugw("process ID already registered", "processID", fmt.Sprintf("%x", pid))
-		return
-	}
-
-	s.pids[pidStr] = time.Now()
-	log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
 }
 
 // DelProcessID unregisters a process ID from the sequencer.
@@ -294,30 +280,14 @@ func (s *Sequencer) AddProcessID(pid []byte) {
 // Parameters:
 //   - pid: The process ID to unregister
 func (s *Sequencer) DelProcessID(pid []byte) {
-	if len(pid) == 0 {
-		return
-	}
-
-	s.pidsLock.Lock()
-	defer s.pidsLock.Unlock()
-
-	if _, exists := s.pids[string(pid)]; exists {
-		delete(s.pids, string(pid))
+	if s.pids.Remove(pid) {
 		log.Infow("process ID unregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
 	}
 }
 
 // ExistsProcessID checks if a process ID is registered with the sequencer.
 func (s *Sequencer) ExistsProcessID(pid []byte) bool {
-	if len(pid) == 0 {
-		return false
-	}
-
-	s.pidsLock.RLock()
-	defer s.pidsLock.RUnlock()
-
-	_, exists := s.pids[string(pid)]
-	return exists
+	return s.pids.Exists(pid)
 }
 
 // SetBatchTimeWindow sets the maximum time window to wait for a batch to be processed.

@@ -2,7 +2,6 @@ package sequencer
 
 import (
 	"fmt"
-	"maps"
 	"time"
 
 	"github.com/consensys/gnark/backend"
@@ -44,28 +43,24 @@ func (s *Sequencer) startStateTransitionProcessor() error {
 }
 
 func (s *Sequencer) processPendingTransitions() {
-	// copy pids to avoid locking the map for too long
-	s.pidsLock.RLock()
-	pids := make(map[string]time.Time, len(s.pids))
-	maps.Copy(pids, s.pids)
-	s.pidsLock.RUnlock()
 	// lock the processor to avoid concurrent workloads
 	s.workInProgressLock.Lock()
 	defer s.workInProgressLock.Unlock()
-	// iterate over the process IDs and process the ones that are ready
-	for pid := range pids {
+
+	// process each registered process ID
+	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
 		// check if there is a batch ready for processing
-		batch, batchID, err := s.stg.NextBallotBatch([]byte(pid))
+		batch, batchID, err := s.stg.NextBallotBatch(pid)
 		if err != nil {
 			if err != storage.ErrNoMoreElements {
 				log.Errorw(err, "failed to get next ballot batch")
 			}
-			continue
+			return true // Continue to next process ID
 		}
 		// if the batch is nil, skip it
 		if batch == nil || len(batch.Ballots) == 0 {
 			log.Debugw("no ballots in batch", "batchID", batchID)
-			continue
+			return true // Continue to next process ID
 		}
 		// decode process ID and load metadata
 		processID := new(types.ProcessID).SetBytes(batch.ProcessID)
@@ -77,20 +72,20 @@ func (s *Sequencer) processPendingTransitions() {
 		processState, err := s.loadState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
-			continue
+			return true // Continue to next process ID
 		}
 		// process the batch to get the proof
 		proof, err := s.processStateTransitionBatch(processState, batch)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
-			continue
+			return true // Continue to next process ID
 		}
 		log.Debugw("state transition proof generated", "took", time.Since(startTime).String())
 		// get raw public inputs
 		rootHashAfter, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root hash after")
-			continue
+			return true // Continue to next process ID
 		}
 		// store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
@@ -105,18 +100,18 @@ func (s *Sequencer) processPendingTransitions() {
 			},
 		}); err != nil {
 			log.Errorw(err, "failed to push state transition batch")
-			continue
+			return true // Continue to next process ID
 		}
 		// mark the batch as done
 		if err := s.stg.MarkBallotBatchDone(batchID); err != nil {
 			log.Errorw(err, "failed to mark ballot batch as done")
-			continue
+			return true // Continue to next process ID
 		}
-		// update the last update time
-		s.pidsLock.Lock()
-		s.pids[pid] = time.Now()
-		s.pidsLock.Unlock()
-	}
+		// update the last update time by re-adding the process ID
+		s.pids.Add(pid) // This will update the timestamp
+
+		return true // Continue to next process ID
+	})
 }
 
 func (s *Sequencer) processStateTransitionBatch(

@@ -67,6 +67,24 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 	return &b, chosenKey, nil
 }
 
+// RemoveBallot removes a ballot from the pending queue and its reservation.
+func (s *Storage) RemoveBallot(k []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// remove reservation
+	if err := s.deleteArtifact(ballotReservationPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete reservation: %w", err)
+	}
+
+	// remove from pending queue
+	if err := s.deleteArtifact(ballotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete pending ballot: %w", err)
+	}
+
+	return nil
+}
+
 // MarkBallotDone called after we have processed the ballot. We push the
 // verified ballot to the next queue. In this scenario, next stage is
 // verifiedBallot so we do not store the original ballot.
