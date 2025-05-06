@@ -2,7 +2,6 @@ package sequencer
 
 import (
 	"fmt"
-	"maps"
 	"time"
 
 	"github.com/consensys/gnark/backend/groth16"
@@ -49,21 +48,15 @@ func (s *Sequencer) startAggregateProcessor(tickerInterval time.Duration) error 
 // processPendingBatches checks all registered process IDs and aggregates
 // any batches that are ready for processing.
 func (s *Sequencer) processPendingBatches() {
-	// Copy pids to avoid locking the map for too long
-	s.pidsLock.RLock()
-	pids := make(map[string]time.Time, len(s.pids))
-	maps.Copy(pids, s.pids)
-	s.pidsLock.RUnlock()
-
-	// Iterate over the process IDs and process the ones that are ready
-	for pid, lastUpdate := range pids {
+	// Process each registered process ID
+	s.pids.ForEach(func(pid []byte, lastUpdate time.Time) bool {
 		// Check if this batch is ready for processing
-		ballotCount := s.stg.CountVerifiedBallots([]byte(pid))
+		ballotCount := s.stg.CountVerifiedBallots(pid)
 		timeSinceUpdate := time.Since(lastUpdate)
 
 		// Skip if the batch is not ready
 		if ballotCount == 0 || (ballotCount < types.VotesPerBatch && timeSinceUpdate <= s.batchTimeWindow) {
-			continue
+			return true // Continue to next process ID
 		}
 
 		// Process the batch
@@ -75,20 +68,20 @@ func (s *Sequencer) processPendingBatches() {
 		)
 
 		startTime := time.Now()
-		if err := s.aggregateBatch([]byte(pid)); err != nil {
+		if err := s.aggregateBatch(pid); err != nil {
 			log.Warnw("failed to aggregate batch",
 				"error", err.Error(),
 				"processID", fmt.Sprintf("%x", pid),
 			)
-			continue
+			return true // Continue to next process ID
 		}
 		log.Infow("batch aggregated successfully", "processID", fmt.Sprintf("%x", pid), "took(s)", time.Since(startTime).Seconds())
 
-		// Update the last update time
-		s.pidsLock.Lock()
-		s.pids[pid] = time.Now()
-		s.pidsLock.Unlock()
-	}
+		// Update the last update time by re-adding the process ID
+		s.pids.Add(pid) // This will update the timestamp
+
+		return true // Continue to next process ID
+	})
 }
 
 // aggregateBatch creates an aggregated zero-knowledge proof for a batch of verified ballots.
@@ -140,7 +133,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 			Nullifier:       ballots[i].Nullifier,
 			Commitment:      ballots[i].Commitment,
 			Address:         ballots[i].Address,
-			EncryptedBallot: ballots[i].EncryptedBallot,
+			EncryptedBallot: *ballots[i].EncryptedBallot,
 		})
 	}
 

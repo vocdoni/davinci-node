@@ -2,6 +2,7 @@ package storage
 
 import (
 	"math/big"
+	"strings"
 
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
@@ -11,6 +12,7 @@ import (
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -47,7 +49,7 @@ type VerifiedBallot struct {
 	VoterWeight     *big.Int                `json:"voterWeight"`
 	Nullifier       *big.Int                `json:"nullifier"`
 	Commitment      *big.Int                `json:"commitment"`
-	EncryptedBallot elgamal.Ballot          `json:"encryptedBallot"`
+	EncryptedBallot *elgamal.Ballot         `json:"encryptedBallot"`
 	Address         *big.Int                `json:"address"`
 	InputsHash      *big.Int                `json:"inputsHash"`
 	Proof           *groth16_bls12377.Proof `json:"proof"`
@@ -64,14 +66,14 @@ type VerifiedBallot struct {
 type Ballot struct {
 	ProcessID        types.HexBytes                                        `json:"processId"`
 	VoterWeight      *big.Int                                              `json:"voterWeight"`
-	EncryptedBallot  elgamal.Ballot                                        `json:"encryptedBallot"`
+	EncryptedBallot  *elgamal.Ballot                                       `json:"encryptedBallot"`
 	Nullifier        *big.Int                                              `json:"nullifier"`
 	Commitment       *big.Int                                              `json:"commitment"`
 	Address          *big.Int                                              `json:"address"`
 	BallotInputsHash *big.Int                                              `json:"ballotInputsHash"`
 	BallotProof      recursion.Proof[sw_bn254.G1Affine, sw_bn254.G2Affine] `json:"ballotProof"`
 	Signature        *ethereum.ECDSASignature                              `json:"signature"`
-	CensusProof      types.CensusProof                                     `json:"censusProof"`
+	CensusProof      *types.CensusProof                                    `json:"censusProof"`
 	PubKey           types.HexBytes                                        `json:"publicKey"`
 }
 
@@ -80,10 +82,63 @@ type Ballot struct {
 // that comes from a third-party library (gnark) and it should be checked by
 // the library itself.
 func (b *Ballot) Valid() bool {
-	return b.ProcessID != nil && b.VoterWeight != nil && b.Nullifier != nil &&
-		b.Commitment != nil && b.Address != nil && b.PubKey != nil &&
-		b.BallotInputsHash != nil && b.EncryptedBallot.Valid() &&
-		b.Signature.Valid() && b.CensusProof.Valid()
+	if b.ProcessID == nil || b.VoterWeight == nil || b.Nullifier == nil ||
+		b.Commitment == nil || b.Address == nil || b.BallotInputsHash == nil ||
+		b.EncryptedBallot == nil || b.Signature == nil || b.CensusProof == nil ||
+		b.PubKey == nil {
+		log.Debug("ballot is not valid, nil fields")
+		return false
+	}
+	if !b.EncryptedBallot.Valid() {
+		log.Debugf("encrypted ballot is not valid: %s", b.EncryptedBallot.String())
+		return false
+	}
+	if !b.Signature.Valid() {
+		log.Debugf("signature is not valid: %s", b.Signature.String())
+		return false
+	}
+	if !b.CensusProof.Valid() {
+		log.Debug("census proof is not valid")
+		return false
+	}
+	return true
+}
+
+func (b *Ballot) String() string {
+	s := strings.Builder{}
+	s.WriteString("Ballot{")
+	if b.ProcessID != nil {
+		s.WriteString("ProcessID: " + b.ProcessID.String() + ", ")
+	}
+	if b.VoterWeight != nil {
+		s.WriteString("VoterWeight: " + b.VoterWeight.String() + ", ")
+	}
+	if b.Nullifier != nil {
+		s.WriteString("Nullifier: " + b.Nullifier.String() + ", ")
+	}
+	if b.Commitment != nil {
+		s.WriteString("Commitment: " + b.Commitment.String() + ", ")
+	}
+	if b.Address != nil {
+		s.WriteString("Address: " + b.Address.String() + ", ")
+	}
+	if b.BallotInputsHash != nil {
+		s.WriteString("BallotInputsHash: " + b.BallotInputsHash.String() + ", ")
+	}
+	if b.EncryptedBallot != nil {
+		s.WriteString("EncryptedBallot: " + b.EncryptedBallot.String() + ", ")
+	}
+	if b.Signature != nil {
+		s.WriteString("Signature: " + b.Signature.String() + ", ")
+	}
+	if b.CensusProof != nil {
+		s.WriteString("CensusProof: " + b.CensusProof.String() + ", ")
+	}
+	if b.PubKey != nil {
+		s.WriteString("PubKey: " + b.PubKey.String() + ", ")
+	}
+	s.WriteString("}")
+	return s.String()
 }
 
 // AggregatorBallot is the struct that contains the information of a ballot

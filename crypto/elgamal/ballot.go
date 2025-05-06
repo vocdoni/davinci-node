@@ -16,7 +16,7 @@ import (
 )
 
 type Ballot struct {
-	CurveType   string                             `json:"curveType"`
+	CurveType   string                             `json:"curveType,omitempty"`
 	Ciphertexts [types.FieldsPerBallot]*Ciphertext `json:"ciphertexts"`
 }
 

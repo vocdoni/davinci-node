@@ -96,6 +96,16 @@ func (cp *CensusProof) Valid() bool {
 		cp.Siblings != nil && cp.Weight != nil
 }
 
+// String returns a string representation of the CensusProof
+// in JSON format. It returns an empty string if the JSON marshaling fails.
+func (cp *CensusProof) String() string {
+	data, err := json.Marshal(cp)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
 type OrganizationInfo struct {
 	ID          common.Address `json:"id,omitempty"      cbor:"0,keyasint,omitempty"`
 	Name        string         `json:"name"              cbor:"1,keyasint,omitempty"`

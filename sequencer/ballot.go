@@ -76,10 +76,12 @@ func (s *Sequencer) startBallotProcessor() error {
 			verifiedBallot, err := s.processBallot(ballot)
 			if err != nil {
 				log.Warnw("invalid ballot",
-					"address", ballot.Address.String(),
 					"error", err.Error(),
-					"processID", fmt.Sprintf("%x", ballot.ProcessID),
+					"ballot", ballot.String(),
 				)
+				if err := s.stg.RemoveBallot(key); err != nil {
+					log.Warnw("failed to remove invalid ballot", "error", err.Error())
+				}
 				continue
 			}
 
@@ -122,6 +124,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 
 	// Validate the ballot structure
 	if !b.Valid() {
+		log.Warnw("invalid ballot structure", "ballot", b.String())
 		return nil, fmt.Errorf("invalid ballot structure")
 	}
 

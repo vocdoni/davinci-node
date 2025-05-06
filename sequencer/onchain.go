@@ -3,7 +3,6 @@ package sequencer
 import (
 	"encoding/hex"
 	"fmt"
-	"maps"
 	"time"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -34,20 +33,15 @@ func (s *Sequencer) startOnchainProcessor() error {
 }
 
 func (s *Sequencer) processOnChain() {
-	// copy pids to avoid locking the map for too long
-	s.pidsLock.RLock()
-	pids := make(map[string]time.Time, len(s.pids))
-	maps.Copy(pids, s.pids)
-	s.pidsLock.RUnlock()
-	// iterate over the process IDs and process the ones that are ready
-	for pid := range pids {
+	// process each registered process ID
+	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
 		// get a batch ready for uploading on-chain
-		batch, batchID, err := s.stg.NextStateTransitionBatch([]byte(pid))
+		batch, batchID, err := s.stg.NextStateTransitionBatch(pid)
 		if err != nil {
 			if err != storage.ErrNoMoreElements {
 				log.Errorw(err, "failed to get next state transition batch")
 			}
-			continue
+			return true // Continue to next process ID
 		}
 		log.Infow("state transition batch ready for on-chain upload",
 			"pid", hex.EncodeToString([]byte(pid)),
@@ -56,23 +50,23 @@ func (s *Sequencer) processOnChain() {
 		solidityCommitmentProof := new(solidity.Groth16CommitmentProof)
 		if err := solidityCommitmentProof.FromGnarkProof(batch.Proof); err != nil {
 			log.Errorw(err, "failed to convert gnark proof to solidity proof")
-			continue
+			return true // Continue to next process ID
 		}
 		// send the proof to the contract with the public witness
 		if err := s.pushToContract([]byte(pid), solidityCommitmentProof, batch.Inputs); err != nil {
 			log.Errorw(err, "failed to push to contract")
-			continue
+			return true // Continue to next process ID
 		}
 		// mark the batch as done
 		if err := s.stg.MarkStateTransitionBatchDone(batchID); err != nil {
 			log.Errorw(err, "failed to mark state transition batch as done")
-			continue
+			return true // Continue to next process ID
 		}
-		// update the last update time
-		s.pidsLock.Lock()
-		s.pids[pid] = time.Now()
-		s.pidsLock.Unlock()
-	}
+		// update the last update time by re-adding the process ID
+		s.pids.Add(pid) // This will update the timestamp
+
+		return true // Continue to next process ID
+	})
 }
 
 func (s *Sequencer) pushToContract(processID []byte,

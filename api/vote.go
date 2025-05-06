@@ -26,14 +26,19 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 
 	// sanity checks
 	if vote.Ballot == nil || vote.Nullifier == nil || vote.Commitment == nil ||
-		vote.CensusProof.Key == nil || vote.CensusProof.Weight == nil ||
 		vote.BallotInputsHash == nil || vote.Address == nil || vote.Signature == nil {
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
-
-	// hardcode the curve type to bjj gnark
-	vote.Ballot.CurveType = bjj.CurveType
+	if !vote.CensusProof.Valid() {
+		ErrMalformedBody.Withf("invalid census proof").Write(w)
+		return
+	}
+	vote.Ballot.CurveType = bjj.CurveType // hardcode the curve type to bjj gnark
+	if !vote.Ballot.Valid() {
+		ErrMalformedBody.Withf("invalid ballot").Write(w)
+		return
+	}
 
 	// get the process from the storage
 	pid := new(types.ProcessID)
@@ -88,14 +93,14 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	if err := a.storage.PushBallot(&storage.Ballot{
 		ProcessID:        vote.ProcessID,
 		VoterWeight:      vote.CensusProof.Weight.MathBigInt(),
-		EncryptedBallot:  *vote.Ballot,
+		EncryptedBallot:  vote.Ballot,
 		Nullifier:        vote.Nullifier.MathBigInt(),
 		Commitment:       vote.Commitment.MathBigInt(),
 		Address:          vote.CensusProof.Key.BigInt().MathBigInt(),
 		BallotInputsHash: vote.BallotInputsHash.MathBigInt(),
 		BallotProof:      proof.Proof,
 		Signature:        signature,
-		CensusProof:      vote.CensusProof,
+		CensusProof:      &vote.CensusProof,
 		PubKey:           pubkey,
 	}); err != nil {
 		ErrGenericInternalServerError.Withf("could not push ballot: %v", err).Write(w)
