@@ -39,15 +39,11 @@ func NewCiphertext(curve ecc.Point) *Ciphertext {
 	return &Ciphertext{C1: curve.New(), C2: curve.New()}
 }
 
-// Encrypt encrypts a message using the public key provided as elliptic curve point.
-// The randomness k can be provided or nil to generate a new one.
+// Encrypt encrypts a message using the public key provided as elliptic curve
+// point. If k is nil, returns an error.
 func (z *Ciphertext) Encrypt(message *big.Int, publicKey ecc.Point, k *big.Int) (*Ciphertext, error) {
-	var err error
 	if k == nil {
-		k, err = RandK()
-		if err != nil {
-			return nil, fmt.Errorf("elgamal encryption failed: %w", err)
-		}
+		return nil, fmt.Errorf("k cannot be nil")
 	}
 	z.C1, z.C2 = EncryptWithK(publicKey, message, k)
 	return z, nil

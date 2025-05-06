@@ -15,17 +15,17 @@ var (
 	// BallotProoCircuitURL is the URL for the ballot proof circuit WASM file
 	BallotProoCircuitURL = fmt.Sprintf("%s/%s/ballot_proof.wasm", DefaultArtifactsBaseURL, DefaultArtifactsRelease)
 	// BallotProofCircuitHash is the hash of the ballot proof circuit
-	BallotProofCircuitHash = "d0d2f6dcc1311685585f19afdc854b395a7408be118fa82452c900bcb92a4801"
+	BallotProofCircuitHash = "5a6f7d40c1e74c238cc282c4bcc22a0a623b6fa8426c01cd7e8ef45e34394faf"
 
 	// BallotProofProvingKeyURL is the URL for the ballot proof proving key
 	BallotProofProvingKeyURL = fmt.Sprintf("%s/%s/ballot_proof_pkey.zkey", DefaultArtifactsBaseURL, DefaultArtifactsRelease)
 	// BallotProofProvingKeyHash is the hash of the ballot proof proving key
-	BallotProofProvingKeyHash = "d5b53b08b2fd646ddeb4b426487de50c5388c5fa74f4c672da46809272e67219"
+	BallotProofProvingKeyHash = "f4bc379bb933946a558bdbe504e93037c8049fbb809fb515e452f0f370e27cef"
 
 	// BallotProofVerificationKeyURL is the URL for the ballot proof verification key
 	BallotProofVerificationKeyURL = fmt.Sprintf("%s/%s/ballot_proof_vkey.json", DefaultArtifactsBaseURL, DefaultArtifactsRelease)
 	// BallotProofVerificationKeyHash is the hash of the ballot proof verification key
-	BallotProofVerificationKeyHash = "ec87092a47c1f4ca06ad8fbc7cd1be6b8f770ed722d2cfba06c2b59f6646b370"
+	BallotProofVerificationKeyHash = "833c8f97ed01858e083f3c8b04965f168400a2cc205554876e49d32b14ddebe8"
 
 	// VoteVerifierCircuitURL is the URL for the vote verifier circuit
 	VoteVerifierCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, VoteVerifierCircuitHash)
@@ -75,7 +75,7 @@ var (
 	// BallotProofWasmHelperURL is the default URL for the WASM helper
 	BallotProofWasmHelperURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/ballotproof-wasm/ballotproof.wasm"
 	// BallotProofWasmHelperHash is the hash of the WASM helper
-	BallotProofWasmHelperHash = "bf05224851c05086ec8ea5d926ae623747010832250ca71efeb4a9c6bf799448"
+	BallotProofWasmHelperHash = "18b8302681c4b4148733635fe958ee462f25cfc72c13259d53d8e1bbb577bdac"
 
 	// BallotProofWasmExecJsURL is the default URL for the WASM exec JS
 	BallotProofWasmExecJsURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/ballotproof-wasm/wasm_exec.js"
