@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -48,7 +49,7 @@ func (s *Sequencer) startBallotProcessor() error {
 			// Try to fetch the next ballot
 			ballot, key, err := s.stg.NextBallot()
 			if err != nil {
-				if err != storage.ErrNoMoreElements {
+				if !errors.Is(err, storage.ErrNoMoreElements) {
 					log.Errorw(err, "failed to get next ballot")
 				} else {
 					// If no ballot is available, wait for the next tick or context cancellation
@@ -64,6 +65,7 @@ func (s *Sequencer) startBallotProcessor() error {
 
 			// Skip processing if the process is not registered
 			if !s.ExistsProcessID(ballot.ProcessID) {
+				log.Debugw("skipping ballot, process not registered", "processID", ballot.ProcessID.String())
 				continue
 			}
 
