@@ -89,12 +89,17 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	// Initialize the state with the census root and the encryption key
+	// If the state is already initialized, we ignore the error and continue with the process setup
 	if err := st.Initialize(bigCensusRoot,
 		circuits.BallotModeToCircuit(p.BallotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
-		ErrGenericInternalServerError.Withf("could not initialize state: %v", err).Write(w)
-		return
+		if !errors.Is(err, state.ErrStateAlreadyInitialized) {
+			ErrGenericInternalServerError.Withf("could not initialize state: %v", err).Write(w)
+			return
+		}
 	}
+
 	root, err := st.RootAsBigInt()
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not get state root: %v", err).Write(w)
@@ -106,15 +111,17 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		ProcessID:        pid.Marshal(),
 		EncryptionPubKey: [2]types.BigInt{types.BigInt(*x), types.BigInt(*y)},
 		StateRoot:        root.Bytes(),
+		BallotMode:       p.BallotMode,
 	}
 
 	// Write the response
-	log.Infow("new process setup",
+	log.Infow("new process setup query",
 		"address", address.String(),
 		"processId", pr.ProcessID.String(),
 		"pubKeyX", pr.EncryptionPubKey[0].String(),
 		"pubKeyY", pr.EncryptionPubKey[1].String(),
 		"stateRoot", pr.StateRoot.String(),
+		"ballotMode", pr.BallotMode.String(),
 	)
 	httpWriteJSON(w, pr)
 }

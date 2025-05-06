@@ -126,7 +126,17 @@ Creates a new voting process setup and returns it. The process is not permanentl
 {
   "processId": "hexBytes",
   "encryptionPubKey": ["bigintStr", "bigintStr"],
-  "stateRoot": "hexBytes"
+  "stateRoot": "hexBytes",
+  "ballotMode": {
+    "maxCount": "number",
+    "maxValue": "bigintStr",
+    "minValue": "bigintStr",
+    "forceUniqueness": "boolean",
+    "costFromWeight": "boolean",
+    "costExponent": "number",
+    "maxTotalCost": "bigintStr",
+    "minTotalCost": "bigintStr"
+  }
 }
 ```
 

@@ -30,6 +30,8 @@ var (
 	KeyEncryptionKey = new(big.Int).SetBytes([]byte{0x03})
 	KeyResultsAdd    = new(big.Int).SetBytes([]byte{0x04})
 	KeyResultsSub    = new(big.Int).SetBytes([]byte{0x05})
+
+	ErrStateAlreadyInitialized = fmt.Errorf("state already initialized")
 )
 
 // State represents a state tree
@@ -101,6 +103,10 @@ func (o *State) Initialize(
 	ballotMode circuits.BallotMode[*big.Int],
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) error {
+	// Check if the state is already initialized
+	if _, _, err := o.tree.GetBigInt(KeyProcessID); err == nil {
+		return ErrStateAlreadyInitialized
+	}
 	if err := o.tree.AddBigInt(KeyProcessID, o.processID); err != nil {
 		return err
 	}

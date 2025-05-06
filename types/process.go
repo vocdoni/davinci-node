@@ -112,19 +112,20 @@ func (o *OrganizationInfo) String() string {
 
 // ProcessSetup is the struct to create a new voting process
 type ProcessSetup struct {
-	CensusRoot HexBytes   `json:"censusRoot"`
-	BallotMode BallotMode `json:"ballotMode"`
-	Nonce      uint64     `json:"nonce"`
-	ChainID    uint32     `json:"chainId"`
-	Signature  HexBytes   `json:"signature"`
+	CensusRoot HexBytes    `json:"censusRoot"`
+	BallotMode *BallotMode `json:"ballotMode"`
+	Nonce      uint64      `json:"nonce"`
+	ChainID    uint32      `json:"chainId"`
+	Signature  HexBytes    `json:"signature"`
 }
 
 // ProcessSetupResponse represents the response of a voting process
 type ProcessSetupResponse struct {
-	ProcessID        HexBytes  `json:"processId"`
-	EncryptionPubKey [2]BigInt `json:"encryptionPubKey,omitempty"`
-	StateRoot        HexBytes  `json:"stateRoot,omitempty"`
-	ChainID          uint32    `json:"chainId,omitempty"`
-	Nonce            uint64    `json:"nonce,omitempty"`
-	Address          string    `json:"address,omitempty"`
+	ProcessID        HexBytes    `json:"processId"`
+	EncryptionPubKey [2]BigInt   `json:"encryptionPubKey,omitempty"`
+	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
+	ChainID          uint32      `json:"chainId,omitempty"`
+	Nonce            uint64      `json:"nonce,omitempty"`
+	Address          string      `json:"address,omitempty"`
+	BallotMode       *BallotMode `json:"ballotMode,omitempty"`
 }

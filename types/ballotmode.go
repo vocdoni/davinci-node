@@ -245,3 +245,12 @@ func (b *BallotMode) UnmarshalJSON(data []byte) error {
 	}
 	return json.Unmarshal(data, aux)
 }
+
+// String returns a string representation of the BallotMode
+func (b *BallotMode) String() string {
+	data, err := json.Marshal(b)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
