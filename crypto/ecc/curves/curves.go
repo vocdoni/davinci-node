@@ -1,7 +1,7 @@
 package curves
 
 import (
-	"fmt"
+	"slices"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	bjj_gnark "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
@@ -9,9 +9,10 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bn254"
 )
 
-// New creates a new instance of a Curve implementation based on the provided type string.
-// The supported types are defined as constants in this package.
-// If the type is not supported, it will panic.
+// New creates a new instance of a Curve implementation based on the provided
+// type string. If the type is not supported, it will panic. The supported
+// types are defined in this package via the Curves() function, but you can
+// also use the IsValid() function to check if a type is supported.
 func New(curveType string) ecc.Point {
 	switch curveType {
 	case bjj_gnark.CurveType:
@@ -21,7 +22,7 @@ func New(curveType string) ecc.Point {
 	case bjj_iden3.CurveType:
 		return &bjj_iden3.BJJ{}
 	default:
-		panic(fmt.Sprintf("unsupported curve type: %s", curveType))
+		panic("unsupported curve type: " + curveType)
 	}
 }
 
@@ -32,4 +33,8 @@ func Curves() []string {
 		bn254.CurveType,
 		bjj_iden3.CurveType,
 	}
+}
+
+func IsValid(curveType string) bool {
+	return slices.Contains(Curves(), curveType)
 }
