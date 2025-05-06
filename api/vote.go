@@ -9,6 +9,8 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -18,7 +20,10 @@ import (
 // POST /vote
 func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// decode the vote
-	vote := &Vote{}
+	vote := &Vote{
+		// hardcode the curve type to bjj gnark
+		Ballot: elgamal.NewBallot(curves.New(bjj.CurveType)),
+	}
 	if err := json.NewDecoder(r.Body).Decode(vote); err != nil {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
@@ -34,7 +39,6 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("invalid census proof").Write(w)
 		return
 	}
-	vote.Ballot.CurveType = bjj.CurveType // hardcode the curve type to bjj gnark
 	if !vote.Ballot.Valid() {
 		ErrMalformedBody.Withf("invalid ballot").Write(w)
 		return
