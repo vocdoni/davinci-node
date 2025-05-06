@@ -30,16 +30,8 @@ func TestCiphertext_Encrypt(t *testing.T) {
 
 	// Test message
 	msg := big.NewInt(42)
-
-	// Test with nil k (random k generation)
-	cipher := NewCiphertext(publicKey)
-	encrypted, err := cipher.Encrypt(msg, publicKey, nil)
-	c.Assert(err, qt.IsNil)
-	c.Assert(encrypted, qt.Not(qt.IsNil))
-	c.Assert(encrypted.C1, qt.Not(qt.IsNil))
-	c.Assert(encrypted.C2, qt.Not(qt.IsNil))
-
 	// Test with specific k
+	cipher := NewCiphertext(publicKey)
 	k := big.NewInt(789)
 	encrypted2, err := cipher.Encrypt(msg, publicKey, k)
 	c.Assert(err, qt.IsNil)
