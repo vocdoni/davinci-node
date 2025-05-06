@@ -80,8 +80,8 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
   "verificationKeyHash": "hexString",
   "ballotProofWasmHelperUrl": "string",
   "ballotProofWasmHelperHash": "hexString",
-  "ballotProofWasmHelperExecJs": "string",
-  "ballotProofWasmHelperExecHash": "hexString",
+  "ballotProofWasmHelperExecJsUrl": "string",
+  "ballotProofWasmHelperExecJsHash": "hexString",
   "contracts": {
     "process": "address",
     "organization": "address",
@@ -389,15 +389,14 @@ Register a new vote for a voting process.
     "curveType": "string",
     "ciphertexts": [
       {
-        "c1": {
-          "x": "bigintStr",
-          "y": "bigintStr"
-        },
-        "c2": {
-          "x": "bigintStr",
-          "y": "bigintStr"
-        }
+        "c1": ["bigintStrX","bigintStrY"],
+        "c2": ["bigintStrX","bigintStrY"]
+      },
+      {
+        "c1": ["bigintStrX","bigintStrY"],
+        "c2": ["bigintStrX","bigintStrY"]
       }
+    ...
     ]
   },
   "ballotProof": {
