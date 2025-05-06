@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"slices"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -83,12 +82,15 @@ func (z *Ballot) BigInts() []*big.Int {
 }
 
 func (z *Ballot) SetBigInts(list []*big.Int) (*Ballot, error) {
-	if z.CurveType == "" || !slices.Contains(curves.Curves(), z.CurveType) {
-		return nil, fmt.Errorf("unsupported curve type: %s", z.CurveType)
+	// check if the curve type is valid
+	if !curves.IsValid(z.CurveType) {
+		return nil, fmt.Errorf("invalid curve type: %s", z.CurveType)
 	}
+	// check if the list has the right length
 	if len(list) != 8*4 {
 		return nil, fmt.Errorf("expected 8*4 BigInts, got %d", len(list))
 	}
+	// compose the ciphertexts
 	z.Ciphertexts = [types.FieldsPerBallot]*Ciphertext{}
 	for i := range z.Ciphertexts {
 		c1x, c1y := list[i*4], list[i*4+1]

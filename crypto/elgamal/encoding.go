@@ -13,6 +13,10 @@ import (
 func (z *Ballot) MarshalJSON() ([]byte, error) {
 	// Prepare an array of raw JSON messages for each ciphertext.
 	rawCts := make([]json.RawMessage, len(z.Ciphertexts))
+	// check if the curve type is valid
+	if !curves.IsValid(z.CurveType) {
+		return nil, fmt.Errorf("invalid curve type: %s", z.CurveType)
+	}
 	// Only marshal if the curve type is set. Else we assume the ballot is not initialized.
 	if z.CurveType != "" {
 		for i, ct := range z.Ciphertexts {
