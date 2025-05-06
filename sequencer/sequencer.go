@@ -166,7 +166,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	}
 
 	log.Debugw("sequencer initialized",
-		"batchTimeWindow", batchTimeWindow,
+		"batchTimeWindow", batchTimeWindow.String(),
 		"took(s)", time.Since(startTime).Seconds(),
 	)
 
