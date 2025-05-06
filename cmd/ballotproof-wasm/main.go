@@ -68,8 +68,8 @@ func generateProofInputs(args []js.Value) any {
 		inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
 	}
 	// ballot mode as a big int list
-	circuitBallotMode := circuits.BallotModeToCircuit(*inputs.BallotMode)
-	inputsHash = append(inputsHash, circuits.BallotModeToCircuit(*inputs.BallotMode).Serialize()...)
+	circuitBallotMode := circuits.BallotModeToCircuit(inputs.BallotMode)
+	inputsHash = append(inputsHash, circuits.BallotModeToCircuit(inputs.BallotMode).Serialize()...)
 	inputsHash = append(inputsHash,
 		// encryption key
 		circomEncryptionKeyX,

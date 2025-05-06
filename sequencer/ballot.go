@@ -133,7 +133,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	// Transform process data to circuit types
 	processID := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), b.ProcessID.BigInt().MathBigInt())
 	root := arbo.BytesToBigInt(process.Census.CensusRoot)
-	ballotMode := circuits.BallotModeToCircuit(*process.BallotMode)
+	ballotMode := circuits.BallotModeToCircuit(process.BallotMode)
 	encryptionKey := circuits.EncryptionKeyToCircuit(*process.EncryptionKey)
 
 	// Calculate inputs hash

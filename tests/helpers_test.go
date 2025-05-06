@@ -194,7 +194,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 
 	process := &types.ProcessSetup{
 		CensusRoot: censusRoot,
-		BallotMode: ballotMode,
+		BallotMode: &ballotMode,
 		Nonce:      nonce,
 		ChainID:    uint32(contracts.ChainID),
 		Signature:  signature,
