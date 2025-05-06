@@ -49,12 +49,7 @@ func (z *Ciphertext) Encrypt(message *big.Int, publicKey ecc.Point, k *big.Int) 
 			return nil, fmt.Errorf("elgamal encryption failed: %w", err)
 		}
 	}
-	c1, c2, err := EncryptWithK(publicKey, message, k)
-	if err != nil {
-		return nil, fmt.Errorf("elgamal encryption failed: %w", err)
-	}
-	z.C1 = c1
-	z.C2 = c2
+	z.C1, z.C2 = EncryptWithK(publicKey, message, k)
 	return z, nil
 }
 

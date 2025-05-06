@@ -32,19 +32,14 @@ func Encrypt(publicKey ecc.Point, msg *big.Int) (ecc.Point, ecc.Point, *big.Int,
 		return nil, nil, nil, err
 	}
 	// encrypt the message using the random k generated
-	c1, c2, err := EncryptWithK(publicKey, msg, k)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	c1, c2 := EncryptWithK(publicKey, msg, k)
 	return c1, c2, k, nil
 }
 
 // EncryptWithK function encrypts a message using the public key provided as
 // elliptic curve point and the random k value provided. It returns the two
-// points that represent the encrypted message and error if any.
-//
-// TODO: remove error return, since it can never error
-func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point, error) {
+// points that represent the encrypted message.
+func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point) {
 	order := pubKey.Order()
 	// ensure the message is within the field
 	msg.Mod(msg, order)
@@ -60,7 +55,7 @@ func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point, erro
 	// compute C2 = M + s
 	c2 := pubKey.New()
 	c2.Add(m, s)
-	return c1, c2, nil
+	return c1, c2
 }
 
 // GenerateKey generates a new public/private ElGamal encryption key pair.
