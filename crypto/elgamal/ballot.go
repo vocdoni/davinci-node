@@ -9,6 +9,7 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
+	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
@@ -51,11 +52,28 @@ func (z *Ballot) Valid() bool {
 	return validCurve
 }
 
-// Encrypt encrypts a message using the public key provided as elliptic curve point.
-// The randomness k can be provided or nil to generate a new one.
+// Encrypt encrypts a message using the public key provided as elliptic curve
+// point. The randomness k can be provided or nil to generate a new one. Each
+// ciphertext uses a different k derived from the previous one using mimc7 hash
+// function. The first k is the hash of the provided one.
 func (z *Ballot) Encrypt(message [types.FieldsPerBallot]*big.Int, publicKey ecc.Point, k *big.Int) (*Ballot, error) {
+	var err error
+	if k == nil {
+		k, err = RandK()
+		if err != nil {
+			return nil, fmt.Errorf("elgamal encryption failed: %w", err)
+		}
+	}
+	lastK, err := mimc7.Hash([]*big.Int{k}, nil)
+	if err != nil {
+		return nil, err
+	}
 	for i := range z.Ciphertexts {
-		if _, err := z.Ciphertexts[i].Encrypt(message[i], publicKey, k); err != nil {
+		if _, err := z.Ciphertexts[i].Encrypt(message[i], publicKey, lastK); err != nil {
+			return nil, err
+		}
+		lastK, err = mimc7.Hash([]*big.Int{lastK}, nil)
+		if err != nil {
 			return nil, err
 		}
 	}
