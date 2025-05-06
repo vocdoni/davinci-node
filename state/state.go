@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"slices"
 
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
@@ -396,36 +395,6 @@ func (o *State) ResultsSub() *elgamal.Ballot {
 		panic(err)
 	}
 	return resultsSub
-}
-
-// AggregatorWitnessHash uses the following values for each vote
-//
-//	process.ID
-//	process.CensusRoot
-//	process.BallotMode
-//	process.EncryptionKey
-//	vote.Address
-//	vote.Commitment
-//	vote.Nullifier
-//	vote.Ballot
-//
-// to calculate a subhash of each process+vote, then hashes all subhashes
-// and returns the final hash
-func (o *State) AggregatorWitnessHashes() ([]*big.Int, error) {
-	// TODO: move this func somewhere else, along with other similar funcs used
-	// by other circuits
-	hashes := []*big.Int{}
-	for _, v := range o.PaddedVotes() {
-		inputs := []*big.Int{}
-		inputs = append(inputs, o.ProcessSerializeBigInts()...)
-		inputs = append(inputs, v.SerializeBigInts()...)
-		h, err := mimc7.Hash(inputs, nil)
-		if err != nil {
-			return nil, err
-		}
-		hashes = append(hashes, h)
-	}
-	return hashes, nil
 }
 
 // EncodeKey encodes a key to a byte array using the maximum key length for the

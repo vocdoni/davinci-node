@@ -14,6 +14,7 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
 	"github.com/consensys/gnark/test"
+	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
@@ -322,7 +323,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 		t.Fatal(err)
 	}
 
-	inputsHashes, err := s.AggregatorWitnessHashes()
+	inputsHashes, err := aggregatorWitnessHashesForTest(s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,6 +404,34 @@ func newMockVote(index, amount int64) *state.Vote {
 		Address:    address,
 		Commitment: commitment,
 	}
+}
+
+// aggregatorWitnessHashesForTest uses the following values for each vote
+//
+//	process.ID
+//	process.CensusRoot
+//	process.BallotMode
+//	process.EncryptionKey
+//	vote.Address
+//	vote.Commitment
+//	vote.Nullifier
+//	vote.Ballot
+//
+// to calculate a subhash of each process+vote, then hashes all subhashes
+// and returns the final hash
+func aggregatorWitnessHashesForTest(o *state.State) ([]*big.Int, error) {
+	hashes := []*big.Int{}
+	for _, v := range o.PaddedVotes() {
+		inputs := []*big.Int{}
+		inputs = append(inputs, o.ProcessSerializeBigInts()...)
+		inputs = append(inputs, v.SerializeBigInts()...)
+		h, err := mimc7.Hash(inputs, nil)
+		if err != nil {
+			return nil, err
+		}
+		hashes = append(hashes, h)
+	}
+	return hashes, nil
 }
 
 func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
