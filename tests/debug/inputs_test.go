@@ -10,6 +10,7 @@ import (
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
+	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	gnarkecdsa "github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/consensys/gnark/test"
 	"github.com/ethereum/go-ethereum/common"
@@ -30,6 +31,7 @@ import (
 
 func TestDebugVoteVerifier(t *testing.T) {
 	c := qt.New(t)
+
 	// open process setup
 	processSetup, err := os.ReadFile("./process_setup.json")
 	c.Assert(err, qt.IsNil)
@@ -91,6 +93,21 @@ func TestDebugVoteVerifier(t *testing.T) {
 	c.Assert(signatureOk, qt.IsTrue)
 	pubKey, err := ethcrypto.UnmarshalPubkey(pubkey)
 
+	// Test the signature is correctly generated
+	signer, err := ethereum.NewSignerFromHex("45d17557419bc5f4e1dab368badd10de5226667109239c0c613641e17ce5b03b")
+	c.Assert(err, qt.IsNil)
+	blsCircomInputsHash := crypto.BigIntToFFwithPadding(vote.BallotInputsHash.MathBigInt(), circuits.VoteVerifierCurve.ScalarField())
+	localSignature, err := signer.Sign(blsCircomInputsHash)
+	c.Assert(err, qt.IsNil)
+	c.Assert(localSignature.R.String(), qt.DeepEquals, signature.R.String(), qt.Commentf("signature.R"))
+	c.Assert(localSignature.S.String(), qt.DeepEquals, signature.S.String(), qt.Commentf("signature.S"))
+	t.Logf("Signatures are equal: %s", localSignature.String())
+
+	// Compare pubkeys
+	c.Assert(pubKey.X.String(), qt.DeepEquals, signer.PublicKey.X.String(), qt.Commentf("pubkey.X"))
+	c.Assert(pubKey.Y.String(), qt.DeepEquals, signer.PublicKey.Y.String(), qt.Commentf("pubkey.Y"))
+	t.Logf("Pubkeys are equal: %s/%s", pubKey.X.String(), pubKey.Y.String())
+
 	assignment := voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
@@ -129,5 +146,9 @@ func TestDebugVoteVerifier(t *testing.T) {
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&placeholder, &assignment,
 		test.WithCurves(ecc.BLS12_377),
-		test.WithBackends(backend.GROTH16))
+		test.WithBackends(backend.GROTH16),
+		test.WithProverOpts(stdgroth16.GetNativeProverOptions(
+			circuits.AggregatorCurve.ScalarField(),
+			circuits.VoteVerifierCurve.ScalarField())),
+	)
 }
