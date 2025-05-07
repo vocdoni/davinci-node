@@ -8,9 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -20,15 +17,11 @@ import (
 // POST /vote
 func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// decode the vote
-	vote := &Vote{
-		// hardcode the curve type to bjj gnark
-		Ballot: elgamal.NewBallot(curves.New(bjj.CurveType)),
-	}
+	vote := &Vote{}
 	if err := json.NewDecoder(r.Body).Decode(vote); err != nil {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
 	}
-
 	// sanity checks
 	if vote.Ballot == nil || vote.Nullifier == nil || vote.Commitment == nil ||
 		vote.BallotInputsHash == nil || vote.Address == nil || vote.Signature == nil {
@@ -43,7 +36,6 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("invalid ballot").Write(w)
 		return
 	}
-
 	// get the process from the storage
 	pid := new(types.ProcessID)
 	if err := pid.Unmarshal(vote.ProcessID); err != nil {
@@ -100,7 +92,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		EncryptedBallot:  vote.Ballot,
 		Nullifier:        vote.Nullifier.MathBigInt(),
 		Commitment:       vote.Commitment.MathBigInt(),
-		Address:          vote.CensusProof.Key.BigInt().MathBigInt(),
+		Address:          vote.Address.BigInt().MathBigInt(),
 		BallotInputsHash: vote.BallotInputsHash.MathBigInt(),
 		BallotProof:      proof.Proof,
 		Signature:        signature,

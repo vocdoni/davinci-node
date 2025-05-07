@@ -41,14 +41,7 @@ func (z *Ballot) Valid() bool {
 			return false
 		}
 	}
-	validCurve := false
-	for _, curve := range curves.Curves() {
-		if z.CurveType == curve {
-			validCurve = true
-			break
-		}
-	}
-	return validCurve
+	return curves.IsValid(z.CurveType)
 }
 
 // Encrypt encrypts a message using the public key provided as elliptic curve
