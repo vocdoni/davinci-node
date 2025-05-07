@@ -29,6 +29,9 @@ import (
 )
 
 func TestDebugVoteVerifier(t *testing.T) {
+	if os.Getenv("DEBUG") == "" || os.Getenv("DEBUG") == "false" {
+		t.Skip("skipping debug tests...")
+	}
 	c := qt.New(t)
 	// open process setup
 	processSetup, err := os.ReadFile("./process_setup.json")
