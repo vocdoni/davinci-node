@@ -237,8 +237,12 @@ func (s *Sequencer) Stop() error {
 	return nil
 }
 
-// monitorNewProcesses periodically checks for new processes and registers them with the sequencer.
+// monitorNewProcesses checks for new processes immediately and then periodically registers them with the sequencer.
 func (s *Sequencer) monitorNewProcesses(ctx context.Context, tickerInterval time.Duration) {
+	// Check for processes immediately at startup
+	s.checkAndRegisterProcesses()
+
+	// Set up ticker for periodic checks
 	ticker := time.NewTicker(tickerInterval)
 	defer ticker.Stop()
 
@@ -247,17 +251,23 @@ func (s *Sequencer) monitorNewProcesses(ctx context.Context, tickerInterval time
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			procesList, err := s.stg.ListProcesses()
-			if err != nil {
-				log.Errorw(err, "failed to list processes")
-				continue
-			}
-			for _, proc := range procesList {
-				if ParticipateInAllProcesses && !s.ExistsProcessID(proc) {
-					log.Infow("new process registered for sequencing", "processID", fmt.Sprintf("%x", proc))
-					s.AddProcessID(proc)
-				}
-			}
+			s.checkAndRegisterProcesses()
+		}
+	}
+}
+
+// checkAndRegisterProcesses fetches the list of processes and registers new ones with the sequencer.
+func (s *Sequencer) checkAndRegisterProcesses() {
+	procesList, err := s.stg.ListProcesses()
+	if err != nil {
+		log.Errorw(err, "failed to list processes")
+		return
+	}
+
+	for _, proc := range procesList {
+		if ParticipateInAllProcesses && !s.ExistsProcessID(proc) {
+			log.Infow("new process registered for sequencing", "processID", fmt.Sprintf("%x", proc))
+			s.AddProcessID(proc)
 		}
 	}
 }

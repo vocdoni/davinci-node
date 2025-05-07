@@ -15,7 +15,7 @@ import (
 func (s *Storage) PushBallot(b *Ballot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-
+	log.Debugw("push ballot", "processID", b.ProcessID)
 	val, err := encodeArtifact(b)
 	if err != nil {
 		return fmt.Errorf("encode ballot: %w", err)

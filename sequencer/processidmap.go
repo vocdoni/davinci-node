@@ -37,7 +37,6 @@ func (p *ProcessIDMap) Add(pid []byte) bool {
 
 	pidStr := fmt.Sprintf("%x", pid)
 	p.data[pidStr] = time.Now()
-	log.Infow("process ID registered", "processID", pidStr)
 	return true
 }
 

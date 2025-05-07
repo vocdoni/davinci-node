@@ -86,7 +86,6 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcChan <-ch
 		case proc := <-newProcChan:
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(proc.ID)); err == nil {
 				// Process already exists
-				log.Warnw("process already exists", "processID", proc.ID.String())
 				continue
 			}
 			log.Debugw("new process found", "processID", proc.ID.String())
