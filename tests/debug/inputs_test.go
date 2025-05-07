@@ -24,6 +24,7 @@ import (
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage/census"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -65,7 +66,32 @@ func TestDebugVoteVerifier(t *testing.T) {
 	)
 	c.Assert(err, qt.IsNil)
 
-	// Calculate inputs hash
+	// calculate circom inputs hash
+	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(encKey.X, encKey.Y)
+	circomInputsHashInputs := []*big.Int{
+		// processID
+		vote.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
+	}
+	circomInputsHashInputs = append(circomInputsHashInputs, circuits.BallotModeToCircuit(process.BallotMode).Serialize()...)
+	circomInputsHashInputs = append(circomInputsHashInputs,
+		// encryption key
+		circomEncryptionKeyX,
+		circomEncryptionKeyY,
+		// address
+		vote.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
+		// commitment
+		vote.Commitment.MathBigInt(),
+		// nullifier
+		vote.Nullifier.MathBigInt())
+	circomInputsHashInputs = append(circomInputsHashInputs, vote.Ballot.BigInts()...)
+	circomInputsHashInputs = append(circomInputsHashInputs, vote.CensusProof.Weight.MathBigInt())
+	circomInputHash, err := mimc7.Hash(circomInputsHashInputs, nil)
+	c.Assert(err, qt.IsNil)
+
+	c.Assert(circomInputHash.String(), qt.Equals, vote.BallotInputsHash.String())
+	c.Log("circom inputs hash match: ", vote.BallotInputsHash.MathBigInt().String())
+
+	// Calculate vote verifier inputs hash
 	hashInputs := make([]*big.Int, 0, 8+len(vote.Ballot.BigInts()))
 	hashInputs = append(hashInputs, processID)
 	hashInputs = append(hashInputs, root)
