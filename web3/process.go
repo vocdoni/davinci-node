@@ -143,7 +143,6 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 						continue
 					}
 					process.ID = iter.Event.ProcessID[:]
-					log.Debugw("new process found", "processId", process.ID, "blockNumber", iter.Event.Raw.BlockNumber)
 					ch <- process
 				}
 			}

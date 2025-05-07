@@ -37,7 +37,10 @@ func (s *Sequencer) startBallotProcessor() error {
 		defer ticker.Stop()
 		log.Infow("ballot processor started")
 
+		processBallots := true
+
 		for {
+			// Check for context cancellation first
 			select {
 			case <-s.ctx.Done():
 				log.Infow("ballot processor stopped")
@@ -46,63 +49,84 @@ func (s *Sequencer) startBallotProcessor() error {
 				// Continue processing
 			}
 
-			// Try to fetch the next ballot
-			ballot, key, err := s.stg.NextBallot()
-			if err != nil {
-				if !errors.Is(err, storage.ErrNoMoreElements) {
-					log.Errorw(err, "failed to get next ballot")
-				} else {
-					// If no ballot is available, wait for the next tick or context cancellation
-					select {
-					case <-ticker.C:
-					case <-s.ctx.Done():
-						log.Infow("ballot processor stopped")
-						return
-					}
+			if processBallots {
+				// Process available ballots in a loop without waiting between them
+				processed := s.processAvailableBallots()
+
+				// If no ballots were processed, wait for the ticker
+				processBallots = processed
+			}
+
+			if !processBallots {
+				// Wait for the ticker to check for new ballots
+				select {
+				case <-ticker.C:
+					processBallots = true // Try processing ballots again
+				case <-s.ctx.Done():
+					log.Infow("ballot processor stopped")
+					return
 				}
-				continue
 			}
-
-			// Skip processing if the process is not registered
-			if !s.ExistsProcessID(ballot.ProcessID) {
-				log.Debugw("skipping ballot, process not registered", "processID", ballot.ProcessID.String())
-				continue
-			}
-
-			// Process the ballot
-			log.Debugw("processing ballot", "address", ballot.Address.String())
-			startTime := time.Now()
-
-			verifiedBallot, err := s.processBallot(ballot)
-			if err != nil {
-				log.Warnw("invalid ballot",
-					"error", err.Error(),
-					"ballot", ballot.String(),
-				)
-				if err := s.stg.RemoveBallot(key); err != nil {
-					log.Warnw("failed to remove invalid ballot", "error", err.Error())
-				}
-				continue
-			}
-
-			// Mark the ballot as processed
-			if err := s.stg.MarkBallotDone(key, verifiedBallot); err != nil {
-				log.Warnw("failed to mark ballot as processed",
-					"error", err.Error(),
-					"address", ballot.Address.String(),
-					"processID", fmt.Sprintf("%x", ballot.ProcessID),
-				)
-				continue
-			}
-
-			log.Debugw("ballot processed successfully",
-				"address", ballot.Address.String(),
-				"processID", fmt.Sprintf("%x", ballot.ProcessID),
-				"duration", time.Since(startTime).String(),
-			)
 		}
 	}()
 	return nil
+}
+
+// processAvailableBallots processes all available ballots in the queue.
+// Returns true if at least one ballot was processed successfully.
+func (s *Sequencer) processAvailableBallots() bool {
+	processed := false
+
+	for {
+		// Try to fetch the next ballot
+		ballot, key, err := s.stg.NextBallot()
+		if err != nil {
+			if !errors.Is(err, storage.ErrNoMoreElements) {
+				log.Errorw(err, "failed to get next ballot")
+			}
+			return processed
+		}
+
+		// Skip processing if the process is not registered
+		if !s.ExistsProcessID(ballot.ProcessID) {
+			log.Debugw("skipping ballot, process not registered", "processID", ballot.ProcessID.String())
+			continue
+		}
+
+		// Process the ballot
+		log.Debugw("processing ballot", "address", ballot.Address.String())
+		startTime := time.Now()
+
+		verifiedBallot, err := s.processBallot(ballot)
+		if err != nil {
+			log.Warnw("invalid ballot",
+				"error", err.Error(),
+				"ballot", ballot.String(),
+			)
+			if err := s.stg.RemoveBallot(key); err != nil {
+				log.Warnw("failed to remove invalid ballot", "error", err.Error())
+			}
+			continue
+		}
+
+		// Mark the ballot as processed
+		if err := s.stg.MarkBallotDone(key, verifiedBallot); err != nil {
+			log.Warnw("failed to mark ballot as processed",
+				"error", err.Error(),
+				"address", ballot.Address.String(),
+				"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			)
+			continue
+		}
+
+		log.Debugw("ballot processed successfully",
+			"address", ballot.Address.String(),
+			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			"duration", time.Since(startTime).String(),
+		)
+
+		processed = true
+	}
 }
 
 // processBallot generates a zero-knowledge proof of a ballot's validity.
@@ -209,7 +233,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to create witness: %w", err)
 	}
-
 	proof, err := groth16.Prove(s.voteCcs, s.voteProvingKey, witness, stdgroth16.GetNativeProverOptions(
 		circuits.AggregatorCurve.ScalarField(),
 		circuits.VoteVerifierCurve.ScalarField()))
