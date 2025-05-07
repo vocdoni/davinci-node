@@ -13,8 +13,7 @@ import (
 	"github.com/iden3/go-iden3-crypto/poseidon"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
+	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_iden3"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
@@ -47,12 +46,12 @@ func generateProofInputs(args []js.Value) any {
 	// compose the encryption key with the coords from the inputs
 	encryptionKey := new(bjj.BJJ).SetPoint(inputs.EncryptionKey[0].MathBigInt(), inputs.EncryptionKey[1].MathBigInt())
 	// encrypt the ballot
-	ballot, err := elgamal.NewBallot(encryptionKey).Encrypt(fields, encryptionKey, inputs.K.MathBigInt())
+	ballot, err := elgamal.NewBallot(encryptionKey.New()).Encrypt(fields, encryptionKey, inputs.K.MathBigInt())
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error encrypting ballot: %v", err.Error()))
 	}
 	// get encryption key point for circom
-	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(encryptionKey.Point())
+	circomEncryptionKeyX, circomEncryptionKeyY := encryptionKey.Point()
 	// calculate the commitment and nullifier
 	commitment, nullifier, err := CommitmentAndNullifier(
 		inputs.Address.BigInt(),
@@ -81,7 +80,7 @@ func generateProofInputs(args []js.Value) any {
 		// nullifier
 		nullifier.MathBigInt())
 	// ballot (in twisted edwards form)
-	inputsHash = append(inputsHash, ballot.FromRTEtoTE().BigInts()...)
+	inputsHash = append(inputsHash, ballot.BigInts()...)
 	// weight
 	inputsHash = append(inputsHash, inputs.Weight.MathBigInt())
 	// hash the inputs with mimc7
@@ -105,7 +104,7 @@ func generateProofInputs(args []js.Value) any {
 		ProcessID:        inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
 		PK:               []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
 		K:                inputs.K.MathBigInt().String(),
-		Ballot:           ballot.FromRTEtoTE(),
+		Ballot:           ballot,
 		Nullifier:        nullifier.String(),
 		Commitment:       commitment.String(),
 		Secret:           inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),

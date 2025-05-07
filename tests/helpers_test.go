@@ -20,7 +20,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
+	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_iden3"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"

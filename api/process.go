@@ -11,7 +11,7 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
+	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_iden3"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
