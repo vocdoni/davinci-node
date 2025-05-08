@@ -87,9 +87,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	circomInputsHashInputs = append(circomInputsHashInputs, vote.CensusProof.Weight.MathBigInt())
 	circomInputHash, err := mimc7.Hash(circomInputsHashInputs, nil)
 	c.Assert(err, qt.IsNil)
-
 	c.Assert(circomInputHash.String(), qt.Equals, vote.BallotInputsHash.String())
-	c.Log("circom inputs hash match: ", vote.BallotInputsHash.MathBigInt().String())
 
 	// Calculate vote verifier inputs hash
 	hashInputs := make([]*big.Int, 0, 8+len(vote.Ballot.BigInts()))
@@ -127,12 +125,22 @@ func TestDebugVoteVerifier(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(localSignature.R.String(), qt.DeepEquals, signature.R.String(), qt.Commentf("signature.R"))
 	c.Assert(localSignature.S.String(), qt.DeepEquals, signature.S.String(), qt.Commentf("signature.S"))
-	t.Logf("Signatures are equal: %s", localSignature.String())
 
 	// Compare pubkeys
 	c.Assert(pubKey.X.String(), qt.DeepEquals, signer.PublicKey.X.String(), qt.Commentf("pubkey.X"))
 	c.Assert(pubKey.Y.String(), qt.DeepEquals, signer.PublicKey.Y.String(), qt.Commentf("pubkey.Y"))
-	t.Logf("Pubkeys are equal: %s/%s", pubKey.X.String(), pubKey.Y.String())
+
+	emuCircomHash := emulated.ValueOf[sw_bn254.ScalarField](blsCircomInputsHash)
+	c.Log("emuCircomHash: ", emuCircomHash.Limbs)
+
+	emuPubX := emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X)
+	emuPubY := emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y)
+	c.Log("emuPubX: ", emuPubX.Limbs)
+	c.Log("emuPubY: ", emuPubY.Limbs)
+
+	keccak256Hash := ethereum.HashMessage(blsCircomInputsHash)
+	emuKeccak256Hash := emulated.ValueOf[emulated.Secp256k1Fr](keccak256Hash)
+	c.Log("emuKeccak256Hash: ", emuKeccak256Hash.Limbs)
 
 	assignment := voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
