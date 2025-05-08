@@ -24,7 +24,6 @@ import (
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage/census"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -68,30 +67,8 @@ func TestDebugVoteVerifier(t *testing.T) {
 		[]string{vote.BallotInputsHash.String()},
 	)
 	c.Assert(err, qt.IsNil)
-
-	// calculate circom inputs hash
-	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(encKey.X, encKey.Y)
-	circomInputsHashInputs := []*big.Int{
-		// processID
-		vote.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
-	}
-	circomInputsHashInputs = append(circomInputsHashInputs, circuits.BallotModeToCircuit(process.BallotMode).Serialize()...)
-	circomInputsHashInputs = append(circomInputsHashInputs,
-		// encryption key
-		circomEncryptionKeyX,
-		circomEncryptionKeyY,
-		// address
-		vote.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
-		// commitment
-		vote.Commitment.MathBigInt(),
-		// nullifier
-		vote.Nullifier.MathBigInt())
-	circomInputsHashInputs = append(circomInputsHashInputs, vote.Ballot.BigInts()...)
-	circomInputsHashInputs = append(circomInputsHashInputs, vote.CensusProof.Weight.MathBigInt())
-	circomInputHash, err := mimc7.Hash(circomInputsHashInputs, nil)
-	c.Assert(err, qt.IsNil)
-	c.Assert(circomInputHash.String(), qt.Equals, vote.BallotInputsHash.String())
-
+	// convert the ballots from TE (circom) to RTE (gnark)
+	rteBallot := vote.Ballot.FromTEtoRTE()
 	// Calculate vote verifier inputs hash
 	hashInputs := make([]*big.Int, 0, 8+len(vote.Ballot.BigInts()))
 	hashInputs = append(hashInputs, processID)
@@ -101,7 +78,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	hashInputs = append(hashInputs, vote.Address.BigInt().MathBigInt())
 	hashInputs = append(hashInputs, vote.Commitment.MathBigInt())
 	hashInputs = append(hashInputs, vote.Nullifier.MathBigInt())
-	hashInputs = append(hashInputs, vote.Ballot.BigInts()...)
+	hashInputs = append(hashInputs, rteBallot.BigInts()...)
 
 	inputHash, err := mimc7.Hash(hashInputs, nil)
 	c.Assert(err, qt.IsNil)
@@ -133,18 +110,6 @@ func TestDebugVoteVerifier(t *testing.T) {
 	c.Assert(pubKey.X.String(), qt.DeepEquals, signer.PublicKey.X.String(), qt.Commentf("pubkey.X"))
 	c.Assert(pubKey.Y.String(), qt.DeepEquals, signer.PublicKey.Y.String(), qt.Commentf("pubkey.Y"))
 
-	emuCircomHash := emulated.ValueOf[sw_bn254.ScalarField](blsCircomInputsHash)
-	c.Log("emuCircomHash: ", emuCircomHash.Limbs)
-
-	emuPubX := emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X)
-	emuPubY := emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y)
-	c.Log("emuPubX: ", emuPubX.Limbs)
-	c.Log("emuPubY: ", emuPubY.Limbs)
-
-	keccak256Hash := ethereum.HashMessage(blsCircomInputsHash)
-	emuKeccak256Hash := emulated.ValueOf[emulated.Secp256k1Fr](keccak256Hash)
-	c.Log("emuKeccak256Hash: ", emuKeccak256Hash.Limbs)
-
 	assignment := voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
@@ -152,7 +117,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 			Address:    emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Key.BigInt().MathBigInt()),
 			Commitment: emulated.ValueOf[sw_bn254.ScalarField](vote.Commitment.MathBigInt()),
 			Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](vote.Nullifier.MathBigInt()),
-			Ballot:     *vote.Ballot.ToGnarkEmulatedBN254(),
+			Ballot:     *rteBallot.ToGnarkEmulatedBN254(),
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Weight.MathBigInt()),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
