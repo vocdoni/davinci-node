@@ -129,6 +129,16 @@ func (c VerifyVoteCircuit) circomHash(api frontend.API) emulated.Element[sw_bn25
 	if err != nil {
 		circuits.FrontendError(api, "failed to create emulated MiMC hash function: ", err)
 	}
+	hashInputs := circuits.CircomInputs(api, c.Process, c.Vote, c.UserWeight)
+	for i, input := range hashInputs {
+		packedInput, err := utils.PackScalarToVar(api, input)
+		if err != nil {
+			circuits.FrontendError(api, "failed to pack circom input", err)
+			return emulated.Element[sw_bn254.ScalarField]{}
+		}
+		api.Println(i, packedInput)
+	}
+
 	if err := hFn.Write(circuits.CircomInputs(api, c.Process, c.Vote, c.UserWeight)...); err != nil {
 		circuits.FrontendError(api, "failed to hash circom inputs", err)
 	}

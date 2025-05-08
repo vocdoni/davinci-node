@@ -3,12 +3,15 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"math/big"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
@@ -84,6 +87,27 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidSignature.Write(w)
 		return
 	}
+
+	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(process.EncryptionKey.X, process.EncryptionKey.Y)
+	circomInputsHashInputs := []*big.Int{
+		// processID
+		vote.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
+	}
+	circomInputsHashInputs = append(circomInputsHashInputs, circuits.BallotModeToCircuit(process.BallotMode).Serialize()...)
+	circomInputsHashInputs = append(circomInputsHashInputs,
+		// encryption key
+		circomEncryptionKeyX,
+		circomEncryptionKeyY,
+		// address
+		vote.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
+		// commitment
+		vote.Commitment.MathBigInt(),
+		// nullifier
+		vote.Nullifier.MathBigInt())
+	circomInputsHashInputs = append(circomInputsHashInputs, vote.Ballot.BigInts()...)
+	circomInputsHashInputs = append(circomInputsHashInputs, vote.CensusProof.Weight.MathBigInt())
+	log.Debugw("voteEndpoint", "circomInputsHashInputs", circomInputsHashInputs)
+
 	// push the ballot to the sequencer storage queue to be verified, aggregated
 	// and published
 	if err := a.storage.PushBallot(&storage.Ballot{
