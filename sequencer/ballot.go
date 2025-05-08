@@ -6,9 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/consensys/gnark/backend/groth16"
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
-	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
@@ -159,6 +157,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
 
+	log.Debugw("preparing ballot inputs", "pid", pid.String())
 	// Transform process data to circuit types
 	processID := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), b.ProcessID.BigInt().MathBigInt())
 	root := arbo.BytesToBigInt(process.Census.CensusRoot)
@@ -228,14 +227,24 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		CircomProof: b.BallotProof,
 	}
 
-	// Generate the proof
-	witness, err := frontend.NewWitness(assignment, circuits.VoteVerifierCurve.ScalarField())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create witness: %w", err)
+	// Generate the proof using the prover callback
+	if s.prover == nil {
+		s.prover = DefaultProver // fallback to default prover if not set
 	}
-	proof, err := groth16.Prove(s.voteCcs, s.voteProvingKey, witness, stdgroth16.GetNativeProverOptions(
+
+	// Prepare the options for the prover
+	opts := stdgroth16.GetNativeProverOptions(
 		circuits.AggregatorCurve.ScalarField(),
-		circuits.VoteVerifierCurve.ScalarField()))
+		circuits.VoteVerifierCurve.ScalarField(),
+	)
+	log.Debugw("generating proof", "pid", pid.String())
+	proof, err := s.prover(
+		circuits.VoteVerifierCurve,
+		s.voteCcs,
+		s.voteProvingKey,
+		&assignment,
+		opts,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}

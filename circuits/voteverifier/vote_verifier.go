@@ -169,7 +169,6 @@ func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API, circomHash emul
 	// we need to prefix the message with the Ethereum signing prefix
 	// and the length of the message to be signed
 	prefix := utils.BytesFromString(fmt.Sprintf("%s%d", ethereum.SigningPrefix, ethereum.HashLength), len(ethereum.SigningPrefix)+2)
-
 	circomHashVar, err := utils.PackScalarToVar(api, circomHash)
 	if err != nil {
 		circuits.FrontendError(api, "failed to pack circomHash", err)
@@ -199,7 +198,6 @@ func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API, circomHash emul
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert hash to emulated element", err)
 	}
-
 	// check the signature of the circom inputs hash provided as Secp256k1 emulated element
 	validSign := c.PublicKey.SignIsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
 	// if the inputs are valid, ensure that thre result of the verification

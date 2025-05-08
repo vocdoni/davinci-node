@@ -10,6 +10,7 @@ import (
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
+	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	gnarkecdsa "github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/consensys/gnark/test"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,6 +34,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 		t.Skip("skipping debug tests...")
 	}
 	c := qt.New(t)
+
 	// open process setup
 	processSetup, err := os.ReadFile("./process_setup.json")
 	c.Assert(err, qt.IsNil)
@@ -65,8 +67,9 @@ func TestDebugVoteVerifier(t *testing.T) {
 		[]string{vote.BallotInputsHash.String()},
 	)
 	c.Assert(err, qt.IsNil)
-
-	// Calculate inputs hash
+	// convert the ballots from TE (circom) to RTE (gnark)
+	rteBallot := vote.Ballot.FromTEtoRTE()
+	// Calculate vote verifier inputs hash
 	hashInputs := make([]*big.Int, 0, 8+len(vote.Ballot.BigInts()))
 	hashInputs = append(hashInputs, processID)
 	hashInputs = append(hashInputs, root)
@@ -75,7 +78,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	hashInputs = append(hashInputs, vote.Address.BigInt().MathBigInt())
 	hashInputs = append(hashInputs, vote.Commitment.MathBigInt())
 	hashInputs = append(hashInputs, vote.Nullifier.MathBigInt())
-	hashInputs = append(hashInputs, vote.Ballot.BigInts()...)
+	hashInputs = append(hashInputs, rteBallot.BigInts()...)
 
 	inputHash, err := mimc7.Hash(hashInputs, nil)
 	c.Assert(err, qt.IsNil)
@@ -93,6 +96,20 @@ func TestDebugVoteVerifier(t *testing.T) {
 	signatureOk, pubkey := signature.VerifyBLS12377(vote.BallotInputsHash.MathBigInt(), common.BytesToAddress(vote.Address))
 	c.Assert(signatureOk, qt.IsTrue)
 	pubKey, err := ethcrypto.UnmarshalPubkey(pubkey)
+	c.Assert(err, qt.IsNil)
+
+	// Test the signature is correctly generated
+	signer, err := ethereum.NewSignerFromHex("45d17557419bc5f4e1dab368badd10de5226667109239c0c613641e17ce5b03b")
+	c.Assert(err, qt.IsNil)
+	blsCircomInputsHash := crypto.BigIntToFFwithPadding(vote.BallotInputsHash.MathBigInt(), circuits.VoteVerifierCurve.ScalarField())
+	localSignature, err := signer.Sign(blsCircomInputsHash)
+	c.Assert(err, qt.IsNil)
+	c.Assert(localSignature.R.String(), qt.DeepEquals, signature.R.String(), qt.Commentf("signature.R"))
+	c.Assert(localSignature.S.String(), qt.DeepEquals, signature.S.String(), qt.Commentf("signature.S"))
+
+	// Compare pubkeys
+	c.Assert(pubKey.X.String(), qt.DeepEquals, signer.X.String(), qt.Commentf("pubkey.X"))
+	c.Assert(pubKey.Y.String(), qt.DeepEquals, signer.Y.String(), qt.Commentf("pubkey.Y"))
 
 	assignment := voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
@@ -101,7 +118,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 			Address:    emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Key.BigInt().MathBigInt()),
 			Commitment: emulated.ValueOf[sw_bn254.ScalarField](vote.Commitment.MathBigInt()),
 			Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](vote.Nullifier.MathBigInt()),
-			Ballot:     *vote.Ballot.ToGnarkEmulatedBN254(),
+			Ballot:     *rteBallot.ToGnarkEmulatedBN254(),
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Weight.MathBigInt()),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
@@ -132,5 +149,9 @@ func TestDebugVoteVerifier(t *testing.T) {
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&placeholder, &assignment,
 		test.WithCurves(ecc.BLS12_377),
-		test.WithBackends(backend.GROTH16))
+		test.WithBackends(backend.GROTH16),
+		test.WithProverOpts(stdgroth16.GetNativeProverOptions(
+			circuits.AggregatorCurve.ScalarField(),
+			circuits.VoteVerifierCurve.ScalarField())),
+	)
 }

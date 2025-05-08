@@ -8,7 +8,6 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/solidity"
-	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
@@ -123,14 +122,23 @@ func (s *Sequencer) processStateTransitionBatch(
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate assignments: %w", err)
 	}
-	// generate the state transition witness
-	witness, err := frontend.NewWitness(assignments, circuits.StateTransitionCurve.ScalarField())
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate witness: %w", err)
+
+	// Generate the proof using the prover callback
+	if s.prover == nil {
+		s.prover = DefaultProver // fallback to default prover if not set
 	}
-	// generate the proof with the opt for solidity verifier
-	proof, err := groth16.Prove(s.statetransitionCcs, s.statetransitionProvingKey,
-		witness, solidity.WithProverTargetSolidityVerifier(backend.GROTH16))
+
+	// Prepare the options for the prover - use solidity verifier target
+	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
+
+	// Generate the proof
+	proof, err := s.prover(
+		circuits.StateTransitionCurve,
+		s.statetransitionCcs,
+		s.statetransitionProvingKey,
+		assignments,
+		opts,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}

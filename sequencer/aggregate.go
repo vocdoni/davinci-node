@@ -6,7 +6,6 @@ import (
 
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
-	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -138,7 +137,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	// Create the aggregator circuit assignment
-	assignment := aggregator.AggregatorCircuit{
+	assignment := &aggregator.AggregatorCircuit{
 		ValidProofs:        len(ballots),
 		Proofs:             proofs,
 		ProofsInputsHashes: proofsInputHash,
@@ -152,22 +151,28 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		}
 	}
 
-	// Generate the aggregated proof
-	witness, err := frontend.NewWitness(assignment, circuits.AggregatorCurve.ScalarField())
-	if err != nil {
-		return fmt.Errorf("failed to create witness: %w", err)
-	}
+	// Prepare the circuit assignment
 	log.Debugw("inputs ready for aggregation", "took", time.Since(startTime).String())
 
 	startTime = time.Now()
-	proof, err := groth16.Prove(
+
+	// Generate the proof using the prover callback
+	if s.prover == nil {
+		s.prover = DefaultProver // fallback to default prover if not set
+	}
+
+	// Prepare the options for the prover
+	opts := stdgroth16.GetNativeProverOptions(
+		circuits.StateTransitionCurve.ScalarField(),
+		circuits.AggregatorCurve.ScalarField(),
+	)
+
+	proof, err := s.prover(
+		circuits.AggregatorCurve,
 		s.aggregateCcs,
 		s.aggregateProvingKey,
-		witness,
-		stdgroth16.GetNativeProverOptions(
-			circuits.StateTransitionCurve.ScalarField(),
-			circuits.AggregatorCurve.ScalarField(),
-		),
+		assignment,
+		opts,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)

@@ -87,9 +87,10 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// push the ballot to the sequencer storage queue to be verified, aggregated
 	// and published
 	if err := a.storage.PushBallot(&storage.Ballot{
-		ProcessID:        vote.ProcessID,
-		VoterWeight:      vote.CensusProof.Weight.MathBigInt(),
-		EncryptedBallot:  vote.Ballot,
+		ProcessID:   vote.ProcessID,
+		VoterWeight: vote.CensusProof.Weight.MathBigInt(),
+		// convert the ballot from TE (circom) to RTE (gnark)
+		EncryptedBallot:  vote.Ballot.FromTEtoRTE(),
 		Nullifier:        vote.Nullifier.MathBigInt(),
 		Commitment:       vote.Commitment.MathBigInt(),
 		Address:          vote.Address.BigInt().MathBigInt(),
