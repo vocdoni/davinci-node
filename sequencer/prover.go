@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
@@ -9,12 +10,16 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
+	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/test"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
+	teststatetransition "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/statetransition"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 // ProverFunc defines a function type that matches the signature needed for zkSNARK proving
@@ -75,9 +80,23 @@ func NewDebugProver(t *testing.T) ProverFunc {
 				CircomVerificationKey: circomPlaceholder.Vk,
 			}
 		case *aggregator.AggregatorCircuit:
-			placeholder = &aggregator.AggregatorCircuit{}
+			// fix the vote verifier verification key
+			vvk := groth16.NewVerifyingKey(curve)
+			if _, err := vvk.UnsafeReadFrom(bytes.NewReader(voteverifier.Artifacts.VerifyingKey())); err != nil {
+				t.Fatal(err)
+			}
+			fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](vvk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// create final placeholder
+			placeholder = &aggregator.AggregatorCircuit{
+				Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
+				VerificationKey: fixedVk,
+			}
+
 		case *statetransition.StateTransitionCircuit:
-			placeholder = &statetransition.StateTransitionCircuit{}
+			placeholder = teststatetransition.CircuitPlaceholder()
 		default:
 			t.Fatalf("unsupported circuit type: %T", assignment)
 
