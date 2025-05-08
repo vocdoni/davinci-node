@@ -122,7 +122,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 		hashInputs = append(hashInputs, voterProof.Address)
 		hashInputs = append(hashInputs, voterProof.Commitment)
 		hashInputs = append(hashInputs, voterProof.Nullifier)
-		hashInputs = append(hashInputs, voterProof.Ballot.BigInts()...)
+		hashInputs = append(hashInputs, voterProof.Ballot.FromTEtoRTE().BigInts()...)
 		// hash the inputs to generate the inputs hash
 		inputsHash, err := mimc7.Hash(hashInputs, nil)
 		if err != nil {
@@ -141,7 +141,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
 				Address:    emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
 				Commitment: emulated.ValueOf[sw_bn254.ScalarField](voterProof.Commitment),
-				Ballot:     *voterProof.Ballot.ToGnarkEmulatedBN254(),
+				Ballot:     *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
 				Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](voterProof.Nullifier),
 			},
 			UserWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
