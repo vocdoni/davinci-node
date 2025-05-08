@@ -108,7 +108,7 @@ func TestIntegration(t *testing.T) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote := createVote(c, pid, encryptionKey, signers[i])
+			vote := createVote(c, pid, *ballotMode, encryptionKey, signers[i])
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
