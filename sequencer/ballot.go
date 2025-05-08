@@ -17,7 +17,6 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage/census"
@@ -198,19 +197,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress voter public key: %w", err)
 	}
-
-	blsCircomInputsHash := crypto.BigIntToFFwithPadding(b.BallotInputsHash, circuits.VoteVerifierCurve.ScalarField())
-	emuCircomHash := emulated.ValueOf[sw_bn254.ScalarField](blsCircomInputsHash)
-	log.Debugw("ballotSequencer", "emuCircomHash", emuCircomHash.Limbs)
-
-	emuPubX := emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X)
-	emuPubY := emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y)
-	log.Debugw("ballotSequencer", "emuPubX", emuPubX.Limbs)
-	log.Debugw("ballotSequencer", "emuPubY", emuPubY.Limbs)
-
-	keccak256Hash := ethereum.HashMessage(blsCircomInputsHash)
-	emuKeccak256Hash := emulated.ValueOf[emulated.Secp256k1Fr](keccak256Hash)
-	log.Debugw("ballotSequencer", "emuKeccak256Hash: ", emuKeccak256Hash.Limbs)
 
 	// Create the circuit assignment
 	assignment := voteverifier.VerifyVoteCircuit{
