@@ -197,3 +197,14 @@ func (z *Ballot) FromRTEtoTE() *Ballot {
 	}
 	return teBallot
 }
+
+func (z *Ballot) FromTEtoRTE() *Ballot {
+	teBallot := NewBallot(curves.New(z.CurveType))
+	for i := range z.Ciphertexts {
+		teBallot.Ciphertexts[i].C1 = teBallot.Ciphertexts[i].C1.SetPoint(
+			format.FromTEtoRTE(z.Ciphertexts[i].C1.Point()))
+		teBallot.Ciphertexts[i].C2 = teBallot.Ciphertexts[i].C2.SetPoint(
+			format.FromTEtoRTE(z.Ciphertexts[i].C2.Point()))
+	}
+	return teBallot
+}

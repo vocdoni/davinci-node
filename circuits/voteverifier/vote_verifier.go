@@ -129,16 +129,6 @@ func (c VerifyVoteCircuit) circomHash(api frontend.API) emulated.Element[sw_bn25
 	if err != nil {
 		circuits.FrontendError(api, "failed to create emulated MiMC hash function: ", err)
 	}
-	hashInputs := circuits.CircomInputs(api, c.Process, c.Vote, c.UserWeight)
-	for i, input := range hashInputs {
-		packedInput, err := utils.PackScalarToVar(api, input)
-		if err != nil {
-			circuits.FrontendError(api, "failed to pack circom input", err)
-			return emulated.Element[sw_bn254.ScalarField]{}
-		}
-		api.Println(i, packedInput)
-	}
-
 	if err := hFn.Write(circuits.CircomInputs(api, c.Process, c.Vote, c.UserWeight)...); err != nil {
 		circuits.FrontendError(api, "failed to hash circom inputs", err)
 	}
@@ -176,13 +166,6 @@ func (c VerifyVoteCircuit) checkInputsHash(api frontend.API) {
 // public key and message provided, and that the derived address matches the
 // provided address.
 func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API, circomHash emulated.Element[sw_bn254.ScalarField]) {
-	api.Println("emuCircomHash")
-	api.Println(circomHash.Limbs...)
-	api.Println("emuPubX")
-	api.Println(c.PublicKey.X.Limbs...)
-	api.Println("emuPubY")
-	api.Println(c.PublicKey.Y.Limbs...)
-
 	// we need to prefix the message with the Ethereum signing prefix
 	// and the length of the message to be signed
 	prefix := utils.BytesFromString(fmt.Sprintf("%s%d", ethereum.SigningPrefix, ethereum.HashLength), len(ethereum.SigningPrefix)+2)
@@ -215,9 +198,6 @@ func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API, circomHash emul
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert hash to emulated element", err)
 	}
-	api.Println("emuKeccak256Hash")
-	api.Println(emulatedHash.Limbs...)
-
 	// check the signature of the circom inputs hash provided as Secp256k1 emulated element
 	validSign := c.PublicKey.SignIsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
 	// if the inputs are valid, ensure that thre result of the verification
