@@ -137,7 +137,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	// Create the aggregator circuit assignment
-	assignment := aggregator.AggregatorCircuit{
+	assignment := &aggregator.AggregatorCircuit{
 		ValidProofs:        len(ballots),
 		Proofs:             proofs,
 		ProofsInputsHashes: proofsInputHash,

@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/test"
@@ -80,8 +82,8 @@ func NewDebugProver(t *testing.T) ProverFunc {
 				CircomVerificationKey: circomPlaceholder.Vk,
 			}
 		case *aggregator.AggregatorCircuit:
-			// fix the vote verifier verification key
-			vvk := groth16.NewVerifyingKey(curve)
+			t.Logf("running debug prover for aggregator")
+			vvk := groth16.NewVerifyingKey(circuits.VoteVerifierCurve)
 			if _, err := vvk.UnsafeReadFrom(bytes.NewReader(voteverifier.Artifacts.VerifyingKey())); err != nil {
 				t.Fatal(err)
 			}
@@ -89,29 +91,45 @@ func NewDebugProver(t *testing.T) ProverFunc {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// create final placeholder
-			placeholder = &aggregator.AggregatorCircuit{
+			p := &aggregator.AggregatorCircuit{
 				Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
 				VerificationKey: fixedVk,
 			}
-
+			ccs := groth16.NewCS(circuits.VoteVerifierCurve)
+			if _, err := ccs.ReadFrom(bytes.NewReader(aggregator.Artifacts.CircuitDefinition())); err != nil {
+				t.Fatal(err)
+			}
+			for i := range types.VotesPerBatch {
+				p.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](ccs)
+			}
+			placeholder = p
 		case *statetransition.StateTransitionCircuit:
-			placeholder = teststatetransition.CircuitPlaceholder()
+			t.Logf("running debug prover for statetransition")
+			agVk := groth16.NewVerifyingKey(circuits.AggregatorCurve)
+			if _, err := agVk.UnsafeReadFrom(bytes.NewReader(aggregator.Artifacts.VerifyingKey())); err != nil {
+				t.Fatal(err)
+			}
+			p := teststatetransition.CircuitPlaceholder()
+			fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](agVk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.AggregatorVK = fixedVk
+			placeholder = p
 		default:
 			t.Fatalf("unsupported circuit type: %T", assignment)
 
 		}
 
 		// First run the circuit solver verification for debugging
-		// The circuit itself is used as both assignment and placeholder
-		// since it already contains all the witness values
 		assert := test.NewAssert(t)
-
+		startTime := time.Now()
 		assert.SolvingSucceeded(placeholder, assignment,
 			test.WithCurves(curve),
 			test.WithBackends(backend.GROTH16),
 			test.WithProverOpts(opts...),
 		)
+		t.Logf("debug prover succeeded for %T, took %s", assignment, time.Since(startTime).String())
 
 		// Then do the normal proof generation
 		witness, err := frontend.NewWitness(assignment, curve.ScalarField())
@@ -120,6 +138,7 @@ func NewDebugProver(t *testing.T) ProverFunc {
 		}
 
 		// Generate the proof
+		t.Logf("running groth16.Prove for %T", assignment)
 		return groth16.Prove(ccs, pk, witness, opts...)
 	}
 }
