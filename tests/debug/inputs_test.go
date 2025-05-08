@@ -96,6 +96,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	signatureOk, pubkey := signature.VerifyBLS12377(vote.BallotInputsHash.MathBigInt(), common.BytesToAddress(vote.Address))
 	c.Assert(signatureOk, qt.IsTrue)
 	pubKey, err := ethcrypto.UnmarshalPubkey(pubkey)
+	c.Assert(err, qt.IsNil)
 
 	// Test the signature is correctly generated
 	signer, err := ethereum.NewSignerFromHex("45d17557419bc5f4e1dab368badd10de5226667109239c0c613641e17ce5b03b")
@@ -107,8 +108,8 @@ func TestDebugVoteVerifier(t *testing.T) {
 	c.Assert(localSignature.S.String(), qt.DeepEquals, signature.S.String(), qt.Commentf("signature.S"))
 
 	// Compare pubkeys
-	c.Assert(pubKey.X.String(), qt.DeepEquals, signer.PublicKey.X.String(), qt.Commentf("pubkey.X"))
-	c.Assert(pubKey.Y.String(), qt.DeepEquals, signer.PublicKey.Y.String(), qt.Commentf("pubkey.Y"))
+	c.Assert(pubKey.X.String(), qt.DeepEquals, signer.X.String(), qt.Commentf("pubkey.X"))
+	c.Assert(pubKey.Y.String(), qt.DeepEquals, signer.Y.String(), qt.Commentf("pubkey.Y"))
 
 	assignment := voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
