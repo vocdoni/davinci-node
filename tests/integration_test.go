@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
@@ -37,6 +38,12 @@ func TestIntegration(t *testing.T) {
 
 	// Start sequencer batch time window
 	seqSrv.Sequencer.SetBatchTimeWindow(time.Second * 20)
+
+	// Create a debug prover that will debug circuit execution during testing
+	debugProver := sequencer.NewDebugProver(t)
+
+	// Set the debug prover on the sequencer
+	seqSrv.Sequencer.SetProver(debugProver)
 
 	var (
 		pid           *types.ProcessID

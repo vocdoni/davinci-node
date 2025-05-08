@@ -45,6 +45,7 @@ type Sequencer struct {
 	cancel             context.CancelFunc
 	pids               *ProcessIDMap // Maps process IDs to their last update time
 	workInProgressLock sync.RWMutex  // Lock to block new work while processing a batch or a state transition
+	prover             ProverFunc    // Function for generating zero-knowledge proofs
 
 	ballotVerifyingKeyCircomJSON []byte // Verification key for ballot proofs
 
@@ -181,6 +182,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		aggregateCcs:                 aggCcs,
 		voteProvingKey:               votePk,
 		voteCcs:                      voteCcs,
+		prover:                       DefaultProver, // Use the default prover by default
 	}, nil
 }
 
