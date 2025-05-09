@@ -47,6 +47,7 @@ type EncryptionKeys struct {
 // the BLS12-377 curve, which is the one used by the verifier circuit and
 // verified by the aggregator circuit.
 type VerifiedBallot struct {
+	VoteID          types.HexBytes          `json:"voteId"`
 	ProcessID       types.HexBytes          `json:"processId"`
 	VoterWeight     *big.Int                `json:"voterWeight"`
 	Nullifier       *big.Int                `json:"nullifier"`
@@ -159,10 +160,11 @@ func (b *Ballot) String() string {
 // includes the nullifier, the commitment, the address and the encrypted
 // ballot.
 type AggregatorBallot struct {
-	Nullifier       *big.Int       `json:"nullifiers"`
-	Commitment      *big.Int       `json:"commitments"`
-	Address         *big.Int       `json:"address"`
-	EncryptedBallot elgamal.Ballot `json:"encryptedBallot"`
+	VoteID          types.HexBytes  `json:"voteId"`
+	Nullifier       *big.Int        `json:"nullifiers"`
+	Commitment      *big.Int        `json:"commitments"`
+	Address         *big.Int        `json:"address"`
+	EncryptedBallot *elgamal.Ballot `json:"encryptedBallot"`
 }
 
 // AggregatorBallotBatch is the struct that contains the information of a

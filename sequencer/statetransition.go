@@ -42,10 +42,6 @@ func (s *Sequencer) startStateTransitionProcessor() error {
 }
 
 func (s *Sequencer) processPendingTransitions() {
-	// lock the processor to avoid concurrent workloads
-	s.workInProgressLock.Lock()
-	defer s.workInProgressLock.Unlock()
-
 	// process each registered process ID
 	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
 		// check if there is a batch ready for processing
@@ -63,29 +59,51 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 		// decode process ID and load metadata
 		processID := new(types.ProcessID).SetBytes(batch.ProcessID)
-		log.Debugw("state transition ready for processing",
-			"processID", processID.String(),
-			"ballotCount", len(batch.Ballots))
+		// lock the processor to avoid concurrent workloads
+		s.workInProgressLock.Lock()
+		defer s.workInProgressLock.Unlock()
 		startTime := time.Now()
+
 		// initialize the process state
 		processState, err := s.loadState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
 			return true // Continue to next process ID
 		}
+
+		// get the root hash, this is the state before the batch
+		root, err := processState.RootAsBigInt()
+		if err != nil {
+			log.Errorw(err, "failed to get root")
+			return true // Continue to next process ID
+		}
+
+		log.Debugw("state transition ready for processing",
+			"processID", processID.String(),
+			"ballotCount", len(batch.Ballots),
+			"rootHashBefore", root.String(),
+		)
+
 		// process the batch to get the proof
 		proof, err := s.processStateTransitionBatch(processState, batch)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
 			return true // Continue to next process ID
 		}
-		log.Debugw("state transition proof generated", "took", time.Since(startTime).String())
+
 		// get raw public inputs
 		rootHashAfter, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root hash after")
 			return true // Continue to next process ID
 		}
+
+		log.Debugw("state transition proof generated",
+			"took", time.Since(startTime).String(),
+			"processID", processID.String(),
+			"rootHashAfter", rootHashAfter.String(),
+		)
+
 		// store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
 			ProcessID: batch.ProcessID,
@@ -121,11 +139,6 @@ func (s *Sequencer) processStateTransitionBatch(
 	assignments, err := s.stateBatchToWitness(processState, batch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate assignments: %w", err)
-	}
-
-	// Generate the proof using the prover callback
-	if s.prover == nil {
-		s.prover = DefaultProver // fallback to default prover if not set
 	}
 
 	// Prepare the options for the prover - use solidity verifier target
@@ -167,7 +180,7 @@ func (s *Sequencer) stateBatchToWitness(
 	for _, v := range batch.Ballots {
 		if err := processState.AddVote(&state.Vote{
 			Nullifier:  v.Nullifier,
-			Ballot:     &v.EncryptedBallot,
+			Ballot:     v.EncryptedBallot,
 			Address:    v.Address,
 			Commitment: v.Commitment,
 		}); err != nil {

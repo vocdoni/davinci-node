@@ -129,10 +129,11 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		}
 		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](ballots[i].InputsHash)
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
+			VoteID:          ballots[i].VoteID,
 			Nullifier:       ballots[i].Nullifier,
 			Commitment:      ballots[i].Commitment,
 			Address:         ballots[i].Address,
-			EncryptedBallot: *ballots[i].EncryptedBallot,
+			EncryptedBallot: ballots[i].EncryptedBallot,
 		})
 	}
 
@@ -155,11 +156,6 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	log.Debugw("inputs ready for aggregation", "took", time.Since(startTime).String())
 
 	startTime = time.Now()
-
-	// Generate the proof using the prover callback
-	if s.prover == nil {
-		s.prover = DefaultProver // fallback to default prover if not set
-	}
 
 	// Prepare the options for the prover
 	opts := stdgroth16.GetNativeProverOptions(
