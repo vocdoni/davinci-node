@@ -11,7 +11,7 @@ import (
 // the voter to generate the proof.
 var Artifacts = circuits.NewCircuitArtifacts(
 	&circuits.Artifact{
-		Name:      "ballot-proof ccs",
+		Name:      "ballot-proof wasm",
 		RemoteURL: config.BallotProoCircuitURL,
 		Hash:      types.HexStringToHexBytes(config.BallotProofCircuitHash),
 	},
