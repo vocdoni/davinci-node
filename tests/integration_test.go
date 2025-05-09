@@ -1,7 +1,9 @@
 package tests
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -104,7 +106,11 @@ func TestIntegration(t *testing.T) {
 			time.Sleep(time.Millisecond * 200)
 		}
 	})
-	c.Run("create vote", func(c *qt.C) {
+
+	// Store the voteIDs returned from the API to check their status later
+	var voteIDs []types.HexBytes
+
+	c.Run("create votes", func(c *qt.C) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
@@ -114,10 +120,21 @@ func TestIntegration(t *testing.T) {
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
-			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+
+			// Make the request to cast the vote
+			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
 			c.Assert(status, qt.Equals, 200)
-			c.Logf("Vote %d created", i)
+
+			// Parse the response body to get the vote ID
+			var voteResponse api.VoteResponse
+			err = json.NewDecoder(bytes.NewReader(body)).Decode(&voteResponse)
+			c.Assert(err, qt.IsNil)
+			c.Assert(voteResponse.VoteID, qt.Not(qt.IsNil))
+			c.Logf("Vote %d created with ID: %s", i, voteResponse.VoteID.String())
+
+			// Save the voteID for status checks
+			voteIDs = append(voteIDs, voteResponse.VoteID)
 			count++
 		}
 		c.Assert(count, qt.Equals, numBallots)
@@ -126,6 +143,43 @@ func TestIntegration(t *testing.T) {
 	})
 
 	c.Run("wait for process votes", func(c *qt.C) {
+		time.Sleep(5 * time.Second)
+		// Check vote status
+		checkVoteStatus := func() {
+			// Run each vote status check in parallel
+			for i, voteID := range voteIDs {
+				i, voteID := i, voteID // Capture loop variables for goroutine
+				// Construct the status endpoint URL
+				statusEndpoint := api.EndpointWithParam(
+					api.EndpointWithParam(api.VoteStatusEndpoint,
+						api.VoteStatusProcessIDParam, pid.String()),
+					api.VoteStatusVoteIDParam, voteID.String())
+
+				// Make the request to get the vote status
+				body, statusCode, err := cli.Request("GET", nil, nil, statusEndpoint)
+				c.Assert(err, qt.IsNil)
+				c.Assert(statusCode, qt.Equals, 200)
+
+				// Parse the response body to get the status
+				var statusResponse api.VoteStatusResponse
+				err = json.NewDecoder(bytes.NewReader(body)).Decode(&statusResponse)
+				c.Assert(err, qt.IsNil)
+
+				// Verify the status is valid
+				c.Logf("Vote %d status: %s", i, statusResponse.Status)
+				c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
+			}
+		}
+
+		// check vote status in a separate goroutine
+		// to avoid blocking the test
+		go func() {
+			for {
+				checkVoteStatus()
+				time.Sleep(5 * time.Second)
+			}
+		}()
+
 		// TODO: check how many votes are registered in the smart contract for
 		// the test process and remove the following line
 		time.Sleep(5 * time.Minute)

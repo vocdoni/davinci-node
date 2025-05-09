@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
@@ -44,7 +46,12 @@ func (s *Storage) PushBallot(b *Ballot) error {
 		wTx.Discard()
 		return err
 	}
-	return wTx.Commit()
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	// Set ballot status to pending
+	return s.setBallotStatus(b.ProcessID, b.VoteID(), BallotStatusPending)
 }
 
 // NextBallot returns the next non-reserved ballot, creates a reservation, and
@@ -132,7 +139,12 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 		wTx.Discard()
 		return err
 	}
-	return wTx.Commit()
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	// Update ballot status to verified
+	return s.setBallotStatus(vb.ProcessID, voteID, BallotStatusVerified)
 }
 
 // PullVerifiedBallots returns a list of non-reserved verified ballots for a
@@ -244,6 +256,24 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 		wTx.Discard()
 		return err
 	}
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	// Update status of all ballots in the batch to aggregated
+	wTx = prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotStatusPrefix)
+	defer wTx.Discard()
+
+	for _, ballot := range abb.Ballots {
+		// The VoteID isn't directly available here, but we can compute it from the ballot's nullifier
+		// which is unique per ballot
+		voteID := crypto.BigIntToFFwithPadding(ballot.Nullifier, circuits.BallotProofCurve.ScalarField())
+		key := createBallotStatusKey(abb.ProcessID, voteID)
+		if err := wTx.Set(key, intToBytes(BallotStatusAggregated)); err != nil {
+			return fmt.Errorf("set ballot status to aggregated: %w", err)
+		}
+	}
+
 	return wTx.Commit()
 }
 
@@ -322,20 +352,43 @@ func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 	log.Debugw("push state transition batch", "processID", stb.ProcessID)
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+
 	// encode the state transition batch
 	val, err := encodeArtifact(stb)
 	if err != nil {
 		return fmt.Errorf("encode state transition batch: %w", err)
 	}
+
 	// initialize the write transaction over the state transition prefix
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), stateTransitionPrefix)
+
 	// create the key by hashing the value
 	key := hashKey(val)
+
 	// set the key-value pair in the write transaction
 	if err := wTx.Set(append(slices.Clone(stb.ProcessID), key...), val); err != nil {
 		wTx.Discard()
 		return err
 	}
+
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	// Update status of all ballots in the batch to processed
+	wTx = prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotStatusPrefix)
+	defer wTx.Discard()
+
+	for _, ballot := range stb.Ballots {
+		// The VoteID isn't directly available here, but we can compute it from the ballot's nullifier
+		// which is unique per ballot
+		voteID := crypto.BigIntToFFwithPadding(ballot.Nullifier, circuits.BallotProofCurve.ScalarField())
+		key := createBallotStatusKey(stb.ProcessID, voteID)
+		if err := wTx.Set(key, intToBytes(BallotStatusProcessed)); err != nil {
+			return fmt.Errorf("set ballot status to processed: %w", err)
+		}
+	}
+
 	return wTx.Commit()
 }
 
