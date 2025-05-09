@@ -240,7 +240,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	return pid, encryptionKeys
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, bm types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer) api.Vote {
+func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer) api.Vote {
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	secret := util.RandomBytes(16)
@@ -267,7 +267,7 @@ func createVote(c *qt.C, pid *types.ProcessID, bm types.BallotMode, encKey *type
 			(*types.BigInt)(encKey.Y),
 		},
 		K:           (*types.BigInt)(k),
-		BallotMode:  &bm,
+		BallotMode:  bm,
 		Weight:      (*types.BigInt)(new(big.Int).SetUint64(circuits.MockWeight)),
 		FieldValues: fields,
 	}

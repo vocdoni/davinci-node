@@ -2,19 +2,57 @@ package api
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
-// newVote creates a new voting process
-// POST /vote
+// voteStatus returns the status of a vote for a given processID and voteID
+// GET /votes/status/{processId}/{voteId}
+func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
+	// Get the processID and voteID from the URL
+	processIDHex := chi.URLParam(r, VoteStatusProcessIDParam)
+	voteIDHex := chi.URLParam(r, VoteStatusVoteIDParam)
+
+	processID, err := hex.DecodeString(util.TrimHex(processIDHex))
+	if err != nil {
+		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
+		return
+	}
+
+	voteID, err := hex.DecodeString(util.TrimHex(voteIDHex))
+	if err != nil {
+		ErrMalformedBody.Withf("could not decode vote ID: %v", err).Write(w)
+		return
+	}
+
+	// Get the ballot status
+	status, err := a.storage.BallotStatus(processID, voteID)
+	if err != nil {
+		log.Debugw("ballot status not found", "processID", processIDHex, "voteID", voteIDHex, "error", err)
+		ErrResourceNotFound.WithErr(err).Write(w)
+		return
+	}
+
+	// Return the status response
+	response := VoteStatusResponse{
+		Status: storage.BallotStatusName(status),
+	}
+	httpWriteJSON(w, response)
+}
+
+// newVote creates a new vote and pushes it to the storage queue
+// POST /votes
 func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// decode the vote
 	vote := &Vote{}
@@ -84,9 +122,8 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidSignature.Write(w)
 		return
 	}
-	// push the ballot to the sequencer storage queue to be verified, aggregated
-	// and published
-	if err := a.storage.PushBallot(&storage.Ballot{
+	// Create the ballot object
+	ballot := &storage.Ballot{
 		ProcessID:   vote.ProcessID,
 		VoterWeight: vote.CensusProof.Weight.MathBigInt(),
 		// convert the ballot from TE (circom) to RTE (gnark)
@@ -99,9 +136,21 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		Signature:        signature,
 		CensusProof:      &vote.CensusProof,
 		PubKey:           pubkey,
-	}); err != nil {
+	}
+
+	// push the ballot to the sequencer storage queue to be verified, aggregated
+	// and published
+	if err := a.storage.PushBallot(ballot); err != nil {
 		ErrGenericInternalServerError.Withf("could not push ballot: %v", err).Write(w)
 		return
 	}
-	httpWriteOK(w)
+
+	// Get the vote ID and return it to the client
+	voteID := ballot.VoteID()
+
+	// Return the voteID to the client using the VoteResponse struct
+	response := VoteResponse{
+		VoteID: voteID,
+	}
+	httpWriteJSON(w, response)
 }

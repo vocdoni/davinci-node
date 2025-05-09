@@ -1,8 +1,12 @@
 package tests
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,20 +108,35 @@ func TestIntegration(t *testing.T) {
 			time.Sleep(time.Millisecond * 200)
 		}
 	})
-	c.Run("create vote", func(c *qt.C) {
+
+	// Store the voteIDs returned from the API to check their status later
+	var voteIDs []types.HexBytes
+
+	c.Run("create votes", func(c *qt.C) {
 		count := 0
 		for i := range signers {
-			// generate a vote for the participant
-			vote := createVote(c, pid, *ballotMode, encryptionKey, signers[i])
-			// generate census proof for participant
-			censusProof := generateCensusProof(c, cli, root, vote.Address)
+			// generate a vote for the first participant
+			vote := createVote(c, pid, ballotMode, encryptionKey, signers[i])
+			// generate census proof for first participant
+			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
-			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+
+			// Make the request to cast the vote
+			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
 			c.Assert(status, qt.Equals, 200)
-			c.Logf("Vote %d created", i)
+
+			// Parse the response body to get the vote ID
+			var voteResponse api.VoteResponse
+			err = json.NewDecoder(bytes.NewReader(body)).Decode(&voteResponse)
+			c.Assert(err, qt.IsNil)
+			c.Assert(voteResponse.VoteID, qt.Not(qt.IsNil))
+			c.Logf("Vote %d created with ID: %s", i, voteResponse.VoteID.String())
+
+			// Save the voteID for status checks
+			voteIDs = append(voteIDs, voteResponse.VoteID)
 			count++
 		}
 		c.Assert(count, qt.Equals, numBallots)
@@ -126,8 +145,89 @@ func TestIntegration(t *testing.T) {
 	})
 
 	c.Run("wait for process votes", func(c *qt.C) {
-		// TODO: check how many votes are registered in the smart contract for
-		// the test process and remove the following line
-		time.Sleep(5 * time.Minute)
+		// Check vote status and return whether all votes are processed
+		checkVoteStatus := func() bool {
+			txt := strings.Builder{}
+			txt.WriteString("Vote status: ")
+			allProcessed := true
+
+			// Check status for each vote
+			for i, voteID := range voteIDs {
+				// Construct the status endpoint URL
+				statusEndpoint := api.EndpointWithParam(
+					api.EndpointWithParam(api.VoteStatusEndpoint,
+						api.VoteStatusProcessIDParam, pid.String()),
+					api.VoteStatusVoteIDParam, voteID.String())
+
+				// Make the request to get the vote status
+				body, statusCode, err := cli.Request("GET", nil, nil, statusEndpoint)
+				c.Assert(err, qt.IsNil)
+				c.Assert(statusCode, qt.Equals, 200)
+
+				// Parse the response body to get the status
+				var statusResponse api.VoteStatusResponse
+				err = json.NewDecoder(bytes.NewReader(body)).Decode(&statusResponse)
+				c.Assert(err, qt.IsNil)
+
+				// Verify the status is valid
+				c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
+
+				// Check if the vote is processed
+				if statusResponse.Status != "processed" {
+					allProcessed = false
+				}
+
+				// Write to the string builder for logging
+				txt.WriteString(fmt.Sprintf("#%d:%s ", i, statusResponse.Status))
+			}
+
+			// Log the vote status
+			t.Log(txt.String())
+			return allProcessed
+		}
+
+		// Set up timeout based on context deadline
+		var timeoutCh <-chan time.Time
+		deadline, hasDeadline := ctx.Deadline()
+
+		if hasDeadline {
+			// If context has a deadline, set timeout to 15 seconds before it
+			// to allow for clean shutdown and error reporting
+			remainingTime := time.Until(deadline)
+			timeoutBuffer := 15 * time.Second
+
+			// If we have less than the buffer time left, use half of the remaining time
+			if remainingTime <= timeoutBuffer {
+				timeoutBuffer = remainingTime / 2
+			}
+
+			effectiveTimeout := remainingTime - timeoutBuffer
+			timeoutCh = time.After(effectiveTimeout)
+			t.Logf("Test will timeout in %v (deadline: %v)", effectiveTimeout, deadline)
+		} else {
+			// No deadline set, use a reasonable default
+			timeOut := 5 * time.Minute
+			if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
+				timeOut = 30 * time.Minute
+			}
+			timeoutCh = time.After(timeOut)
+			t.Logf("No test deadline found, using %s minute default timeout", timeOut.String())
+		}
+
+		// Check vote status periodically
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if checkVoteStatus() {
+					t.Log("All votes have been processed successfully")
+					return
+				}
+			case <-timeoutCh:
+				c.Fatalf("Timeout waiting for votes to be processed - all %d votes did not reach 'processed' status in time", numBallots)
+			}
+		}
 	})
 }

@@ -63,3 +63,13 @@ type BallotProofInfo struct {
 	VerificationKeyHash  string            `json:"verificationKeyHash"`
 	Contracts            ContractAddresses `json:"contracts"`
 }
+
+// VoteResponse is the response returned by the vote submission endpoint.
+type VoteResponse struct {
+	VoteID types.HexBytes `json:"voteId"`
+}
+
+// VoteStatusResponse is the response returned by the vote status endpoint.
+type VoteStatusResponse struct {
+	Status string `json:"status"`
+}

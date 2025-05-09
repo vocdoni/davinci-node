@@ -22,10 +22,8 @@ import (
  processID_voteID = 5 -> error
 */
 
-var (
-	// ErroBallotAlreadyExists is returned when a ballot already exists in the pending queue.
-	ErroBallotAlreadyExists = errors.New("ballot already exists")
-)
+// ErroBallotAlreadyExists is returned when a ballot already exists in the pending queue.
+var ErroBallotAlreadyExists = errors.New("ballot already exists")
 
 // PushBallot stores a new ballot into the pending ballots queue.
 func (s *Storage) PushBallot(b *Ballot) error {
@@ -44,7 +42,12 @@ func (s *Storage) PushBallot(b *Ballot) error {
 		wTx.Discard()
 		return err
 	}
-	return wTx.Commit()
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	// Set ballot status to pending
+	return s.setBallotStatus(b.ProcessID, b.VoteID(), BallotStatusPending)
 }
 
 // NextBallot returns the next non-reserved ballot, creates a reservation, and
@@ -86,7 +89,7 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 }
 
 // RemoveBallot removes a ballot from the pending queue and its reservation.
-func (s *Storage) RemoveBallot(voteID []byte) error {
+func (s *Storage) RemoveBallot(processID, voteID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -100,7 +103,7 @@ func (s *Storage) RemoveBallot(voteID []byte) error {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
 
-	return nil
+	return s.setBallotStatus(processID, voteID, BallotStatusError)
 }
 
 // MarkBallotDone called after we have processed the ballot. We push the
@@ -132,7 +135,12 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 		wTx.Discard()
 		return err
 	}
-	return wTx.Commit()
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	// Update ballot status to verified
+	return s.setBallotStatus(vb.ProcessID, voteID, BallotStatusVerified)
 }
 
 // PullVerifiedBallots returns a list of non-reserved verified ballots for a
@@ -244,7 +252,19 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 		wTx.Discard()
 		return err
 	}
-	return wTx.Commit()
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	// Update status of all ballots in the batch to aggregated
+	// TODO: this should use a single write transaction
+	for _, ballot := range abb.Ballots {
+		if err := s.setBallotStatus(abb.ProcessID, ballot.VoteID, BallotStatusAggregated); err != nil {
+			log.Warnw("failed to set ballot status to aggregated", "error", err.Error())
+		}
+	}
+
+	return nil
 }
 
 // NextBallotBatch returns the next aggregated ballot batch for a given
@@ -319,24 +339,39 @@ func (s *Storage) MarkBallotBatchDone(k []byte) error {
 }
 
 func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
-	log.Debugw("push state transition batch", "processID", stb.ProcessID)
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+
 	// encode the state transition batch
 	val, err := encodeArtifact(stb)
 	if err != nil {
 		return fmt.Errorf("encode state transition batch: %w", err)
 	}
+
 	// initialize the write transaction over the state transition prefix
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), stateTransitionPrefix)
+
 	// create the key by hashing the value
 	key := hashKey(val)
+
 	// set the key-value pair in the write transaction
 	if err := wTx.Set(append(slices.Clone(stb.ProcessID), key...), val); err != nil {
 		wTx.Discard()
 		return err
 	}
-	return wTx.Commit()
+
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	// Update status of all ballots in the batch to processed
+	for _, ballot := range stb.Ballots {
+		if err := s.setBallotStatus(stb.ProcessID, ballot.VoteID, BallotStatusProcessed); err != nil {
+			log.Warnw("failed to set ballot status to processed", "error", err.Error())
+		}
+	}
+
+	return nil
 }
 
 func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBatch, []byte, error) {
@@ -380,7 +415,6 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 }
 
 func (s *Storage) MarkStateTransitionBatchDone(k []byte) error {
-	log.Debugw("mark state transition batch done", "key", hex.EncodeToString(k))
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	// remove reservation
