@@ -13,7 +13,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-func WasmCircomInputs(
+func WasmVoteInputs(
 	inputs *BallotProofWasmInputs,
 ) (*BallotProofWasmResult, error) {
 	// pad the field values to the number of circuits.FieldsPerBallot
@@ -43,24 +43,21 @@ func WasmCircomInputs(
 	if err != nil {
 		return nil, fmt.Errorf("Error calculating commitment and nullifier: %v", err.Error())
 	}
+	// ballot mode as circuit ballot mode
+	ballotMode := circuits.BallotModeToCircuit(inputs.BallotMode)
+	// safe address and processID
+	ffAddress := inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
+	ffProcessID := inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
 	// compose a list with the inputs of the circuit to hash them
-	inputsHash := []*big.Int{
-		// processID
-		inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
-	}
-	// ballot mode as a big int list
-	circuitBallotMode := circuits.BallotModeToCircuit(inputs.BallotMode)
-	inputsHash = append(inputsHash, circuits.BallotModeToCircuit(inputs.BallotMode).Serialize()...)
+	inputsHash := []*big.Int{ffProcessID.MathBigInt()}         // process id
+	inputsHash = append(inputsHash, ballotMode.Serialize()...) // ballot mode serialized
 	inputsHash = append(inputsHash,
-		// encryption key
-		circomEncryptionKeyX,
-		circomEncryptionKeyY,
-		// address
-		inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),
-		// commitment
-		commitment.MathBigInt(),
-		// nullifier
-		nullifier.MathBigInt())
+		circomEncryptionKeyX,    // encryption key x coordinate
+		circomEncryptionKeyY,    // encryption key y coordinate
+		ffAddress.MathBigInt(),  // address
+		commitment.MathBigInt(), // commitment
+		nullifier.MathBigInt(),  // nullifier
+	)
 	// ballot (in twisted edwards form)
 	inputsHash = append(inputsHash, ballot.FromRTEtoTE().BigInts()...)
 	// weight
@@ -71,27 +68,32 @@ func WasmCircomInputs(
 		return nil, fmt.Errorf("Error hashing inputs: %v", err.Error())
 	}
 	return &BallotProofWasmResult{
+		ProccessID:       inputs.ProcessID,
+		Address:          inputs.Address,
+		Commitment:       commitment,
+		Nullifier:        nullifier,
+		Ballot:           ballot.FromRTEtoTE(),
+		BallotInputsHash: crypto.BigIntToFFwithPadding(circomInputHash, circuits.VoteVerifierCurve.ScalarField()),
 		CircomInputs: &CircomInputs{
 			Fields:          circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
-			MaxCount:        circuitBallotMode.MaxCount.String(),
-			ForceUniqueness: circuitBallotMode.ForceUniqueness.String(),
-			MaxValue:        circuitBallotMode.MaxValue.String(),
-			MinValue:        circuitBallotMode.MinValue.String(),
-			MaxTotalCost:    circuitBallotMode.MaxTotalCost.String(),
-			MinTotalCost:    circuitBallotMode.MinTotalCost.String(),
-			CostExp:         circuitBallotMode.CostExp.String(),
-			CostFromWeight:  circuitBallotMode.CostFromWeight.String(),
-			Address:         inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
+			MaxCount:        ballotMode.MaxCount.String(),
+			ForceUniqueness: ballotMode.ForceUniqueness.String(),
+			MaxValue:        ballotMode.MaxValue.String(),
+			MinValue:        ballotMode.MinValue.String(),
+			MaxTotalCost:    ballotMode.MaxTotalCost.String(),
+			MinTotalCost:    ballotMode.MinTotalCost.String(),
+			CostExp:         ballotMode.CostExp.String(),
+			CostFromWeight:  ballotMode.CostFromWeight.String(),
+			Address:         ffAddress.String(),
 			Weight:          inputs.Weight.MathBigInt().String(),
-			ProcessID:       inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
+			ProcessID:       ffProcessID.String(),
 			PK:              []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
 			K:               inputs.K.MathBigInt().String(),
-			Ballot:          ballot.FromRTEtoTE(),
+			Cipherfields:    circuits.BigIntArrayToStringArray(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
 			Nullifier:       nullifier.String(),
 			Commitment:      commitment.String(),
 			Secret:          inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
 			InputsHash:      circomInputHash.String(),
 		},
-		HashToSign: crypto.BigIntToFFwithPadding(circomInputHash, circuits.VoteVerifierCurve.ScalarField()),
 	}, nil
 }

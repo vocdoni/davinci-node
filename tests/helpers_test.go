@@ -272,7 +272,7 @@ func createVote(c *qt.C, pid *types.ProcessID, bm types.BallotMode, encKey *type
 		FieldValues: fields,
 	}
 	// generate the inputs for the ballot proof circuit
-	wasmResult, err := ballotproof.WasmCircomInputs(wasmInputs)
+	wasmResult, err := ballotproof.WasmVoteInputs(wasmInputs)
 	c.Assert(err, qt.IsNil)
 	// encode the inputs to json
 	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)
@@ -284,23 +284,16 @@ func createVote(c *qt.C, pid *types.ProcessID, bm types.BallotMode, encKey *type
 	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
 	c.Assert(err, qt.IsNil)
 	// sign the hash of the circuit inputs
-	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.HashToSign)
+	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.BallotInputsHash)
 	c.Assert(err, qt.IsNil)
-	// convert the string values back to big ints
-	bigCommitment, ok := new(big.Int).SetString(wasmResult.CircomInputs.Commitment, 10)
-	c.Assert(ok, qt.IsTrue)
-	bigNullifier, ok := new(big.Int).SetString(wasmResult.CircomInputs.Nullifier, 10)
-	c.Assert(ok, qt.IsTrue)
-	bigInputsHash, ok := new(big.Int).SetString(wasmResult.CircomInputs.InputsHash, 10)
-	c.Assert(ok, qt.IsTrue)
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID:        pid.Marshal(),
-		Commitment:       (*types.BigInt)(bigCommitment),
-		Nullifier:        (*types.BigInt)(bigNullifier),
-		Ballot:           wasmResult.CircomInputs.Ballot,
+		ProcessID:        wasmResult.ProccessID,
+		Commitment:       wasmResult.Commitment,
+		Nullifier:        wasmResult.Nullifier,
+		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
-		BallotInputsHash: (*types.BigInt)(bigInputsHash),
+		BallotInputsHash: wasmResult.BallotInputsHash.BigInt(),
 		Address:          address.Bytes(),
 		Signature:        signature.Bytes(),
 	}

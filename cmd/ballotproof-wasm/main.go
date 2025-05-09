@@ -27,7 +27,7 @@ func generateProofInputs(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("Invalid inputs: %v", err))
 	}
 	// generate the circom inputs
-	circomInputs, err := ballotproof.WasmCircomInputs(&inputs)
+	circomInputs, err := ballotproof.WasmVoteInputs(&inputs)
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error generating circom inputs: %v", err))
 	}
