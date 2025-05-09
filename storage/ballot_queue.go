@@ -11,18 +11,36 @@ import (
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
+/*
+ dbPrefix = bs
+ processID_voteID = status
+ processID_voteID = 0 -> pending
+ processID_voteID = 1 -> verified
+ processID_voteID = 2 -> aggregated
+ processID_voteID = 3 -> processed
+ processID_voteID = 4 -> settled
+ processID_voteID = 5 -> error
+*/
+
+var (
+	// ErroBallotAlreadyExists is returned when a ballot already exists in the pending queue.
+	ErroBallotAlreadyExists = errors.New("ballot already exists")
+)
+
 // PushBallot stores a new ballot into the pending ballots queue.
 func (s *Storage) PushBallot(b *Ballot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	log.Debugw("push ballot", "processID", b.ProcessID)
 	val, err := encodeArtifact(b)
 	if err != nil {
 		return fmt.Errorf("encode ballot: %w", err)
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotPrefix)
-	key := hashKey(val)
-	if err := wTx.Set(key, val); err != nil {
+	if _, err := wTx.Get(b.VoteID()); err == nil {
+		wTx.Discard()
+		return ErroBallotAlreadyExists
+	}
+	if err := wTx.Set(b.VoteID(), val); err != nil {
 		wTx.Discard()
 		return err
 	}
@@ -68,17 +86,17 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 }
 
 // RemoveBallot removes a ballot from the pending queue and its reservation.
-func (s *Storage) RemoveBallot(k []byte) error {
+func (s *Storage) RemoveBallot(voteID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	// remove reservation
-	if err := s.deleteArtifact(ballotReservationPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
 	// remove from pending queue
-	if err := s.deleteArtifact(ballotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
 
@@ -88,17 +106,17 @@ func (s *Storage) RemoveBallot(k []byte) error {
 // MarkBallotDone called after we have processed the ballot. We push the
 // verified ballot to the next queue. In this scenario, next stage is
 // verifiedBallot so we do not store the original ballot.
-func (s *Storage) MarkBallotDone(k []byte, vb *VerifiedBallot) error {
+func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	// remove reservation
-	if err := s.deleteArtifact(ballotReservationPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
 	// remove from pending queue
-	if err := s.deleteArtifact(ballotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
 
@@ -109,7 +127,7 @@ func (s *Storage) MarkBallotDone(k []byte, vb *VerifiedBallot) error {
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedBallotPrefix)
 	// key with processID as prefix + unique portion from original key
-	combKey := append(slices.Clone(vb.ProcessID), k...)
+	combKey := append(slices.Clone(vb.ProcessID), voteID...)
 	if err := wTx.Set(combKey, val); err != nil {
 		wTx.Discard()
 		return err
