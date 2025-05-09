@@ -107,9 +107,9 @@ func TestIntegration(t *testing.T) {
 	c.Run("create vote", func(c *qt.C) {
 		count := 0
 		for i := range signers {
-			// generate a vote for the first participant
+			// generate a vote for the participant
 			vote := createVote(c, pid, *ballotMode, encryptionKey, signers[i])
-			// generate census proof for first participant
+			// generate census proof for participant
 			censusProof := generateCensusProof(c, cli, root, vote.Address)
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)

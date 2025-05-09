@@ -9,7 +9,12 @@ import (
 )
 
 // CommitmentAndNullifier calculates the commitment and nullifier for a ballot
-// using the address, processID, and secret.
+// using the address, processID, and secret. The commitment is calculated
+// hashing the address, processID, and secret together using the poseidon
+// hash function. The nullifier is calculated by hashing the commitment and
+// secret together using the poseidon hash function. The function returns the
+// commitment and nullifier as BigInt pointers, or an error if the hashing
+// fails.
 func CommitmentAndNullifier(address, processID, secret *types.BigInt) (*types.BigInt, *types.BigInt, error) {
 	commitment, err := poseidon.Hash([]*big.Int{
 		address.ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt(),

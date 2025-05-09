@@ -13,6 +13,14 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
+// WasmVoteInputs composes the data to generate the inputs required to generate
+// the witness for a ballot proof using the circom circuit and also the data
+// required to cast a vote sending it to the sequencer API. It receives the
+// BallotProofWasmInputs struct and returns the BallotProofWasmResult struct.
+// This method parses the public encryption key for the desired process and
+// encrypts the ballot fields with the secret K provided. It also generates
+// the commitment and nullifier for the vote, using the address, process ID
+// and the secret provided.
 func WasmVoteInputs(
 	inputs *BallotProofWasmInputs,
 ) (*BallotProofWasmResult, error) {
@@ -30,7 +38,7 @@ func WasmVoteInputs(
 	// encrypt the ballot
 	ballot, err := elgamal.NewBallot(encryptionKey).Encrypt(fields, encryptionKey, inputs.K.MathBigInt())
 	if err != nil {
-		return nil, fmt.Errorf("Error encrypting ballot: %v", err.Error())
+		return nil, fmt.Errorf("error encrypting ballot: %v", err.Error())
 	}
 	// get encryption key point for circom
 	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(encryptionKey.Point())
@@ -41,7 +49,7 @@ func WasmVoteInputs(
 		inputs.Secret.BigInt(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Error calculating commitment and nullifier: %v", err.Error())
+		return nil, fmt.Errorf("error calculating commitment and nullifier: %v", err.Error())
 	}
 	// ballot mode as circuit ballot mode
 	ballotMode := circuits.BallotModeToCircuit(inputs.BallotMode)
@@ -65,7 +73,7 @@ func WasmVoteInputs(
 	// hash the inputs with mimc7
 	circomInputHash, err := mimc7.Hash(inputsHash, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Error hashing inputs: %v", err.Error())
+		return nil, fmt.Errorf("error hashing inputs: %v", err.Error())
 	}
 	return &BallotProofWasmResult{
 		ProccessID:       inputs.ProcessID,
@@ -73,7 +81,8 @@ func WasmVoteInputs(
 		Commitment:       commitment,
 		Nullifier:        nullifier,
 		Ballot:           ballot.FromRTEtoTE(),
-		BallotInputsHash: crypto.BigIntToFFwithPadding(circomInputHash, circuits.VoteVerifierCurve.ScalarField()),
+		BallotInputsHash: (*types.BigInt)(circomInputHash),
+		VoteID:           crypto.BigIntToFFwithPadding(circomInputHash, circuits.VoteVerifierCurve.ScalarField()),
 		CircomInputs: &CircomInputs{
 			Fields:          circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
 			MaxCount:        ballotMode.MaxCount.String(),

@@ -284,17 +284,17 @@ func createVote(c *qt.C, pid *types.ProcessID, bm types.BallotMode, encKey *type
 	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
 	c.Assert(err, qt.IsNil)
 	// sign the hash of the circuit inputs
-	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.BallotInputsHash)
+	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
 	c.Assert(err, qt.IsNil)
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
 		ProcessID:        wasmResult.ProccessID,
+		Address:          wasmInputs.Address,
 		Commitment:       wasmResult.Commitment,
 		Nullifier:        wasmResult.Nullifier,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
-		BallotInputsHash: wasmResult.BallotInputsHash.BigInt(),
-		Address:          address.Bytes(),
+		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 	}
 }
