@@ -36,14 +36,16 @@ func TestBallotQueue(t *testing.T) {
 
 	// Create ballots with fixed data for deterministic testing
 	ballot1 := &Ballot{
-		ProcessID: processID.Marshal(),
-		Nullifier: new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
-		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
+		ProcessID:        processID.Marshal(),
+		Nullifier:        new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
+		Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
+		BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
 	}
 	ballot2 := &Ballot{
-		ProcessID: processID.Marshal(),
-		Nullifier: new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
-		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
+		ProcessID:        processID.Marshal(),
+		Nullifier:        new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
+		Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
+		BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
 	}
 
 	// Push the ballots
@@ -174,11 +176,12 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 	}
 
 	// Create 5 ballots with fixed data for deterministic testing
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		ballot := &Ballot{
-			ProcessID: processID.Marshal(),
-			Nullifier: new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 32)),
-			Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
+			ProcessID:        processID.Marshal(),
+			Nullifier:        new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 32)),
+			Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
+			BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 32)),
 		}
 		c.Assert(st.PushBallot(ballot), qt.IsNil)
 	}
