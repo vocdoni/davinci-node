@@ -33,6 +33,7 @@ type Addresses struct {
 	OrganizationRegistry common.Address
 	ProcessRegistry      common.Address
 	ResultsRegistry      common.Address
+	ZKVerifier           common.Address
 }
 
 // Contracts contains the bindings to the deployed contracts.
@@ -192,7 +193,21 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.ContractsAddresses.ProcessRegistry, tx, c.processes, err = bindings.DeployProcessRegistry(opts, cli, strconv.Itoa(int(chainID)), c.ContractsAddresses.OrganizationRegistry)
+	addr, tx, _, err = bindings.DeployGroth16Verifier(opts, cli)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy zkverifier contract: %w", err)
+	}
+	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+		return nil, err
+	}
+	c.ContractsAddresses.ZKVerifier = addr
+	log.Infow("deployed ZKVerifier contract", "address", addr, "tx", tx.Hash().Hex())
+
+	opts, err = c.authTransactOpts()
+	if err != nil {
+		return nil, err
+	}
+	c.ContractsAddresses.ProcessRegistry, tx, c.processes, err = bindings.DeployProcessRegistry(opts, cli, strconv.Itoa(int(chainID)), c.ContractsAddresses.OrganizationRegistry, c.ContractsAddresses.ZKVerifier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process registry: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
@@ -184,4 +185,26 @@ type StateTransitionBatchProofInputs struct {
 	RootHashAfter  *big.Int `json:"rootHashAfter"`
 	NumNewVotes    int      `json:"numNewVotes"`
 	NumOverwrites  int      `json:"numOverwrites"`
+}
+
+// EncodeAsUint256Array ABI-encodes the four fields as a Solidity uint256[4].
+func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
+	uint256, err := abi.NewType("uint256", "", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	args := abi.Arguments{
+		{Type: uint256},
+		{Type: uint256},
+		{Type: uint256},
+		{Type: uint256},
+	}
+
+	return args.Pack(
+		s.RootHashBefore,
+		s.RootHashAfter,
+		big.NewInt(int64(s.NumNewVotes)),
+		big.NewInt(int64(s.NumOverwrites)),
+	)
 }

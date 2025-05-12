@@ -53,13 +53,26 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
+
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
-	process, err := c.processes.GetProcess(&bind.CallOpts{Context: ctx}, pid)
-	cancel()
+	defer cancel()
+
+	p, err := c.processes.GetProcess(&bind.CallOpts{Context: ctx}, pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
-	return contractProcess2Process(&process)
+
+	return contractProcess2Process(&ProcessRegistryProcess{
+		Status:          p.Status,
+		OrganizationId:  p.OrganizationId,
+		EncryptionKey:   p.EncryptionKey,
+		LatestStateRoot: p.LatestStateRoot,
+		StartTime:       p.StartTime,
+		Duration:        p.Duration,
+		MetadataURI:     p.MetadataURI,
+		BallotMode:      p.BallotMode,
+		Census:          p.Census,
+	})
 }
 
 // StateRoot returns the state root of the process with the given ID. It
@@ -78,7 +91,7 @@ func (c *Contracts) StateRoot(processID []byte) ([]byte, error) {
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) SetProcessTransition(processID, oldRoot, newRoot, proof []byte) (*common.Hash, error) {
+func (c *Contracts) SetProcessTransition(processID, proof, input, oldRoot []byte) (*common.Hash, error) {
 	stateRoot, err := c.StateRoot(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
@@ -90,15 +103,12 @@ func (c *Contracts) SetProcessTransition(processID, oldRoot, newRoot, proof []by
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-	var oldRoot32, newRoot32 [32]byte
-	copy(oldRoot32[:], oldRoot)
-	copy(newRoot32[:], newRoot)
 	autOpts, err := c.authTransactOpts()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transact options: %w", err)
 	}
 	autOpts.Context = ctx
-	tx, err := c.processes.SubmitStateTransition(autOpts, pid, oldRoot32, newRoot32, proof)
+	tx, err := c.processes.SubmitStateTransition(autOpts, pid, proof, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to submit state transition: %w", err)
 	}
@@ -132,17 +142,17 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 				}
 				c.lastWatchProcessBlock = end
 				for iter.Next() {
-					processID := fmt.Sprintf("%x", iter.Event.ProcessID)
+					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
 					if _, exists := c.knownProcesses[processID]; exists {
 						continue
 					}
 					c.knownProcesses[processID] = struct{}{}
-					process, err := c.Process(iter.Event.ProcessID[:])
+					process, err := c.Process(iter.Event.ProcessId[:])
 					if err != nil {
 						log.Errorw(err, "failed to get process while monitoring process creation")
 						continue
 					}
-					process.ID = iter.Event.ProcessID[:]
+					process.ID = iter.Event.ProcessId[:]
 					ch <- process
 				}
 			}
@@ -183,19 +193,19 @@ func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<
 					for {
 						// wait for the process to be indexed by web3 providers
 						time.Sleep(1 * time.Second)
-						p, err = c.Process(event.ProcessID[:])
+						p, err = c.Process(event.ProcessId[:])
 						if err != nil {
 							log.Errorw(err, "failed to get process while monitoring")
 							continue
 						}
 						if p.OrganizationId.Cmp(common.Address{}) != 0 {
-							p.ID = event.ProcessID[:]
+							p.ID = event.ProcessId[:]
 							ch2 <- p
 							break
 						}
 						maxTries--
 						if maxTries == 0 {
-							log.Errorw(fmt.Errorf("max tries reached while monitoring process created"), fmt.Sprintf("processId:%x", event.ProcessID))
+							log.Errorw(fmt.Errorf("max tries reached while monitoring process created"), fmt.Sprintf("processId:%x", event.ProcessId))
 							break
 						}
 					}
@@ -206,74 +216,84 @@ func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<
 	return ch2, nil
 }
 
-func contractProcess2Process(contractProcess *bindings.ProcessRegistryProcess) (*types.Process, error) {
+func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) {
 	mode := types.BallotMode{
-		ForceUniqueness: contractProcess.BallotMode.ForceUniqueness,
-		CostFromWeight:  contractProcess.BallotMode.CostFromWeight,
-		MaxCount:        contractProcess.BallotMode.MaxCount,
-		CostExponent:    contractProcess.BallotMode.CostExponent,
-		MaxValue:        (*types.BigInt)(contractProcess.BallotMode.MaxValue),
-		MinValue:        (*types.BigInt)(contractProcess.BallotMode.MinValue),
-		MaxTotalCost:    (*types.BigInt)(contractProcess.BallotMode.MaxTotalCost),
-		MinTotalCost:    (*types.BigInt)(contractProcess.BallotMode.MinTotalCost),
+		ForceUniqueness: p.BallotMode.ForceUniqueness,
+		CostFromWeight:  p.BallotMode.CostFromWeight,
+		MaxCount:        p.BallotMode.MaxCount,
+		CostExponent:    p.BallotMode.CostExponent,
+		MaxValue:        (*types.BigInt)(p.BallotMode.MaxValue),
+		MinValue:        (*types.BigInt)(p.BallotMode.MinValue),
+		MaxTotalCost:    (*types.BigInt)(p.BallotMode.MaxTotalCost),
+		MinTotalCost:    (*types.BigInt)(p.BallotMode.MinTotalCost),
 	}
 	if err := mode.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ballot mode: %w", err)
 	}
+
 	census := types.Census{
-		CensusRoot:   contractProcess.Census.CensusRoot[:],
-		MaxVotes:     (*types.BigInt)(contractProcess.Census.MaxVotes),
-		CensusURI:    contractProcess.Census.CensusURI,
-		CensusOrigin: contractProcess.Census.CensusOrigin,
+		CensusRoot:   p.Census.CensusRoot[:],
+		MaxVotes:     (*types.BigInt)(p.Census.MaxVotes),
+		CensusURI:    p.Census.CensusURI,
+		CensusOrigin: p.Census.CensusOrigin,
 	}
+
 	return &types.Process{
-		Status:         contractProcess.Status,
-		OrganizationId: contractProcess.OrganizationId,
+		Status:         p.Status,
+		OrganizationId: p.OrganizationId,
 		EncryptionKey: &types.EncryptionKey{
-			X: contractProcess.EncryptionKey.X,
-			Y: contractProcess.EncryptionKey.Y,
+			X: p.EncryptionKey.X,
+			Y: p.EncryptionKey.Y,
 		},
-		StateRoot:   contractProcess.LatestStateRoot[:],
-		StartTime:   time.Unix(int64(contractProcess.StartTime.Uint64()), 0),
-		Duration:    time.Duration(contractProcess.Duration.Uint64()) * time.Second,
-		MetadataURI: contractProcess.MetadataURI,
+		StateRoot:   p.LatestStateRoot.Bytes(),
+		StartTime:   time.Unix(int64(p.StartTime.Uint64()), 0),
+		Duration:    time.Duration(p.Duration.Uint64()) * time.Second,
+		MetadataURI: p.MetadataURI,
 		BallotMode:  &mode,
 		Census:      &census,
 	}, nil
 }
 
-func process2ContractProcess(process *types.Process) *bindings.ProcessRegistryProcess {
-	ballotMode := bindings.ProcessRegistryBallotMode{
-		ForceUniqueness: process.BallotMode.ForceUniqueness,
-		MaxCount:        process.BallotMode.MaxCount,
-		CostExponent:    process.BallotMode.CostExponent,
-		MaxValue:        process.BallotMode.MaxValue.MathBigInt(),
-		MinValue:        process.BallotMode.MinValue.MathBigInt(),
-		MaxTotalCost:    process.BallotMode.MaxTotalCost.MathBigInt(),
-		MinTotalCost:    process.BallotMode.MinTotalCost.MathBigInt(),
+// ProcessRegistryProcess is a mirror of the on-chain process tuple constructed with the auto-generated bindings
+type ProcessRegistryProcess struct {
+	Status          uint8
+	OrganizationId  common.Address
+	EncryptionKey   bindings.IProcessRegistryEncryptionKey
+	LatestStateRoot *big.Int
+	StartTime       *big.Int
+	Duration        *big.Int
+	MetadataURI     string
+	BallotMode      bindings.IProcessRegistryBallotMode
+	Census          bindings.IProcessRegistryCensus
+}
+
+func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
+	var prp ProcessRegistryProcess
+
+	prp.Status = p.Status
+	prp.OrganizationId = p.OrganizationId
+	prp.EncryptionKey = bindings.IProcessRegistryEncryptionKey{X: p.EncryptionKey.X, Y: p.EncryptionKey.Y}
+
+	prp.LatestStateRoot = new(big.Int).SetBytes(p.StateRoot)
+	prp.StartTime = big.NewInt(p.StartTime.Unix())
+	prp.Duration = big.NewInt(int64(p.Duration.Seconds()))
+	prp.MetadataURI = p.MetadataURI
+
+	prp.BallotMode = bindings.IProcessRegistryBallotMode{
+		CostFromWeight:  p.BallotMode.CostFromWeight,
+		ForceUniqueness: p.BallotMode.ForceUniqueness,
+		MaxCount:        p.BallotMode.MaxCount,
+		CostExponent:    p.BallotMode.CostExponent,
+		MaxValue:        p.BallotMode.MaxValue.MathBigInt(),
+		MinValue:        p.BallotMode.MinValue.MathBigInt(),
+		MaxTotalCost:    p.BallotMode.MaxTotalCost.MathBigInt(),
+		MinTotalCost:    p.BallotMode.MinTotalCost.MathBigInt(),
 	}
-	census := bindings.ProcessRegistryCensus{
-		CensusRoot:   [32]byte{},
-		MaxVotes:     process.Census.MaxVotes.MathBigInt(),
-		CensusURI:    process.Census.CensusURI,
-		CensusOrigin: process.Census.CensusOrigin,
-	}
-	copy(census.CensusRoot[:], process.Census.CensusRoot)
-	encryptionKey := bindings.ProcessRegistryEncryptionKey{
-		X: process.EncryptionKey.X,
-		Y: process.EncryptionKey.Y,
-	}
-	stateRoot := [32]byte{}
-	copy(stateRoot[:], process.StateRoot)
-	return &bindings.ProcessRegistryProcess{
-		Status:          process.Status,
-		OrganizationId:  process.OrganizationId,
-		EncryptionKey:   encryptionKey,
-		LatestStateRoot: stateRoot,
-		StartTime:       big.NewInt(process.StartTime.Unix()),
-		Duration:        big.NewInt(int64(process.Duration.Seconds())),
-		MetadataURI:     process.MetadataURI,
-		BallotMode:      ballotMode,
-		Census:          census,
-	}
+
+	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
+	prp.Census.CensusOrigin = p.Census.CensusOrigin
+	prp.Census.MaxVotes = p.Census.MaxVotes.MathBigInt()
+	prp.Census.CensusURI = p.Census.CensusURI
+
+	return prp
 }
