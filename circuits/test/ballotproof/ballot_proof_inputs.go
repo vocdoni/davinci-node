@@ -67,11 +67,11 @@ func GenEncryptionKeyForTest() ecc.Point {
 // The items between n and NFields are padded with big.Int(0)
 func GenBallotFieldsForTest(n, max, min int, unique bool) [types.FieldsPerBallot]*big.Int {
 	fields := [types.FieldsPerBallot]*big.Int{}
-	for i := 0; i < len(fields); i++ {
+	for i := range len(fields) {
 		fields[i] = big.NewInt(0)
 	}
 	stored := map[string]bool{}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		for {
 			// generate random field
 			field, err := rand.Int(rand.Reader, big.NewInt(int64(max-min)))

@@ -18,9 +18,9 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
 	"github.com/vocdoni/vocdoni-z-sandbox/api/client"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
@@ -240,29 +240,61 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	return pid, encryptionKeys
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, encKey *types.EncryptionKey, privKey *ethereum.Signer) api.Vote {
-	bbjEncKey := new(bjj.BJJ).SetPoint(encKey.X, encKey.Y)
+func createVote(c *qt.C, pid *types.ProcessID, bm types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer) api.Vote {
+	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	votedata, err := ballotprooftest.BallotProofForTest(address.Bytes(), pid.Marshal(), bbjEncKey)
+	secret := util.RandomBytes(16)
+	k, err := elgamal.RandK()
 	c.Assert(err, qt.IsNil)
-	// convert the circom inputs hash to the field of the curve used by the
-	// circuit as input for MIMC hash
-	blsCircomInputsHash := crypto.BigIntToFFwithPadding(votedata.InputsHash, circuits.VoteVerifierCurve.ScalarField())
-	// sign the inputs hash with the private key
-	signature, err := ballotprooftest.SignECDSAForTest(privKey, blsCircomInputsHash)
+	// generate random ballot fields
+	randFields := ballotprooftest.GenBallotFieldsForTest(
+		int(bm.MaxCount),
+		int(bm.MaxValue.MathBigInt().Int64()),
+		int(bm.MinValue.MathBigInt().Int64()),
+		bm.ForceUniqueness)
+	// cast fields to types.BigInt
+	fields := []*types.BigInt{}
+	for _, f := range randFields {
+		fields = append(fields, (*types.BigInt)(f))
+	}
+	// compose wasm inputs
+	wasmInputs := &ballotproof.BallotProofInputs{
+		Address:   address.Bytes(),
+		ProcessID: pid.Marshal(),
+		Secret:    secret,
+		EncryptionKey: []*types.BigInt{
+			(*types.BigInt)(encKey.X),
+			(*types.BigInt)(encKey.Y),
+		},
+		K:           (*types.BigInt)(k),
+		BallotMode:  &bm,
+		Weight:      (*types.BigInt)(new(big.Int).SetUint64(circuits.MockWeight)),
+		FieldValues: fields,
+	}
+	// generate the inputs for the ballot proof circuit
+	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
 	c.Assert(err, qt.IsNil)
-
-	circomProof, _, err := circuits.Circom2GnarkProof(votedata.Proof, votedata.PubInputs)
+	// encode the inputs to json
+	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)
 	c.Assert(err, qt.IsNil)
-
+	// generate the proof using the circom circuit
+	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
+	c.Assert(err, qt.IsNil)
+	// convert the proof to gnark format
+	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
+	c.Assert(err, qt.IsNil)
+	// sign the hash of the circuit inputs
+	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
+	c.Assert(err, qt.IsNil)
+	// return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID:        pid.Marshal(),
-		Commitment:       (*types.BigInt)(votedata.Commitment),
-		Nullifier:        (*types.BigInt)(votedata.Nullifier),
-		Ballot:           votedata.Ballot,
+		ProcessID:        wasmResult.ProccessID,
+		Address:          wasmInputs.Address,
+		Commitment:       wasmResult.Commitment,
+		Nullifier:        wasmResult.Nullifier,
+		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
-		BallotInputsHash: (*types.BigInt)(votedata.InputsHash),
-		Address:          address.Bytes(),
+		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 	}
 }
