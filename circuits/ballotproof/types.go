@@ -5,9 +5,9 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-// BallotProofWasmInputs struct contains the required inputs to compose the
+// BallotProofInputs struct contains the required inputs to compose the
 // data to generate the witness for a ballot proof using the circom circuit.
-type BallotProofWasmInputs struct {
+type BallotProofInputs struct {
 	Address       types.HexBytes    `json:"address"`
 	ProcessID     types.HexBytes    `json:"processID"`
 	Secret        types.HexBytes    `json:"secret"`
@@ -42,13 +42,13 @@ type CircomInputs struct {
 	InputsHash      string   `json:"inputs_hash"`
 }
 
-// BallotProofWasmResult struct contains the result of composing the data to
+// BallotProofInputsResult struct contains the result of composing the data to
 // generate the witness for a ballot proof using the circom circuit. Includes
 // the inputs for the circom circuit but also the required data to cast a vote
 // sending it to the sequencer API. It includes the BallotInputsHash, which is
 // used by the API to verify the resulting circom proof and the voteID, which
 // is signed by the user to prove the ownership of the vote.
-type BallotProofWasmResult struct {
+type BallotProofInputsResult struct {
 	ProccessID       types.HexBytes  `json:"processID"`
 	Address          types.HexBytes  `json:"address"`
 	Commitment       *types.BigInt   `json:"commitment"`

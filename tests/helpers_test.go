@@ -258,7 +258,7 @@ func createVote(c *qt.C, pid *types.ProcessID, bm types.BallotMode, encKey *type
 		fields = append(fields, (*types.BigInt)(f))
 	}
 	// compose wasm inputs
-	wasmInputs := &ballotproof.BallotProofWasmInputs{
+	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:   address.Bytes(),
 		ProcessID: pid.Marshal(),
 		Secret:    secret,
@@ -272,7 +272,7 @@ func createVote(c *qt.C, pid *types.ProcessID, bm types.BallotMode, encKey *type
 		FieldValues: fields,
 	}
 	// generate the inputs for the ballot proof circuit
-	wasmResult, err := ballotproof.WasmVoteInputs(wasmInputs)
+	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
 	c.Assert(err, qt.IsNil)
 	// encode the inputs to json
 	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)

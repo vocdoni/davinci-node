@@ -13,17 +13,17 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-// WasmVoteInputs composes the data to generate the inputs required to generate
-// the witness for a ballot proof using the circom circuit and also the data
-// required to cast a vote sending it to the sequencer API. It receives the
-// BallotProofWasmInputs struct and returns the BallotProofWasmResult struct.
-// This method parses the public encryption key for the desired process and
-// encrypts the ballot fields with the secret K provided. It also generates
+// GenerateBallotProofInputs composes the data to generate the inputs required
+// to generate the witness for a ballot proof using the circom circuit and also
+// the data required to cast a vote sending it to the sequencer API. It receives
+// the BallotProofWasmInputs struct and returns the BallotProofWasmResult
+// struct. This method parses the public encryption key for the desired process
+// and encrypts the ballot fields with the secret K provided. It also generates
 // the commitment and nullifier for the vote, using the address, process ID
 // and the secret provided.
-func WasmVoteInputs(
-	inputs *BallotProofWasmInputs,
-) (*BallotProofWasmResult, error) {
+func GenerateBallotProofInputs(
+	inputs *BallotProofInputs,
+) (*BallotProofInputsResult, error) {
 	// pad the field values to the number of circuits.FieldsPerBallot
 	fields := [types.FieldsPerBallot]*big.Int{}
 	for i := range fields {
@@ -75,7 +75,7 @@ func WasmVoteInputs(
 	if err != nil {
 		return nil, fmt.Errorf("error hashing inputs: %v", err.Error())
 	}
-	return &BallotProofWasmResult{
+	return &BallotProofInputsResult{
 		ProccessID:       inputs.ProcessID,
 		Address:          inputs.Address,
 		Commitment:       commitment,
