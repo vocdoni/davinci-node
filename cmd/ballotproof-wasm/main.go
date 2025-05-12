@@ -22,12 +22,12 @@ func generateProofInputs(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("Invalid number of arguments, expected %d got %d", nArgs, len(args)))
 	}
 	// parse the inputs from the first argument
-	inputs, err := FromJSONValue[ballotproof.BallotProofWasmInputs](args[0])
+	inputs, err := FromJSONValue[ballotproof.BallotProofInputs](args[0])
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Invalid inputs: %v", err))
 	}
 	// generate the circom inputs
-	circomInputs, err := ballotproof.WasmVoteInputs(&inputs)
+	circomInputs, err := ballotproof.GenerateBallotProofInputs(&inputs)
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error generating circom inputs: %v", err))
 	}

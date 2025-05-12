@@ -8,8 +8,8 @@ import (
 // BallotProofInputs struct contains the required inputs to compose the
 // data to generate the witness for a ballot proof using the circom circuit.
 type BallotProofInputs struct {
-	Address       types.HexBytes    `json:"address"`
 	ProcessID     types.HexBytes    `json:"processID"`
+	Address       types.HexBytes    `json:"address"`
 	Secret        types.HexBytes    `json:"secret"`
 	EncryptionKey []*types.BigInt   `json:"encryptionKey"`
 	K             *types.BigInt     `json:"k"`
