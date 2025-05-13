@@ -27,6 +27,7 @@ type Services struct {
 	ProcessMon *service.ProcessMonitor
 	API        *service.APIService
 	Sequencer  *service.SequencerService
+	Finalizer  *service.FinalizerService
 }
 
 func main() {
@@ -190,6 +191,13 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 		return nil, fmt.Errorf("failed to start sequencer service: %w", err)
 	}
 
+	// Start finalizer service
+	log.Infow("starting finalizer service", "monitorInterval", time.Minute)
+	services.Finalizer = service.NewFinalizer(services.Storage, services.Storage.StateDB(), time.Minute)
+	if err := services.Finalizer.Start(ctx, time.Minute); err != nil {
+		return nil, fmt.Errorf("failed to start finalizer service: %w", err)
+	}
+
 	log.Info("davinci-sequencer is running")
 	return services, nil
 }
@@ -201,6 +209,9 @@ func shutdownServices(services *Services) {
 	}
 
 	// Stop services in reverse order of startup
+	if services.Finalizer != nil {
+		services.Finalizer.Stop()
+	}
 	if services.Sequencer != nil {
 		services.Sequencer.Stop()
 	}

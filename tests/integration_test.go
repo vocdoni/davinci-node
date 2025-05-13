@@ -35,17 +35,17 @@ func TestIntegration(t *testing.T) {
 
 	// Setup
 	ctx := context.Background()
-	apiSrv, seqSrv, stg, contracts := NewTestService(t, ctx)
-	_, port := apiSrv.HostPort()
+	services := NewTestService(t, ctx)
+	_, port := services.API.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
 
 	// Start sequencer batch time window
-	seqSrv.Sequencer.SetBatchTimeWindow(time.Second * 50)
+	services.Sequencer.SetBatchTimeWindow(time.Second * 50)
 
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
 		// // Create a debug prover that will debug circuit execution during testing
-		seqSrv.Sequencer.SetProver(sequencer.NewDebugProver(t))
+		services.Sequencer.SetProver(sequencer.NewDebugProver(t))
 	} else {
 		t.Log("Debug prover is disabled! Set DEBUG=true to enable it.")
 	}
@@ -61,7 +61,7 @@ func TestIntegration(t *testing.T) {
 	)
 
 	c.Run("create organization", func(c *qt.C) {
-		orgAddr := createOrganization(c, contracts)
+		orgAddr := createOrganization(c, services.Contracts)
 		t.Logf("Organization address: %s", orgAddr.String())
 	})
 
@@ -92,11 +92,11 @@ func TestIntegration(t *testing.T) {
 			CostExponent:    uint8(mockMode.CostExp.Uint64()),
 		}
 
-		pid, encryptionKey = createProcess(c, contracts, cli, root, *ballotMode)
+		pid, encryptionKey = createProcess(c, services.Contracts, cli, root, *ballotMode)
 
 		// Wait for the process to be registered
 		for {
-			if _, err := stg.Process(pid); err == nil {
+			if _, err := services.Storage.Process(pid); err == nil {
 				break
 			}
 			time.Sleep(time.Millisecond * 200)
@@ -104,7 +104,7 @@ func TestIntegration(t *testing.T) {
 		t.Logf("Process ID: %s", pid.String())
 
 		// Wait for the process to be registered in the sequencer
-		for !seqSrv.Sequencer.ExistsProcessID(pid.Marshal()) {
+		for !services.Sequencer.ExistsProcessID(pid.Marshal()) {
 			time.Sleep(time.Millisecond * 200)
 		}
 	})
@@ -222,7 +222,15 @@ func TestIntegration(t *testing.T) {
 			select {
 			case <-ticker.C:
 				if checkVoteStatus() {
-					t.Log("All votes have been processed successfully")
+					c.Logf("All %d votes reached 'processed' status", numBallots)
+					// All votes are processed, finalize the process
+					t.Log("Finalizing process...")
+					services.Finalizer.OndemandCh <- pid
+					t.Log("Waiting for finalization to complete...")
+					results, err := services.Finalizer.WaitUntilFinalized(t.Context(), pid)
+					c.Assert(err, qt.IsNil)
+					c.Assert(results, qt.Not(qt.IsNil))
+					c.Logf("Finalization results: %v", results)
 					return
 				}
 			case <-timeoutCh:
