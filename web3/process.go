@@ -126,7 +126,7 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 		for {
 			select {
 			case <-ctx.Done():
-				log.Warnw("exiting monitor process creation")
+				log.Infow("exiting monitor process creation")
 				return
 			case <-ticker.C:
 				end := c.CurrentBlock()

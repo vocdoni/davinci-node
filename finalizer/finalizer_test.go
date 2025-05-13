@@ -35,7 +35,7 @@ func TestFinalize(t *testing.T) {
 
 	// Test finalize
 	f.OndemandCh <- pid
-	err := f.WaitUntilFinalized(pid)
+	_, err := f.WaitUntilFinalized(t.Context(), pid)
 	c.Assert(err, qt.IsNil, qt.Commentf("finalize failed: %v", err))
 
 	// Check that the process has been updated with the result
@@ -64,9 +64,8 @@ func TestFinalizeByDate(t *testing.T) {
 
 	// Set the process to start in the past and end in the future
 	startTime := time.Now().Add(-30 * time.Minute) // 30 minutes ago
-	duration := time.Hour                          // 1 hour long (so it ends 30 minutes from now)
+	process.Duration = time.Minute * 20            // 20 minute long (so it ended 10 minutes ago)
 	process.StartTime = startTime
-	process.Duration = duration
 
 	err = stg.SetProcess(process)
 	c.Assert(err, qt.IsNil)
@@ -76,12 +75,12 @@ func TestFinalizeByDate(t *testing.T) {
 	f.Start(t.Context(), 0)
 
 	// Call finalizeByDate with current time
-	// This should cause the process to be finalized because endTime > currentTime
+	// This should cause the process to be finalized because endTime < currentTime
 	currentTime := time.Now()
 	f.finalizeByDate(currentTime)
 
 	// Wait for finalization to complete
-	err = f.WaitUntilFinalized(pid)
+	_, err = f.WaitUntilFinalized(t.Context(), pid)
 	c.Assert(err, qt.IsNil, qt.Commentf("finalize by date failed: %v", err))
 
 	// Check that the process has been updated with the result

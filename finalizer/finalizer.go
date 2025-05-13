@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
@@ -18,17 +19,23 @@ const (
 	failbackMaxValue = 2 << 24 // 2^24
 )
 
+// Finalizer is responsible for finalizing processes.
 type Finalizer struct {
 	stg        *storage.Storage
 	stateDB    db.Database
 	OndemandCh chan *types.ProcessID
+	wg         sync.WaitGroup
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
+// New creates a new Finalizer instance.
 func New(stg *storage.Storage, stateDB db.Database) *Finalizer {
+	// We'll create the context in Start() now to avoid premature cancellation
 	return &Finalizer{
 		stg:        stg,
 		stateDB:    stateDB,
-		OndemandCh: make(chan *types.ProcessID),
+		OndemandCh: make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
 	}
 }
 
@@ -37,35 +44,96 @@ func New(stg *storage.Storage, stateDB db.Database) *Finalizer {
 // The monitorInterval is the interval at which to check for processes to finalize.
 // If monitorInterval is 0, it will not check for processes to finalize.
 func (f *Finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
+	f.ctx, f.cancel = context.WithCancel(ctx)
+
+	f.wg.Add(1)
 	go func() {
+		defer f.wg.Done()
 		for {
 			select {
 			case pid := <-f.OndemandCh:
 				if err := f.finalize(pid); err != nil {
 					log.Errorw(err, fmt.Sprintf("finalizing process %x", pid.Marshal()))
 				}
-			case <-ctx.Done():
+			case <-f.ctx.Done():
 				return
 			}
 		}
 	}()
 
 	if monitorInterval > 0 {
+		f.wg.Add(1)
 		go func() {
+			defer f.wg.Done()
 			ticker := time.NewTicker(monitorInterval)
+			defer ticker.Stop()
 			for {
 				select {
 				case <-ticker.C:
 					f.finalizeByDate(time.Now())
-				case <-ctx.Done():
+				case <-f.ctx.Done():
 					return
 				}
 			}
 		}()
 	}
+
+	log.Infow("finalizer started successfully")
 }
 
-// finalizeByDate finalizes all processes that startdate+duration is after the given date
+// Close gracefully shuts down the finalizer and waits for all goroutines to exit.
+// This method should be called before closing the database to avoid panics.
+func (f *Finalizer) Close() {
+	// Use a mutex to ensure thread safety if we were to add one
+	if f.cancel == nil {
+		return
+	}
+
+	// Signal all goroutines to stop
+	f.cancel()
+	f.cancel = nil
+
+	// Create a channel for draining signals
+	done := make(chan struct{})
+
+	// Drain the OndemandCh in a separate goroutine with a timeout
+	go func() {
+		for {
+			select {
+			case <-f.OndemandCh:
+				// Discard pending items
+			case <-time.After(100 * time.Millisecond):
+				// If no message received in 100ms, assume channel is drained
+				close(done)
+				return
+			}
+		}
+	}()
+
+	// Wait for the channel to be drained or timeout after 2 seconds
+	select {
+	case <-done:
+		// Channel drained successfully
+	case <-time.After(2 * time.Second):
+		log.Warnw("timeout while draining finalizer channel")
+	}
+
+	// Wait for all goroutines to exit with a timeout
+	waitCh := make(chan struct{})
+	go func() {
+		f.wg.Wait()
+		close(waitCh)
+	}()
+
+	select {
+	case <-waitCh:
+		log.Infow("finalizer closed successfully")
+	case <-time.After(5 * time.Second):
+		log.Warnw("some finalizer goroutines did not exit cleanly")
+	}
+}
+
+// finalizeByDate finalizes all processes that startdate+duration is before the given date
 // and that do not have a result yet.
 func (f *Finalizer) finalizeByDate(date time.Time) {
 	pids, err := f.stg.ListProcesses()
@@ -87,13 +155,16 @@ func (f *Finalizer) finalizeByDate(date time.Time) {
 			continue
 		}
 
-		if process.Result == nil && process.StartTime.Add(process.Duration).After(date) {
+		if !process.IsFinalized && process.StartTime.Add(process.Duration).Before(date) {
 			log.Debugw("found proces to finalize by date", "pid", pid.String())
 			f.OndemandCh <- pid
 		}
 	}
 }
 
+// finalize finalizes a process by decrypting the accumulators and storing the result.
+// It retrieves the process from storage, decrypts the accumulators using the encryption keys,
+// and stores the result back to storage.
 func (f *Finalizer) finalize(pid *types.ProcessID) error {
 	log.Debugw("finalizing process", "pid", pid.String())
 	// Retrieve the process from storage
@@ -102,8 +173,8 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 		return err
 	}
 
-	// Check if the process is already finalized (have results)
-	if process.Result != nil {
+	// Check if the process is already finalized
+	if process.IsFinalized {
 		return fmt.Errorf("process %x already finalized", pid.Marshal())
 	}
 
@@ -167,6 +238,7 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 	for i := range addAccumulator {
 		process.Result[i] = new(types.BigInt).Sub((*types.BigInt)(addAccumulator[i]), (*types.BigInt)(subAccumulator[i]))
 	}
+	process.IsFinalized = true
 
 	// Store the finalized process back to storage
 	if err := f.stg.SetProcess(process); err != nil {
@@ -177,26 +249,49 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 	return nil
 }
 
-func (f *Finalizer) WaitUntilFinalized(pid *types.ProcessID) error {
-	// Check if the process is already finalized
-	process, err := f.stg.Process(pid)
-	if err != nil {
-		return fmt.Errorf("could not retrieve process %x: %w", pid.Marshal(), err)
-	}
-	if process.Result != nil {
-		return nil
+// WaitUntilFinalized waits until the process is finalized. Returns the result of the process.
+// It ensures proper timeout handling and provides detailed logging for troubleshooting.
+func (f *Finalizer) WaitUntilFinalized(ctx context.Context, pid *types.ProcessID) ([]*types.BigInt, error) {
+	// Create a timeout context if one wasn't already provided
+	var cancel context.CancelFunc
+	var timeoutCtx context.Context
+
+	_, hasDeadline := ctx.Deadline()
+	if !hasDeadline {
+		// Default timeout of 60 seconds if no deadline is set
+		timeoutCtx, cancel = context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+	} else {
+		timeoutCtx = ctx
 	}
 
-	// Wait for the process to be finalized
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	log.Debugw("waiting for process to be finalized", "pid", pid.String())
+
 	for {
-		process, err = f.stg.Process(pid)
-		if err != nil {
-			return fmt.Errorf("could not retrieve process %x: %w", pid.Marshal(), err)
+		select {
+		case <-ticker.C:
+			process, err := f.stg.Process(pid)
+			if err != nil {
+				log.Errorw(err, fmt.Sprintf("error retrieving process %s during wait", pid.String()))
+				return nil, fmt.Errorf("could not retrieve process %x: %w", pid.Marshal(), err)
+			}
+
+			if process.IsFinalized && process.Result != nil {
+				log.Infow("process successfully finalized", "pid", pid.String())
+				return process.Result, nil
+			}
+
+		case <-timeoutCtx.Done():
+			log.Warnw("timeout waiting for process to be finalized", "pid", pid.String())
+			return nil, fmt.Errorf("timeout waiting for process %x to be finalized: %w",
+				pid.Marshal(), timeoutCtx.Err())
+
+		case <-f.ctx.Done():
+			return nil, fmt.Errorf("finalizer is shutting down while waiting for process %x",
+				pid.Marshal())
 		}
-		if process.Result != nil {
-			break
-		}
-		time.Sleep(1 * time.Second)
 	}
-	return nil
 }

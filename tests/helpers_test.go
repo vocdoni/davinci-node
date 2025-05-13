@@ -22,6 +22,7 @@ import (
 	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/finalizer"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
@@ -34,6 +35,15 @@ import (
 )
 
 const testLocalAccountPrivKey = "0cebebc37477f513cd8f946ffced46e368aa4f9430250ce4507851edbba86b20" // defined in docker/files/genesis.json
+
+// Services struct holds all test services
+type Services struct {
+	API       *service.APIService
+	Sequencer *sequencer.Sequencer
+	Finalizer *finalizer.Finalizer
+	Storage   *storage.Storage
+	Contracts *web3.Contracts
+}
 
 // setupAPI creates and starts a new API server for testing.
 // It returns the server port.
@@ -55,7 +65,7 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
-func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *service.SequencerService, *storage.Storage, *web3.Contracts) {
+func NewTestService(t *testing.T, ctx context.Context) *Services {
 	// Generate a random port for geth HTTP RPC
 	gethPort := util.RandomInt(10000, 20000)
 	gethURL := fmt.Sprintf("http://localhost:%d", gethPort)
@@ -91,6 +101,12 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *se
 	qt.Assert(t, err, qt.IsNil)
 	stg := storage.New(kv)
 
+	services := &Services{
+		Storage:   stg,
+		Contracts: contracts,
+	}
+
+	// Start sequencer service
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
 	vp := service.NewSequencer(stg, contracts, time.Second*30)
@@ -98,18 +114,30 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *se
 		log.Fatal(err)
 	}
 	t.Cleanup(vp.Stop)
+	services.Sequencer = vp.Sequencer
 
+	// Start process monitor
 	pm := service.NewProcessMonitor(contracts, stg, time.Second*2)
 	if err := pm.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
 	t.Cleanup(pm.Stop)
 
+	// Start finalizer service
+	fin := service.NewFinalizer(stg, stg.StateDB(), time.Second*5)
+	if err := fin.Start(ctx, time.Second*5); err != nil {
+		log.Fatal(err)
+	}
+	t.Cleanup(fin.Stop)
+	services.Finalizer = fin.Finalizer
+
+	// Start API service
 	api, err := setupAPI(ctx, stg)
 	qt.Assert(t, err, qt.IsNil)
 	t.Cleanup(api.Stop)
+	services.API = api
 
-	return api, vp, stg, contracts
+	return services
 }
 
 func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.Signer) {
@@ -221,7 +249,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKeys,
 		StateRoot:      resp.StateRoot,
-		StartTime:      time.Now().Add(30 * time.Second),
+		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode:     &ballotMode,
