@@ -390,6 +390,20 @@ func (o *State) ResultsAdd() *elgamal.Ballot {
 	return resultsAdd
 }
 
+// SetResultsAdd sets the resultsAdd directly in the state tree
+func (o *State) SetResultsAdd(resultsAdd *elgamal.Ballot) {
+	if err := o.tree.UpdateBigInt(KeyResultsAdd, resultsAdd.BigInts()...); err != nil {
+		panic(err)
+	}
+}
+
+// SetResultsSub sets the resultsSub directly in the state tree
+func (o *State) SetResultsSub(resultsSub *elgamal.Ballot) {
+	if err := o.tree.UpdateBigInt(KeyResultsSub, resultsSub.BigInts()...); err != nil {
+		panic(err)
+	}
+}
+
 // ResultsSub returns the resultsSub of the state as a elgamal.Ballot
 func (o *State) ResultsSub() *elgamal.Ballot {
 	_, v, err := o.tree.GetBigInt(KeyResultsSub)

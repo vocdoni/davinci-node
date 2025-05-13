@@ -59,9 +59,9 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	x, y := publicKey.Point()
 
 	// Store the encryption keys or retrieve them if they already exist
-	if err := a.storage.SetEncryptionKeys(pid, publicKey, privateKey); err != nil {
+	if err := a.storage.SetEncryptionKeys(&pid, publicKey, privateKey); err != nil {
 		if errors.Is(err, storage.ErrKeyAlreadyExists) {
-			pub, _, err := a.storage.EncryptionKeys(pid)
+			pub, _, err := a.storage.EncryptionKeys(&pid)
 			if err != nil {
 				ErrGenericInternalServerError.Withf("could not retrieve encryption keys: %v", err).Write(w)
 				return

@@ -703,6 +703,8 @@ github.com/vbatts/tar-split v0.11.5 h1:3bHCTIheBm1qFTcgh9oPu+nNBtX+XJIupG/vacinC
 github.com/vbatts/tar-split v0.11.5/go.mod h1:yZbwRsSeGjusneWgA781EKej9HF8vme8okylkAeNKLk=
 github.com/vocdoni/arbo v0.0.0-20250429143227-ba865f55faa0 h1:YH2TpOXOxSdjWt4bzqn9KZ/DMc9MqWn4Z9jYBvTyghw=
 github.com/vocdoni/arbo v0.0.0-20250429143227-ba865f55faa0/go.mod h1:Y7QuHzRsZMPdJoogp6Kw4kSPPHLLeF0nKGYqbptViOE=
+github.com/vocdoni/arbo v0.0.0-20250513133053-b35dcc9c1f00 h1:Xi9lW+nTiKoDSJ/hfe5mxSJRMiJQmzPAGVQqbsUSxaQ=
+github.com/vocdoni/arbo v0.0.0-20250513133053-b35dcc9c1f00/go.mod h1:2EyGpN1IgziTvCxkosVQj2sdEJaWJxe8vwgWG1BIHbw=
 github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4 h1:aYeMlhWAW+/OQs9BinA8Yetjcf5IPoCsFFtxXx3uLdc=
 github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4/go.mod h1:A1WU0hL7rO9oZlvp82you2uCc4T3/ySi1UNW6N6hBJs=
 github.com/vocdoni/contracts-z v0.0.0-20250512081945-889efab6a841 h1:1GtBCOSzk4qfFiAQ1cM6RCacd8izETtCgILqR2+FlIY=
