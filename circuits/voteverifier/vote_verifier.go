@@ -106,7 +106,7 @@ func censusKeyValue(api frontend.API, address, weight emulated.Element[sw_bn254.
 		return 0, 0, fmt.Errorf("failed to convert address emulated element to bytes: %w", err)
 	}
 	// swap the endianness of the address to le to be used in the census proof
-	key, err := utils.U8ToVar(api, bAddress[:20])
+	key, err := utils.U8ToVar(api, bAddress[:types.CensusKeyMaxLen])
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to convert address bytes to var: %w", err)
 	}
