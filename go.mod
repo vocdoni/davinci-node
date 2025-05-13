@@ -25,7 +25,7 @@ require (
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.19.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
-	github.com/vocdoni/arbo v0.0.0-20250429143227-ba865f55faa0
+	github.com/vocdoni/arbo v0.0.0-20250513133053-b35dcc9c1f00
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
 	github.com/vocdoni/contracts-z v0.0.0-20250512081945-889efab6a841
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250505073003-c9196af66639
