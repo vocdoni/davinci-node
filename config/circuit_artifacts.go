@@ -35,42 +35,42 @@ var (
 	// VoteVerifierProvingKeyURL is the URL for the vote verifier proving key
 	VoteVerifierProvingKeyURL = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, VoteVerifierProvingKeyHash)
 	// VoteVerifierProvingKeyHash is the hash of the vote verifier proving key
-	VoteVerifierProvingKeyHash = "b967d8f18d29b12f11da8fcc1ca9166246d416623d538e46268be05b5b142207"
+	VoteVerifierProvingKeyHash = "8c9d2633352d193a00a2044ca80b4962217d0ef35af49dcd12c080866ee62303"
 
 	// VoteVerifierVerificationKeyURL is the URL for the vote verifier verification key
 	VoteVerifierVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, VoteVerifierVerificationKeyHash)
 	// VoteVerifierVerificationKeyHash is the hash of the vote verifier verification key
-	VoteVerifierVerificationKeyHash = "0d33555ad453f71f71601457d307036a6546d903681831308d5aa575f8522707"
+	VoteVerifierVerificationKeyHash = "5289f44cc945d9153cb9a02f83e470a7d51450ac8da076b4aaca2285191f4f22"
 
 	// AggregatorCircuitURL is the URL for the aggregator circuit
 	AggregatorCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorCircuitHash)
 	// AggregatorCircuitHash is the hash of the aggregator circuit
-	AggregatorCircuitHash = "956b57bbb8289d691dea7e8babe27b7e13e277f8b1ca3f63838fd145df06e24a"
+	AggregatorCircuitHash = "9241102c18c234194bf0587e31d93bd2dfdead2a3ec9d42bdec71b4b5fc001d9"
 
 	// AggregatorProvingKeyURL is the URL for the aggregator proving key
 	AggregatorProvingKeyURL = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorProvingKeyHash)
 	// AggregatorProvingKeyHash is the hash of the aggregator proving key
-	AggregatorProvingKeyHash = "ebafeecdf77a7cec87149fbb32b7be44846d49852f1469f5590c917ab11fcbf1"
+	AggregatorProvingKeyHash = "7c9052082c546f146f379ecd35d1cf6ddc3de93ffc39db024cebce70762d51fa"
 
 	// AggregatorVerificationKeyURL is the URL for the aggregator verification key
 	AggregatorVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorVerificationKeyHash)
 	// AggregatorVerificationKeyHash is the hash of the aggregator verification key
-	AggregatorVerificationKeyHash = "70c1f601fd907c07fae3b24fb1530595613f7a160920eacd21b7e73121655bfd"
+	AggregatorVerificationKeyHash = "d1d5e08a6ee16c053a13df18e2901b7fbcfd1b13da4c9d4cabc4f70d99aa95e0"
 
 	// StateTransitionCircuitURL is the URL for the statetransition circuit
 	StateTransitionCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, StateTransitionCircuitHash)
 	// StateTransitionCircuitHash is the hash of the statetransition circuit
-	StateTransitionCircuitHash = "f5964666c1227ea42463f8a085f5804938c067f5c3f0c3ed0dd23a3323c976dd"
+	StateTransitionCircuitHash = "238b9303d43ce67cc3db71f650991c464b595b5ec401e892639d7fef553ec824"
 
 	// StateTransitionProvingKeyURL is the URL for the statetransition proving key
 	StateTransitionProvingKeyURL = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, StateTransitionProvingKeyHash)
 	// StateTransitionProvingKeyHash is the hash of the statetransition proving key
-	StateTransitionProvingKeyHash = "c4af9a3c62ada375b2f731ca23b92e712e7ab5a8f0bbef4d42640bbb8584d917"
+	StateTransitionProvingKeyHash = "c1b5d89c50f917da673ee74c17c87636309a98f88537db6b66c672353cfcafad"
 
 	// StateTransitionVerificationKeyURL is the URL for the statetransition verification key
 	StateTransitionVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, StateTransitionVerificationKeyHash)
 	// StateTransitionVerificationKeyHash is the hash of the statetransition verification key
-	StateTransitionVerificationKeyHash = "78e9660081d0ae5b669eac358dae82321eced6e687df97961744cc9d89187e8f"
+	StateTransitionVerificationKeyHash = "a5ff38396f7f145c33ee6bd549952ea975ec4e8d8d1583945028d2eb9805ada9"
 
 	// BallotProofWasmHelperURL is the default URL for the WASM helper
 	BallotProofWasmHelperURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/ballotproof-wasm/ballotproof.wasm"
