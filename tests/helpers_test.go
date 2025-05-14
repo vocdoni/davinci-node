@@ -80,6 +80,10 @@ func NewTestService(t *testing.T, ctx context.Context) (*service.APIService, *se
 	err = compose.WithEnv(composeEnv).Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
 	qt.Assert(t, err, qt.IsNil)
 
+	// Wait for the RPC to be ready
+	err = web3.WaitReadyRPC(ctx, gethURL)
+	qt.Assert(t, err, qt.IsNil)
+
 	log.Infow("deploying contracts", "url", gethURL)
 	contracts, err := web3.DeployContracts(gethURL, testLocalAccountPrivKey)
 	if err != nil {
