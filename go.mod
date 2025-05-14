@@ -25,12 +25,12 @@ require (
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.19.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
-	github.com/vocdoni/arbo v0.0.0-20250429143227-ba865f55faa0
+	github.com/vocdoni/arbo v0.0.0-20250513133053-b35dcc9c1f00
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
 	github.com/vocdoni/contracts-z v0.0.0-20250512081945-889efab6a841
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250505073003-c9196af66639
 	go.vocdoni.io/dvote v1.10.2-0.20241024102542-c1ce6d744bc5
-	golang.org/x/sync v0.13.0
+	golang.org/x/sync v0.14.0
 )
 
 require (
@@ -251,13 +251,13 @@ require (
 	go.opentelemetry.io/proto/otlp v1.2.0 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.37.0 // indirect
+	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
-	golang.org/x/term v0.31.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/genproto v0.0.0-20240213162025-012b6fc9bca9 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240515191416-fc5f0ca64291 // indirect
