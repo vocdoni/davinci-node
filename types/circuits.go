@@ -13,5 +13,5 @@ const (
 	// MaxValuePerBallotField is the maximum value per field in a ballot.
 	MaxValuePerBallotField = 2 << 16 // 65536
 	// VotesPerBatch is the number of votes per zkSnark batch.
-	VotesPerBatch = 100
+	VotesPerBatch = 10
 )
