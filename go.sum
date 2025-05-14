@@ -705,8 +705,8 @@ github.com/vocdoni/arbo v0.0.0-20250429143227-ba865f55faa0 h1:YH2TpOXOxSdjWt4bzq
 github.com/vocdoni/arbo v0.0.0-20250429143227-ba865f55faa0/go.mod h1:Y7QuHzRsZMPdJoogp6Kw4kSPPHLLeF0nKGYqbptViOE=
 github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4 h1:aYeMlhWAW+/OQs9BinA8Yetjcf5IPoCsFFtxXx3uLdc=
 github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4/go.mod h1:A1WU0hL7rO9oZlvp82you2uCc4T3/ySi1UNW6N6hBJs=
-github.com/vocdoni/contracts-z v0.0.0-20250512081945-889efab6a841 h1:1GtBCOSzk4qfFiAQ1cM6RCacd8izETtCgILqR2+FlIY=
-github.com/vocdoni/contracts-z v0.0.0-20250512081945-889efab6a841/go.mod h1:ztzA4TBwnswOKlgiBqbVqRcCa+XkHkfazFcx2ZQsc50=
+github.com/vocdoni/contracts-z v0.0.0-20250514091926-0640f931a4ba h1:Hv76UpaMoycAUiJrjkmcBg4GlHr1PJFE0YAuhubJlPk=
+github.com/vocdoni/contracts-z v0.0.0-20250514091926-0640f931a4ba/go.mod h1:ztzA4TBwnswOKlgiBqbVqRcCa+XkHkfazFcx2ZQsc50=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250505073003-c9196af66639 h1:psqbd3ZjBHuGI24Rv/C3EAxAj7mDzyd8eyI5J4aqvGQ=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250505073003-c9196af66639/go.mod h1:Gvlz21dSc0M4UtlJSBLFW5CiUo3BkyvnrrERuyK9W38=
 github.com/vocdoni/gnark-no-assert v0.0.0-20250430090134-56f68baa9b16 h1:XtdKB+e8woVMp58Rx3lUBb9FSbxwgDdToHZspd8EA5U=
