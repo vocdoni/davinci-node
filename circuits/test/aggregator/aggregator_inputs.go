@@ -116,7 +116,7 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 			Address:    vvInputs.Addresses[i],
 			Commitment: vvInputs.Commitments[i],
 			Nullifier:  vvInputs.Nullifiers[i],
-			Ballot:     &vvInputs.Ballots[i],
+			Ballot:     vvInputs.Ballots[i].FromTEtoRTE(),
 		})
 	}
 	log.Printf("Aggregator inputs generation ends, it tooks %s", time.Since(now))
