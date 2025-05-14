@@ -12,6 +12,7 @@ This document describes the HTTP API endpoints for the Vocdoni Z Sandbox API ser
   - [Process Management](#process-management)
   - [Census Management](#census-management)
   - [Vote Management](#vote-management)
+  - [Vote Status](#vote-status)
   - [Ballot Proof Information](#ballot-proof-information)
 
 ## Base URL
@@ -421,7 +422,12 @@ Register a new vote for a voting process.
 }
 ```
 
-**Response**: Empty response with HTTP 200 OK status
+**Response Body**:
+```json
+{
+  "voteId": "hexBytes"
+}
+```
 
 **Errors**:
 - 40001: Resource not found (process not found)
@@ -431,3 +437,33 @@ Register a new vote for a voting process.
 - 40009: Invalid ballot proof
 - 50002: Internal server error
 
+### Vote Status
+
+#### GET /votes/status/{processId}/{voteId}
+
+Gets the status of a specific vote within a voting process.
+
+**URL Parameters**:
+- processId: Process ID in hexadecimal format
+- voteId: Vote ID in hexadecimal format
+
+**Response Body**:
+```json
+{
+  "status": "string"
+}
+```
+
+The status can be one of the following values:
+- "pending": The vote has been submitted but not yet verified
+- "verified": The vote has been verified
+- "aggregated": The vote has been included in an aggregated batch
+- "processed": The vote has been included in a state transition batch
+- "settled": The vote has been settled on the Ethereum blockchain
+- "error": An error occurred during processing
+
+**Errors**:
+- 40001: Resource not found (vote not found)
+- 40006: Malformed process ID
+- 40004: Malformed vote ID
+- 50002: Internal server error

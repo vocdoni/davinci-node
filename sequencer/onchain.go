@@ -78,17 +78,24 @@ func (s *Sequencer) pushToContract(processID []byte,
 	if err != nil {
 		return fmt.Errorf("failed to encode proof: %w", err)
 	}
+	abiInputs, err := inputs.ABIEncode()
+	if err != nil {
+		return fmt.Errorf("failed to encode inputs: %w", err)
+	}
 	log.Debugw("proof ready to submit to the contract",
 		"commitments", proof.Commitments,
 		"commitmentPok", proof.CommitmentPok,
 		"proof", proof.Proof,
+		"abiProof", hex.EncodeToString(abiProof),
 		"inputs", inputs,
-		"abiProof", hex.EncodeToString(abiProof))
+		"abiInputs", hex.EncodeToString(abiInputs),
+	)
 	// submit the proof to the contract
 	txHash, err := s.contracts.SetProcessTransition(processID,
+		abiProof,
+		abiInputs,
 		inputs.RootHashBefore.Bytes(),
-		inputs.RootHashAfter.Bytes(),
-		abiProof)
+	)
 	if err != nil {
 		return fmt.Errorf("failed to submit state transition: %w", err)
 	}

@@ -17,6 +17,10 @@ const (
 	TestProcessEndpoint    = "/processes/test/{" + ProcessURLParam + "}"
 	// VotesEndpoint is the endpoint for submitting a vote
 	VotesEndpoint = "/votes"
+	// VoteStatusEndpoint is the endpoint for checking the status of a vote
+	VoteStatusProcessIDParam = "processId"
+	VoteStatusVoteIDParam    = "voteId"
+	VoteStatusEndpoint       = "/votes/status/{" + VoteStatusProcessIDParam + "}/{" + VoteStatusVoteIDParam + "}"
 	// InfoEndpoint is the endpoint for getting ballot proof information
 	InfoEndpoint = "/info"
 

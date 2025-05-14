@@ -101,7 +101,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 				"error", err.Error(),
 				"ballot", ballot.String(),
 			)
-			if err := s.stg.RemoveBallot(key); err != nil {
+			if err := s.stg.RemoveBallot(ballot.ProcessID, key); err != nil {
 				log.Warnw("failed to remove invalid ballot", "error", err.Error())
 			}
 			continue
@@ -227,11 +227,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		CircomProof: b.BallotProof,
 	}
 
-	// Generate the proof using the prover callback
-	if s.prover == nil {
-		s.prover = DefaultProver // fallback to default prover if not set
-	}
-
 	// Prepare the options for the prover
 	opts := stdgroth16.GetNativeProverOptions(
 		circuits.AggregatorCurve.ScalarField(),
@@ -251,6 +246,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 
 	// Create and return the verified ballot
 	return &storage.VerifiedBallot{
+		VoteID:          b.VoteID(),
 		ProcessID:       b.ProcessID,
 		VoterWeight:     b.VoterWeight,
 		Nullifier:       b.Nullifier,

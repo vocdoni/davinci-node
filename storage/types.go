@@ -7,9 +7,12 @@ import (
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -45,6 +48,7 @@ type EncryptionKeys struct {
 // the BLS12-377 curve, which is the one used by the verifier circuit and
 // verified by the aggregator circuit.
 type VerifiedBallot struct {
+	VoteID          types.HexBytes          `json:"voteId"`
 	ProcessID       types.HexBytes          `json:"processId"`
 	VoterWeight     *big.Int                `json:"voterWeight"`
 	Nullifier       *big.Int                `json:"nullifier"`
@@ -104,6 +108,17 @@ func (b *Ballot) Valid() bool {
 	return true
 }
 
+// VoteID returns the vote ID of the ballot. The vote ID is the hash of the
+// ballot inputs. It is used to identify the ballot in the state transition
+// circuit. The vote ID is a big integer that is converted to a byte array
+// using the BigIntToFFwithPadding function.
+func (b *Ballot) VoteID() []byte {
+	if b.BallotInputsHash == nil {
+		return nil
+	}
+	return crypto.BigIntToFFwithPadding(b.BallotInputsHash, circuits.BallotProofCurve.ScalarField())
+}
+
 func (b *Ballot) String() string {
 	s := strings.Builder{}
 	s.WriteString("Ballot{")
@@ -146,10 +161,11 @@ func (b *Ballot) String() string {
 // includes the nullifier, the commitment, the address and the encrypted
 // ballot.
 type AggregatorBallot struct {
-	Nullifier       *big.Int       `json:"nullifiers"`
-	Commitment      *big.Int       `json:"commitments"`
-	Address         *big.Int       `json:"address"`
-	EncryptedBallot elgamal.Ballot `json:"encryptedBallot"`
+	VoteID          types.HexBytes  `json:"voteId"`
+	Nullifier       *big.Int        `json:"nullifiers"`
+	Commitment      *big.Int        `json:"commitments"`
+	Address         *big.Int        `json:"address"`
+	EncryptedBallot *elgamal.Ballot `json:"encryptedBallot"`
 }
 
 // AggregatorBallotBatch is the struct that contains the information of a
@@ -184,4 +200,26 @@ type StateTransitionBatchProofInputs struct {
 	RootHashAfter  *big.Int `json:"rootHashAfter"`
 	NumNewVotes    int      `json:"numNewVotes"`
 	NumOverwrites  int      `json:"numOverwrites"`
+}
+
+// EncodeAsUint256Array ABI-encodes the four fields as a Solidity uint256[4].
+func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
+	uint256, err := abi.NewType("uint256", "", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	args := abi.Arguments{
+		{Type: uint256},
+		{Type: uint256},
+		{Type: uint256},
+		{Type: uint256},
+	}
+
+	return args.Pack(
+		s.RootHashBefore,
+		s.RootHashAfter,
+		big.NewInt(int64(s.NumNewVotes)),
+		big.NewInt(int64(s.NumOverwrites)),
+	)
 }

@@ -27,7 +27,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250429143227-ba865f55faa0
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
-	github.com/vocdoni/contracts-z v0.0.0-20250124164653-964d70f468a8
+	github.com/vocdoni/contracts-z v0.0.0-20250512081945-889efab6a841
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250505073003-c9196af66639
 	go.vocdoni.io/dvote v1.10.2-0.20241024102542-c1ce6d744bc5
 	golang.org/x/sync v0.13.0
