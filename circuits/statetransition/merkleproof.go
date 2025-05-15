@@ -220,12 +220,12 @@ func padStateSiblings(unpackedSiblings []*big.Int) [types.CensusTreeMaxLevels]fr
 	return paddedSiblings
 }
 
-// TruncateKeyForArbo helper function truncates a key to a given size to be
+// TruncateMerkleTreeKey helper function truncates a key to a given size to be
 // compared with the key included in an arbo proof. It only matches if the
 // tree was generated with the BigInt API of arbo. It converts the key to
 // bytes, swaps the endianness, crops it to the given size, and then swaps
 // the endianness back. It returns the truncated key as a frontend.Variable.
-func TruncateKeyForArbo(api frontend.API, input frontend.Variable, size int) (frontend.Variable, error) {
+func TruncateMerkleTreeKey(api frontend.API, input frontend.Variable, size int) (frontend.Variable, error) {
 	bInput, err := utils.VarToU8(api, input)
 	if err != nil {
 		return 0, err
