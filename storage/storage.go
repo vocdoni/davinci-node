@@ -241,11 +241,6 @@ func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
 	defer wTx.Discard()
 
-	// check if key already exists
-	if _, err := wTx.Get(key); err == nil {
-		return ErrKeyAlreadyExists
-	}
-
 	// store the artifact in the database with the key generated
 	if err := wTx.Set(key, data); err != nil {
 		return err

@@ -59,6 +59,7 @@ type Process struct {
 	Metadata           *Metadata      `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
 	VoteCount          *BigInt        `json:"voteCount"                cbor:"12,keyasint,omitempty"`
 	VoteOverwriteCount *BigInt        `json:"voteOverwriteCount"       cbor:"13,keyasint,omitempty"`
+	IsFinalized        bool           `json:"isFinalized"              cbor:"14,keyasint,omitempty"`
 }
 
 func (p *Process) String() string {

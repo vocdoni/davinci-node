@@ -36,9 +36,9 @@ type Process struct {
 // the ballots. The public key is a point on the elliptic curve. It also
 // contains the private key, but it is not exported in the JSON.
 type EncryptionKeys struct {
-	X          *big.Int `json:"publicKeyX"`
-	Y          *big.Int `json:"publicKeyY"`
-	PrivateKey *big.Int `json:"-"`
+	X          *big.Int `json:"publicKeyX" cbor:"0,keyasint,omitempty"`
+	Y          *big.Int `json:"publicKeyY" cbor:"1,keyasint,omitempty"`
+	PrivateKey *big.Int `json:"-" cbor:"2,keyasint,omitempty"`
 }
 
 // VerifiedBallot is the struct that contains the information of a ballot which

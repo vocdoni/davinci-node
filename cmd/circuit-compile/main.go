@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/consensys/gnark/backend/groth16"
@@ -225,15 +226,17 @@ func main() {
 
 	log.Infow("statetransition artifacts written to disk", "elapsed", time.Since(startTime).String())
 
+	////////////////////////////////////////
 	// Export the solidity verifier
-
+	////////////////////////////////////////
+	log.Infow("exporting solidity verifier...")
 	// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
 	solidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
 	if err := solidityVk.Precompute(); err != nil {
 		log.Fatalf("failed to precompute vk: %v", err)
 	}
-
-	fd, err := os.Create(path.Join(destination, "vkey.sol"))
+	vkeySolFile := path.Join(destination, "vkey.sol")
+	fd, err := os.Create(vkeySolFile)
 	if err != nil {
 		log.Fatalf("failed to create vkey.sol: %v", err)
 	}
@@ -246,6 +249,11 @@ func main() {
 	}
 	if err := fd.Close(); err != nil {
 		log.Warnw("failed to close vkey.sol file", "error", err)
+	}
+
+	// Insert the proving key hash into the vkey.sol file
+	if err := insertProvingKeyHashToVkeySolidity(vkeySolFile, hashList["StateTransitionProvingKeyHash"]); err != nil {
+		log.Warnw("failed to insert proving key hash into vkey.sol", "error", err)
 	}
 	log.Infow("vkey.sol file created", "path", fd.Name())
 
@@ -304,6 +312,37 @@ func main() {
 		}
 
 		log.Infow("circuit artifacts config file updated successfully", "path", configPath)
+
+		// copy the solidity file to the config directory
+		configDir := filepath.Dir(configPath)
+		solidityFile := path.Join(configDir, "vkey.sol")
+		sourceFile, err := os.Open(vkeySolFile)
+		if err != nil {
+			log.Warnw("failed to open vkey.sol file", "error", err)
+			return
+		}
+		defer func() {
+			if err := sourceFile.Close(); err != nil {
+				log.Warnw("failed to close source vkey.sol file", "error", err)
+			}
+		}()
+		destFile, err := os.Create(solidityFile)
+		if err != nil {
+			log.Warnw("failed to create destination vkey.sol file", "error", err)
+			return
+		}
+		defer func() {
+			if err := destFile.Close(); err != nil {
+				log.Warnw("failed to close destination vkey.sol file", "error", err)
+			}
+		}()
+
+		if _, err := io.Copy(destFile, sourceFile); err != nil {
+			log.Warnw("failed to copy vkey.sol file", "error", err)
+			return
+		}
+
+		log.Infow("copied vkey.sol file to config directory", "path", solidityFile)
 	}
 }
 
@@ -386,4 +425,24 @@ func writeToFile(to, ext string, writeFunc func(w io.Writer) error) (string, err
 	createdFiles = append(createdFiles, finalFilename)
 
 	return hash, nil
+}
+
+// insertProvingKeyHashToVkeySolidity reads the generated .sol file at dest/vkey.sol,
+// injects a `bytes32 constant PROVING_KEY_HASH = 0x…;` line immediately
+// after the `contract <Name> {` declaration, and writes it back out.
+func insertProvingKeyHashToVkeySolidity(filePath, hexHash string) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("reading vkey.sol: %w", err)
+	}
+	//    (?m) enables multiline mode so ^ matches at the start of each line.
+	//    We match `contract <anyIdent> {` and capture it.
+	re := regexp.MustCompile(`(?m)^(contract\s+\w+\s*\{)`)
+	inject := fmt.Sprintf("$1\n    bytes32 constant PROVING_KEY_HASH = 0x%s;", hexHash)
+	patched := re.ReplaceAll(data, []byte(inject))
+
+	if err := os.WriteFile(filePath, patched, os.FileMode(0o644)); err != nil {
+		return fmt.Errorf("writing patched vkey.sol: %w", err)
+	}
+	return nil
 }
