@@ -69,7 +69,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 		Dir:           fmt.Sprintf("../assets/census%d", util.RandomInt(0, 1000)),
 		ValidSiblings: 10,
 		TotalSiblings: types.CensusTreeMaxLevels,
-		KeyLen:        20,
+		KeyLen:        types.CensusKeyMaxLen,
 		Hash:          arbo.HashFunctionMiMC_BLS12_377,
 		BaseField:     arbo.BLS12377BaseField,
 	}, bAddresses, bWeights)

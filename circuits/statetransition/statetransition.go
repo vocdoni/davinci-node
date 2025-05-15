@@ -251,9 +251,19 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Votes
 	for i, v := range circuit.Votes {
 		// Nullifier
-		api.AssertIsEqual(v.Nullifier, circuit.VotesProofs.Ballot[i].NewKey)
+		nullifierKey, err := TruncateMerkleTreeKey(api, v.Nullifier, types.StateKeyMaxLen)
+		if err != nil {
+			circuits.FrontendError(api, "failed to truncate nullifier key: ", err)
+			return
+		}
+		api.AssertIsEqual(nullifierKey, circuit.VotesProofs.Ballot[i].NewKey)
 		// Address
-		api.AssertIsEqual(v.Address, circuit.VotesProofs.Commitment[i].NewKey)
+		addressKey, err := TruncateMerkleTreeKey(api, v.Address, types.StateKeyMaxLen)
+		if err != nil {
+			circuits.FrontendError(api, "failed to truncate address key: ", err)
+			return
+		}
+		api.AssertIsEqual(addressKey, circuit.VotesProofs.Commitment[i].NewKey)
 		// Ballot
 		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.Ballot.SerializeVars()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
