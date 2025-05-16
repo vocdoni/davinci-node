@@ -2,12 +2,15 @@ package sequencer
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/solidity"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 func (s *Sequencer) startOnchainProcessor() error {
@@ -97,11 +100,35 @@ func (s *Sequencer) pushToContract(processID []byte,
 		inputs.RootHashBefore.Bytes(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to submit state transition: %w", err)
+		txErr := fmt.Errorf("failed to submit state transition: %w", err)
+		// try to rollback the state transition, if it fails return both errors
+		if rollbackErr := s.rollbackState(processID, inputs.RootHashBefore); rollbackErr != nil {
+			return errors.Join(txErr, rollbackErr)
+		}
+		log.Infow("state transition rollback done",
+			"processID", hex.EncodeToString(processID),
+			"rootHashBefore", inputs.RootHashBefore.String(),
+			"rootHashAfter", inputs.RootHashAfter.String())
+		return txErr
 	}
 	// wait for the transaction to be mined
-	// TODO: move this to the main function of this sequencer process to listen
-	// for events instead of waiting for the transaction to be mined to handle
-	// state transitions updates that come from other sequencers
 	return s.contracts.WaitTx(*txHash, time.Second*60)
+}
+
+// rollbackState rolls back the state transition by setting the root hash to
+// the previous one. This is used when the transaction fails and we need to
+// revert the state transition.
+func (s *Sequencer) rollbackState(processID []byte, rootHashBefore *big.Int) error {
+	// decode process ID and load metadata
+	pid := new(types.ProcessID).SetBytes(processID)
+	// load the process state
+	state, err := s.loadState(pid)
+	if err != nil {
+		return fmt.Errorf("failed to load process state: %w", err)
+	}
+	// rollback the state transition setting the root hash to the previous one
+	if err := state.SetRootAsBigInt(rootHashBefore); err != nil {
+		return fmt.Errorf("failed to rollback state transition: %w", err)
+	}
+	return nil
 }
