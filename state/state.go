@@ -245,6 +245,23 @@ func (o *State) RootAsBigInt() (*big.Int, error) {
 	return arbo.BytesToBigInt(root), nil
 }
 
+// SetRoot method sets the root of the tree to the provided one.
+func (o *State) SetRoot(newRoot []byte) error {
+	if err := o.tree.SetRoot(newRoot); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SetRootAsBigInt method sets the root of the tree to the provided one as a
+// big.Int.
+func (o *State) SetRootAsBigInt(newRoot *big.Int) error {
+	if err := o.tree.SetRoot(EncodeKey(newRoot)); err != nil {
+		return err
+	}
+	return nil
+}
+
 // BallotCount returns the number of ballots added in the current batch.
 func (o *State) BallotCount() int {
 	return o.ballotCount
