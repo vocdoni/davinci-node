@@ -2,9 +2,7 @@ package sequencer
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -46,6 +44,12 @@ func (s *Sequencer) processOnChain() {
 			}
 			return true // Continue to next process ID
 		}
+		// get the process from the storage
+		process, err := s.stg.Process(new(types.ProcessID).SetBytes(pid))
+		if err != nil {
+			log.Errorw(err, "failed to get process metadata")
+			return true // Continue to next process ID
+		}
 		log.Infow("state transition batch ready for on-chain upload",
 			"pid", hex.EncodeToString([]byte(pid)),
 			"batchID", hex.EncodeToString(batchID))
@@ -60,6 +64,16 @@ func (s *Sequencer) processOnChain() {
 			log.Errorw(err, "failed to push to contract")
 			return true // Continue to next process ID
 		}
+		// update the process state with the new root hash
+		process.StateRoot = batch.Inputs.RootHashAfter.Bytes()
+		if err := s.stg.SetProcess(process); err != nil {
+			log.Errorw(err, "failed to update process metadata")
+			return true // Continue to next process ID
+		}
+		log.Infow("process state root updated",
+			"pid", hex.EncodeToString([]byte(pid)),
+			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
+			"rootHashAfter", batch.Inputs.RootHashAfter.String())
 		// mark the batch as done
 		if err := s.stg.MarkStateTransitionBatchDone(batchID); err != nil {
 			log.Errorw(err, "failed to mark state transition batch as done")
@@ -100,35 +114,8 @@ func (s *Sequencer) pushToContract(processID []byte,
 		inputs.RootHashBefore.Bytes(),
 	)
 	if err != nil {
-		txErr := fmt.Errorf("failed to submit state transition: %w", err)
-		// try to rollback the state transition, if it fails return both errors
-		if rollbackErr := s.rollbackState(processID, inputs.RootHashBefore); rollbackErr != nil {
-			return errors.Join(txErr, rollbackErr)
-		}
-		log.Infow("state transition rollback done",
-			"processID", hex.EncodeToString(processID),
-			"rootHashBefore", inputs.RootHashBefore.String(),
-			"rootHashAfter", inputs.RootHashAfter.String())
-		return txErr
+		return fmt.Errorf("failed to submit state transition: %w", err)
 	}
 	// wait for the transaction to be mined
 	return s.contracts.WaitTx(*txHash, time.Second*60)
-}
-
-// rollbackState rolls back the state transition by setting the root hash to
-// the previous one. This is used when the transaction fails and we need to
-// revert the state transition.
-func (s *Sequencer) rollbackState(processID []byte, rootHashBefore *big.Int) error {
-	// decode process ID and load metadata
-	pid := new(types.ProcessID).SetBytes(processID)
-	// load the process state
-	state, err := s.loadState(pid)
-	if err != nil {
-		return fmt.Errorf("failed to load process state: %w", err)
-	}
-	// rollback the state transition setting the root hash to the previous one
-	if err := state.SetRootAsBigInt(rootHashBefore); err != nil {
-		return fmt.Errorf("failed to rollback state transition: %w", err)
-	}
-	return nil
 }

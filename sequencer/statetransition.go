@@ -63,9 +63,8 @@ func (s *Sequencer) processPendingTransitions() {
 		s.workInProgressLock.Lock()
 		defer s.workInProgressLock.Unlock()
 		startTime := time.Now()
-
 		// initialize the process state
-		processState, err := s.loadState(processID)
+		processState, err := s.latestProcessState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
 			return true // Continue to next process ID
@@ -158,10 +157,16 @@ func (s *Sequencer) processStateTransitionBatch(
 	return proof, nil
 }
 
-func (s *Sequencer) loadState(pid *types.ProcessID) (*state.State, error) {
-	// initialize the process state
+func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, error) {
+	// get the process from the storage
+	process, err := s.stg.Process(pid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process metadata: %w", err)
+	}
+	// initialize the process state on the given root
 	ffPID := crypto.BigToFF(circuits.StateTransitionCurve.BaseField(), pid.BigInt())
-	processState, err := state.New(s.stg.StateDB(), ffPID)
+	bigStateRoot := process.StateRoot.BigInt().MathBigInt()
+	processState, err := state.LoadOnRoot(s.stg.StateDB(), ffPID, bigStateRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}
