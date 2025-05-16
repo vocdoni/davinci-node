@@ -98,10 +98,7 @@ func New(web3rpcs []string) (*Contracts, error) {
 	)
 
 	// calculate the start block to watch
-	startBlock := int64(lastBlock) - maxPastBlocksToWatch
-	if startBlock < 0 {
-		startBlock = 0
-	}
+	startBlock := max(int64(lastBlock)-maxPastBlocksToWatch, 0)
 
 	return &Contracts{
 		ChainID:                *chainID,
