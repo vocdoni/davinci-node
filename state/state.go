@@ -95,6 +95,23 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 	}, nil
 }
 
+// LoadOnRoot loads a State from the database using the provided processId and
+// root. It creates a new State with the given processId and sets the root of
+// the tree to the provided root. It returns an error if the processId is not
+// found in the database or if the root cannot be set.
+// The root provided is formatted to the arbo format before being set in the
+// state tree.
+func LoadOnRoot(db db.Database, processId, root *big.Int) (*State, error) {
+	state, err := New(db, processId)
+	if err != nil {
+		return nil, err
+	}
+	if err := state.SetRootAsBigInt(root); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
 // Initialize creates a new State, initialized with the passed parameters.
 // After Initialize, caller is expected to StartBatch, AddVote, EndBatch,
 // StartBatch...
@@ -256,7 +273,7 @@ func (o *State) SetRoot(newRoot []byte) error {
 // SetRootAsBigInt method sets the root of the tree to the provided one as a
 // big.Int.
 func (o *State) SetRootAsBigInt(newRoot *big.Int) error {
-	if err := o.tree.SetRoot(EncodeKey(newRoot)); err != nil {
+	if err := o.tree.SetRoot(arbo.BigIntToBytes(o.tree.HashFunction().Len(), newRoot)); err != nil {
 		return err
 	}
 	return nil
