@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
+	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -93,6 +94,25 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// verify the census proof
 	if !a.storage.CensusDB().VerifyProof(&vote.CensusProof) {
 		ErrInvalidCensusProof.Withf("census proof verification failed").Write(w)
+		return
+	}
+	// calculate the ballot inputs hash
+	ballotInputsHash, err := ballotproof.BallotInputsHash(
+		vote.ProcessID,
+		process.BallotMode,
+		new(bjj.BJJ).SetPoint(process.EncryptionKey.X, process.EncryptionKey.Y),
+		vote.Address,
+		vote.Commitment,
+		vote.Nullifier,
+		vote.Ballot.FromTEtoRTE(),
+		vote.CensusProof.Weight,
+	)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not calculate ballot inputs hash: %v", err).Write(w)
+		return
+	}
+	if vote.BallotInputsHash.String() != ballotInputsHash.String() {
+		ErrInvalidBallotInputsHash.Withf("ballot inputs hash mismatch").Write(w)
 		return
 	}
 	// load the verification key for the ballot proof circuit, used by the user
