@@ -10,9 +10,9 @@ type DavinciWeb3Config struct {
 // DefaultConfig contains the default smart contract addresses for Davinci by network.
 var DefaultConfig = map[string]DavinciWeb3Config{
 	"sep": {
-		ProcessRegistrySmartContract:      "0xdecC4F656BE4C96617af7EeEaD0042a8855Fee9c",
-		OrganizationRegistrySmartContract: "0x218Ca677d701f535A239b1d4a4db2384CE81f371",
-		ResultsSmartContract:              "0x218Ca677d701f535A239b1d4a4db2384CE81f371", // duplicate for now
+		ProcessRegistrySmartContract:      "0x9936DBd1E225eCC44272B4Cb31e7e29799E3a166",
+		OrganizationRegistrySmartContract: "0x99502b97707Cc551448516E3120B0AA0202630Be",
+		ResultsSmartContract:              "0x99502b97707Cc551448516E3120B0AA0202630Be", // duplicate for now
 	},
 }
 
