@@ -191,7 +191,10 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 	}
 
 	// Open the state for the process
-	st, err := state.New(f.stateDB, pid.BigInt())
+	log.Infow("opening state for process",
+		"pid", pid.String(),
+		"stateRoot", process.StateRoot.String())
+	st, err := state.LoadOnRoot(f.stateDB, pid.BigInt(), process.StateRoot.BigInt().MathBigInt())
 	if err != nil {
 		return fmt.Errorf("could not open state for process %x: %w", pid.Marshal(), err)
 	}
