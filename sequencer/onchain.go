@@ -8,6 +8,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/solidity"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
 func (s *Sequencer) startOnchainProcessor() error {
@@ -43,6 +44,12 @@ func (s *Sequencer) processOnChain() {
 			}
 			return true // Continue to next process ID
 		}
+		// get the process from the storage
+		process, err := s.stg.Process(new(types.ProcessID).SetBytes(pid))
+		if err != nil {
+			log.Errorw(err, "failed to get process metadata")
+			return true // Continue to next process ID
+		}
 		log.Infow("state transition batch ready for on-chain upload",
 			"pid", hex.EncodeToString([]byte(pid)),
 			"batchID", hex.EncodeToString(batchID))
@@ -57,6 +64,16 @@ func (s *Sequencer) processOnChain() {
 			log.Errorw(err, "failed to push to contract")
 			return true // Continue to next process ID
 		}
+		// update the process state with the new root hash
+		process.StateRoot = batch.Inputs.RootHashAfter.Bytes()
+		if err := s.stg.SetProcess(process); err != nil {
+			log.Errorw(err, "failed to update process data")
+			return true // Continue to next process ID
+		}
+		log.Infow("process state root updated",
+			"pid", hex.EncodeToString([]byte(pid)),
+			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
+			"rootHashAfter", batch.Inputs.RootHashAfter.String())
 		// mark the batch as done
 		if err := s.stg.MarkStateTransitionBatchDone(batchID); err != nil {
 			log.Errorw(err, "failed to mark state transition batch as done")
@@ -100,8 +117,5 @@ func (s *Sequencer) pushToContract(processID []byte,
 		return fmt.Errorf("failed to submit state transition: %w", err)
 	}
 	// wait for the transaction to be mined
-	// TODO: move this to the main function of this sequencer process to listen
-	// for events instead of waiting for the transaction to be mined to handle
-	// state transitions updates that come from other sequencers
 	return s.contracts.WaitTx(*txHash, time.Second*60)
 }
