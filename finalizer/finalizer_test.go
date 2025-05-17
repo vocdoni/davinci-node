@@ -13,6 +13,7 @@ import (
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -23,6 +24,7 @@ import (
 
 // TestFinalize tests the finalize method of the Finalizer struct
 func TestFinalize(t *testing.T) {
+	log.Init("debug", "stdout", nil)
 	c := qt.New(t)
 
 	// Setup test environment
@@ -140,7 +142,6 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	if err != nil {
 		t.Fatalf("failed to store encryption keys: %v", err)
 	}
-
 	// Create a process
 	process := &types.Process{
 		ID:          pid.Marshal(),
@@ -176,7 +177,11 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	}
 
 	// Setup state with test data
-	setupTestState(t, stateDB, pid, pubKey, addValue, subValue)
+	process.StateRoot = setupTestState(t, stateDB, pid, pubKey, addValue, subValue)
+	err = stg.SetProcess(process)
+	if err != nil {
+		t.Fatalf("failed to store process: %v", err)
+	}
 
 	// Return cleanup function
 	cleanup := func() {
@@ -187,7 +192,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 }
 
 // setupTestState initializes the state with encrypted test data
-func setupTestState(t *testing.T, stateDB db.Database, pid *types.ProcessID, pubKey ecc.Point, addValue, subValue int64) {
+func setupTestState(t *testing.T, stateDB db.Database, pid *types.ProcessID, pubKey ecc.Point, addValue, subValue int64) []byte {
 	// Create a new state
 	st, err := state.New(stateDB, pid.BigInt())
 	if err != nil {
@@ -252,4 +257,10 @@ func setupTestState(t *testing.T, stateDB db.Database, pid *types.ProcessID, pub
 	// Store the encrypted accumulators in the state
 	st.SetResultsAdd(encryptedAdd)
 	st.SetResultsSub(encryptedSub)
+
+	stateRoot, err := st.Root()
+	if err != nil {
+		t.Fatalf("failed to get state root: %v", err)
+	}
+	return stateRoot
 }
