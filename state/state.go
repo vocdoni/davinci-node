@@ -259,7 +259,7 @@ func (o *State) RootAsBigInt() (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return arbo.BytesToBigInt(root), nil
+	return BytesToBigInt(root), nil
 }
 
 // SetRoot method sets the root of the tree to the provided one.
@@ -273,7 +273,7 @@ func (o *State) SetRoot(newRoot []byte) error {
 // SetRootAsBigInt method sets the root of the tree to the provided one as a
 // big.Int.
 func (o *State) SetRootAsBigInt(newRoot *big.Int) error {
-	if err := o.tree.SetRoot(arbo.BigIntToBytes(o.tree.HashFunction().Len(), newRoot)); err != nil {
+	if err := o.tree.SetRoot(BigIntToBytes(newRoot)); err != nil {
 		return err
 	}
 	return nil

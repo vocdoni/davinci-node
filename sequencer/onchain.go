@@ -67,7 +67,7 @@ func (s *Sequencer) processOnChain() {
 		// update the process state with the new root hash
 		process.StateRoot = batch.Inputs.RootHashAfter.Bytes()
 		if err := s.stg.SetProcess(process); err != nil {
-			log.Errorw(err, "failed to update process metadata")
+			log.Errorw(err, "failed to update process data")
 			return true // Continue to next process ID
 		}
 		log.Infow("process state root updated",
