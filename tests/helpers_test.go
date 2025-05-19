@@ -101,6 +101,20 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	}
 	log.Infow("contracts deployed", "chainId", contracts.ChainID)
 
+	contracts.ContractABIs = &web3.ContractABIs{}
+	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
+	if err != nil {
+		log.Fatal(err)
+	}
+	contracts.ContractABIs.OrganizationRegistry, err = contracts.OrganizationRegistryABI()
+	if err != nil {
+		log.Fatal(err)
+	}
+	contracts.ContractABIs.ZKVerifier, err = contracts.ZKVerifierABI()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	kv, err := metadb.New(db.TypePebble, t.TempDir())
 	qt.Assert(t, err, qt.IsNil)
 	stg := storage.New(kv)

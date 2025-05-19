@@ -24,11 +24,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"go.vocdoni.io/dvote/log"
 )
 
 const (
-	// DefaultMaxWeb3ClientRetries is the default number of retries to connect to
+	// DefaultMaxWeb3ClientRetries is the default number of retries to connectEth to
 	// a web3 provider.
 	DefaultMaxWeb3ClientRetries = 5
 	// shortNameSourceUri is the URI to get the chain metadata from an external
@@ -87,9 +88,14 @@ func (nm *Web3Pool) AddEndpoint(uri string) (uint64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), checkWeb3EndpointsTimeout)
 	defer cancel()
 	// init the web3 client
-	client, err := connect(ctx, uri)
+	client, err := connectEth(ctx, uri)
 	if err != nil {
 		return 0, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
+	}
+	// init the rpc client
+	rpcClient, err := connectRPC(ctx, uri)
+	if err != nil {
+		return 0, fmt.Errorf("error dialing rpc provider uri '%s': %w", uri, err)
 	}
 	// get the chainID from the web3 endpoint
 	bChainID, err := client.ChainID(ctx)
@@ -108,6 +114,7 @@ func (nm *Web3Pool) AddEndpoint(uri string) (uint64, error) {
 		ChainID:   chainID,
 		URI:       uri,
 		client:    client,
+		rpcClient: rpcClient,
 		IsArchive: isArchive,
 	}
 	if _, ok := nm.endpoints[chainID]; !ok {
@@ -214,10 +221,10 @@ func (nm *Web3Pool) NetworkInfoByChainID(chainID uint64) *Web3Endpoint {
 	return nil
 }
 
-// connect method returns a new *ethclient.Client instance for the URI provided.
+// connectEth method returns a new *ethclient.Client instance for the URI provided.
 // It retries to connect to the web3 provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
-func connect(ctx context.Context, uri string) (client *ethclient.Client, err error) {
+func connectEth(ctx context.Context, uri string) (client *ethclient.Client, err error) {
 	for i := 0; i < DefaultMaxWeb3ClientRetries; i++ {
 		if client, err = ethclient.DialContext(ctx, uri); err != nil {
 			continue
@@ -225,6 +232,19 @@ func connect(ctx context.Context, uri string) (client *ethclient.Client, err err
 		return
 	}
 	return nil, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
+}
+
+// connectRPC method returns a new *rpc.Client instance for the URI provided.
+// It retries to connect to the rpc provider if it fails, up to the
+// DefaultMaxWeb3ClientRetries times.
+func connectRPC(ctx context.Context, uri string) (client *rpc.Client, err error) {
+	for i := 0; i < DefaultMaxWeb3ClientRetries; i++ {
+		if client, err = rpc.DialContext(ctx, uri); err != nil {
+			continue
+		}
+		return
+	}
+	return nil, fmt.Errorf("error dialing rpc provider uri '%s': %w", uri, err)
 }
 
 // isArchiveNode method returns true if the web3 client is an archive node. To

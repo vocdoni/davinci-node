@@ -1,10 +1,13 @@
 package sequencer
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/solidity"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -73,6 +76,8 @@ func (s *Sequencer) pushToContract(processID []byte,
 	proof *solidity.Groth16CommitmentProof,
 	inputs storage.StateTransitionBatchProofInputs,
 ) error {
+	var pid32 [32]byte
+	copy(pid32[:], processID)
 	// convert the proof to a solidity proof
 	abiProof, err := proof.ABIEncode()
 	if err != nil {
@@ -90,7 +95,21 @@ func (s *Sequencer) pushToContract(processID []byte,
 		"inputs", inputs,
 		"abiInputs", hex.EncodeToString(abiInputs),
 	)
-	// submit the proof to the contract
+
+	// Simulate tx
+	if err := s.SimulateContractCall(
+		s.ctx,
+		s.contracts.ContractsAddresses.ProcessRegistry,
+		s.contracts.ContractABIs.ProcessRegistry,
+		"submitStateTransition",
+		pid32,
+		abiProof,
+		abiInputs,
+	); err != nil {
+		return fmt.Errorf("failed to simulate state transition: %s", err.Error())
+	}
+
+	// submit the proof to the contract if simulation is successful
 	txHash, err := s.contracts.SetProcessTransition(processID,
 		abiProof,
 		abiInputs,
@@ -104,4 +123,24 @@ func (s *Sequencer) pushToContract(processID []byte,
 	// for events instead of waiting for the transaction to be mined to handle
 	// state transitions updates that come from other sequencers
 	return s.contracts.WaitTx(*txHash, time.Second*60)
+}
+
+// SimulateContractCall simulates a contract call
+func (s *Sequencer) SimulateContractCall(
+	ctx context.Context,
+	contractAddr common.Address,
+	contractABI *abi.ABI,
+	method string,
+	args ...interface{},
+) error {
+	if err := s.contracts.SimulateContractCall(
+		ctx,
+		contractAddr,
+		contractABI,
+		method,
+		args...,
+	); err != nil {
+		return fmt.Errorf("failed to call contract: %w", err)
+	}
+	return nil
 }
