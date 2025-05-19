@@ -12,14 +12,16 @@ import (
 // ProcessIDMap provides a thread-safe map for storing and retrieving process IDs.
 // It handles the conversion of process IDs from byte slices to hexadecimal strings internally.
 type ProcessIDMap struct {
-	data map[string]time.Time
-	mu   sync.RWMutex
+	data             map[string]time.Time // Last update time for each process ID
+	firstBallotTimes map[string]time.Time // Timestamp of first ballot after last batch
+	mu               sync.RWMutex
 }
 
 // NewProcessIDMap creates a new empty ProcessIDMap.
 func NewProcessIDMap() *ProcessIDMap {
 	return &ProcessIDMap{
-		data: make(map[string]time.Time),
+		data:             make(map[string]time.Time),
+		firstBallotTimes: make(map[string]time.Time),
 	}
 }
 
@@ -140,4 +142,50 @@ func (p *ProcessIDMap) Len() int {
 	defer p.mu.RUnlock()
 
 	return len(p.data)
+}
+
+// SetFirstBallotTime sets the timestamp for when the first ballot arrived
+// after the last batch, but only if it hasn't been set already.
+func (p *ProcessIDMap) SetFirstBallotTime(pid []byte) {
+	if len(pid) == 0 {
+		return
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	pidStr := fmt.Sprintf("%x", pid)
+	// Only set if not already set (we only care about the first ballot)
+	if _, exists := p.firstBallotTimes[pidStr]; !exists {
+		p.firstBallotTimes[pidStr] = time.Now()
+	}
+}
+
+// GetFirstBallotTime returns the timestamp of when the first ballot arrived
+// after the last batch processing, and a boolean indicating if it exists.
+func (p *ProcessIDMap) GetFirstBallotTime(pid []byte) (time.Time, bool) {
+	if len(pid) == 0 {
+		return time.Time{}, false
+	}
+
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	pidStr := fmt.Sprintf("%x", pid)
+	t, exists := p.firstBallotTimes[pidStr]
+	return t, exists
+}
+
+// ClearFirstBallotTime clears the first ballot timestamp for a process ID.
+// This should be called after a batch is processed.
+func (p *ProcessIDMap) ClearFirstBallotTime(pid []byte) {
+	if len(pid) == 0 {
+		return
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	pidStr := fmt.Sprintf("%x", pid)
+	delete(p.firstBallotTimes, pidStr)
 }

@@ -51,36 +51,64 @@ func (s *Sequencer) processPendingBatches() {
 	s.pids.ForEach(func(pid []byte, lastUpdate time.Time) bool {
 		// Check if this batch is ready for processing
 		ballotCount := s.stg.CountVerifiedBallots(pid)
-		timeSinceUpdate := time.Since(lastUpdate)
 
-		// Skip if the batch is not ready
-		if ballotCount == 0 || (ballotCount < types.VotesPerBatch && timeSinceUpdate <= s.batchTimeWindow) {
+		// If there are no ballots, skip this process ID
+		if ballotCount == 0 {
 			return true // Continue to next process ID
 		}
 
-		// Process the batch
-		log.Debugw("batch ready for aggregation",
-			"processID", fmt.Sprintf("%x", pid),
-			"ballotCount", ballotCount,
-			"timeSinceUpdate", timeSinceUpdate.String(),
-			"batchTimeWindow", s.batchTimeWindow.String(),
-		)
+		// If we have enough ballots for a full batch, process it regardless of time
+		if ballotCount >= types.VotesPerBatch {
+			return s.processAndUpdateBatch(pid, ballotCount, "full batch")
+		}
 
-		startTime := time.Now()
-		if err := s.aggregateBatch(pid); err != nil {
-			log.Warnw("failed to aggregate batch",
-				"error", err.Error(),
-				"processID", fmt.Sprintf("%x", pid),
-			)
+		// Otherwise, check if we have a first ballot timestamp and if enough time has passed
+		firstBallotTime, hasFirstBallot := s.pids.GetFirstBallotTime(pid)
+
+		// If we don't have a first ballot timestamp yet, set it now
+		if !hasFirstBallot {
+			s.pids.SetFirstBallotTime(pid)
 			return true // Continue to next process ID
 		}
-		log.Infow("batch aggregated successfully", "processID", fmt.Sprintf("%x", pid), "took(s)", time.Since(startTime).Seconds())
 
-		// Update the last update time by re-adding the process ID
-		s.pids.Add(pid) // This will update the timestamp
+		// Check if enough time has passed since the first ballot
+		timeSinceFirstBallot := time.Since(firstBallotTime)
+		if timeSinceFirstBallot <= s.batchTimeWindow {
+			return true // Continue to next process ID
+		}
 
-		return true // Continue to next process ID
+		// If we're here, we have some ballots and the time window has elapsed
+		return s.processAndUpdateBatch(pid, ballotCount, fmt.Sprintf("time window elapsed (%.2fs)", timeSinceFirstBallot.Seconds()))
 	})
+}
+
+// processAndUpdateBatch handles the processing of a batch of ballots and updates
+// the necessary timestamps. It returns true to continue processing other process IDs.
+func (s *Sequencer) processAndUpdateBatch(pid []byte, ballotCount int, reason string) bool {
+	log.Debugw("batch ready for aggregation",
+		"processID", fmt.Sprintf("%x", pid),
+		"ballotCount", ballotCount,
+		"reason", reason,
+		"batchTimeWindow", s.batchTimeWindow.String(),
+	)
+
+	startTime := time.Now()
+	if err := s.aggregateBatch(pid); err != nil {
+		log.Warnw("failed to aggregate batch",
+			"error", err.Error(),
+			"processID", fmt.Sprintf("%x", pid),
+		)
+		return true // Continue to next process ID
+	}
+	log.Infow("batch aggregated successfully", "processID", fmt.Sprintf("%x", pid), "took(s)", time.Since(startTime).Seconds())
+
+	// Update the last update time by re-adding the process ID
+	s.pids.Add(pid) // This will update the timestamp
+
+	// Clear the first ballot timestamp since we've processed the batch
+	s.pids.ClearFirstBallotTime(pid)
+
+	return true // Continue to next process ID
 }
 
 // aggregateBatch creates an aggregated zero-knowledge proof for a batch of verified ballots.
