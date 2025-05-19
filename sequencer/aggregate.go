@@ -168,7 +168,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 			EncryptedBallot: ballots[i].EncryptedBallot,
 		})
 	}
-	
+
 	// padding the proofsInputsHashInputs with 1s to fill the array
 	for i := len(ballots); i < types.VotesPerBatch; i++ {
 		proofsInputsHashInputs = append(proofsInputsHashInputs, new(big.Int).SetInt64(1))

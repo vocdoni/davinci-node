@@ -36,7 +36,10 @@ func (c *AggregatorCircuit) checkInputsHash(api frontend.API) {
 		return
 	}
 	// write the inputs hash to the MiMC hash function
-	hFn.Write(c.ProofsInputsHashes[:]...)
+	if err := hFn.Write(c.ProofsInputsHashes[:]...); err != nil {
+		circuits.FrontendError(api, "failed to write inputs hash", err)
+		return
+	}
 	// compare with the expected inputs hash
 	hFn.AssertSumIsEqual(c.InputsHash)
 }

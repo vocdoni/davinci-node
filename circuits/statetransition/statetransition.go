@@ -166,7 +166,9 @@ func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API) (gr
 	if err != nil {
 		return groth16.Witness[sw_bw6761.ScalarField]{}, err
 	}
-	hFn.Write(hashes...)
+	if err := hFn.Write(hashes...); err != nil {
+		return groth16.Witness[sw_bw6761.ScalarField]{}, err
+	}
 	// include the inputs hash in the witness as elements of the bw6761
 	witness.Public = append(witness.Public, inputsHashToElements(api, hFn.Sum())...)
 	return witness, nil
