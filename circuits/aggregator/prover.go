@@ -13,7 +13,7 @@ import (
 // validity values of the current assignment. It loads the required circuit
 // artifacts and decodes them to the proper format. It returns the proof or an
 // error.
-func (assignment AggregatorCircuit) Prove() (groth16.Proof, error) {
+func (assignment *AggregatorCircuit) Prove() (groth16.Proof, error) {
 	// load circuit artifacts content
 	if err := Artifacts.LoadAll(); err != nil {
 		return nil, fmt.Errorf("failed to load aggregator artifacts: %w", err)

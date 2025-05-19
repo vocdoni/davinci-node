@@ -13,6 +13,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
@@ -24,8 +25,9 @@ import (
 // AggregatorTestResults struct includes relevant data after AggregatorCircuit
 // inputs generation
 type AggregatorTestResults struct {
-	Process circuits.Process[*big.Int]
-	Votes   []state.Vote
+	InputsHash *big.Int
+	Process    circuits.Process[*big.Int]
+	Votes      []state.Vote
 }
 
 // AggregatorInputsForTest returns the AggregatorTestResults, the placeholder
@@ -86,9 +88,23 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 		}
 		proofsInputsHashes[i] = emulated.ValueOf[sw_bn254.ScalarField](vvInputs.InputsHashes[i])
 	}
+	// calculate inputs hash
+	hashInputs := []*big.Int{}
+	for i := range types.VotesPerBatch {
+		if i < nValidVotes {
+			hashInputs = append(hashInputs, vvInputs.InputsHashes[i])
+		} else {
+			hashInputs = append(hashInputs, big.NewInt(1))
+		}
+	}
+	inputsHash, err := mimc7.Hash(hashInputs, nil)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	// init final assignments stuff
 	finalAssigments := &aggregator.AggregatorCircuit{
 		ValidProofs:        nValidVotes,
+		InputsHash:         emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 		ProofsInputsHashes: proofsInputsHashes,
 		Proofs:             proofs,
 	}
@@ -121,6 +137,7 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 	}
 	log.Printf("Aggregator inputs generation ends, it tooks %s", time.Since(now))
 	return &AggregatorTestResults{
+		InputsHash: inputsHash,
 		Process: circuits.Process[*big.Int]{
 			ID:            vvInputs.ProcessID,
 			CensusRoot:    vvInputs.CensusRoot,
