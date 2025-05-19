@@ -20,19 +20,20 @@ type BlockStateCall struct {
 	Calls          []Call                   `json:"calls"`
 }
 
-// minimal—you can add more fields if you need them
+// BlockOverrides lets you override block fields
 type BlockOverrides struct {
 	BaseFeePerGas *hexutil.Big `json:"baseFeePerGas,omitempty"`
 	Timestamp     *hexutil.Big `json:"timestamp,omitempty"`
 }
 
+// StateOverride lets you override state fields
 type StateOverride struct {
 	Balance *hexutil.Big   `json:"balance,omitempty"`
 	Nonce   hexutil.Uint64 `json:"nonce,omitempty"`
 	Code    *hexutil.Bytes `json:"code,omitempty"`
 }
 
-// Call is a single EVM call
+// Call is a single call to be executed in the simulated block
 type Call struct {
 	From                 common.Address `json:"from,omitempty"`
 	To                   common.Address `json:"to,omitempty"`
@@ -45,13 +46,14 @@ type Call struct {
 	Nonce                hexutil.Uint64 `json:"nonce,omitempty"`
 }
 
-// What comes back
+// SimulatedBlock is the result of a simulated block
 type SimulatedBlock struct {
 	Hash   common.Hash  `json:"hash"`
 	Number string       `json:"number"`
 	Calls  []CallResult `json:"calls"`
 }
 
+// CallResult is the result of a single call in a simulated block
 type CallResult struct {
 	Status     string         `json:"status"` // "0x1" or "0x0"
 	ReturnData hexutil.Bytes  `json:"returnData"`
@@ -60,6 +62,7 @@ type CallResult struct {
 	Error      *RPCError      `json:"error,omitempty"`
 }
 
+// RPCError is the error returned by the RPC server
 type RPCError struct {
 	Code    int           `json:"code"`
 	Message string        `json:"message"`

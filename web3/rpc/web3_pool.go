@@ -88,12 +88,12 @@ func (nm *Web3Pool) AddEndpoint(uri string) (uint64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), checkWeb3EndpointsTimeout)
 	defer cancel()
 	// init the web3 client
-	client, err := connectEth(ctx, uri)
+	client, err := connectNodeEthereumAPI(ctx, uri)
 	if err != nil {
 		return 0, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
 	}
 	// init the rpc client
-	rpcClient, err := connectRPC(ctx, uri)
+	rpcClient, err := connectNodeRawRPC(ctx, uri)
 	if err != nil {
 		return 0, fmt.Errorf("error dialing rpc provider uri '%s': %w", uri, err)
 	}
@@ -221,10 +221,10 @@ func (nm *Web3Pool) NetworkInfoByChainID(chainID uint64) *Web3Endpoint {
 	return nil
 }
 
-// connectEth method returns a new *ethclient.Client instance for the URI provided.
+// connectNodeEthereumAPI method returns a new *ethclient.Client instance for the URI provided.
 // It retries to connect to the web3 provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
-func connectEth(ctx context.Context, uri string) (client *ethclient.Client, err error) {
+func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.Client, err error) {
 	for i := 0; i < DefaultMaxWeb3ClientRetries; i++ {
 		if client, err = ethclient.DialContext(ctx, uri); err != nil {
 			continue
@@ -234,10 +234,10 @@ func connectEth(ctx context.Context, uri string) (client *ethclient.Client, err 
 	return nil, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
 }
 
-// connectRPC method returns a new *rpc.Client instance for the URI provided.
+// connectNodeRawRPC method returns a new *rpc.Client instance for the URI provided.
 // It retries to connect to the rpc provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
-func connectRPC(ctx context.Context, uri string) (client *rpc.Client, err error) {
+func connectNodeRawRPC(ctx context.Context, uri string) (client *rpc.Client, err error) {
 	for i := 0; i < DefaultMaxWeb3ClientRetries; i++ {
 		if client, err = rpc.DialContext(ctx, uri); err != nil {
 			continue

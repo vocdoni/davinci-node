@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -23,6 +22,7 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/config"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc"
 )
 
@@ -166,15 +166,13 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
-	// check vkey used by sequencer is the same as the one used by the contract
+	// checking that the proving key on the sequencer is compatible with the verification key on the smart contract.
 	vkey, err := process.GetVerifierVKeyHash(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return fmt.Errorf("failed to get verifier address: %w", err)
 	}
-	svkey := hex.EncodeToString(vkey[:])
-	svkey = strings.TrimPrefix(svkey, "0x")
-	if svkey != config.StateTransitionProvingKeyHash {
-		return fmt.Errorf("verifier vkey hash mismatch: %s != %s", vkey, config.StateTransitionProvingKeyHash)
+	if !bytes.Equal(vkey[:], types.HexStringToHexBytes(config.StateTransitionProvingKeyHash)) {
+		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, vkey)
 	}
 
 	c.ContractsAddresses = addresses
@@ -434,8 +432,6 @@ func (c *Contracts) SimulateContractCall(
 func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
 	var errorName string
 	err := c.ContractABIs.ForEachABI(func(name string, a *abi.ABI) error {
-		log.Debugf("ABI %s has %d methods, %d events and %d errors\n",
-			name, len(a.Methods), len(a.Events), len(a.Errors))
 		for _, e := range a.Errors {
 			sig := strings.TrimPrefix(e.String(), "error ")
 			hash := crypto.Keccak256([]byte(sig))[:4]
@@ -467,7 +463,7 @@ func (c *ContractABIs) ForEachABI(fn func(fieldName string, a *abi.ABI) error) e
 		}
 		abiPtr, ok := fieldVal.Interface().(*abi.ABI)
 		if !ok {
-			// should never happen if your struct is well-typed
+			// should never happen
 			continue
 		}
 		fieldName := t.Field(i).Name
@@ -478,6 +474,7 @@ func (c *ContractABIs) ForEachABI(fn func(fieldName string, a *abi.ABI) error) e
 	return nil
 }
 
+// ProcessRegistryABI returns the ABI of the ProcessRegistry contract.
 func (c *Contracts) ProcessRegistryABI() (*abi.ABI, error) {
 	processRegistryABI, err := abi.JSON(strings.NewReader(bindings.ProcessRegistryABI))
 	if err != nil {
@@ -486,6 +483,7 @@ func (c *Contracts) ProcessRegistryABI() (*abi.ABI, error) {
 	return &processRegistryABI, nil
 }
 
+// ResultsRegistryABI returns the ABI of the ResultsRegistry contract.
 func (c *Contracts) OrganizationRegistryABI() (*abi.ABI, error) {
 	organizationRegistryABI, err := abi.JSON(strings.NewReader(bindings.OrganizationRegistryABI))
 	if err != nil {
@@ -494,6 +492,7 @@ func (c *Contracts) OrganizationRegistryABI() (*abi.ABI, error) {
 	return &organizationRegistryABI, nil
 }
 
+// ZKVerifierABI returns the ABI of the ZKVerifier contract.
 func (c *Contracts) ZKVerifierABI() (*abi.ABI, error) {
 	zkVerifierABI, err := abi.JSON(strings.NewReader(bindings.Groth16VerifierABI))
 	if err != nil {
