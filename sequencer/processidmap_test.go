@@ -60,3 +60,38 @@ func TestProcessIDMap(t *testing.T) {
 	pids := pidMap.List()
 	c.Assert(len(pids), qt.Equals, 3, qt.Commentf("List should return all process IDs"))
 }
+
+func TestFirstBallotTime(t *testing.T) {
+	c := qt.New(t)
+
+	// Create a new ProcessIDMap
+	pidMap := NewProcessIDMap()
+	pid1 := []byte{1, 2, 3, 4}
+
+	// Initially, there should be no first ballot time
+	_, exists := pidMap.GetFirstBallotTime(pid1)
+	c.Assert(exists, qt.Equals, false, qt.Commentf("Initially, there should be no first ballot time"))
+
+	// Set the first ballot time
+	pidMap.SetFirstBallotTime(pid1)
+	time1, exists := pidMap.GetFirstBallotTime(pid1)
+	c.Assert(exists, qt.Equals, true, qt.Commentf("Should have a first ballot time after setting it"))
+
+	// Setting it again should not change the time
+	time.Sleep(10 * time.Millisecond) // Small delay to ensure time difference
+	pidMap.SetFirstBallotTime(pid1)
+	time2, exists := pidMap.GetFirstBallotTime(pid1)
+	c.Assert(exists, qt.Equals, true, qt.Commentf("Should still have a first ballot time"))
+	c.Assert(time1, qt.Equals, time2, qt.Commentf("Setting first ballot time again should not change it"))
+
+	// Clear the first ballot time
+	pidMap.ClearFirstBallotTime(pid1)
+	_, exists = pidMap.GetFirstBallotTime(pid1)
+	c.Assert(exists, qt.Equals, false, qt.Commentf("Should have no first ballot time after clearing it"))
+
+	// Setting it again after clearing should work
+	pidMap.SetFirstBallotTime(pid1)
+	time3, exists := pidMap.GetFirstBallotTime(pid1)
+	c.Assert(exists, qt.Equals, true, qt.Commentf("Should have a first ballot time after setting it again"))
+	c.Assert(time3.After(time1), qt.Equals, true, qt.Commentf("New first ballot time should be after the original"))
+}
