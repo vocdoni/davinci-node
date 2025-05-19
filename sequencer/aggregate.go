@@ -2,6 +2,7 @@ package sequencer
 
 import (
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/consensys/gnark/backend/groth16"
@@ -10,6 +11,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -146,6 +148,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	proofs := [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
 	proofsInputHash := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
 	aggBallots := make([]*storage.AggregatorBallot, 0, len(ballots))
+	proofsInputsHashInputs := []*big.Int{}
 
 	// Transform each ballot's proof for the aggregator circuit
 	startTime := time.Now()
@@ -156,6 +159,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 			return fmt.Errorf("failed to transform proof for recursion (ballot %d): %w", i, transformErr)
 		}
 		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](ballots[i].InputsHash)
+		proofsInputsHashInputs = append(proofsInputsHashInputs, ballots[i].InputsHash)
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
 			VoteID:          ballots[i].VoteID,
 			Nullifier:       ballots[i].Nullifier,
@@ -164,10 +168,21 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 			EncryptedBallot: ballots[i].EncryptedBallot,
 		})
 	}
+	
+	// padding the proofsInputsHashInputs with 1s to fill the array
+	for i := len(ballots); i < types.VotesPerBatch; i++ {
+		proofsInputsHashInputs = append(proofsInputsHashInputs, new(big.Int).SetInt64(1))
+	}
+	// compute the hash of the ballot input hashes using MiMC hash function
+	inputsHash, err := mimc7.Hash(proofsInputsHashInputs, nil)
+	if err != nil {
+		return fmt.Errorf("failed to calculate inputs hash: %w", err)
+	}
 
 	// Create the aggregator circuit assignment
 	assignment := &aggregator.AggregatorCircuit{
 		ValidProofs:        len(ballots),
+		InputsHash:         emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 		Proofs:             proofs,
 		ProofsInputsHashes: proofsInputHash,
 	}

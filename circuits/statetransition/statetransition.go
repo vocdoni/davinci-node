@@ -101,22 +101,15 @@ func paddedElement(limb frontend.Variable) emulated.Element[sw_bw6761.ScalarFiel
 // element of the bn254 curve, and then split each limb of the element to single
 // emulated element of the bw6761 curve. Each bn254 limb will be placed as the
 // first limb of the resulting bw6761 elements, and the rest of the limbs
-// will be set to 0. It also receives a flag to indicate if the current hash
-// comes from a valid vote or not. If the vote is not valid, the first limb
-// will be set to 1, and the rest will be set to 0.
-func inputHashToElements(api frontend.API, isValid, inputsHash frontend.Variable) []emulated.Element[sw_bw6761.ScalarField] {
+// will be set to 0.
+func inputsHashToElements(api frontend.API, inputsHash frontend.Variable) []emulated.Element[sw_bw6761.ScalarField] {
 	voterHash, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, inputsHash)
 	if err != nil {
 		return nil
 	}
 	finalElements := []emulated.Element[sw_bw6761.ScalarField]{}
-	for l, limb := range voterHash.Limbs {
-		dummyLimb := 0
-		if l == 0 {
-			dummyLimb = 1
-		}
-		finalLimb := api.Select(isValid, limb, dummyLimb)
-		finalElements = append(finalElements, paddedElement(finalLimb))
+	for _, limb := range voterHash.Limbs {
+		finalElements = append(finalElements, paddedElement(limb))
 	}
 	return finalElements
 }
@@ -161,15 +154,21 @@ func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API) (gr
 	witness := groth16.Witness[sw_bw6761.ScalarField]{
 		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(validVotes)},
 	}
-	// iterate over votes inputs to calculate the votes hashes and append them
-	// to the witness
+	// iterate over votes inputs to select between valid hashes and dummy ones
+	hashes := []frontend.Variable{}
 	for i := range types.VotesPerBatch {
 		isValid := cmp.IsLess(api, i, validVotes)
 		inputsHash := c.proofInputsHash(api, i)
-		// transform the hash to an emulated element of the bn254 curve into
-		// an emulated element of the bw6761 curve
-		witness.Public = append(witness.Public, inputHashToElements(api, isValid, inputsHash)...)
+		hashes = append(hashes, api.Select(isValid, inputsHash, 1))
 	}
+	// hash the inputs hashes to get the final witness
+	hFn, err := mimc7.NewMiMC(api)
+	if err != nil {
+		return groth16.Witness[sw_bw6761.ScalarField]{}, err
+	}
+	hFn.Write(hashes...)
+	// include the inputs hash in the witness as elements of the bw6761
+	witness.Public = append(witness.Public, inputsHashToElements(api, hFn.Sum())...)
 	return witness, nil
 }
 
