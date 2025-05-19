@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -166,12 +167,13 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	defer cancel()
 
 	// check vkey used by sequencer is the same as the one used by the contract
-	vkey, err := process.getVerifierVKeyHash(&bind.CallOpts{Context: ctx})
+	vkey, err := process.GetVerifierVKeyHash(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return fmt.Errorf("failed to get verifier address: %w", err)
 	}
-	vkey = strings.TrimPrefix(vkey.String(), "0x")
-	if vkey != config.StateTransitionProvingKeyHash {
+	svkey := hex.EncodeToString(vkey[:])
+	svkey = strings.TrimPrefix(svkey, "0x")
+	if svkey != config.StateTransitionProvingKeyHash {
 		return fmt.Errorf("verifier vkey hash mismatch: %s != %s", vkey, config.StateTransitionProvingKeyHash)
 	}
 
