@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 
 	bindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
+	"github.com/vocdoni/vocdoni-z-sandbox/config"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc"
@@ -160,6 +161,20 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	if err != nil {
 		return fmt.Errorf("failed to bind process registry: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+
+	// check vkey used by sequencer is the same as the one used by the contract
+	vkey, err := process.getVerifierVKeyHash(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to get verifier address: %w", err)
+	}
+	vkey = strings.TrimPrefix(vkey.String(), "0x")
+	if vkey != config.StateTransitionProvingKeyHash {
+		return fmt.Errorf("verifier vkey hash mismatch: %s != %s", vkey, config.StateTransitionProvingKeyHash)
+	}
+
 	c.ContractsAddresses = addresses
 	c.processes = process
 	c.organizations = organizations
