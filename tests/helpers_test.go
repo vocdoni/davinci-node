@@ -118,7 +118,11 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 	err := web3.WaitReadyRPC(ctx, rpcUrl)
 	qt.Assert(t, err, qt.IsNil)
 
-	var contracts *web3.Contracts
+	// Initialize the contracts object
+	contracts, err := web3.New([]string{rpcUrl})
+	qt.Assert(t, err, qt.IsNil)
+
+	// Define contracts addresses or deploy them
 	if localEnv {
 		// Deploy the contracts using the local geth node
 		log.Infow("deploying contracts", "url", rpcUrl)
@@ -135,6 +139,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		})
 		qt.Assert(t, err, qt.IsNil)
 	}
+
 	// Set contracts ABIs
 	contracts.ContractABIs = &web3.ContractABIs{}
 	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
