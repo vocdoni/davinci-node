@@ -185,8 +185,8 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	}
 
 	// Start sequencer service
-	log.Infow("starting sequencer service", "batchTimeWindow", time.Duration(cfg.Batch.Time)*time.Second)
-	services.Sequencer = service.NewSequencer(services.Storage, services.Contracts, time.Duration(cfg.Batch.Time)*time.Second)
+	log.Infow("starting sequencer service", "batchTimeWindow", cfg.Batch.Time.String())
+	services.Sequencer = service.NewSequencer(services.Storage, services.Contracts, cfg.Batch.Time)
 	if err := services.Sequencer.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start sequencer service: %w", err)
 	}
@@ -198,7 +198,7 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 		return nil, fmt.Errorf("failed to start finalizer service: %w", err)
 	}
 
-	log.Info("davinci-sequencer is running")
+	log.Info("davinci-node is running, ready to process votes!")
 	return services, nil
 }
 

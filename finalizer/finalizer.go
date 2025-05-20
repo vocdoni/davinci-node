@@ -139,12 +139,11 @@ func (f *Finalizer) Close() {
 // finalizeByDate finalizes all processes that startdate+duration is before the given date
 // and that do not have a result yet.
 func (f *Finalizer) finalizeByDate(date time.Time) {
-	pids, err := f.stg.ListProcesses()
+	pids, err := f.stg.ListProcessWithEncryptionKeys()
 	if err != nil {
 		log.Errorw(err, "could not list processes")
 		return
 	}
-
 	for _, pidBytes := range pids {
 		pid := new(types.ProcessID)
 		if err := pid.Unmarshal(pidBytes); err != nil {
@@ -154,7 +153,6 @@ func (f *Finalizer) finalizeByDate(date time.Time) {
 
 		process, err := f.stg.Process(pid)
 		if err != nil {
-			log.Errorw(err, "could not retrieve process")
 			continue
 		}
 
