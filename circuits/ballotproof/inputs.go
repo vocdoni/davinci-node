@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
@@ -56,24 +55,19 @@ func GenerateBallotProofInputs(
 	// safe address and processID
 	ffAddress := inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
 	ffProcessID := inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
-	// compose a list with the inputs of the circuit to hash them
-	inputsHash := []*big.Int{ffProcessID.MathBigInt()}         // process id
-	inputsHash = append(inputsHash, ballotMode.Serialize()...) // ballot mode serialized
-	inputsHash = append(inputsHash,
-		circomEncryptionKeyX,    // encryption key x coordinate
-		circomEncryptionKeyY,    // encryption key y coordinate
-		ffAddress.MathBigInt(),  // address
-		commitment.MathBigInt(), // commitment
-		nullifier.MathBigInt(),  // nullifier
+	// calculate the ballot inputs hash
+	ballotInputsHash, err := BallotInputsHash(
+		inputs.ProcessID,
+		inputs.BallotMode,
+		encryptionKey,
+		inputs.Address,
+		commitment,
+		nullifier,
+		ballot,
+		inputs.Weight,
 	)
-	// ballot (in twisted edwards form)
-	inputsHash = append(inputsHash, ballot.FromRTEtoTE().BigInts()...)
-	// weight
-	inputsHash = append(inputsHash, inputs.Weight.MathBigInt())
-	// hash the inputs with mimc7
-	circomInputHash, err := mimc7.Hash(inputsHash, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error hashing inputs: %v", err.Error())
+		return nil, fmt.Errorf("error calculating ballot input hash: %v", err.Error())
 	}
 	return &BallotProofInputsResult{
 		ProccessID:       inputs.ProcessID,
@@ -81,8 +75,8 @@ func GenerateBallotProofInputs(
 		Commitment:       commitment,
 		Nullifier:        nullifier,
 		Ballot:           ballot.FromRTEtoTE(),
-		BallotInputsHash: (*types.BigInt)(circomInputHash),
-		VoteID:           crypto.BigIntToFFwithPadding(circomInputHash, circuits.VoteVerifierCurve.ScalarField()),
+		BallotInputsHash: (*types.BigInt)(ballotInputsHash),
+		VoteID:           crypto.BigIntToFFwithPadding(ballotInputsHash.MathBigInt(), circuits.VoteVerifierCurve.ScalarField()),
 		CircomInputs: &CircomInputs{
 			Fields:          circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
 			MaxCount:        ballotMode.MaxCount.String(),
@@ -102,7 +96,7 @@ func GenerateBallotProofInputs(
 			Nullifier:       nullifier.String(),
 			Commitment:      commitment.String(),
 			Secret:          inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
-			InputsHash:      circomInputHash.String(),
+			InputsHash:      ballotInputsHash.String(),
 		},
 	}, nil
 }
