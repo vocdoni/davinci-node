@@ -28,7 +28,7 @@ var (
 
 	// NewProcessMonitorInterval is the interval at which the sequencer will check for new processes to participate in.
 	// This value can be changed before starting the sequencer.
-	NewProcessMonitorInterval = 60 * time.Second
+	NewProcessMonitorInterval = 10 * time.Second
 
 	// ParticipateInAllProcesses determines if the sequencer should process ballots from all processes that are registered.
 	// This is a temporary flag to simplify testing and will be removed in the future. The Sequencer caller must somehow

@@ -17,11 +17,11 @@ const (
 	defaultNetwork   = "sep"
 	defaultAPIHost   = "0.0.0.0"
 	defaultAPIPort   = 9090
-	defaultBatchTime = 60
+	defaultBatchTime = 300 * time.Second
 	defaultLogLevel  = "info"
 	defaultLogOutput = "stdout"
 	defaultDatadir   = ".davinci" // Will be prefixed with user's home directory
-	artifactsTimeout = 5 * time.Minute
+	artifactsTimeout = 20 * time.Minute
 	monitorInterval  = 10 * time.Second
 )
 
@@ -55,7 +55,7 @@ type APIConfig struct {
 
 // BatchConfig holds batch processing configuration
 type BatchConfig struct {
-	Time int `mapstructure:"time"`
+	Time time.Duration `mapstructure:"time"`
 }
 
 // LogConfig holds logging configuration
@@ -91,7 +91,7 @@ func loadConfig() (*Config, error) {
 	flag.StringSliceP("web3.rpc", "w", []string{}, "web3 rpc endpoint(s), comma-separated")
 	flag.StringP("api.host", "a", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
-	flag.IntP("batch.time", "b", defaultBatchTime, "sequencer batch time window in seconds")
+	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")
 	flag.String("web3.process", "", "custom process registry contract address (overrides network default)")
 	flag.String("web3.orgs", "", "custom organization registry contract address (overrides network default)")
 	flag.String("web3.results", "", "custom results registry contract address (overrides network default)")

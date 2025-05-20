@@ -69,6 +69,10 @@ jobs:
       LOG_PANIC_ON_INVALIDCHARS: true
       LOG_LEVEL: debug
       DAVINCI_ARTIFACTS_DIR: ~/.cache/davinci-artifacts
+      GOPATH:     ${{ github.workspace }}/.go
+      GOMODCACHE: ${{ github.workspace }}/.go/pkg/mod
+      GOCACHE:    ${{ github.workspace }}/.go/cache
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -79,17 +83,26 @@ jobs:
         uses: actions/cache@v3
         with:
           # Cache the artifact directory so tests don't force re-downloads.
-          path: ${{ env.DAVINCI_ARTIFACTS_DIR }}
-          key: ${{ runner.name }}-circuits-artifacts-v1
+          path: |
+            ${{ env.DAVINCI_ARTIFACTS_DIR }}
+            ${{ env.GOMODCACHE }}
+            ${{ env.GOCACHE }}
+          key: ${{ runner.name }}-circuits-go-${{ hashFiles('**/go.sum') }}-v1
           restore-keys: |
-            ${{ runner.os }}-circuits-artifacts-
-
+            ${{ runner.name }}-circuits-go-
+            ${{ runner.os }}-circuits-go-
+      
       - uses: benjlevesque/short-sha@v3.0
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-          cache: false
+          cache: false # we manage cache oruselves
+
+      - name: Prep Go module cache
+        run: |
+          mkdir -p "$GOMODCACHE"
+          mkdir -p "$GOCACHE"
 
       - name: Check if /circuits changed
         id: check_circuits
