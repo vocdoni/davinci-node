@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +36,17 @@ import (
 	"go.vocdoni.io/dvote/db/metadb"
 )
 
-const testLocalAccountPrivKey = "0cebebc37477f513cd8f946ffced46e368aa4f9430250ce4507851edbba86b20" // defined in docker/files/genesis.json
+const (
+	testLocalAccountPrivKey = "0cebebc37477f513cd8f946ffced46e368aa4f9430250ce4507851edbba86b20" // defined in docker/files/genesis.json
+	// envarionment variable names
+	privKeyEnvVarName         = "SEQUENCER_PRIV_KEY"              // environment variable name for private key
+	rpcUrlEnvVarName          = "SEQUENCER_RPC_URL"               // environment variable name for RPC URL
+	orgRegistryEnvVarName     = "SEQUENCER_ORGANIZATION_REGISTRY" // environment variable name for organization registry
+	processRegistryEnvVarName = "SEQUENCER_PROCESS_REGISTRY"      // environment variable name for process registry
+	resultsRegistryEnvVarName = "SEQUENCER_RESULTS_REGISTRY"      // environment variable name for results registry
+	zkVerifierEnvVarName      = "SEQUENCER_ZK_VERIFIER"           // environment variable name for zk verifier
+
+)
 
 // Services struct holds all test services
 type Services struct {
@@ -60,60 +72,98 @@ func setupAPI(ctx context.Context, db *storage.Storage) (*service.APIService, er
 	return api, nil
 }
 
+// setupWeb3 sets up the web3 contracts for testing. It deploys the contracts
+// if the environment variables are not set, if they are set it loads the
+// contracts from the environment variables. It returns the contracts object.
+func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
+	// Get the environment variables
+	var (
+		privKey             = os.Getenv(privKeyEnvVarName)
+		rpcUrl              = os.Getenv(rpcUrlEnvVarName)
+		orgRegistryAddr     = os.Getenv(orgRegistryEnvVarName)
+		processRegistryAddr = os.Getenv(processRegistryEnvVarName)
+		resultsRegistryAddr = os.Getenv(resultsRegistryEnvVarName)
+		zkVerifierAddr      = os.Getenv(zkVerifierEnvVarName)
+	)
+	// Check if the environment variables are set to run the tests over local
+	// geth node or remote blockchain environment
+	localEnv := privKey == "" || rpcUrl == "" || orgRegistryAddr == "" ||
+		processRegistryAddr == "" || resultsRegistryAddr == "" || zkVerifierAddr == ""
+	if localEnv {
+		// Generate a random port for geth HTTP RPC
+		gethPort := util.RandomInt(10000, 20000)
+		rpcUrl = fmt.Sprintf("http://localhost:%d", gethPort)
+		// Set environment variables for docker-compose in the process environment
+		composeEnv := make(map[string]string)
+		composeEnv["GETH_PORT_RPC_HTTP"] = fmt.Sprintf("%d", gethPort)
+		composeEnv["GETH_PORT_RPC_WS"] = fmt.Sprintf("%d", gethPort+1)
+		composeEnv["GETH_PORT_P2P"] = fmt.Sprintf("%d", gethPort+6)
+
+		// Create docker-compose instance
+		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
+		qt.Assert(t, err, qt.IsNil)
+		t.Cleanup(func() {
+			err := compose.Down(ctx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
+			qt.Assert(t, err, qt.IsNil)
+		})
+		ctx2, cancel := context.WithCancel(ctx)
+		t.Cleanup(cancel)
+
+		// Start docker-compose
+		log.Infow("starting Geth docker compose", "gethPort", gethPort)
+		err = compose.WithEnv(composeEnv).Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
+		qt.Assert(t, err, qt.IsNil)
+	}
+
+	// Wait for the RPC to be ready
+	err := web3.WaitReadyRPC(ctx, rpcUrl)
+	qt.Assert(t, err, qt.IsNil)
+
+	// Initialize the contracts object
+	contracts, err := web3.New([]string{rpcUrl})
+	qt.Assert(t, err, qt.IsNil)
+
+	// Define contracts addresses or deploy them
+	if localEnv {
+		// Deploy the contracts using the local geth node
+		log.Infow("deploying contracts", "url", rpcUrl)
+		contracts, err = web3.DeployContracts(rpcUrl, testLocalAccountPrivKey)
+		qt.Assert(t, err, qt.IsNil)
+		log.Infow("contracts deployed", "chainId", contracts.ChainID)
+	} else {
+		// Set the private key for the sequencer
+		err = contracts.SetAccountPrivateKey(util.TrimHex(privKey))
+		qt.Assert(t, err, qt.IsNil)
+		// Create the contracts object with the addresses from the environment
+		err = contracts.LoadContracts(&web3.Addresses{
+			OrganizationRegistry: common.HexToAddress(orgRegistryAddr),
+			ProcessRegistry:      common.HexToAddress(processRegistryAddr),
+			ResultsRegistry:      common.HexToAddress(resultsRegistryAddr),
+			ZKVerifier:           common.HexToAddress(zkVerifierAddr),
+		})
+		qt.Assert(t, err, qt.IsNil)
+	}
+
+	// Set contracts ABIs
+	contracts.ContractABIs = &web3.ContractABIs{}
+	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
+	qt.Assert(t, err, qt.IsNil)
+	contracts.ContractABIs.OrganizationRegistry, err = contracts.OrganizationRegistryABI()
+	qt.Assert(t, err, qt.IsNil)
+	contracts.ContractABIs.ZKVerifier, err = contracts.ZKVerifierABI()
+	qt.Assert(t, err, qt.IsNil)
+	// Return the contracts object
+	return contracts
+}
+
 // NewTestClient creates a new API client for testing.
 func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
 func NewTestService(t *testing.T, ctx context.Context) *Services {
-	// Generate a random port for geth HTTP RPC
-	gethPort := util.RandomInt(10000, 20000)
-	gethURL := fmt.Sprintf("http://localhost:%d", gethPort)
-	// Set environment variables for docker-compose in the process environment
-	composeEnv := make(map[string]string)
-	composeEnv["GETH_PORT_8545"] = fmt.Sprintf("%d", gethPort)
-	composeEnv["GETH_PORT_8546"] = fmt.Sprintf("%d", gethPort+1)
-	composeEnv["GETH_PORT_8551"] = fmt.Sprintf("%d", gethPort+6)
-
-	// Create docker-compose instance
-	compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
-	qt.Assert(t, err, qt.IsNil)
-	t.Cleanup(func() {
-		err := compose.Down(ctx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
-		qt.Assert(t, err, qt.IsNil)
-	})
-	ctx2, cancel := context.WithCancel(ctx)
-	t.Cleanup(cancel)
-
-	// Start docker-compose
-	log.Infow("starting Geth docker compose", "gethPort", gethPort)
-	err = compose.WithEnv(composeEnv).Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
-	qt.Assert(t, err, qt.IsNil)
-
-	// Wait for the RPC to be ready
-	err = web3.WaitReadyRPC(ctx, gethURL)
-	qt.Assert(t, err, qt.IsNil)
-
-	log.Infow("deploying contracts", "url", gethURL)
-	contracts, err := web3.DeployContracts(gethURL, testLocalAccountPrivKey)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Infow("contracts deployed", "chainId", contracts.ChainID)
-
-	contracts.ContractABIs = &web3.ContractABIs{}
-	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
-	if err != nil {
-		log.Fatal(err)
-	}
-	contracts.ContractABIs.OrganizationRegistry, err = contracts.OrganizationRegistryABI()
-	if err != nil {
-		log.Fatal(err)
-	}
-	contracts.ContractABIs.ZKVerifier, err = contracts.ZKVerifierABI()
-	if err != nil {
-		log.Fatal(err)
-	}
+	// Initialize the web3 contracts
+	contracts := setupWeb3(t, ctx)
 
 	kv, err := metadb.New(db.TypePebble, t.TempDir())
 	qt.Assert(t, err, qt.IsNil)
@@ -343,4 +393,56 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 	}
+}
+
+func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes) bool {
+	c := qt.New(t)
+	// Check vote status and return whether all votes are processed
+	txt := strings.Builder{}
+	txt.WriteString("Vote status: ")
+	allProcessed := true
+
+	// Check status for each vote
+	for i, voteID := range voteIDs {
+		// Construct the status endpoint URL
+		statusEndpoint := api.EndpointWithParam(
+			api.EndpointWithParam(api.VoteStatusEndpoint,
+				api.VoteStatusProcessIDParam, pid.String()),
+			api.VoteStatusVoteIDParam, voteID.String())
+
+		// Make the request to get the vote status
+		body, statusCode, err := cli.Request("GET", nil, nil, statusEndpoint)
+		c.Assert(err, qt.IsNil)
+		c.Assert(statusCode, qt.Equals, 200)
+
+		// Parse the response body to get the status
+		var statusResponse api.VoteStatusResponse
+		err = json.NewDecoder(bytes.NewReader(body)).Decode(&statusResponse)
+		c.Assert(err, qt.IsNil)
+
+		// Verify the status is valid
+		c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
+
+		// Check if the vote is processed
+		if statusResponse.Status != storage.BallotStatusName(storage.BallotStatusProcessed) {
+			allProcessed = false
+		}
+
+		// Write to the string builder for logging
+		txt.WriteString(fmt.Sprintf("#%d:%s ", i, statusResponse.Status))
+	}
+
+	// Log the vote status
+	t.Log(txt.String())
+	return allProcessed
+}
+
+func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) int {
+	c := qt.New(t)
+	process, err := contracts.Process(pid.Marshal())
+	c.Assert(err, qt.IsNil)
+	if process == nil || process.VoteCount == nil {
+		return 0
+	}
+	return int(process.VoteCount.MathBigInt().Int64())
 }
