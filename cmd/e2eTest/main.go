@@ -149,7 +149,7 @@ func main() {
 		MetadataURI: "https://example.com/metadata",
 		BallotMode: &types.BallotMode{
 			MaxCount:        2,
-			MaxValue:        new(types.BigInt).SetUint64(100),
+			MaxValue:        new(types.BigInt).SetUint64(16),
 			MinValue:        new(types.BigInt).SetUint64(0),
 			MaxTotalCost:    new(types.BigInt).SetUint64(0),
 			MinTotalCost:    new(types.BigInt).SetUint64(0),

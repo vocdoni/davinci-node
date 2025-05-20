@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	testLocalAccountPrivKey = "0cebebc37477f513cd8f946ffced46e368aa4f9430250ce4507851edbba86b20" // defined in docker/files/genesis.json
+	testLocalAccountPrivKey = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 	// envarionment variable names
 	privKeyEnvVarName         = "SEQUENCER_PRIV_KEY"              // environment variable name for private key
 	rpcUrlEnvVarName          = "SEQUENCER_RPC_URL"               // environment variable name for RPC URL
@@ -110,7 +110,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		t.Cleanup(cancel)
 
 		// Start docker-compose
-		log.Infow("starting Geth docker compose", "gethPort", gethPort)
+		log.Infow("starting Anvil docker compose", "gethPort", gethPort)
 		err = compose.WithEnv(composeEnv).Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
 		qt.Assert(t, err, qt.IsNil)
 	}
@@ -285,7 +285,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	c.Assert(err, qt.IsNil)
 
 	// Sign the process creation request
-	signature, err := contracts.SignMessage([]byte(fmt.Sprintf("%d%d", contracts.ChainID, nonce)))
+	signature, err := contracts.SignMessage(fmt.Appendf(nil, "%d%d", contracts.ChainID, nonce))
 	c.Assert(err, qt.IsNil)
 
 	process := &types.ProcessSetup{
