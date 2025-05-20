@@ -116,7 +116,7 @@ func (b *Ballot) VoteID() []byte {
 	if b.BallotInputsHash == nil {
 		return nil
 	}
-	return crypto.BigIntToFFwithPadding(b.BallotInputsHash, circuits.BallotProofCurve.ScalarField())
+	return crypto.BigIntToFFwithPadding(b.BallotInputsHash, circuits.VoteVerifierCurve.ScalarField())
 }
 
 func (b *Ballot) String() string {
