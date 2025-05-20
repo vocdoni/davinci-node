@@ -149,7 +149,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 		StartTime:   time.Now(),
 		Duration:    time.Hour,
 		MetadataURI: "http://example.com/metadata",
-		StateRoot:   make([]byte, 32),
+		StateRoot:   new(types.BigInt).SetUint64(100),
 		BallotMode: &types.BallotMode{
 			MaxCount:        8,
 			MaxValue:        new(types.BigInt).SetUint64(100),
@@ -192,7 +192,13 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 }
 
 // setupTestState initializes the state with encrypted test data
-func setupTestState(t *testing.T, stateDB db.Database, pid *types.ProcessID, pubKey ecc.Point, addValue, subValue int64) []byte {
+func setupTestState(
+	t *testing.T,
+	stateDB db.Database,
+	pid *types.ProcessID,
+	pubKey ecc.Point,
+	addValue, subValue int64,
+) *types.BigInt {
 	// Create a new state
 	st, err := state.New(stateDB, pid.BigInt())
 	if err != nil {
@@ -258,9 +264,9 @@ func setupTestState(t *testing.T, stateDB db.Database, pid *types.ProcessID, pub
 	st.SetResultsAdd(encryptedAdd)
 	st.SetResultsSub(encryptedSub)
 
-	stateRoot, err := st.Root()
+	stateRoot, err := st.RootAsBigInt()
 	if err != nil {
 		t.Fatalf("failed to get state root: %v", err)
 	}
-	return stateRoot
+	return (*types.BigInt)(stateRoot)
 }

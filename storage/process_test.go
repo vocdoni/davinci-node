@@ -65,7 +65,7 @@ func TestProcess(t *testing.T) {
 		ID:             processID.Marshal(),
 		Status:         0,
 		OrganizationId: common.Address{},
-		StateRoot:      make([]byte, 32),
+		StateRoot:      new(types.BigInt).SetUint64(100),
 		StartTime:      time.Now(),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",

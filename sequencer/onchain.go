@@ -47,7 +47,7 @@ func (s *Sequencer) processOnChain() {
 		// get the process from the storage
 		process, err := s.stg.Process(new(types.ProcessID).SetBytes(pid))
 		if err != nil {
-			log.Errorw(err, "failed to get process metadata")
+			log.Errorw(err, "failed to get process data")
 			return true // Continue to next process ID
 		}
 		log.Infow("state transition batch ready for on-chain upload",
@@ -65,7 +65,7 @@ func (s *Sequencer) processOnChain() {
 			return true // Continue to next process ID
 		}
 		// update the process state with the new root hash
-		process.StateRoot = batch.Inputs.RootHashAfter.Bytes()
+		process.StateRoot = (*types.BigInt)(batch.Inputs.RootHashAfter)
 		if err := s.stg.SetProcess(process); err != nil {
 			log.Errorw(err, "failed to update process data")
 			return true // Continue to next process ID
@@ -111,7 +111,7 @@ func (s *Sequencer) pushToContract(processID []byte,
 	txHash, err := s.contracts.SetProcessTransition(processID,
 		abiProof,
 		abiInputs,
-		inputs.RootHashBefore.Bytes(),
+		(*types.BigInt)(inputs.RootHashBefore),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to submit state transition: %w", err)
