@@ -252,7 +252,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 		Status:         0,
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKeys,
-		StateRoot:      resp.StateRoot,
+		StateRoot:      resp.StateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",

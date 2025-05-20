@@ -1,7 +1,6 @@
 package web3
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -78,7 +77,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 // StateRoot returns the state root of the process with the given ID. It
 // returns an error if the process does not exist or if there is an issue with
 // the contract call.
-func (c *Contracts) StateRoot(processID []byte) ([]byte, error) {
+func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 	process, err := c.Process(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
@@ -91,12 +90,13 @@ func (c *Contracts) StateRoot(processID []byte) ([]byte, error) {
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) SetProcessTransition(processID, proof, input, oldRoot []byte) (*common.Hash, error) {
+func (c *Contracts) SetProcessTransition(processID, proof, input []byte, oldRoot *types.BigInt) (*common.Hash, error) {
 	stateRoot, err := c.StateRoot(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
-	if !bytes.Equal(stateRoot, oldRoot) {
+	// if !bytes.Equal(stateRoot, oldRoot) {
+	if stateRoot.MathBigInt().Cmp(oldRoot.MathBigInt()) != 0 {
 		return nil, fmt.Errorf("process state root mismatch: %x != %x", stateRoot, oldRoot)
 	}
 	var pid [32]byte
@@ -245,7 +245,7 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 			X: p.EncryptionKey.X,
 			Y: p.EncryptionKey.Y,
 		},
-		StateRoot:   p.LatestStateRoot.Bytes(),
+		StateRoot:   (*types.BigInt)(p.LatestStateRoot),
 		StartTime:   time.Unix(int64(p.StartTime.Uint64()), 0),
 		Duration:    time.Duration(p.Duration.Uint64()) * time.Second,
 		MetadataURI: p.MetadataURI,
@@ -274,7 +274,7 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	prp.OrganizationId = p.OrganizationId
 	prp.EncryptionKey = bindings.IProcessRegistryEncryptionKey{X: p.EncryptionKey.X, Y: p.EncryptionKey.Y}
 
-	prp.LatestStateRoot = new(big.Int).SetBytes(p.StateRoot)
+	prp.LatestStateRoot = p.StateRoot.MathBigInt()
 	prp.StartTime = big.NewInt(p.StartTime.Unix())
 	prp.Duration = big.NewInt(int64(p.Duration.Seconds()))
 	prp.MetadataURI = p.MetadataURI

@@ -12,7 +12,6 @@ import (
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -100,6 +99,7 @@ func (s *Sequencer) processPendingTransitions() {
 		log.Debugw("state transition proof generated",
 			"took", time.Since(startTime).String(),
 			"processID", processID.String(),
+			"rootHashBefore", root.String(),
 			"rootHashAfter", rootHashAfter.String(),
 		)
 
@@ -164,9 +164,7 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
 	// initialize the process state on the given root
-	ffPID := crypto.BigToFF(circuits.StateTransitionCurve.BaseField(), pid.BigInt())
-	bigStateRoot := process.StateRoot.BigInt().MathBigInt()
-	processState, err := state.LoadOnRoot(s.stg.StateDB(), ffPID, bigStateRoot)
+	processState, err := state.LoadOnRoot(s.stg.StateDB(), pid.BigInt(), process.StateRoot.MathBigInt())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}

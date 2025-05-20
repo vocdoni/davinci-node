@@ -49,7 +49,7 @@ type Process struct {
 	Status             uint8          `json:"status"                   cbor:"1,keyasint,omitempty"`
 	OrganizationId     common.Address `json:"organizationId"           cbor:"2,keyasint,omitempty"`
 	EncryptionKey      *EncryptionKey `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
-	StateRoot          HexBytes       `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
+	StateRoot          *BigInt        `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
 	Result             []*BigInt      `json:"result"                   cbor:"5,keyasint,omitempty"`
 	StartTime          time.Time      `json:"startTime"                cbor:"6,keyasint,omitempty"`
 	Duration           time.Duration  `json:"duration"                 cbor:"7,keyasint,omitempty"`

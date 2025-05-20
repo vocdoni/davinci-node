@@ -43,7 +43,7 @@ func TestProcessMonitor(t *testing.T) {
 	pid, hash, err := contracts.CreateProcess(&types.Process{
 		Status:         0,
 		OrganizationId: contracts.AccountAddress(),
-		StateRoot:      make([]byte, 32),
+		StateRoot:      new(types.BigInt).SetUint64(100),
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",

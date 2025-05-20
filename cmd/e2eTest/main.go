@@ -143,7 +143,7 @@ func main() {
 			X: x,
 			Y: y,
 		},
-		StateRoot:   util.RandomBytes(32),
+		StateRoot:   new(types.BigInt).SetBytes(util.RandomBytes(32)),
 		StartTime:   time.Now().Add(5 * time.Minute),
 		Duration:    time.Hour,
 		MetadataURI: "https://example.com/metadata",
