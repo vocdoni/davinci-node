@@ -105,6 +105,7 @@ func (s *Sequencer) pushToContract(processID []byte,
 		return fmt.Errorf("failed to encode inputs: %w", err)
 	}
 	log.Debugw("proof ready to submit to the contract",
+		"pid", hex.EncodeToString(processID),
 		"commitments", proof.Commitments,
 		"commitmentPok", proof.CommitmentPok,
 		"proof", proof.Proof,
@@ -123,7 +124,9 @@ func (s *Sequencer) pushToContract(processID []byte,
 		abiProof,
 		abiInputs,
 	); err != nil {
-		return fmt.Errorf("failed to simulate state transition: %s", err.Error())
+		log.Warnw("failed to simulate state transition",
+			"error", err,
+			"pid", hex.EncodeToString(processID))
 	}
 
 	// submit the proof to the contract if simulation is successful
