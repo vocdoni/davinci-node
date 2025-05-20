@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // Web3Endpoint struct contains all the required information about a web3
@@ -15,6 +16,7 @@ type Web3Endpoint struct {
 	URI       string
 	IsArchive bool
 	client    *ethclient.Client
+	rpcClient *rpc.Client
 }
 
 // Web3Iterator struct is a pool of Web3Endpoint that allows to get the next

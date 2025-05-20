@@ -202,24 +202,22 @@ type StateTransitionBatchProofInputs struct {
 	NumOverwrites  int      `json:"numOverwrites"`
 }
 
-// EncodeAsUint256Array ABI-encodes the four fields as a Solidity uint256[4].
+// ABIEncode packs the four fields as a single static uint256[4] blob:
+//
+//	[ rootHashBefore, rootHashAfter, numNewVotes, numOverwrites ]
 func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
-	uint256, err := abi.NewType("uint256", "", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	args := abi.Arguments{
-		{Type: uint256},
-		{Type: uint256},
-		{Type: uint256},
-		{Type: uint256},
-	}
-
-	return args.Pack(
+	arr := [4]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
 		big.NewInt(int64(s.NumNewVotes)),
 		big.NewInt(int64(s.NumOverwrites)),
-	)
+	}
+	arrType, err := abi.NewType("uint256[4]", "", nil)
+	if err != nil {
+		return nil, err
+	}
+	arguments := abi.Arguments{
+		{Type: arrType},
+	}
+	return arguments.Pack(arr)
 }

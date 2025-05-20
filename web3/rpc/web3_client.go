@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const defaultRetries = 3
@@ -37,6 +38,16 @@ func (c *Client) EthClient() (*ethclient.Client, error) {
 		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
 	}
 	return endpoint.client, nil
+}
+
+// RPCClient method returns the rpc.Client for the chainID of the Client
+// instance. It returns an error if the chainID is not found in the pool.
+func (c *Client) RPCClient() (*rpc.Client, error) {
+	endpoint, err := c.w3p.Endpoint(c.chainID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
+	}
+	return endpoint.rpcClient, nil
 }
 
 // CodeAt method wraps the CodeAt method from the ethclient.Client for the
@@ -79,6 +90,20 @@ func (c *Client) CallContract(ctx context.Context, call ethereum.CallMsg, blockN
 		return nil, err
 	}
 	return res.([]byte), err
+}
+
+func (c *Client) CallSimulation(
+	ctx context.Context,
+	result interface{},
+	simReq interface{},
+	blockTag string,
+) error {
+	endpoint, err := c.w3p.Endpoint(c.chainID)
+	if err != nil {
+		return fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
+	}
+	// no retry wrapper here, or wrap if you want retries for simulate too
+	return endpoint.rpcClient.CallContext(ctx, result, "eth_simulateV1", simReq, blockTag)
 }
 
 // EstimateGas method wraps the EstimateGas method from the ethclient.Client for

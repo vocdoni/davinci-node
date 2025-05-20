@@ -13,12 +13,6 @@ import (
 	"github.com/consensys/gnark/frontend"
 )
 
-var groth16CommitmentProofABI, _ = abi.NewType("tuple", "Groth16CommitmentProof", []abi.ArgumentMarshaling{
-	{Name: "proof", Type: "uint256[8]"},
-	{Name: "commitments", Type: "uint256[2]"},
-	{Name: "commitment_pok", Type: "uint256[2]"},
-})
-
 // ExportWitnessToSolidityInputs exports the public witness to a JSON file for Solidity.
 func ExportWitnessToSolidityInputs(w witness.Witness, circuitAssignments frontend.Circuit, jsonOutputFilePath string) error {
 	schema, err := frontend.NewSchema(circuitAssignments)
@@ -107,14 +101,10 @@ func (p *Groth16CommitmentProof) FromGnarkProof(proof groth16.Proof) error {
 	return nil
 }
 
-// ABIEncode encodes the Groth16CommitmentProof to an ABI‑encoded byte slice.
+// ABIEncode encodes the Groth16CommitmentProof to an ABI-encoded byte slice
+// matching Solidity’s (uint256[8],uint256[2],uint256[2]) layout.
 func (p *Groth16CommitmentProof) ABIEncode() ([]byte, error) {
-	type abiProof struct {
-		Proof         [8]*big.Int `json:"proof"`
-		Commitments   [2]*big.Int `json:"commitments"`
-		CommitmentPok [2]*big.Int `json:"commitment_pok"`
-	}
-	proof := [8]*big.Int{
+	proofArr := [8]*big.Int{
 		p.Proof.Ar[0],
 		p.Proof.Ar[1],
 		p.Proof.Bs[0][0],
@@ -125,13 +115,23 @@ func (p *Groth16CommitmentProof) ABIEncode() ([]byte, error) {
 		p.Proof.Krs[1],
 	}
 
-	proofABI := abiProof{
-		Proof:         proof,
-		Commitments:   p.Commitments,
-		CommitmentPok: p.CommitmentPok,
+	proofType, err := abi.NewType("uint256[8]", "", nil)
+	if err != nil {
+		return nil, err
 	}
-	packer := abi.Arguments{
-		{Type: groth16CommitmentProofABI},
+	commType, err := abi.NewType("uint256[2]", "", nil)
+	if err != nil {
+		return nil, err
 	}
-	return packer.Pack(proofABI)
+
+	arguments := abi.Arguments{
+		{Type: proofType},
+		{Type: commType},
+		{Type: commType},
+	}
+	return arguments.Pack(
+		proofArr,
+		p.Commitments,
+		p.CommitmentPok,
+	)
 }

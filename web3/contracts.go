@@ -1,19 +1,28 @@
 package web3
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
+
 	bindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
+	"github.com/vocdoni/vocdoni-z-sandbox/config"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc"
 )
 
@@ -36,10 +45,18 @@ type Addresses struct {
 	ZKVerifier           common.Address
 }
 
+type ContractABIs struct {
+	OrganizationRegistry *abi.ABI
+	ResultsRegistry      *abi.ABI
+	ProcessRegistry      *abi.ABI
+	ZKVerifier           *abi.ABI
+}
+
 // Contracts contains the bindings to the deployed contracts.
 type Contracts struct {
 	ChainID            uint64
 	ContractsAddresses *Addresses
+	ContractABIs       *ContractABIs
 	organizations      *bindings.OrganizationRegistry
 	processes          *bindings.ProcessRegistry
 	web3pool           *rpc.Web3Pool
@@ -142,9 +159,42 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	if err != nil {
 		return fmt.Errorf("failed to bind process registry: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+
+	// checking that the proving key on the sequencer is compatible with the verification key on the smart contract.
+	vkey, err := process.GetVerifierVKeyHash(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to get verifier address: %w", err)
+	}
+	if !bytes.Equal(vkey[:], types.HexStringToHexBytes(config.StateTransitionProvingKeyHash)) {
+		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, vkey)
+	}
+
 	c.ContractsAddresses = addresses
 	c.processes = process
 	c.organizations = organizations
+
+	orgRegistryABI, err := abi.JSON(strings.NewReader(bindings.OrganizationRegistryABI))
+	if err != nil {
+		return fmt.Errorf("failed to parse organization registry ABI: %w", err)
+	}
+	processRegistryABI, err := abi.JSON(strings.NewReader(bindings.ProcessRegistryABI))
+	if err != nil {
+		return fmt.Errorf("failed to parse process registry ABI: %w", err)
+	}
+	zkVerifierABI, err := abi.JSON(strings.NewReader(bindings.Groth16VerifierABI))
+	if err != nil {
+		return fmt.Errorf("failed to parse zk verifier ABI: %w", err)
+	}
+
+	c.ContractABIs = &ContractABIs{
+		OrganizationRegistry: &orgRegistryABI,
+		ProcessRegistry:      &processRegistryABI,
+		ZKVerifier:           &zkVerifierABI,
+	}
+
 	return nil
 }
 
@@ -314,4 +364,136 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 	}
 	auth.Nonce = new(big.Int).SetUint64(nonce)
 	return auth, nil
+}
+
+// dev note: this is a temporary method to simulate contract calls
+// it works on geth but not expected to work on other clients or external rpc providers
+// SimulateContractCall simulates a contract call using the eth_simulateV1 RPC method.
+func (c *Contracts) SimulateContractCall(
+	ctx context.Context,
+	contractAddr common.Address,
+	contractABI *abi.ABI,
+	method string, args ...interface{},
+) error {
+	data, err := contractABI.Pack(method, args...)
+	if err != nil {
+		return fmt.Errorf("pack %s: %w", method, err)
+	}
+	auth, err := c.authTransactOpts()
+	if err != nil {
+		return fmt.Errorf("failed to create transactor: %w", err)
+	}
+
+	auth.GasPrice, err = c.cli.SuggestGasPrice(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get gas price: %w", err)
+	}
+	simReq := SimulationRequest{
+		BlockStateCalls: []BlockStateCall{
+			{
+				Calls: []Call{{
+					From:     c.signer.Address(),
+					To:       contractAddr,
+					Data:     data,
+					GasPrice: (*hexutil.Big)(big.NewInt(auth.GasPrice.Int64())),
+					Nonce:    hexutil.Uint64(auth.Nonce.Uint64()),
+				}},
+			},
+		},
+		Validation:             true,
+		ReturnFullTransactions: true,
+	}
+
+	var simBlocks []SimulatedBlock
+	if err := c.cli.CallSimulation(ctx, &simBlocks, simReq, "latest"); err != nil {
+		return fmt.Errorf("eth_simulateV1 RPC error: %w", err)
+	}
+
+	if len(simBlocks) == 0 || len(simBlocks[0].Calls) == 0 {
+		return fmt.Errorf("no simulation result")
+	}
+	call := simBlocks[0].Calls[0]
+	if call.Status == "0x1" {
+		// success, nothing to do
+		return nil
+	}
+
+	reason, uerr := c.decodeRevert(call.Error.Data)
+	if uerr != nil {
+		return fmt.Errorf("call reverted; failed to unpack reason: %w", uerr)
+	}
+	return fmt.Errorf("call reverted: %s", reason)
+}
+
+// decodeRevert decodes the revert reason from the given data.
+func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
+	var errorName string
+	err := c.ContractABIs.ForEachABI(func(name string, a *abi.ABI) error {
+		for _, e := range a.Errors {
+			sig := strings.TrimPrefix(e.String(), "error ")
+			hash := crypto.Keccak256([]byte(sig))[:4]
+			if bytes.Equal(data, hash) {
+				errorName = sig
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if errorName != "" {
+		return errorName, nil
+	}
+	return "", fmt.Errorf("unknown error selector %s", data.String())
+}
+
+// ForEachABI calls fn(name, abi) for each non-nil *abi.ABI field.
+// Stops and returns an error if fn returns an error.
+func (c *ContractABIs) ForEachABI(fn func(fieldName string, a *abi.ABI) error) error {
+	v := reflect.ValueOf(c).Elem()      // reflect.Value of the struct
+	t := v.Type()                       // reflect.Type of the struct
+	for i := 0; i < v.NumField(); i++ { // loop fields
+		fieldVal := v.Field(i)
+		if fieldVal.IsNil() {
+			continue
+		}
+		abiPtr, ok := fieldVal.Interface().(*abi.ABI)
+		if !ok {
+			// should never happen
+			continue
+		}
+		fieldName := t.Field(i).Name
+		if err := fn(fieldName, abiPtr); err != nil {
+			return fmt.Errorf("%s: %w", fieldName, err)
+		}
+	}
+	return nil
+}
+
+// ProcessRegistryABI returns the ABI of the ProcessRegistry contract.
+func (c *Contracts) ProcessRegistryABI() (*abi.ABI, error) {
+	processRegistryABI, err := abi.JSON(strings.NewReader(bindings.ProcessRegistryABI))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse process registry ABI: %w", err)
+	}
+	return &processRegistryABI, nil
+}
+
+// ResultsRegistryABI returns the ABI of the ResultsRegistry contract.
+func (c *Contracts) OrganizationRegistryABI() (*abi.ABI, error) {
+	organizationRegistryABI, err := abi.JSON(strings.NewReader(bindings.OrganizationRegistryABI))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse organization registry ABI: %w", err)
+	}
+	return &organizationRegistryABI, nil
+}
+
+// ZKVerifierABI returns the ABI of the ZKVerifier contract.
+func (c *Contracts) ZKVerifierABI() (*abi.ABI, error) {
+	zkVerifierABI, err := abi.JSON(strings.NewReader(bindings.Groth16VerifierABI))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse zk verifier ABI: %w", err)
+	}
+	return &zkVerifierABI, nil
 }
