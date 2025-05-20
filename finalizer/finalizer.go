@@ -54,7 +54,7 @@ func (f *Finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 			case pid := <-f.OndemandCh:
 				if err := f.finalize(pid); err != nil {
 					log.Errorw(err, fmt.Sprintf("finalizing process %x", pid.Marshal()))
-					if err := f.setProcessFinalized(pid); err != nil { // set the process as finalized without a result
+					if err := f.setProcessFinalized(pid, nil); err != nil { // set the process as finalized without a result
 						log.Warnw("could not force process %x as finalized", "pid", pid.Marshal(), "error", err)
 					}
 				}
@@ -191,7 +191,7 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 	}
 
 	// Open the state for the process
-	log.Infow("opening state",
+	log.Debugw("opening state to finalize",
 		"pid", pid.String(),
 		"stateRoot", process.StateRoot)
 	st, err := state.LoadOnRoot(f.stateDB, pid.BigInt(), process.StateRoot.MathBigInt())
@@ -240,38 +240,31 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 	log.Debugw("decrypted sub accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
 
 	// Substract the sub accumulator from the add accumulator
-	process.Result = make([]*types.BigInt, len(addAccumulator))
+	result := make([]*types.BigInt, len(addAccumulator))
+
 	for i := range addAccumulator {
-		process.Result[i] = new(types.BigInt).Sub((*types.BigInt)(addAccumulator[i]), (*types.BigInt)(subAccumulator[i]))
-	}
-	process.IsFinalized = true
-
-	// Store the finalized process back to storage
-	if err := f.stg.SetProcess(process); err != nil {
-		return fmt.Errorf("could not store finalized process %x: %w", pid.Marshal(), err)
+		result[i] = new(types.BigInt).Sub((*types.BigInt)(addAccumulator[i]), (*types.BigInt)(subAccumulator[i]))
 	}
 
-	log.Infow("finalized process", "pid", pid.String(), "result", process.Result)
-	return nil
+	// Store the result in the process
+	return f.setProcessFinalized(pid, result)
 }
 
-// setProcessFinalized sets the process as finalized in the storage, with no result.
-func (f *Finalizer) setProcessFinalized(pid *types.ProcessID) error {
+// setProcessFinalized sets the process as finalized in the storage. If the process is already finalized, it does nothing.
+func (f *Finalizer) setProcessFinalized(pid *types.ProcessID, result []*types.BigInt) error {
 	process, err := f.stg.Process(pid)
 	if err != nil {
 		return fmt.Errorf("could not retrieve process %x: %w", pid.Marshal(), err)
 	}
-
 	if process.IsFinalized {
-		return fmt.Errorf("process %x already finalized", pid.Marshal())
+		return nil
 	}
-
 	process.IsFinalized = true
 	if err := f.stg.SetProcess(process); err != nil {
 		return fmt.Errorf("could not store finalized process %x: %w", pid.Marshal(), err)
 	}
-
-	log.Infow("finalized process", "pid", pid.String())
+	process.Result = result
+	log.Infow("process finalized", "pid", pid.String(), "result", process.Result)
 	return nil
 }
 
