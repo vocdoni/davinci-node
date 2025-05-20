@@ -11,7 +11,10 @@ services:
       --block-time 2
       --account 0cebebc37477f513cd8f946ffced46e368aa4f9430250ce4507851edbba86b20,10000000000000000000000
     ports:
-      - "${GETH_PORT_8545:-8545}:8545"
+      - ${GETH_PORT_RPC_HTTP:-8545}:8545
+    depends_on:
+      geth-genesis:
+        condition: service_completed_successfully
     volumes:
       - geth:/chain
     working_dir: /chain
