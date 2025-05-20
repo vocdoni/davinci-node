@@ -130,6 +130,9 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		qt.Assert(t, err, qt.IsNil)
 		log.Infow("contracts deployed", "chainId", contracts.ChainID)
 	} else {
+		// Set the private key for the sequencer
+		err = contracts.SetAccountPrivateKey(util.TrimHex(privKey))
+		qt.Assert(t, err, qt.IsNil)
 		// Create the contracts object with the addresses from the environment
 		err = contracts.LoadContracts(&web3.Addresses{
 			OrganizationRegistry: common.HexToAddress(orgRegistryAddr),

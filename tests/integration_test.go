@@ -44,7 +44,7 @@ func TestIntegration(t *testing.T) {
 	services.Sequencer.SetBatchTimeWindow(time.Second * 50)
 
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
-		// // Create a debug prover that will debug circuit execution during testing
+		// Create a debug prover that will debug circuit execution during testing
 		services.Sequencer.SetProver(sequencer.NewDebugProver(t))
 	} else {
 		t.Log("Debug prover is disabled! Set DEBUG=true to enable it.")
