@@ -95,9 +95,9 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		rpcUrl = fmt.Sprintf("http://localhost:%d", gethPort)
 		// Set environment variables for docker-compose in the process environment
 		composeEnv := make(map[string]string)
-		composeEnv["GETH_PORT_8545"] = fmt.Sprintf("%d", gethPort)
-		composeEnv["GETH_PORT_8546"] = fmt.Sprintf("%d", gethPort+1)
-		composeEnv["GETH_PORT_8551"] = fmt.Sprintf("%d", gethPort+6)
+		composeEnv["GETH_PORT_RPC_HTTP"] = fmt.Sprintf("%d", gethPort)
+		composeEnv["GETH_PORT_RPC_WS"] = fmt.Sprintf("%d", gethPort+1)
+		composeEnv["GETH_PORT_P2P"] = fmt.Sprintf("%d", gethPort+6)
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
@@ -424,7 +424,7 @@ func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.Proces
 		c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
 
 		// Check if the vote is processed
-		if statusResponse.Status != "processed" {
+		if statusResponse.Status != storage.BallotStatusName(storage.BallotStatusProcessed) {
 			allProcessed = false
 		}
 
