@@ -62,15 +62,17 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	}
 
 	return contractProcess2Process(&ProcessRegistryProcess{
-		Status:          p.Status,
-		OrganizationId:  p.OrganizationId,
-		EncryptionKey:   p.EncryptionKey,
-		LatestStateRoot: p.LatestStateRoot,
-		StartTime:       p.StartTime,
-		Duration:        p.Duration,
-		MetadataURI:     p.MetadataURI,
-		BallotMode:      p.BallotMode,
-		Census:          p.Census,
+		Status:             p.Status,
+		OrganizationId:     p.OrganizationId,
+		EncryptionKey:      p.EncryptionKey,
+		LatestStateRoot:    p.LatestStateRoot,
+		StartTime:          p.StartTime,
+		Duration:           p.Duration,
+		MetadataURI:        p.MetadataURI,
+		BallotMode:         p.BallotMode,
+		Census:             p.Census,
+		VoteCount:          p.VoteCount,
+		VoteOverwriteCount: p.VoteOverwriteCount,
 	})
 }
 
@@ -245,26 +247,30 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 			X: p.EncryptionKey.X,
 			Y: p.EncryptionKey.Y,
 		},
-		StateRoot:   (*types.BigInt)(p.LatestStateRoot),
-		StartTime:   time.Unix(int64(p.StartTime.Uint64()), 0),
-		Duration:    time.Duration(p.Duration.Uint64()) * time.Second,
-		MetadataURI: p.MetadataURI,
-		BallotMode:  &mode,
-		Census:      &census,
+		StateRoot:          (*types.BigInt)(p.LatestStateRoot),
+		StartTime:          time.Unix(int64(p.StartTime.Uint64()), 0),
+		Duration:           time.Duration(p.Duration.Uint64()) * time.Second,
+		MetadataURI:        p.MetadataURI,
+		BallotMode:         &mode,
+		Census:             &census,
+		VoteCount:          (*types.BigInt)(p.VoteCount),
+		VoteOverwriteCount: (*types.BigInt)(p.VoteOverwriteCount),
 	}, nil
 }
 
 // ProcessRegistryProcess is a mirror of the on-chain process tuple constructed with the auto-generated bindings
 type ProcessRegistryProcess struct {
-	Status          uint8
-	OrganizationId  common.Address
-	EncryptionKey   bindings.IProcessRegistryEncryptionKey
-	LatestStateRoot *big.Int
-	StartTime       *big.Int
-	Duration        *big.Int
-	MetadataURI     string
-	BallotMode      bindings.IProcessRegistryBallotMode
-	Census          bindings.IProcessRegistryCensus
+	Status             uint8
+	OrganizationId     common.Address
+	EncryptionKey      bindings.IProcessRegistryEncryptionKey
+	LatestStateRoot    *big.Int
+	StartTime          *big.Int
+	Duration           *big.Int
+	MetadataURI        string
+	BallotMode         bindings.IProcessRegistryBallotMode
+	Census             bindings.IProcessRegistryCensus
+	VoteCount          *big.Int
+	VoteOverwriteCount *big.Int
 }
 
 func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
@@ -294,6 +300,8 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	prp.Census.CensusOrigin = p.Census.CensusOrigin
 	prp.Census.MaxVotes = p.Census.MaxVotes.MathBigInt()
 	prp.Census.CensusURI = p.Census.CensusURI
+	prp.VoteCount = p.VoteCount.MathBigInt()
+	prp.VoteOverwriteCount = p.VoteOverwriteCount.MathBigInt()
 
 	return prp
 }
