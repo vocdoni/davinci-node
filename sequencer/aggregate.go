@@ -94,7 +94,6 @@ func (s *Sequencer) processAndUpdateBatch(pid []byte, ballotCount int, reason st
 		"batchTimeWindow", s.batchTimeWindow.String(),
 	)
 
-	startTime := time.Now()
 	if err := s.aggregateBatch(pid); err != nil {
 		log.Warnw("failed to aggregate batch",
 			"error", err.Error(),
@@ -102,7 +101,6 @@ func (s *Sequencer) processAndUpdateBatch(pid []byte, ballotCount int, reason st
 		)
 		return true // Continue to next process ID
 	}
-	log.Infow("batch aggregated successfully", "processID", fmt.Sprintf("%x", pid), "took(s)", time.Since(startTime).Seconds())
 
 	// Update the last update time by re-adding the process ID
 	s.pids.Add(pid) // This will update the timestamp
@@ -139,10 +137,11 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		return nil
 	}
 
-	log.Infow("aggregating ballots",
+	log.Debugw("aggregating ballots",
 		"processID", fmt.Sprintf("%x", pid),
 		"ballotCount", len(ballots),
 	)
+	startTime := time.Now()
 
 	// Prepare data structures for the aggregator circuit
 	proofs := [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
@@ -151,7 +150,6 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	proofsInputsHashInputs := []*big.Int{}
 
 	// Transform each ballot's proof for the aggregator circuit
-	startTime := time.Now()
 	var transformErr error
 	for i := range ballots {
 		proofs[i], transformErr = stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](groth16.Proof(ballots[i].Proof))
@@ -197,7 +195,6 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 
 	// Prepare the circuit assignment
 	log.Debugw("inputs ready for aggregation", "took", time.Since(startTime).String())
-
 	startTime = time.Now()
 
 	// Prepare the options for the prover
@@ -216,7 +213,13 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	if err != nil {
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)
 	}
-	log.Debugw("aggregate proof generated", "took", time.Since(startTime).String())
+
+	log.Infow("aggregate proof generated",
+		"took", time.Since(startTime).String(),
+		"processID", fmt.Sprintf("%x", pid),
+		"ballots", len(ballots),
+	)
+
 	// Store the aggregated batch
 	abb := storage.AggregatorBallotBatch{
 		ProcessID: pid,

@@ -58,10 +58,12 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 		// decode process ID and load metadata
 		processID := new(types.ProcessID).SetBytes(batch.ProcessID)
+
 		// lock the processor to avoid concurrent workloads
 		s.workInProgressLock.Lock()
 		defer s.workInProgressLock.Unlock()
 		startTime := time.Now()
+
 		// initialize the process state
 		processState, err := s.latestProcessState(processID)
 		if err != nil {
@@ -96,9 +98,9 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 
-		log.Debugw("state transition proof generated",
+		log.Infow("state transition proof generated",
 			"took", time.Since(startTime).String(),
-			"processID", processID.String(),
+			"pid", processID.String(),
 			"rootHashBefore", root.String(),
 			"rootHashAfter", rootHashAfter.String(),
 		)
@@ -134,11 +136,13 @@ func (s *Sequencer) processStateTransitionBatch(
 	processState *state.State,
 	batch *storage.AggregatorBallotBatch,
 ) (groth16.Proof, error) {
+	startTime := time.Now()
 	// generate the state transition assignments from the batch
 	assignments, err := s.stateBatchToWitness(processState, batch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate assignments: %w", err)
 	}
+	log.Debugw("state transition assignments ready for proof generation", "took", time.Since(startTime).String())
 
 	// Prepare the options for the prover - use solidity verifier target
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)

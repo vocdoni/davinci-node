@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
@@ -27,6 +28,10 @@ func (s *Storage) EncryptionKeys(pid *types.ProcessID) (ecc.Point, *big.Int, err
 	if err != nil {
 		return nil, nil, err
 	}
+	if eks.X == nil || eks.Y == nil {
+		return nil, nil, fmt.Errorf("not found or malformed encryption keys")
+	}
+
 	pubKey := curves.New(bjj.CurveType).SetPoint(eks.X, eks.Y)
 	return pubKey, eks.PrivateKey, nil
 }
