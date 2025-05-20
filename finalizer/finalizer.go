@@ -54,6 +54,9 @@ func (f *Finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 			case pid := <-f.OndemandCh:
 				if err := f.finalize(pid); err != nil {
 					log.Errorw(err, fmt.Sprintf("finalizing process %x", pid.Marshal()))
+					if err := f.setProcessFinalized(pid); err != nil { // set the process as finalized without a result
+						log.Warnw("could not force process %x as finalized", "pid", pid.Marshal(), "error", err)
+					}
 				}
 			case <-f.ctx.Done():
 				return
@@ -246,6 +249,26 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 	}
 
 	log.Infow("finalized process", "pid", pid.String(), "result", process.Result)
+	return nil
+}
+
+// setProcessFinalized sets the process as finalized in the storage, with no result.
+func (f *Finalizer) setProcessFinalized(pid *types.ProcessID) error {
+	process, err := f.stg.Process(pid)
+	if err != nil {
+		return fmt.Errorf("could not retrieve process %x: %w", pid.Marshal(), err)
+	}
+
+	if process.IsFinalized {
+		return fmt.Errorf("process %x already finalized", pid.Marshal())
+	}
+
+	process.IsFinalized = true
+	if err := f.stg.SetProcess(process); err != nil {
+		return fmt.Errorf("could not store finalized process %x: %w", pid.Marshal(), err)
+	}
+
+	log.Infow("finalized process", "pid", pid.String())
 	return nil
 }
 
