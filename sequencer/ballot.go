@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -93,7 +94,6 @@ func (s *Sequencer) processAvailableBallots() bool {
 
 		// Process the ballot
 		log.Debugw("processing ballot", "address", ballot.Address.String())
-		startTime := time.Now()
 
 		verifiedBallot, err := s.processBallot(ballot)
 		if err != nil {
@@ -117,12 +117,6 @@ func (s *Sequencer) processAvailableBallots() bool {
 			continue
 		}
 
-		log.Debugw("ballot processed successfully",
-			"address", ballot.Address.String(),
-			"processID", fmt.Sprintf("%x", ballot.ProcessID),
-			"duration", time.Since(startTime).String(),
-		)
-
 		processed = true
 	}
 }
@@ -139,6 +133,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, error) {
 	s.workInProgressLock.RLock()
 	defer s.workInProgressLock.RUnlock()
+	startTime := time.Now()
 
 	if b == nil {
 		return nil, fmt.Errorf("ballot cannot be nil")
@@ -232,7 +227,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		circuits.AggregatorCurve.ScalarField(),
 		circuits.VoteVerifierCurve.ScalarField(),
 	)
-	log.Debugw("generating proof", "pid", pid.String())
+	log.Debugw("generating vote verification proof...", "pid", pid.String(), "voteID", hex.EncodeToString(b.VoteID()))
 	proof, err := s.prover(
 		circuits.VoteVerifierCurve,
 		s.voteCcs,
@@ -243,6 +238,14 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
+
+	log.Infow("ballot verified",
+		"pid", pid.String(),
+		"voteID", hex.EncodeToString(b.VoteID()),
+		"address", b.Address.String(),
+		"nullifier", b.Nullifier.String(),
+		"took", time.Since(startTime).String(),
+	)
 
 	// Create and return the verified ballot
 	return &storage.VerifiedBallot{
