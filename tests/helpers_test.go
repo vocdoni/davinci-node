@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,54 +162,7 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 }
 
 func NewTestService(t *testing.T, ctx context.Context) *Services {
-	// // Generate a random port for geth HTTP RPC
-	// gethPort := util.RandomInt(10000, 20000)
-	// gethURL := fmt.Sprintf("http://localhost:%d", gethPort)
-	// // Set environment variables for docker-compose in the process environment
-	// composeEnv := make(map[string]string)
-	// composeEnv["GETH_PORT_8545"] = fmt.Sprintf("%d", gethPort)
-	// composeEnv["GETH_PORT_8546"] = fmt.Sprintf("%d", gethPort+1)
-	// composeEnv["GETH_PORT_8551"] = fmt.Sprintf("%d", gethPort+6)
-
-	// // Create docker-compose instance
-	// compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
-	// qt.Assert(t, err, qt.IsNil)
-	// t.Cleanup(func() {
-	// 	err := compose.Down(ctx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
-	// 	qt.Assert(t, err, qt.IsNil)
-	// })
-	// ctx2, cancel := context.WithCancel(ctx)
-	// t.Cleanup(cancel)
-
-	// // Start docker-compose
-	// log.Infow("starting Geth docker compose", "gethPort", gethPort)
-	// err = compose.WithEnv(composeEnv).Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
-	// qt.Assert(t, err, qt.IsNil)
-
-	// // Wait for the RPC to be ready
-	// err = web3.WaitReadyRPC(ctx, gethURL)
-	// qt.Assert(t, err, qt.IsNil)
-
-	// log.Infow("deploying contracts", "url", gethURL)
-	// contracts, err := web3.DeployContracts(gethURL, testLocalAccountPrivKey)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// log.Infow("contracts deployed", "chainId", contracts.ChainID)
-
-	// contracts.ContractABIs = &web3.ContractABIs{}
-	// contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// contracts.ContractABIs.OrganizationRegistry, err = contracts.OrganizationRegistryABI()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// contracts.ContractABIs.ZKVerifier, err = contracts.ZKVerifierABI()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	// Initialize the web3 contracts
 	contracts := setupWeb3(t, ctx)
 
 	kv, err := metadb.New(db.TypePebble, t.TempDir())
@@ -439,4 +393,56 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 	}
+}
+
+func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes) bool {
+	c := qt.New(t)
+	// Check vote status and return whether all votes are processed
+	txt := strings.Builder{}
+	txt.WriteString("Vote status: ")
+	allProcessed := true
+
+	// Check status for each vote
+	for i, voteID := range voteIDs {
+		// Construct the status endpoint URL
+		statusEndpoint := api.EndpointWithParam(
+			api.EndpointWithParam(api.VoteStatusEndpoint,
+				api.VoteStatusProcessIDParam, pid.String()),
+			api.VoteStatusVoteIDParam, voteID.String())
+
+		// Make the request to get the vote status
+		body, statusCode, err := cli.Request("GET", nil, nil, statusEndpoint)
+		c.Assert(err, qt.IsNil)
+		c.Assert(statusCode, qt.Equals, 200)
+
+		// Parse the response body to get the status
+		var statusResponse api.VoteStatusResponse
+		err = json.NewDecoder(bytes.NewReader(body)).Decode(&statusResponse)
+		c.Assert(err, qt.IsNil)
+
+		// Verify the status is valid
+		c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
+
+		// Check if the vote is processed
+		if statusResponse.Status != "processed" {
+			allProcessed = false
+		}
+
+		// Write to the string builder for logging
+		txt.WriteString(fmt.Sprintf("#%d:%s ", i, statusResponse.Status))
+	}
+
+	// Log the vote status
+	t.Log(txt.String())
+	return allProcessed
+}
+
+func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) int {
+	c := qt.New(t)
+	process, err := contracts.Process(pid.Marshal())
+	c.Assert(err, qt.IsNil)
+	if process == nil || process.VoteCount == nil {
+		return 0
+	}
+	return int(process.VoteCount.MathBigInt().Int64())
 }

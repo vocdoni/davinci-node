@@ -2,11 +2,8 @@ package tests
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +31,7 @@ func TestIntegration(t *testing.T) {
 	c := qt.New(t)
 
 	// Setup
-	ctx := context.Background()
+	ctx := t.Context()
 	services := NewTestService(t, ctx)
 	_, port := services.API.HostPort()
 	cli, err := NewTestClient(port)
@@ -145,50 +142,9 @@ func TestIntegration(t *testing.T) {
 	})
 
 	c.Run("wait for process votes", func(c *qt.C) {
-		// Check vote status and return whether all votes are processed
-		checkVoteStatus := func() bool {
-			txt := strings.Builder{}
-			txt.WriteString("Vote status: ")
-			allProcessed := true
-
-			// Check status for each vote
-			for i, voteID := range voteIDs {
-				// Construct the status endpoint URL
-				statusEndpoint := api.EndpointWithParam(
-					api.EndpointWithParam(api.VoteStatusEndpoint,
-						api.VoteStatusProcessIDParam, pid.String()),
-					api.VoteStatusVoteIDParam, voteID.String())
-
-				// Make the request to get the vote status
-				body, statusCode, err := cli.Request("GET", nil, nil, statusEndpoint)
-				c.Assert(err, qt.IsNil)
-				c.Assert(statusCode, qt.Equals, 200)
-
-				// Parse the response body to get the status
-				var statusResponse api.VoteStatusResponse
-				err = json.NewDecoder(bytes.NewReader(body)).Decode(&statusResponse)
-				c.Assert(err, qt.IsNil)
-
-				// Verify the status is valid
-				c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
-
-				// Check if the vote is processed
-				if statusResponse.Status != "processed" {
-					allProcessed = false
-				}
-
-				// Write to the string builder for logging
-				txt.WriteString(fmt.Sprintf("#%d:%s ", i, statusResponse.Status))
-			}
-
-			// Log the vote status
-			t.Log(txt.String())
-			return allProcessed
-		}
-
 		// Set up timeout based on context deadline
 		var timeoutCh <-chan time.Time
-		deadline, hasDeadline := ctx.Deadline()
+		deadline, hasDeadline := t.Deadline()
 
 		if hasDeadline {
 			// If context has a deadline, set timeout to 15 seconds before it
@@ -221,20 +177,22 @@ func TestIntegration(t *testing.T) {
 		for {
 			select {
 			case <-ticker.C:
-				if checkVoteStatus() {
-					c.Logf("All %d votes reached 'processed' status", numBallots)
-					// All votes are processed, finalize the process
-					t.Log("Finalizing process...")
-					services.Finalizer.OndemandCh <- pid
-					t.Log("Waiting for finalization to complete...")
-					results, err := services.Finalizer.WaitUntilFinalized(t.Context(), pid)
-					c.Assert(err, qt.IsNil)
-					c.Assert(results, qt.Not(qt.IsNil))
-					c.Logf("Finalization results: %v", results)
-					return
+				if !checkProcessedVotes(t, cli, pid, voteIDs) {
+					continue
 				}
+				if publishedVotes(t, services.Contracts, pid) < numBallots {
+					continue
+				}
+				t.Log("Finalizing process...")
+				services.Finalizer.OndemandCh <- pid
+				t.Log("Waiting for finalization to complete...")
+				results, err := services.Finalizer.WaitUntilFinalized(t.Context(), pid)
+				c.Assert(err, qt.IsNil)
+				c.Assert(results, qt.Not(qt.IsNil))
+				c.Logf("Finalization results: %v", results)
+				return
 			case <-timeoutCh:
-				c.Fatalf("Timeout waiting for votes to be processed - all %d votes did not reach 'processed' status in time", numBallots)
+				c.Fatalf("Timeout waiting for votes to be processed and published at contract")
 			}
 		}
 	})
