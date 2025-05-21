@@ -37,7 +37,8 @@ import (
 )
 
 const (
-	testLocalAccountPrivKey = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+	// first account private key created by anvil with default mnemonic
+	testLocalAccountPrivKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 	// envarionment variable names
 	privKeyEnvVarName         = "SEQUENCER_PRIV_KEY"              // environment variable name for private key
 	rpcUrlEnvVarName          = "SEQUENCER_RPC_URL"               // environment variable name for RPC URL
@@ -76,6 +77,7 @@ func setupAPI(ctx context.Context, db *storage.Storage) (*service.APIService, er
 // if the environment variables are not set, if they are set it loads the
 // contracts from the environment variables. It returns the contracts object.
 func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
+	c := qt.New(t)
 	// Get the environment variables
 	var (
 		privKey             = os.Getenv(privKeyEnvVarName)
@@ -89,51 +91,116 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 	// geth node or remote blockchain environment
 	localEnv := privKey == "" || rpcUrl == "" || orgRegistryAddr == "" ||
 		processRegistryAddr == "" || resultsRegistryAddr == "" || zkVerifierAddr == ""
+	var deployerUrl string
 	if localEnv {
 		// Generate a random port for geth HTTP RPC
-		gethPort := util.RandomInt(10000, 20000)
-		rpcUrl = fmt.Sprintf("http://localhost:%d", gethPort)
+		anvilPort := util.RandomInt(10000, 20000)
+		rpcUrl = fmt.Sprintf("http://localhost:%d", anvilPort)
 		// Set environment variables for docker-compose in the process environment
 		composeEnv := make(map[string]string)
-		composeEnv["GETH_PORT_RPC_HTTP"] = fmt.Sprintf("%d", gethPort)
-		composeEnv["GETH_PORT_RPC_WS"] = fmt.Sprintf("%d", gethPort+1)
-		composeEnv["GETH_PORT_P2P"] = fmt.Sprintf("%d", gethPort+6)
+		composeEnv["ANVIL_PORT_RPC_HTTP"] = fmt.Sprintf("%d", anvilPort)
+		composeEnv["DEPLOYER_SERVER"] = fmt.Sprintf("%d", anvilPort+1)
+		composeEnv["SEQUENCER_PRIV_KEY"] = testLocalAccountPrivKey
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
-		qt.Assert(t, err, qt.IsNil)
+		c.Assert(err, qt.IsNil)
 		t.Cleanup(func() {
-			err := compose.Down(ctx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
-			qt.Assert(t, err, qt.IsNil)
+			downCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+			defer cancel()
+			err := compose.Down(downCtx, tc.RemoveOrphans(true), tc.RemoveVolumes(true))
+			c.Assert(err, qt.IsNil)
 		})
 		ctx2, cancel := context.WithCancel(ctx)
 		t.Cleanup(cancel)
-
 		// Start docker-compose
-		log.Infow("starting Anvil docker compose", "gethPort", gethPort)
+		log.Infow("starting Anvil docker compose", "gethPort", anvilPort)
 		err = compose.WithEnv(composeEnv).Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
-		qt.Assert(t, err, qt.IsNil)
+		c.Assert(err, qt.IsNil)
+		deployerCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+		t.Cleanup(cancel)
+		// Get the enpoint of the deployer service
+		deployerContainer, err := compose.ServiceContainer(deployerCtx, "deployer")
+		c.Assert(err, qt.IsNil)
+		deployerUrl, err = deployerContainer.Endpoint(deployerCtx, "http")
+		c.Assert(err, qt.IsNil)
 	}
 
 	// Wait for the RPC to be ready
 	err := web3.WaitReadyRPC(ctx, rpcUrl)
-	qt.Assert(t, err, qt.IsNil)
+	c.Assert(err, qt.IsNil)
 
 	// Initialize the contracts object
 	contracts, err := web3.New([]string{rpcUrl})
-	qt.Assert(t, err, qt.IsNil)
+	c.Assert(err, qt.IsNil)
 
 	// Define contracts addresses or deploy them
 	if localEnv {
-		// Deploy the contracts using the local geth node
-		log.Infow("deploying contracts", "url", rpcUrl)
-		contracts, err = web3.DeployContracts(rpcUrl, testLocalAccountPrivKey)
-		qt.Assert(t, err, qt.IsNil)
-		log.Infow("contracts deployed", "chainId", contracts.ChainID)
+		type deployerResponse struct {
+			Txs []struct {
+				ContractName    string `json:"contractName"`
+				ContractAddress string `json:"contractAddress"`
+			} `json:"transactions"`
+		}
+
+		// Wait until contracts are deployed and get their addresses from
+		// deployer
+		contractsCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+		defer cancel()
+		var contractsAddresses *web3.Addresses
+		for contractsAddresses == nil {
+			select {
+			case <-contractsCtx.Done():
+				t.Fatal("timeout waiting for contracts to be deployed")
+			case <-time.After(5 * time.Second):
+				// Check if the contracts are deployed making an http request
+				// to /addresses.json
+				endpoint := fmt.Sprintf("%s/addresses.json", deployerUrl)
+				res, err := http.Get(endpoint)
+				if err != nil {
+					log.Infow("waiting for contracts to be deployed",
+						"err", err,
+						"deployUrl", endpoint)
+					continue
+				}
+				c.Assert(res.StatusCode, qt.Equals, http.StatusOK)
+				defer func() {
+					err := res.Body.Close()
+					c.Assert(err, qt.IsNil)
+				}()
+				// Decode the response
+				var deployerResp deployerResponse
+				err = json.NewDecoder(res.Body).Decode(&deployerResp)
+				c.Assert(err, qt.IsNil)
+				contractsAddresses = new(web3.Addresses)
+				for _, tx := range deployerResp.Txs {
+					switch tx.ContractName {
+					case "OrganizationRegistry":
+						contractsAddresses.OrganizationRegistry = common.HexToAddress(tx.ContractAddress)
+						contractsAddresses.ResultsRegistry = common.HexToAddress(tx.ContractAddress)
+					case "ProcessRegistry":
+						contractsAddresses.ProcessRegistry = common.HexToAddress(tx.ContractAddress)
+					case "Groth16Verifier":
+						contractsAddresses.ZKVerifier = common.HexToAddress(tx.ContractAddress)
+					default:
+						log.Infow("unknown contract name", "name", tx.ContractName)
+					}
+				}
+			}
+		}
+		// Set the private key for the sequencer
+		err = contracts.SetAccountPrivateKey(util.TrimHex(testLocalAccountPrivKey))
+		c.Assert(err, qt.IsNil)
+		// Load the contracts addresses into the contracts object
+		err = contracts.LoadContracts(contractsAddresses)
+		c.Assert(err, qt.IsNil)
+		log.Infow("contracts deployed and loaded",
+			"chainId", contracts.ChainID,
+			"addresses", contractsAddresses)
 	} else {
 		// Set the private key for the sequencer
 		err = contracts.SetAccountPrivateKey(util.TrimHex(privKey))
-		qt.Assert(t, err, qt.IsNil)
+		c.Assert(err, qt.IsNil)
 		// Create the contracts object with the addresses from the environment
 		err = contracts.LoadContracts(&web3.Addresses{
 			OrganizationRegistry: common.HexToAddress(orgRegistryAddr),
@@ -141,17 +208,17 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 			ResultsRegistry:      common.HexToAddress(resultsRegistryAddr),
 			ZKVerifier:           common.HexToAddress(zkVerifierAddr),
 		})
-		qt.Assert(t, err, qt.IsNil)
+		c.Assert(err, qt.IsNil)
 	}
 
 	// Set contracts ABIs
 	contracts.ContractABIs = &web3.ContractABIs{}
 	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
-	qt.Assert(t, err, qt.IsNil)
+	c.Assert(err, qt.IsNil)
 	contracts.ContractABIs.OrganizationRegistry, err = contracts.OrganizationRegistryABI()
-	qt.Assert(t, err, qt.IsNil)
+	c.Assert(err, qt.IsNil)
 	contracts.ContractABIs.ZKVerifier, err = contracts.ZKVerifierABI()
-	qt.Assert(t, err, qt.IsNil)
+	c.Assert(err, qt.IsNil)
 	// Return the contracts object
 	return contracts
 }
