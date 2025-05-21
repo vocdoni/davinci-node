@@ -181,7 +181,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 					case "ProcessRegistry":
 						contractsAddresses.ProcessRegistry = common.HexToAddress(tx.ContractAddress)
 					case "Groth16Verifier":
-						contractsAddresses.ZKVerifier = common.HexToAddress(tx.ContractAddress)
+						contractsAddresses.StateTransitionZKVerifier = common.HexToAddress(tx.ContractAddress)
 					default:
 						log.Infow("unknown contract name", "name", tx.ContractName)
 					}
@@ -203,10 +203,10 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		c.Assert(err, qt.IsNil)
 		// Create the contracts object with the addresses from the environment
 		err = contracts.LoadContracts(&web3.Addresses{
-			OrganizationRegistry: common.HexToAddress(orgRegistryAddr),
-			ProcessRegistry:      common.HexToAddress(processRegistryAddr),
-			ResultsRegistry:      common.HexToAddress(resultsRegistryAddr),
-			ZKVerifier:           common.HexToAddress(zkVerifierAddr),
+			OrganizationRegistry:      common.HexToAddress(orgRegistryAddr),
+			ProcessRegistry:           common.HexToAddress(processRegistryAddr),
+			ResultsRegistry:           common.HexToAddress(resultsRegistryAddr),
+			StateTransitionZKVerifier: common.HexToAddress(zkVerifierAddr),
 		})
 		c.Assert(err, qt.IsNil)
 	}
