@@ -258,10 +258,10 @@ func (f *Finalizer) setProcessFinalized(pid *types.ProcessID, result []*types.Bi
 		return nil
 	}
 	process.IsFinalized = true
+	process.Result = result
 	if err := f.stg.SetProcess(process); err != nil {
 		return fmt.Errorf("could not store finalized process %x: %w", pid.Marshal(), err)
 	}
-	process.Result = result
 	log.Infow("process finalized", "pid", pid.String(), "result", process.Result)
 	return nil
 }

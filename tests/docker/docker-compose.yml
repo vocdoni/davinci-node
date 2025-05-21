@@ -1,37 +1,41 @@
 services:
-  geth-genesis:
-    image: "ethereum/client-go:v1.14.12"
-    command: --datadir=/chain init /files/genesis.json
-    # command: --dev dumpgenesis
-    volumes:
-      - ./files:/files
-      - geth:/chain
-
-  geth:
-    image: "ethereum/client-go:v1.14.12"
-    command:
-      - --http
-      - --http.api=eth,net,web3
-      - --http.addr=0.0.0.0
-      - --http.corsdomain=*
-      - --ws
-      - --ws.api=eth,net,web3
-      - --ws.addr=0.0.0.0
-      - --ws.origins=*
-      - --datadir=/chain
-      - --dev.period=2
-      - --allow-insecure-unlock
-      - --dev
-      - --ipcdisable
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint:
+      - anvil
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8545"
+      - --chain-id
+      - "1337"
+      - --accounts
+      - "1"
+      - --block-time
+      - "2"
+      - -vvvvv
     ports:
-      - ${GETH_PORT_RPC_HTTP:-8545}:8545
-      - ${GETH_PORT_RPC_WS:-8546}:8546
-      - ${GETH_PORT_P2P:-8551}:8551
-    depends_on:
-      geth-genesis:
-        condition: service_completed_successfully
+      - "${ANVIL_PORT_RPC_HTTP:-8545}:8545"
     volumes:
-      - geth:/chain
+      - anvilvol:/chain
+    working_dir: /chain
+
+  deployer:
+    # build from our custom Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile.deployer
+    depends_on:
+      - anvil
+    user: "${UID}:${GID}"
+    environment:
+      - UID=${UID}
+      - GID=${GID}
+      - SEPOLIA_RPC_URL=http://anvil:8545
+      - SEPOLIA_PRIVATE_KEY=${SEQUENCER_PRIV_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
+    ports:
+      - "${DEPLOYER_SERVER:-8000}:8000"
+    working_dir: /
 
 volumes:
-  geth: {}
+  anvilvol: {}

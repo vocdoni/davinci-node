@@ -13,7 +13,6 @@ import (
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -24,7 +23,6 @@ import (
 
 // TestFinalize tests the finalize method of the Finalizer struct
 func TestFinalize(t *testing.T) {
-	log.Init("debug", "stdout", nil)
 	c := qt.New(t)
 
 	// Setup test environment
