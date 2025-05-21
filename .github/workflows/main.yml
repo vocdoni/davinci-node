@@ -74,6 +74,34 @@ jobs:
       GOCACHE:    ${{ github.workspace }}/.go/cache
 
     steps:
+      - name: Prepare workspace
+        run: |
+          # Print environment info for debugging
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "HOME: $HOME"
+          
+          # Check if we can determine path to previous .go directory
+          if [ -n "$GITHUB_WORKSPACE" ]; then
+            # Try with github.workspace
+            GO_DIR="$GITHUB_WORKSPACE/.go"
+          elif [ -n "$HOME" ]; then
+            # Fallback to runner's work directory if we can determine it
+            GO_DIR="$HOME/actions-runner/_work/$(basename $(pwd))/.go"
+          else
+            # If all else fails, use relative path
+            GO_DIR="./.go"
+          fi
+          
+          echo "Checking for Go directory at: $GO_DIR"
+          
+          # Clean up any leftover files with permission issues
+          if [ -d "$GO_DIR" ]; then
+            echo "Found Go directory, fixing permissions"
+            chmod -R 777 "$GO_DIR" || true
+          else
+            echo "Go directory not found at $GO_DIR"
+          fi
+            
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -92,6 +120,29 @@ jobs:
             ${{ runner.name }}-circuits-go-
             ${{ runner.os }}-circuits-go-
       
+      - name: Fix cache permissions
+        run: |
+          # Print paths for debugging
+          echo "GOPATH: $GOPATH"
+          echo "GOMODCACHE: $GOMODCACHE"
+          echo "GOCACHE: $GOCACHE"
+          
+          # Ensure cached files have correct permissions
+          if [ -d "$GOPATH" ]; then
+            echo "Setting permissions on GOPATH"
+            chmod -R 755 "$GOPATH" || true
+          fi
+          
+          if [ -d "$GOMODCACHE" ]; then
+            echo "Setting permissions on GOMODCACHE"
+            chmod -R 755 "$GOMODCACHE" || true
+          fi
+          
+          if [ -d "$GOCACHE" ]; then
+            echo "Setting permissions on GOCACHE"
+            chmod -R 755 "$GOCACHE" || true
+          fi
+            
       - uses: benjlevesque/short-sha@v3.0
 
       - uses: actions/setup-go@v5
@@ -103,6 +154,8 @@ jobs:
         run: |
           mkdir -p "$GOMODCACHE"
           mkdir -p "$GOCACHE"
+          # Set permissive permissions
+          chmod -R 755 "$GOPATH" || true
 
       - name: Check if /circuits changed
         id: check_circuits
