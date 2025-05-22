@@ -36,8 +36,6 @@ const (
 	defaultNetwork       = "sep"
 	defaultSequencerHost = "0.0.0.0"
 	defaultSequencerPort = 8080
-	// first account private key created by anvil with default mnemonic
-	testLocalAccountPrivKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 )
 
 var (
@@ -59,20 +57,31 @@ var (
 func main() {
 	// define cli flags
 	var (
-		privKey           = flag.String("privkey", testLocalAccountPrivKey, "private key to use for the Ethereum account")
-		deployContracts   = flag.Bool("deployContracts", false, "define if contracts should be deployed or not, if not, it will use the ones already deployed and defined in config/contracts.go")
-		web3rpcs          = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
-		testTimeout       = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
-		sequencerEndpoint = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
-		createOrg         = flag.Bool("createOrganization", true, "create a new organization")
-		voteCount         = flag.Int("voteCount", 10, "number of votes to cast")
-		voteSleepTime     = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
+		privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
+		web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
+		organizationRegistryAddress      = flag.String("organizationRegistryAddress", defaultContracts.OrganizationRegistrySmartContract, "organization registry smart contract address")
+		processRegistryAddress           = flag.String("processRegistryAddress", defaultContracts.ProcessRegistrySmartContract, "process registry smart contract address")
+		resultsRegistryAddress           = flag.String("resultsRegistryAddress", defaultContracts.ResultsSmartContract, "results registry smart contract address")
+		stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", defaultContracts.StateTransitionZKVerifier, "state transition zk verifier smart contract address")
+		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
+		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
+		createOrg                        = flag.Bool("createOrganization", true, "create a new organization")
+		voteCount                        = flag.Int("voteCount", 10, "number of votes to cast")
+		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 	)
 	flag.Parse()
 	log.Init("debug", "stdout", nil)
+
 	// Create a context with the test timeout
 	testCtx, cancel := context.WithTimeout(context.Background(), *testTimeout)
 	defer cancel()
+
+	// Check if the private key is provided
+	if *privKey == "" {
+		log.Error("private key is required")
+		flag.Usage()
+		return
+	}
 
 	// If no web3rpcs are provided, use the default ones from chainlist
 	var err error
@@ -81,46 +90,43 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	// If the contracts should be deployed, deploy them, if not use the ones
-	// already deployed and defined in config/contracts.go
-	var contracts *web3.Contracts
-	if *deployContracts {
-		log.Fatalf("deploying contracts is not supported yet")
-		return
-	} else {
-		// Intance contracts with the provided web3rpcs
-		contracts, err = web3.New(*web3rpcs)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Load contracts from the default config
-		if err = contracts.LoadContracts(&web3.Addresses{
-			OrganizationRegistry:      common.HexToAddress(defaultContracts.OrganizationRegistrySmartContract),
-			ProcessRegistry:           common.HexToAddress(defaultContracts.ProcessRegistrySmartContract),
-			ResultsRegistry:           common.HexToAddress(defaultContracts.ResultsSmartContract),
-			StateTransitionZKVerifier: common.HexToAddress(defaultContracts.StateTransitionZKVerifier),
-		}); err != nil {
-			log.Fatal(err)
-		}
-		// Add the web3rpcs to the contracts
-		for i := range *web3rpcs {
-			if err := contracts.AddWeb3Endpoint((*web3rpcs)[i]); err != nil {
-				log.Warnw("failed to add endpoint", "rpc", (*web3rpcs)[i], "err", err)
-			}
-		}
-		// Set the private key for the account
-		if err := contracts.SetAccountPrivateKey(util.TrimHex(*privKey)); err != nil {
-			log.Fatal(err)
-		}
-		log.Infow("contracts initialized", "chainId", contracts.ChainID)
+
+	// Intance contracts with the provided web3rpcs
+	contracts, err := web3.New(*web3rpcs)
+	if err != nil {
+		log.Fatal(err)
 	}
+	// Load contracts from the default config
+	if err = contracts.LoadContracts(&web3.Addresses{
+		OrganizationRegistry:      common.HexToAddress(*organizationRegistryAddress),
+		ProcessRegistry:           common.HexToAddress(*processRegistryAddress),
+		ResultsRegistry:           common.HexToAddress(*resultsRegistryAddress),
+		StateTransitionZKVerifier: common.HexToAddress(*stateTransitionZKVerifierAddress),
+	}); err != nil {
+		log.Fatal(err)
+	}
+	// Add the web3rpcs to the contracts
+	for i := range *web3rpcs {
+		if err := contracts.AddWeb3Endpoint((*web3rpcs)[i]); err != nil {
+			log.Warnw("failed to add endpoint", "rpc", (*web3rpcs)[i], "err", err)
+		}
+	}
+	// Set the private key for the account
+	if err := contracts.SetAccountPrivateKey(util.TrimHex(*privKey)); err != nil {
+		log.Fatal(err)
+	}
+	log.Infow("contracts initialized", "chainId", contracts.ChainID)
 
 	// If no sequencer endpoint is provided, start a local one
 	if *sequencerEndpoint == defaultSequencerEndpoint {
 		log.Infow("no remote sequencer endpoint provided, starting a local one...")
-		if err := startLocalSequencer(testCtx, contracts); err != nil {
+		// Start a local sequencer
+		service := new(localService)
+		if err := service.Start(testCtx, contracts); err != nil {
 			log.Fatal(err)
 		}
+		defer service.Stop()
+		log.Infow("local sequencer started", "endpoint", defaultSequencerEndpoint)
 	}
 	// Create a API client
 	cli, err := client.New(*sequencerEndpoint)
@@ -151,6 +157,7 @@ func main() {
 		organizationAddr, err := createOrganization(contracts)
 		if err != nil {
 			log.Errorw(err, "failed to create organization")
+			log.Warn("check if the organization is already created or the account has enough funds")
 			return
 		}
 		log.Infow("organization created", "address", organizationAddr.Hex())
@@ -163,8 +170,8 @@ func main() {
 	if err != nil {
 		log.Errorw(err, "failed to create census")
 	}
-	log.Infow("census created", 
-		"root", hex.EncodeToString(censusRoot), 
+	log.Infow("census created",
+		"root", hex.EncodeToString(censusRoot),
 		"participants", len(signers))
 
 	// Create a new process with mocked ballot mode
@@ -210,50 +217,82 @@ func main() {
 
 	// Wait for the votes to be registered in the smart contract
 	log.Info("all votes sent, waiting for votes to be registered in smart contract...")
-	voteCountCh := make(chan int)
-	voteCountCtx, cancel := context.WithCancel(testCtx)
+	// TODO: now, the vote count of the smart contract returns the number of
+	// votes registered in the last batch that has been processed, so we need
+	// accumulate the votes until the total number of votes is reached. If this
+	// behavior changes, we can just check if the vote count is equal to the
+	// number of votes sent.
+	totalRegisteredVotes := 0
+	newVotesCh := make(chan int)
+	newVotesCtx, cancel := context.WithCancel(testCtx)
 	defer cancel()
 	go func() {
-		for registeredVotes := range voteCountCh {
-			log.Infow("votes registered in smart contract", "registeredVotes", registeredVotes)
-			if registeredVotes >= *voteCount {
+		for newVotes := range newVotesCh {
+			log.Infow("new votes registered in smart contract", "newVotes", newVotes)
+			totalRegisteredVotes += newVotes
+			// Check if the total registered votes is greater than or equal to
+			// the vote count to stop the process
+			if totalRegisteredVotes >= *voteCount {
 				cancel()
 				break
 			}
 		}
 	}()
-	if err := listenSmartContractVoteCount(voteCountCtx, contracts, pid, voteCountCh); err != nil {
+	if err := listenSmartContractNewVotes(newVotesCtx, contracts, pid, newVotesCh); err != nil {
 		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 		return
 	}
 	log.Info("all votes registered in smart contract")
+	time.Sleep(1 * time.Second)
 }
 
-func startLocalSequencer(ctx context.Context, contracts *web3.Contracts) error {
+type localService struct {
+	sequencer      *service.SequencerService
+	processMonitor *service.ProcessMonitor
+	finalizer      *service.FinalizerService
+	api            *service.APIService
+}
+
+func (s *localService) Start(ctx context.Context, contracts *web3.Contracts) error {
 	// Create storage with a in-memory database
 	stg := storage.New(memdb.New())
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
-	vp := service.NewSequencer(stg, contracts, time.Second*30)
-	if err := vp.Start(ctx); err != nil {
+	s.sequencer = service.NewSequencer(stg, contracts, time.Second*30)
+	if err := s.sequencer.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Monitor new processes from the contracts
-	pm := service.NewProcessMonitor(contracts, stg, time.Second*2)
-	if err := pm.Start(ctx); err != nil {
+	s.processMonitor = service.NewProcessMonitor(contracts, stg, time.Second*2)
+	if err := s.processMonitor.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
 	// Start finalizer service
-	fin := service.NewFinalizer(stg, stg.StateDB(), time.Second*5)
-	if err := fin.Start(ctx, time.Second*5); err != nil {
+	s.finalizer = service.NewFinalizer(stg, stg.StateDB(), time.Second*5)
+	if err := s.finalizer.Start(ctx, time.Second*5); err != nil {
 		return fmt.Errorf("failed to start finalizer: %v", err)
 	}
 	// Start API service
-	api := service.NewAPI(stg, defaultSequencerHost, defaultSequencerPort, defaultNetwork)
-	if err := api.Start(ctx); err != nil {
+	s.api = service.NewAPI(stg, defaultSequencerHost, defaultSequencerPort, defaultNetwork)
+	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}
 	return nil
+}
+
+func (s *localService) Stop() {
+	if s.sequencer != nil {
+		s.sequencer.Stop()
+	}
+	if s.processMonitor != nil {
+		s.processMonitor.Stop()
+	}
+	if s.finalizer != nil {
+		s.finalizer.Stop()
+	}
+	if s.api != nil {
+		s.api.Stop()
+	}
 }
 
 func createOrganization(contracts *web3.Contracts) (common.Address, error) {
@@ -541,17 +580,20 @@ func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
 	return voteResponse.VoteID, nil
 }
 
-func listenSmartContractVoteCount(
+func listenSmartContractNewVotes(
 	ctx context.Context,
 	contracts *web3.Contracts,
 	pid *types.ProcessID,
-	voteCountCh chan int,
+	newVotes chan int,
 ) error {
 	ticker := time.NewTicker(time.Second * 30)
-	lastVoteCount := -1
 	for {
 		select {
 		case <-ctx.Done():
+			if ctx.Err() == context.Canceled {
+				close(newVotes)
+				return nil
+			}
 			return fmt.Errorf("process creation timeout: %v", ctx.Err())
 		case <-ticker.C:
 			process, err := contracts.Process(pid.Marshal())
@@ -561,16 +603,12 @@ func listenSmartContractVoteCount(
 			if process == nil {
 				return fmt.Errorf("process not found")
 			}
-			// Get the vote count from the process, by default it is 0
-			var voteCount int
+			// Get the vote count from the process
 			if process.VoteCount != nil {
-				voteCount = int(process.VoteCount.MathBigInt().Int64())
-			}
-			// If the vote count has changed, send it to the channel and update
-			// the last vote count
-			if voteCount != lastVoteCount {
-				lastVoteCount = voteCount
-				voteCountCh <- voteCount
+				newVotesCount := int(process.VoteCount.MathBigInt().Int64())
+				if newVotesCount > 0 {
+					newVotes <- newVotesCount
+				}
 			}
 		}
 	}
