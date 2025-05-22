@@ -61,7 +61,6 @@ func main() {
 		web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
 		organizationRegistryAddress      = flag.String("organizationRegistryAddress", defaultContracts.OrganizationRegistrySmartContract, "organization registry smart contract address")
 		processRegistryAddress           = flag.String("processRegistryAddress", defaultContracts.ProcessRegistrySmartContract, "process registry smart contract address")
-		resultsRegistryAddress           = flag.String("resultsRegistryAddress", defaultContracts.ResultsSmartContract, "results registry smart contract address")
 		stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", defaultContracts.StateTransitionZKVerifier, "state transition zk verifier smart contract address")
 		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
@@ -100,7 +99,6 @@ func main() {
 	if err = contracts.LoadContracts(&web3.Addresses{
 		OrganizationRegistry:      common.HexToAddress(*organizationRegistryAddress),
 		ProcessRegistry:           common.HexToAddress(*processRegistryAddress),
-		ResultsRegistry:           common.HexToAddress(*resultsRegistryAddress),
 		StateTransitionZKVerifier: common.HexToAddress(*stateTransitionZKVerifierAddress),
 	}); err != nil {
 		log.Fatal(err)
