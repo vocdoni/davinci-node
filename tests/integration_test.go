@@ -77,16 +77,15 @@ func TestIntegration(t *testing.T) {
 		qt.Assert(t, proofs[0].Key.String(), qt.DeepEquals, participants[0].Key.String())
 		qt.Assert(t, string(proofs[0].Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
 
-		mockMode := circuits.MockBallotMode()
 		ballotMode = &types.BallotMode{
-			MaxCount:        uint8(mockMode.MaxCount.Uint64()),
-			ForceUniqueness: mockMode.ForceUniqueness.Uint64() == 1,
-			MaxValue:        (*types.BigInt)(mockMode.MaxValue),
-			MinValue:        (*types.BigInt)(mockMode.MinValue),
-			MaxTotalCost:    (*types.BigInt)(mockMode.MaxTotalCost),
-			MinTotalCost:    (*types.BigInt)(mockMode.MinTotalCost),
-			CostFromWeight:  mockMode.CostFromWeight.Uint64() == 1,
-			CostExponent:    uint8(mockMode.CostExp.Uint64()),
+			MaxCount:        circuits.MockMaxCount,
+			ForceUniqueness: circuits.MockForceUniqueness == 1,
+			MaxValue:        new(types.BigInt).SetUint64(circuits.MockMaxValue),
+			MinValue:        new(types.BigInt).SetUint64(circuits.MockMinValue),
+			MaxTotalCost:    new(types.BigInt).SetUint64(circuits.MockMaxTotalCost),
+			MinTotalCost:    new(types.BigInt).SetUint64(circuits.MockMinTotalCost),
+			CostFromWeight:  circuits.MockCostFromWeight == 1,
+			CostExponent:    circuits.MockCostExp,
 		}
 
 		pid, encryptionKey = createProcess(c, services.Contracts, cli, root, *ballotMode)

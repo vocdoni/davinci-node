@@ -39,10 +39,10 @@ const (
 
 // Addresses contains the addresses of the contracts deployed in the network.
 type Addresses struct {
-	OrganizationRegistry common.Address
-	ProcessRegistry      common.Address
-	ResultsRegistry      common.Address
-	ZKVerifier           common.Address
+	OrganizationRegistry      common.Address
+	ProcessRegistry           common.Address
+	ResultsRegistry           common.Address
+	StateTransitionZKVerifier common.Address
 }
 
 type ContractABIs struct {
@@ -247,14 +247,14 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
-	c.ContractsAddresses.ZKVerifier = addr
+	c.ContractsAddresses.StateTransitionZKVerifier = addr
 	log.Infow("deployed ZKVerifier contract", "address", addr, "tx", tx.Hash().Hex())
 
 	opts, err = c.authTransactOpts()
 	if err != nil {
 		return nil, err
 	}
-	c.ContractsAddresses.ProcessRegistry, tx, c.processes, err = bindings.DeployProcessRegistry(opts, cli, strconv.Itoa(int(chainID)), c.ContractsAddresses.OrganizationRegistry, c.ContractsAddresses.ZKVerifier)
+	c.ContractsAddresses.ProcessRegistry, tx, c.processes, err = bindings.DeployProcessRegistry(opts, cli, strconv.Itoa(int(chainID)), c.ContractsAddresses.OrganizationRegistry, c.ContractsAddresses.StateTransitionZKVerifier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process registry: %w", err)
 	}

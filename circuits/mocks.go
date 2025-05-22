@@ -17,6 +17,8 @@ const (
 	MockForceUniqueness = 0
 	MockMaxValue        = 16
 	MockMinValue        = 0
+	MockMaxTotalCost    = 1280 // (MockMaxValue ^ MockCostExp) * MockMaxCount
+	MockMinTotalCost    = 5    // MockMaxCount
 	MockCostExp         = 2
 	MockCostFromWeight  = 0
 	MockWeight          = 10
@@ -35,8 +37,8 @@ func MockBallotMode() BallotMode[*big.Int] {
 		ForceUniqueness: big.NewInt(MockForceUniqueness),
 		MaxValue:        big.NewInt(MockMaxValue),
 		MinValue:        big.NewInt(MockMinValue),
-		MaxTotalCost:    big.NewInt(int64(math.Pow(float64(MockMaxValue), float64(MockCostExp))) * MockMaxCount),
-		MinTotalCost:    big.NewInt(MockMaxCount),
+		MaxTotalCost:    big.NewInt(MockMaxTotalCost),
+		MinTotalCost:    big.NewInt(MockMinTotalCost),
 		CostExp:         big.NewInt(MockCostExp),
 		CostFromWeight:  big.NewInt(MockCostFromWeight),
 	}
