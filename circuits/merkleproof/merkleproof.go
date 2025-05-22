@@ -1,4 +1,4 @@
-package statetransition
+package merkleproof
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ import (
 type MerkleProof struct {
 	// Key + Value hashed through Siblings path, should produce Root hash
 	Root     frontend.Variable
-	Siblings [types.CensusTreeMaxLevels]frontend.Variable
+	Siblings [types.StateTreeMaxLevels]frontend.Variable
 	Key      frontend.Variable
 	LeafHash frontend.Variable
 }
@@ -78,7 +78,7 @@ func (mp *MerkleProof) String() string {
 type MerkleTransition struct {
 	// NewKey + NewValue hashed through Siblings path, should produce NewRoot hash
 	NewRoot     frontend.Variable
-	Siblings    [types.CensusTreeMaxLevels]frontend.Variable
+	Siblings    [types.StateTreeMaxLevels]frontend.Variable
 	NewKey      frontend.Variable
 	NewLeafHash frontend.Variable
 	// OldKey + OldValue hashed through same Siblings should produce OldRoot hash
@@ -212,9 +212,9 @@ func (mp *MerkleTransition) IsNoop(api frontend.API) frontend.Variable {
 // padStateSiblings pads the unpacked siblings to the maximum number of levels
 // in the census tree, filling with 0s if needed. It returns a fixed-size array
 // of the maximum number of levels of frontend.Variable.
-func padStateSiblings(unpackedSiblings []*big.Int) [types.CensusTreeMaxLevels]frontend.Variable {
-	paddedSiblings := [types.CensusTreeMaxLevels]frontend.Variable{}
-	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, types.CensusTreeMaxLevels) {
+func padStateSiblings(unpackedSiblings []*big.Int) [types.StateTreeMaxLevels]frontend.Variable {
+	paddedSiblings := [types.StateTreeMaxLevels]frontend.Variable{}
+	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, types.StateTreeMaxLevels) {
 		paddedSiblings[i] = v
 	}
 	return paddedSiblings
