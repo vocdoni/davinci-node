@@ -217,28 +217,20 @@ func main() {
 
 	// Wait for the votes to be registered in the smart contract
 	log.Info("all votes sent, waiting for votes to be registered in smart contract...")
-	// TODO: now, the vote count of the smart contract returns the number of
-	// votes registered in the last batch that has been processed, so we need
-	// accumulate the votes until the total number of votes is reached. If this
-	// behavior changes, we can just check if the vote count is equal to the
-	// number of votes sent.
-	totalRegisteredVotes := 0
 	newVotesCh := make(chan int)
 	newVotesCtx, cancel := context.WithCancel(testCtx)
 	defer cancel()
 	go func() {
-		for newVotes := range newVotesCh {
-			log.Infow("new votes registered in smart contract", "newVotes", newVotes)
-			totalRegisteredVotes += newVotes
-			// Check if the total registered votes is greater than or equal to
-			// the vote count to stop the process
-			if totalRegisteredVotes >= *voteCount {
+		for newVoteCount := range newVotesCh {
+			log.Infow("vote count registered in smart contract", "voteCount", newVoteCount)
+			// Check if the vote count is equal to the number of votes sent
+			if newVoteCount >= *voteCount {
 				cancel()
 				break
 			}
 		}
 	}()
-	if err := listenSmartContractNewVotes(newVotesCtx, contracts, pid, newVotesCh); err != nil {
+	if err := listenSmartContractVotesCount(newVotesCtx, contracts, pid, newVotesCh); err != nil {
 		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 		return
 	}
@@ -580,13 +572,14 @@ func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
 	return voteResponse.VoteID, nil
 }
 
-func listenSmartContractNewVotes(
+func listenSmartContractVotesCount(
 	ctx context.Context,
 	contracts *web3.Contracts,
 	pid *types.ProcessID,
 	newVotes chan int,
 ) error {
 	ticker := time.NewTicker(time.Second * 30)
+	lastVotesCount := -1
 	for {
 		select {
 		case <-ctx.Done():
@@ -604,11 +597,14 @@ func listenSmartContractNewVotes(
 				return fmt.Errorf("process not found")
 			}
 			// Get the vote count from the process
+			var newVotesCount int
 			if process.VoteCount != nil {
-				newVotesCount := int(process.VoteCount.MathBigInt().Int64())
-				if newVotesCount > 0 {
-					newVotes <- newVotesCount
-				}
+				newVotesCount = int(process.VoteCount.MathBigInt().Int64())
+				log.Debugw("new vote count", "pid", pid.String(), "newVotesCount", newVotesCount)
+			}
+			if newVotesCount > lastVotesCount {
+				lastVotesCount = newVotesCount
+				newVotes <- newVotesCount
 			}
 		}
 	}
