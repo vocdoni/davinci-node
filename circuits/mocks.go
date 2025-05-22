@@ -17,8 +17,8 @@ const (
 	MockForceUniqueness = 0
 	MockMaxValue        = 16
 	MockMinValue        = 0
-	MockMaxTotalCost    = 720 // (MockMaxValue ^ MockCostExp) * MockMaxCount
-	MockMinTotalCost    = 5   // MockMaxCount
+	MockMaxTotalCost    = 1280 // (MockMaxValue ^ MockCostExp) * MockMaxCount
+	MockMinTotalCost    = 5    // MockMaxCount
 	MockCostExp         = 2
 	MockCostFromWeight  = 0
 	MockWeight          = 10
