@@ -48,6 +48,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
+	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/hash/poseidon"
 )
@@ -58,6 +60,24 @@ type DecryptionProof struct {
 	A1 ecc.Point // = r·G        (commitment wrt base G)
 	A2 ecc.Point // = r·C1       (commitment wrt base C1)
 	Z  *big.Int  // = r + e·d    (response)
+}
+
+// ToGnark converts the proof to the gnark format. This is used to verify the
+// proof in a gnark circuit.
+func (p *DecryptionProof) ToGnark() elgamal.DecryptionProof {
+	a1X, a1Y := p.A1.Point()
+	a2X, a2Y := p.A2.Point()
+	return elgamal.DecryptionProof{
+		A1: twistededwards.Point{
+			X: a1X,
+			Y: a1Y,
+		},
+		A2: twistededwards.Point{
+			X: a2X,
+			Y: a2Y,
+		},
+		Z: p.Z,
+	}
 }
 
 // BuildDecryptionProof creates a Chaum–Pedersen NIZK proving that msg is the
