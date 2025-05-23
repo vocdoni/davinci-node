@@ -8,9 +8,22 @@ This repository provides a Go implementation of threshold ElGamal encryption wit
 
 The DKG protocol allows a group of participants to jointly generate a public/private key pair without any single participant knowing the complete private key. Instead, each participant holds a share of the private key, and only a threshold number of participants can collaborate to decrypt messages.
 
+
+| step                  | message(s)                                                 | purpose                                                 |
+| --------------------- | ---------------------------------------------------------- | ------------------------------------------------------- |
+| 1. *Setup*            | everyone picks threshold `t` and posts curve generator `G` | parameters                                              |
+| 2. *Polynomial*       | each trustee *i* samples secret poly `fᵢ(x)` (deg `t-1`)   | secret sharing                                          |
+| 3. *Commitments*      | publish Ci,j=g^{ai,j} for every coefficient                | makes shares publicly verifiable                        |
+| 4. *Shares*           | privately send si→j=fᵢ(j) to each peer *j*                 | give peers their piece                                  |
+| 5. *Verification*     | peer *j* checks g^{si→j} against commitments               | detects cheating                                        |
+| 6. *Aggregate shares* | none                                                       | each trustee sets dj=∑ si→j – **its private key share** |
+| 7. *Public key*       | everyone broadcasts Ci,0} once                             |  PK = ∏ Ci,0                                            |
+
+
+
 ### Protocol Steps
 
-1. **Initialization**:
+1. **Setup**:
    - Each participant decides on the threshold `t` (minimum number of participants required for decryption) and the total number of participants `n`.
 
 2. **Secret Polynomial Generation**:
@@ -50,54 +63,56 @@ The DKG protocol allows a group of participants to jointly generate a public/pri
 - **Threshold Security**: Only a coalition of at least $t$ participants can decrypt messages, enhancing security against collusion and single-point failures.
 - **Verifiable Secret Sharing**: Participants can verify the correctness of shares received from others, preventing malicious actors from disrupting the protocol.
 
-## ElGamal Encryption Scheme
 
-### Overview
+## Decryption proof
 
-ElGamal encryption is an asymmetric key encryption algorithm that operates over elliptic curves in this implementation. It provides semantic security under the Decisional Diffie-Hellman (DDH) assumption.
+Given an aggregate ciphertext `(C1,C2)` and a threshold subset `S`:
 
-### Key Components
+### 3.1  Each trustee *i ∈ S* publishes **one tuple**
 
-- **Public Key (`PK`)**: Computed during the DKG phase and known to everyone.
-- **Private Key Shares ($s_j$)**: Held individually by participants, unknown to others.
+| field | formula             |
+| ----- | ------------------- |
+| Sᵢ    | dᵢ · C1             |
+| A1ᵢ   | rᵢ · G              |
+| A2ᵢ   | rᵢ · C1             |
+| zᵢ    | rᵢ + e·λᵢ·dᵢ  mod n |
 
-### Encryption Process
+where
 
-To encrypt a message `m`:
+* `λᵢ` is the Lagrange coefficient for id *i* (re‑computable by anyone),
+* `e = H(G,PK,C1,S,A1,A2)` is the Fiat–Shamir challenge, common to all.
 
-1. **Random Scalar Generation**:
-   - Choose a random ephemeral key `k` from the field.
+Data exchanged per trustee = 3 group points + 1 scalar.
 
-2. **Compute Ciphertext Components**:
-   - **C1**: Compute `C1 = k * G`, where `G` is the generator point.
-   - **C2**: Compute `C2 = m * G + k * PK`.
+### 3.2  Combiner (can be *any* node)
 
-3. **Ciphertext**:
-   - The ciphertext is the pair `(C1, C2)`.
+```
+S   = Σ λᵢ·Sᵢ
+A1  = Σ A1ᵢ
+A2  = Σ A2ᵢ
+z   = Σ zᵢ           (mod n)
+M   = C2 – S         // plaintext point
+m   = log_G(M)       // baby‑step giant‑step for small domain
+proof = (A1,A2,z)
+```
 
-### Decryption Process
+The combiner (or several of them for redundancy) then broadcasts `m` **and** `proof`.
 
-To decrypt the ciphertext `(C1, C2)`:
+### 3.3  Public verification
 
-1. **Partial Decryption**:
-   - Each participant computes their partial decryption:
-     $D_j = s_j * C1$
+Anyone—auditors, smart contracts, observers—checks in one call:
 
-2. **Combine Partial Decryptions**:
-   - Using Lagrange coefficients `λ_j`, compute the combined decryption share:
-     $D = \sum_{j \in S} λ_j * D_j$
-     where `S` is the set of participating shares.
+```go
+err := elgamal.VerifyDecryptionProof(PK, C1, C2, m, proof)
+```
 
-3. **Recover the Message**:
-   - Compute `M = C2 - D`.
-   - Extract the message `m` from `M` by solving the discrete logarithm:
-     $m = \log_G M$
-     For small messages, this can be done via brute-force search.
+### 3.4  Why it is safe
 
-### Notes on Decryption
+* **No private share dᵢ leaves its owner.**  The value `zᵢ` is information‑theoretically hidden by the random nonce `rᵢ` under the random oracle model.
+* If any trustee cheats (wrong `Sᵢ`, forged `zᵢ` …) the final proof fails and the tally is rejected.
+* The final proof is a standard Chaum–Pedersen equality‐of‐discrete‐logs statement, so it is compatible with existing verifiers and solidity pre‑compiles.
 
-- **Discrete Logarithm**: Recovering `m` requires solving a discrete logarithm problem, which is feasible for small message spaces but becomes impractical for large messages.
-- **Pairings for Large Messages**: To handle larger messages, cryptographic pairings or alternative schemes are necessary.
+---
 
 ## Reference Implementation
 

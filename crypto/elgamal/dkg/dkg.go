@@ -22,6 +22,11 @@ type Participant struct {
 	CurvePoint     ecc.Point
 }
 
+// CPCommitment represents the Schnorr commitment for a participant.
+type CPCommitment struct { // per-participant Schnorr commitments
+	A1, A2 ecc.Point
+}
+
 // NewParticipant initializes a new participant.
 func NewParticipant(id int, threshold int, participants []int, curvePoint ecc.Point) *Participant {
 	return &Participant{
@@ -53,10 +58,6 @@ func (p *Participant) GenerateSecretPolynomial() {
 		commitment.SetGenerator() // Set the generator
 		commitment.ScalarMult(commitment, coeff)
 		p.PublicCoeffs = append(p.PublicCoeffs, commitment)
-
-		// Log the secret coefficient and commitment
-		// log.Printf("Participant %d: SecretCoeff[%d] = %s", p.ID, i, coeff.String())
-		// log.Printf("Participant %d: PublicCoeff[%d] = %s", p.ID, i, commitment.String())
 	}
 }
 
@@ -113,7 +114,6 @@ func (p *Participant) verifyShare(share *big.Int, publicCoeffs []ecc.Point) bool
 		rhs.Add(rhs, term)
 
 		xPower.Mul(xPower, x)
-		// xPower.Mod(xPower, order) // Ensure this is removed
 	}
 
 	return lhs.Equal(rhs)
