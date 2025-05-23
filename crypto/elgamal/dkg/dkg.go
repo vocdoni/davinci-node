@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 )
 
 // Participant represents a participant in the DKG protocol.
@@ -20,6 +21,16 @@ type Participant struct {
 	PrivateShare   *big.Int
 	PublicKey      ecc.Point
 	CurvePoint     ecc.Point
+
+	// added for distributed proof
+	rRand       *big.Int             // own Schnorr randomness r_i
+	Commitments map[int]CPCommitment // commitments received
+	PartialZ    map[int]*big.Int     // z_i responses received
+}
+
+// CPCommitment represents the Schnorr commitment for a participant.
+type CPCommitment struct { // per-participant Schnorr commitments
+	A1, A2 ecc.Point
 }
 
 // NewParticipant initializes a new participant.
@@ -34,6 +45,8 @@ func NewParticipant(id int, threshold int, participants []int, curvePoint ecc.Po
 		ReceivedShares: make(map[int]*big.Int),
 		PrivateShare:   new(big.Int),
 		CurvePoint:     curvePoint,
+		Commitments:    make(map[int]CPCommitment),
+		PartialZ:       make(map[int]*big.Int),
 	}
 }
 
@@ -136,4 +149,78 @@ func (p *Participant) AggregatePublicKey(allPublicCoeffs map[int][]ecc.Point) {
 		pk.Add(pk, coeffs[0]) // Only the constant term is needed
 	}
 	p.PublicKey = pk
+}
+
+// BuildCommitment generates (A1_i , A2_i , r_i).
+func (p *Participant) BuildCommitment(c1 ecc.Point) (CPCommitment, error) {
+	order := c1.Order()
+	r, err := rand.Int(rand.Reader, order)
+	if err != nil {
+		return CPCommitment{}, err
+	}
+	p.rRand = r
+
+	A1 := c1.New()
+	A1.ScalarBaseMult(r) // r·G
+	A2 := c1.New()
+	A2.ScalarMult(c1, r) // r·C1
+
+	commit := CPCommitment{A1: A1, A2: A2}
+	p.Commitments[p.ID] = commit // store own commitment
+	return commit, nil
+}
+
+// ReceiveCommitment stores commitment from another participant.
+func (p *Participant) ReceiveCommitment(id int, commit CPCommitment) {
+	p.Commitments[id] = commit
+}
+
+// BuildPartialResponse returns z_i = r_i + e·λ_i·d_i  (mod order).
+// caller passes:
+//   - e       – challenge hash (same for all)
+//   - lambda  – Lagrange coefficient λ_i  already computed externally
+func (p *Participant) BuildPartialResponse(
+	e, lambda *big.Int, order *big.Int,
+) *big.Int {
+
+	z := new(big.Int).Mul(lambda, p.PrivateShare) // λ_i·d_i
+	z.Mul(z, e)                                   // e·λ_i·d_i
+	z.Add(z, p.rRand)                             // r_i + …
+	z.Mod(z, order)
+	p.PartialZ[p.ID] = z
+	return z
+}
+
+// ReceivePartialResponse stores z_j from another participant.
+func (p *Participant) ReceivePartialResponse(id int, z *big.Int) {
+	p.PartialZ[id] = z
+}
+
+// AssembleDecryptionProof sums commitments & z-values and spits out
+// a Chaum–Pedersen proof compatible with elgamal.VerifyDecryptionProof().
+func AssembleDecryptionProof(
+	publicKey ecc.Point,
+	c1, c2 ecc.Point,
+	msgScalar *big.Int, // plaintext scalar m
+	commitments map[int]CPCommitment,
+	partZ map[int]*big.Int,
+) (*elgamal.DecryptionProof, error) {
+
+	sumA1 := publicKey.New()
+	sumA1.SetZero()
+	sumA2 := publicKey.New()
+	sumA2.SetZero()
+
+	for _, com := range commitments {
+		sumA1.Add(sumA1, com.A1)
+		sumA2.Add(sumA2, com.A2)
+	}
+
+	zSum := new(big.Int)
+	for _, z := range partZ {
+		zSum.Add(zSum, z)
+	}
+	zSum.Mod(zSum, publicKey.Order())
+
+	return &elgamal.DecryptionProof{A1: sumA1, A2: sumA2, Z: zSum}, nil
 }

@@ -65,14 +65,14 @@ func BuildDecryptionProof(
 	publicKey ecc.Point,
 	c1, c2 ecc.Point,
 	msg *big.Int,
-) (DecryptionProof, error) {
+) (*DecryptionProof, error) {
 
 	order := publicKey.Order()
 
 	// 1. Sample fresh randomness r ∈ [1,order-1]
 	r, err := rand.Int(rand.Reader, order)
 	if err != nil {
-		return DecryptionProof{}, fmt.Errorf("failed to sample r: %v", err)
+		return nil, fmt.Errorf("failed to sample r: %v", err)
 	}
 	if r.Sign() == 0 { // reject 0
 		r = big.NewInt(1)
@@ -97,7 +97,7 @@ func BuildDecryptionProof(
 	D.Add(D, negM) // D = C2 – M·G
 
 	// 4. Fiat–Shamir challenge e = H(G,P,C1,D,A1,A2) mod order
-	e := hashPointsToScalar(publicKey, // G is implicit in Point, but include for domain-sep
+	e := HashPointsToScalar(publicKey, // G is implicit in Point, but include for domain-sep
 		publicKey, // P
 		c1,
 		D,
@@ -110,7 +110,7 @@ func BuildDecryptionProof(
 	z.Add(z, r)
 	z.Mod(z, order)
 
-	return DecryptionProof{A1: A1, A2: A2, Z: z}, nil
+	return &DecryptionProof{A1: A1, A2: A2, Z: z}, nil
 }
 
 // VerifyDecryptionProof checks a Chaum–Pedersen proof of correct decryption.
@@ -119,7 +119,7 @@ func VerifyDecryptionProof(
 	publicKey ecc.Point,
 	c1, c2 ecc.Point,
 	msg *big.Int,
-	proof DecryptionProof,
+	proof *DecryptionProof,
 ) error {
 
 	order := publicKey.Order()
@@ -136,7 +136,7 @@ func VerifyDecryptionProof(
 	D.Add(D, negM) // D = C2 – M·G
 
 	// Recompute Fiat–Shamir challenge e
-	e := hashPointsToScalar(publicKey, // G (domain separation)
+	e := HashPointsToScalar(publicKey, // G (domain separation)
 		publicKey, // P
 		c1,
 		D,
@@ -176,7 +176,7 @@ func VerifyDecryptionProof(
 
 // Helper: hash a sequence of points to a scalar < order using Poseidon.
 // This is the Fiat–Shamir transform.
-func hashPointsToScalar(pts ...ecc.Point) *big.Int {
+func HashPointsToScalar(pts ...ecc.Point) *big.Int {
 	points := []*big.Int{}
 	for _, p := range pts {
 		// ecc.Point.Marshal() must be deterministic.

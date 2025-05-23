@@ -126,4 +126,77 @@ func TestDKG(t *testing.T) {
 
 	// Verify the sum
 	c.Assert(decryptedSum.Cmp(expectedSum), qt.Equals, 0, qt.Commentf("Decrypted sum does not match expected sum"))
+
+	c.Run("distributed-proof", func(c *qt.C) {
+		// 1. each trustee builds and shares commitments
+		commitments := make(map[int]CPCommitment)
+		for _, id := range participantSubset {
+			com, err := participants[id].BuildCommitment(aggC1)
+			c.Assert(err, qt.IsNil)
+			commitments[id] = com
+		}
+
+		// everyone receives everyone else's commitments (simulate network)
+		for _, p := range participants {
+			for oid, com := range commitments {
+				p.ReceiveCommitment(oid, com)
+			}
+		}
+
+		// sum commitments
+		sumA1 := curvePoint.New()
+		sumA1.SetZero()
+		sumA2 := curvePoint.New()
+		sumA2.SetZero()
+		for _, com := range commitments {
+			sumA1.Add(sumA1, com.A1)
+			sumA2.Add(sumA2, com.A2)
+		}
+
+		// Lagrange coefficients for subset
+		lambda, err := computeLagrangeCoefficients(participantSubset, curvePoint.Order())
+		c.Assert(err, qt.IsNil)
+
+		// aggregate share S = Σ λᵢ·Sᵢ
+		S := curvePoint.New()
+		S.SetZero()
+		for _, id := range participantSubset {
+			term := S.New()
+			term.ScalarMult(partialDecryptions[id], lambda[id])
+			S.Add(S, term)
+		}
+
+		// compute Fiat–Shamir challenge e = H(G,P,C1,S,A1,A2)
+		// use helper from elgamal package
+		e := elgamal.HashPointsToScalar(
+			firstPubKey, // G implicit -> use P for domain‑sep as in verifier
+			firstPubKey,
+			aggC1,
+			S,
+			sumA1,
+			sumA2,
+		)
+
+		// 2. trustees build partial responses z_i and share
+		partZ := make(map[int]*big.Int)
+		for _, id := range participantSubset {
+			zi := participants[id].BuildPartialResponse(e, lambda[id], curvePoint.Order())
+			partZ[id] = zi
+		}
+
+		// everyone receives all z (simulate)
+		for _, p := range participants {
+			for oid, z := range partZ {
+				p.ReceivePartialResponse(oid, z)
+			}
+		}
+
+		// 3. combiner assembles the proof
+		proof, err := AssembleDecryptionProof(firstPubKey, aggC1, aggC2, decryptedSum, commitments, partZ)
+		c.Assert(err, qt.IsNil)
+
+		// 4. verify proof with canonical verifier
+		c.Assert(elgamal.VerifyDecryptionProof(firstPubKey, aggC1, aggC2, decryptedSum, proof), qt.IsNil)
+	})
+
 }
