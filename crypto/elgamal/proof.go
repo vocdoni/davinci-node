@@ -1,44 +1,46 @@
-// -----------------------------------------------------------------------------
-//  Chaum-Pedersen NIZK proof of correct ElGamal decryption
+// Chaum-Pedersen NIZK proof of correct ElGamal decryption
 //
-//  Context (refs):
-//   – C. Pedersen & D. Chaum, “Wallet Databases with Observers” (1992)
-//   – Helios e-voting scheme (https://doi.org/10.1007/978-3-642-12980-3_9)
+// Context (refs):
+//   - C. Pedersen & D. Chaum, “Wallet Databases with Observers” (1992)
+//   - Helios e-voting scheme (https://doi.org/10.1007/978-3-642-12980-3_9)
 //
-//  Goal: prove NON-interactively that a plaintext M is the correct decryption
-//  of ciphertext (C1, C2) under public key P = d·G, *without* revealing either
-//  the private key d or the encryption nonce k.
-//  We prove equality of discrete logs:
+// Goal: prove NON-interactively that a plaintext M is the correct decryption
+// of ciphertext (C1, C2) under public key P = d·G, *without* revealing either
+// the private key d or the encryption nonce k.
+// We prove equality of discrete logs:
 //
-//        log_G(P)  =  log_{C1}(C2 – M·G)
+//	log_G(P) = log_{C1}(C2 – M·G)
 //
-//  The Σ-protocol is rendered non-interactive with the Fiat–Shamir transform
-//  (hashing all public data to obtain the challenge).
-// -----------------------------------------------------------------------------
+// The Σ-protocol is rendered non-interactive with the Fiat–Shamir transform
+// (hashing all public data to obtain the challenge).
 //
-//  Public data                Secret held by prover
-//  ------------               ----------------------
-//    G     group generator       d   private key
-//    P     = d·G                 r   fresh random scalar
-//    C1,C2 ciphertext            —   (k never appears!)
-//    M     plaintext
+// Public data
+//   - G: group generator
+//   - P: public key (d·G)
+//   - C1 y C2: ciphertext
+//   - M: plaintext
 //
-//  Prover (BuildDecryptionProof):
-//    1.  Pick r ← 𝔽*.
-//    2.  A1 = r·G,  A2 = r·C1                (commitment)
-//    3.  D  = C2 – M·G                       (shared secret)
-//    4.  e  = H(G,P,C1,D,A1,A2) mod order    (Fiat-Shamir)
-//    5.  z  = r + e·d mod order              (response)
+// Secret held by prover
+//   - d: private key
+//   - r: fresh random nonce
+//   - k: encryption nonce (not revealed)
 //
-//  Proof is (A1,A2,z).
+// Prover (BuildDecryptionProof):
+//  1. Pick r ← 𝔽*.
+//  2. A1 = r·G,  A2 = r·C1                (commitment)
+//  3. D  = C2 – M·G                       (shared secret)
+//  4. e  = H(G,P,C1,D,A1,A2) mod order    (Fiat-Shamir)
+//  5. z  = r + e·d mod order              (response)
 //
-//  Verifier (VerifyDecryptionProof):
-//    Recompute D and e, then check
-//        z·G  ==  A1 + e·P
-//        z·C1 ==  A2 + e·D
-//  Both must hold for the proof to be accepted.
-// -----------------------------------------------------------------------------
-
+// Proof is (A1,A2,z).
+//
+// Verifier (VerifyDecryptionProof):
+//
+//	Recompute D and e, then check
+//	    z·G  ==  A1 + e·P
+//	    z·C1 ==  A2 + e·D
+//
+// Both must hold for the proof to be accepted.
 package elgamal
 
 import (
