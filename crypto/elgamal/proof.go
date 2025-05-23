@@ -66,7 +66,6 @@ func BuildDecryptionProof(
 	c1, c2 ecc.Point,
 	msg *big.Int,
 ) (*DecryptionProof, error) {
-
 	order := publicKey.Order()
 
 	// 1. Sample fresh randomness r ∈ [1,order-1]
@@ -121,7 +120,6 @@ func VerifyDecryptionProof(
 	msg *big.Int,
 	proof *DecryptionProof,
 ) error {
-
 	order := publicKey.Order()
 
 	// Recompute D = C2 – M·G

@@ -26,6 +26,7 @@ func TestDecryptionProof(t *testing.T) {
 
 	msg2 := big.NewInt(8)
 	c3, c4, _, err := Encrypt(pk, msg2)
+	c.Assert(err, qt.IsNil)
 
 	c1.Add(c1, c3)
 	c2.Add(c2, c4)

@@ -42,7 +42,6 @@ func AssembleDecryptionProof(
 	commitments map[int]CPCommitment,
 	partZ map[int]*big.Int,
 ) (*elgamal.DecryptionProof, error) {
-
 	sumA1 := publicKey.New()
 	sumA1.SetZero()
 	sumA2 := publicKey.New()

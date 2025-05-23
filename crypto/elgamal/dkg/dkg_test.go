@@ -194,5 +194,4 @@ func TestDKG(t *testing.T) {
 		err = elgamal.VerifyDecryptionProof(firstPubKey, aggC1, aggC2, decryptedSum, proof)
 		c.Assert(err, qt.IsNil, qt.Commentf("distributed proof verification failed"))
 	})
-
 }
