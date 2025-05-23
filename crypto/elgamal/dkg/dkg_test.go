@@ -128,22 +128,17 @@ func TestDKG(t *testing.T) {
 	c.Assert(decryptedSum.Cmp(expectedSum), qt.Equals, 0, qt.Commentf("Decrypted sum does not match expected sum"))
 
 	c.Run("distributed-proof", func(c *qt.C) {
-		// 1. each trustee builds and shares commitments
+		// 1. commitments from each trustee  (phase-1)
 		commitments := make(map[int]CPCommitment)
+		nonces := make(map[int]*big.Int) // store r_i for later
 		for _, id := range participantSubset {
-			com, err := participants[id].BuildCommitment(aggC1)
+			com, r, err := participants[id].BuildCommitment(aggC1)
 			c.Assert(err, qt.IsNil)
 			commitments[id] = com
+			nonces[id] = r
 		}
 
-		// everyone receives everyone else's commitments (simulate network)
-		for _, p := range participants {
-			for oid, com := range commitments {
-				p.ReceiveCommitment(oid, com)
-			}
-		}
-
-		// sum commitments
+		// ΣA1 , ΣA2
 		sumA1 := curvePoint.New()
 		sumA1.SetZero()
 		sumA2 := curvePoint.New()
@@ -153,50 +148,51 @@ func TestDKG(t *testing.T) {
 			sumA2.Add(sumA2, com.A2)
 		}
 
-		// Lagrange coefficients for subset
+		// 2. aggregate share S   and Fiat–Shamir challenge  e
 		lambda, err := computeLagrangeCoefficients(participantSubset, curvePoint.Order())
 		c.Assert(err, qt.IsNil)
 
-		// aggregate share S = Σ λᵢ·Sᵢ
 		S := curvePoint.New()
 		S.SetZero()
 		for _, id := range participantSubset {
-			term := S.New()
-			term.ScalarMult(partialDecryptions[id], lambda[id])
-			S.Add(S, term)
+			tmp := S.New()
+			tmp.ScalarMult(partialDecryptions[id], lambda[id])
+			S.Add(S, tmp)
 		}
 
-		// compute Fiat–Shamir challenge e = H(G,P,C1,S,A1,A2)
-		// use helper from elgamal package
 		e := elgamal.HashPointsToScalar(
-			firstPubKey, // G implicit -> use P for domain‑sep as in verifier
-			firstPubKey,
-			aggC1,
-			S,
-			sumA1,
-			sumA2,
+			firstPubKey, // G domain-sep
+			firstPubKey, // P
+			aggC1,       // C1
+			S,           // aggregate share
+			sumA1, sumA2,
 		)
 
-		// 2. trustees build partial responses z_i and share
+		// 3. each trustee sends its partial response z_i   (phase-2)
 		partZ := make(map[int]*big.Int)
 		for _, id := range participantSubset {
-			zi := participants[id].BuildPartialResponse(e, lambda[id], curvePoint.Order())
-			partZ[id] = zi
+			z := participants[id].BuildPartialResponse(
+				nonces[id], // r_i
+				lambda[id], // λ_i
+				e,          // challenge
+				curvePoint.Order(),
+			)
+			partZ[id] = z
 		}
 
-		// everyone receives all z (simulate)
-		for _, p := range participants {
-			for oid, z := range partZ {
-				p.ReceivePartialResponse(oid, z)
-			}
-		}
-
-		// 3. combiner assembles the proof
-		proof, err := AssembleDecryptionProof(firstPubKey, aggC1, aggC2, decryptedSum, commitments, partZ)
+		// 4. combiner assembles & verifies the final proof
+		proof, err := AssembleDecryptionProof(
+			firstPubKey,
+			aggC1, aggC2,
+			decryptedSum,
+			commitments,
+			partZ,
+		)
 		c.Assert(err, qt.IsNil)
 
-		// 4. verify proof with canonical verifier
-		c.Assert(elgamal.VerifyDecryptionProof(firstPubKey, aggC1, aggC2, decryptedSum, proof), qt.IsNil)
+		// canonical verification must succeed
+		err = elgamal.VerifyDecryptionProof(firstPubKey, aggC1, aggC2, decryptedSum, proof)
+		c.Assert(err, qt.IsNil, qt.Commentf("distributed proof verification failed"))
 	})
 
 }
