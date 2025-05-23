@@ -5,6 +5,7 @@ import (
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/merkleproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
 )
 
@@ -43,43 +44,43 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 	}
 
 	witness.ProcessProofs = ProcessProofs{}
-	witness.ProcessProofs.ID, err = MerkleProofFromArboProof(o.ProcessProofs().ID)
+	witness.ProcessProofs.ID, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().ID)
 	if err != nil {
 		return nil, err
 	}
-	witness.ProcessProofs.CensusRoot, err = MerkleProofFromArboProof(o.ProcessProofs().CensusRoot)
+	witness.ProcessProofs.CensusRoot, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().CensusRoot)
 	if err != nil {
 		return nil, err
 	}
-	witness.ProcessProofs.BallotMode, err = MerkleProofFromArboProof(o.ProcessProofs().BallotMode)
+	witness.ProcessProofs.BallotMode, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().BallotMode)
 	if err != nil {
 		return nil, err
 	}
-	witness.ProcessProofs.EncryptionKey, err = MerkleProofFromArboProof(o.ProcessProofs().EncryptionKey)
+	witness.ProcessProofs.EncryptionKey, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().EncryptionKey)
 	if err != nil {
 		return nil, err
 	}
 	// add Ballots
 	for i := range witness.VotesProofs.Ballot {
-		witness.VotesProofs.Ballot[i], err = MerkleTransitionFromArboTransition(o.VotesProofs().Ballot[i])
+		witness.VotesProofs.Ballot[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Ballot[i])
 		if err != nil {
 			return nil, err
 		}
 	}
 	// add Commitments
 	for i := range witness.VotesProofs.Commitment {
-		witness.VotesProofs.Commitment[i], err = MerkleTransitionFromArboTransition(o.VotesProofs().Commitment[i])
+		witness.VotesProofs.Commitment[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Commitment[i])
 		if err != nil {
 			return nil, err
 		}
 	}
 	// update ResultsAdd
-	witness.ResultsProofs.ResultsAdd, err = MerkleTransitionFromArboTransition(o.VotesProofs().ResultsAdd)
+	witness.ResultsProofs.ResultsAdd, err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().ResultsAdd)
 	if err != nil {
 		return nil, fmt.Errorf("ResultsAdd: %w", err)
 	}
 	// update ResultsSub
-	witness.ResultsProofs.ResultsSub, err = MerkleTransitionFromArboTransition(o.VotesProofs().ResultsSub)
+	witness.ResultsProofs.ResultsSub, err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().ResultsSub)
 	if err != nil {
 		return nil, fmt.Errorf("ResultsSub: %w", err)
 	}
