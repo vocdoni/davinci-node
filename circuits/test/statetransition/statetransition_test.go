@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/logger"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
 	"github.com/rs/zerolog"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/util"
 )
 
@@ -32,8 +32,6 @@ func TestStateTransitionCircuit(t *testing.T) {
 	now = time.Now()
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(placeholder, assignments,
-		test.WithCurves(ecc.BN254), test.WithBackends(backend.GROTH16),
-		// test.WithProverOpts(stdgroth16.GetNativeProverOptions(ecc.BN254.ScalarField(), ecc.BW6_761.ScalarField())),
-	)
+		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 	c.Logf("proving took %s", time.Since(now).String())
 }

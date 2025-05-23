@@ -28,7 +28,7 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20250513133053-b35dcc9c1f00
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
 	github.com/vocdoni/contracts-z v0.0.0-20250522101521-83fdaf1e0d84
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250505073003-c9196af66639
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250523120408-958673b7a72f
 	go.vocdoni.io/dvote v1.10.2-0.20241024102542-c1ce6d744bc5
 	golang.org/x/sync v0.14.0
 )
@@ -42,6 +42,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Microsoft/hcsshim v0.11.5 // indirect
+	github.com/VictoriaMetrics/metrics v1.24.0 // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.30 // indirect
@@ -60,6 +61,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.22.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
+	github.com/btcsuite/btcd/btcec/v2 v2.3.3 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/cp v1.1.1 // indirect
@@ -71,6 +73,7 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/cometbft/cometbft v1.0.0-alpha.1 // indirect
+	github.com/cometbft/cometbft/api v1.0.0-alpha.1 // indirect
 	github.com/compose-spec/compose-go/v2 v2.1.3 // indirect
 	github.com/consensys/bavard v0.1.31-0.20250406004941-2db259e4b582 // indirect
 	github.com/containerd/console v1.0.4 // indirect
@@ -81,6 +84,7 @@ require (
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/containerd/ttrpc v1.2.5 // indirect
 	github.com/containerd/typeurl/v2 v2.1.1 // indirect
+	github.com/cosmos/gogoproto v1.5.0 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/crate-crypto/go-ipa v0.0.0-20240223125850-b1e8a79f509c // indirect
 	github.com/crate-crypto/go-kzg-4844 v1.1.0 // indirect
@@ -135,6 +139,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-5 // indirect
 	github.com/holiman/uint256 v1.3.1 // indirect
 	github.com/iden3/go-rapidsnark/types v0.0.3 // indirect
@@ -181,11 +186,13 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/nxadm/tail v1.4.11 // indirect
+	github.com/oasisprotocol/curve25519-voi v0.0.0-20220708102147-0a8a51822cae // indirect
 	github.com/onsi/gomega v1.33.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
+	github.com/petermattis/goid v0.0.0-20221018141743-354ef7f2fd21 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
@@ -199,6 +206,7 @@ require (
 	github.com/ronanh/intcomp v1.1.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
+	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/secure-systems-lab/go-securesystemslib v0.4.0 // indirect
 	github.com/serialx/hashring v0.0.0-20200727003509-22c0c7ab6b1b // indirect
 	github.com/sethvargo/go-retry v0.2.4 // indirect
@@ -224,6 +232,8 @@ require (
 	github.com/tonistiigi/fsutil v0.0.0-20240424095704-91a3fc46842c // indirect
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea // indirect
 	github.com/tonistiigi/vt100 v0.0.0-20240514184818-90bafcd6abab // indirect
+	github.com/valyala/fastrand v1.1.0 // indirect
+	github.com/valyala/histogram v1.2.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
@@ -251,6 +261,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.2.0 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	go.vocdoni.io/proto v1.15.10-0.20240903073233-86144b1e2165 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/net v0.28.0 // indirect
