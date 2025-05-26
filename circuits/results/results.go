@@ -7,6 +7,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/merkleproof"
+	"github.com/vocdoni/vocdoni-z-sandbox/state"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -18,8 +19,8 @@ type ResultsVerifierCircuit struct {
 	StateRoot           frontend.Variable
 	ResultsAdd          [types.FieldsPerBallot]frontend.Variable
 	ResultsSub          [types.FieldsPerBallot]frontend.Variable
-	AddCiphertexts      [types.FieldsPerBallot]elgamal.Ciphertext
-	SubCiphertexts      [types.FieldsPerBallot]elgamal.Ciphertext
+	AddCiphertexts      circuits.Ballot
+	SubCiphertexts      circuits.Ballot
 	ResultsAddProof     merkleproof.MerkleProof
 	ResultsSubProof     merkleproof.MerkleProof
 	DecryptionAddProofs [types.FieldsPerBallot]elgamal.DecryptionProof
@@ -29,30 +30,73 @@ type ResultsVerifierCircuit struct {
 }
 
 func (c *ResultsVerifierCircuit) Define(api frontend.API) error {
-	// Prove the resulsts add
-	c.ResultsAddProof.Verify(api, HashFn, c.StateRoot)
-	// Prove the results sub
-	c.ResultsSubProof.Verify(api, HashFn, c.StateRoot)
-	// Prove the encryption key
-	c.EncryptionKeyProof.Verify(api, HashFn, c.StateRoot)
+	// Verify that the accumulators values matches with the proofs values
+	c.VerifyAccumulatorsHashes(api)
+	// Verify results add, results sub, and encryption key proofs
+	c.VerifyMerkleProofs(api)
+	// Verify decryption proofs for add and sub ciphertexts
+	c.VerifyDecryptionProofs(api)
+	return nil
+}
 
+func (c *ResultsVerifierCircuit) VerifyAccumulatorsHashes(api frontend.API) {
+	// Compute the value of the add ciphertexts in the merkle tree
+	addMerkletreeValue, err := HashFn(api, c.AddCiphertexts.SerializeVars()...)
+	if err != nil {
+		circuits.FrontendError(api, "failed to hash add ciphertexts", err)
+		return
+	}
+	// Compute the hash of the leaf in the merkle tree
+	addLeafHash, err := HashFn(api, state.KeyResultsAdd, addMerkletreeValue, 1)
+	if err != nil {
+		circuits.FrontendError(api, "failed to hash add leaf", err)
+		return
+	}
+	// Check that the computed leaf hash matches the one in the proof
+	api.AssertIsEqual(addLeafHash, c.ResultsAddProof.LeafHash)
+
+	// Compute the value of the sub ciphertexts in the merkle tree
+	subMerkletreeValue, err := HashFn(api, c.SubCiphertexts.SerializeVars()...)
+	if err != nil {
+		circuits.FrontendError(api, "failed to hash sub ciphertexts", err)
+		return
+	}
+	// Compute the hash of the leaf in the merkle tree
+	subLeafHash, err := HashFn(api, state.KeyResultsSub, subMerkletreeValue, 1)
+	if err != nil {
+		circuits.FrontendError(api, "failed to hash sub leaf", err)
+		return
+	}
+	// Check that the computed leaf hash matches the one in the proof
+	api.AssertIsEqual(subLeafHash, c.ResultsSubProof.LeafHash)
+}
+
+func (c *ResultsVerifierCircuit) VerifyMerkleProofs(api frontend.API) {
+	// Verify the results add proof
+	c.ResultsAddProof.Verify(api, HashFn, c.StateRoot)
+	// Verify the results sub proof
+	c.ResultsSubProof.Verify(api, HashFn, c.StateRoot)
+	// Verify the encryption key proof
+	c.EncryptionKeyProof.Verify(api, HashFn, c.StateRoot)
+}
+
+func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
 	pubKey := twistededwards.Point{
 		X: c.EncryptionPublicKey.PubKey[0],
 		Y: c.EncryptionPublicKey.PubKey[1],
 	}
-
 	for i := range types.FieldsPerBallot {
 		// Prove the decryption add proofs
 		err := c.DecryptionAddProofs[i].Verify(api, HashFn, pubKey, c.AddCiphertexts[i], c.ResultsAdd[i])
 		if err != nil {
-			return err
+			circuits.FrontendError(api, "failed to verify add decryption proof", err)
+			return
 		}
-		// // Prove the decryption sub proofs
-		// err = c.DecryptionSubProofs[i].Verify(api, HashFn, pubKey, c.SubCiphertexts[i], c.ResultsSub[i])
-		// if err != nil {
-		// 	return err
-		// }
+		// Prove the decryption sub proofs
+		err = c.DecryptionSubProofs[i].Verify(api, HashFn, pubKey, c.SubCiphertexts[i], c.ResultsSub[i])
+		if err != nil {
+			circuits.FrontendError(api, "failed to verify sub decryption proof", err)
+			return
+		}
 	}
-
-	return nil
 }

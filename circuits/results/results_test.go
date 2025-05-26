@@ -26,7 +26,7 @@ import (
 
 const nVotes = 10
 
-func TestResultsVerifierCircu(t *testing.T) {
+func TestResultsVerifierCircuit(t *testing.T) {
 	c := qt.New(t)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
@@ -114,7 +114,6 @@ func TestResultsVerifierCircu(t *testing.T) {
 	assert.SolvingSucceeded(&ResultsVerifierCircuit{}, witness,
 		test.WithCurves(circuits.ResultsVerifierCurve), test.WithBackends(backend.GROTH16))
 	c.Logf("proving took %s", time.Since(now).String())
-
 }
 
 func newMockVote(pubKey ecc.Point, index, amount int) *state.Vote {
