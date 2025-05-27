@@ -11,16 +11,9 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-func merkleProofFromKey(o *state.State, key *big.Int) (merkleproof.MerkleProof, error) {
-	proof, err := o.GenArboProof(key)
-	if err != nil {
-		return merkleproof.MerkleProof{}, fmt.Errorf("failed to generate arbo proof: %w", err)
-	}
-	return merkleproof.MerkleProofFromArboProof(proof)
-}
-
 func GenerateWitness(
 	o *state.State,
+	results [types.FieldsPerBallot]*big.Int,
 	addResults [types.FieldsPerBallot]*big.Int,
 	subResults [types.FieldsPerBallot]*big.Int,
 	addCiphertexts [types.FieldsPerBallot]elgamal.Ciphertext,
@@ -41,6 +34,7 @@ func GenerateWitness(
 	for i := range types.FieldsPerBallot {
 		witness.AddCiphertexts[i] = *addCiphertexts[i].ToGnark()
 		witness.SubCiphertexts[i] = *subCiphertexts[i].ToGnark()
+		witness.Results[i] = results[i]
 		witness.ResultsAdd[i] = addResults[i]
 		witness.ResultsSub[i] = subResults[i]
 	}
@@ -72,4 +66,12 @@ func GenerateWitness(
 	}
 
 	return witness, nil
+}
+
+func merkleProofFromKey(o *state.State, key *big.Int) (merkleproof.MerkleProof, error) {
+	proof, err := o.GenArboProof(key)
+	if err != nil {
+		return merkleproof.MerkleProof{}, fmt.Errorf("failed to generate arbo proof: %w", err)
+	}
+	return merkleproof.MerkleProofFromArboProof(proof)
 }

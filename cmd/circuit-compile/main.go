@@ -25,6 +25,7 @@ import (
 	flag "github.com/spf13/pflag"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/results"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
@@ -226,36 +227,108 @@ func main() {
 
 	log.Infow("statetransition artifacts written to disk", "elapsed", time.Since(startTime).String())
 
-	////////////////////////////////////////
-	// Export the solidity verifier
-	////////////////////////////////////////
-	log.Infow("exporting solidity verifier...")
+	/*
+		Export the state transition solidity verifier
+	*/
+	log.Infow("exporting state transition solidity verifier...")
 	// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
-	solidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
-	if err := solidityVk.Precompute(); err != nil {
+	statetransitionSolidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
+	if err := statetransitionSolidityVk.Precompute(); err != nil {
 		log.Fatalf("failed to precompute vk: %v", err)
 	}
-	vkeySolFile := path.Join(destination, "vkey.sol")
-	fd, err := os.Create(vkeySolFile)
+	statetransitionVkeySolFile := path.Join(destination, "statetransition_vkey.sol")
+	fd, err := os.Create(statetransitionVkeySolFile)
 	if err != nil {
-		log.Fatalf("failed to create vkey.sol: %v", err)
+		log.Fatalf("failed to create statetransition_vkey.sol: %v", err)
 	}
 	buf := bytes.NewBuffer(nil)
-	if err := solidityVk.ExportSolidity(buf); err != nil {
+	if err := statetransitionSolidityVk.ExportSolidity(buf); err != nil {
 		log.Fatalf("failed to export vk to Solidity: %v", err)
 	}
 	if _, err := fd.Write(buf.Bytes()); err != nil {
-		log.Fatalf("failed to write vkey.sol: %v", err)
+		log.Fatalf("failed to write statetransition_vkey.sol: %v", err)
 	}
 	if err := fd.Close(); err != nil {
-		log.Warnw("failed to close vkey.sol file", "error", err)
+		log.Warnw("failed to close statetransition_vkey.sol file", "error", err)
 	}
 
 	// Insert the proving key hash into the vkey.sol file
-	if err := insertProvingKeyHashToVkeySolidity(vkeySolFile, hashList["StateTransitionProvingKeyHash"]); err != nil {
+	if err := insertProvingKeyHashToVkeySolidity(statetransitionVkeySolFile, hashList["StateTransitionProvingKeyHash"]); err != nil {
 		log.Warnw("failed to insert proving key hash into vkey.sol", "error", err)
 	}
-	log.Infow("vkey.sol file created", "path", fd.Name())
+	log.Infow("statetransition_vkey.sol file created", "path", fd.Name())
+
+	/*
+		ResultsVerifier Circuit Compilation
+	*/
+	log.Infow("compiling results verifier circuit...")
+	startTime = time.Now()
+	// create final placeholder
+	resultsverifierPlaceholder := &results.ResultsVerifierCircuit{}
+	resultsverifierCCS, err := frontend.Compile(circuits.ResultsVerifierCurve.ScalarField(), r1cs.NewBuilder, resultsverifierPlaceholder)
+	if err != nil {
+		log.Fatalf("failed to compile results verifier circuit: %v", err)
+	}
+	// Setup results verifier circuit
+	resultsverifierPk, resultsverifierVk, err := groth16.Setup(resultsverifierCCS)
+	if err != nil {
+		log.Fatalf("error setting up results verifier circuit: %v", err)
+	}
+	log.Infow("results verifier circuit compiled", "elapsed", time.Since(startTime).String())
+
+	// Write the results verifier artifacts to disk
+	startTime = time.Now()
+	log.Infow("writing results verifier artifacts to disk...")
+	hash, err = writeCS(resultsverifierCCS, destination)
+	if err != nil {
+		log.Fatalf("error writing results verifier constraint system: %v", err)
+	}
+	hashList["ResultsVerifierCircuitHash"] = hash
+
+	hash, err = writePK(resultsverifierPk, destination)
+	if err != nil {
+		log.Fatalf("error writing results verifier proving key: %v", err)
+	}
+	hashList["ResultsVerifierProvingKeyHash"] = hash
+
+	hash, err = writeVK(resultsverifierVk, destination)
+	if err != nil {
+		log.Fatalf("error writing results verifier verifying key: %v", err)
+	}
+	hashList["ResultsVerifierVerificationKeyHash"] = hash
+
+	log.Infow("results verifier artifacts written to disk", "elapsed", time.Since(startTime).String())
+
+	/*
+		Export the results verifier solidity verifier
+	*/
+	log.Infow("exporting results verifier solidity verifier...")
+	// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
+	resultsverifierSolidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
+	if err := resultsverifierSolidityVk.Precompute(); err != nil {
+		log.Fatalf("failed to precompute vk: %v", err)
+	}
+	resultsverifierVkeySolFile := path.Join(destination, "resultsverifier_vkey.sol")
+	fd, err = os.Create(resultsverifierVkeySolFile)
+	if err != nil {
+		log.Fatalf("failed to create resultsverifier_vkey.sol: %v", err)
+	}
+	buf = bytes.NewBuffer(nil)
+	if err := resultsverifierSolidityVk.ExportSolidity(buf); err != nil {
+		log.Fatalf("failed to export vk to Solidity: %v", err)
+	}
+	if _, err := fd.Write(buf.Bytes()); err != nil {
+		log.Fatalf("failed to write resultsverifier_vkey.sol: %v", err)
+	}
+	if err := fd.Close(); err != nil {
+		log.Warnw("failed to close resultsverifier_vkey.sol file", "error", err)
+	}
+
+	// Insert the proving key hash into the vkey.sol file
+	if err := insertProvingKeyHashToVkeySolidity(resultsverifierVkeySolFile, hashList["ResultsVerifierProvingKeyHash"]); err != nil {
+		log.Warnw("failed to insert proving key hash into resultsverifier_vkey.sol", "error", err)
+	}
+	log.Infow("resultsverifier_vkey.sol file created", "path", fd.Name())
 
 	////////////////////////////////////////
 	// Print hash list and upload files
@@ -313,36 +386,66 @@ func main() {
 
 		log.Infow("circuit artifacts config file updated successfully", "path", configPath)
 
-		// copy the solidity file to the config directory
+		// copy the state transition solidity file to the config directory
 		configDir := filepath.Dir(configPath)
-		solidityFile := path.Join(configDir, "vkey.sol")
-		sourceFile, err := os.Open(vkeySolFile)
+		statetransitionSolidityFile := path.Join(configDir, "statetransition_vkey.sol")
+		statetransitionSourceFile, err := os.Open(statetransitionVkeySolFile)
 		if err != nil {
 			log.Warnw("failed to open vkey.sol file", "error", err)
 			return
 		}
 		defer func() {
-			if err := sourceFile.Close(); err != nil {
+			if err := statetransitionSourceFile.Close(); err != nil {
 				log.Warnw("failed to close source vkey.sol file", "error", err)
 			}
 		}()
-		destFile, err := os.Create(solidityFile)
+		statetransitionDestFile, err := os.Create(statetransitionSolidityFile)
 		if err != nil {
 			log.Warnw("failed to create destination vkey.sol file", "error", err)
 			return
 		}
 		defer func() {
-			if err := destFile.Close(); err != nil {
+			if err := statetransitionDestFile.Close(); err != nil {
 				log.Warnw("failed to close destination vkey.sol file", "error", err)
 			}
 		}()
 
-		if _, err := io.Copy(destFile, sourceFile); err != nil {
+		if _, err := io.Copy(statetransitionDestFile, statetransitionSourceFile); err != nil {
 			log.Warnw("failed to copy vkey.sol file", "error", err)
 			return
 		}
 
-		log.Infow("copied vkey.sol file to config directory", "path", solidityFile)
+		log.Infow("copied statetransition_vkey.sol file to config directory", "path", statetransitionSolidityFile)
+
+		// copy the solidity file to the config directory
+		resultsverifierSolidityFile := path.Join(configDir, "resultsverifier_vkey.sol")
+		resultsverifierSourceFile, err := os.Open(resultsverifierVkeySolFile)
+		if err != nil {
+			log.Warnw("failed to open vkey.sol file", "error", err)
+			return
+		}
+		defer func() {
+			if err := resultsverifierSourceFile.Close(); err != nil {
+				log.Warnw("failed to close source vkey.sol file", "error", err)
+			}
+		}()
+		resultsverifierDestFile, err := os.Create(resultsverifierSolidityFile)
+		if err != nil {
+			log.Warnw("failed to create destination vkey.sol file", "error", err)
+			return
+		}
+		defer func() {
+			if err := resultsverifierDestFile.Close(); err != nil {
+				log.Warnw("failed to close destination vkey.sol file", "error", err)
+			}
+		}()
+
+		if _, err := io.Copy(resultsverifierDestFile, resultsverifierSourceFile); err != nil {
+			log.Warnw("failed to copy vkey.sol file", "error", err)
+			return
+		}
+
+		log.Infow("copied resultsverifier_vkey.sol file to config directory", "path", resultsverifierSolidityFile)
 	}
 }
 

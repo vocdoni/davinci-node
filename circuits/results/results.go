@@ -16,7 +16,8 @@ import (
 var HashFn = poseidon.MultiHash
 
 type ResultsVerifierCircuit struct {
-	StateRoot           frontend.Variable
+	StateRoot           frontend.Variable                        `gnark:",public"`
+	Results             [types.FieldsPerBallot]frontend.Variable `gnark:",public"`
 	ResultsAdd          [types.FieldsPerBallot]frontend.Variable
 	ResultsSub          [types.FieldsPerBallot]frontend.Variable
 	AddCiphertexts      circuits.Ballot
@@ -36,6 +37,9 @@ func (c *ResultsVerifierCircuit) Define(api frontend.API) error {
 	c.VerifyMerkleProofs(api)
 	// Verify decryption proofs for add and sub ciphertexts
 	c.VerifyDecryptionProofs(api)
+	// Verify that the results provided match with the substraction of the
+	// add results and the sub results
+	c.VerifyResults(api)
 	return nil
 }
 
@@ -98,5 +102,15 @@ func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
 			circuits.FrontendError(api, "failed to verify sub decryption proof", err)
 			return
 		}
+	}
+}
+
+func (c *ResultsVerifierCircuit) VerifyResults(api frontend.API) {
+	// Verify that the results add minus results sub equals results
+	for i := range types.FieldsPerBallot {
+		api.AssertIsEqual(
+			api.Sub(c.ResultsAdd[i], c.ResultsSub[i]),
+			c.Results[i],
+		)
 	}
 }

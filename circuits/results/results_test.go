@@ -80,6 +80,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
 		c.Assert(err, qt.IsNil)
 	}
+	resultsAccumulator := [types.FieldsPerBallot]*big.Int{}
 	subAccumulator := [types.FieldsPerBallot]*big.Int{}
 	subCiphertexts := [types.FieldsPerBallot]elgamal.Ciphertext{}
 	subDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
@@ -89,6 +90,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 		_, result, err := elgamal.Decrypt(pubKey, privKey, ct.C1, ct.C2, maxValue)
 		c.Assert(err, qt.IsNil)
 		subAccumulator[i] = result
+		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
 		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
 		c.Assert(err, qt.IsNil)
 	}
@@ -96,6 +98,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	// Generete the witness for the circuit
 	witness, err := GenerateWitness(
 		st,
+		resultsAccumulator,
 		addAccumulator,
 		subAccumulator,
 		addCiphertexts,
