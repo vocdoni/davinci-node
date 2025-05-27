@@ -32,19 +32,19 @@ func GenerateWitness(
 
 	// Encrypted and decrypted results
 	for i := range types.FieldsPerBallot {
-		witness.AddCiphertexts[i] = *addCiphertexts[i].ToGnark()
-		witness.SubCiphertexts[i] = *subCiphertexts[i].ToGnark()
+		witness.AddAccumulatorsEncrypted[i] = *addCiphertexts[i].ToGnark()
+		witness.SubAccumulatorsEncrypted[i] = *subCiphertexts[i].ToGnark()
 		witness.Results[i] = results[i]
-		witness.ResultsAdd[i] = addResults[i]
-		witness.ResultsSub[i] = subResults[i]
+		witness.AddAccumulators[i] = addResults[i]
+		witness.SubAccumulators[i] = subResults[i]
 	}
 
 	// Results accumulators proofs
-	witness.ResultsAddProof, err = merkleProofFromKey(o, state.KeyResultsAdd)
+	witness.AddAccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResultsAdd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform results add arbo proof to merkle proof: %w", err)
 	}
-	witness.ResultsSubProof, err = merkleProofFromKey(o, state.KeyResultsSub)
+	witness.SubAccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResultsSub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform results sub arbo proof to merkle proof: %w", err)
 	}
@@ -56,7 +56,7 @@ func GenerateWitness(
 	}
 
 	// EncryptionKey proof and public key
-	witness.EncryptionKeyProof, err = merkleProofFromKey(o, state.KeyEncryptionKey)
+	witness.EncryptionKeyMerkleProof, err = merkleProofFromKey(o, state.KeyEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform encryption key arbo proof to merkle proof: %w", err)
 	}

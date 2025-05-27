@@ -16,18 +16,18 @@ import (
 var HashFn = poseidon.MultiHash
 
 type ResultsVerifierCircuit struct {
-	StateRoot           frontend.Variable                        `gnark:",public"`
-	Results             [types.FieldsPerBallot]frontend.Variable `gnark:",public"`
-	ResultsAdd          [types.FieldsPerBallot]frontend.Variable
-	ResultsSub          [types.FieldsPerBallot]frontend.Variable
-	AddCiphertexts      circuits.Ballot
-	SubCiphertexts      circuits.Ballot
-	ResultsAddProof     merkleproof.MerkleProof
-	ResultsSubProof     merkleproof.MerkleProof
-	DecryptionAddProofs [types.FieldsPerBallot]elgamal.DecryptionProof
-	DecryptionSubProofs [types.FieldsPerBallot]elgamal.DecryptionProof
-	EncryptionKeyProof  merkleproof.MerkleProof
-	EncryptionPublicKey circuits.EncryptionKey[frontend.Variable]
+	StateRoot                  frontend.Variable                        `gnark:",public"`
+	Results                    [types.FieldsPerBallot]frontend.Variable `gnark:",public"`
+	AddAccumulators            [types.FieldsPerBallot]frontend.Variable
+	SubAccumulators            [types.FieldsPerBallot]frontend.Variable
+	AddAccumulatorsEncrypted   circuits.Ballot
+	SubAccumulatorsEncrypted   circuits.Ballot
+	AddAccumulatorsMerkleProof merkleproof.MerkleProof
+	SubAccumulatorsMerkleProof merkleproof.MerkleProof
+	DecryptionAddProofs        [types.FieldsPerBallot]elgamal.DecryptionProof
+	DecryptionSubProofs        [types.FieldsPerBallot]elgamal.DecryptionProof
+	EncryptionKeyMerkleProof   merkleproof.MerkleProof
+	EncryptionPublicKey        circuits.EncryptionKey[frontend.Variable]
 }
 
 func (c *ResultsVerifierCircuit) Define(api frontend.API) error {
@@ -45,7 +45,7 @@ func (c *ResultsVerifierCircuit) Define(api frontend.API) error {
 
 func (c *ResultsVerifierCircuit) VerifyAccumulatorsHashes(api frontend.API) {
 	// Compute the value of the add ciphertexts in the merkle tree
-	addMerkletreeValue, err := HashFn(api, c.AddCiphertexts.SerializeVars()...)
+	addMerkletreeValue, err := HashFn(api, c.AddAccumulatorsEncrypted.SerializeVars()...)
 	if err != nil {
 		circuits.FrontendError(api, "failed to hash add ciphertexts", err)
 		return
@@ -57,10 +57,10 @@ func (c *ResultsVerifierCircuit) VerifyAccumulatorsHashes(api frontend.API) {
 		return
 	}
 	// Check that the computed leaf hash matches the one in the proof
-	api.AssertIsEqual(addLeafHash, c.ResultsAddProof.LeafHash)
+	api.AssertIsEqual(addLeafHash, c.AddAccumulatorsMerkleProof.LeafHash)
 
 	// Compute the value of the sub ciphertexts in the merkle tree
-	subMerkletreeValue, err := HashFn(api, c.SubCiphertexts.SerializeVars()...)
+	subMerkletreeValue, err := HashFn(api, c.SubAccumulatorsEncrypted.SerializeVars()...)
 	if err != nil {
 		circuits.FrontendError(api, "failed to hash sub ciphertexts", err)
 		return
@@ -72,16 +72,16 @@ func (c *ResultsVerifierCircuit) VerifyAccumulatorsHashes(api frontend.API) {
 		return
 	}
 	// Check that the computed leaf hash matches the one in the proof
-	api.AssertIsEqual(subLeafHash, c.ResultsSubProof.LeafHash)
+	api.AssertIsEqual(subLeafHash, c.SubAccumulatorsMerkleProof.LeafHash)
 }
 
 func (c *ResultsVerifierCircuit) VerifyMerkleProofs(api frontend.API) {
 	// Verify the results add proof
-	c.ResultsAddProof.Verify(api, HashFn, c.StateRoot)
+	c.AddAccumulatorsMerkleProof.Verify(api, HashFn, c.StateRoot)
 	// Verify the results sub proof
-	c.ResultsSubProof.Verify(api, HashFn, c.StateRoot)
+	c.SubAccumulatorsMerkleProof.Verify(api, HashFn, c.StateRoot)
 	// Verify the encryption key proof
-	c.EncryptionKeyProof.Verify(api, HashFn, c.StateRoot)
+	c.EncryptionKeyMerkleProof.Verify(api, HashFn, c.StateRoot)
 }
 
 func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
@@ -91,13 +91,13 @@ func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
 	}
 	for i := range types.FieldsPerBallot {
 		// Prove the decryption add proofs
-		err := c.DecryptionAddProofs[i].Verify(api, HashFn, pubKey, c.AddCiphertexts[i], c.ResultsAdd[i])
+		err := c.DecryptionAddProofs[i].Verify(api, HashFn, pubKey, c.AddAccumulatorsEncrypted[i], c.AddAccumulators[i])
 		if err != nil {
 			circuits.FrontendError(api, "failed to verify add decryption proof", err)
 			return
 		}
 		// Prove the decryption sub proofs
-		err = c.DecryptionSubProofs[i].Verify(api, HashFn, pubKey, c.SubCiphertexts[i], c.ResultsSub[i])
+		err = c.DecryptionSubProofs[i].Verify(api, HashFn, pubKey, c.SubAccumulatorsEncrypted[i], c.SubAccumulators[i])
 		if err != nil {
 			circuits.FrontendError(api, "failed to verify sub decryption proof", err)
 			return
@@ -109,7 +109,7 @@ func (c *ResultsVerifierCircuit) VerifyResults(api frontend.API) {
 	// Verify that the results add minus results sub equals results
 	for i := range types.FieldsPerBallot {
 		api.AssertIsEqual(
-			api.Sub(c.ResultsAdd[i], c.ResultsSub[i]),
+			api.Sub(c.AddAccumulators[i], c.SubAccumulators[i]),
 			c.Results[i],
 		)
 	}
