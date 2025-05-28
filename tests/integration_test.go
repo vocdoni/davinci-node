@@ -189,9 +189,9 @@ func TestIntegration(t *testing.T) {
 					continue
 				}
 				t.Log("Finalizing process...")
-				services.Finalizer.OndemandCh <- pid
+				services.Sequencer.OndemandCh <- pid
 				t.Log("Waiting for finalization to complete...")
-				results, err := services.Finalizer.WaitUntilFinalized(t.Context(), pid)
+				results, err := services.Sequencer.WaitUntilFinalized(t.Context(), pid)
 				c.Assert(err, qt.IsNil)
 				c.Assert(results, qt.Not(qt.IsNil))
 				c.Logf("Finalization results: %v", results)

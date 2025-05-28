@@ -241,7 +241,6 @@ func main() {
 type localService struct {
 	sequencer      *service.SequencerService
 	processMonitor *service.ProcessMonitor
-	finalizer      *service.FinalizerService
 	api            *service.APIService
 }
 
@@ -250,19 +249,15 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts) err
 	stg := storage.New(memdb.New())
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
-	s.sequencer = service.NewSequencer(stg, contracts, time.Second*30)
-	if err := s.sequencer.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start sequencer: %v", err)
-	}
 	// Monitor new processes from the contracts
 	s.processMonitor = service.NewProcessMonitor(contracts, stg, time.Second*2)
 	if err := s.processMonitor.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
-	// Start finalizer service
-	s.finalizer = service.NewFinalizer(stg, stg.StateDB(), time.Second*5)
-	if err := s.finalizer.Start(ctx, time.Second*5); err != nil {
-		return fmt.Errorf("failed to start finalizer: %v", err)
+	// Start sequencer service
+	s.sequencer = service.NewSequencer(stg, contracts, time.Second*30)
+	if err := s.sequencer.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Start API service
 	s.api = service.NewAPI(stg, defaultSequencerHost, defaultSequencerPort, defaultNetwork)
@@ -278,9 +273,6 @@ func (s *localService) Stop() {
 	}
 	if s.processMonitor != nil {
 		s.processMonitor.Stop()
-	}
-	if s.finalizer != nil {
-		s.finalizer.Stop()
 	}
 	if s.api != nil {
 		s.api.Stop()

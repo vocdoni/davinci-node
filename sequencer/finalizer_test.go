@@ -1,4 +1,4 @@
-package finalizer
+package sequencer
 
 import (
 	"math/big"
@@ -30,7 +30,7 @@ func TestFinalize(t *testing.T) {
 	defer cleanup()
 
 	// Create a finalizer
-	f := New(stg, stateDB)
+	f := newFinalizer(stg, stateDB, nil)
 	f.Start(t.Context(), 0)
 
 	// Test finalize
@@ -71,7 +71,7 @@ func TestFinalizeByDate(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Create a finalizer with monitoring disabled
-	f := New(stg, stateDB)
+	f := newFinalizer(stg, stateDB, nil)
 	f.Start(t.Context(), 0)
 
 	// Call finalizeByDate with current time

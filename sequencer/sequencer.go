@@ -32,6 +32,7 @@ var (
 // It processes ballots and creates batches of proofs for efficient verification.
 type Sequencer struct {
 	*internalCircuits                   // Internal circuit artifacts for proof generation and verification
+	*finalizer                          // Finalizer for handling process finalization
 	stg                *storage.Storage // Storage instance for accessing ballots and other data
 	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
 	ctx                context.Context
@@ -79,6 +80,8 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	if err := s.loadInternalCircuitArtifacts(); err != nil {
 		return nil, fmt.Errorf("failed to load internal circuit artifacts: %w", err)
 	}
+	// Initialize the finalizer
+	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits)
 	return s, nil
 }
 

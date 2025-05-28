@@ -24,7 +24,6 @@ import (
 	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
-	"github.com/vocdoni/vocdoni-z-sandbox/finalizer"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
@@ -56,7 +55,6 @@ const (
 type Services struct {
 	API       *service.APIService
 	Sequencer *sequencer.Sequencer
-	Finalizer *finalizer.Finalizer
 	Storage   *storage.Storage
 	Contracts *web3.Contracts
 }
@@ -266,14 +264,6 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 		log.Fatal(err)
 	}
 	t.Cleanup(pm.Stop)
-
-	// Start finalizer service
-	fin := service.NewFinalizer(stg, stg.StateDB(), time.Second*5)
-	if err := fin.Start(ctx, time.Second*5); err != nil {
-		log.Fatal(err)
-	}
-	t.Cleanup(fin.Stop)
-	services.Finalizer = fin.Finalizer
 
 	// Start API service
 	api, err := setupAPI(ctx, stg)
