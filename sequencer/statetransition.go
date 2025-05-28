@@ -88,13 +88,19 @@ func (s *Sequencer) processPendingTransitions() {
 		proof, err := s.processStateTransitionBatch(processState, batch)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
+			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
 			return true // Continue to next process ID
 		}
 
-		// get raw public inputs
+		//Gget raw public inputs
 		rootHashAfter, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root hash after")
+			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
 			return true // Continue to next process ID
 		}
 
@@ -105,7 +111,7 @@ func (s *Sequencer) processPendingTransitions() {
 			"rootHashAfter", rootHashAfter.String(),
 		)
 
-		// store the proof in the state transition storage
+		// Store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
 			ProcessID: batch.ProcessID,
 			Proof:     proof.(*groth16_bn254.Proof),
@@ -118,17 +124,20 @@ func (s *Sequencer) processPendingTransitions() {
 			},
 		}); err != nil {
 			log.Errorw(err, "failed to push state transition batch")
+			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
 			return true // Continue to next process ID
 		}
-		// mark the batch as done
+
+		// Mark the batch as done
 		if err := s.stg.MarkBallotBatchDone(batchID); err != nil {
 			log.Errorw(err, "failed to mark ballot batch as done")
 			return true // Continue to next process ID
 		}
-		// update the last update time by re-adding the process ID
+		// Update the last update time by re-adding the process ID
 		s.pids.Add(pid) // This will update the timestamp
-
-		return true // Continue to next process ID
+		return true     // Continue to next process ID
 	})
 }
 

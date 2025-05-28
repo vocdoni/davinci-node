@@ -471,13 +471,14 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	}
 }
 
-func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes) bool {
+func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes) (bool, []types.HexBytes) {
 	c := qt.New(t)
 	// Check vote status and return whether all votes are processed
 	txt := strings.Builder{}
 	txt.WriteString("Vote status: ")
 	allProcessed := true
 
+	failed := []types.HexBytes{}
 	// Check status for each vote
 	for i, voteID := range voteIDs {
 		// Construct the status endpoint URL
@@ -500,17 +501,22 @@ func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.Proces
 		c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
 
 		// Check if the vote is processed
-		if statusResponse.Status != storage.BallotStatusName(storage.BallotStatusProcessed) {
+		switch statusResponse.Status {
+		case storage.BallotStatusName(storage.BallotStatusError):
+			allProcessed = allProcessed && true
+			failed = append(failed, voteID)
+		case storage.BallotStatusName(storage.BallotStatusProcessed):
+			allProcessed = allProcessed && true
+		default:
 			allProcessed = false
 		}
-
 		// Write to the string builder for logging
 		txt.WriteString(fmt.Sprintf("#%d:%s ", i, statusResponse.Status))
 	}
 
 	// Log the vote status
 	t.Log(txt.String())
-	return allProcessed
+	return allProcessed, failed
 }
 
 func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) int {

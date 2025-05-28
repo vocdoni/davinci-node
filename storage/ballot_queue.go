@@ -93,12 +93,12 @@ func (s *Storage) RemoveBallot(processID, voteID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	// remove reservation
+	// Remove reservation
 	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
-	// remove from pending queue
+	// Remove from pending queue
 	if err := s.deleteArtifact(ballotPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
@@ -113,12 +113,12 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	// remove reservation
+	// Remove reservation
 	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
-	// remove from pending queue
+	// Remove from pending queue
 	if err := s.deleteArtifact(ballotPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
@@ -237,6 +237,65 @@ func (s *Storage) CountVerifiedBallots(processID []byte) int {
 	return count
 }
 
+// MarkVerifiedBallotsDone removes the reservation and the verified ballots.
+// It removes the verified ballots from the verified ballots queue and deletes
+// their reservations.
+func (s *Storage) MarkVerifiedBallotsDone(keys ...[]byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Iterate over all keys to remove the reservation and the verified ballot
+	for _, k := range keys {
+		// Remove reservation
+		if err := s.deleteArtifact(verifiedBallotReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete verified ballot reservation: %w", err)
+		}
+
+		// Remove from verified queue
+		if err := s.deleteArtifact(verifiedBallotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete verified ballot: %w", err)
+		}
+	}
+	return nil
+}
+
+// MarkVerifiedBallotsFailed marks the verified ballots as failed, sets their
+// status to error, removes their reservations, and deletes them from the
+// verified ballots queue. This is typically called when the ballot processing
+// fails or is not valid. It returns an error if any of the operations fail.
+func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Iterate over all keys
+	for _, k := range keys {
+		// Retrieve the verified ballot to mark it as error
+		ballot := new(VerifiedBallot)
+		if err := s.getArtifact(verifiedBallotPrefix, k, ballot); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return fmt.Errorf("verified ballot not found: %w", err)
+			}
+			return fmt.Errorf("get verified ballot: %w", err)
+		}
+
+		// Mark the ballot as error
+		if err := s.setBallotStatus(ballot.ProcessID, ballot.VoteID, BallotStatusError); err != nil {
+			return fmt.Errorf("set ballot status to error: %w", err)
+		}
+
+		// Remove reservation
+		if err := s.deleteArtifact(verifiedBallotReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete verified ballot reservation: %w", err)
+		}
+
+		// Remove from verified queue
+		if err := s.deleteArtifact(verifiedBallotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete verified ballot: %w", err)
+		}
+	}
+	return nil
+}
+
 // PushBallotBatch pushes an aggregated ballot batch to the aggregator queue.
 func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 	s.globalLock.Lock()
@@ -264,6 +323,42 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 		}
 	}
 
+	return nil
+}
+
+// MarkBallotBatchFailed marks a ballot batch as failed, sets all ballots in
+// the batch to error status, removes the reservation, and deletes the batch
+// from the aggregator queue. This is typically called when the batch processing
+// fails or is not valid.
+func (s *Storage) MarkBallotBatchFailed(key []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	pr := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
+	val, err := pr.Get(key)
+	if err != nil {
+		return fmt.Errorf("get batch: %w", err)
+	}
+
+	agg := new(AggregatorBallotBatch)
+	if err := decodeArtifact(val, agg); err != nil {
+		return fmt.Errorf("decode batch: %w", err)
+	}
+
+	// Mark all ballots in the batch as error
+	for _, ballot := range agg.Ballots {
+		if err := s.setBallotStatus(agg.ProcessID, ballot.VoteID, BallotStatusError); err != nil {
+			log.Warnw("failed to set ballot status to error", "error", err.Error())
+		}
+	}
+	// Remove the reservation
+	if err := s.deleteArtifact(aggregBatchReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete reservation: %w", err)
+	}
+	// Remove the batch from the aggregator queue
+	if err := s.deleteArtifact(aggregBatchPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete aggregator batch: %w", err)
+	}
 	return nil
 }
 
@@ -304,24 +399,6 @@ func (s *Storage) NextBallotBatch(processID []byte) (*AggregatorBallotBatch, []b
 	}
 
 	return &abb, chosenKey, nil
-}
-
-// MarkVerifiedBallotDone removes the reservation and the verified ballot.
-func (s *Storage) MarkVerifiedBallotDone(k []byte) error {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-
-	// remove reservation
-	if err := s.deleteArtifact(verifiedBallotReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("delete verified ballot reservation: %w", err)
-	}
-
-	// remove from verified queue
-	if err := s.deleteArtifact(verifiedBallotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("delete verified ballot: %w", err)
-	}
-
-	return nil
 }
 
 // MarkBallotBatchDone called after processing aggregator batch. For simplicity,
@@ -417,11 +494,11 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 func (s *Storage) MarkStateTransitionBatchDone(k []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	// remove reservation
+	// Remove reservation
 	if err := s.deleteArtifact(stateTransitionReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition reservation: %w", err)
 	}
-	// remove from state transition queue
+	// Remove from state transition queue
 	if err := s.deleteArtifact(stateTransitionPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition batch: %w", err)
 	}

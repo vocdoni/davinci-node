@@ -176,8 +176,14 @@ func TestIntegration(t *testing.T) {
 		for {
 			select {
 			case <-ticker.C:
-				if !checkProcessedVotes(t, cli, pid, voteIDs) {
+				if allProcessed, failed := checkProcessedVotes(t, cli, pid, voteIDs); !allProcessed {
 					continue
+				} else if len(failed) > 0 {
+					hexFailed := make([]string, len(failed))
+					for i, v := range failed {
+						hexFailed[i] = v.String()
+					}
+					t.Fatalf("Some votes failed to process: %v", hexFailed)
 				}
 				if publishedVotes(t, services.Contracts, pid) < numBallots {
 					continue
