@@ -304,7 +304,7 @@ func main() {
 	*/
 	log.Infow("exporting results verifier solidity verifier...")
 	// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
-	resultsverifierSolidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
+	resultsverifierSolidityVk := resultsverifierVk.(*groth16_bn254.VerifyingKey)
 	if err := resultsverifierSolidityVk.Precompute(); err != nil {
 		log.Fatalf("failed to precompute vk: %v", err)
 	}
