@@ -159,8 +159,8 @@ func (s *Sequencer) processStateTransitionBatch(
 	// Generate the proof
 	proof, err := s.prover(
 		circuits.StateTransitionCurve,
-		s.statetransitionCcs,
-		s.statetransitionProvingKey,
+		s.stCcs,
+		s.stPk,
 		assignments,
 		opts,
 	)

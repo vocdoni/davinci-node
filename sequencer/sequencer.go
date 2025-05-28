@@ -8,12 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/constraint"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
-	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3"
@@ -37,25 +31,14 @@ var (
 // Sequencer is a worker that takes verified ballots and aggregates them into a single proof.
 // It processes ballots and creates batches of proofs for efficient verification.
 type Sequencer struct {
-	stg                *storage.Storage
-	contracts          *web3.Contracts // web3 contracts for on-chain interaction
+	*internalCircuits                   // Internal circuit artifacts for proof generation and verification
+	stg                *storage.Storage // Storage instance for accessing ballots and other data
+	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
 	ctx                context.Context
 	cancel             context.CancelFunc
 	pids               *ProcessIDMap // Maps process IDs to their last update time
 	workInProgressLock sync.RWMutex  // Lock to block new work while processing a batch or a state transition
 	prover             ProverFunc    // Function for generating zero-knowledge proofs
-
-	ballotVerifyingKeyCircomJSON []byte // Verification key for ballot proofs
-
-	statetransitionProvingKey groth16.ProvingKey          // Key for generating state transition proofs
-	statetransitionCcs        constraint.ConstraintSystem // Constraint system for state transition proofs
-
-	aggregateProvingKey groth16.ProvingKey          // Key for generating aggregate proofs
-	aggregateCcs        constraint.ConstraintSystem // Constraint system for aggregate proofs
-
-	voteProvingKey groth16.ProvingKey          // Key for generating vote proofs
-	voteCcs        constraint.ConstraintSystem // Constraint system for vote proofs
-
 	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
 	// If this time elapses, the batch will be processed even if not full.
 	batchTimeWindow time.Duration
@@ -66,6 +49,7 @@ type Sequencer struct {
 //
 // Parameters:
 //   - stg: Storage instance for accessing ballots and other data
+//   - contracts: Web3 contracts for on-chain interaction
 //   - batchTimeWindow: Maximum time to wait before processing a batch even if not full
 //
 // Returns a configured Sequencer instance or an error if initialization fails.
@@ -79,91 +63,23 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	// Store the start time
 	startTime := time.Now()
 
-	// Load vote verifier artifacts
-	if err := voteverifier.Artifacts.LoadAll(); err != nil {
-		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
-	}
-
-	// Decode the vote verifier circuit definition
-	log.Debugw("reading cicuit artifact",
-		"circuit", "voteVerifier",
-		"type", "ccs")
-	voteCcs, err := voteverifier.Artifacts.CircuitDefinition()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read vote verifier definition: %w", err)
-	}
-	// Decode the vote verifier proving key
-	log.Debugw("reading cicuit artifact",
-		"circuit", "voteVerifier",
-		"type", "pk")
-	votePk, err := voteverifier.Artifacts.ProvingKey()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
-	}
-
-	// Load aggregator artifacts
-	if err := aggregator.Artifacts.LoadAll(); err != nil {
-		return nil, fmt.Errorf("failed to load aggregator artifacts: %w", err)
-	}
-
-	// Decode the aggregator circuit definition
-	log.Debugw("reading cicuit artifact",
-		"circuit", "aggregator",
-		"type", "ccs")
-	aggCcs, err := aggregator.Artifacts.CircuitDefinition()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read aggregator circuit definition: %w", err)
-	}
-
-	// Decode the aggregator proving key
-	log.Debugw("reading cicuit artifact",
-		"circuit", "aggregator",
-		"type", "pk")
-	aggPk, err := aggregator.Artifacts.ProvingKey()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read aggregator proving key: %w", err)
-	}
-
-	// Load statetransition artifacts
-	if err := statetransition.Artifacts.LoadAll(); err != nil {
-		return nil, fmt.Errorf("failed to load statetransition artifacts: %w", err)
-	}
-
-	// Decode the statetransition circuit definition
-	log.Debugw("reading cicuit artifact",
-		"circuit", "statetransition",
-		"type", "ccs")
-	stCcs, err := statetransition.Artifacts.CircuitDefinition()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read statetransition circuit definition: %w", err)
-	}
-
-	// Decode the statetransition proving key
-	log.Debugw("reading cicuit artifact",
-		"circuit", "statetransition",
-		"type", "pk")
-	stPk, err := statetransition.Artifacts.ProvingKey()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read statetransition proving key: %w", err)
-	}
-
 	log.Debugw("sequencer initialized",
 		"batchTimeWindow", batchTimeWindow.String(),
-		"took(s)", time.Since(startTime).Seconds())
-	return &Sequencer{
-		stg:                          stg,
-		contracts:                    contracts,
-		batchTimeWindow:              batchTimeWindow,
-		pids:                         NewProcessIDMap(),
-		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey, // TODO: replace with a proper VK path
-		statetransitionProvingKey:    stPk,
-		statetransitionCcs:           stCcs,
-		aggregateProvingKey:          aggPk,
-		aggregateCcs:                 aggCcs,
-		voteProvingKey:               votePk,
-		voteCcs:                      voteCcs,
-		prover:                       DefaultProver, // Use the default prover by default
-	}, nil
+		"took(s)", time.Since(startTime).Seconds(),
+	)
+	// Create a new Sequencer instance
+	s := &Sequencer{
+		stg:             stg,
+		contracts:       contracts,
+		batchTimeWindow: batchTimeWindow,
+		pids:            NewProcessIDMap(),
+		prover:          DefaultProver, // Use the default prover by default
+	}
+	// Load the internal circuits
+	if err := s.loadInternalCircuitArtifacts(); err != nil {
+		return nil, fmt.Errorf("failed to load internal circuit artifacts: %w", err)
+	}
+	return s, nil
 }
 
 // Start begins the ballot processing and aggregation routines.
