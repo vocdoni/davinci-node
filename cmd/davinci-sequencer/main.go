@@ -90,23 +90,16 @@ func getContractAddresses(cfg *Config) (*web3.Addresses, error) {
 		orgRegistryAddr = cfg.Web3.OrganizationsAddr
 	}
 
-	resultsAddr := networkConfig.ResultsSmartContract
-	if cfg.Web3.ResultsAddr != "" {
-		resultsAddr = cfg.Web3.ResultsAddr
-	}
-
 	// Log the contract addresses being used
 	log.Infow("using contract addresses",
 		"network", cfg.Web3.Network,
 		"processRegistry", processRegistryAddr,
-		"orgRegistry", orgRegistryAddr,
-		"resultsRegistry", resultsAddr)
+		"orgRegistry", orgRegistryAddr)
 
 	// Create the addresses struct
 	return &web3.Addresses{
 		ProcessRegistry:      common.HexToAddress(processRegistryAddr),
 		OrganizationRegistry: common.HexToAddress(orgRegistryAddr),
-		ResultsRegistry:      common.HexToAddress(resultsAddr),
 	}, nil
 }
 

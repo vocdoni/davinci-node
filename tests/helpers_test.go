@@ -40,12 +40,12 @@ const (
 	// first account private key created by anvil with default mnemonic
 	testLocalAccountPrivKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 	// envarionment variable names
-	privKeyEnvVarName         = "SEQUENCER_PRIV_KEY"              // environment variable name for private key
-	rpcUrlEnvVarName          = "SEQUENCER_RPC_URL"               // environment variable name for RPC URL
-	orgRegistryEnvVarName     = "SEQUENCER_ORGANIZATION_REGISTRY" // environment variable name for organization registry
-	processRegistryEnvVarName = "SEQUENCER_PROCESS_REGISTRY"      // environment variable name for process registry
-	resultsRegistryEnvVarName = "SEQUENCER_RESULTS_REGISTRY"      // environment variable name for results registry
-	zkVerifierEnvVarName      = "SEQUENCER_ZK_VERIFIER"           // environment variable name for zk verifier
+	privKeyEnvVarName                 = "SEQUENCER_PRIV_KEY"                     // environment variable name for private key
+	rpcUrlEnvVarName                  = "SEQUENCER_RPC_URL"                      // environment variable name for RPC URL
+	orgRegistryEnvVarName             = "SEQUENCER_ORGANIZATION_REGISTRY"        // environment variable name for organization registry
+	processRegistryEnvVarName         = "SEQUENCER_PROCESS_REGISTRY"             // environment variable name for process registry
+	resultsVerifierEnvVarName         = "SEQUENCER_RESULTS_ZK_VERIFIER"          // environment variable name for results zk verifier
+	stateTransitionVerifierEnvVarName = "SEQUENCER_STATE_TRANSITION_ZK_VERIFIER" // environment variable name for state transition zk verifier
 
 )
 
@@ -80,17 +80,17 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 	c := qt.New(t)
 	// Get the environment variables
 	var (
-		privKey             = os.Getenv(privKeyEnvVarName)
-		rpcUrl              = os.Getenv(rpcUrlEnvVarName)
-		orgRegistryAddr     = os.Getenv(orgRegistryEnvVarName)
-		processRegistryAddr = os.Getenv(processRegistryEnvVarName)
-		resultsRegistryAddr = os.Getenv(resultsRegistryEnvVarName)
-		zkVerifierAddr      = os.Getenv(zkVerifierEnvVarName)
+		privKey                       = os.Getenv(privKeyEnvVarName)
+		rpcUrl                        = os.Getenv(rpcUrlEnvVarName)
+		orgRegistryAddr               = os.Getenv(orgRegistryEnvVarName)
+		processRegistryAddr           = os.Getenv(processRegistryEnvVarName)
+		resultsZKVerifierAddr         = os.Getenv(resultsVerifierEnvVarName)
+		stateTransitionZKVerifierAddr = os.Getenv(stateTransitionVerifierEnvVarName)
 	)
 	// Check if the environment variables are set to run the tests over local
 	// geth node or remote blockchain environment
 	localEnv := privKey == "" || rpcUrl == "" || orgRegistryAddr == "" ||
-		processRegistryAddr == "" || resultsRegistryAddr == "" || zkVerifierAddr == ""
+		processRegistryAddr == "" || resultsZKVerifierAddr == "" || stateTransitionZKVerifierAddr == ""
 	var deployerUrl string
 	if localEnv {
 		// Generate a random port for geth HTTP RPC
@@ -177,11 +177,12 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 					switch tx.ContractName {
 					case "OrganizationRegistry":
 						contractsAddresses.OrganizationRegistry = common.HexToAddress(tx.ContractAddress)
-						contractsAddresses.ResultsRegistry = common.HexToAddress(tx.ContractAddress)
 					case "ProcessRegistry":
 						contractsAddresses.ProcessRegistry = common.HexToAddress(tx.ContractAddress)
-					case "Groth16Verifier":
+					case "StateTransitionVerifierGroth16":
 						contractsAddresses.StateTransitionZKVerifier = common.HexToAddress(tx.ContractAddress)
+					case "ResultsVerifierGroth16":
+						contractsAddresses.ResultsZKVerifier = common.HexToAddress(tx.ContractAddress)
 					default:
 						log.Infow("unknown contract name", "name", tx.ContractName)
 					}
@@ -205,8 +206,8 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		err = contracts.LoadContracts(&web3.Addresses{
 			OrganizationRegistry:      common.HexToAddress(orgRegistryAddr),
 			ProcessRegistry:           common.HexToAddress(processRegistryAddr),
-			ResultsRegistry:           common.HexToAddress(resultsRegistryAddr),
-			StateTransitionZKVerifier: common.HexToAddress(zkVerifierAddr),
+			ResultsZKVerifier:         common.HexToAddress(resultsZKVerifierAddr),
+			StateTransitionZKVerifier: common.HexToAddress(stateTransitionZKVerifierAddr),
 		})
 		c.Assert(err, qt.IsNil)
 	}
@@ -217,7 +218,9 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 	c.Assert(err, qt.IsNil)
 	contracts.ContractABIs.OrganizationRegistry, err = contracts.OrganizationRegistryABI()
 	c.Assert(err, qt.IsNil)
-	contracts.ContractABIs.ZKVerifier, err = contracts.ZKVerifierABI()
+	contracts.ContractABIs.StateTransitionZKVerifier, err = contracts.StateTransitionVerifierABI()
+	c.Assert(err, qt.IsNil)
+	contracts.ContractABIs.ResultsZKVerifier, err = contracts.ResultsVerifierABI()
 	c.Assert(err, qt.IsNil)
 	// Return the contracts object
 	return contracts
