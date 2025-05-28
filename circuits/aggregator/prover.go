@@ -1,7 +1,6 @@
 package aggregator
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -19,15 +18,13 @@ func (assignment *AggregatorCircuit) Prove() (groth16.Proof, error) {
 		return nil, fmt.Errorf("failed to load aggregator artifacts: %w", err)
 	}
 	// decode the circuit definition (constrain system)
-	ccs := groth16.NewCS(ecc.BW6_761)
-	ccsReader := bytes.NewReader(Artifacts.CircuitDefinition())
-	if _, err := ccs.ReadFrom(ccsReader); err != nil {
+	ccs, err := Artifacts.CircuitDefinition()
+	if err != nil {
 		return nil, fmt.Errorf("failed to read aggregator definition: %w", err)
 	}
 	// decode the proving key
-	pk := groth16.NewProvingKey(ecc.BW6_761)
-	pkReader := bytes.NewReader(Artifacts.ProvingKey())
-	if _, err := pk.ReadFrom(pkReader); err != nil {
+	pk, err := Artifacts.ProvingKey()
+	if err != nil {
 		return nil, fmt.Errorf("failed to read aggregator proving key: %w", err)
 	}
 	// calculate the witness with the assignment

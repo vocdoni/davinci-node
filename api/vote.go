@@ -123,7 +123,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	// convert the circom proof to gnark proof and verify it
 	proof, err := circuits.VerifyAndConvertToRecursion(
-		ballotproof.Artifacts.VerifyingKey(),
+		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
 		[]string{vote.BallotInputsHash.String()},
 	)

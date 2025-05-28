@@ -9,6 +9,7 @@ import (
 // Artifacts contains the circuit artifacts for the aggregator circuit, which
 // includes the proving and verification keys.
 var Artifacts = circuits.NewCircuitArtifacts(
+	circuits.AggregatorCurve,
 	&circuits.Artifact{
 		Name:      "aggregator ccs",
 		RemoteURL: config.AggregatorCircuitURL,

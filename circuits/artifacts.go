@@ -17,6 +17,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/backend/groth16"
+	"github.com/consensys/gnark/constraint"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
@@ -99,6 +102,7 @@ func (k *Artifact) Download(ctx context.Context) error {
 // (definition, proving and verification key). It provides a method to load the
 // keys from the local cache or download them from the remote URLs provided.
 type CircuitArtifacts struct {
+	curve             ecc.ID
 	circuitDefinition *Artifact
 	provingKey        *Artifact
 	verifyingKey      *Artifact
@@ -106,8 +110,9 @@ type CircuitArtifacts struct {
 
 // NewCircuitArtifacts creates a new CircuitArtifacts struct with the circuit
 // artifacts provided. It returns the struct with the artifacts set.
-func NewCircuitArtifacts(circuit, provingKey, verifyingKey *Artifact) *CircuitArtifacts {
+func NewCircuitArtifacts(curve ecc.ID, circuit, provingKey, verifyingKey *Artifact) *CircuitArtifacts {
 	return &CircuitArtifacts{
+		curve:             curve,
 		circuitDefinition: circuit,
 		provingKey:        provingKey,
 		verifyingKey:      verifyingKey,
@@ -150,26 +155,60 @@ func (ca *CircuitArtifacts) DownloadAll(ctx context.Context) error {
 }
 
 // CircuitDefinition returns the content of the circuit definition as
-// types.HexBytes. If the circuit definition is not loaded, it returns nil.
-func (ca *CircuitArtifacts) CircuitDefinition() types.HexBytes {
+// constraint.ConstraintSystem. If the circuit definition is not loaded, it
+// returns nil.
+func (ca *CircuitArtifacts) CircuitDefinition() (constraint.ConstraintSystem, error) {
 	if ca.circuitDefinition == nil {
-		return nil
+		return nil, fmt.Errorf("circuit definition not loaded")
 	}
-	return ca.circuitDefinition.Content
+	ccs := groth16.NewCS(ca.curve)
+	_, err := ccs.ReadFrom(bytes.NewReader(ca.circuitDefinition.Content))
+	if err != nil {
+		return nil, fmt.Errorf("error reading circuit definition: %w", err)
+	}
+	return ccs, nil
 }
 
-// ProvingKey returns the content of the proving key as types.HexBytes. If the
-// proving key is not loaded, it returns nil.
-func (ca *CircuitArtifacts) ProvingKey() types.HexBytes {
+// ProvingKey returns the content of the proving key as groth16.ProvingKey. If
+// the proving key is not loaded or cannot be read, it returns an error.
+func (ca *CircuitArtifacts) ProvingKey() (groth16.ProvingKey, error) {
+	if ca.provingKey == nil {
+		return nil, fmt.Errorf("proving key not loaded")
+	}
+	pk := groth16.NewProvingKey(ca.curve)
+	_, err := pk.UnsafeReadFrom(bytes.NewReader(ca.provingKey.Content))
+	if err != nil {
+		return nil, fmt.Errorf("error reading proving key: %w", err)
+	}
+	return pk, nil
+}
+
+// VerifyingKey returns the content of the verifying key as groth16.VerifyingKey.
+// If the proving key is not loaded or cannot be read, it returns an error.
+func (ca *CircuitArtifacts) VerifyingKey() (groth16.VerifyingKey, error) {
+	if ca.verifyingKey == nil {
+		return nil, fmt.Errorf("verifying key not loaded")
+	}
+	vk := groth16.NewVerifyingKey(ca.curve)
+	_, err := vk.UnsafeReadFrom(bytes.NewReader(ca.verifyingKey.Content))
+	if err != nil {
+		return nil, fmt.Errorf("error reading verifying key: %w", err)
+	}
+	return vk, nil
+}
+
+// RawProvingKey returns the content of the proving key as types.HexBytes. If
+// the proving key is not loaded, it returns nil.
+func (ca *CircuitArtifacts) RawProvingKey() types.HexBytes {
 	if ca.provingKey == nil {
 		return nil
 	}
 	return ca.provingKey.Content
 }
 
-// VerifyingKey returns the content of the verifying key as types.HexBytes. If the
-// verifying key is not loaded, it returns nil.
-func (ca *CircuitArtifacts) VerifyingKey() types.HexBytes {
+// RawVerifyingKey returns the content of the verifying key as types.HexBytes.
+// If the verifying key is not loaded, it returns nil.
+func (ca *CircuitArtifacts) RawVerifyingKey() []byte {
 	if ca.verifyingKey == nil {
 		return nil
 	}

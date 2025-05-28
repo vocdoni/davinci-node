@@ -9,6 +9,7 @@ import (
 // Artifacts contains the circuit artifacts for the state transition circuit,
 // which includes the proving and verification keys.
 var Artifacts = circuits.NewCircuitArtifacts(
+	circuits.StateTransitionCurve,
 	&circuits.Artifact{
 		Name:      "state-transition ccs",
 		RemoteURL: config.StateTransitionCircuitURL,

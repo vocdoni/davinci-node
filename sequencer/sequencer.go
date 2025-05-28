@@ -3,7 +3,6 @@
 package sequencer
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
@@ -82,102 +80,84 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	startTime := time.Now()
 
 	// Load vote verifier artifacts
-	vvArtifacts := voteverifier.Artifacts
-	if err := vvArtifacts.LoadAll(); err != nil {
+	if err := voteverifier.Artifacts.LoadAll(); err != nil {
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
 	}
 
 	// Decode the vote verifier circuit definition
 	log.Debugw("reading cicuit artifact",
 		"circuit", "voteVerifier",
-		"type", "ccs",
-		"size", len(vvArtifacts.CircuitDefinition()),
-	)
-	voteCcs := groth16.NewCS(circuits.VoteVerifierCurve)
-	if _, err := voteCcs.ReadFrom(bytes.NewReader(vvArtifacts.CircuitDefinition())); err != nil {
+		"type", "ccs")
+	voteCcs, err := voteverifier.Artifacts.CircuitDefinition()
+	if err != nil {
 		return nil, fmt.Errorf("failed to read vote verifier definition: %w", err)
 	}
-
 	// Decode the vote verifier proving key
 	log.Debugw("reading cicuit artifact",
 		"circuit", "voteVerifier",
-		"type", "pk",
-		"size", len(vvArtifacts.ProvingKey()),
-	)
-	votePk := groth16.NewProvingKey(circuits.VoteVerifierCurve)
-	if _, err := votePk.UnsafeReadFrom(bytes.NewReader(vvArtifacts.ProvingKey())); err != nil {
+		"type", "pk")
+	votePk, err := voteverifier.Artifacts.ProvingKey()
+	if err != nil {
 		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
 	}
 
 	// Load aggregator artifacts
-	aggArtifacts := aggregator.Artifacts
-	if err := aggArtifacts.LoadAll(); err != nil {
+	if err := aggregator.Artifacts.LoadAll(); err != nil {
 		return nil, fmt.Errorf("failed to load aggregator artifacts: %w", err)
 	}
 
 	// Decode the aggregator circuit definition
 	log.Debugw("reading cicuit artifact",
 		"circuit", "aggregator",
-		"type", "ccs",
-		"size", len(aggArtifacts.CircuitDefinition()),
-	)
-	aggCcs := groth16.NewCS(circuits.AggregatorCurve)
-	if _, err := aggCcs.ReadFrom(bytes.NewReader(aggArtifacts.CircuitDefinition())); err != nil {
+		"type", "ccs")
+	aggCcs, err := aggregator.Artifacts.CircuitDefinition()
+	if err != nil {
 		return nil, fmt.Errorf("failed to read aggregator circuit definition: %w", err)
 	}
 
 	// Decode the aggregator proving key
 	log.Debugw("reading cicuit artifact",
 		"circuit", "aggregator",
-		"type", "pk",
-		"size", len(aggArtifacts.ProvingKey()),
-	)
-	aggPk := groth16.NewProvingKey(circuits.AggregatorCurve)
-	if _, err := aggPk.UnsafeReadFrom(bytes.NewReader(aggArtifacts.ProvingKey())); err != nil {
+		"type", "pk")
+	aggPk, err := aggregator.Artifacts.ProvingKey()
+	if err != nil {
 		return nil, fmt.Errorf("failed to read aggregator proving key: %w", err)
 	}
 
 	// Load statetransition artifacts
-	sttArtifacts := statetransition.Artifacts
-	if err := sttArtifacts.LoadAll(); err != nil {
+	if err := statetransition.Artifacts.LoadAll(); err != nil {
 		return nil, fmt.Errorf("failed to load statetransition artifacts: %w", err)
 	}
 
 	// Decode the statetransition circuit definition
 	log.Debugw("reading cicuit artifact",
 		"circuit", "statetransition",
-		"type", "ccs",
-		"size", len(sttArtifacts.CircuitDefinition()),
-	)
-	sttCcs := groth16.NewCS(circuits.StateTransitionCurve)
-	if _, err := sttCcs.ReadFrom(bytes.NewReader(sttArtifacts.CircuitDefinition())); err != nil {
+		"type", "ccs")
+	stCcs, err := statetransition.Artifacts.CircuitDefinition()
+	if err != nil {
 		return nil, fmt.Errorf("failed to read statetransition circuit definition: %w", err)
 	}
 
 	// Decode the statetransition proving key
 	log.Debugw("reading cicuit artifact",
 		"circuit", "statetransition",
-		"type", "pk",
-		"size", len(sttArtifacts.ProvingKey()),
-	)
-	sttPk := groth16.NewProvingKey(circuits.StateTransitionCurve)
-	if _, err := sttPk.UnsafeReadFrom(bytes.NewReader(sttArtifacts.ProvingKey())); err != nil {
+		"type", "pk")
+	stPk, err := statetransition.Artifacts.ProvingKey()
+	if err != nil {
 		return nil, fmt.Errorf("failed to read statetransition proving key: %w", err)
 	}
 
 	log.Debugw("sequencer initialized",
 		"batchTimeWindow", batchTimeWindow.String(),
-		"took(s)", time.Since(startTime).Seconds(),
-	)
-
+		"took(s)", time.Since(startTime).Seconds())
 	return &Sequencer{
 		stg:                          stg,
 		contracts:                    contracts,
 		batchTimeWindow:              batchTimeWindow,
 		pids:                         NewProcessIDMap(),
 		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey, // TODO: replace with a proper VK path
-		statetransitionProvingKey:    sttPk,
-		statetransitionCcs:           sttCcs,
+		statetransitionProvingKey:    stPk,
+		statetransitionCcs:           stCcs,
 		aggregateProvingKey:          aggPk,
 		aggregateCcs:                 aggCcs,
 		voteProvingKey:               votePk,
