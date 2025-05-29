@@ -109,7 +109,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// Create the process response
 	pr := &types.ProcessSetupResponse{
 		ProcessID:        pid.Marshal(),
-		EncryptionPubKey: [2]types.BigInt{types.BigInt(*x), types.BigInt(*y)},
+		EncryptionPubKey: [2]*types.BigInt{(*types.BigInt)(x), (*types.BigInt)(y)},
 		StateRoot:        root.Bytes(),
 		BallotMode:       p.BallotMode,
 	}

@@ -273,7 +273,7 @@ func EncryptionKeyFromECCPoint(p ecc.Point) EncryptionKey[*big.Int] {
 }
 
 func EncryptionKeyToCircuit(k types.EncryptionKey) EncryptionKey[*big.Int] {
-	return EncryptionKey[*big.Int]{PubKey: [2]*big.Int{k.X, k.Y}}
+	return EncryptionKey[*big.Int]{PubKey: [2]*big.Int{k.X.MathBigInt(), k.Y.MathBigInt()}}
 }
 
 // Process is a struct that contains the common inputs for a process.

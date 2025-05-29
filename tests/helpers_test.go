@@ -375,8 +375,8 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	c.Assert(resp.EncryptionPubKey[1], qt.Not(qt.IsNil))
 
 	encryptionKeys := &types.EncryptionKey{
-		X: (*big.Int)(&resp.EncryptionPubKey[0]),
-		Y: (*big.Int)(&resp.EncryptionPubKey[1]),
+		X: resp.EncryptionPubKey[0],
+		Y: resp.EncryptionPubKey[1],
 	}
 
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
