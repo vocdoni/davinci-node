@@ -40,8 +40,11 @@ const (
 	// first account private key created by anvil with default mnemonic
 	testLocalAccountPrivKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 	// envarionment variable names
+	deployerServerPortEnvVarName      = "DEPLOYER_SERVER"                        // environment variable name for deployer server port
+	zContractsBranchNameEnvVarName    = "SEQUENCER_Z_CONTRACTS_BRANCH"           // environment variable name for z-contracts branch
 	privKeyEnvVarName                 = "SEQUENCER_PRIV_KEY"                     // environment variable name for private key
 	rpcUrlEnvVarName                  = "SEQUENCER_RPC_URL"                      // environment variable name for RPC URL
+	anvilPortEnvVarName               = "ANVIL_PORT_RPC_HTTP"                    // environment variable name for Anvil port
 	orgRegistryEnvVarName             = "SEQUENCER_ORGANIZATION_REGISTRY"        // environment variable name for organization registry
 	processRegistryEnvVarName         = "SEQUENCER_PROCESS_REGISTRY"             // environment variable name for process registry
 	resultsVerifierEnvVarName         = "SEQUENCER_RESULTS_ZK_VERIFIER"          // environment variable name for results zk verifier
@@ -84,8 +87,8 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		rpcUrl                        = os.Getenv(rpcUrlEnvVarName)
 		orgRegistryAddr               = os.Getenv(orgRegistryEnvVarName)
 		processRegistryAddr           = os.Getenv(processRegistryEnvVarName)
-		resultsZKVerifierAddr         = os.Getenv(resultsVerifierEnvVarName)
 		stateTransitionZKVerifierAddr = os.Getenv(stateTransitionVerifierEnvVarName)
+		resultsZKVerifierAddr         = os.Getenv(resultsVerifierEnvVarName)
 	)
 	// Check if the environment variables are set to run the tests over local
 	// geth node or remote blockchain environment
@@ -98,9 +101,10 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		rpcUrl = fmt.Sprintf("http://localhost:%d", anvilPort)
 		// Set environment variables for docker-compose in the process environment
 		composeEnv := make(map[string]string)
-		composeEnv["ANVIL_PORT_RPC_HTTP"] = fmt.Sprintf("%d", anvilPort)
-		composeEnv["DEPLOYER_SERVER"] = fmt.Sprintf("%d", anvilPort+1)
-		composeEnv["SEQUENCER_PRIV_KEY"] = testLocalAccountPrivKey
+		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
+		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
+		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
+		composeEnv[zContractsBranchNameEnvVarName] = "f/results_verification"
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
@@ -173,6 +177,8 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 				err = json.NewDecoder(res.Body).Decode(&deployerResp)
 				c.Assert(err, qt.IsNil)
 				contractsAddresses = new(web3.Addresses)
+				log.Infow("contracts addresses from deployer",
+					"logs", deployerResp.Txs)
 				for _, tx := range deployerResp.Txs {
 					switch tx.ContractName {
 					case "OrganizationRegistry":
