@@ -12,14 +12,14 @@ import (
 )
 
 /*
- dbPrefix = bs
- processID_voteID = status
- processID_voteID = 0 -> pending
- processID_voteID = 1 -> verified
- processID_voteID = 2 -> aggregated
- processID_voteID = 3 -> processed
- processID_voteID = 4 -> settled
- processID_voteID = 5 -> error
+	dbPrefix = bs
+	processID_voteID = status
+	processID_voteID = 0 -> pending
+	processID_voteID = 1 -> verified
+	processID_voteID = 2 -> aggregated
+	processID_voteID = 3 -> processed
+	processID_voteID = 4 -> settled
+	processID_voteID = 5 -> error
 */
 
 // ErroBallotAlreadyExists is returned when a ballot already exists in the pending queue.
@@ -503,4 +503,111 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte) error {
 		return fmt.Errorf("delete state transition batch: %w", err)
 	}
 	return nil
+}
+
+// MarkVerifyingResultsProcess marks a process as verifying results by setting
+// a reservation for the processID under the verifyingResultsReservPrefix. It
+// is removed when the verify results are pulled. This is used to avoid to
+// process the same results multiple times.
+func (s *Storage) MarkVerifyingResultsProcess(processID []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Check if the process is already reserved for verifying results
+	// If it is, we do not need to reserve it again
+	if s.isReserved(verifyingResultsReservPrefix, processID) {
+		return nil
+	}
+
+	// Set the process as verifying results
+	if err := s.setReservation(verifyingResultsReservPrefix, processID); err != nil {
+		return fmt.Errorf("set verifying results reservation: %w", err)
+	}
+
+	return nil
+}
+
+// IsVerifyingResultsProcess checks if a process is currently reserved for
+// verifying results.
+func (s *Storage) IsVerifyingResultsProcess(processID []byte) bool {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Check if the process is reserved for verifying results
+	return s.isReserved(verifyingResultsReservPrefix, processID)
+}
+
+// PushVerifiedResults stores the verified results for a given processID.
+// It encodes the VerifiedResults struct and stores it in the database under
+// the verifiedResultPrefix with the processID as the key. It does not
+// calculate the key by the current value because the results should be unique
+// for each processID. If the processID already exists, it will overwrite
+// the existing value. If any error occurs during encoding or writing to the
+// database, it returns an error with a descriptive message.
+func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// encode the verified results struct
+	val, err := encodeArtifact(res)
+	if err != nil {
+		return fmt.Errorf("encode state transition batch: %w", err)
+	}
+
+	// initialize the write transaction over the results prefix
+	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedResultPrefix)
+
+	// set the key-value pair in the write transaction using the processID as
+	// the key
+	if err := wTx.Set(res.ProcessID, val); err != nil {
+		wTx.Discard()
+		return err
+	}
+
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// PullVerifiedResults retrieves the verified results for a given processID.
+// It initializes a read transaction over the verifiedResultPrefix and
+// retrieves the value for the given processID. If the value is found, it
+// decodes it into a VerifiedResults struct and returns it. If the value is
+// not found, it returns ErrNotFound. If any other error occurs during the
+// retrieval or decoding, it returns an error with a descriptive message.
+// It also removes the reservation for verifying results if it exists.
+func (s *Storage) PullVerifiedResults(processID []byte) (*VerifiedResults, error) {
+	if !s.IsVerifyingResultsProcess(processID) {
+		return nil, ErrNoMoreElements
+	}
+
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// initialize the read transaction over the results prefix
+	pr := prefixeddb.NewPrefixedReader(s.db, verifiedResultPrefix)
+
+	// get the value for the given processID
+	val, err := pr.Get(processID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get verified results: %w", err)
+	}
+
+	// decode the verified results struct
+	var res VerifiedResults
+	if err := decodeArtifact(val, &res); err != nil {
+		return nil, fmt.Errorf("decode verified results: %w", err)
+	}
+
+	// remove the reservation for verifying results if it exists
+	if err := s.deleteArtifact(verifyingResultsReservPrefix, res.ProcessID); err != nil && !errors.Is(err, ErrNotFound) {
+		return nil, fmt.Errorf("delete verifying results reservation: %w", err)
+	}
+
+	return &res, nil
 }

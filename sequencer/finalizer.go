@@ -7,6 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/consensys/gnark/backend"
+	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
+	"github.com/consensys/gnark/backend/solidity"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/results"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
@@ -24,6 +29,7 @@ type finalizer struct {
 	stg        *storage.Storage
 	stateDB    db.Database
 	circuits   *internalCircuits // Internal circuit artifacts for proof generation and verification
+	prover     ProverFunc        // Function for generating zero-knowledge proofs
 	OndemandCh chan *types.ProcessID
 	wg         sync.WaitGroup
 	ctx        context.Context
@@ -31,12 +37,13 @@ type finalizer struct {
 }
 
 // New creates a new Finalizer instance.
-func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits) *finalizer {
+func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, prover ProverFunc) *finalizer {
 	// We'll create the context in Start() now to avoid premature cancellation
 	return &finalizer{
 		stg:        stg,
 		stateDB:    stateDB,
 		circuits:   ca,
+		prover:     prover,
 		OndemandCh: make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
 	}
 }
@@ -215,7 +222,9 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		maxValue = failbackMaxValue
 	}
 	startTime := time.Now()
-	addAccumulator := make([]*big.Int, len(encryptedAddAccumulator.Ciphertexts))
+	addAccumulator := [types.FieldsPerBallot]*big.Int{}
+	addAccumulatorsEncrypted := [types.FieldsPerBallot]elgamal.Ciphertext{}
+	addDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedAddAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			return fmt.Errorf("invalid ciphertext for process %x: %v", pid.Marshal(), ct)
@@ -225,44 +234,100 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 			return fmt.Errorf("could not decrypt add accumulator for process %x: %w", pid.Marshal(), err)
 		}
 		addAccumulator[i] = result
+		addAccumulatorsEncrypted[i] = *ct
+		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
+		if err != nil {
+			return fmt.Errorf("could not build decryption proof for add accumulator for process %x: %w", pid.Marshal(), err)
+		}
 	}
 	log.Debugw("decrypted add accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
 
 	startTime = time.Now()
-	subAccumulator := make([]*big.Int, len(encryptedSubAccumulator.Ciphertexts))
+	resultsAccumulator := [types.FieldsPerBallot]*big.Int{}
+	subAccumulator := [types.FieldsPerBallot]*big.Int{}
+	subAccumulatorsEncrypted := [types.FieldsPerBallot]elgamal.Ciphertext{}
+	subDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedSubAccumulator.Ciphertexts {
+		if ct.C1 == nil || ct.C2 == nil {
+			return fmt.Errorf("invalid ciphertext for process %x: %v", pid.Marshal(), ct)
+		}
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
 			return fmt.Errorf("could not decrypt sub accumulator for process %x: %w", pid.Marshal(), err)
 		}
 		subAccumulator[i] = result
+		subAccumulatorsEncrypted[i] = *ct
+		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
+		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
 	}
 	log.Debugw("decrypted sub accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
 
-	// Substract the sub accumulator from the add accumulator
-	result := make([]*types.BigInt, len(addAccumulator))
+	// Generate the witness for the circuit
+	resultsVerifierWitness, err := results.GenerateWitness(
+		st,
+		resultsAccumulator,
+		addAccumulator,
+		subAccumulator,
+		addAccumulatorsEncrypted,
+		subAccumulatorsEncrypted,
+		addDecryptionProofs,
+		subDecryptionProofs,
+	)
+	if err != nil {
+		return fmt.Errorf("could not generate witness for process %x: %w", pid.Marshal(), err)
+	}
+	proof, err := f.prover(
+		circuits.ResultsVerifierCurve,
+		f.circuits.rvCcs,
+		f.circuits.rvPk,
+		resultsVerifierWitness,
+		solidity.WithProverTargetSolidityVerifier(backend.GROTH16),
+	)
+	if err != nil {
+		return fmt.Errorf("could not generate proof for process %x: %w", pid.Marshal(), err)
+	}
 
-	for i := range addAccumulator {
-		result[i] = new(types.BigInt).Sub((*types.BigInt)(addAccumulator[i]), (*types.BigInt)(subAccumulator[i]))
+	stateRoot, err := st.RootAsBigInt()
+	if err != nil {
+		return fmt.Errorf("could not get state root for process %x: %w", pid.Marshal(), err)
 	}
 
 	// Store the result in the process
-	return f.setProcessFinalized(pid, result)
+	return f.setProcessFinalized(pid, &storage.VerifiedResults{
+		ProcessID: pid.Marshal(),
+		Proof:     proof.(*groth16_bn254.Proof),
+		Inputs: storage.ResultsVerifierProofInputs{
+			StateRoot: stateRoot,
+			Results:   resultsAccumulator,
+		},
+	})
 }
 
 // setProcessFinalized sets the process as finalized in the storage. If the process is already finalized, it does nothing.
-func (f *finalizer) setProcessFinalized(pid *types.ProcessID, result []*types.BigInt) error {
+func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.VerifiedResults) error {
+	// Transform the results accumulators to types.BigInt
+	result := make([]*types.BigInt, len(res.Inputs.Results))
+	for i, r := range res.Inputs.Results {
+		result[i] = (*types.BigInt)(r)
+	}
+	// Get the process from storage
 	process, err := f.stg.Process(pid)
 	if err != nil {
 		return fmt.Errorf("could not retrieve process %x: %w", pid.Marshal(), err)
 	}
+	// If the process is already finalized, do nothing
 	if process.IsFinalized {
 		return nil
 	}
+	// Mark the process as finalized, set the result and store it
 	process.IsFinalized = true
 	process.Result = result
 	if err := f.stg.SetProcess(process); err != nil {
 		return fmt.Errorf("could not store finalized process %x: %w", pid.Marshal(), err)
+	}
+	// Push the verified results to storage
+	if err := f.stg.PushVerifiedResults(res); err != nil {
+		return fmt.Errorf("could not store verified results for process %x: %w", pid.Marshal(), err)
 	}
 	log.Infow("process finalized", "pid", pid.String(), "result", process.Result)
 	return nil

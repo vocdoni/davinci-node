@@ -30,7 +30,7 @@ func TestFinalize(t *testing.T) {
 	defer cleanup()
 
 	// Create a finalizer
-	f := newFinalizer(stg, stateDB, nil)
+	f := newFinalizer(stg, stateDB, nil, nil)
 	f.Start(t.Context(), 0)
 
 	// Test finalize
@@ -71,7 +71,7 @@ func TestFinalizeByDate(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Create a finalizer with monitoring disabled
-	f := newFinalizer(stg, stateDB, nil)
+	f := newFinalizer(stg, stateDB, nil, nil)
 	f.Start(t.Context(), 0)
 
 	// Call finalizeByDate with current time

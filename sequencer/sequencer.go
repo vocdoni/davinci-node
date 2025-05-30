@@ -81,7 +81,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		return nil, fmt.Errorf("failed to load internal circuit artifacts: %w", err)
 	}
 	// Initialize the finalizer
-	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits)
+	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, s.prover)
 	return s, nil
 }
 
