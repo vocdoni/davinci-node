@@ -403,12 +403,11 @@ func createProcess(
 		return nil, nil, fmt.Errorf("failed to decode process response: %v", err)
 	}
 	encryptionKeys := &types.EncryptionKey{
-		X: (*big.Int)(&resp.EncryptionPubKey[0]),
-		Y: (*big.Int)(&resp.EncryptionPubKey[1]),
+		X: resp.EncryptionPubKey[0],
+		Y: resp.EncryptionPubKey[1],
 	}
 
-	// Create process in the contracts
-	pid, txHash, err := contracts.CreateProcess(&types.Process{
+	newProcess := &types.Process{
 		Status:         0,
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKeys,
@@ -423,7 +422,9 @@ func createProcess(
 			CensusURI:    "https://example.com/census",
 			CensusOrigin: 0,
 		},
-	})
+	}
+	// Create process in the contracts
+	pid, txHash, err := contracts.CreateProcess(newProcess)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create process in contracts: %v", err)
 	}

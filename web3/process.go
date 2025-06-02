@@ -244,8 +244,8 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		Status:         p.Status,
 		OrganizationId: p.OrganizationId,
 		EncryptionKey: &types.EncryptionKey{
-			X: p.EncryptionKey.X,
-			Y: p.EncryptionKey.Y,
+			X: (*types.BigInt)(p.EncryptionKey.X),
+			Y: (*types.BigInt)(p.EncryptionKey.Y),
 		},
 		StateRoot:          (*types.BigInt)(p.LatestStateRoot),
 		StartTime:          time.Unix(int64(p.StartTime.Uint64()), 0),
@@ -278,7 +278,10 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 
 	prp.Status = p.Status
 	prp.OrganizationId = p.OrganizationId
-	prp.EncryptionKey = npbindings.IProcessRegistryEncryptionKey{X: p.EncryptionKey.X, Y: p.EncryptionKey.Y}
+	prp.EncryptionKey = npbindings.IProcessRegistryEncryptionKey{
+		X: p.EncryptionKey.X.MathBigInt(),
+		Y: p.EncryptionKey.Y.MathBigInt(),
+	}
 
 	prp.LatestStateRoot = p.StateRoot.MathBigInt()
 	prp.StartTime = big.NewInt(p.StartTime.Unix())

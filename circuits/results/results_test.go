@@ -63,8 +63,10 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Get encrypted votes
-	encryptedAddAccumulator := st.ResultsAdd()
-	encryptedSubAccumulator := st.ResultsSub()
+	encryptedAddAccumulator, addOk := st.ResultsAdd()
+	c.Assert(addOk, qt.IsTrue, qt.Commentf("Add accumulator should be available"))
+	encryptedSubAccumulator, subOk := st.ResultsSub()
+	c.Assert(subOk, qt.IsTrue, qt.Commentf("Sub accumulator should be available"))
 
 	// Decrypt the votes and generate the decryption proofs
 	maxValue := ballotMode.MaxValue.Uint64() * 1000

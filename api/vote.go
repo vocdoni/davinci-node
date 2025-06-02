@@ -100,7 +100,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	ballotInputsHash, err := ballotproof.BallotInputsHash(
 		vote.ProcessID,
 		process.BallotMode,
-		new(bjj.BJJ).SetPoint(process.EncryptionKey.X, process.EncryptionKey.Y),
+		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
 		vote.Address,
 		vote.Commitment,
 		vote.Nullifier,

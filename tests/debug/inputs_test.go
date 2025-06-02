@@ -53,8 +53,8 @@ func TestDebugVoteVerifier(t *testing.T) {
 	root := arbo.BytesToBigInt(vote.CensusProof.Root)
 	ballotMode := circuits.BallotModeToCircuit(process.BallotMode)
 	encKey := types.EncryptionKey{
-		X: process.EncryptionPubKey[0].MathBigInt(),
-		Y: process.EncryptionPubKey[1].MathBigInt(),
+		X: process.EncryptionPubKey[0],
+		Y: process.EncryptionPubKey[1],
 	}
 	encryptionKey := circuits.EncryptionKeyToCircuit(encKey)
 

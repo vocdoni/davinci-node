@@ -2,7 +2,6 @@ package types
 
 import (
 	"encoding/json"
-	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -71,8 +70,8 @@ func (p *Process) String() string {
 }
 
 type EncryptionKey struct {
-	X *big.Int `json:"x" cbor:"0,keyasint,omitempty"`
-	Y *big.Int `json:"y" cbor:"1,keyasint,omitempty"`
+	X *BigInt `json:"x" cbor:"0,keyasint,omitempty"`
+	Y *BigInt `json:"y" cbor:"1,keyasint,omitempty"`
 }
 
 type Census struct {
@@ -135,7 +134,7 @@ type ProcessSetup struct {
 // ProcessSetupResponse represents the response of a voting process
 type ProcessSetupResponse struct {
 	ProcessID        HexBytes    `json:"processId"`
-	EncryptionPubKey [2]BigInt   `json:"encryptionPubKey,omitempty"`
+	EncryptionPubKey [2]*BigInt  `json:"encryptionPubKey,omitempty"`
 	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
 	ChainID          uint32      `json:"chainId,omitempty"`
 	Nonce            uint64      `json:"nonce,omitempty"`
