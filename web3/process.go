@@ -8,7 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	bindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
+	npbindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
@@ -166,7 +166,7 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 // MonitorProcessCreationBySubscription monitors the creation of new processes by subscribing to the ProcessRegistry contract.
 // Requires the web3 rpc endpoint to support subscriptions on websockets.
 func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<-chan *types.Process, error) {
-	ch1 := make(chan *bindings.ProcessRegistryProcessCreated)
+	ch1 := make(chan *npbindings.ProcessRegistryProcessCreated)
 	ch2 := make(chan *types.Process)
 
 	sub, err := c.processes.WatchProcessCreated(nil, ch1, nil, nil)
@@ -262,13 +262,13 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 type ProcessRegistryProcess struct {
 	Status             uint8
 	OrganizationId     common.Address
-	EncryptionKey      bindings.IProcessRegistryEncryptionKey
+	EncryptionKey      npbindings.IProcessRegistryEncryptionKey
 	LatestStateRoot    *big.Int
 	StartTime          *big.Int
 	Duration           *big.Int
 	MetadataURI        string
-	BallotMode         bindings.IProcessRegistryBallotMode
-	Census             bindings.IProcessRegistryCensus
+	BallotMode         npbindings.IProcessRegistryBallotMode
+	Census             npbindings.IProcessRegistryCensus
 	VoteCount          *big.Int
 	VoteOverwriteCount *big.Int
 }
@@ -278,7 +278,7 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 
 	prp.Status = p.Status
 	prp.OrganizationId = p.OrganizationId
-	prp.EncryptionKey = bindings.IProcessRegistryEncryptionKey{
+	prp.EncryptionKey = npbindings.IProcessRegistryEncryptionKey{
 		X: p.EncryptionKey.X.MathBigInt(),
 		Y: p.EncryptionKey.Y.MathBigInt(),
 	}
@@ -288,7 +288,7 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	prp.Duration = big.NewInt(int64(p.Duration.Seconds()))
 	prp.MetadataURI = p.MetadataURI
 
-	prp.BallotMode = bindings.IProcessRegistryBallotMode{
+	prp.BallotMode = npbindings.IProcessRegistryBallotMode{
 		CostFromWeight:  p.BallotMode.CostFromWeight,
 		ForceUniqueness: p.BallotMode.ForceUniqueness,
 		MaxCount:        p.BallotMode.MaxCount,

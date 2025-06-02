@@ -45,7 +45,6 @@ type Web3Config struct {
 	Rpc               []string `mapstructure:"rpc"`     // Web3 RPC endpoints, can be multiple
 	ProcessAddr       string   `mapstructure:"process"` // Custom contract addresses, overrides network defaults
 	OrganizationsAddr string   `mapstructure:"orgs"`    // Custom contract addresses, overrides network defaults
-	ResultsAddr       string   `mapstructure:"results"` // Custom contract addresses, overrides network defaults
 }
 
 // APIConfig holds the API-specific configuration
