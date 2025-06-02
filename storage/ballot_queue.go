@@ -65,7 +65,9 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 		if s.isReserved(ballotReservationPrefix, k) {
 			return true
 		}
-		chosenKey = k
+		// Make a copy of the key to avoid potential issues with slice reuse
+		chosenKey = make([]byte, len(k))
+		copy(chosenKey, k)
 		chosenVal = v
 		return false
 	}); err != nil {
@@ -78,6 +80,16 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 	var b Ballot
 	if err := DecodeArtifact(chosenVal, &b); err != nil {
 		return nil, nil, fmt.Errorf("decode ballot: %w", err)
+	}
+
+	// The key must match the ballot's VoteID
+	// When using prefixed iteration, ensure we use the ballot's actual VoteID as the key
+	voteID := b.VoteID()
+
+	// Verify that the chosen key matches the ballot's VoteID
+	if !bytes.Equal(chosenKey, voteID) {
+		// This should not happen, but if it does, use the ballot's VoteID as the correct key
+		chosenKey = voteID
 	}
 
 	// set reservation
@@ -210,6 +222,28 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 	}
 
 	return res, keys, nil
+}
+
+// CountPendingBallots returns the number of pending ballots in the queue
+// which are not reserved. These are ballots added with PushBallot() that
+// haven't been processed yet via NextBallot().
+func (s *Storage) CountPendingBallots() int {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	rd := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
+	count := 0
+	if err := rd.Iterate(nil, func(k, _ []byte) bool {
+		// Skip if already reserved
+		if s.isReserved(ballotReservationPrefix, k) {
+			return true
+		}
+		count++
+		return true
+	}); err != nil {
+		log.Warnw("failed to count pending ballots", "error", err.Error())
+	}
+	return count
 }
 
 // CountVerifiedBallots returns the number of verified ballots for a given

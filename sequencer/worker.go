@@ -22,7 +22,7 @@ var ErrNoJobAvailable = errors.New("no job available")
 // startWorkerProcessor starts the worker goroutine that fetches and processes jobs
 func (s *Sequencer) startWorkerProcessor() error {
 	go func() {
-		ticker := time.NewTicker(time.Second)
+		ticker := time.NewTicker(time.Second * 5)
 		defer ticker.Stop()
 
 		consecutiveErrors := 0
@@ -191,13 +191,13 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
 	url := s.masterURL // POST doesn't need address in URL
 
-	body, err := json.Marshal(vb)
+	body, err := storage.EncodeArtifact(vb)
 	if err != nil {
 		return fmt.Errorf("failed to marshal verified ballot: %w", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewReader(body))
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Post(url, "application/octet-stream", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to submit job: %w", err)
 	}
@@ -208,8 +208,18 @@ func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
 		return fmt.Errorf("failed to submit job, status %d: %s", resp.StatusCode, body)
 	}
 
-	log.Debugw("submitted job to master",
-		"voteID", fmt.Sprintf("%x", vb.VoteID))
+	// Read the response body
+	workerResponse := &api.WorkerJobResponse{}
+	if err := json.NewDecoder(resp.Body).Decode(workerResponse); err != nil {
+		return fmt.Errorf("failed to decode worker response: %w", err)
+	}
+
+	log.Infow("submitted job to master",
+		"voteID", fmt.Sprintf("%x", vb.VoteID),
+		"processID", fmt.Sprintf("%x", vb.ProcessID),
+		"success", workerResponse.SuccessCount,
+		"failed", workerResponse.FailedCount,
+	)
 
 	return nil
 }

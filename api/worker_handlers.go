@@ -2,8 +2,8 @@ package api
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -93,7 +93,14 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	// Decode verified ballot
 	var vb storage.VerifiedBallot
-	if err := json.NewDecoder(r.Body).Decode(&vb); err != nil {
+	body, err := io.ReadAll(r.Body) // Read the body to ensure it's consumed
+	if err != nil {
+		log.Warnw("failed to read request body",
+			"error", err.Error())
+		ErrMalformedBody.WithErr(err).Write(w)
+		return
+	}
+	if err := storage.DecodeArtifact(body, &vb); err != nil {
 		log.Warnw("failed to decode verified ballot",
 			"error", err.Error())
 		ErrMalformedBody.WithErr(err).Write(w)
@@ -130,6 +137,15 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 			"worker", job.Address)
 	}
 
+	success, failed, err := a.storage.WorkerJobCount(job.Address)
+	if err != nil {
+		log.Warnw("failed to get worker job count",
+			"error", err.Error(),
+			"worker", job.Address)
+		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+
 	// Remove from active jobs
 	a.jobsMutex.Lock()
 	delete(a.activeJobs, voteIDStr)
@@ -138,9 +154,20 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 	log.Debugw("worker job completed",
 		"voteID", voteIDStr,
 		"worker", job.Address,
-		"duration", time.Since(job.Timestamp).String())
+		"duration", time.Since(job.Timestamp).String(),
+		"successCount", success,
+		"failedCount", failed,
+	)
 
-	httpWriteOK(w)
+	// Prepare response
+	response := WorkerJobResponse{
+		VoteID:       vb.VoteID,
+		Address:      job.Address,
+		SuccessCount: success,
+		FailedCount:  failed,
+	}
+
+	httpWriteJSON(w, response)
 }
 
 // checkWorkerTimeouts removes timed out jobs and their reservations
