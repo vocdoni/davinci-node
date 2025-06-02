@@ -7,7 +7,7 @@ package circuits
 // To achieve that goal, the circuits are used following these steps:
 //   1. The voter ciphers the vote value (proving that this process is correct
 //      using the BallotProof) and send it to the sequencer.
-//   2. The sequencer converts that proof in faster one verifing the proof
+//   2. The sequencer converts that proof in faster one verifying the proof
 //      (proving that this process is correct using the VoteVerifier).
 //   3. The sequencer groups the votes in batches reducing the number of proofs
 //      (proving that this process is correct using the Aggregator).
