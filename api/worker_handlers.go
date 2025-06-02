@@ -65,8 +65,19 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 		"worker", workerAddress,
 		"processID", hex.EncodeToString(ballot.ProcessID))
 
-	// Return ballot as JSON
-	httpWriteJSON(w, ballot)
+	// Check if worker is registered for this process
+	// Return ballot
+	data, err := storage.EncodeArtifact(ballot)
+	if err != nil {
+		log.Warnw("failed to encode ballot for worker",
+			"error", err.Error(),
+			"voteID", voteIDStr,
+		)
+		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+
+	httpWriteBinary(w, data)
 }
 
 // workerSubmitJob handles POST /workers/{uuid}

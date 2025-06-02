@@ -56,7 +56,7 @@ func (s *Storage) ListWorkerJobCount() (map[string][2]int64, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, workerStatsPrefix)
 	err := pr.Iterate(nil, func(k, v []byte) bool {
 		var stats WorkerStats
-		if err := decodeArtifact(v, &stats); err != nil {
+		if err := DecodeArtifact(v, &stats); err != nil {
 			// Skip invalid records
 			return true
 		}

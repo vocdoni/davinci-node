@@ -164,7 +164,7 @@ func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Dur
 	var staleKeys [][]byte
 	if err := wTx.Iterate(nil, func(k, v []byte) bool {
 		r := &reservationRecord{}
-		if err := decodeArtifact(v, r); err != nil {
+		if err := DecodeArtifact(v, r); err != nil {
 			staleKeys = append(staleKeys, append([]byte(nil), k...))
 			return true
 		}
@@ -191,7 +191,7 @@ func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Dur
 }
 
 func (s *Storage) setReservation(prefix, key []byte) error {
-	val, err := encodeArtifact(&reservationRecord{Timestamp: time.Now().Unix()})
+	val, err := EncodeArtifact(&reservationRecord{Timestamp: time.Now().Unix()})
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func (s *Storage) deleteArtifact(prefix, key []byte) error {
 // It returns ErrKeyAlreadyExists if the key already exists.
 func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 	// encode the artifact
-	data, err := encodeArtifact(artifact)
+	data, err := EncodeArtifact(artifact)
 	if err != nil {
 		return err
 	}
@@ -274,7 +274,7 @@ func (s *Storage) getArtifact(prefix []byte, key []byte, out any) error {
 		}
 	}
 
-	if err := decodeArtifact(data, out); err != nil {
+	if err := DecodeArtifact(data, out); err != nil {
 		return fmt.Errorf("could not decode artifact: %w", err)
 	}
 

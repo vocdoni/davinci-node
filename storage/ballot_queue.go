@@ -29,7 +29,7 @@ var ErroBallotAlreadyExists = errors.New("ballot already exists")
 func (s *Storage) PushBallot(b *Ballot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	val, err := encodeArtifact(b)
+	val, err := EncodeArtifact(b)
 	if err != nil {
 		return fmt.Errorf("encode ballot: %w", err)
 	}
@@ -76,7 +76,7 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 	}
 
 	var b Ballot
-	if err := decodeArtifact(chosenVal, &b); err != nil {
+	if err := DecodeArtifact(chosenVal, &b); err != nil {
 		return nil, nil, fmt.Errorf("decode ballot: %w", err)
 	}
 
@@ -124,7 +124,7 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 	}
 
 	// store verified ballot
-	val, err := encodeArtifact(vb)
+	val, err := EncodeArtifact(vb)
 	if err != nil {
 		return fmt.Errorf("encode verified ballot: %w", err)
 	}
@@ -175,7 +175,7 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 		}
 
 		var vb VerifiedBallot
-		if err := decodeArtifact(v, &vb); err != nil {
+		if err := DecodeArtifact(v, &vb); err != nil {
 			return true
 		}
 
@@ -242,7 +242,7 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	val, err := encodeArtifact(abb)
+	val, err := EncodeArtifact(abb)
 	if err != nil {
 		return fmt.Errorf("encode batch: %w", err)
 	}
@@ -295,7 +295,7 @@ func (s *Storage) NextBallotBatch(processID []byte) (*AggregatorBallotBatch, []b
 	}
 
 	var abb AggregatorBallotBatch
-	if err := decodeArtifact(chosenVal, &abb); err != nil {
+	if err := DecodeArtifact(chosenVal, &abb); err != nil {
 		return nil, nil, fmt.Errorf("decode agg batch: %w", err)
 	}
 
@@ -343,7 +343,7 @@ func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 	defer s.globalLock.Unlock()
 
 	// encode the state transition batch
-	val, err := encodeArtifact(stb)
+	val, err := EncodeArtifact(stb)
 	if err != nil {
 		return fmt.Errorf("encode state transition batch: %w", err)
 	}
@@ -403,7 +403,7 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 	}
 	// decode the state transition batch found
 	var stb StateTransitionBatch
-	if err := decodeArtifact(chosenVal, &stb); err != nil {
+	if err := DecodeArtifact(chosenVal, &stb); err != nil {
 		return nil, nil, fmt.Errorf("decode state transition batch: %w", err)
 	}
 	// set reservation

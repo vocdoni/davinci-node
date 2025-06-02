@@ -151,7 +151,7 @@ func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
 func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 	url := fmt.Sprintf("%s/%s", s.masterURL, s.workerAddress)
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch job: %w", err)
@@ -163,7 +163,11 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 		return nil, ErrNoJobAvailable
 	case http.StatusOK:
 		var ballot storage.Ballot
-		if err := json.NewDecoder(resp.Body).Decode(&ballot); err != nil {
+		data, err := io.ReadAll(resp.Body) // Read the body to ensure it's consumed
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body: %w", err)
+		}
+		if err := storage.DecodeArtifact(data, &ballot); err != nil {
 			return nil, fmt.Errorf("failed to decode ballot: %w", err)
 		}
 
