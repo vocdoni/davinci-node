@@ -198,12 +198,12 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 	}
 
 	// Fetch the encrypted accumulators
-	encryptedAddAccumulator := st.ResultsAdd()
-	if encryptedAddAccumulator == nil {
+	encryptedAddAccumulator, ok := st.ResultsAdd()
+	if !ok {
 		return fmt.Errorf("could not retrieve encrypted add accumulator for process %x", pid.Marshal())
 	}
-	encryptedSubAccumulator := st.ResultsSub()
-	if encryptedSubAccumulator == nil {
+	encryptedSubAccumulator, ok := st.ResultsSub()
+	if !ok {
 		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %x", pid.Marshal())
 	}
 

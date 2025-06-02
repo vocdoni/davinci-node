@@ -230,7 +230,11 @@ func (o *State) EndBatch() error {
 		}
 	}
 	// update ResultsAdd
-	o.oldResultsAdd = o.ResultsAdd()
+	var ok bool
+	o.oldResultsAdd, ok = o.ResultsAdd()
+	if !ok {
+		return fmt.Errorf("could not get old results add ballot")
+	}
 	o.newResultsAdd = o.newResultsAdd.Add(o.oldResultsAdd, o.ballotSum)
 	o.votesProofs.ResultsAdd, err = ArboTransitionFromAddOrUpdate(o,
 		KeyResultsAdd, o.newResultsAdd.BigInts()...)
@@ -238,7 +242,10 @@ func (o *State) EndBatch() error {
 		return fmt.Errorf("ResultsAdd: %w", err)
 	}
 	// update ResultsSub
-	o.oldResultsSub = o.ResultsSub()
+	o.oldResultsSub, ok = o.ResultsSub()
+	if !ok {
+		return fmt.Errorf("could not get old results sub ballot")
+	}
 	o.newResultsSub = o.newResultsSub.Add(o.oldResultsSub, o.overwriteSum)
 	o.votesProofs.ResultsSub, err = ArboTransitionFromAddOrUpdate(o,
 		KeyResultsSub, o.newResultsSub.BigInts()...)
@@ -412,16 +419,16 @@ func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
 }
 
 // ResultsAdd returns the resultsAdd of the state as a elgamal.Ballot
-func (o *State) ResultsAdd() *elgamal.Ballot {
+func (o *State) ResultsAdd() (*elgamal.Ballot, bool) {
 	_, v, err := o.tree.GetBigInt(KeyResultsAdd)
 	if err != nil {
-		panic(err)
+		return elgamal.NewBallot(Curve), false
 	}
 	resultsAdd, err := elgamal.NewBallot(Curve).SetBigInts(v)
 	if err != nil {
-		panic(err)
+		return elgamal.NewBallot(Curve), false
 	}
-	return resultsAdd
+	return resultsAdd, true
 }
 
 // SetResultsAdd sets the resultsAdd directly in the state tree
@@ -439,16 +446,16 @@ func (o *State) SetResultsSub(resultsSub *elgamal.Ballot) {
 }
 
 // ResultsSub returns the resultsSub of the state as a elgamal.Ballot
-func (o *State) ResultsSub() *elgamal.Ballot {
+func (o *State) ResultsSub() (*elgamal.Ballot, bool) {
 	_, v, err := o.tree.GetBigInt(KeyResultsSub)
 	if err != nil {
-		panic(err)
+		return elgamal.NewBallot(Curve), false
 	}
 	resultsSub, err := elgamal.NewBallot(Curve).SetBigInts(v)
 	if err != nil {
-		panic(err)
+		return elgamal.NewBallot(Curve), false
 	}
-	return resultsSub
+	return resultsSub, true
 }
 
 // EncodeKey encodes a key to a byte array using the maximum key length for the
