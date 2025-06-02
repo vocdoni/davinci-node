@@ -30,9 +30,10 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 		WASMhelperExecJsURL:  config.BallotProofWasmExecJsURL,
 		WASMhelperExecJsHash: config.BallotProofWasmExecJsHash,
 		Contracts: ContractAddresses{
-			ProcessRegistry:      contracts.ProcessRegistrySmartContract,
-			OrganizationRegistry: contracts.OrganizationRegistrySmartContract,
-			Results:              contracts.ResultsSmartContract,
+			ProcessRegistry:           contracts.ProcessRegistrySmartContract,
+			OrganizationRegistry:      contracts.OrganizationRegistrySmartContract,
+			StateTransitionZKVerifier: contracts.StateTransitionZKVerifier,
+			ResultsZKVerifier:         contracts.ResultsZKVerifier,
 		},
 	}
 
