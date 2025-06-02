@@ -81,3 +81,15 @@ type WorkerJobResponse struct {
 	SuccessCount int64          `json:"successCount"`
 	FailedCount  int64          `json:"failedCount"`
 }
+
+// WorkerInfo contains information about a worker node.
+type WorkerInfo struct {
+	Address      string `json:"address"`
+	SuccessCount int64  `json:"successCount"`
+	FailedCount  int64  `json:"failedCount"`
+}
+
+// WorkersListResponse is the response returned by the workers list endpoint.
+type WorkersListResponse struct {
+	Workers []WorkerInfo `json:"workers"`
+}

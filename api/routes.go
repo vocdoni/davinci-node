@@ -46,6 +46,7 @@ const (
 	WorkersEndpoint         = "/workers"
 	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}"
 	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"
+	WorkersListEndpoint     = WorkersEndpoint
 )
 
 // EndpointWithParam replaces the key in the path with the param value

@@ -149,6 +149,8 @@ func (a *API) registerHandlers() {
 		a.router.Get(WorkerGetJobEndpoint, a.workerGetJob)
 		log.Infow("register handler", "endpoint", WorkerSubmitJobEndpoint, "method", "POST")
 		a.router.Post(WorkerSubmitJobEndpoint, a.workerSubmitJob)
+		log.Infow("register handler", "endpoint", WorkersListEndpoint, "method", "GET")
+		a.router.Get(WorkersListEndpoint, a.workersList)
 	}
 }
 

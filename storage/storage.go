@@ -45,10 +45,11 @@ type reservationRecord struct {
 
 // Storage manages artifacts in various stages with reservations.
 type Storage struct {
-	db         db.Database
-	censusDB   *census.CensusDB
-	stateDB    db.Database
-	globalLock sync.Mutex
+	db          db.Database
+	censusDB    *census.CensusDB
+	stateDB     db.Database
+	globalLock  sync.Mutex // Lock for global operations
+	workersLock sync.Mutex // Lock for worker-related operations
 }
 
 // New creates a new Storage instance.

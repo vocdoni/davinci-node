@@ -57,7 +57,20 @@ func (s *Storage) PushBallot(b *Ballot) error {
 func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+	s.workersLock.Lock()
+	defer s.workersLock.Unlock()
+	return s.nextBallot()
+}
 
+// NextBallotForWorker is like NextBallot but does not lock the global lock.
+// It is used by workers to fetch the next ballot without blocking other operations.
+func (s *Storage) NextBallotForWorker() (*Ballot, []byte, error) {
+	s.workersLock.Lock()
+	defer s.workersLock.Unlock()
+	return s.nextBallot()
+}
+
+func (s *Storage) nextBallot() (*Ballot, []byte, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	var chosenKey, chosenVal []byte
 	if err := pr.Iterate(nil, func(k, v []byte) bool {

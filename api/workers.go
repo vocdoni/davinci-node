@@ -212,3 +212,31 @@ func (a *API) checkWorkerTimeouts() {
 			"count", len(timedOutJobs))
 	}
 }
+
+// workersList handles GET /workers
+func (a *API) workersList(w http.ResponseWriter, r *http.Request) {
+	// Get all worker statistics
+	workerStats, err := a.storage.ListWorkerJobCount()
+	if err != nil {
+		log.Warnw("failed to get worker statistics",
+			"error", err.Error())
+		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+
+	// Build response
+	workers := make([]WorkerInfo, 0, len(workerStats))
+	for address, stats := range workerStats {
+		workers = append(workers, WorkerInfo{
+			Address:      address,
+			SuccessCount: stats[0],
+			FailedCount:  stats[1],
+		})
+	}
+
+	response := WorkersListResponse{
+		Workers: workers,
+	}
+
+	httpWriteJSON(w, response)
+}
