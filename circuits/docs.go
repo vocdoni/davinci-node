@@ -4,7 +4,7 @@ package circuits
 // main goal of these circuits its to provide a verifiable way to prove not
 // only a valid vote but also a valid voter, without disclose the identity of
 // the voter or the value of the vote.
-// To achive that goal, the circuits are used following these steps:
+// To achieve that goal, the circuits are used following these steps:
 //   1. The voter ciphers the vote value (proving that this process is correct
 //      using the BallotProof) and send it to the sequencer.
 //   2. The sequencer converts that proof in faster one verifing the proof
