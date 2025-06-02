@@ -54,3 +54,10 @@ const (
 func EndpointWithParam(path, key, param string) string {
 	return strings.Replace(path, "{"+key+"}", param, 1)
 }
+
+// LogExcludedPrefixes returns the default list of URL prefixes to exclude from logging
+var LogExcludedPrefixes = []string{
+	PingEndpoint,
+	WorkersEndpoint,
+	InfoEndpoint,
+}

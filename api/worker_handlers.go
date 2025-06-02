@@ -15,7 +15,7 @@ import (
 // startWorkerTimeoutMonitor starts the timeout monitor for worker jobs
 func (a *API) startWorkerTimeoutMonitor() {
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
 		for range ticker.C {

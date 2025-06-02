@@ -217,6 +217,11 @@ func NewWorker(stg *storage.Storage, masterURL string, workerAddress string) (*S
 
 	// Load only vote verifier artifacts (not aggregator/statetransition)
 	vvArtifacts := voteverifier.Artifacts
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Hour)
+	defer cancel()
+	if err := vvArtifacts.DownloadAll(ctx); err != nil {
+		return nil, fmt.Errorf("failed to download vote verifier artifacts: %w", err)
+	}
 	if err := vvArtifacts.LoadAll(); err != nil {
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
 	}

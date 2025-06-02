@@ -1,12 +1,9 @@
 package api
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +13,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	stg "github.com/vocdoni/vocdoni-z-sandbox/storage"
+)
+
+const (
+	maxRequestBodyLog = 512 // Maximum length of request body to log
 )
 
 // APIConfig type represents the configuration for the API HTTP server.
@@ -151,54 +152,8 @@ func (a *API) registerHandlers() {
 	}
 }
 
-// bufPool is a pool of bytes.Buffer to reduce logger allocations.
-var bufPool = sync.Pool{
-	New: func() interface{} {
-		return new(bytes.Buffer)
-	},
-}
-
 // initRouter creates the router with all the routes and middleware.
 func (a *API) initRouter() {
-	logHandler := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Don't log if we're in debug or for PingEndpoint.
-			if log.Level() != "debug" || r.URL.Path == PingEndpoint {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Get a buffer from the pool.
-			buf := bufPool.Get().(*bytes.Buffer)
-			buf.Reset()
-
-			// Read the request body into the buffer.
-			bodyBytes, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, "unable to read request body", http.StatusInternalServerError)
-				bufPool.Put(buf)
-				return
-			}
-
-			// Write the bytes into our buffer.
-			buf.Write(bodyBytes)
-
-			// Log the request details.
-			log.Debugw("api request",
-				"method", r.Method,
-				"url", r.URL.String(),
-				"body", strings.ReplaceAll(buf.String(), "\"", ""),
-			)
-
-			// Restore the body for the next handler.
-			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			// Return the buffer to the pool.
-			bufPool.Put(buf)
-
-			next.ServeHTTP(w, r)
-		})
-	}
-
 	a.router = chi.NewRouter()
 	a.router.Use(cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -207,7 +162,7 @@ func (a *API) initRouter() {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}).Handler)
-	a.router.Use(logHandler)
+	a.router.Use(loggingMiddleware(maxRequestBodyLog))
 	a.router.Use(middleware.Recoverer)
 	a.router.Use(middleware.Throttle(100))
 	a.router.Use(middleware.ThrottleBacklog(5000, 40000, 60*time.Second))

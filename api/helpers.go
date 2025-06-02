@@ -31,11 +31,13 @@ func httpWriteJSON(w http.ResponseWriter, data interface{}) {
 }
 
 // httpWriteBinary streams an in-memory byte slice as a response.
-func httpWriteBinary(w http.ResponseWriter, data []byte) error {
+func httpWriteBinary(w http.ResponseWriter, data []byte) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	_, err := w.Write(data)
-	return err
+	if _, err := w.Write(data); err != nil {
+		log.Warnw("failed to write binary response", "error", err)
+		return
+	}
 }
 
 // httpWriteOK helper function allows to write an OK response.
