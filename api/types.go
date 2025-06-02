@@ -44,9 +44,10 @@ type Vote struct {
 
 // ContractAddresses holds the smart contract addresses needed by the client
 type ContractAddresses struct {
-	ProcessRegistry      string `json:"process"`
-	OrganizationRegistry string `json:"organization"`
-	Results              string `json:"results"`
+	ProcessRegistry           string `json:"process"`
+	OrganizationRegistry      string `json:"organization"`
+	StateTransitionZKVerifier string `json:"stateTransitionVerifier"`
+	ResultsZKVerifier         string `json:"resultsVerifier"`
 }
 
 // BallotProofInfo contains all the information needed by a client to generate a ballot zkSNARK proof.

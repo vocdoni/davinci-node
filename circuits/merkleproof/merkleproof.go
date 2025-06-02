@@ -1,4 +1,4 @@
-package statetransition
+package merkleproof
 
 import (
 	"fmt"

@@ -44,7 +44,6 @@ type Web3Config struct {
 	Rpc               []string `mapstructure:"rpc"`
 	ProcessAddr       string   `mapstructure:"process"`
 	OrganizationsAddr string   `mapstructure:"orgs"`
-	ResultsAddr       string   `mapstructure:"results"`
 }
 
 // APIConfig holds the API-specific configuration

@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/merkleproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -49,26 +50,26 @@ type Results struct {
 // ProcessProofs struct contains the Merkle proofs for the process for the ID
 // CensusRoot, BallotMode and EncryptionKey.
 type ProcessProofs struct {
-	ID            MerkleProof
-	CensusRoot    MerkleProof
-	BallotMode    MerkleProof
-	EncryptionKey MerkleProof
+	ID            merkleproof.MerkleProof
+	CensusRoot    merkleproof.MerkleProof
+	BallotMode    merkleproof.MerkleProof
+	EncryptionKey merkleproof.MerkleProof
 }
 
 // VotesProofs struct contains the Merkle transition proofs for the ballots and
 // commitments.
 type VotesProofs struct {
 	// Key is Nullifier, LeafHash is smt.Hash1(encoded(Ballot.Serialize()))
-	Ballot [types.VotesPerBatch]MerkleTransition
+	Ballot [types.VotesPerBatch]merkleproof.MerkleTransition
 	// Key is Address, LeafHash is smt.Hash1(encoded(Commitment))
-	Commitment [types.VotesPerBatch]MerkleTransition
+	Commitment [types.VotesPerBatch]merkleproof.MerkleTransition
 }
 
 // ResultsProofs struct contains the Merkle transition proofs for the addition
 // and subtraction of the results.
 type ResultsProofs struct {
-	ResultsAdd MerkleTransition
-	ResultsSub MerkleTransition
+	ResultsAdd merkleproof.MerkleTransition
+	ResultsSub merkleproof.MerkleTransition
 }
 
 // Vote struct contains the circuits.Vote struct and the overwritten ballot.
@@ -252,14 +253,14 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Votes
 	for i, v := range circuit.Votes {
 		// Nullifier
-		nullifierKey, err := TruncateMerkleTreeKey(api, v.Nullifier, types.StateKeyMaxLen)
+		nullifierKey, err := merkleproof.TruncateMerkleTreeKey(api, v.Nullifier, types.StateKeyMaxLen)
 		if err != nil {
 			circuits.FrontendError(api, "failed to truncate nullifier key: ", err)
 			return
 		}
 		api.AssertIsEqual(nullifierKey, circuit.VotesProofs.Ballot[i].NewKey)
 		// Address
-		addressKey, err := TruncateMerkleTreeKey(api, v.Address, types.StateKeyMaxLen)
+		addressKey, err := merkleproof.TruncateMerkleTreeKey(api, v.Address, types.StateKeyMaxLen)
 		if err != nil {
 			circuits.FrontendError(api, "failed to truncate address key: ", err)
 			return

@@ -55,7 +55,8 @@ func TestInfo(t *testing.T) {
 		contracts := config.DefaultConfig["sep"]
 		c.Assert(response.Contracts.ProcessRegistry, qt.Equals, contracts.ProcessRegistrySmartContract)
 		c.Assert(response.Contracts.OrganizationRegistry, qt.Equals, contracts.OrganizationRegistrySmartContract)
-		c.Assert(response.Contracts.Results, qt.Equals, contracts.ResultsSmartContract)
+		c.Assert(response.Contracts.ResultsZKVerifier, qt.Equals, contracts.ResultsZKVerifier)
+		c.Assert(response.Contracts.StateTransitionZKVerifier, qt.Equals, contracts.StateTransitionZKVerifier)
 	})
 
 	// Test case 2: Invalid network

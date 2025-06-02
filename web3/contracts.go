@@ -18,7 +18,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	bindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
+	bindings "github.com/vocdoni/contracts-z/golang-types"
+	npbindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
 	"github.com/vocdoni/vocdoni-z-sandbox/config"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -41,15 +42,15 @@ const (
 type Addresses struct {
 	OrganizationRegistry      common.Address
 	ProcessRegistry           common.Address
-	ResultsRegistry           common.Address
 	StateTransitionZKVerifier common.Address
+	ResultsZKVerifier         common.Address
 }
 
 type ContractABIs struct {
-	OrganizationRegistry *abi.ABI
-	ResultsRegistry      *abi.ABI
-	ProcessRegistry      *abi.ABI
-	ZKVerifier           *abi.ABI
+	OrganizationRegistry      *abi.ABI
+	ProcessRegistry           *abi.ABI
+	StateTransitionZKVerifier *abi.ABI
+	ResultsZKVerifier         *abi.ABI
 }
 
 // Contracts contains the bindings to the deployed contracts.
@@ -57,8 +58,8 @@ type Contracts struct {
 	ChainID            uint64
 	ContractsAddresses *Addresses
 	ContractABIs       *ContractABIs
-	organizations      *bindings.OrganizationRegistry
-	processes          *bindings.ProcessRegistry
+	organizations      *npbindings.OrganizationRegistry
+	processes          *npbindings.ProcessRegistry
 	web3pool           *rpc.Web3Pool
 	cli                *rpc.Client
 	signer             *ethereum.Signer
@@ -151,11 +152,11 @@ func (c *Contracts) CurrentBlock() uint64 {
 
 // LoadContracts loads the contracts from the given addresses.
 func (c *Contracts) LoadContracts(addresses *Addresses) error {
-	organizations, err := bindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
+	organizations, err := npbindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
 	if err != nil {
 		return fmt.Errorf("failed to bind organization registry: %w", err)
 	}
-	process, err := bindings.NewProcessRegistry(addresses.ProcessRegistry, c.cli)
+	process, err := npbindings.NewProcessRegistry(addresses.ProcessRegistry, c.cli)
 	if err != nil {
 		return fmt.Errorf("failed to bind process registry: %w", err)
 	}
@@ -163,36 +164,50 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
-	// checking that the proving key on the sequencer is compatible with the verification key on the smart contract.
-	vkey, err := process.GetVerifierVKeyHash(&bind.CallOpts{Context: ctx})
+	// checking that the state transition proving key on the sequencer is compatible with the state transition verification key on the smart contract.
+	stkey, err := process.GetSTVerifierVKeyHash(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return fmt.Errorf("failed to get verifier address: %w", err)
 	}
-	if !bytes.Equal(vkey[:], types.HexStringToHexBytes(config.StateTransitionProvingKeyHash)) {
-		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, vkey)
+	if !bytes.Equal(stkey[:], types.HexStringToHexBytes(config.StateTransitionProvingKeyHash)) {
+		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, stkey)
+	}
+
+	// checking that the results proving key on the sequencer is compatible with the results verification key on the smart contract.
+	rkey, err := process.GetRVerifierVKeyHash(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to get verifier address: %w", err)
+	}
+	if !bytes.Equal(rkey[:], types.HexStringToHexBytes(config.ResultsVerifierProvingKeyHash)) {
+		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, rkey)
 	}
 
 	c.ContractsAddresses = addresses
 	c.processes = process
 	c.organizations = organizations
 
-	orgRegistryABI, err := abi.JSON(strings.NewReader(bindings.OrganizationRegistryABI))
+	orgRegistryABI, err := abi.JSON(strings.NewReader(npbindings.OrganizationRegistryABI))
 	if err != nil {
 		return fmt.Errorf("failed to parse organization registry ABI: %w", err)
 	}
-	processRegistryABI, err := abi.JSON(strings.NewReader(bindings.ProcessRegistryABI))
+	processRegistryABI, err := abi.JSON(strings.NewReader(npbindings.ProcessRegistryABI))
 	if err != nil {
 		return fmt.Errorf("failed to parse process registry ABI: %w", err)
 	}
-	zkVerifierABI, err := abi.JSON(strings.NewReader(bindings.Groth16VerifierABI))
+	stVerifierABI, err := abi.JSON(strings.NewReader(bindings.StateTransitionVerifierGroth16ABI))
+	if err != nil {
+		return fmt.Errorf("failed to parse zk verifier ABI: %w", err)
+	}
+	rVerifierABI, err := abi.JSON(strings.NewReader(bindings.ResultsVerifierGroth16ABI))
 	if err != nil {
 		return fmt.Errorf("failed to parse zk verifier ABI: %w", err)
 	}
 
 	c.ContractABIs = &ContractABIs{
-		OrganizationRegistry: &orgRegistryABI,
-		ProcessRegistry:      &processRegistryABI,
-		ZKVerifier:           &zkVerifierABI,
+		OrganizationRegistry:      &orgRegistryABI,
+		ProcessRegistry:           &processRegistryABI,
+		StateTransitionZKVerifier: &stVerifierABI,
+		ResultsZKVerifier:         &rVerifierABI,
 	}
 
 	return nil
@@ -225,7 +240,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, err
 	}
-	addr, tx, orgBindings, err := bindings.DeployOrganizationRegistry(opts, cli)
+	addr, tx, orgBindings, err := npbindings.DeployOrganizationRegistry(opts, cli)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy organization registry: %w", err)
 	}
@@ -240,21 +255,38 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, err
 	}
-	addr, tx, _, err = bindings.DeployGroth16Verifier(opts, cli)
+	addr, tx, _, err = bindings.DeployStateTransitionVerifierGroth16(opts, cli)
 	if err != nil {
-		return nil, fmt.Errorf("failed to deploy zkverifier contract: %w", err)
+		return nil, fmt.Errorf("failed to deploy state transition zkverifier contract: %w", err)
 	}
 	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	c.ContractsAddresses.StateTransitionZKVerifier = addr
-	log.Infow("deployed ZKVerifier contract", "address", addr, "tx", tx.Hash().Hex())
+	log.Infow("deployed state transition ZKVerifier contract", "address", addr, "tx", tx.Hash().Hex())
+
+	addr, tx, _, err = bindings.DeployResultsVerifierGroth16(opts, cli)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy results zkverifier contract: %w", err)
+	}
+	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+		return nil, err
+	}
+	c.ContractsAddresses.ResultsZKVerifier = addr
+	log.Infow("deployed results ZKVerifier contract", "address", addr, "tx", tx.Hash().Hex())
 
 	opts, err = c.authTransactOpts()
 	if err != nil {
 		return nil, err
 	}
-	c.ContractsAddresses.ProcessRegistry, tx, c.processes, err = bindings.DeployProcessRegistry(opts, cli, strconv.Itoa(int(chainID)), c.ContractsAddresses.OrganizationRegistry, c.ContractsAddresses.StateTransitionZKVerifier)
+	c.ContractsAddresses.ProcessRegistry, tx, c.processes, err = npbindings.DeployProcessRegistry(
+		opts,
+		cli,
+		strconv.Itoa(int(chainID)),
+		c.ContractsAddresses.OrganizationRegistry,
+		c.ContractsAddresses.StateTransitionZKVerifier,
+		c.ContractsAddresses.ResultsZKVerifier,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process registry: %w", err)
 	}
@@ -473,7 +505,7 @@ func (c *ContractABIs) ForEachABI(fn func(fieldName string, a *abi.ABI) error) e
 
 // ProcessRegistryABI returns the ABI of the ProcessRegistry contract.
 func (c *Contracts) ProcessRegistryABI() (*abi.ABI, error) {
-	processRegistryABI, err := abi.JSON(strings.NewReader(bindings.ProcessRegistryABI))
+	processRegistryABI, err := abi.JSON(strings.NewReader(npbindings.ProcessRegistryABI))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse process registry ABI: %w", err)
 	}
@@ -482,18 +514,27 @@ func (c *Contracts) ProcessRegistryABI() (*abi.ABI, error) {
 
 // ResultsRegistryABI returns the ABI of the ResultsRegistry contract.
 func (c *Contracts) OrganizationRegistryABI() (*abi.ABI, error) {
-	organizationRegistryABI, err := abi.JSON(strings.NewReader(bindings.OrganizationRegistryABI))
+	organizationRegistryABI, err := abi.JSON(strings.NewReader(npbindings.OrganizationRegistryABI))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse organization registry ABI: %w", err)
 	}
 	return &organizationRegistryABI, nil
 }
 
-// ZKVerifierABI returns the ABI of the ZKVerifier contract.
-func (c *Contracts) ZKVerifierABI() (*abi.ABI, error) {
-	zkVerifierABI, err := abi.JSON(strings.NewReader(bindings.Groth16VerifierABI))
+// StateTransitionVerifierABI returns the ABI of the ZKVerifier contract.
+func (c *Contracts) StateTransitionVerifierABI() (*abi.ABI, error) {
+	stVerifierABI, err := abi.JSON(strings.NewReader(bindings.StateTransitionVerifierGroth16ABI))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse zk verifier ABI: %w", err)
+		return nil, fmt.Errorf("failed to parse state transition zk verifier ABI: %w", err)
 	}
-	return &zkVerifierABI, nil
+	return &stVerifierABI, nil
+}
+
+// ResultsVerifierABI returns the ABI of the ResultsVerifier contract.
+func (c *Contracts) ResultsVerifierABI() (*abi.ABI, error) {
+	resultsVerifierABI, err := abi.JSON(strings.NewReader(bindings.ResultsVerifierGroth16ABI))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse results zk verifier ABI: %w", err)
+	}
+	return &resultsVerifierABI, nil
 }

@@ -13,7 +13,8 @@ echo " ✅"
 
 # clone if necessary
 if [ ! -d /workspace/contracts-z ]; then
-  git clone https://github.com/vocdoni/contracts-z.git
+  BRANCH=${BRANCH:-main}
+  git clone --branch "$BRANCH" --single-branch https://github.com/vocdoni/contracts-z.git
 fi
 cd contracts-z
 
