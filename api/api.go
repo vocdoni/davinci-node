@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/google/uuid"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	stg "github.com/vocdoni/vocdoni-z-sandbox/storage"
 )
@@ -23,6 +25,10 @@ type APIConfig struct {
 	Port    int
 	Storage *stg.Storage // Optional: use existing storage instance
 	Network string       // Optional: web3 network shortname
+	// Worker configuration
+	WorkerEnabled bool          // Enable worker API endpoints
+	WorkerUrlSeed string        // URL seed for worker authentication
+	WorkerTimeout time.Duration // Worker job timeout
 }
 
 // API type represents the API HTTP server with JWT authentication capabilities.
@@ -30,6 +36,18 @@ type API struct {
 	router  *chi.Mux
 	storage *stg.Storage
 	network string
+	// Worker fields
+	workerUUID    *uuid.UUID
+	workerTimeout time.Duration
+	// Worker job tracking: voteID -> workerJob
+	activeJobs map[string]*workerJob
+	jobsMutex  sync.RWMutex
+}
+
+type workerJob struct {
+	VoteID    []byte
+	Address   string
+	Timestamp time.Time
 }
 
 // New creates a new API instance with the given configuration.
@@ -42,8 +60,25 @@ func New(conf *APIConfig) (*API, error) {
 		return nil, fmt.Errorf("missing storage instance")
 	}
 	a := &API{
-		storage: conf.Storage,
-		network: conf.Network,
+		storage:       conf.Storage,
+		network:       conf.Network,
+		workerTimeout: conf.WorkerTimeout,
+		activeJobs:    make(map[string]*workerJob),
+	}
+
+	// Initialize worker UUID if enabled
+	if conf.WorkerUrlSeed != "" {
+		var err error
+		hash := sha256.Sum256([]byte(conf.WorkerUrlSeed))
+		u, err := uuid.FromBytes(hash[:16]) // Convert first 16 bytes to UUID
+		if err != nil {
+			return nil, fmt.Errorf("failed to create worker UUID: %w", err)
+		}
+		a.workerUUID = &u
+		log.Infow("worker API enabled", "url", fmt.Sprintf("%s/%s", WorkersEndpoint, a.workerUUID))
+
+		// Start timeout monitor
+		a.startWorkerTimeoutMonitor()
 	}
 
 	// Initialize router
@@ -106,6 +141,14 @@ func (a *API) registerHandlers() {
 	a.router.Delete(DeleteCensusEndpoint, a.deleteCensus)
 	log.Infow("register handler", "endpoint", GetCensusProofEndpoint, "method", "GET", "parameters", "key")
 	a.router.Get(GetCensusProofEndpoint, a.getCensusProof)
+
+	// worker endpoints (if enabled)
+	if a.workerUUID != nil {
+		log.Infow("register handler", "endpoint", WorkerGetJobEndpoint, "method", "GET")
+		a.router.Get(WorkerGetJobEndpoint, a.workerGetJob)
+		log.Infow("register handler", "endpoint", WorkerSubmitJobEndpoint, "method", "POST")
+		a.router.Post(WorkerSubmitJobEndpoint, a.workerSubmitJob)
+	}
 }
 
 // bufPool is a pool of bytes.Buffer to reduce logger allocations.

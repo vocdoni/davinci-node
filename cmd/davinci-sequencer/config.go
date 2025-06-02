@@ -34,34 +34,43 @@ type Config struct {
 	API     APIConfig
 	Batch   BatchConfig
 	Log     LogConfig
+	Worker  WorkerConfig
 	Datadir string
 }
 
 // Web3Config holds Ethereum-related configuration
 type Web3Config struct {
-	PrivKey           string   `mapstructure:"privkey"`
-	Network           string   `mapstructure:"network"`
-	Rpc               []string `mapstructure:"rpc"`
-	ProcessAddr       string   `mapstructure:"process"`
-	OrganizationsAddr string   `mapstructure:"orgs"`
-	ResultsAddr       string   `mapstructure:"results"`
+	PrivKey           string   `mapstructure:"privkey"` // Private key for the Ethereum account
+	Network           string   `mapstructure:"network"` // Network shortname
+	Rpc               []string `mapstructure:"rpc"`     // Web3 RPC endpoints, can be multiple
+	ProcessAddr       string   `mapstructure:"process"` // Custom contract addresses, overrides network defaults
+	OrganizationsAddr string   `mapstructure:"orgs"`    // Custom contract addresses, overrides network defaults
+	ResultsAddr       string   `mapstructure:"results"` // Custom contract addresses, overrides network defaults
 }
 
 // APIConfig holds the API-specific configuration
 type APIConfig struct {
-	Host string `mapstructure:"host"`
-	Port int    `mapstructure:"port"`
+	Host          string `mapstructure:"host"`       // API host address
+	Port          int    `mapstructure:"port"`       // API port number
+	WorkerUrlSeed string `mapstructure:"workerSeed"` // URL seed for worker authentication
 }
 
 // BatchConfig holds batch processing configuration
 type BatchConfig struct {
-	Time time.Duration `mapstructure:"time"`
+	Time time.Duration `mapstructure:"time"` // Maximum time window to wait for batch processing
 }
 
 // LogConfig holds logging configuration
 type LogConfig struct {
 	Level  string `mapstructure:"level"`
 	Output string `mapstructure:"output"`
+}
+
+// WorkerConfig holds worker-related configuration
+type WorkerConfig struct {
+	MasterURL string        `mapstructure:"masterURL"` // URL seed for master worker endpoint
+	Timeout   time.Duration `mapstructure:"timeout"`   // Timeout for worker jobs
+	Address   string        `mapstructure:"address"`   // Ethereum address for the worker (auto-generated if empty)
 }
 
 // loadConfig loads configuration from flags, environment variables, and defaults
@@ -84,13 +93,15 @@ func loadConfig() (*Config, error) {
 	v.SetDefault("log.level", defaultLogLevel)
 	v.SetDefault("log.output", defaultLogOutput)
 	v.SetDefault("datadir", defaultDatadirPath)
+	v.SetDefault("worker.timeout", 1*time.Minute)
 
 	// Configure flags
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
 	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", config.AvailableNetworks))
-	flag.StringSliceP("web3.rpc", "w", []string{}, "web3 rpc endpoint(s), comma-separated")
-	flag.StringP("api.host", "a", defaultAPIHost, "API host")
+	flag.StringSliceP("web3.rpc", "r", []string{}, "web3 rpc endpoint(s), comma-separated")
+	flag.StringP("api.host", "h", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
+	flag.String("api.workerSeed", "", "enable master worker endpoint with URL seed for authentication")
 	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")
 	flag.String("web3.process", "", "custom process registry contract address (overrides network default)")
 	flag.String("web3.orgs", "", "custom organization registry contract address (overrides network default)")
@@ -98,6 +109,9 @@ func loadConfig() (*Config, error) {
 	flag.StringP("log.level", "l", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
 	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
 	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
+	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
+	flag.StringP("worker.address", "a", "", "worker Ethereum address (auto-generated if empty)")
+	flag.StringP("worker.masterURL", "w", "", "master worker URL (required for running in worker mode)")
 
 	// Configure usage information
 	flag.Usage = func() {

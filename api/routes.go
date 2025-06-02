@@ -39,6 +39,13 @@ const (
 	DeleteCensusEndpoint = "/censuses/{" + CensusURLParam + "}"
 	// GetCensusProofEndpoint is the endpoint for getting a proof of a census
 	GetCensusProofEndpoint = "/censuses/{" + CensusURLParam + "}/proof"
+
+	// Worker endpoints
+	WorkerUUIDParam         = "uuid"
+	WorkerAddressParam      = "address"
+	WorkersEndpoint         = "/workers"
+	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}"
+	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"
 )
 
 // EndpointWithParam replaces the key in the path with the param value

@@ -61,6 +61,10 @@ type Sequencer struct {
 	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
 	// If this time elapses, the batch will be processed even if not full.
 	batchTimeWindow time.Duration
+
+	// Worker mode fields
+	masterURL     string // URL of master node (empty for master mode)
+	workerAddress string // Ethereum address identifying this worker
 }
 
 // New creates a new Sequencer instance that processes ballots and aggregates them into batches.
@@ -186,9 +190,83 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	}, nil
 }
 
+// NewWorker creates a Sequencer instance configured for worker mode.
+// Only loads the necessary artifacts for ballot processing (vote verifier).
+//
+// Parameters:
+//   - stg: Storage instance for accessing ballots and other data
+//   - masterURL: URL of the master node to connect to
+//   - workerAddress: Ethereum address identifying this worker (auto-generated if empty)
+//
+// Returns a configured Sequencer instance for worker mode or an error if initialization fails.
+func NewWorker(stg *storage.Storage, masterURL string, workerAddress string) (*Sequencer, error) {
+	if stg == nil {
+		return nil, fmt.Errorf("storage cannot be nil")
+	}
+	if masterURL == "" {
+		return nil, fmt.Errorf("masterURL cannot be empty for worker mode")
+	}
+
+	// Generate random address if not provided
+	if workerAddress == "" {
+		// We'll handle address generation in the main.go where crypto imports are available
+		return nil, fmt.Errorf("workerAddress must be provided")
+	}
+
+	startTime := time.Now()
+
+	// Load only vote verifier artifacts (not aggregator/statetransition)
+	vvArtifacts := voteverifier.Artifacts
+	if err := vvArtifacts.LoadAll(); err != nil {
+		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
+	}
+
+	// Decode the vote verifier circuit definition
+	log.Debugw("reading circuit artifact for worker",
+		"circuit", "voteVerifier",
+		"type", "ccs",
+		"size", len(vvArtifacts.CircuitDefinition()),
+	)
+	voteCcs := groth16.NewCS(circuits.VoteVerifierCurve)
+	if _, err := voteCcs.ReadFrom(bytes.NewReader(vvArtifacts.CircuitDefinition())); err != nil {
+		return nil, fmt.Errorf("failed to read vote verifier definition: %w", err)
+	}
+
+	// Decode the vote verifier proving key
+	log.Debugw("reading circuit artifact for worker",
+		"circuit", "voteVerifier",
+		"type", "pk",
+		"size", len(vvArtifacts.ProvingKey()),
+	)
+	votePk := groth16.NewProvingKey(circuits.VoteVerifierCurve)
+	if _, err := votePk.UnsafeReadFrom(bytes.NewReader(vvArtifacts.ProvingKey())); err != nil {
+		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
+	}
+
+	log.Debugw("worker sequencer initialized",
+		"masterURL", masterURL,
+		"workerAddress", workerAddress,
+		"took(s)", time.Since(startTime).Seconds(),
+	)
+
+	return &Sequencer{
+		stg:                          stg,
+		contracts:                    nil,               // Workers don't need web3 contracts
+		batchTimeWindow:              0,                 // Workers don't use batch processing
+		pids:                         NewProcessIDMap(), // Still needed for ExistsProcessID check
+		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey,
+		voteProvingKey:               votePk,
+		voteCcs:                      voteCcs,
+		prover:                       DefaultProver,
+		masterURL:                    masterURL,
+		workerAddress:                workerAddress,
+	}, nil
+}
+
 // Start begins the ballot processing and aggregation routines.
 // It creates a new context derived from the provided one and starts
 // the background goroutines for processing ballots and aggregating them.
+// In worker mode, it only starts the worker processor.
 //
 // Parameters:
 //   - ctx: Parent context for controlling the sequencer's lifecycle
@@ -201,6 +279,19 @@ func (s *Sequencer) Start(ctx context.Context) error {
 
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
+	if s.masterURL != "" {
+		// Worker mode: start worker processor
+		if err := s.startWorkerProcessor(); err != nil {
+			s.cancel()
+			return fmt.Errorf("failed to start worker processor: %w", err)
+		}
+		log.Infow("sequencer started in worker mode",
+			"master", s.masterURL,
+			"address", s.workerAddress)
+		return nil
+	}
+
+	// Master mode: start all processors
 	if err := s.startBallotProcessor(); err != nil {
 		s.cancel() // Clean up if we fail to start completely
 		return fmt.Errorf("failed to start ballot processor: %w", err)
