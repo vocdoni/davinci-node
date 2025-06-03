@@ -176,6 +176,11 @@ func (f *finalizer) finalizeByDate(date time.Time) {
 // It retrieves the process from storage, decrypts the accumulators using the encryption keys,
 // and stores the result back to storage.
 func (f *finalizer) finalize(pid *types.ProcessID) error {
+	// Set the process as verifying results to avoid reprocessing
+	if err := f.stg.MarkVerifyingResultsProcess(pid.Marshal()); err != nil {
+		return fmt.Errorf("could not mark process %x as verifying results: %w", pid.Marshal(), err)
+	}
+
 	log.Debugw("finalizing process", "pid", pid.String())
 	// Retrieve the process from storage
 	process, err := f.stg.Process(pid)
@@ -329,7 +334,10 @@ func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.Verif
 	if err := f.stg.PushVerifiedResults(res); err != nil {
 		return fmt.Errorf("could not store verified results for process %x: %w", pid.Marshal(), err)
 	}
-	log.Infow("process finalized", "pid", pid.String(), "result", process.Result)
+	log.Infow("process finalized",
+		"pid", pid.String(),
+		"stateRoot", process.StateRoot.String(),
+		"result", process.Result)
 	return nil
 }
 
@@ -364,7 +372,6 @@ func (f *finalizer) WaitUntilFinalized(ctx context.Context, pid *types.ProcessID
 			}
 
 			if process.IsFinalized && process.Result != nil {
-				log.Infow("process successfully finalized", "pid", pid.String())
 				return process.Result, nil
 			}
 

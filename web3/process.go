@@ -73,6 +73,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		Census:             p.Census,
 		VoteCount:          p.VoteCount,
 		VoteOverwriteCount: p.VoteOverwriteCount,
+		Result:             p.Result,
 	})
 }
 
@@ -92,7 +93,7 @@ func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) SetProcessTransition(processID, proof, input []byte, oldRoot *types.BigInt) (*common.Hash, error) {
+func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, oldRoot *types.BigInt) (*common.Hash, error) {
 	stateRoot, err := c.StateRoot(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
@@ -110,9 +111,45 @@ func (c *Contracts) SetProcessTransition(processID, proof, input []byte, oldRoot
 		return nil, fmt.Errorf("failed to create transact options: %w", err)
 	}
 	autOpts.Context = ctx
-	tx, err := c.processes.SubmitStateTransition(autOpts, pid, proof, input)
+	tx, err := c.processes.SubmitStateTransition(autOpts, pid, proof, inputs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to submit state transition: %w", err)
+	}
+	hash := tx.Hash()
+	return &hash, nil
+}
+
+func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (*common.Hash, error) {
+	var pid [32]byte
+	copy(pid[:], processID)
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	autOpts, err := c.authTransactOpts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transact options: %w", err)
+	}
+	autOpts.Context = ctx
+	tx, err := c.processes.SetProcessResults(autOpts, pid, proof, inputs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set process results: %w", err)
+	}
+	hash := tx.Hash()
+	return &hash, nil
+}
+
+func (c *Contracts) SetProcessStatus(processID []byte, status uint8) (*common.Hash, error) {
+	var pid [32]byte
+	copy(pid[:], processID)
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	autOpts, err := c.authTransactOpts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transact options: %w", err)
+	}
+	autOpts.Context = ctx
+	tx, err := c.processes.SetProcessStatus(autOpts, pid, uint8(status))
+	if err != nil {
+		return nil, fmt.Errorf("failed to set process status: %w", err)
 	}
 	hash := tx.Hash()
 	return &hash, nil
@@ -200,6 +237,10 @@ func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<
 							log.Errorw(err, "failed to get process while monitoring")
 							continue
 						}
+						if p.Status == types.ProcessStatusEnded {
+							log.Debugw("process already ended, skipping", "processId", event.ProcessId)
+							return // Skip already ended processes
+						}
 						if p.OrganizationId.Cmp(common.Address{}) != 0 {
 							p.ID = event.ProcessId[:]
 							ch2 <- p
@@ -240,6 +281,11 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		CensusOrigin: p.Census.CensusOrigin,
 	}
 
+	results := make([]*types.BigInt, len(p.Result))
+	for i, r := range p.Result {
+		results[i] = (*types.BigInt)(r)
+	}
+
 	return &types.Process{
 		Status:         p.Status,
 		OrganizationId: p.OrganizationId,
@@ -255,6 +301,7 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		Census:             &census,
 		VoteCount:          (*types.BigInt)(p.VoteCount),
 		VoteOverwriteCount: (*types.BigInt)(p.VoteOverwriteCount),
+		Result:             results,
 	}, nil
 }
 
@@ -271,6 +318,7 @@ type ProcessRegistryProcess struct {
 	Census             npbindings.IProcessRegistryCensus
 	VoteCount          *big.Int
 	VoteOverwriteCount *big.Int
+	Result             []*big.Int
 }
 
 func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
@@ -305,6 +353,13 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	prp.Census.CensusURI = p.Census.CensusURI
 	prp.VoteCount = p.VoteCount.MathBigInt()
 	prp.VoteOverwriteCount = p.VoteOverwriteCount.MathBigInt()
-
+	if p.Result != nil {
+		prp.Result = make([]*big.Int, len(p.Result))
+		for i, r := range p.Result {
+			prp.Result[i] = r.MathBigInt()
+		}
+	} else {
+		prp.Result = []*big.Int{} // Ensure it's not nil
+	}
 	return prp
 }

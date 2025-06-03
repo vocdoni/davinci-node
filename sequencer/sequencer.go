@@ -100,6 +100,8 @@ func (s *Sequencer) Start(ctx context.Context) error {
 
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
+	s.finalizer.Start(s.ctx, time.Minute)
+
 	if err := s.startBallotProcessor(); err != nil {
 		s.cancel() // Clean up if we fail to start completely
 		return fmt.Errorf("failed to start ballot processor: %w", err)

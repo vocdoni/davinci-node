@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
@@ -592,8 +593,8 @@ func (s *Storage) PullVerifiedResults(processID []byte) (*VerifiedResults, error
 	// get the value for the given processID
 	val, err := pr.Get(processID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
+		if err.Error() == arbo.ErrKeyNotFound.Error() {
+			return nil, ErrNoMoreElements
 		}
 		return nil, fmt.Errorf("get verified results: %w", err)
 	}
@@ -610,4 +611,27 @@ func (s *Storage) PullVerifiedResults(processID []byte) (*VerifiedResults, error
 	}
 
 	return &res, nil
+}
+
+func (s *Storage) MarkVerifiedResults(processID []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// initialize the read transaction over the results prefix
+	tx := s.db.WriteTx()
+	pr := prefixeddb.NewPrefixedWriteTx(tx, verifiedResultPrefix)
+	// remove the value for the given processID
+	if err := pr.Delete(processID); err != nil {
+		if errors.Is(err, arbo.ErrKeyNotFound) {
+			return nil
+		}
+		return fmt.Errorf("delete verified results: %w", err)
+	}
+
+	// remove the reservation for verifying results if it exists
+	if err := s.deleteArtifact(verifyingResultsReservPrefix, processID); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete verifying results reservation: %w", err)
+	}
+
+	return tx.Commit()
 }
