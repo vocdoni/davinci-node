@@ -1,6 +1,8 @@
 package results
 
 import (
+	"errors"
+
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
@@ -31,6 +33,7 @@ type ResultsVerifierCircuit struct {
 }
 
 func (c *ResultsVerifierCircuit) Define(api frontend.API) error {
+	c.forceCommitment(api)
 	// Verify that the accumulators values matches with the proofs values
 	c.VerifyAccumulatorsHashes(api)
 	// Verify results add, results sub, and encryption key proofs
@@ -41,6 +44,20 @@ func (c *ResultsVerifierCircuit) Define(api frontend.API) error {
 	// add results and the sub results
 	c.VerifyResults(api)
 	return nil
+}
+
+func (c *ResultsVerifierCircuit) forceCommitment(api frontend.API) {
+	cmter, ok := api.(frontend.Committer)
+	if !ok {
+		circuits.FrontendError(api, "circuit must implement frontend.Committer", errors.New("circuit does not implement frontend.Committer"))
+		return
+	}
+	res, err := cmter.Commit(c.EncryptionPublicKey.Serialize()...)
+	if err != nil {
+		circuits.FrontendError(api, "failed to commit encryption public key", err)
+		return
+	}
+	api.AssertIsDifferent(res, 0)
 }
 
 func (c *ResultsVerifierCircuit) VerifyAccumulatorsHashes(api frontend.API) {

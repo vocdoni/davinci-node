@@ -7,19 +7,20 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
 /*
- dbPrefix = bs
- processID_voteID = status
- processID_voteID = 0 -> pending
- processID_voteID = 1 -> verified
- processID_voteID = 2 -> aggregated
- processID_voteID = 3 -> processed
- processID_voteID = 4 -> settled
- processID_voteID = 5 -> error
+	dbPrefix = bs
+	processID_voteID = status
+	processID_voteID = 0 -> pending
+	processID_voteID = 1 -> verified
+	processID_voteID = 2 -> aggregated
+	processID_voteID = 3 -> processed
+	processID_voteID = 4 -> settled
+	processID_voteID = 5 -> error
 */
 
 // ErroBallotAlreadyExists is returned when a ballot already exists in the pending queue.
@@ -93,12 +94,12 @@ func (s *Storage) RemoveBallot(processID, voteID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	// remove reservation
+	// Remove reservation
 	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
-	// remove from pending queue
+	// Remove from pending queue
 	if err := s.deleteArtifact(ballotPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
@@ -113,12 +114,12 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	// remove reservation
+	// Remove reservation
 	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
-	// remove from pending queue
+	// Remove from pending queue
 	if err := s.deleteArtifact(ballotPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
@@ -237,6 +238,65 @@ func (s *Storage) CountVerifiedBallots(processID []byte) int {
 	return count
 }
 
+// MarkVerifiedBallotsDone removes the reservation and the verified ballots.
+// It removes the verified ballots from the verified ballots queue and deletes
+// their reservations.
+func (s *Storage) MarkVerifiedBallotsDone(keys ...[]byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Iterate over all keys to remove the reservation and the verified ballot
+	for _, k := range keys {
+		// Remove reservation
+		if err := s.deleteArtifact(verifiedBallotReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete verified ballot reservation: %w", err)
+		}
+
+		// Remove from verified queue
+		if err := s.deleteArtifact(verifiedBallotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete verified ballot: %w", err)
+		}
+	}
+	return nil
+}
+
+// MarkVerifiedBallotsFailed marks the verified ballots as failed, sets their
+// status to error, removes their reservations, and deletes them from the
+// verified ballots queue. This is typically called when the ballot processing
+// fails or is not valid. It returns an error if any of the operations fail.
+func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Iterate over all keys
+	for _, k := range keys {
+		// Retrieve the verified ballot to mark it as error
+		ballot := new(VerifiedBallot)
+		if err := s.getArtifact(verifiedBallotPrefix, k, ballot); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return fmt.Errorf("verified ballot not found: %w", err)
+			}
+			return fmt.Errorf("get verified ballot: %w", err)
+		}
+
+		// Mark the ballot as error
+		if err := s.setBallotStatus(ballot.ProcessID, ballot.VoteID, BallotStatusError); err != nil {
+			return fmt.Errorf("set ballot status to error: %w", err)
+		}
+
+		// Remove reservation
+		if err := s.deleteArtifact(verifiedBallotReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete verified ballot reservation: %w", err)
+		}
+
+		// Remove from verified queue
+		if err := s.deleteArtifact(verifiedBallotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete verified ballot: %w", err)
+		}
+	}
+	return nil
+}
+
 // PushBallotBatch pushes an aggregated ballot batch to the aggregator queue.
 func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 	s.globalLock.Lock()
@@ -264,6 +324,42 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 		}
 	}
 
+	return nil
+}
+
+// MarkBallotBatchFailed marks a ballot batch as failed, sets all ballots in
+// the batch to error status, removes the reservation, and deletes the batch
+// from the aggregator queue. This is typically called when the batch processing
+// fails or is not valid.
+func (s *Storage) MarkBallotBatchFailed(key []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	pr := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
+	val, err := pr.Get(key)
+	if err != nil {
+		return fmt.Errorf("get batch: %w", err)
+	}
+
+	agg := new(AggregatorBallotBatch)
+	if err := decodeArtifact(val, agg); err != nil {
+		return fmt.Errorf("decode batch: %w", err)
+	}
+
+	// Mark all ballots in the batch as error
+	for _, ballot := range agg.Ballots {
+		if err := s.setBallotStatus(agg.ProcessID, ballot.VoteID, BallotStatusError); err != nil {
+			log.Warnw("failed to set ballot status to error", "error", err.Error())
+		}
+	}
+	// Remove the reservation
+	if err := s.deleteArtifact(aggregBatchReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete reservation: %w", err)
+	}
+	// Remove the batch from the aggregator queue
+	if err := s.deleteArtifact(aggregBatchPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete aggregator batch: %w", err)
+	}
 	return nil
 }
 
@@ -304,24 +400,6 @@ func (s *Storage) NextBallotBatch(processID []byte) (*AggregatorBallotBatch, []b
 	}
 
 	return &abb, chosenKey, nil
-}
-
-// MarkVerifiedBallotDone removes the reservation and the verified ballot.
-func (s *Storage) MarkVerifiedBallotDone(k []byte) error {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-
-	// remove reservation
-	if err := s.deleteArtifact(verifiedBallotReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("delete verified ballot reservation: %w", err)
-	}
-
-	// remove from verified queue
-	if err := s.deleteArtifact(verifiedBallotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("delete verified ballot: %w", err)
-	}
-
-	return nil
 }
 
 // MarkBallotBatchDone called after processing aggregator batch. For simplicity,
@@ -417,13 +495,143 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 func (s *Storage) MarkStateTransitionBatchDone(k []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	// remove reservation
+	// Remove reservation
 	if err := s.deleteArtifact(stateTransitionReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition reservation: %w", err)
 	}
-	// remove from state transition queue
+	// Remove from state transition queue
 	if err := s.deleteArtifact(stateTransitionPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition batch: %w", err)
 	}
 	return nil
+}
+
+// MarkVerifyingResultsProcess marks a process as verifying results by setting
+// a reservation for the processID under the verifyingResultsReservPrefix. It
+// is removed when the verify results are pulled. This is used to avoid to
+// process the same results multiple times.
+func (s *Storage) MarkVerifyingResultsProcess(processID []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Check if the process is already reserved for verifying results
+	// If it is, we do not need to reserve it again
+	if s.isReserved(verifyingResultsReservPrefix, processID) {
+		return nil
+	}
+
+	// Set the process as verifying results
+	if err := s.setReservation(verifyingResultsReservPrefix, processID); err != nil {
+		return fmt.Errorf("set verifying results reservation: %w", err)
+	}
+
+	return nil
+}
+
+// IsVerifyingResultsProcess checks if a process is currently reserved for
+// verifying results.
+func (s *Storage) IsVerifyingResultsProcess(processID []byte) bool {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Check if the process is reserved for verifying results
+	return s.isReserved(verifyingResultsReservPrefix, processID)
+}
+
+// PushVerifiedResults stores the verified results for a given processID.
+// It encodes the VerifiedResults struct and stores it in the database under
+// the verifiedResultPrefix with the processID as the key. It does not
+// calculate the key by the current value because the results should be unique
+// for each processID. If the processID already exists, it will overwrite
+// the existing value. If any error occurs during encoding or writing to the
+// database, it returns an error with a descriptive message.
+func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// encode the verified results struct
+	val, err := encodeArtifact(res)
+	if err != nil {
+		return fmt.Errorf("encode state transition batch: %w", err)
+	}
+
+	// initialize the write transaction over the results prefix
+	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedResultPrefix)
+
+	// set the key-value pair in the write transaction using the processID as
+	// the key
+	if err := wTx.Set(res.ProcessID, val); err != nil {
+		wTx.Discard()
+		return err
+	}
+
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// PullVerifiedResults retrieves the verified results for a given processID.
+// It initializes a read transaction over the verifiedResultPrefix and
+// retrieves the value for the given processID. If the value is found, it
+// decodes it into a VerifiedResults struct and returns it. If the value is
+// not found, it returns ErrNotFound. If any other error occurs during the
+// retrieval or decoding, it returns an error with a descriptive message.
+// It also removes the reservation for verifying results if it exists.
+func (s *Storage) PullVerifiedResults(processID []byte) (*VerifiedResults, error) {
+	if !s.IsVerifyingResultsProcess(processID) {
+		return nil, ErrNoMoreElements
+	}
+
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// initialize the read transaction over the results prefix
+	pr := prefixeddb.NewPrefixedReader(s.db, verifiedResultPrefix)
+
+	// get the value for the given processID
+	val, err := pr.Get(processID)
+	if err != nil {
+		if err.Error() == arbo.ErrKeyNotFound.Error() {
+			return nil, ErrNoMoreElements
+		}
+		return nil, fmt.Errorf("get verified results: %w", err)
+	}
+
+	// decode the verified results struct
+	var res VerifiedResults
+	if err := decodeArtifact(val, &res); err != nil {
+		return nil, fmt.Errorf("decode verified results: %w", err)
+	}
+
+	// remove the reservation for verifying results if it exists
+	if err := s.deleteArtifact(verifyingResultsReservPrefix, res.ProcessID); err != nil && !errors.Is(err, ErrNotFound) {
+		return nil, fmt.Errorf("delete verifying results reservation: %w", err)
+	}
+
+	return &res, nil
+}
+
+func (s *Storage) MarkVerifiedResults(processID []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// initialize the read transaction over the results prefix
+	tx := s.db.WriteTx()
+	pr := prefixeddb.NewPrefixedWriteTx(tx, verifiedResultPrefix)
+	// remove the value for the given processID
+	if err := pr.Delete(processID); err != nil {
+		if errors.Is(err, arbo.ErrKeyNotFound) {
+			return nil
+		}
+		return fmt.Errorf("delete verified results: %w", err)
+	}
+
+	// remove the reservation for verifying results if it exists
+	if err := s.deleteArtifact(verifyingResultsReservPrefix, processID); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete verifying results reservation: %w", err)
+	}
+
+	return tx.Commit()
 }
