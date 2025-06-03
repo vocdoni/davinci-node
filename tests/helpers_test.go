@@ -102,7 +102,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
-		composeEnv[zContractsBranchNameEnvVarName] = "f/results_verification"
+		// composeEnv[zContractsBranchNameEnvVarName] = "f/results_verification"
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
@@ -517,4 +517,26 @@ func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessI
 		return 0
 	}
 	return int(process.VoteCount.MathBigInt().Int64())
+}
+
+func finishProcessOnContract(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) {
+	c := qt.New(t)
+	txHash, err := contracts.SetProcessStatus(pid.Marshal(), types.ProcessStatusEnded)
+	c.Assert(err, qt.IsNil)
+	if txHash == nil {
+		c.Fatal("failed to finish process, tx hash is nil")
+	}
+	err = contracts.WaitTx(*txHash, time.Second*30)
+	c.Assert(err, qt.IsNil)
+	t.Logf("process %s finished successfully", pid.String())
+}
+
+func publishedResults(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) []*types.BigInt {
+	c := qt.New(t)
+	process, err := contracts.Process(pid.Marshal())
+	c.Assert(err, qt.IsNil)
+	if process == nil || len(process.Result) == 0 {
+		return nil
+	}
+	return process.Result
 }
