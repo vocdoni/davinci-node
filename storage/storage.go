@@ -117,6 +117,7 @@ func (s *Storage) clearAllReservations(prefix []byte) error {
 	}
 	// Delete them in a write transaction
 	if len(keysToDelete) > 0 {
+		log.Debugw("clearing queue reservations", "count", len(keysToDelete))
 		for _, kk := range keysToDelete {
 			if err := wTx.Delete(kk); err != nil {
 				return fmt.Errorf("failed to delete reservation key %x: %w", kk, err)
