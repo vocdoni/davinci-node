@@ -13,16 +13,16 @@ var Artifacts = circuits.NewCircuitArtifacts(
 	&circuits.Artifact{
 		Name:      "results verifier ccs",
 		RemoteURL: config.ResultsVerifierCircuitURL,
-		Hash:      types.HexStringToHexBytes(config.ResultsVerifierCircuitHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.ResultsVerifierCircuitHash),
 	},
 	&circuits.Artifact{
 		Name:      "results verifier proving key",
 		RemoteURL: config.ResultsVerifierProvingKeyURL,
-		Hash:      types.HexStringToHexBytes(config.ResultsVerifierProvingKeyHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.ResultsVerifierProvingKeyHash),
 	},
 	&circuits.Artifact{
 		Name:      "results verifier verification key",
 		RemoteURL: config.ResultsVerifierVerificationKeyURL,
-		Hash:      types.HexStringToHexBytes(config.ResultsVerifierVerificationKeyHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.ResultsVerifierVerificationKeyHash),
 	},
 )

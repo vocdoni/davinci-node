@@ -13,16 +13,16 @@ var Artifacts = circuits.NewCircuitArtifacts(
 	&circuits.Artifact{
 		Name:      "state-transition ccs",
 		RemoteURL: config.StateTransitionCircuitURL,
-		Hash:      types.HexStringToHexBytes(config.StateTransitionCircuitHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.StateTransitionCircuitHash),
 	},
 	&circuits.Artifact{
 		Name:      "state-transition proving key",
 		RemoteURL: config.StateTransitionProvingKeyURL,
-		Hash:      types.HexStringToHexBytes(config.StateTransitionProvingKeyHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.StateTransitionProvingKeyHash),
 	},
 	&circuits.Artifact{
 		Name:      "state-transition verification key",
 		RemoteURL: config.StateTransitionVerificationKeyURL,
-		Hash:      types.HexStringToHexBytes(config.StateTransitionVerificationKeyHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.StateTransitionVerificationKeyHash),
 	},
 )

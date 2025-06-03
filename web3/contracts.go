@@ -169,7 +169,7 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	if err != nil {
 		return fmt.Errorf("failed to get verifier address: %w", err)
 	}
-	if !bytes.Equal(stkey[:], types.HexStringToHexBytes(config.StateTransitionProvingKeyHash)) {
+	if !bytes.Equal(stkey[:], types.HexStringToHexBytesMustUnmarshal(config.StateTransitionProvingKeyHash)) {
 		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, stkey)
 	}
 
@@ -178,7 +178,7 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	if err != nil {
 		return fmt.Errorf("failed to get verifier address: %w", err)
 	}
-	if !bytes.Equal(rkey[:], types.HexStringToHexBytes(config.ResultsVerifierProvingKeyHash)) {
+	if !bytes.Equal(rkey[:], types.HexStringToHexBytesMustUnmarshal(config.ResultsVerifierProvingKeyHash)) {
 		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, rkey)
 	}
 
