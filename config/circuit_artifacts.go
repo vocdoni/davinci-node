@@ -67,15 +67,15 @@ var (
 	// ResultsVerifierCircuitURL is the URL for the statetransition circuit
 	ResultsVerifierCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, ResultsVerifierCircuitHash)
 	// ResultsVerifierCircuitHash is the hash of the statetransition circuit
-	ResultsVerifierCircuitHash = "158539b2c251aaf8ff9152ee0aecbebd41af0da6b9a75c6643461f8763e0bb65"
+	ResultsVerifierCircuitHash = "8ff1f9259ac05fe276a8ed14e9ef7a984b881c9e7d9601785c2e94ece790ecb6"
 	// ResultsVerifierProvingKeyURL is the URL for the resultsverifier proving key
 	ResultsVerifierProvingKeyURL = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, ResultsVerifierProvingKeyHash)
 	// ResultsVerifierProvingKeyHash is the hash of the resultsverifier proving key
-	ResultsVerifierProvingKeyHash = "189351fed43a79f7db8aa1bc8177f60e8d3886850402d97e48a55067404a29bd"
+	ResultsVerifierProvingKeyHash = "36e61ffb210981b919ce133f231cb1bbc4121b5c77eae0bc00deb3e3ff20fbad"
 	// ResultsVerifierVerificationKeyURL is the URL for the resultsverifier verification key
 	ResultsVerifierVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, ResultsVerifierVerificationKeyHash)
 	// ResultsVerifierVerificationKeyHash is the hash of the resultsverifier verification key
-	ResultsVerifierVerificationKeyHash = "48ff2ec678b4c869f06a9455263b75d5b00b9136e735f1cbb790d4deec626d23"
+	ResultsVerifierVerificationKeyHash = "8393460373663e759b80ac1318340d0c05ed111483c88a2c39dd8969b8af9464"
 
 	// BallotProofWasmHelperURL is the default URL for the WASM helper
 	BallotProofWasmHelperURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/ballotproof-wasm/ballotproof.wasm"
