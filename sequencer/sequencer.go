@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3"
@@ -88,56 +86,6 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	}
 	// Initialize the finalizer
 	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, s.prover)
-	return s, nil
-}
-
-// NewWorker creates a Sequencer instance configured for worker mode.
-// Only loads the necessary artifacts for ballot processing (vote verifier).
-//
-// Parameters:
-//   - stg: Storage instance for accessing ballots and other data
-//   - masterURL: URL of the master node to connect to
-//   - workerAddress: Ethereum address identifying this worker
-//
-// Returns a configured Sequencer instance for worker mode or an error if initialization fails.
-func NewWorker(stg *storage.Storage, masterURL string, workerAddress string) (*Sequencer, error) {
-	if stg == nil {
-		return nil, fmt.Errorf("storage cannot be nil")
-	}
-	if masterURL == "" {
-		return nil, fmt.Errorf("masterURL cannot be empty for worker mode")
-	}
-	if workerAddress == "" {
-		return nil, fmt.Errorf("workerAddress must be provided")
-	}
-
-	startTime := time.Now()
-
-	s := &Sequencer{
-		stg:             stg,
-		contracts:       nil,               // Workers don't need web3 contracts
-		batchTimeWindow: 0,                 // Workers don't use batch processing
-		pids:            NewProcessIDMap(), // Still needed for ExistsProcessID check
-		prover:          DefaultProver,
-		masterURL:       masterURL,
-		workerAddress:   workerAddress,
-	}
-
-	s.bVkCircom = ballotprooftest.TestCircomVerificationKey
-
-	var err error
-	log.Debugw("reading ccs and pk cicuit artifact", "circuit", "voteVerifier")
-	s.vvCcs, s.vvPk, err = loadCircuitArtifacts(voteverifier.Artifacts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
-	}
-
-	log.Debugw("worker sequencer initialized",
-		"masterURL", masterURL,
-		"workerAddress", workerAddress,
-		"took", time.Since(startTime).String(),
-	)
-
 	return s, nil
 }
 
