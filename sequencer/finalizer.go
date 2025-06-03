@@ -38,6 +38,10 @@ type finalizer struct {
 
 // New creates a new Finalizer instance.
 func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, prover ProverFunc) *finalizer {
+	// Default prover function if none is provided
+	if prover == nil {
+		prover = DefaultProver
+	}
 	// We'll create the context in Start() now to avoid premature cancellation
 	return &finalizer{
 		stg:        stg,

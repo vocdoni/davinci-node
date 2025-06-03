@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/results"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
 	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
@@ -21,6 +22,16 @@ import (
 	"go.vocdoni.io/dvote/db/metadb"
 )
 
+func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
+	t.Helper()
+	ca := new(internalCircuits)
+	err := results.Artifacts.DownloadAll(t.Context())
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("failed to download results verifier artifacts: %v", err))
+	ca.rvCcs, ca.rvPk, err = loadCircuitArtifacts(results.Artifacts)
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("failed to load results verifier artifacts: %v", err))
+	return ca
+}
+
 // TestFinalize tests the finalize method of the Finalizer struct
 func TestFinalize(t *testing.T) {
 	c := qt.New(t)
@@ -30,7 +41,7 @@ func TestFinalize(t *testing.T) {
 	defer cleanup()
 
 	// Create a finalizer
-	f := newFinalizer(stg, stateDB, nil, nil)
+	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil)
 	f.Start(t.Context(), 0)
 
 	// Test finalize
@@ -71,7 +82,7 @@ func TestFinalizeByDate(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Create a finalizer with monitoring disabled
-	f := newFinalizer(stg, stateDB, nil, nil)
+	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil)
 	f.Start(t.Context(), 0)
 
 	// Call finalizeByDate with current time
