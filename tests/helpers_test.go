@@ -523,9 +523,7 @@ func finishProcessOnContract(t *testing.T, contracts *web3.Contracts, pid *types
 	c := qt.New(t)
 	txHash, err := contracts.SetProcessStatus(pid.Marshal(), types.ProcessStatusEnded)
 	c.Assert(err, qt.IsNil)
-	if txHash == nil {
-		c.Fatal("failed to finish process, tx hash is nil")
-	}
+	c.Assert(txHash, qt.IsNotNil)
 	err = contracts.WaitTx(*txHash, time.Second*30)
 	c.Assert(err, qt.IsNil)
 	t.Logf("process %s finished successfully", pid.String())

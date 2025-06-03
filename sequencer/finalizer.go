@@ -263,6 +263,9 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		subAccumulator[i] = result
 		subAccumulatorsEncrypted[i] = *ct
 		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
+		if err != nil {
+			return fmt.Errorf("could not build decryption proof for sub accumulator for process %x: %w", pid.Marshal(), err)
+		}
 		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
 	}
 	log.Debugw("decrypted sub accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)

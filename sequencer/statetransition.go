@@ -94,7 +94,7 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 
-		//Gget raw public inputs
+		// Get raw public inputs
 		rootHashAfter, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root hash after")
