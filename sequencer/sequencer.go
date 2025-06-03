@@ -78,7 +78,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		contracts:       contracts,
 		batchTimeWindow: batchTimeWindow,
 		pids:            NewProcessIDMap(),
-		prover:          DefaultProver, // Use the default prover by default
+		prover:          DefaultProver,
 	}
 	// Load the internal circuits
 	if err := s.loadInternalCircuitArtifacts(); err != nil {

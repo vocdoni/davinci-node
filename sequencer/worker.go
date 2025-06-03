@@ -55,10 +55,11 @@ func NewWorker(stg *storage.Storage, masterURL string, workerAddress string) (*S
 		workerAddress:   workerAddress,
 	}
 
+	s.internalCircuits = new(internalCircuits)
 	s.bVkCircom = ballotprooftest.TestCircomVerificationKey
 
-	var err error
 	log.Debugw("reading ccs and pk cicuit artifact", "circuit", "voteVerifier")
+	var err error
 	s.vvCcs, s.vvPk, err = loadCircuitArtifacts(voteverifier.Artifacts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)

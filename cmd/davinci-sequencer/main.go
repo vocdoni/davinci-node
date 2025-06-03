@@ -83,7 +83,6 @@ func runWorkerMode(cfg *Config) {
 
 	// Generate worker address if not provided
 	if cfg.Worker.Address == "" {
-		// For now, require explicit address - could generate random in future
 		log.Fatalf("worker address is required (use --worker.address flag)")
 	}
 
@@ -95,6 +94,11 @@ func runWorkerMode(cfg *Config) {
 	}
 	storage := storage.New(storagedb)
 	defer storage.Close()
+
+	// Download circuit artifacts
+	if err := service.DownloadWorkerArtifacts(artifactsTimeout, path.Join(cfg.Datadir, "artifacts")); err != nil {
+		log.Fatalf("failed to download artifacts: %v", err)
+	}
 
 	// Create worker sequencer
 	workerSeq, err := sequencer.NewWorker(
