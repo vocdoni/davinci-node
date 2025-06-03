@@ -40,6 +40,26 @@ func DownloadArtifacts(timeout time.Duration, dataDir string) error {
 	g.Go(func() error {
 		return results.Artifacts.DownloadAll(ctx)
 	})
-	log.Infow("preparing zkSNARK circuit artifacts", "timeout", timeout, "dataDir", dataDir)
+	log.Infow("preparing zkSNARK circuit full sequencer artifacts", "timeout", timeout, "dataDir", dataDir)
+	return g.Wait()
+}
+
+func DownloadWorkerArtifacts(timeout time.Duration, dataDir string) error {
+	if dataDir != "" {
+		circuits.BaseDir = dataDir
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		return voteverifier.Artifacts.DownloadAll(ctx)
+	})
+	g.Go(func() error {
+		return ballotproof.Artifacts.DownloadAll(ctx)
+	})
+	log.Infow("preparing zkSNARK circuit worker artifacts", "timeout", timeout, "dataDir", dataDir)
 	return g.Wait()
 }
