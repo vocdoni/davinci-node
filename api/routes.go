@@ -39,6 +39,14 @@ const (
 	DeleteCensusEndpoint = "/censuses/{" + CensusURLParam + "}"
 	// GetCensusProofEndpoint is the endpoint for getting a proof of a census
 	GetCensusProofEndpoint = "/censuses/{" + CensusURLParam + "}/proof"
+
+	// Worker endpoints
+	WorkerUUIDParam         = "uuid"
+	WorkerAddressParam      = "address"
+	WorkersEndpoint         = "/workers"
+	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}"
+	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"
+	WorkersListEndpoint     = WorkersEndpoint
 )
 
 // EndpointWithParam replaces the key in the path with the param value
@@ -46,4 +54,11 @@ const (
 // parameters.
 func EndpointWithParam(path, key, param string) string {
 	return strings.Replace(path, "{"+key+"}", param, 1)
+}
+
+// LogExcludedPrefixes returns the default list of URL prefixes to exclude from logging
+var LogExcludedPrefixes = []string{
+	PingEndpoint,
+	WorkersEndpoint,
+	InfoEndpoint,
 }

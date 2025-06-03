@@ -93,7 +93,12 @@ func (s *Sequencer) processAvailableBallots() bool {
 		}
 
 		// Process the ballot
-		log.Debugw("processing ballot", "address", ballot.Address.String())
+		log.Infow("processing ballot",
+			"address", ballot.Address.String(),
+			"queued", s.stg.CountPendingBallots(),
+			"voteID", hex.EncodeToString(ballot.VoteID()),
+			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+		)
 
 		verifiedBallot, err := s.processBallot(ballot)
 		if err != nil {

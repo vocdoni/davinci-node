@@ -43,6 +43,10 @@ type Sequencer struct {
 	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
 	// If this time elapses, the batch will be processed even if not full.
 	batchTimeWindow time.Duration
+
+	// Worker mode fields
+	masterURL     string // URL of master node (empty for master mode)
+	workerAddress string // Ethereum address identifying this worker
 }
 
 // New creates a new Sequencer instance that processes ballots and aggregates them into batches.
@@ -66,7 +70,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 
 	log.Debugw("sequencer initialized",
 		"batchTimeWindow", batchTimeWindow.String(),
-		"took(s)", time.Since(startTime).Seconds(),
+		"took", time.Since(startTime).String(),
 	)
 	// Create a new Sequencer instance
 	s := &Sequencer{
@@ -88,6 +92,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 // Start begins the ballot processing and aggregation routines.
 // It creates a new context derived from the provided one and starts
 // the background goroutines for processing ballots and aggregating them.
+// In worker mode, it only starts the worker processor.
 //
 // Parameters:
 //   - ctx: Parent context for controlling the sequencer's lifecycle
@@ -100,25 +105,38 @@ func (s *Sequencer) Start(ctx context.Context) error {
 
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
+	if s.masterURL != "" {
+		// Worker mode: start worker processor
+		if err := s.startWorkerProcessor(); err != nil {
+			s.cancel()
+			return fmt.Errorf("failed to start worker processor: %w", err)
+		}
+		log.Infow("sequencer started in worker mode",
+			"master", s.masterURL,
+			"address", s.workerAddress)
+		return nil
+	}
+
+	// Master mode: start all processors
 	s.finalizer.Start(s.ctx, time.Minute)
 
 	if err := s.startBallotProcessor(); err != nil {
-		s.cancel() // Clean up if we fail to start completely
+		s.cancel()
 		return fmt.Errorf("failed to start ballot processor: %w", err)
 	}
 
 	if err := s.startAggregateProcessor(AggregatorTickerInterval); err != nil {
-		s.cancel() // Clean up if we fail to start completely
+		s.cancel()
 		return fmt.Errorf("failed to start aggregate processor: %w", err)
 	}
 
 	if err := s.startStateTransitionProcessor(); err != nil {
-		s.cancel() // Clean up if we fail to start completely
+		s.cancel()
 		return fmt.Errorf("failed to start state transition processor: %w", err)
 	}
 
 	if err := s.startOnchainProcessor(); err != nil {
-		s.cancel() // Clean up if we fail to start completely
+		s.cancel()
 		return fmt.Errorf("failed to start on-chain processor: %w", err)
 	}
 

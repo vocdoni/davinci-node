@@ -36,6 +36,7 @@ var (
 	ErrCensusNotFound          = Error{Code: 40011, HTTPstatus: http.StatusNotFound, Err: fmt.Errorf("census not found")}
 	ErrKeyLengthExceeded       = Error{Code: 40012, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("key length exceeded")}
 	ErrInvalidBallotInputsHash = Error{Code: 40013, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("invalid ballot inputs hash")}
+	ErrUnauthorized            = Error{Code: 40014, HTTPstatus: http.StatusForbidden, Err: fmt.Errorf("unauthorized")}
 
 	ErrMarshalingServerJSONFailed = Error{Code: 50001, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("marshaling (server-side) JSON failed")}
 	ErrGenericInternalServerError = Error{Code: 50002, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("internal server error")}

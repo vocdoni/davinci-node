@@ -30,7 +30,7 @@ var ErroBallotAlreadyExists = errors.New("ballot already exists")
 func (s *Storage) PushBallot(b *Ballot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	val, err := encodeArtifact(b)
+	val, err := EncodeArtifact(b)
 	if err != nil {
 		return fmt.Errorf("encode ballot: %w", err)
 	}
@@ -58,7 +58,20 @@ func (s *Storage) PushBallot(b *Ballot) error {
 func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+	s.workersLock.Lock()
+	defer s.workersLock.Unlock()
+	return s.nextBallot()
+}
 
+// NextBallotForWorker is like NextBallot but does not lock the global lock.
+// It is used by workers to fetch the next ballot without blocking other operations.
+func (s *Storage) NextBallotForWorker() (*Ballot, []byte, error) {
+	s.workersLock.Lock()
+	defer s.workersLock.Unlock()
+	return s.nextBallot()
+}
+
+func (s *Storage) nextBallot() (*Ballot, []byte, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	var chosenKey, chosenVal []byte
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
@@ -66,7 +79,9 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 		if s.isReserved(ballotReservationPrefix, k) {
 			return true
 		}
-		chosenKey = k
+		// Make a copy of the key to avoid potential issues with slice reuse
+		chosenKey = make([]byte, len(k))
+		copy(chosenKey, k)
 		chosenVal = v
 		return false
 	}); err != nil {
@@ -77,8 +92,18 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 	}
 
 	var b Ballot
-	if err := decodeArtifact(chosenVal, &b); err != nil {
+	if err := DecodeArtifact(chosenVal, &b); err != nil {
 		return nil, nil, fmt.Errorf("decode ballot: %w", err)
+	}
+
+	// The key must match the ballot's VoteID
+	// When using prefixed iteration, ensure we use the ballot's actual VoteID as the key
+	voteID := b.VoteID()
+
+	// Verify that the chosen key matches the ballot's VoteID
+	if !bytes.Equal(chosenKey, voteID) {
+		// This should not happen, but if it does, use the ballot's VoteID as the correct key
+		chosenKey = voteID
 	}
 
 	// set reservation
@@ -125,7 +150,7 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 	}
 
 	// store verified ballot
-	val, err := encodeArtifact(vb)
+	val, err := EncodeArtifact(vb)
 	if err != nil {
 		return fmt.Errorf("encode verified ballot: %w", err)
 	}
@@ -176,7 +201,7 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 		}
 
 		var vb VerifiedBallot
-		if err := decodeArtifact(v, &vb); err != nil {
+		if err := DecodeArtifact(v, &vb); err != nil {
 			return true
 		}
 
@@ -211,6 +236,28 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 	}
 
 	return res, keys, nil
+}
+
+// CountPendingBallots returns the number of pending ballots in the queue
+// which are not reserved. These are ballots added with PushBallot() that
+// haven't been processed yet via NextBallot().
+func (s *Storage) CountPendingBallots() int {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	rd := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
+	count := 0
+	if err := rd.Iterate(nil, func(k, _ []byte) bool {
+		// Skip if already reserved
+		if s.isReserved(ballotReservationPrefix, k) {
+			return true
+		}
+		count++
+		return true
+	}); err != nil {
+		log.Warnw("failed to count pending ballots", "error", err.Error())
+	}
+	return count
 }
 
 // CountVerifiedBallots returns the number of verified ballots for a given
@@ -302,7 +349,7 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	val, err := encodeArtifact(abb)
+	val, err := EncodeArtifact(abb)
 	if err != nil {
 		return fmt.Errorf("encode batch: %w", err)
 	}
@@ -342,7 +389,7 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 	}
 
 	agg := new(AggregatorBallotBatch)
-	if err := decodeArtifact(val, agg); err != nil {
+	if err := DecodeArtifact(val, agg); err != nil {
 		return fmt.Errorf("decode batch: %w", err)
 	}
 
@@ -391,7 +438,7 @@ func (s *Storage) NextBallotBatch(processID []byte) (*AggregatorBallotBatch, []b
 	}
 
 	var abb AggregatorBallotBatch
-	if err := decodeArtifact(chosenVal, &abb); err != nil {
+	if err := DecodeArtifact(chosenVal, &abb); err != nil {
 		return nil, nil, fmt.Errorf("decode agg batch: %w", err)
 	}
 
@@ -421,7 +468,7 @@ func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 	defer s.globalLock.Unlock()
 
 	// encode the state transition batch
-	val, err := encodeArtifact(stb)
+	val, err := EncodeArtifact(stb)
 	if err != nil {
 		return fmt.Errorf("encode state transition batch: %w", err)
 	}
@@ -481,7 +528,7 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 	}
 	// decode the state transition batch found
 	var stb StateTransitionBatch
-	if err := decodeArtifact(chosenVal, &stb); err != nil {
+	if err := DecodeArtifact(chosenVal, &stb); err != nil {
 		return nil, nil, fmt.Errorf("decode state transition batch: %w", err)
 	}
 	// set reservation
@@ -550,7 +597,7 @@ func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
 	defer s.globalLock.Unlock()
 
 	// encode the verified results struct
-	val, err := encodeArtifact(res)
+	val, err := EncodeArtifact(res)
 	if err != nil {
 		return fmt.Errorf("encode state transition batch: %w", err)
 	}
@@ -601,7 +648,7 @@ func (s *Storage) PullVerifiedResults(processID []byte) (*VerifiedResults, error
 
 	// decode the verified results struct
 	var res VerifiedResults
-	if err := decodeArtifact(val, &res); err != nil {
+	if err := DecodeArtifact(val, &res); err != nil {
 		return nil, fmt.Errorf("decode verified results: %w", err)
 	}
 

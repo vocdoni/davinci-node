@@ -74,3 +74,23 @@ type VoteResponse struct {
 type VoteStatusResponse struct {
 	Status string `json:"status"`
 }
+
+// WorkerJobResponse is the response returned by the worker job submission endpoint.
+type WorkerJobResponse struct {
+	VoteID       types.HexBytes `json:"voteId"`
+	Address      string         `json:"address"`
+	SuccessCount int64          `json:"successCount"`
+	FailedCount  int64          `json:"failedCount"`
+}
+
+// WorkerInfo contains information about a worker node.
+type WorkerInfo struct {
+	Address      string `json:"address"`
+	SuccessCount int64  `json:"successCount"`
+	FailedCount  int64  `json:"failedCount"`
+}
+
+// WorkersListResponse is the response returned by the workers list endpoint.
+type WorkersListResponse struct {
+	Workers []WorkerInfo `json:"workers"`
+}

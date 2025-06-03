@@ -31,6 +31,7 @@ func TestBallotQueue(t *testing.T) {
 	}
 
 	// Scenario: No ballots initially
+	c.Assert(st.CountPendingBallots(), qt.Equals, 0, qt.Commentf("no pending ballots expected initially"))
 	_, _, err = st.NextBallot()
 	c.Assert(err, qt.Equals, ErrNoMoreElements, qt.Commentf("no ballots expected initially"))
 
@@ -52,11 +53,17 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(st.PushBallot(ballot1), qt.IsNil)
 	c.Assert(st.PushBallot(ballot2), qt.IsNil)
 
+	// Verify count of pending ballots
+	c.Assert(st.CountPendingBallots(), qt.Equals, 2, qt.Commentf("should have 2 pending ballots after pushing"))
+
 	// Fetch next ballot and verify its content
 	b1, b1key, err := st.NextBallot()
 	c.Assert(err, qt.IsNil, qt.Commentf("should retrieve a ballot"))
 	c.Assert(b1, qt.IsNotNil)
 	c.Assert(b1key, qt.IsNotNil)
+
+	// Verify count decreased due to reservation
+	c.Assert(st.CountPendingBallots(), qt.Equals, 1, qt.Commentf("should have 1 pending ballot after reserving one"))
 
 	// Store the first ballot's nullifier to track which one we got
 	firstNullifier := b1.Nullifier.String()
@@ -74,6 +81,9 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("should retrieve second ballot"))
 	c.Assert(b2, qt.IsNotNil)
 	c.Assert(b2key, qt.IsNotNil)
+
+	// Verify no more pending ballots (both are reserved)
+	c.Assert(st.CountPendingBallots(), qt.Equals, 0, qt.Commentf("should have 0 pending ballots after reserving both"))
 
 	// Verify we got a different ballot than the first one
 	c.Assert(

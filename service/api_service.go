@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -11,16 +12,18 @@ import (
 
 // APIService represents a service that manages the HTTP API server.
 type APIService struct {
-	storage *storage.Storage
-	api     *api.API
-	mu      sync.Mutex
-	cancel  context.CancelFunc
-	host    string
-	port    int
-	network string
+	storage       *storage.Storage
+	api           *api.API
+	mu            sync.Mutex
+	cancel        context.CancelFunc
+	host          string
+	port          int
+	network       string
+	workerUrlSeed string
+	workerTimeout time.Duration
 }
 
-// NewAPIService creates a new APIService instance.
+// NewAPI creates a new APIService instance.
 func NewAPI(storage *storage.Storage, host string, port int, network string) *APIService {
 	return &APIService{
 		storage: storage,
@@ -28,6 +31,14 @@ func NewAPI(storage *storage.Storage, host string, port int, network string) *AP
 		port:    port,
 		network: network,
 	}
+}
+
+// SetWorkerConfig configures the worker settings for the API service.
+func (as *APIService) SetWorkerConfig(urlSeed string, timeout time.Duration) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	as.workerUrlSeed = urlSeed
+	as.workerTimeout = timeout
 }
 
 // Start begins the API server. It returns an error if the service
@@ -45,10 +56,12 @@ func (as *APIService) Start(ctx context.Context) error {
 	// Create API instance with existing storage
 	var err error
 	as.api, err = api.New(&api.APIConfig{
-		Host:    as.host,
-		Port:    as.port,
-		Storage: as.storage,
-		Network: as.network,
+		Host:          as.host,
+		Port:          as.port,
+		Storage:       as.storage,
+		Network:       as.network,
+		WorkerUrlSeed: as.workerUrlSeed,
+		WorkerTimeout: as.workerTimeout,
 	})
 	if err != nil {
 		as.cancel = nil
