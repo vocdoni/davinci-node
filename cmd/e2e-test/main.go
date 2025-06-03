@@ -62,6 +62,7 @@ func main() {
 		organizationRegistryAddress      = flag.String("organizationRegistryAddress", defaultContracts.OrganizationRegistrySmartContract, "organization registry smart contract address")
 		processRegistryAddress           = flag.String("processRegistryAddress", defaultContracts.ProcessRegistrySmartContract, "process registry smart contract address")
 		stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", defaultContracts.StateTransitionZKVerifier, "state transition zk verifier smart contract address")
+		resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", defaultContracts.ResultsZKVerifier, "state transition zk verifier smart contract address")
 		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
 		createOrg                        = flag.Bool("createOrganization", true, "create a new organization")
@@ -100,6 +101,7 @@ func main() {
 		OrganizationRegistry:      common.HexToAddress(*organizationRegistryAddress),
 		ProcessRegistry:           common.HexToAddress(*processRegistryAddress),
 		StateTransitionZKVerifier: common.HexToAddress(*stateTransitionZKVerifierAddress),
+		ResultsZKVerifier:         common.HexToAddress(*resultsZKVerifierAddress),
 	}); err != nil {
 		log.Fatal(err)
 	}

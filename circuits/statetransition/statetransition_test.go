@@ -17,6 +17,7 @@ import (
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/merkleproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
 	statetransitiontest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/statetransition"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
@@ -441,7 +442,7 @@ func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
 	t.Log("public: RootHashAfter", util.PrettyHex(witness.RootHashAfter))
 	t.Log("public: NumVotes", util.PrettyHex(witness.NumNewVotes))
 	t.Log("public: NumOverwrites", util.PrettyHex(witness.NumOverwrites))
-	for name, mts := range map[string][types.VotesPerBatch]statetransition.MerkleTransition{
+	for name, mts := range map[string][types.VotesPerBatch]merkleproof.MerkleTransition{
 		"Ballot":     witness.VotesProofs.Ballot,
 		"Commitment": witness.VotesProofs.Commitment,
 	} {
@@ -452,7 +453,7 @@ func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
 		}
 	}
 
-	for name, mt := range map[string]statetransition.MerkleTransition{
+	for name, mt := range map[string]merkleproof.MerkleTransition{
 		"ResultsAdd": witness.ResultsProofs.ResultsAdd,
 		"ResultsSub": witness.ResultsProofs.ResultsSub,
 	} {
