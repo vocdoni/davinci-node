@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -58,4 +59,31 @@ func (o *State) AddVote(v *Vote) error {
 
 	o.votes = append(o.votes, v)
 	return nil
+}
+
+// EncryptedBallot returns the ballot associated with a nullifier
+func (o *State) EncryptedBallot(nullifier *big.Int) (*elgamal.Ballot, error) {
+	_, value, err := o.tree.GetBigInt(nullifier)
+	if err != nil {
+		return nil, err
+	}
+	ballot, err := elgamal.NewBallot(Curve).SetBigInts(value)
+	if err != nil {
+		return nil, err
+	}
+	return ballot, nil
+}
+
+// Commitment returns the commitment for a given address
+func (o *State) Commitment(address types.HexBytes) (*big.Int, error) {
+	ffAddress := address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
+	// get the commitment for the address
+	_, value, err := o.tree.GetBigInt(ffAddress.MathBigInt())
+	if err != nil {
+		return nil, err
+	}
+	if len(value) == 0 {
+		return nil, fmt.Errorf("no commitment found for address %s", address)
+	}
+	return value[0], nil
 }

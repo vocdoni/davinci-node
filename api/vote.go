@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"math/big"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -22,7 +26,7 @@ import (
 // GET /votes/status/{processId}/{voteId}
 func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	// Get the processID and voteID from the URL
-	processIDHex := chi.URLParam(r, VoteStatusProcessIDParam)
+	processIDHex := chi.URLParam(r, ProcessURLParam)
 	voteIDHex := chi.URLParam(r, VoteStatusVoteIDParam)
 
 	processID, err := hex.DecodeString(util.TrimHex(processIDHex))
@@ -52,7 +56,91 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	httpWriteJSON(w, response)
 }
 
-// newVote creates a new vote and pushes it to the storage queue
+// voteByNullifier retrieves an encrypted ballot by its nullifier for a given processID
+// GET /votes/{processId}/{nullifier}
+func (a *API) voteByNullifier(w http.ResponseWriter, r *http.Request) {
+	// Get the processID
+	processIDBytes, err := types.HexStringToHexBytes(chi.URLParam(r, ProcessURLParam))
+	if err != nil {
+		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
+		return
+	}
+	processID := new(types.ProcessID).SetBytes(processIDBytes)
+
+	// Get the nullifier (string representation of a big.Int)
+	nullifierStr := chi.URLParam(r, VoteByNullifierNullifierParam)
+	nullifier, valid := new(big.Int).SetString(nullifierStr, 10)
+	if !valid {
+		ErrMalformedNullifier.Write(w)
+		return
+	}
+
+	// Open the state for the process
+	s, err := state.New(a.storage.StateDB(), processID.BigInt())
+	if err != nil {
+		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
+		return
+	}
+	defer func() {
+		if err := s.Close(); err != nil {
+			log.Warnw("could not close state", "processID", processID.String(), "error", err.Error())
+		}
+	}()
+
+	// Get the ballot by nullifier
+	ballot, err := s.EncryptedBallot(nullifier)
+	if err != nil {
+		ErrResourceNotFound.WithErr(err).Write(w)
+		return
+	}
+
+	httpWriteJSON(w, ballot)
+}
+
+// checkAddress checks if an address has already voted in a given process
+// GET /votes/checkAddress/{processId}/{address}
+func (a *API) checkAddress(w http.ResponseWriter, r *http.Request) {
+	// Get the processID
+	processIDBytes, err := types.HexStringToHexBytes(chi.URLParam(r, ProcessURLParam))
+	if err != nil {
+		ErrMalformedProcessID.Write(w)
+		return
+	}
+	processID := new(types.ProcessID).SetBytes(processIDBytes)
+
+	// Get the address
+	address, err := types.HexStringToHexBytes(chi.URLParam(r, VoteCheckAddressParam))
+	if err != nil {
+		ErrMalformedAddress.Write(w)
+		return
+	}
+
+	// Open the state for the process
+	s, err := state.New(a.storage.StateDB(), processID.BigInt())
+	if err != nil {
+		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
+		return
+	}
+	defer func() {
+		if err := s.Close(); err != nil {
+			log.Warnw("could not close state", "processID", processID.String(), "error", err.Error())
+		}
+	}()
+
+	// Check if the address has already voted (by checking the commitment)
+	_, err = s.Commitment(address)
+	if err != nil {
+		if errors.Is(err, arbo.ErrKeyNotFound) {
+			ErrResourceNotFound.Write(w)
+			return
+		}
+		ErrGenericInternalServerError.Withf("could not get commitment: %v", err).Write(w)
+		return
+	}
+	httpWriteOK(w)
+}
+
+// newVote creates a new vote and pushes it to the sequencer queue
 // POST /votes
 func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// decode the vote

@@ -474,7 +474,7 @@ func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.Proces
 		// Construct the status endpoint URL
 		statusEndpoint := api.EndpointWithParam(
 			api.EndpointWithParam(api.VoteStatusEndpoint,
-				api.VoteStatusProcessIDParam, pid.String()),
+				api.ProcessURLParam, pid.String()),
 			api.VoteStatusVoteIDParam, voteID.String())
 
 		// Make the request to get the vote status

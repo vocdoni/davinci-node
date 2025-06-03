@@ -100,21 +100,12 @@ func (a *API) Router() *chi.Mux {
 
 // registerHandlers registers all the HTTP handlers for the API endpoints.
 func (a *API) registerHandlers() {
-	// The following endpoints are registered:
-	// - GET /ping: No parameters
-	// - POST /process: No parameters
-	// - GET /process: No parameters
-	// - POST /census: No parameters
-	// - POST /census/<uuid>/participants: No parameters
-	// - GET /census/<uuid>/participants: No parameters
-	// - GET /census/<uuid>/root: No parameters
-	// - GET /census/<uuid or root>/size: No parameters
-	// - DELETE /census/<uuid>: No parameters
-	// - GET /census/<root>/proof?key=<key>: Parameters: key
+	// health check endpoint
 	log.Infow("register handler", "endpoint", PingEndpoint, "method", "GET")
 	a.router.Get(PingEndpoint, func(w http.ResponseWriter, r *http.Request) {
 		httpWriteOK(w)
 	})
+
 	// processes endpoints
 	log.Infow("register handler", "endpoint", ProcessesEndpoint, "method", "POST")
 	a.router.Post(ProcessesEndpoint, a.newProcess)
@@ -125,6 +116,7 @@ func (a *API) registerHandlers() {
 	a.router.Post(MetadataSetEndpoint, a.setMetadata)
 	log.Infow("register handler", "endpoint", MetadataGetEndpoint, "method", "GET")
 	a.router.Get(MetadataGetEndpoint, a.fetchMetadata)
+
 	// votes endpoints
 	log.Infow("register handler", "endpoint", VotesEndpoint, "method", "POST")
 	a.router.Post(VotesEndpoint, a.newVote)
@@ -132,6 +124,11 @@ func (a *API) registerHandlers() {
 	a.router.Get(VoteStatusEndpoint, a.voteStatus)
 	log.Infow("register handler", "endpoint", InfoEndpoint, "method", "GET")
 	a.router.Get(InfoEndpoint, a.info)
+	log.Infow("register handler", "endpoint", VoteByNullifierEndpoint, "method", "GET")
+	a.router.Get(VoteByNullifierEndpoint, a.voteByNullifier)
+	log.Infow("register handler", "endpoint", VoteCheckEndpoint, "method", "GET")
+	a.router.Get(VoteCheckEndpoint, a.checkAddress)
+
 	// census endpoints
 	log.Infow("register handler", "endpoint", NewCensusEndpoint, "method", "POST")
 	a.router.Post(NewCensusEndpoint, a.newCensus)

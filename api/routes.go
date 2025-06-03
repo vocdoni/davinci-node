@@ -15,12 +15,22 @@ const (
 	// information should be in the smart contract.
 	TestSetProcessEndpoint = "/processes/test"
 	TestProcessEndpoint    = "/processes/test/{" + ProcessURLParam + "}"
+
 	// VotesEndpoint is the endpoint for submitting a vote
 	VotesEndpoint = "/votes"
+
 	// VoteStatusEndpoint is the endpoint for checking the status of a vote
-	VoteStatusProcessIDParam = "processId"
-	VoteStatusVoteIDParam    = "voteId"
-	VoteStatusEndpoint       = "/votes/status/{" + VoteStatusProcessIDParam + "}/{" + VoteStatusVoteIDParam + "}"
+	VoteStatusEndpoint    = VotesEndpoint + "/status/{" + ProcessURLParam + "}/{" + VoteStatusVoteIDParam + "}"
+	VoteStatusVoteIDParam = "voteId"
+
+	// VoteByNullifierEndpoint is the endpoint for getting a vote by its nullifier
+	VoteByNullifierEndpoint       = VotesEndpoint + "/{" + ProcessURLParam + "}/{" + VoteByNullifierNullifierParam + "}"
+	VoteByNullifierNullifierParam = "nullifier"
+
+	// VoteCheckEndpoint is the endpoint for checking the vote status by address
+	VoteCheckEndpoint     = VotesEndpoint + "/check/{" + ProcessURLParam + "}/{" + VoteCheckAddressParam + "}"
+	VoteCheckAddressParam = "address"
+
 	// InfoEndpoint is the endpoint for getting ballot proof information
 	InfoEndpoint = "/info"
 
