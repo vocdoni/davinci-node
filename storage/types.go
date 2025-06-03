@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -213,6 +214,40 @@ func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
 		big.NewInt(int64(s.NumOverwrites)),
 	}
 	arrType, err := abi.NewType("uint256[4]", "", nil)
+	if err != nil {
+		return nil, err
+	}
+	arguments := abi.Arguments{
+		{Type: arrType},
+	}
+	return arguments.Pack(arr)
+}
+
+// VerifiedResults is the struct that contains the information of a results
+// of a process which has been verified by the sequencer. It includes the
+// process ID, the proof of the results and the inputs of the proof.
+type VerifiedResults struct {
+	ProcessID types.HexBytes             `json:"processId"`
+	Proof     *groth16_bn254.Proof       `json:"proof"`
+	Inputs    ResultsVerifierProofInputs `json:"inputs"`
+}
+
+// ResultsVerifierProofInputs is the struct that contains the inputs of the
+// results verifier proof. It includes the state root and the decrypted results
+// of the votes.
+type ResultsVerifierProofInputs struct {
+	StateRoot *big.Int                        `json:"stateRoot"`
+	Results   [types.FieldsPerBallot]*big.Int `json:"results"`
+}
+
+// ABIEncode packs the state root and results as a single static uint256[1 + N]
+// blob, where N is the number of fields in the ballot (i.e., 4).
+// The first element is the state root, followed by the results for each field.
+//
+//	[ stateRoot, result1, result2, ..., resultN ]
+func (r *ResultsVerifierProofInputs) ABIEncode() ([]byte, error) {
+	arr := append([]*big.Int{r.StateRoot}, r.Results[:]...)
+	arrType, err := abi.NewType(fmt.Sprintf("uint256[%d]", len(arr)), "", nil)
 	if err != nil {
 		return nil, err
 	}

@@ -31,6 +31,7 @@ func TestBallotQueue(t *testing.T) {
 	}
 
 	// Scenario: No ballots initially
+	c.Assert(st.CountPendingBallots(), qt.Equals, 0, qt.Commentf("no pending ballots expected initially"))
 	_, _, err = st.NextBallot()
 	c.Assert(err, qt.Equals, ErrNoMoreElements, qt.Commentf("no ballots expected initially"))
 
@@ -52,11 +53,17 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(st.PushBallot(ballot1), qt.IsNil)
 	c.Assert(st.PushBallot(ballot2), qt.IsNil)
 
+	// Verify count of pending ballots
+	c.Assert(st.CountPendingBallots(), qt.Equals, 2, qt.Commentf("should have 2 pending ballots after pushing"))
+
 	// Fetch next ballot and verify its content
 	b1, b1key, err := st.NextBallot()
 	c.Assert(err, qt.IsNil, qt.Commentf("should retrieve a ballot"))
 	c.Assert(b1, qt.IsNotNil)
 	c.Assert(b1key, qt.IsNotNil)
+
+	// Verify count decreased due to reservation
+	c.Assert(st.CountPendingBallots(), qt.Equals, 1, qt.Commentf("should have 1 pending ballot after reserving one"))
 
 	// Store the first ballot's nullifier to track which one we got
 	firstNullifier := b1.Nullifier.String()
@@ -74,6 +81,9 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("should retrieve second ballot"))
 	c.Assert(b2, qt.IsNotNil)
 	c.Assert(b2key, qt.IsNotNil)
+
+	// Verify no more pending ballots (both are reserved)
+	c.Assert(st.CountPendingBallots(), qt.Equals, 0, qt.Commentf("should have 0 pending ballots after reserving both"))
 
 	// Verify we got a different ballot than the first one
 	c.Assert(
@@ -112,7 +122,7 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(st.isReserved(verifiedBallotReservPrefix, keys1[0]), qt.IsTrue, qt.Commentf("ballot should be reserved"))
 
 	// Mark first ballot as done
-	c.Assert(st.MarkVerifiedBallotDone(keys1[0]), qt.IsNil)
+	c.Assert(st.MarkVerifiedBallotsDone(keys1[0]), qt.IsNil)
 
 	// Now we should be able to pull the second ballot
 	vbs3, keys3, err := st.PullVerifiedBallots(processID.Marshal(), 2)
@@ -248,7 +258,7 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 	c.Assert(keys4, qt.IsNil)
 
 	// Test 5: Mark one ballot as done and pull again - should get nothing as we need to release the reservation
-	c.Assert(st.MarkVerifiedBallotDone(keys1[0]), qt.IsNil)
+	c.Assert(st.MarkVerifiedBallotsDone(keys1[0]), qt.IsNil)
 
 	// Verify count is now 0 because all ballots are either reserved or marked done
 	// When a ballot is marked done, it's completely removed from the database

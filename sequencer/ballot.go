@@ -93,7 +93,12 @@ func (s *Sequencer) processAvailableBallots() bool {
 		}
 
 		// Process the ballot
-		log.Debugw("processing ballot", "address", ballot.Address.String())
+		log.Infow("processing ballot",
+			"address", ballot.Address.String(),
+			"queued", s.stg.CountPendingBallots(),
+			"voteID", hex.EncodeToString(ballot.VoteID()),
+			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+		)
 
 		verifiedBallot, err := s.processBallot(ballot)
 		if err != nil {
@@ -230,8 +235,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	log.Debugw("generating vote verification proof...", "pid", pid.String(), "voteID", hex.EncodeToString(b.VoteID()))
 	proof, err := s.prover(
 		circuits.VoteVerifierCurve,
-		s.voteCcs,
-		s.voteProvingKey,
+		s.vvCcs,
+		s.vvPk,
 		&assignment,
 		opts,
 	)

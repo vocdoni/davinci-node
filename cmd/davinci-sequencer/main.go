@@ -7,11 +7,11 @@ import (
 	"os/signal"
 	"path"
 	"syscall"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/vocdoni-z-sandbox/config"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/web3"
@@ -27,7 +27,6 @@ type Services struct {
 	ProcessMon *service.ProcessMonitor
 	API        *service.APIService
 	Sequencer  *service.SequencerService
-	Finalizer  *service.FinalizerService
 }
 
 func main() {
@@ -42,6 +41,13 @@ func main() {
 	log.Init(cfg.Log.Level, cfg.Log.Output, nil)
 	log.Infow("starting davinci-sequencer", "version", Version)
 
+	// Check for worker mode from --worker flag
+	if cfg.Worker.MasterURL != "" {
+		runWorkerMode(cfg)
+		return
+	}
+
+	// Master mode
 	// Validate configuration
 	if err := validateConfig(cfg); err != nil {
 		log.Fatalf("Invalid configuration: %v", err)
@@ -69,6 +75,57 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	sig := <-sigCh
 	log.Infow("received signal, shutting down", "signal", sig.String())
+}
+
+// runWorkerMode runs the sequencer in worker mode
+func runWorkerMode(cfg *Config) {
+	log.Infow("starting in worker mode", "master", cfg.Worker.MasterURL)
+
+	// Generate worker address if not provided
+	if cfg.Worker.Address == "" {
+		// For now, require explicit address - could generate random in future
+		log.Fatalf("worker address is required (use --worker.address flag)")
+	}
+
+	// Initialize storage database (only for local process tracking)
+	log.Infow("initializing storage", "datadir", cfg.Datadir, "type", db.TypePebble)
+	storagedb, err := metadb.New(db.TypePebble, cfg.Datadir)
+	if err != nil {
+		log.Fatalf("failed to initialize storage: %v", err)
+	}
+	storage := storage.New(storagedb)
+	defer storage.Close()
+
+	// Create worker sequencer
+	workerSeq, err := sequencer.NewWorker(
+		storage,
+		cfg.Worker.MasterURL,
+		cfg.Worker.Address,
+	)
+	if err != nil {
+		log.Fatalf("failed to create worker: %v", err)
+	}
+
+	// Create context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start worker
+	if err := workerSeq.Start(ctx); err != nil {
+		log.Fatalf("failed to start worker: %v", err)
+	}
+
+	log.Infow("worker is running", "address", cfg.Worker.Address)
+
+	// Wait for shutdown signal
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	sig := <-sigCh
+	log.Infow("received signal, shutting down worker", "signal", sig.String())
+
+	if err := workerSeq.Stop(); err != nil {
+		log.Warnw("failed to stop worker cleanly", "error", err)
+	}
 }
 
 // getContractAddresses returns the contract addresses based on configuration
@@ -173,6 +230,12 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	// Start API service
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
 	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network)
+
+	// Configure worker API if enabled
+	if cfg.API.WorkerUrlSeed != "" {
+		services.API.SetWorkerConfig(cfg.API.WorkerUrlSeed, cfg.Worker.Timeout)
+	}
+
 	if err := services.API.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start API service: %w", err)
 	}
@@ -182,13 +245,6 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	services.Sequencer = service.NewSequencer(services.Storage, services.Contracts, cfg.Batch.Time)
 	if err := services.Sequencer.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start sequencer service: %w", err)
-	}
-
-	// Start finalizer service
-	log.Infow("starting finalizer service", "monitorInterval", time.Minute)
-	services.Finalizer = service.NewFinalizer(services.Storage, services.Storage.StateDB(), time.Minute)
-	if err := services.Finalizer.Start(ctx, time.Minute); err != nil {
-		return nil, fmt.Errorf("failed to start finalizer service: %w", err)
 	}
 
 	log.Info("davinci-node is running, ready to process votes!")
@@ -202,9 +258,6 @@ func shutdownServices(services *Services) {
 	}
 
 	// Stop services in reverse order of startup
-	if services.Finalizer != nil {
-		services.Finalizer.Stop()
-	}
 	if services.Sequencer != nil {
 		services.Sequencer.Stop()
 	}

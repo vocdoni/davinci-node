@@ -7,8 +7,8 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
-// Artifact encoding/decoding
-func encodeArtifact(a any) ([]byte, error) {
+// EncodeArtifact encodes an artifact into CBOR format.
+func EncodeArtifact(a any) ([]byte, error) {
 	encOpts := cbor.CoreDetEncOptions()
 	em, err := encOpts.EncMode()
 	if err != nil {
@@ -17,7 +17,8 @@ func encodeArtifact(a any) ([]byte, error) {
 	return em.Marshal(a)
 }
 
-func decodeArtifact(data []byte, out any) error {
+// DecodeArtifact decodes a CBOR-encoded artifact into the provided output variable.
+func DecodeArtifact(data []byte, out any) error {
 	return cbor.Unmarshal(data, out)
 }
 

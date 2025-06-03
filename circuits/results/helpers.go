@@ -14,10 +14,10 @@ import (
 func GenerateWitness(
 	o *state.State,
 	results [types.FieldsPerBallot]*big.Int,
-	addResults [types.FieldsPerBallot]*big.Int,
-	subResults [types.FieldsPerBallot]*big.Int,
-	addCiphertexts [types.FieldsPerBallot]elgamal.Ciphertext,
-	subCiphertexts [types.FieldsPerBallot]elgamal.Ciphertext,
+	addAccumulators [types.FieldsPerBallot]*big.Int,
+	subAccumulators [types.FieldsPerBallot]*big.Int,
+	addAccumulatorsEncrypted [types.FieldsPerBallot]elgamal.Ciphertext,
+	subAccumulatorsEncrypted [types.FieldsPerBallot]elgamal.Ciphertext,
 	decryptionAddProofs [types.FieldsPerBallot]*elgamal.DecryptionProof,
 	decryptionSubProofs [types.FieldsPerBallot]*elgamal.DecryptionProof,
 ) (*ResultsVerifierCircuit, error) {
@@ -32,11 +32,11 @@ func GenerateWitness(
 
 	// Encrypted and decrypted results
 	for i := range types.FieldsPerBallot {
-		witness.AddAccumulatorsEncrypted[i] = *addCiphertexts[i].ToGnark()
-		witness.SubAccumulatorsEncrypted[i] = *subCiphertexts[i].ToGnark()
+		witness.AddAccumulatorsEncrypted[i] = *addAccumulatorsEncrypted[i].ToGnark()
+		witness.SubAccumulatorsEncrypted[i] = *subAccumulatorsEncrypted[i].ToGnark()
 		witness.Results[i] = results[i]
-		witness.AddAccumulators[i] = addResults[i]
-		witness.SubAccumulators[i] = subResults[i]
+		witness.AddAccumulators[i] = addAccumulators[i]
+		witness.SubAccumulators[i] = subAccumulators[i]
 	}
 
 	// Results accumulators proofs

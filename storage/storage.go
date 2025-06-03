@@ -20,17 +20,19 @@ var (
 	ErrNoMoreElements   = errors.New("no more elements")
 
 	// Prefixes
-	ballotPrefix                = []byte("b/")
-	ballotReservationPrefix     = []byte("br/")
-	ballotStatusPrefix          = []byte("bs/")
-	verifiedBallotPrefix        = []byte("vb/")
-	verifiedBallotReservPrefix  = []byte("vbr/")
-	aggregBatchPrefix           = []byte("ag/")
-	aggregBatchReservPrefix     = []byte("agr/")
-	stateTransitionPrefix       = []byte("st/")
-	stateTransitionReservPrefix = []byte("str/")
-	encryptionKeyPrefix         = []byte("ek/")
-	processPrefix               = []byte("p/")
+	ballotPrefix                 = []byte("b/")
+	ballotReservationPrefix      = []byte("br/")
+	ballotStatusPrefix           = []byte("bs/")
+	verifiedBallotPrefix         = []byte("vb/")
+	verifiedBallotReservPrefix   = []byte("vbr/")
+	aggregBatchPrefix            = []byte("ag/")
+	aggregBatchReservPrefix      = []byte("agr/")
+	stateTransitionPrefix        = []byte("st/")
+	stateTransitionReservPrefix  = []byte("str/")
+	verifiedResultPrefix         = []byte("vr/")
+	verifyingResultsReservPrefix = []byte("vrr/")
+	encryptionKeyPrefix          = []byte("ek/")
+	processPrefix                = []byte("p/")
 
 	censusDBprefix = []byte("cs_")
 	stateDBprefix  = []byte("st_")
@@ -45,10 +47,11 @@ type reservationRecord struct {
 
 // Storage manages artifacts in various stages with reservations.
 type Storage struct {
-	db         db.Database
-	censusDB   *census.CensusDB
-	stateDB    db.Database
-	globalLock sync.Mutex
+	db          db.Database
+	censusDB    *census.CensusDB
+	stateDB     db.Database
+	globalLock  sync.Mutex // Lock for global operations
+	workersLock sync.Mutex // Lock for worker-related operations
 }
 
 // New creates a new Storage instance.
@@ -114,6 +117,7 @@ func (s *Storage) clearAllReservations(prefix []byte) error {
 	}
 	// Delete them in a write transaction
 	if len(keysToDelete) > 0 {
+		log.Debugw("clearing queue reservations", "count", len(keysToDelete))
 		for _, kk := range keysToDelete {
 			if err := wTx.Delete(kk); err != nil {
 				return fmt.Errorf("failed to delete reservation key %x: %w", kk, err)
@@ -164,7 +168,7 @@ func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Dur
 	var staleKeys [][]byte
 	if err := wTx.Iterate(nil, func(k, v []byte) bool {
 		r := &reservationRecord{}
-		if err := decodeArtifact(v, r); err != nil {
+		if err := DecodeArtifact(v, r); err != nil {
 			staleKeys = append(staleKeys, append([]byte(nil), k...))
 			return true
 		}
@@ -191,7 +195,7 @@ func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Dur
 }
 
 func (s *Storage) setReservation(prefix, key []byte) error {
-	val, err := encodeArtifact(&reservationRecord{Timestamp: time.Now().Unix()})
+	val, err := EncodeArtifact(&reservationRecord{Timestamp: time.Now().Unix()})
 	if err != nil {
 		return err
 	}
@@ -227,7 +231,7 @@ func (s *Storage) deleteArtifact(prefix, key []byte) error {
 // It returns ErrKeyAlreadyExists if the key already exists.
 func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 	// encode the artifact
-	data, err := encodeArtifact(artifact)
+	data, err := EncodeArtifact(artifact)
 	if err != nil {
 		return err
 	}
@@ -274,7 +278,7 @@ func (s *Storage) getArtifact(prefix []byte, key []byte, out any) error {
 		}
 	}
 
-	if err := decodeArtifact(data, out); err != nil {
+	if err := DecodeArtifact(data, out); err != nil {
 		return fmt.Errorf("could not decode artifact: %w", err)
 	}
 

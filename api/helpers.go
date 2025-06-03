@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -27,6 +28,16 @@ func httpWriteJSON(w http.ResponseWriter, data interface{}) {
 		return
 	}
 	log.Debugw("api response", "bytes", n, "data", strings.ReplaceAll(string(jdata), "\"", ""))
+}
+
+// httpWriteBinary streams an in-memory byte slice as a response.
+func httpWriteBinary(w http.ResponseWriter, data []byte) {
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	if _, err := w.Write(data); err != nil {
+		log.Warnw("failed to write binary response", "error", err)
+		return
+	}
 }
 
 // httpWriteOK helper function allows to write an OK response.

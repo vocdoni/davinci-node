@@ -7,6 +7,14 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+const (
+	ProcessStatusReady    = uint8(iota) // Process is ready to be started
+	ProcessStatusEnded                  // Process has ended and waiting for results
+	ProcessStatusCanceled               // Process has been canceled
+	ProcessStatusPaused                 // Process is paused
+	ProcessStatusResults                // Process has results available
+)
+
 type (
 	GenericMetadata    map[string]string
 	MultilingualString map[string]string

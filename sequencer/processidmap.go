@@ -37,6 +37,11 @@ func (p *ProcessIDMap) Add(pid []byte) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// If the process ID is already in the map, just return
+	if _, exists := p.data[fmt.Sprintf("%x", pid)]; exists {
+		return false
+	}
+
 	pidStr := fmt.Sprintf("%x", pid)
 	p.data[pidStr] = time.Now()
 	return true

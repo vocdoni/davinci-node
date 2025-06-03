@@ -97,8 +97,7 @@ func (s *Sequencer) processAndUpdateBatch(pid []byte, ballotCount int, reason st
 	if err := s.aggregateBatch(pid); err != nil {
 		log.Warnw("failed to aggregate batch",
 			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", pid),
-		)
+			"processID", fmt.Sprintf("%x", pid))
 		return true // Continue to next process ID
 	}
 
@@ -188,7 +187,12 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	// Fill any remaining slots with dummy proofs if needed
 	if len(ballots) < types.VotesPerBatch {
 		log.Debugw("filling with dummy proofs", "count", types.VotesPerBatch-len(ballots))
-		if err := assignment.FillWithDummy(s.voteCcs, s.voteProvingKey, s.ballotVerifyingKeyCircomJSON, len(ballots)); err != nil {
+		if err := assignment.FillWithDummy(s.vvCcs, s.vvPk, s.bVkCircom, len(ballots)); err != nil {
+			if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
+				log.Warnw("failed to mark ballot batch as failed",
+					"error", err.Error(),
+					"processID", fmt.Sprintf("%x", pid))
+			}
 			return fmt.Errorf("failed to fill with dummy proofs: %w", err)
 		}
 	}
@@ -205,12 +209,17 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 
 	proof, err := s.prover(
 		circuits.AggregatorCurve,
-		s.aggregateCcs,
-		s.aggregateProvingKey,
+		s.aggCcs,
+		s.aggPk,
 		assignment,
 		opts,
 	)
 	if err != nil {
+		if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
+			log.Warnw("failed to mark ballot batch as failed",
+				"error", err.Error(),
+				"processID", fmt.Sprintf("%x", pid))
+		}
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)
 	}
 
@@ -233,24 +242,13 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	// Mark the individual ballots as processed
-	failedMarks := 0
-	for _, k := range keys {
-		if err := s.stg.MarkVerifiedBallotDone(k); err != nil {
-			failedMarks++
-			log.Warnw("failed to mark verified ballot as done",
+	if err := s.stg.MarkVerifiedBallotsDone(keys...); err != nil {
+		if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
+			log.Warnw("failed to mark ballot batch as failed",
 				"error", err.Error(),
-				"processID", fmt.Sprintf("%x", pid),
-			)
+				"processID", fmt.Sprintf("%x", pid))
 		}
+		return fmt.Errorf("failed to mark verified ballots as done: %w", err)
 	}
-
-	if failedMarks > 0 {
-		log.Warnw("some ballots could not be marked as done",
-			"failedCount", failedMarks,
-			"totalCount", len(keys),
-			"processID", fmt.Sprintf("%x", pid),
-		)
-	}
-
 	return nil
 }

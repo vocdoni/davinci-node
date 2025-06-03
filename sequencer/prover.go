@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"bytes"
 	"fmt"
 	"testing"
 	"time"
@@ -83,8 +82,8 @@ func NewDebugProver(t *testing.T) ProverFunc {
 			}
 		case *aggregator.AggregatorCircuit:
 			t.Logf("running debug prover for aggregator")
-			vvk := groth16.NewVerifyingKey(circuits.VoteVerifierCurve)
-			if _, err := vvk.UnsafeReadFrom(bytes.NewReader(voteverifier.Artifacts.VerifyingKey())); err != nil {
+			vvk, err := voteverifier.Artifacts.VerifyingKey()
+			if err != nil {
 				t.Fatal(err)
 			}
 			fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](vvk)
@@ -95,8 +94,8 @@ func NewDebugProver(t *testing.T) ProverFunc {
 				Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
 				VerificationKey: fixedVk,
 			}
-			ccs := groth16.NewCS(circuits.VoteVerifierCurve)
-			if _, err := ccs.ReadFrom(bytes.NewReader(aggregator.Artifacts.CircuitDefinition())); err != nil {
+			ccs, err := aggregator.Artifacts.CircuitDefinition()
+			if err != nil {
 				t.Fatal(err)
 			}
 			for i := range types.VotesPerBatch {
@@ -105,8 +104,8 @@ func NewDebugProver(t *testing.T) ProverFunc {
 			placeholder = p
 		case *statetransition.StateTransitionCircuit:
 			t.Logf("running debug prover for statetransition")
-			agVk := groth16.NewVerifyingKey(circuits.AggregatorCurve)
-			if _, err := agVk.UnsafeReadFrom(bytes.NewReader(aggregator.Artifacts.VerifyingKey())); err != nil {
+			agVk, err := aggregator.Artifacts.VerifyingKey()
+			if err != nil {
 				t.Fatal(err)
 			}
 			p := teststatetransition.CircuitPlaceholder()

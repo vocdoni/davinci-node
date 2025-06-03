@@ -405,7 +405,7 @@ func (c *Contracts) SimulateContractCall(
 	ctx context.Context,
 	contractAddr common.Address,
 	contractABI *abi.ABI,
-	method string, args ...interface{},
+	method string, args ...any,
 ) error {
 	data, err := contractABI.Pack(method, args...)
 	if err != nil {

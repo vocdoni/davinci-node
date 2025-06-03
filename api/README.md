@@ -14,6 +14,7 @@ This document describes the HTTP API endpoints for the Vocdoni Z Sandbox API ser
   - [Vote Management](#vote-management)
   - [Vote Status](#vote-status)
   - [Ballot Proof Information](#ballot-proof-information)
+  - [Worker Management](#worker-management)
 
 ## Base URL
 
@@ -466,4 +467,35 @@ The status can be one of the following values:
 - 40001: Resource not found (vote not found)
 - 40006: Malformed process ID
 - 40004: Malformed vote ID
+- 50002: Internal server error
+
+### Worker Management
+
+#### GET /workers
+
+Gets a list of all worker nodes with their statistics.
+
+**URL Parameters**:
+- uuid: Worker authentication UUID (derived from worker seed)
+
+**Response Body**:
+```json
+{
+  "workers": [
+    {
+      "address": "0x742d35Cc6C82C3e76E8B8c9b4aE3F4F7E5A8c6D2",
+      "successCount": 150,
+      "failedCount": 5
+    },
+    {
+      "address": "0x8F4A7B2C1D6E9F3A5B8C2E7F1A4D6C9E2B5A8F7C",
+      "successCount": 200,
+      "failedCount": 2
+    }
+  ]
+}
+```
+
+**Errors**:
+- 401: Unauthorized (invalid UUID)
 - 50002: Internal server error

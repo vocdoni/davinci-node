@@ -1,4 +1,4 @@
-package finalizer
+package sequencer
 
 import (
 	"context"
@@ -7,6 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/consensys/gnark/backend"
+	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
+	"github.com/consensys/gnark/backend/solidity"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
+	"github.com/vocdoni/vocdoni-z-sandbox/circuits/results"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/state"
@@ -19,10 +24,12 @@ const (
 	failbackMaxValue = 2 << 24 // 2^24
 )
 
-// Finalizer is responsible for finalizing processes.
-type Finalizer struct {
+// finalizer is responsible for finalizing processes.
+type finalizer struct {
 	stg        *storage.Storage
 	stateDB    db.Database
+	circuits   *internalCircuits // Internal circuit artifacts for proof generation and verification
+	prover     ProverFunc        // Function for generating zero-knowledge proofs
 	OndemandCh chan *types.ProcessID
 	wg         sync.WaitGroup
 	ctx        context.Context
@@ -30,11 +37,17 @@ type Finalizer struct {
 }
 
 // New creates a new Finalizer instance.
-func New(stg *storage.Storage, stateDB db.Database) *Finalizer {
+func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, prover ProverFunc) *finalizer {
+	// Default prover function if none is provided
+	if prover == nil {
+		prover = DefaultProver
+	}
 	// We'll create the context in Start() now to avoid premature cancellation
-	return &Finalizer{
+	return &finalizer{
 		stg:        stg,
 		stateDB:    stateDB,
+		circuits:   ca,
+		prover:     prover,
 		OndemandCh: make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
 	}
 }
@@ -43,7 +56,7 @@ func New(stg *storage.Storage, stateDB db.Database) *Finalizer {
 // It will also periodically check for processes to finalize based on their start date and duration.
 // The monitorInterval is the interval at which to check for processes to finalize.
 // If monitorInterval is 0, it will not check for processes to finalize.
-func (f *Finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
+func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 	f.ctx, f.cancel = context.WithCancel(ctx)
 
 	f.wg.Add(1)
@@ -86,7 +99,7 @@ func (f *Finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 
 // Close gracefully shuts down the finalizer and waits for all goroutines to exit.
 // This method should be called before closing the database to avoid panics.
-func (f *Finalizer) Close() {
+func (f *finalizer) Close() {
 	// Use a mutex to ensure thread safety if we were to add one
 	if f.cancel == nil {
 		return
@@ -138,7 +151,7 @@ func (f *Finalizer) Close() {
 
 // finalizeByDate finalizes all processes that startdate+duration is before the given date
 // and that do not have a result yet.
-func (f *Finalizer) finalizeByDate(date time.Time) {
+func (f *finalizer) finalizeByDate(date time.Time) {
 	pids, err := f.stg.ListProcessWithEncryptionKeys()
 	if err != nil {
 		log.Errorw(err, "could not list processes")
@@ -166,7 +179,12 @@ func (f *Finalizer) finalizeByDate(date time.Time) {
 // finalize finalizes a process by decrypting the accumulators and storing the result.
 // It retrieves the process from storage, decrypts the accumulators using the encryption keys,
 // and stores the result back to storage.
-func (f *Finalizer) finalize(pid *types.ProcessID) error {
+func (f *finalizer) finalize(pid *types.ProcessID) error {
+	// Set the process as verifying results to avoid reprocessing
+	if err := f.stg.MarkVerifyingResultsProcess(pid.Marshal()); err != nil {
+		return fmt.Errorf("could not mark process %x as verifying results: %w", pid.Marshal(), err)
+	}
+
 	log.Debugw("finalizing process", "pid", pid.String())
 	// Retrieve the process from storage
 	process, err := f.stg.Process(pid)
@@ -213,7 +231,9 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 		maxValue = failbackMaxValue
 	}
 	startTime := time.Now()
-	addAccumulator := make([]*big.Int, len(encryptedAddAccumulator.Ciphertexts))
+	addAccumulator := [types.FieldsPerBallot]*big.Int{}
+	addAccumulatorsEncrypted := [types.FieldsPerBallot]elgamal.Ciphertext{}
+	addDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedAddAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			return fmt.Errorf("invalid ciphertext for process %x: %v", pid.Marshal(), ct)
@@ -223,52 +243,114 @@ func (f *Finalizer) finalize(pid *types.ProcessID) error {
 			return fmt.Errorf("could not decrypt add accumulator for process %x: %w", pid.Marshal(), err)
 		}
 		addAccumulator[i] = result
+		addAccumulatorsEncrypted[i] = *ct
+		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
+		if err != nil {
+			return fmt.Errorf("could not build decryption proof for add accumulator for process %x: %w", pid.Marshal(), err)
+		}
 	}
 	log.Debugw("decrypted add accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
 
 	startTime = time.Now()
-	subAccumulator := make([]*big.Int, len(encryptedSubAccumulator.Ciphertexts))
+	resultsAccumulator := [types.FieldsPerBallot]*big.Int{}
+	subAccumulator := [types.FieldsPerBallot]*big.Int{}
+	subAccumulatorsEncrypted := [types.FieldsPerBallot]elgamal.Ciphertext{}
+	subDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedSubAccumulator.Ciphertexts {
+		if ct.C1 == nil || ct.C2 == nil {
+			return fmt.Errorf("invalid ciphertext for process %x: %v", pid.Marshal(), ct)
+		}
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
 			return fmt.Errorf("could not decrypt sub accumulator for process %x: %w", pid.Marshal(), err)
 		}
 		subAccumulator[i] = result
+		subAccumulatorsEncrypted[i] = *ct
+		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
+		if err != nil {
+			return fmt.Errorf("could not build decryption proof for sub accumulator for process %x: %w", pid.Marshal(), err)
+		}
+		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
 	}
 	log.Debugw("decrypted sub accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
 
-	// Substract the sub accumulator from the add accumulator
-	result := make([]*types.BigInt, len(addAccumulator))
+	// Generate the witness for the circuit
+	resultsVerifierWitness, err := results.GenerateWitness(
+		st,
+		resultsAccumulator,
+		addAccumulator,
+		subAccumulator,
+		addAccumulatorsEncrypted,
+		subAccumulatorsEncrypted,
+		addDecryptionProofs,
+		subDecryptionProofs,
+	)
+	if err != nil {
+		return fmt.Errorf("could not generate witness for process %x: %w", pid.Marshal(), err)
+	}
+	proof, err := f.prover(
+		circuits.ResultsVerifierCurve,
+		f.circuits.rvCcs,
+		f.circuits.rvPk,
+		resultsVerifierWitness,
+		solidity.WithProverTargetSolidityVerifier(backend.GROTH16),
+	)
+	if err != nil {
+		return fmt.Errorf("could not generate proof for process %x: %w", pid.Marshal(), err)
+	}
 
-	for i := range addAccumulator {
-		result[i] = new(types.BigInt).Sub((*types.BigInt)(addAccumulator[i]), (*types.BigInt)(subAccumulator[i]))
+	stateRoot, err := st.RootAsBigInt()
+	if err != nil {
+		return fmt.Errorf("could not get state root for process %x: %w", pid.Marshal(), err)
 	}
 
 	// Store the result in the process
-	return f.setProcessFinalized(pid, result)
+	return f.setProcessFinalized(pid, &storage.VerifiedResults{
+		ProcessID: pid.Marshal(),
+		Proof:     proof.(*groth16_bn254.Proof),
+		Inputs: storage.ResultsVerifierProofInputs{
+			StateRoot: stateRoot,
+			Results:   resultsAccumulator,
+		},
+	})
 }
 
 // setProcessFinalized sets the process as finalized in the storage. If the process is already finalized, it does nothing.
-func (f *Finalizer) setProcessFinalized(pid *types.ProcessID, result []*types.BigInt) error {
+func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.VerifiedResults) error {
+	// Transform the results accumulators to types.BigInt
+	result := make([]*types.BigInt, len(res.Inputs.Results))
+	for i, r := range res.Inputs.Results {
+		result[i] = (*types.BigInt)(r)
+	}
+	// Get the process from storage
 	process, err := f.stg.Process(pid)
 	if err != nil {
 		return fmt.Errorf("could not retrieve process %x: %w", pid.Marshal(), err)
 	}
+	// If the process is already finalized, do nothing
 	if process.IsFinalized {
 		return nil
 	}
+	// Mark the process as finalized, set the result and store it
 	process.IsFinalized = true
 	process.Result = result
 	if err := f.stg.SetProcess(process); err != nil {
 		return fmt.Errorf("could not store finalized process %x: %w", pid.Marshal(), err)
 	}
-	log.Infow("process finalized", "pid", pid.String(), "result", process.Result)
+	// Push the verified results to storage
+	if err := f.stg.PushVerifiedResults(res); err != nil {
+		return fmt.Errorf("could not store verified results for process %x: %w", pid.Marshal(), err)
+	}
+	log.Infow("process finalized",
+		"pid", pid.String(),
+		"stateRoot", process.StateRoot.String(),
+		"result", process.Result)
 	return nil
 }
 
 // WaitUntilFinalized waits until the process is finalized. Returns the result of the process.
 // It ensures proper timeout handling and provides detailed logging for troubleshooting.
-func (f *Finalizer) WaitUntilFinalized(ctx context.Context, pid *types.ProcessID) ([]*types.BigInt, error) {
+func (f *finalizer) WaitUntilFinalized(ctx context.Context, pid *types.ProcessID) ([]*types.BigInt, error) {
 	// Create a timeout context if one wasn't already provided
 	var cancel context.CancelFunc
 	var timeoutCtx context.Context
@@ -297,7 +379,6 @@ func (f *Finalizer) WaitUntilFinalized(ctx context.Context, pid *types.ProcessID
 			}
 
 			if process.IsFinalized && process.Result != nil {
-				log.Infow("process successfully finalized", "pid", pid.String())
 				return process.Result, nil
 			}
 

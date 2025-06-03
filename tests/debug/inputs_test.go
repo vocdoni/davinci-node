@@ -62,7 +62,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	err = ballotproof.Artifacts.LoadAll()
 	c.Assert(err, qt.IsNil)
 	ballotProof, err := circuits.VerifyAndConvertToRecursion(
-		ballotproof.Artifacts.VerifyingKey(),
+		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
 		[]string{vote.BallotInputsHash.String()},
 	)
