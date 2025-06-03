@@ -317,10 +317,8 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 
 // setProcessFinalized sets the process as finalized in the storage. If the process is already finalized, it does nothing.
 func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.VerifiedResults) error {
-	// Transform the results accumulators to types.BigInt
-	result := make([]*types.BigInt, len(res.Inputs.Results))
-	for i, r := range res.Inputs.Results {
-		result[i] = (*types.BigInt)(r)
+	if res == nil {
+		return fmt.Errorf("cannot finalize process %x with nil results", pid.Marshal())
 	}
 	// Get the process from storage
 	process, err := f.stg.Process(pid)
@@ -331,9 +329,17 @@ func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.Verif
 	if process.IsFinalized {
 		return nil
 	}
-	// Mark the process as finalized, set the result and store it
+	// Mark the process as finalized
 	process.IsFinalized = true
-	process.Result = result
+	// Transform the results accumulators to types.BigInt
+	process.Result = []*types.BigInt{}
+	for _, r := range res.Inputs.Results {
+		if r == nil {
+			r = new(big.Int).SetInt64(0) // Ensure we don't have nil values
+		}
+		process.Result = append(process.Result, (*types.BigInt)(r))
+	}
+	// Save the process with the new info
 	if err := f.stg.SetProcess(process); err != nil {
 		return fmt.Errorf("could not store finalized process %x: %w", pid.Marshal(), err)
 	}
