@@ -24,7 +24,6 @@ import (
 	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
-	"github.com/vocdoni/vocdoni-z-sandbox/finalizer"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
 	"github.com/vocdoni/vocdoni-z-sandbox/service"
@@ -56,7 +55,6 @@ const (
 type Services struct {
 	API       *service.APIService
 	Sequencer *sequencer.Sequencer
-	Finalizer *finalizer.Finalizer
 	Storage   *storage.Storage
 	Contracts *web3.Contracts
 }
@@ -104,7 +102,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
-		composeEnv[zContractsBranchNameEnvVarName] = "f/results_verification"
+		// composeEnv[zContractsBranchNameEnvVarName] = "f/results_verification"
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
@@ -266,14 +264,6 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 		log.Fatal(err)
 	}
 	t.Cleanup(pm.Stop)
-
-	// Start finalizer service
-	fin := service.NewFinalizer(stg, stg.StateDB(), time.Second*5)
-	if err := fin.Start(ctx, time.Second*5); err != nil {
-		log.Fatal(err)
-	}
-	t.Cleanup(fin.Stop)
-	services.Finalizer = fin.Finalizer
 
 	// Start API service
 	api, err := setupAPI(ctx, stg)
@@ -471,13 +461,14 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	}
 }
 
-func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes) bool {
+func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes) (bool, []types.HexBytes) {
 	c := qt.New(t)
 	// Check vote status and return whether all votes are processed
 	txt := strings.Builder{}
 	txt.WriteString("Vote status: ")
 	allProcessed := true
 
+	failed := []types.HexBytes{}
 	// Check status for each vote
 	for i, voteID := range voteIDs {
 		// Construct the status endpoint URL
@@ -500,17 +491,22 @@ func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.Proces
 		c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
 
 		// Check if the vote is processed
-		if statusResponse.Status != storage.BallotStatusName(storage.BallotStatusProcessed) {
+		switch statusResponse.Status {
+		case storage.BallotStatusName(storage.BallotStatusError):
+			allProcessed = allProcessed && true
+			failed = append(failed, voteID)
+		case storage.BallotStatusName(storage.BallotStatusProcessed):
+			allProcessed = allProcessed && true
+		default:
 			allProcessed = false
 		}
-
 		// Write to the string builder for logging
 		txt.WriteString(fmt.Sprintf("#%d:%s ", i, statusResponse.Status))
 	}
 
 	// Log the vote status
 	t.Log(txt.String())
-	return allProcessed
+	return allProcessed, failed
 }
 
 func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) int {
@@ -521,4 +517,24 @@ func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessI
 		return 0
 	}
 	return int(process.VoteCount.MathBigInt().Int64())
+}
+
+func finishProcessOnContract(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) {
+	c := qt.New(t)
+	txHash, err := contracts.SetProcessStatus(pid.Marshal(), types.ProcessStatusEnded)
+	c.Assert(err, qt.IsNil)
+	c.Assert(txHash, qt.IsNotNil)
+	err = contracts.WaitTx(*txHash, time.Second*30)
+	c.Assert(err, qt.IsNil)
+	t.Logf("process %s finished successfully", pid.String())
+}
+
+func publishedResults(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) []*types.BigInt {
+	c := qt.New(t)
+	process, err := contracts.Process(pid.Marshal())
+	c.Assert(err, qt.IsNil)
+	if process == nil || len(process.Result) == 0 {
+		return nil
+	}
+	return process.Result
 }

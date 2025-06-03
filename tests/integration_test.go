@@ -173,22 +173,43 @@ func TestIntegration(t *testing.T) {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
+	ResultsLoop:
 		for {
 			select {
 			case <-ticker.C:
-				if !checkProcessedVotes(t, cli, pid, voteIDs) {
+				if allProcessed, failed := checkProcessedVotes(t, cli, pid, voteIDs); !allProcessed {
 					continue
+				} else if len(failed) > 0 {
+					hexFailed := make([]string, len(failed))
+					for i, v := range failed {
+						hexFailed[i] = v.String()
+					}
+					t.Fatalf("Some votes failed to process: %v", hexFailed)
 				}
 				if publishedVotes(t, services.Contracts, pid) < numBallots {
 					continue
 				}
-				t.Log("Finalizing process...")
-				services.Finalizer.OndemandCh <- pid
-				t.Log("Waiting for finalization to complete...")
-				results, err := services.Finalizer.WaitUntilFinalized(t.Context(), pid)
-				c.Assert(err, qt.IsNil)
-				c.Assert(results, qt.Not(qt.IsNil))
-				c.Logf("Finalization results: %v", results)
+				break ResultsLoop
+			case <-timeoutCh:
+				c.Fatalf("Timeout waiting for votes to be processed and published at contract")
+			}
+		}
+
+		t.Log("All votes published, finalizing process...")
+		finishProcessOnContract(t, services.Contracts, pid)
+		results, err := services.Sequencer.WaitUntilFinalized(t.Context(), pid)
+		c.Assert(err, qt.IsNil)
+		c.Logf("Results calculated: %v, waiting for onchain results...", results)
+
+		for {
+			select {
+			case <-ticker.C:
+				results := publishedResults(t, services.Contracts, pid)
+				if results == nil {
+					t.Log("Results not yet published, waiting...")
+					continue
+				}
+				t.Logf("Results published: %v", results)
 				return
 			case <-timeoutCh:
 				c.Fatalf("Timeout waiting for votes to be processed and published at contract")

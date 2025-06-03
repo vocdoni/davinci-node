@@ -235,8 +235,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	log.Debugw("generating vote verification proof...", "pid", pid.String(), "voteID", hex.EncodeToString(b.VoteID()))
 	proof, err := s.prover(
 		circuits.VoteVerifierCurve,
-		s.voteCcs,
-		s.voteProvingKey,
+		s.vvCcs,
+		s.vvPk,
 		&assignment,
 		opts,
 	)

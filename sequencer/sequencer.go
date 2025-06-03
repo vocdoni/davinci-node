@@ -3,18 +3,12 @@
 package sequencer
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/constraint"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
-	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
+	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
 	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
@@ -39,25 +33,15 @@ var (
 // Sequencer is a worker that takes verified ballots and aggregates them into a single proof.
 // It processes ballots and creates batches of proofs for efficient verification.
 type Sequencer struct {
-	stg                *storage.Storage
-	contracts          *web3.Contracts // web3 contracts for on-chain interaction
+	*internalCircuits                   // Internal circuit artifacts for proof generation and verification
+	*finalizer                          // Finalizer for handling process finalization
+	stg                *storage.Storage // Storage instance for accessing ballots and other data
+	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
 	ctx                context.Context
 	cancel             context.CancelFunc
 	pids               *ProcessIDMap // Maps process IDs to their last update time
 	workInProgressLock sync.RWMutex  // Lock to block new work while processing a batch or a state transition
 	prover             ProverFunc    // Function for generating zero-knowledge proofs
-
-	ballotVerifyingKeyCircomJSON []byte // Verification key for ballot proofs
-
-	statetransitionProvingKey groth16.ProvingKey          // Key for generating state transition proofs
-	statetransitionCcs        constraint.ConstraintSystem // Constraint system for state transition proofs
-
-	aggregateProvingKey groth16.ProvingKey          // Key for generating aggregate proofs
-	aggregateCcs        constraint.ConstraintSystem // Constraint system for aggregate proofs
-
-	voteProvingKey groth16.ProvingKey          // Key for generating vote proofs
-	voteCcs        constraint.ConstraintSystem // Constraint system for vote proofs
-
 	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
 	// If this time elapses, the batch will be processed even if not full.
 	batchTimeWindow time.Duration
@@ -72,6 +56,7 @@ type Sequencer struct {
 //
 // Parameters:
 //   - stg: Storage instance for accessing ballots and other data
+//   - contracts: Web3 contracts for on-chain interaction
 //   - batchTimeWindow: Maximum time to wait before processing a batch even if not full
 //
 // Returns a configured Sequencer instance or an error if initialization fails.
@@ -85,109 +70,25 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	// Store the start time
 	startTime := time.Now()
 
-	// Load vote verifier artifacts
-	vvArtifacts := voteverifier.Artifacts
-	if err := vvArtifacts.LoadAll(); err != nil {
-		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
-	}
-
-	// Decode the vote verifier circuit definition
-	log.Debugw("reading cicuit artifact",
-		"circuit", "voteVerifier",
-		"type", "ccs",
-		"size", len(vvArtifacts.CircuitDefinition()),
-	)
-	voteCcs := groth16.NewCS(circuits.VoteVerifierCurve)
-	if _, err := voteCcs.ReadFrom(bytes.NewReader(vvArtifacts.CircuitDefinition())); err != nil {
-		return nil, fmt.Errorf("failed to read vote verifier definition: %w", err)
-	}
-
-	// Decode the vote verifier proving key
-	log.Debugw("reading cicuit artifact",
-		"circuit", "voteVerifier",
-		"type", "pk",
-		"size", len(vvArtifacts.ProvingKey()),
-	)
-	votePk := groth16.NewProvingKey(circuits.VoteVerifierCurve)
-	if _, err := votePk.UnsafeReadFrom(bytes.NewReader(vvArtifacts.ProvingKey())); err != nil {
-		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
-	}
-
-	// Load aggregator artifacts
-	aggArtifacts := aggregator.Artifacts
-	if err := aggArtifacts.LoadAll(); err != nil {
-		return nil, fmt.Errorf("failed to load aggregator artifacts: %w", err)
-	}
-
-	// Decode the aggregator circuit definition
-	log.Debugw("reading cicuit artifact",
-		"circuit", "aggregator",
-		"type", "ccs",
-		"size", len(aggArtifacts.CircuitDefinition()),
-	)
-	aggCcs := groth16.NewCS(circuits.AggregatorCurve)
-	if _, err := aggCcs.ReadFrom(bytes.NewReader(aggArtifacts.CircuitDefinition())); err != nil {
-		return nil, fmt.Errorf("failed to read aggregator circuit definition: %w", err)
-	}
-
-	// Decode the aggregator proving key
-	log.Debugw("reading cicuit artifact",
-		"circuit", "aggregator",
-		"type", "pk",
-		"size", len(aggArtifacts.ProvingKey()),
-	)
-	aggPk := groth16.NewProvingKey(circuits.AggregatorCurve)
-	if _, err := aggPk.UnsafeReadFrom(bytes.NewReader(aggArtifacts.ProvingKey())); err != nil {
-		return nil, fmt.Errorf("failed to read aggregator proving key: %w", err)
-	}
-
-	// Load statetransition artifacts
-	sttArtifacts := statetransition.Artifacts
-	if err := sttArtifacts.LoadAll(); err != nil {
-		return nil, fmt.Errorf("failed to load statetransition artifacts: %w", err)
-	}
-
-	// Decode the statetransition circuit definition
-	log.Debugw("reading cicuit artifact",
-		"circuit", "statetransition",
-		"type", "ccs",
-		"size", len(sttArtifacts.CircuitDefinition()),
-	)
-	sttCcs := groth16.NewCS(circuits.StateTransitionCurve)
-	if _, err := sttCcs.ReadFrom(bytes.NewReader(sttArtifacts.CircuitDefinition())); err != nil {
-		return nil, fmt.Errorf("failed to read statetransition circuit definition: %w", err)
-	}
-
-	// Decode the statetransition proving key
-	log.Debugw("reading cicuit artifact",
-		"circuit", "statetransition",
-		"type", "pk",
-		"size", len(sttArtifacts.ProvingKey()),
-	)
-	sttPk := groth16.NewProvingKey(circuits.StateTransitionCurve)
-	if _, err := sttPk.UnsafeReadFrom(bytes.NewReader(sttArtifacts.ProvingKey())); err != nil {
-		return nil, fmt.Errorf("failed to read statetransition proving key: %w", err)
-	}
-
 	log.Debugw("sequencer initialized",
 		"batchTimeWindow", batchTimeWindow.String(),
-		"took(s)", time.Since(startTime).Seconds(),
+		"took", time.Since(startTime).String(),
 	)
-
-	return &Sequencer{
-		stg:                          stg,
-		contracts:                    contracts,
-		batchTimeWindow:              batchTimeWindow,
-		pids:                         NewProcessIDMap(),
-		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey, // TODO: replace with a proper VK path
-		statetransitionProvingKey:    sttPk,
-		statetransitionCcs:           sttCcs,
-		aggregateProvingKey:          aggPk,
-		aggregateCcs:                 aggCcs,
-		voteProvingKey:               votePk,
-		voteCcs:                      voteCcs,
-		prover:                       DefaultProver, // Use the default prover by default
-	}, nil
+	// Create a new Sequencer instance
+	s := &Sequencer{
+		stg:             stg,
+		contracts:       contracts,
+		batchTimeWindow: batchTimeWindow,
+		pids:            NewProcessIDMap(),
+		prover:          DefaultProver, // Use the default prover by default
+	}
+	// Load the internal circuits
+	if err := s.loadInternalCircuitArtifacts(); err != nil {
+		return nil, fmt.Errorf("failed to load internal circuit artifacts: %w", err)
+	}
+	// Initialize the finalizer
+	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, s.prover)
+	return s, nil
 }
 
 // NewWorker creates a Sequencer instance configured for worker mode.
@@ -196,7 +97,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 // Parameters:
 //   - stg: Storage instance for accessing ballots and other data
 //   - masterURL: URL of the master node to connect to
-//   - workerAddress: Ethereum address identifying this worker (auto-generated if empty)
+//   - workerAddress: Ethereum address identifying this worker
 //
 // Returns a configured Sequencer instance for worker mode or an error if initialization fails.
 func NewWorker(stg *storage.Storage, masterURL string, workerAddress string) (*Sequencer, error) {
@@ -206,66 +107,38 @@ func NewWorker(stg *storage.Storage, masterURL string, workerAddress string) (*S
 	if masterURL == "" {
 		return nil, fmt.Errorf("masterURL cannot be empty for worker mode")
 	}
-
-	// Generate random address if not provided
 	if workerAddress == "" {
-		// We'll handle address generation in the main.go where crypto imports are available
 		return nil, fmt.Errorf("workerAddress must be provided")
 	}
 
 	startTime := time.Now()
 
-	// Load only vote verifier artifacts (not aggregator/statetransition)
-	vvArtifacts := voteverifier.Artifacts
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Hour)
-	defer cancel()
-	if err := vvArtifacts.DownloadAll(ctx); err != nil {
-		return nil, fmt.Errorf("failed to download vote verifier artifacts: %w", err)
+	s := &Sequencer{
+		stg:             stg,
+		contracts:       nil,               // Workers don't need web3 contracts
+		batchTimeWindow: 0,                 // Workers don't use batch processing
+		pids:            NewProcessIDMap(), // Still needed for ExistsProcessID check
+		prover:          DefaultProver,
+		masterURL:       masterURL,
+		workerAddress:   workerAddress,
 	}
-	if err := vvArtifacts.LoadAll(); err != nil {
+
+	s.bVkCircom = ballotprooftest.TestCircomVerificationKey
+
+	var err error
+	log.Debugw("reading ccs and pk cicuit artifact", "circuit", "voteVerifier")
+	s.vvCcs, s.vvPk, err = loadCircuitArtifacts(voteverifier.Artifacts)
+	if err != nil {
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
-	}
-
-	// Decode the vote verifier circuit definition
-	log.Debugw("reading circuit artifact for worker",
-		"circuit", "voteVerifier",
-		"type", "ccs",
-		"size", len(vvArtifacts.CircuitDefinition()),
-	)
-	voteCcs := groth16.NewCS(circuits.VoteVerifierCurve)
-	if _, err := voteCcs.ReadFrom(bytes.NewReader(vvArtifacts.CircuitDefinition())); err != nil {
-		return nil, fmt.Errorf("failed to read vote verifier definition: %w", err)
-	}
-
-	// Decode the vote verifier proving key
-	log.Debugw("reading circuit artifact for worker",
-		"circuit", "voteVerifier",
-		"type", "pk",
-		"size", len(vvArtifacts.ProvingKey()),
-	)
-	votePk := groth16.NewProvingKey(circuits.VoteVerifierCurve)
-	if _, err := votePk.UnsafeReadFrom(bytes.NewReader(vvArtifacts.ProvingKey())); err != nil {
-		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
 	}
 
 	log.Debugw("worker sequencer initialized",
 		"masterURL", masterURL,
 		"workerAddress", workerAddress,
-		"took(s)", time.Since(startTime).Seconds(),
+		"took", time.Since(startTime).String(),
 	)
 
-	return &Sequencer{
-		stg:                          stg,
-		contracts:                    nil,               // Workers don't need web3 contracts
-		batchTimeWindow:              0,                 // Workers don't use batch processing
-		pids:                         NewProcessIDMap(), // Still needed for ExistsProcessID check
-		ballotVerifyingKeyCircomJSON: ballottest.TestCircomVerificationKey,
-		voteProvingKey:               votePk,
-		voteCcs:                      voteCcs,
-		prover:                       DefaultProver,
-		masterURL:                    masterURL,
-		workerAddress:                workerAddress,
-	}, nil
+	return s, nil
 }
 
 // Start begins the ballot processing and aggregation routines.
@@ -297,23 +170,25 @@ func (s *Sequencer) Start(ctx context.Context) error {
 	}
 
 	// Master mode: start all processors
+	s.finalizer.Start(s.ctx, time.Minute)
+
 	if err := s.startBallotProcessor(); err != nil {
-		s.cancel() // Clean up if we fail to start completely
+		s.cancel()
 		return fmt.Errorf("failed to start ballot processor: %w", err)
 	}
 
 	if err := s.startAggregateProcessor(AggregatorTickerInterval); err != nil {
-		s.cancel() // Clean up if we fail to start completely
+		s.cancel()
 		return fmt.Errorf("failed to start aggregate processor: %w", err)
 	}
 
 	if err := s.startStateTransitionProcessor(); err != nil {
-		s.cancel() // Clean up if we fail to start completely
+		s.cancel()
 		return fmt.Errorf("failed to start state transition processor: %w", err)
 	}
 
 	if err := s.startOnchainProcessor(); err != nil {
-		s.cancel() // Clean up if we fail to start completely
+		s.cancel()
 		return fmt.Errorf("failed to start on-chain processor: %w", err)
 	}
 

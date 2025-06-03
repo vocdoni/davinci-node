@@ -1,42 +1,55 @@
 package sequencer
 
 import (
-	"context"
 	"encoding/hex"
 	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/solidity"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-func (s *Sequencer) startOnchainProcessor() error {
-	const tickInterval = 5 * time.Second
-	ticker := time.NewTicker(tickInterval)
+const (
+	transitionOnChainTickInterval = 5 * time.Second
+	finishedListenerTickInterval  = 10 * time.Second
+	resultsOnChainTickInterval    = 5 * time.Second
+)
 
+func (s *Sequencer) startOnchainProcessor() error {
+	// Create tickers for processing on-chain transitions and listening for
+	// finished processes
+	transitionTicker := time.NewTicker(transitionOnChainTickInterval)
+	finishedTicker := time.NewTicker(finishedListenerTickInterval)
+	resultsTicker := time.NewTicker(resultsOnChainTickInterval)
+	// Run a loop in a goroutine to handle the on-chain processing and
+	// finished processes
 	go func() {
-		defer ticker.Stop()
+		defer transitionTicker.Stop()
 		log.Infow("on-chain processor started",
-			"tickInterval", tickInterval)
+			"transitionOnChainInterval", transitionOnChainTickInterval,
+			"finishedListenerInterval", finishedListenerTickInterval,
+			"resultsOnChainInterval", resultsOnChainTickInterval)
 
 		for {
 			select {
 			case <-s.ctx.Done():
 				log.Infow("on-chain processor stopped")
 				return
-			case <-ticker.C:
-				s.processOnChain()
+			case <-transitionTicker.C:
+				s.processTransitionOnChain()
+			case <-finishedTicker.C:
+				s.listenFinishedProcesses()
+			case <-resultsTicker.C:
+				s.uploadVerifiedResultsToContract()
 			}
 		}
 	}()
 	return nil
 }
 
-func (s *Sequencer) processOnChain() {
+func (s *Sequencer) processTransitionOnChain() {
 	// process each registered process ID
 	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
 		// get a batch ready for uploading on-chain
@@ -63,7 +76,7 @@ func (s *Sequencer) processOnChain() {
 			return true // Continue to next process ID
 		}
 		// send the proof to the contract with the public witness
-		if err := s.pushToContract([]byte(pid), solidityCommitmentProof, batch.Inputs); err != nil {
+		if err := s.pushTransitionToContract([]byte(pid), solidityCommitmentProof, batch.Inputs); err != nil {
 			log.Errorw(err, "failed to push to contract")
 			return true // Continue to next process ID
 		}
@@ -89,7 +102,7 @@ func (s *Sequencer) processOnChain() {
 	})
 }
 
-func (s *Sequencer) pushToContract(processID []byte,
+func (s *Sequencer) pushTransitionToContract(processID []byte,
 	proof *solidity.Groth16CommitmentProof,
 	inputs storage.StateTransitionBatchProofInputs,
 ) error {
@@ -114,8 +127,9 @@ func (s *Sequencer) pushToContract(processID []byte,
 		"abiInputs", hex.EncodeToString(abiInputs),
 	)
 
-	// Simulate tx
-	if err := s.SimulateContractCall(
+	// Simulate tx to the contract to check if it will fail and get the root
+	// cause of the failure if it does
+	if err := s.contracts.SimulateContractCall(
 		s.ctx,
 		s.contracts.ContractsAddresses.ProcessRegistry,
 		s.contracts.ContractABIs.ProcessRegistry,
@@ -142,22 +156,99 @@ func (s *Sequencer) pushToContract(processID []byte,
 	return s.contracts.WaitTx(*txHash, time.Second*60)
 }
 
-// SimulateContractCall simulates a contract call
-func (s *Sequencer) SimulateContractCall(
-	ctx context.Context,
-	contractAddr common.Address,
-	contractABI *abi.ABI,
-	method string,
-	args ...interface{},
-) error {
-	if err := s.contracts.SimulateContractCall(
-		ctx,
-		contractAddr,
-		contractABI,
-		method,
-		args...,
-	); err != nil {
-		return fmt.Errorf("failed to call contract: %w", err)
-	}
-	return nil
+func (s *Sequencer) listenFinishedProcesses() {
+	// process each registered process ID
+	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
+		if s.stg.IsVerifyingResultsProcess(pid) {
+			log.Debugw("process is already verifying results, skipping",
+				"pid", hex.EncodeToString(pid))
+			return true // Continue to next process ID
+		}
+		process, err := s.contracts.Process(pid)
+		if err != nil {
+			log.Errorw(err, "failed to get process data from contract")
+			return true // Continue to next process ID
+		}
+		// If the process has ended, send it to the finalizer to compute the
+		// final results and remove it from the list to avoid reprocessing
+		if process.Status == types.ProcessStatusEnded {
+			log.Infow("process ready to finalize",
+				"pid", hex.EncodeToString(pid),
+				"status", process.Status)
+			// Send the process ID to the finalizer
+			s.OndemandCh <- new(types.ProcessID).SetBytes(pid)
+		}
+		return true // Continue to next process ID
+	})
+}
+
+func (s *Sequencer) uploadVerifiedResultsToContract() {
+	// process each registered process ID
+	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
+		res, err := s.stg.PullVerifiedResults(pid)
+		if err != nil {
+			if err != storage.ErrNoMoreElements {
+				log.Errorw(err, "failed to pull verified results")
+			}
+			return true // Continue to next process ID
+		}
+		solidityProof := new(solidity.Groth16CommitmentProof)
+		if err := solidityProof.FromGnarkProof(res.Proof); err != nil {
+			log.Errorw(err, "failed to convert gnark proof to solidity proof")
+			return true // Continue to next process ID
+		}
+		abiProof, err := solidityProof.ABIEncode()
+		if err != nil {
+			log.Errorw(err, "failed to encode proof for contract upload")
+			return true // Continue to next process ID
+		}
+		abiInputs, err := res.Inputs.ABIEncode()
+		if err != nil {
+			log.Errorw(err, "failed to encode inputs for contract upload")
+			return true // Continue to next process ID
+		}
+		log.Infow("verified results ready to upload to contract", "pid", hex.EncodeToString(pid))
+
+		// Simulate tx to the contract to check if it will fail and get the root
+		// cause of the failure if it does
+		var pid32 [32]byte
+		copy(pid32[:], pid)
+		if err := s.contracts.SimulateContractCall(
+			s.ctx,
+			s.contracts.ContractsAddresses.ProcessRegistry,
+			s.contracts.ContractABIs.ProcessRegistry,
+			"setProcessResults",
+			pid32,
+			abiProof,
+			abiInputs,
+		); err != nil {
+			log.Warnw("failed to simulate verified results upload",
+				"error", err,
+				"pid", hex.EncodeToString(pid))
+		}
+		// submit the proof to the contract
+		txHash, err := s.contracts.SetProcessResults(pid, abiProof, abiInputs)
+		if err != nil {
+			log.Errorw(err, "failed to upload verified results to contract")
+			return true // Continue to next process ID
+		}
+		// wait for the transaction to be mined
+		if err := s.contracts.WaitTx(*txHash, time.Second*60); err != nil {
+			log.Errorw(err, "failed to wait for verified results upload transaction")
+			return true // Continue to next process ID
+		}
+		log.Infow("verified results uploaded to contract",
+			"pid", hex.EncodeToString(pid),
+			"txHash", txHash.String(),
+			"results", res.Inputs.Results)
+
+		if err := s.stg.MarkVerifiedResults(pid); err != nil {
+			log.Errorw(err, "failed to mark verified results as uploaded")
+			return true // Continue to next process ID
+		}
+
+		s.pids.Remove(pid) // Remove the process ID from the list after uploading results
+
+		return true
+	})
 }

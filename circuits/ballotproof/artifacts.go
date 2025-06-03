@@ -10,6 +10,7 @@ import (
 // it only contains the verification key because the proving key is used by
 // the voter to generate the proof.
 var Artifacts = circuits.NewCircuitArtifacts(
+	circuits.BallotProofCurve,
 	&circuits.Artifact{
 		Name:      "ballot-proof wasm",
 		RemoteURL: config.BallotProoCircuitURL,
