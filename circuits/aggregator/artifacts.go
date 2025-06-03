@@ -13,16 +13,16 @@ var Artifacts = circuits.NewCircuitArtifacts(
 	&circuits.Artifact{
 		Name:      "aggregator ccs",
 		RemoteURL: config.AggregatorCircuitURL,
-		Hash:      types.HexStringToHexBytes(config.AggregatorCircuitHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.AggregatorCircuitHash),
 	},
 	&circuits.Artifact{
 		Name:      "aggregator proving key",
 		RemoteURL: config.AggregatorProvingKeyURL,
-		Hash:      types.HexStringToHexBytes(config.AggregatorProvingKeyHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.AggregatorProvingKeyHash),
 	},
 	&circuits.Artifact{
 		Name:      "aggregator verification key",
 		RemoteURL: config.AggregatorVerificationKeyURL,
-		Hash:      types.HexStringToHexBytes(config.AggregatorVerificationKeyHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.AggregatorVerificationKeyHash),
 	},
 )

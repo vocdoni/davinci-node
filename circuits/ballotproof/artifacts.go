@@ -14,15 +14,15 @@ var Artifacts = circuits.NewCircuitArtifacts(
 	&circuits.Artifact{
 		Name:      "ballot-proof wasm",
 		RemoteURL: config.BallotProoCircuitURL,
-		Hash:      types.HexStringToHexBytes(config.BallotProofCircuitHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.BallotProofCircuitHash),
 	},
 	&circuits.Artifact{
 		Name:      "ballot-proof proving key",
 		RemoteURL: config.BallotProofProvingKeyURL,
-		Hash:      types.HexStringToHexBytes(config.BallotProofProvingKeyHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.BallotProofProvingKeyHash),
 	},
 	&circuits.Artifact{
 		Name:      "ballot-proof verification key",
 		RemoteURL: config.BallotProofVerificationKeyURL,
-		Hash:      types.HexStringToHexBytes(config.BallotProofVerificationKeyHash),
+		Hash:      types.HexStringToHexBytesMustUnmarshal(config.BallotProofVerificationKeyHash),
 	})

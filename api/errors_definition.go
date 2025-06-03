@@ -38,6 +38,8 @@ var (
 	ErrInvalidBallotInputsHash = Error{Code: 40013, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("invalid ballot inputs hash")}
 	ErrUnauthorized            = Error{Code: 40014, HTTPstatus: http.StatusForbidden, Err: fmt.Errorf("unauthorized")}
 	ErrMalformedParam          = Error{Code: 40015, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed parameter")}
+	ErrMalformedNullifier      = Error{Code: 40016, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed nullifier")}
+	ErrMalformedAddress        = Error{Code: 40017, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed address")}
 
 	ErrMarshalingServerJSONFailed = Error{Code: 50001, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("marshaling (server-side) JSON failed")}
 	ErrGenericInternalServerError = Error{Code: 50002, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("internal server error")}
