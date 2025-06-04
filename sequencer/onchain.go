@@ -80,8 +80,10 @@ func (s *Sequencer) processTransitionOnChain() {
 			log.Errorw(err, "failed to push to contract")
 			return true // Continue to next process ID
 		}
-		// update the process state with the new root hash
+		// update the process state with the new root hash and the vote counts
 		process.StateRoot = (*types.BigInt)(batch.Inputs.RootHashAfter)
+		process.VoteCount = new(types.BigInt).Add(process.VoteCount, new(types.BigInt).SetInt(batch.Inputs.NumNewVotes))
+		process.VoteOverwriteCount = new(types.BigInt).Add(process.VoteOverwriteCount, new(types.BigInt).SetInt(batch.Inputs.NumOverwrites))
 		if err := s.stg.SetProcess(process); err != nil {
 			log.Errorw(err, "failed to update process data")
 			return true // Continue to next process ID
@@ -117,15 +119,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	if err != nil {
 		return fmt.Errorf("failed to encode inputs: %w", err)
 	}
-	log.Debugw("proof ready to submit to the contract",
-		"pid", hex.EncodeToString(processID),
-		"commitments", proof.Commitments,
-		"commitmentPok", proof.CommitmentPok,
-		"proof", proof.Proof,
-		"abiProof", hex.EncodeToString(abiProof),
-		"inputs", inputs,
-		"abiInputs", hex.EncodeToString(abiInputs),
-	)
+	log.Debugw("proof ready to submit to the contract", "pid", hex.EncodeToString(processID))
 
 	// Simulate tx to the contract to check if it will fail and get the root
 	// cause of the failure if it does
@@ -143,7 +137,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 			"pid", hex.EncodeToString(processID))
 	}
 
-	// submit the proof to the contract if simulation is successful
+	// Submit the proof to the contract if simulation is successful
 	txHash, err := s.contracts.SetProcessTransition(processID,
 		abiProof,
 		abiInputs,
@@ -152,7 +146,8 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	if err != nil {
 		return fmt.Errorf("failed to submit state transition: %w", err)
 	}
-	// wait for the transaction to be mined
+
+	// Wait for the transaction to be mined
 	return s.contracts.WaitTx(*txHash, time.Second*60)
 }
 

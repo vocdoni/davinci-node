@@ -115,6 +115,10 @@ func (i *BigInt) SetUint64(x uint64) *BigInt {
 	return (*BigInt)(i.MathBigInt().SetUint64(x))
 }
 
+func (i *BigInt) SetInt(x int) *BigInt {
+	return (*BigInt)(i.MathBigInt().SetUint64(uint64(x)))
+}
+
 // Equal helps us with go-cmp.
 func (i *BigInt) Equal(j *BigInt) bool {
 	if i == nil || j == nil {
