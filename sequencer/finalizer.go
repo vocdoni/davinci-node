@@ -87,6 +87,7 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 				select {
 				case <-ticker.C:
 					f.finalizeByDate(time.Now())
+					f.finalizeEnded()
 				case <-f.ctx.Done():
 					return
 				}
@@ -172,6 +173,31 @@ func (f *finalizer) finalizeByDate(date time.Time) {
 		if !process.IsFinalized && process.StartTime.Add(process.Duration).Before(date) {
 			log.Debugw("found proces to finalize by date", "pid", pid.String())
 			f.OndemandCh <- pid
+		}
+	}
+}
+
+// finalizeEnded finalizes all processes that have ended and do not have a
+// result yet. It retrieves the process IDs from storage, checks if they are
+// finalized, and if not, sends them to the OndemandCh channel for processing.
+func (f *finalizer) finalizeEnded() {
+	pids, err := f.stg.ListEndedProcesses()
+	if err != nil {
+		log.Errorw(err, "could not list ended processes")
+		return
+	}
+	for _, pidBytes := range pids {
+		processID := new(types.ProcessID).SetBytes(pidBytes)
+		process, err := f.stg.Process(processID)
+		if err != nil {
+			log.Errorw(err, "could not retrieve process from storage: "+processID.String())
+			continue
+		}
+		if !process.IsFinalized {
+			log.Debugw("found ended process to finalize", "pid", processID.String())
+			f.OndemandCh <- processID
+		} else {
+			log.Debugw("process already finalized, skipping", "pid", processID.String())
 		}
 	}
 }

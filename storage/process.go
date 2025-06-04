@@ -32,7 +32,8 @@ func (s *Storage) SetProcess(data *types.Process) error {
 	return s.setArtifact(processPrefix, data.ID, data)
 }
 
-// ListProcesses returns the list of process IDs stored in the storage (by SetProcessMetadata) as a list of byte slices.
+// ListProcesses returns the list of process IDs stored in the storage (by
+// SetProcessMetadata) as a list of byte slices.
 func (s *Storage) ListProcesses() ([][]byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
@@ -42,6 +43,35 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 		return nil, err
 	}
 	return pids, nil
+}
+
+// ListEndedProcesses returns the list of process IDs that are ended and have
+// their encryption keys stored in the storage.
+func (s *Storage) ListEndedProcesses() ([][]byte, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	pids, err := s.listArtifacts(encryptionKeyPrefix)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter out processes that are not ended or the encryption keys are not
+	// in the storage.
+	var finalPids [][]byte
+	for _, pid := range pids {
+		p := new(types.Process)
+		if err := s.getArtifact(processPrefix, pid, p); err != nil {
+			if err == ErrNotFound {
+				continue // Skip if process not found
+			}
+			return nil, fmt.Errorf("error retrieving process %x: %w", pid, err)
+		}
+		if p.Status != types.ProcessStatusEnded {
+			continue // Skip if process is not ended
+		}
+		finalPids = append(finalPids, pid)
+	}
+	return finalPids, nil
 }
 
 // MetadataHash returns the hash of the metadata.
