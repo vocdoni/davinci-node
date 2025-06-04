@@ -159,25 +159,35 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 func (s *Sequencer) listenFinishedProcesses() {
 	// process each registered process ID
 	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
-		if s.stg.IsVerifyingResultsProcess(pid) {
-			log.Debugw("process is already verifying results, skipping",
-				"pid", hex.EncodeToString(pid))
+		// Check if the process has encryption keys, if not, skip it
+		processID := new(types.ProcessID).SetBytes(pid)
+		pubKey, privKey, err := s.stg.EncryptionKeys(processID)
+		if err != nil || pubKey == nil || privKey == nil {
 			return true // Continue to next process ID
 		}
+		// Get the process data from the contract
 		process, err := s.contracts.Process(pid)
 		if err != nil {
 			log.Errorw(err, "failed to get process data from contract")
 			return true // Continue to next process ID
 		}
+		// If the process is not ended, skip it
+		if process.Status != types.ProcessStatusEnded {
+			return true // Continue to next process ID
+		}
+		// If the process is already verifying results, skip it
+		if s.stg.IsVerifyingProcessResults(pid) {
+			log.Debugw("ended process is already verifying results, skipping",
+				"pid", hex.EncodeToString(pid))
+			return true // Continue to next process ID
+		}
 		// If the process has ended, send it to the finalizer to compute the
 		// final results and remove it from the list to avoid reprocessing
-		if process.Status == types.ProcessStatusEnded {
-			log.Infow("process ready to finalize",
-				"pid", hex.EncodeToString(pid),
-				"status", process.Status)
-			// Send the process ID to the finalizer
-			s.OndemandCh <- new(types.ProcessID).SetBytes(pid)
-		}
+		log.Infow("process ready to finalize",
+			"pid", hex.EncodeToString(pid),
+			"status", process.Status)
+		// Send the process ID to the finalizer
+		s.OndemandCh <- new(types.ProcessID).SetBytes(pid)
 		return true // Continue to next process ID
 	})
 }
@@ -192,6 +202,8 @@ func (s *Sequencer) uploadVerifiedResultsToContract() {
 			}
 			return true // Continue to next process ID
 		}
+		// Transform the gnark proof to a solidity proof and upload it to the
+		// contract.
 		solidityProof := new(solidity.Groth16CommitmentProof)
 		if err := solidityProof.FromGnarkProof(res.Proof); err != nil {
 			log.Errorw(err, "failed to convert gnark proof to solidity proof")
@@ -208,7 +220,6 @@ func (s *Sequencer) uploadVerifiedResultsToContract() {
 			return true // Continue to next process ID
 		}
 		log.Infow("verified results ready to upload to contract", "pid", hex.EncodeToString(pid))
-
 		// Simulate tx to the contract to check if it will fail and get the root
 		// cause of the failure if it does
 		var pid32 [32]byte
