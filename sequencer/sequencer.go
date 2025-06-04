@@ -232,3 +232,9 @@ func (s *Sequencer) ExistsProcessID(pid []byte) bool {
 func (s *Sequencer) SetBatchTimeWindow(window time.Duration) {
 	s.batchTimeWindow = window
 }
+
+// ActiveProcessIDs returns a list of process IDs that are currently being tracked
+// by the sequencer.
+func (s *Sequencer) ActiveProcessIDs() [][]byte {
+	return s.pids.List()
+}
