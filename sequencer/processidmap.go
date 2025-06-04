@@ -44,6 +44,7 @@ func (p *ProcessIDMap) Add(pid []byte) bool {
 
 	pidStr := fmt.Sprintf("%x", pid)
 	p.data[pidStr] = time.Now()
+
 	return true
 }
 

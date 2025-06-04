@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
@@ -12,6 +13,32 @@ import (
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/db/metadb"
 )
+
+// createTestProcess creates a standard test process with the given process ID
+func createTestProcess(pid *types.ProcessID) *types.Process {
+	return &types.Process{
+		ID:               pid.Marshal(),
+		Status:           0,
+		StartTime:        time.Now(),
+		Duration:         time.Hour,
+		MetadataURI:      "http://example.com/metadata",
+		StateRoot:        new(types.BigInt).SetUint64(100),
+		SequencerStats:   types.SequencerProcessStats{},
+		IsAcceptingVotes: true,
+		BallotMode: &types.BallotMode{
+			MaxCount:     8,
+			MaxValue:     new(types.BigInt).SetUint64(100),
+			MinValue:     new(types.BigInt).SetUint64(0),
+			MaxTotalCost: new(types.BigInt).SetUint64(0),
+			MinTotalCost: new(types.BigInt).SetUint64(0),
+		},
+		Census: &types.Census{
+			CensusRoot: make([]byte, 32),
+			MaxVotes:   new(types.BigInt).SetUint64(1000),
+			CensusURI:  "http://example.com/census",
+		},
+	}
+}
 
 func TestBallotQueue(t *testing.T) {
 	c := qt.New(t)
@@ -29,6 +56,10 @@ func TestBallotQueue(t *testing.T) {
 		Nonce:   0,
 		ChainID: 0,
 	}
+
+	// Create the process first
+	err = st.SetProcess(createTestProcess(&processID))
+	c.Assert(err, qt.IsNil)
 
 	// Scenario: No ballots initially
 	c.Assert(st.CountPendingBallots(), qt.Equals, 0, qt.Commentf("no pending ballots expected initially"))
@@ -185,6 +216,10 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 		ChainID: 0,
 	}
 
+	// Create the process first
+	err = st.SetProcess(createTestProcess(&processID))
+	c.Assert(err, qt.IsNil)
+
 	// Create 5 ballots with fixed data for deterministic testing
 	for i := range 5 {
 		ballot := &Ballot{
@@ -296,6 +331,10 @@ func TestBallotBatchQueue(t *testing.T) {
 		Nonce:   0,
 		ChainID: 0,
 	}
+
+	// Create the process first
+	err = st.SetProcess(createTestProcess(&processID))
+	c.Assert(err, qt.IsNil)
 
 	// Test 1: Empty state
 	_, _, err = st.NextBallotBatch(processID.Marshal())

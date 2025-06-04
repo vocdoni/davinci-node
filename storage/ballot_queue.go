@@ -9,6 +9,7 @@ import (
 
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/vocdoni-z-sandbox/types"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
@@ -45,6 +46,17 @@ func (s *Storage) PushBallot(b *Ballot) error {
 	}
 	if err := wTx.Commit(); err != nil {
 		return err
+	}
+
+	// Update process stats
+	if err := s.updateProcessStats(b.ProcessID, []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsPendingVotes, Delta: 1},
+	}); err != nil {
+		log.Warnw("failed to update process stats after pushing ballot",
+			"error", err.Error(),
+			"processID", fmt.Sprintf("%x", b.ProcessID),
+			"voteID", hex.EncodeToString(b.VoteID()),
+		)
 	}
 
 	// Set ballot status to pending
@@ -129,7 +141,32 @@ func (s *Storage) RemoveBallot(processID, voteID []byte) error {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
 
+	// Update process stats
+	if err := s.updateProcessStats(processID, []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsPendingVotes, Delta: -1},
+	}); err != nil {
+		log.Warnw("failed to update process stats after removing ballot",
+			"error", err.Error(),
+			"processID", fmt.Sprintf("%x", processID),
+			"voteID", hex.EncodeToString(voteID),
+		)
+	}
+
+	// Update ballot status to error
 	return s.setBallotStatus(processID, voteID, BallotStatusError)
+}
+
+// ReleaseBallotReservation removes the reservation for a ballot.
+func (s *Storage) ReleaseBallotReservation(voteID []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Remove reservation
+	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete reservation: %w", err)
+	}
+
+	return nil
 }
 
 // MarkBallotDone called after we have processed the ballot. We push the
@@ -163,6 +200,15 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 	}
 	if err := wTx.Commit(); err != nil {
 		return err
+	}
+
+	// Update process stats
+	if err := s.updateProcessStats(vb.ProcessID, []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 1},
+		{TypeStats: types.TypeStatsPendingVotes, Delta: -1},
+		{TypeStats: types.TypeStatsCurrentBatchSize, Delta: 1},
+	}); err != nil {
+		return fmt.Errorf("failed to update process stats: %w", err)
 	}
 
 	// Update ballot status to verified
@@ -363,6 +409,15 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 		return err
 	}
 
+	// Update process stats
+	if err := s.updateProcessStats(abb.ProcessID, []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: len(abb.Ballots)},
+		{TypeStats: types.TypeStatsLastBatchSize, Delta: len(abb.Ballots)},
+		{TypeStats: types.TypeStatsCurrentBatchSize, Delta: -len(abb.Ballots)},
+	}); err != nil {
+		return fmt.Errorf("failed to update process stats: %w", err)
+	}
+
 	// Update status of all ballots in the batch to aggregated
 	// TODO: this should use a single write transaction
 	for _, ballot := range abb.Ballots {
@@ -463,6 +518,7 @@ func (s *Storage) MarkBallotBatchDone(k []byte) error {
 	return nil
 }
 
+// PushStateTransitionBatch pushes a state transition batch to the state transition queue.
 func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
@@ -487,6 +543,13 @@ func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 
 	if err := wTx.Commit(); err != nil {
 		return err
+	}
+
+	// Update process stats
+	if err := s.updateProcessStats(stb.ProcessID, []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsStateTransitions, Delta: 1},
+	}); err != nil {
+		return fmt.Errorf("failed to update process stats: %w", err)
 	}
 
 	// Update status of all ballots in the batch to processed
@@ -539,7 +602,7 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 	return &stb, chosenKey, nil
 }
 
-func (s *Storage) MarkStateTransitionBatchDone(k []byte) error {
+func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	// Remove reservation
@@ -550,6 +613,25 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte) error {
 	if err := s.deleteArtifact(stateTransitionPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition batch: %w", err)
 	}
+
+	// Update process stats
+	if err := s.updateProcessStats(pid, []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsSettledStateTransitions, Delta: 1},
+	}); err != nil {
+		log.Warnw("failed to update process stats after marking state transition batch as done",
+			"error", err.Error(),
+			"processID", fmt.Sprintf("%x", pid),
+		)
+	}
+
+	// Update the last state transition date separately
+	if err := s.setLastStateTransitionDate(pid); err != nil {
+		log.Warnw("failed to update last state transition date",
+			"error", err.Error(),
+			"processID", fmt.Sprintf("%x", pid),
+		)
+	}
+
 	return nil
 }
 

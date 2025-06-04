@@ -215,7 +215,7 @@ Gets information about an existing voting process. It must exist in the smart co
             }
           }
         ],
-        "meta": {,
+        "meta": {
           "key": "string"
         }
       }
@@ -226,6 +226,21 @@ Gets information about an existing voting process. It must exist in the smart co
         "key": "string"
       }
     }
+  },
+  "voteCount": "bigintStr", // Total number of votes cast in the process
+  "voteOverwriteCount": "bigintStr", // Number of times voters changed their vote
+  "isFinalized": "boolean", // Whether the voting process has been finalized and results are available
+  "isAcceptingVotes": "boolean", // Whether the Sequencer is currently accepting votes for this process
+
+  "sequencerStats": { // Stats about the Sequencer runing the API (not the whole network)
+    "stateTransitionCount": "number", // Total number of state transitions performed
+    "lastStateTransitionDate": "date", // Date of the most recent state transition
+    "uploadedStateTransitionCount": "number", // Number of state transitions uploaded to the blockchain
+    "aggregatedVotesCount": "number", // Total number of votes that have been aggregated into batches
+    "verifiedVotesCount": "number", // Total number of votes that have been cryptographically verified
+    "pendingVotesCount": "number", // Number of votes waiting to be processed
+    "currentBatchSize": "number", // Number of votes in the current batch being prepared
+    "lastBatchSize": "number" // Number of votes in the last completed batch
   }
 }
 ```

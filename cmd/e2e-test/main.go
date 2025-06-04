@@ -429,12 +429,16 @@ func createProcess(
 	// Wait for the process to be registered in the sequencer
 	processCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	for processCreated := false; !processCreated; {
+	for processReady := false; !processReady; {
 		select {
 		case <-time.After(time.Second * 5):
-			_, status, err := cli.Request(http.MethodGet, nil, nil, api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String()))
+			pBytes, status, err := cli.Request(http.MethodGet, nil, nil, api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String()))
 			if err == nil && status == http.StatusOK {
-				processCreated = true
+				proc := &types.Process{}
+				if err := json.Unmarshal(pBytes, proc); err != nil {
+					return nil, nil, fmt.Errorf("failed to unmarshal process response: %v", err)
+				}
+				processReady = proc.IsAcceptingVotes
 			}
 		case <-processCtx.Done():
 			return nil, nil, fmt.Errorf("process creation timeout: %v", processCtx.Err())

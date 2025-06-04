@@ -87,11 +87,11 @@ func (s *Sequencer) processTransitionOnChain() {
 			return true // Continue to next process ID
 		}
 		log.Infow("process state root updated",
-			"pid", hex.EncodeToString([]byte(pid)),
+			"pid", hex.EncodeToString(pid),
 			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
 			"rootHashAfter", batch.Inputs.RootHashAfter.String())
 		// mark the batch as done
-		if err := s.stg.MarkStateTransitionBatchDone(batchID); err != nil {
+		if err := s.stg.MarkStateTransitionBatchDone(batchID, pid); err != nil {
 			log.Errorw(err, "failed to mark state transition batch as done")
 			return true // Continue to next process ID
 		}

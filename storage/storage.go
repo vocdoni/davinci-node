@@ -61,10 +61,16 @@ func New(db db.Database) *Storage {
 		stateDB:  prefixeddb.NewPrefixedDatabase(db, stateDBprefix),
 		censusDB: census.NewCensusDB(prefixeddb.NewPrefixedDatabase(db, censusDBprefix)),
 	}
+
+	if err := s.setAllProcessesAsNotAcceptingVotes(); err != nil {
+		log.Errorw(err, "failed to set all processes as not accepting votes")
+	}
+
 	// clear stale reservations
 	if err := s.recover(); err != nil {
 		log.Errorw(err, "failed to clear stale reservations")
 	}
+
 	return s
 }
 
@@ -96,6 +102,22 @@ func (s *Storage) recover() error {
 		}
 	}
 
+	return nil
+}
+
+// setAllProcessesAsNotAcceptingVotes sets the accepting votes flag to false for all
+// processes in the storage.
+func (s *Storage) setAllProcessesAsNotAcceptingVotes() error {
+	// For all processIDs, set the accepting votes flag to false
+	procs, err := s.ListProcesses()
+	if err != nil {
+		return fmt.Errorf("failed to list processes: %w", err)
+	}
+	for _, pid := range procs {
+		if err := s.SetProcessAccpetingVotes(pid, false); err != nil {
+			return fmt.Errorf("failed to set process accepting votes to false for %x: %w", pid, err)
+		}
+	}
 	return nil
 }
 

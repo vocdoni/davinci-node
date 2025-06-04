@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
@@ -42,6 +43,41 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 		return nil, err
 	}
 	return pids, nil
+}
+
+// setLastStateTransitionDate updates the last state transition date for a given process ID
+// to the current time.
+// It does not acquire a global lock, so it should be called with caution.
+func (s *Storage) setLastStateTransitionDate(pid []byte) error {
+	if pid == nil {
+		return fmt.Errorf("nil process ID")
+	}
+
+	p := &types.Process{}
+	if err := s.getArtifact(processPrefix, pid, p); err != nil {
+		return err
+	}
+
+	p.SequencerStats.LasStateTransitionDate = time.Now()
+	return s.setArtifact(processPrefix, pid, p)
+}
+
+// SetProcessAccpetingVotes sets the accepting votes flag for a given process ID.
+func (s *Storage) SetProcessAccpetingVotes(pid []byte, accepting bool) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	if pid == nil {
+		return fmt.Errorf("nil process ID")
+	}
+
+	p := &types.Process{}
+	if err := s.getArtifact(processPrefix, pid, p); err != nil {
+		return err
+	}
+
+	p.IsAcceptingVotes = accepting
+	return s.setArtifact(processPrefix, pid, p)
 }
 
 // MetadataHash returns the hash of the metadata.

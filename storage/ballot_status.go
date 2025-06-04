@@ -130,7 +130,6 @@ func (s *Storage) CleanProcessBallots(processID []byte) (int, error) {
 }
 
 // setBallotStatus is an internal helper to set the status of a ballot.
-// It's exported to be used from other files in the same package.
 func (s *Storage) setBallotStatus(processID, voteID []byte, status int) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotStatusPrefix)
 	defer wTx.Discard()

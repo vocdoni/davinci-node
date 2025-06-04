@@ -240,15 +240,16 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 		services.API.SetWorkerConfig(cfg.API.WorkerUrlSeed, cfg.Worker.Timeout)
 	}
 
-	if err := services.API.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start API service: %w", err)
-	}
-
 	// Start sequencer service
 	log.Infow("starting sequencer service", "batchTimeWindow", cfg.Batch.Time.String())
 	services.Sequencer = service.NewSequencer(services.Storage, services.Contracts, cfg.Batch.Time)
 	if err := services.Sequencer.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start sequencer service: %w", err)
+	}
+
+	// Start API service
+	if err := services.API.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start API service: %w", err)
 	}
 
 	log.Info("davinci-node is running, ready to process votes!")
