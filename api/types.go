@@ -94,3 +94,8 @@ type WorkerInfo struct {
 type WorkersListResponse struct {
 	Workers []WorkerInfo `json:"workers"`
 }
+
+// SetMetadataResponse is the response returned by the set metadata endpoint.
+type SetMetadataResponse struct {
+	Hash types.HexBytes `json:"hash"`
+}

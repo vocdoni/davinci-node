@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru/v2"
+
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage/census"
 	"go.vocdoni.io/dvote/db"
@@ -33,6 +35,7 @@ var (
 	verifyingResultsReservPrefix = []byte("vrr/")
 	encryptionKeyPrefix          = []byte("ek/")
 	processPrefix                = []byte("p/")
+	metadataPrefix               = []byte("md/")
 
 	censusDBprefix = []byte("cs_")
 	stateDBprefix  = []byte("st_")
@@ -50,16 +53,22 @@ type Storage struct {
 	db          db.Database
 	censusDB    *census.CensusDB
 	stateDB     db.Database
-	globalLock  sync.Mutex // Lock for global operations
-	workersLock sync.Mutex // Lock for worker-related operations
+	globalLock  sync.Mutex              // Lock for global operations
+	workersLock sync.Mutex              // Lock for worker-related operations
+	cache       *lru.Cache[string, any] // Cache for artifacts
 }
 
 // New creates a new Storage instance.
 func New(db db.Database) *Storage {
+	cache, err := lru.New[string, any](1000)
+	if err != nil {
+		log.Fatalf("failed to create LRU cache: %v", err)
+	}
 	s := &Storage{
 		db:       db,
 		stateDB:  prefixeddb.NewPrefixedDatabase(db, stateDBprefix),
 		censusDB: census.NewCensusDB(prefixeddb.NewPrefixedDatabase(db, censusDBprefix)),
+		cache:    cache,
 	}
 	// clear stale reservations
 	if err := s.recover(); err != nil {

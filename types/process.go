@@ -48,7 +48,17 @@ type Metadata struct {
 	Description MultilingualString `json:"description" cbor:"1,keyasint,omitempty"`
 	Media       MediaMetadata      `json:"media"       cbor:"2,keyasint,omitempty"`
 	Questions   []Question         `json:"questions"   cbor:"3,keyasint,omitempty"`
-	ProcessType ProcessType        `json:"processType" cbor:"4,keyasint,omitempty"`
+	Type        ProcessType        `json:"type" cbor:"4,keyasint,omitempty"`
+	Version     string             `json:"version" cbor:"5,keyasint,omitempty"`
+	Meta        GenericMetadata    `json:"meta,omitempty" cbor:"6,keyasint,omitempty"`
+}
+
+func (m *Metadata) String() string {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 type Process struct {
@@ -63,7 +73,6 @@ type Process struct {
 	MetadataURI        string         `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
 	BallotMode         *BallotMode    `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
 	Census             *Census        `json:"census"                   cbor:"10,keyasint,omitempty"`
-	Metadata           *Metadata      `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
 	VoteCount          *BigInt        `json:"voteCount"                cbor:"12,keyasint,omitempty"`
 	VoteOverwriteCount *BigInt        `json:"voteOverwriteCount"       cbor:"13,keyasint,omitempty"`
 	IsFinalized        bool           `json:"isFinalized"              cbor:"14,keyasint,omitempty"`

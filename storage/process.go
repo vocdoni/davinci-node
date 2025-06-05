@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -42,6 +43,51 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 		return nil, err
 	}
 	return pids, nil
+}
+
+// SetMetadata stores the metadata into the storage.
+func (s *Storage) SetMetadata(metadata *types.Metadata) ([]byte, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	if metadata == nil {
+		return nil, fmt.Errorf("nil metadata")
+	}
+
+	// Calculate the hash of the metadata
+	hash := MetadataHash(metadata)
+
+	// Store the metadata with its hash as the key
+	return hash, s.setArtifact(metadataPrefix, hash, metadata)
+}
+
+// GetMetadata retrieves the metadata from the storage using its hash.
+func (s *Storage) Metadata(hash []byte) (*types.Metadata, error) {
+	if hash == nil {
+		return nil, fmt.Errorf("nil metadata hash")
+	}
+	// Try to get the metadata from the cache
+	val, ok := s.cache.Get(string(metadataPrefix) + string(hash))
+	if ok {
+		if metadata, ok := val.(*types.Metadata); ok {
+			return metadata, nil
+		}
+		log.Warnw("cache hit but type assertion failed", "expected", "*types.Metadata", "got", fmt.Sprintf("%T", val))
+	}
+
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Retrieve the metadata from the storage
+	metadata := &types.Metadata{}
+	if err := s.getArtifact(metadataPrefix, hash, metadata); err != nil {
+		return nil, err
+	}
+
+	// Store the metadata in the cache for future use
+	s.cache.Add(string(metadataPrefix)+string(hash), metadata)
+
+	return metadata, nil
 }
 
 // MetadataHash returns the hash of the metadata.
