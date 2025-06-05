@@ -47,26 +47,7 @@ func (m *MockContracts) MonitorProcessCreation(ctx context.Context, interval tim
 }
 
 func (m *MockContracts) MonitorProcessFinalization(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
-	ch := make(chan *types.Process)
-	go func() {
-		defer close(ch)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				m.mu.Lock()
-				for _, proc := range m.processes {
-					ch <- proc
-				}
-				m.processes = nil // Clear after sending
-				m.mu.Unlock()
-			}
-		}
-	}()
-	return ch, nil
+	return make(chan *types.Process), nil
 }
 
 func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
