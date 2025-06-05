@@ -13,7 +13,6 @@ import (
 
 const (
 	transitionOnChainTickInterval = 5 * time.Second
-	finishedListenerTickInterval  = 10 * time.Second
 	resultsOnChainTickInterval    = 5 * time.Second
 )
 
@@ -21,7 +20,6 @@ func (s *Sequencer) startOnchainProcessor() error {
 	// Create tickers for processing on-chain transitions and listening for
 	// finished processes
 	transitionTicker := time.NewTicker(transitionOnChainTickInterval)
-	finishedTicker := time.NewTicker(finishedListenerTickInterval)
 	resultsTicker := time.NewTicker(resultsOnChainTickInterval)
 	// Run a loop in a goroutine to handle the on-chain processing and
 	// finished processes
@@ -29,7 +27,6 @@ func (s *Sequencer) startOnchainProcessor() error {
 		defer transitionTicker.Stop()
 		log.Infow("on-chain processor started",
 			"transitionOnChainInterval", transitionOnChainTickInterval,
-			"finishedListenerInterval", finishedListenerTickInterval,
 			"resultsOnChainInterval", resultsOnChainTickInterval)
 
 		for {
@@ -39,10 +36,8 @@ func (s *Sequencer) startOnchainProcessor() error {
 				return
 			case <-transitionTicker.C:
 				s.processTransitionOnChain()
-			case <-finishedTicker.C:
-				s.listenFinishedProcesses()
 			case <-resultsTicker.C:
-				s.uploadVerifiedResultsToContract()
+				s.processResultsOnChain()
 			}
 		}
 	}()
@@ -80,8 +75,10 @@ func (s *Sequencer) processTransitionOnChain() {
 			log.Errorw(err, "failed to push to contract")
 			return true // Continue to next process ID
 		}
-		// update the process state with the new root hash
+		// update the process state with the new root hash and the vote counts
 		process.StateRoot = (*types.BigInt)(batch.Inputs.RootHashAfter)
+		process.VoteCount = new(types.BigInt).Add(process.VoteCount, new(types.BigInt).SetInt(batch.Inputs.NumNewVotes))
+		process.VoteOverwriteCount = new(types.BigInt).Add(process.VoteOverwriteCount, new(types.BigInt).SetInt(batch.Inputs.NumOverwrites))
 		if err := s.stg.SetProcess(process); err != nil {
 			log.Errorw(err, "failed to update process data")
 			return true // Continue to next process ID
@@ -117,15 +114,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	if err != nil {
 		return fmt.Errorf("failed to encode inputs: %w", err)
 	}
-	log.Debugw("proof ready to submit to the contract",
-		"pid", hex.EncodeToString(processID),
-		"commitments", proof.Commitments,
-		"commitmentPok", proof.CommitmentPok,
-		"proof", proof.Proof,
-		"abiProof", hex.EncodeToString(abiProof),
-		"inputs", inputs,
-		"abiInputs", hex.EncodeToString(abiInputs),
-	)
+	log.Debugw("proof ready to submit to the contract", "pid", hex.EncodeToString(processID))
 
 	// Simulate tx to the contract to check if it will fail and get the root
 	// cause of the failure if it does
@@ -143,7 +132,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 			"pid", hex.EncodeToString(processID))
 	}
 
-	// submit the proof to the contract if simulation is successful
+	// Submit the proof to the contract if simulation is successful
 	txHash, err := s.contracts.SetProcessTransition(processID,
 		abiProof,
 		abiInputs,
@@ -152,37 +141,12 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	if err != nil {
 		return fmt.Errorf("failed to submit state transition: %w", err)
 	}
-	// wait for the transaction to be mined
+
+	// Wait for the transaction to be mined
 	return s.contracts.WaitTx(*txHash, time.Second*60)
 }
 
-func (s *Sequencer) listenFinishedProcesses() {
-	// process each registered process ID
-	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
-		if s.stg.IsVerifyingResultsProcess(pid) {
-			log.Debugw("process is already verifying results, skipping",
-				"pid", hex.EncodeToString(pid))
-			return true // Continue to next process ID
-		}
-		process, err := s.contracts.Process(pid)
-		if err != nil {
-			log.Errorw(err, "failed to get process data from contract")
-			return true // Continue to next process ID
-		}
-		// If the process has ended, send it to the finalizer to compute the
-		// final results and remove it from the list to avoid reprocessing
-		if process.Status == types.ProcessStatusEnded {
-			log.Infow("process ready to finalize",
-				"pid", hex.EncodeToString(pid),
-				"status", process.Status)
-			// Send the process ID to the finalizer
-			s.OndemandCh <- new(types.ProcessID).SetBytes(pid)
-		}
-		return true // Continue to next process ID
-	})
-}
-
-func (s *Sequencer) uploadVerifiedResultsToContract() {
+func (s *Sequencer) processResultsOnChain() {
 	// process each registered process ID
 	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
 		res, err := s.stg.PullVerifiedResults(pid)
@@ -192,6 +156,8 @@ func (s *Sequencer) uploadVerifiedResultsToContract() {
 			}
 			return true // Continue to next process ID
 		}
+		// Transform the gnark proof to a solidity proof and upload it to the
+		// contract.
 		solidityProof := new(solidity.Groth16CommitmentProof)
 		if err := solidityProof.FromGnarkProof(res.Proof); err != nil {
 			log.Errorw(err, "failed to convert gnark proof to solidity proof")
@@ -208,7 +174,6 @@ func (s *Sequencer) uploadVerifiedResultsToContract() {
 			return true // Continue to next process ID
 		}
 		log.Infow("verified results ready to upload to contract", "pid", hex.EncodeToString(pid))
-
 		// Simulate tx to the contract to check if it will fail and get the root
 		// cause of the failure if it does
 		var pid32 [32]byte
@@ -246,9 +211,6 @@ func (s *Sequencer) uploadVerifiedResultsToContract() {
 			log.Errorw(err, "failed to mark verified results as uploaded")
 			return true // Continue to next process ID
 		}
-
-		s.pids.Remove(pid) // Remove the process ID from the list after uploading results
-
 		return true
 	})
 }

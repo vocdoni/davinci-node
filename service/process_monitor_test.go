@@ -2,27 +2,23 @@ package service
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/arbo/memdb"
+	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
+	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
-	"go.vocdoni.io/dvote/db"
-	"go.vocdoni.io/dvote/db/metadb"
 )
 
 func TestProcessMonitor(t *testing.T) {
 	c := qt.New(t)
 
 	// Setup storage
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "db")
-	database, err := metadb.New(db.TypePebble, dbPath)
-	c.Assert(err, qt.IsNil)
-
-	store := storage.New(database)
+	store := storage.New(memdb.New())
 	defer store.Close()
 
 	// Setup mock web3 contracts
@@ -35,13 +31,17 @@ func TestProcessMonitor(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err = monitor.Start(ctx)
+	err := monitor.Start(ctx)
 	c.Assert(err, qt.IsNil)
 	defer monitor.Stop()
 
+	// Create a new encryption key for the process
+	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
+	c.Assert(err, qt.IsNil)
+
 	// Create a new process
-	pid, hash, err := contracts.CreateProcess(&types.Process{
-		Status:         0,
+	pid, createTx, err := contracts.CreateProcess(&types.Process{
+		Status:         types.ProcessStatusReady,
 		OrganizationId: contracts.AccountAddress(),
 		StateRoot:      new(types.BigInt).SetUint64(100),
 		StartTime:      time.Now().Add(5 * time.Minute),
@@ -64,14 +64,18 @@ func TestProcessMonitor(t *testing.T) {
 		},
 	})
 	c.Assert(err, qt.IsNil)
-	c.Assert(hash, qt.Not(qt.IsNil))
+	c.Assert(createTx, qt.Not(qt.IsNil))
+
+	// Store the encryption keys for the process pid
+	err = store.SetEncryptionKeys(pid, publicKey, privateKey)
+	c.Assert(err, qt.IsNil)
 
 	// Wait for transaction to be mined
-	err = contracts.WaitTx(*hash, 30*time.Second)
+	err = contracts.WaitTx(*createTx, 30*time.Second)
 	c.Assert(err, qt.IsNil)
 
 	// Give monitor time to detect and store the process
-	time.Sleep(5 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	// Verify process was stored
 	proc, err := store.Process(pid)
