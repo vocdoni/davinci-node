@@ -260,7 +260,7 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts) err
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Start API service
-	s.api = service.NewAPI(stg, defaultSequencerHost, defaultSequencerPort, defaultNetwork)
+	s.api = service.NewAPI(stg, defaultSequencerHost, defaultSequencerPort, defaultNetwork, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}

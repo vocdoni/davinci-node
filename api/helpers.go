@@ -27,7 +27,9 @@ func httpWriteJSON(w http.ResponseWriter, data interface{}) {
 		log.Warnw("failed to write on response", "error", err)
 		return
 	}
-	log.Debugw("api response", "bytes", n, "data", strings.ReplaceAll(string(jdata), "\"", ""))
+	if !DisabledLogging && log.Level() == log.LogLevelDebug {
+		log.Debugw("api response", "bytes", n, "data", strings.ReplaceAll(string(jdata), "\"", ""))
+	}
 }
 
 // httpWriteBinary streams an in-memory byte slice as a response.

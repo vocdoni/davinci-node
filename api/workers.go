@@ -60,7 +60,7 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 	}
 	a.jobsMutex.Unlock()
 
-	log.Debugw("assigned job to worker",
+	log.Infow("assigned job to worker",
 		"voteID", voteIDStr,
 		"worker", workerAddress,
 		"processID", hex.EncodeToString(ballot.ProcessID))
@@ -151,7 +151,7 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 	delete(a.activeJobs, voteIDStr)
 	a.jobsMutex.Unlock()
 
-	log.Debugw("worker job completed",
+	log.Infow("worker job completed",
 		"voteID", voteIDStr,
 		"worker", job.Address,
 		"duration", time.Since(job.Timestamp).String(),

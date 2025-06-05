@@ -64,7 +64,7 @@ type Services struct {
 func setupAPI(ctx context.Context, db *storage.Storage) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
-	api := service.NewAPI(db, "127.0.0.1", tmpPort, "local")
+	api := service.NewAPI(db, "127.0.0.1", tmpPort, "local", false)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
 	}
