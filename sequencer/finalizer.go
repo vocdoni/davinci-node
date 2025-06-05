@@ -181,7 +181,7 @@ func (f *finalizer) finalizeByDate(date time.Time) {
 // result yet. It retrieves the process IDs from storage, checks if they are
 // finalized, and if not, sends them to the OndemandCh channel for processing.
 func (f *finalizer) finalizeEnded() {
-	pids, err := f.stg.ListEndedProcesses()
+	pids, err := f.stg.ListEndedProcessWithEncryptionKeys()
 	if err != nil {
 		log.Errorw(err, "could not list ended processes")
 		return
