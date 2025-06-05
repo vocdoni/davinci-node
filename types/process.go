@@ -48,7 +48,17 @@ type Metadata struct {
 	Description MultilingualString `json:"description" cbor:"1,keyasint,omitempty"`
 	Media       MediaMetadata      `json:"media"       cbor:"2,keyasint,omitempty"`
 	Questions   []Question         `json:"questions"   cbor:"3,keyasint,omitempty"`
-	ProcessType ProcessType        `json:"processType" cbor:"4,keyasint,omitempty"`
+	Type        ProcessType        `json:"type" cbor:"4,keyasint,omitempty"`
+	Version     string             `json:"version" cbor:"5,keyasint,omitempty"`
+	Meta        GenericMetadata    `json:"meta,omitempty" cbor:"6,keyasint,omitempty"`
+}
+
+func (m *Metadata) String() string {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 type Process struct {

@@ -719,38 +719,6 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 	return nil
 }
 
-// MarkVerifyingResultsProcess marks a process as verifying results by setting
-// a reservation for the processID under the verifyingResultsReservPrefix. It
-// is removed when the verify results are pulled. This is used to avoid to
-// process the same results multiple times.
-func (s *Storage) MarkVerifyingResultsProcess(processID []byte) error {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-
-	// Check if the process is already reserved for verifying results
-	// If it is, we do not need to reserve it again
-	if s.isReserved(verifyingResultsReservPrefix, processID) {
-		return nil
-	}
-
-	// Set the process as verifying results
-	if err := s.setReservation(verifyingResultsReservPrefix, processID); err != nil {
-		return fmt.Errorf("set verifying results reservation: %w", err)
-	}
-
-	return nil
-}
-
-// IsVerifyingResultsProcess checks if a process is currently reserved for
-// verifying results.
-func (s *Storage) IsVerifyingResultsProcess(processID []byte) bool {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-
-	// Check if the process is reserved for verifying results
-	return s.isReserved(verifyingResultsReservPrefix, processID)
-}
-
 // PushVerifiedResults stores the verified results for a given processID.
 // It encodes the VerifiedResults struct and stores it in the database under
 // the verifiedResultPrefix with the processID as the key. It does not
@@ -793,10 +761,6 @@ func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
 // retrieval or decoding, it returns an error with a descriptive message.
 // It also removes the reservation for verifying results if it exists.
 func (s *Storage) PullVerifiedResults(processID []byte) (*VerifiedResults, error) {
-	if !s.IsVerifyingResultsProcess(processID) {
-		return nil, ErrNoMoreElements
-	}
-
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -818,11 +782,6 @@ func (s *Storage) PullVerifiedResults(processID []byte) (*VerifiedResults, error
 		return nil, fmt.Errorf("decode verified results: %w", err)
 	}
 
-	// remove the reservation for verifying results if it exists
-	if err := s.deleteArtifact(verifyingResultsReservPrefix, res.ProcessID); err != nil && !errors.Is(err, ErrNotFound) {
-		return nil, fmt.Errorf("delete verifying results reservation: %w", err)
-	}
-
 	return &res, nil
 }
 
@@ -839,11 +798,6 @@ func (s *Storage) MarkVerifiedResults(processID []byte) error {
 			return nil
 		}
 		return fmt.Errorf("delete verified results: %w", err)
-	}
-
-	// remove the reservation for verifying results if it exists
-	if err := s.deleteArtifact(verifyingResultsReservPrefix, processID); err != nil && !errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("delete verifying results reservation: %w", err)
 	}
 
 	return tx.Commit()

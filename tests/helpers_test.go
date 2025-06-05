@@ -102,7 +102,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
-		// composeEnv[zContractsBranchNameEnvVarName] = "f/results_verification"
+		composeEnv[zContractsBranchNameEnvVarName] = "f/results_status"
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
@@ -533,7 +533,7 @@ func publishedResults(t *testing.T, contracts *web3.Contracts, pid *types.Proces
 	c := qt.New(t)
 	process, err := contracts.Process(pid.Marshal())
 	c.Assert(err, qt.IsNil)
-	if process == nil || len(process.Result) == 0 {
+	if process == nil || process.Status != types.ProcessStatusResults || len(process.Result) == 0 {
 		return nil
 	}
 	return process.Result

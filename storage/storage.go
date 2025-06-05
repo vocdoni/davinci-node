@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru/v2"
+
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage/census"
 	"go.vocdoni.io/dvote/db"
@@ -20,22 +22,21 @@ var (
 	ErrNoMoreElements   = errors.New("no more elements")
 
 	// Prefixes
-	ballotPrefix                 = []byte("b/")
-	ballotReservationPrefix      = []byte("br/")
-	ballotStatusPrefix           = []byte("bs/")
-	verifiedBallotPrefix         = []byte("vb/")
-	verifiedBallotReservPrefix   = []byte("vbr/")
-	aggregBatchPrefix            = []byte("ag/")
-	aggregBatchReservPrefix      = []byte("agr/")
-	stateTransitionPrefix        = []byte("st/")
-	stateTransitionReservPrefix  = []byte("str/")
-	verifiedResultPrefix         = []byte("vr/")
-	verifyingResultsReservPrefix = []byte("vrr/")
-	encryptionKeyPrefix          = []byte("ek/")
-	processPrefix                = []byte("p/")
-
-	censusDBprefix = []byte("cs_")
-	stateDBprefix  = []byte("st_")
+	ballotPrefix                = []byte("b/")
+	ballotReservationPrefix     = []byte("br/")
+	ballotStatusPrefix          = []byte("bs/")
+	verifiedBallotPrefix        = []byte("vb/")
+	verifiedBallotReservPrefix  = []byte("vbr/")
+	aggregBatchPrefix           = []byte("ag/")
+	aggregBatchReservPrefix     = []byte("agr/")
+	stateTransitionPrefix       = []byte("st/")
+	stateTransitionReservPrefix = []byte("str/")
+	verifiedResultPrefix        = []byte("vr/")
+	encryptionKeyPrefix         = []byte("ek/")
+	processPrefix               = []byte("p/")
+	metadataPrefix              = []byte("md/")
+	censusDBprefix              = []byte("cs_")
+	stateDBprefix               = []byte("st_")
 
 	maxKeySize = 12
 )
@@ -50,16 +51,22 @@ type Storage struct {
 	db          db.Database
 	censusDB    *census.CensusDB
 	stateDB     db.Database
-	globalLock  sync.Mutex // Lock for global operations
-	workersLock sync.Mutex // Lock for worker-related operations
+	globalLock  sync.Mutex              // Lock for global operations
+	workersLock sync.Mutex              // Lock for worker-related operations
+	cache       *lru.Cache[string, any] // Cache for artifacts
 }
 
 // New creates a new Storage instance.
 func New(db db.Database) *Storage {
+	cache, err := lru.New[string, any](1000)
+	if err != nil {
+		log.Fatalf("failed to create LRU cache: %v", err)
+	}
 	s := &Storage{
 		db:       db,
 		stateDB:  prefixeddb.NewPrefixedDatabase(db, stateDBprefix),
 		censusDB: census.NewCensusDB(prefixeddb.NewPrefixedDatabase(db, censusDBprefix)),
+		cache:    cache,
 	}
 
 	if err := s.setAllProcessesAsNotAcceptingVotes(); err != nil {

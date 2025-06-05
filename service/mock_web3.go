@@ -46,6 +46,10 @@ func (m *MockContracts) MonitorProcessCreation(ctx context.Context, interval tim
 	return ch, nil
 }
 
+func (m *MockContracts) MonitorProcessFinalization(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
+	return make(chan *types.Process), nil
+}
+
 func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

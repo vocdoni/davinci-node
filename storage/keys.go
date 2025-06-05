@@ -35,15 +35,3 @@ func (s *Storage) EncryptionKeys(pid *types.ProcessID) (ecc.Point, *big.Int, err
 	pubKey := curves.New(bjj.CurveType).SetPoint(eks.X, eks.Y)
 	return pubKey, eks.PrivateKey, nil
 }
-
-// ListProcessWithEncryptionKeys returns a list of process IDs that have encryption keys stored.
-func (s *Storage) ListProcessWithEncryptionKeys() ([][]byte, error) {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-
-	pids, err := s.listArtifacts(encryptionKeyPrefix)
-	if err != nil {
-		return nil, err
-	}
-	return pids, nil
-}

@@ -354,7 +354,6 @@ github.com/hashicorp/go-multierror v1.1.1 h1:H5DkEtf6CXdFp0N0Em5UCwQpXMWke8IA0+l
 github.com/hashicorp/go-multierror v1.1.1/go.mod h1:iw975J/qwKPdAO1clOe2L8331t/9/fmwbPZ6JB6eMoM=
 github.com/hashicorp/go-version v1.7.0 h1:5tqGy27NaOTB8yJKUZELlFAS/LTKJkrmONwQKeRZfjY=
 github.com/hashicorp/go-version v1.7.0/go.mod h1:fltr4n8CU8Ke44wwGCBoEymUuxUHl09ZGVZPK5anwXA=
-github.com/hashicorp/golang-lru v1.0.2 h1:dV3g9Z/unq5DpblPpw+Oqcv4dU/1omnb4Ok8iPY6p1c=
 github.com/hashicorp/golang-lru/v2 v2.0.7 h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=
 github.com/hashicorp/golang-lru/v2 v2.0.7/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/hashicorp/hcl v1.0.1-vault-5 h1:kI3hhbbyzr4dldA8UdTb7ZlVVlI2DACdCfz31RPDgJM=
@@ -705,8 +704,8 @@ github.com/vocdoni/arbo v0.0.0-20250513133053-b35dcc9c1f00 h1:Xi9lW+nTiKoDSJ/hfe
 github.com/vocdoni/arbo v0.0.0-20250513133053-b35dcc9c1f00/go.mod h1:2EyGpN1IgziTvCxkosVQj2sdEJaWJxe8vwgWG1BIHbw=
 github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4 h1:aYeMlhWAW+/OQs9BinA8Yetjcf5IPoCsFFtxXx3uLdc=
 github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4/go.mod h1:A1WU0hL7rO9oZlvp82you2uCc4T3/ySi1UNW6N6hBJs=
-github.com/vocdoni/contracts-z v0.0.0-20250603090634-ac9de7995155 h1:24a+WfejNdycYRFsTmLjLtV83IWLmDcbHES/SWuLUVs=
-github.com/vocdoni/contracts-z v0.0.0-20250603090634-ac9de7995155/go.mod h1:ztzA4TBwnswOKlgiBqbVqRcCa+XkHkfazFcx2ZQsc50=
+github.com/vocdoni/contracts-z v0.0.0-20250605051824-cc60b12f1e35 h1:7BysjhSNK4DxORDzw0A77xMmGDodxkne9Sr/y2CMNLU=
+github.com/vocdoni/contracts-z v0.0.0-20250605051824-cc60b12f1e35/go.mod h1:ztzA4TBwnswOKlgiBqbVqRcCa+XkHkfazFcx2ZQsc50=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250526071704-a5cc90e03181 h1:BDpJdwf11QzIn3V561dNkJHKobdcNO9kokBvtX6wxC8=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250526071704-a5cc90e03181/go.mod h1:tth1zQwq36tCCUJrq72y8gHEiwmJriJImlslLc1VQfQ=
 github.com/vocdoni/gnark-no-assert v0.0.0-20250430090134-56f68baa9b16 h1:XtdKB+e8woVMp58Rx3lUBb9FSbxwgDdToHZspd8EA5U=

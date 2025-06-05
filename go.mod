@@ -17,6 +17,7 @@ require (
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-chi/cors v1.2.1
 	github.com/google/uuid v1.6.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/iden3/go-iden3-crypto v0.0.17
 	github.com/iden3/go-rapidsnark/prover v0.0.12
 	github.com/iden3/go-rapidsnark/witness v0.0.6
@@ -27,7 +28,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250513133053-b35dcc9c1f00
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
-	github.com/vocdoni/contracts-z v0.0.0-20250603090634-ac9de7995155
+	github.com/vocdoni/contracts-z v0.0.0-20250605051824-cc60b12f1e35
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250526071704-a5cc90e03181
 	go.vocdoni.io/dvote v1.10.2-0.20241024102542-c1ce6d744bc5
 	golang.org/x/sync v0.14.0

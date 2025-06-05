@@ -84,7 +84,6 @@ func TestProcess(t *testing.T) {
 			CensusURI:    "https://example.com/census",
 			CensusOrigin: 0,
 		},
-		Metadata: testMetadata,
 	}
 
 	err = st.SetProcess(testProcess)
@@ -93,14 +92,8 @@ func TestProcess(t *testing.T) {
 	// Get and verify data and metadata
 	process, err := st.Process(processID)
 	c.Assert(err, qt.IsNil)
-	retrievedMetadata := process.Metadata
 	c.Assert(string(process.ID), qt.DeepEquals, string(processID.Marshal()))
 	c.Assert(process.MetadataURI, qt.Equals, testProcess.MetadataURI)
-	c.Assert(retrievedMetadata, qt.Not(qt.IsNil))
-	c.Assert(retrievedMetadata.Title["default"], qt.Equals, testMetadata.Title["default"])
-	c.Assert(retrievedMetadata.Description["default"], qt.Equals, testMetadata.Description["default"])
-	c.Assert(retrievedMetadata.Questions[0].Title["default"], qt.Equals, testMetadata.Questions[0].Title["default"])
-	c.Assert(len(retrievedMetadata.Questions[0].Choices), qt.Equals, len(testMetadata.Questions[0].Choices))
 
 	// Test 3: List processes
 	processes, err := st.ListProcesses()
