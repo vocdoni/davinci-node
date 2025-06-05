@@ -66,12 +66,11 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 		for {
 			select {
 			case pid := <-f.OndemandCh:
-				if err := f.finalize(pid); err != nil {
-					log.Errorw(err, fmt.Sprintf("finalizing process %s", pid.String()))
-					if err := f.setProcessFinalized(pid, nil); err != nil { // set the process as finalized without a result
-						log.Warnw("could not force process as finalized", "pid", pid.String(), "error", err)
+				go func(pid *types.ProcessID) {
+					if err := f.finalize(pid); err != nil {
+						log.Errorw(err, fmt.Sprintf("finalizing process %s", pid.String()))
 					}
-				}
+				}(pid) // Use a goroutine to avoid blocking the channel
 			case <-f.ctx.Done():
 				return
 			}

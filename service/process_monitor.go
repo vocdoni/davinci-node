@@ -112,6 +112,9 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, final
 				}
 				continue
 			}
+			if process.IsFinalized {
+				continue // Process is already finalized, skip
+			}
 			log.Debugw("finalized process found", "pid", process.ID.String())
 			// Update the process status to finalized
 			if err := pm.storage.SetProcess(process); err != nil {
