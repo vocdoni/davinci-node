@@ -32,7 +32,8 @@ func (s *Storage) SetProcess(data *types.Process) error {
 	return s.setArtifact(processPrefix, data.ID, data)
 }
 
-// ListProcesses returns the list of process IDs stored in the storage (by SetProcessMetadata) as a list of byte slices.
+// ListProcesses returns the list of process IDs stored in the storage (by
+// SetProcessMetadata) as a list of byte slices.
 func (s *Storage) ListProcesses() ([][]byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
@@ -42,6 +43,56 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 		return nil, err
 	}
 	return pids, nil
+}
+
+// ListProcessWithEncryptionKeys returns a list of process IDs that have
+// encryption keys stored.
+func (s *Storage) ListProcessWithEncryptionKeys() ([][]byte, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	pids, err := s.listProcessesWithEncryptionKeys()
+	if err != nil {
+		return nil, err
+	}
+	return pids, nil
+}
+
+// ListEndedProcessWithEncryptionKeys returns the list of process IDs that are
+// ended and have their encryption keys stored in the storage.
+func (s *Storage) ListEndedProcessWithEncryptionKeys() ([][]byte, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Filter out processes that have the encryption keys stored.
+	pids, err := s.listProcessesWithEncryptionKeys()
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter the processes to only include those that are ended.
+	var endedPids [][]byte
+	for _, pid := range pids {
+		p := new(types.Process)
+		if err := s.getArtifact(processPrefix, pid, p); err != nil {
+			if err == ErrNotFound {
+				continue // Skip if process not found
+			}
+			return nil, fmt.Errorf("error retrieving process %x: %w", pid, err)
+		}
+		if p.Status != types.ProcessStatusEnded {
+			continue // Skip if process is not ended
+		}
+		endedPids = append(endedPids, pid)
+	}
+	return endedPids, nil
+}
+
+// listProcessesWithEncryptionKeys retrieves all process IDs that have
+// encryption keys stored. It is a wrapper around listArtifacts with the
+// encryptionKeyPrefix.
+func (s *Storage) listProcessesWithEncryptionKeys() ([][]byte, error) {
+	return s.listArtifacts(encryptionKeyPrefix)
 }
 
 // MetadataHash returns the hash of the metadata.

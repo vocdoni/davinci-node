@@ -200,6 +200,53 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 	return ch, nil
 }
 
+// MonitorProcessFinalization monitors the finalization of processes by polling
+// the ProcessRegistry contract every interval. It returns a channel that emits
+// finalized processes. A finalized process is one that has its status set to
+// ProcessStatusEnded.
+func (c *Contracts) MonitorProcessFinalization(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
+	ch := make(chan *types.Process)
+	go func() {
+		defer close(ch)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Infow("exiting monitor process finalization")
+				return
+			case <-ticker.C:
+				end := c.CurrentBlock()
+				if end <= c.lastWatchProcessBlock {
+					continue
+				}
+				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
+				iter, err := c.processes.FilterProcessStatusChanged(&bind.FilterOpts{Start: c.lastWatchProcessBlock, End: &end, Context: ctxQuery}, nil)
+				cancel()
+				if err != nil || iter == nil {
+					log.Debugw("failed to filter process finalized, retrying", "err", err)
+					continue
+				}
+				c.lastWatchProcessBlock = end
+				for iter.Next() {
+					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
+					if _, exists := c.knownProcesses[processID]; !exists {
+						continue
+					}
+					process, err := c.Process(iter.Event.ProcessId[:])
+					if err != nil {
+						log.Errorw(err, "failed to get process while monitoring process creation")
+						continue
+					}
+					process.ID = iter.Event.ProcessId[:]
+					ch <- process
+				}
+			}
+		}
+	}()
+	return ch, nil
+}
+
 // MonitorProcessCreationBySubscription monitors the creation of new processes by subscribing to the ProcessRegistry contract.
 // Requires the web3 rpc endpoint to support subscriptions on websockets.
 func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<-chan *types.Process, error) {
@@ -302,6 +349,7 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		VoteCount:          (*types.BigInt)(p.VoteCount),
 		VoteOverwriteCount: (*types.BigInt)(p.VoteOverwriteCount),
 		Result:             results,
+		IsFinalized:        p.Status == types.ProcessStatusResults,
 	}, nil
 }
 

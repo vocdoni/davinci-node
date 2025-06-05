@@ -234,8 +234,23 @@ func main() {
 		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 		return
 	}
-	log.Info("all votes registered in smart contract")
+	log.Info("all votes registered in smart contract, finishing the process in the smart contract...")
 	time.Sleep(1 * time.Second)
+	// finish the process in the smart contract
+	if err := finishProcessOnChain(contracts, pid); err != nil {
+		log.Errorw(err, "failed to finish process in smart contract")
+		return
+	}
+	log.Infow("process finished in smart contract", "pid", pid.String())
+	// Wait for the process to be finished in the sequencer
+	resultsCtx, cancel := context.WithTimeout(testCtx, 2*time.Minute)
+	defer cancel()
+	results, err := waitForOnChainResults(resultsCtx, contracts, pid)
+	if err != nil {
+		log.Errorw(err, "failed to wait for on-chain results")
+		return
+	}
+	log.Infow("on-chain results received", "pid", pid.String(), "results", results)
 }
 
 type localService struct {
@@ -599,6 +614,39 @@ func listenSmartContractVotesCount(
 				lastVotesCount = newVotesCount
 				newVotes <- newVotesCount
 			}
+		}
+	}
+}
+
+func finishProcessOnChain(contracts *web3.Contracts, pid *types.ProcessID) error {
+	finishTx, err := contracts.SetProcessStatus(pid.Marshal(), types.ProcessStatusEnded)
+	if err != nil {
+		return fmt.Errorf("failed to finish process: %v", err)
+	}
+	if err := contracts.WaitTx(*finishTx, time.Second*30); err != nil {
+		return fmt.Errorf("failed to wait for process finish tx: %v", err)
+	}
+	return nil
+}
+
+func waitForOnChainResults(ctx context.Context, contracts *web3.Contracts, pid *types.ProcessID) ([]*types.BigInt, error) {
+	ticker := time.NewTicker(time.Second * 30)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			process, err := contracts.Process(pid.Marshal())
+			if err != nil {
+				return nil, fmt.Errorf("failed to get process: %v", err)
+			}
+			if process == nil {
+				return nil, fmt.Errorf("process not found")
+			}
+			if process.Status == types.ProcessStatusResults {
+				return process.Result, nil
+			}
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context canceled while waiting for results: %v", ctx.Err())
 		}
 	}
 }
