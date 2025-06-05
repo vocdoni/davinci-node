@@ -151,3 +151,54 @@ func (a *API) process(w http.ResponseWriter, r *http.Request) {
 	// Write the response
 	httpWriteJSON(w, proc)
 }
+
+// setMetadata sets the metadata for a voting process
+// POST /metadata
+func (a *API) setMetadata(w http.ResponseWriter, r *http.Request) {
+	// Decode the metadata from the request body
+	var metadata types.Metadata
+	if err := json.NewDecoder(r.Body).Decode(&metadata); err != nil {
+		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
+		return
+	}
+
+	if len(metadata.Title) == 0 {
+		ErrMalformedBody.With("metadata title is required").Write(w)
+		return
+	}
+
+	// Store the metadata in the storage
+	hash, err := a.storage.SetMetadata(&metadata)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not store process metadata: %v", err).Write(w)
+		return
+	}
+
+	httpWriteJSON(w, &SetMetadataResponse{
+		Hash: hash,
+	})
+}
+
+// fetchMetadata retrieves the metadata for a voting process
+// GET /metadata/{metadataHash}
+func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
+	// Decode the metadata hash from the URL
+	hashBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, MetadataHashParam)))
+	if err != nil {
+		ErrMalformedParam.Write(w)
+		return
+	}
+
+	// Retrieve the metadata from the storage
+	metadata, err := a.storage.Metadata(hashBytes)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			ErrResourceNotFound.Write(w)
+			return
+		}
+		ErrGenericInternalServerError.Withf("could not retrieve metadata: %v", err).Write(w)
+		return
+	}
+
+	httpWriteJSON(w, metadata)
+}

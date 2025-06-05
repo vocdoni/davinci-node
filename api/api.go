@@ -120,6 +120,11 @@ func (a *API) registerHandlers() {
 	a.router.Post(ProcessesEndpoint, a.newProcess)
 	log.Infow("register handler", "endpoint", ProcessEndpoint, "method", "GET")
 	a.router.Get(ProcessEndpoint, a.process)
+	// metadata endpoints
+	log.Infow("register handler", "endpoint", MetadataSetEndpoint, "method", "POST")
+	a.router.Post(MetadataSetEndpoint, a.setMetadata)
+	log.Infow("register handler", "endpoint", MetadataGetEndpoint, "method", "GET")
+	a.router.Get(MetadataGetEndpoint, a.fetchMetadata)
 	// votes endpoints
 	log.Infow("register handler", "endpoint", VotesEndpoint, "method", "POST")
 	a.router.Post(VotesEndpoint, a.newVote)
