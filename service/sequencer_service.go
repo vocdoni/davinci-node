@@ -127,8 +127,7 @@ func (ss *SequencerService) logActiveProcessStats() {
 	}
 
 	// Log summary statistics
-	log.Monitor("global statistics summary", map[string]any{
-		"active":             activeProcessCount,
+	log.Monitor("active process statistics summary", map[string]any{
 		"pendingVotes":       totalPending,
 		"verifiedVotes":      totalVerified,
 		"aggregatedVotes":    totalAggregated,

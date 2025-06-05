@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
@@ -31,19 +32,87 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 	for _, update := range updates {
 		switch update.TypeStats {
 		case types.TypeStatsStateTransitions:
-			p.SequencerStats.StateTransitionCount += update.Delta
+			newValue := p.SequencerStats.StateTransitionCount + update.Delta
+			if newValue < 0 {
+				log.Warnw("attempted to set negative StateTransitionCount, clamping to 0",
+					"processID", fmt.Sprintf("%x", pid),
+					"currentValue", p.SequencerStats.StateTransitionCount,
+					"delta", update.Delta,
+				)
+				p.SequencerStats.StateTransitionCount = 0
+			} else {
+				p.SequencerStats.StateTransitionCount = newValue
+			}
 		case types.TypeStatsSettledStateTransitions:
-			p.SequencerStats.SettledStateTransitionCount += update.Delta
+			newValue := p.SequencerStats.SettledStateTransitionCount + update.Delta
+			if newValue < 0 {
+				log.Warnw("attempted to set negative SettledStateTransitionCount, clamping to 0",
+					"processID", fmt.Sprintf("%x", pid),
+					"currentValue", p.SequencerStats.SettledStateTransitionCount,
+					"delta", update.Delta,
+				)
+				p.SequencerStats.SettledStateTransitionCount = 0
+			} else {
+				p.SequencerStats.SettledStateTransitionCount = newValue
+			}
 		case types.TypeStatsAggregatedVotes:
-			p.SequencerStats.AggregatedVotesCount += update.Delta
+			newValue := p.SequencerStats.AggregatedVotesCount + update.Delta
+			if newValue < 0 {
+				log.Warnw("attempted to set negative AggregatedVotesCount, clamping to 0",
+					"processID", fmt.Sprintf("%x", pid),
+					"currentValue", p.SequencerStats.AggregatedVotesCount,
+					"delta", update.Delta,
+				)
+				p.SequencerStats.AggregatedVotesCount = 0
+			} else {
+				p.SequencerStats.AggregatedVotesCount = newValue
+			}
 		case types.TypeStatsVerifiedVotes:
-			p.SequencerStats.VerifiedVotesCount += update.Delta
+			newValue := p.SequencerStats.VerifiedVotesCount + update.Delta
+			if newValue < 0 {
+				log.Warnw("attempted to set negative VerifiedVotesCount, clamping to 0",
+					"processID", fmt.Sprintf("%x", pid),
+					"currentValue", p.SequencerStats.VerifiedVotesCount,
+					"delta", update.Delta,
+				)
+				p.SequencerStats.VerifiedVotesCount = 0
+			} else {
+				p.SequencerStats.VerifiedVotesCount = newValue
+			}
 		case types.TypeStatsPendingVotes:
-			p.SequencerStats.PendingVotesCount += update.Delta
+			newValue := p.SequencerStats.PendingVotesCount + update.Delta
+			if newValue < 0 {
+				log.Warnw("attempted to set negative PendingVotesCount, clamping to 0",
+					"processID", fmt.Sprintf("%x", pid),
+					"currentValue", p.SequencerStats.PendingVotesCount,
+					"delta", update.Delta,
+				)
+				p.SequencerStats.PendingVotesCount = 0
+			} else {
+				p.SequencerStats.PendingVotesCount = newValue
+			}
 		case types.TypeStatsLastBatchSize:
-			p.SequencerStats.LastBatchSize = update.Delta
+			if update.Delta < 0 {
+				log.Warnw("attempted to set negative LastBatchSize, clamping to 0",
+					"processID", fmt.Sprintf("%x", pid),
+					"delta", update.Delta,
+				)
+				p.SequencerStats.LastBatchSize = 0
+			} else {
+				p.SequencerStats.LastBatchSize = update.Delta
+			}
 		case types.TypeStatsCurrentBatchSize:
-			p.SequencerStats.CurrentBatchSize += update.Delta
+			newValue := p.SequencerStats.CurrentBatchSize + update.Delta
+			if newValue < 0 {
+				log.Warnw("attempted to set negative CurrentBatchSize, clamping to 0",
+					"processID", fmt.Sprintf("%x", pid),
+					"currentValue", p.SequencerStats.CurrentBatchSize,
+					"delta", update.Delta,
+				)
+				p.SequencerStats.CurrentBatchSize = 0
+			} else {
+				p.SequencerStats.CurrentBatchSize = newValue
+			}
 		default:
 			return fmt.Errorf("unknown type stats: %d", update.TypeStats)
 		}

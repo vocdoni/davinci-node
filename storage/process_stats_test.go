@@ -504,3 +504,303 @@ func TestGetTotalPendingBallots(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(total, qt.Equals, 15, qt.Commentf("Expected total of 15 pending ballots after processing one"))
 }
+
+// TestMarkVerifiedBallotsFailed tests that marking verified ballots as failed
+// properly updates the counters to prevent mismatches.
+func TestMarkVerifiedBallotsFailed(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	// Create a process
+	processID := &types.ProcessID{
+		Address: common.Address{},
+		Nonce:   100,
+		ChainID: 1,
+	}
+
+	err = st.SetProcess(createTestProcess(processID))
+	c.Assert(err, qt.IsNil)
+
+	// Create and process some ballots to verified state
+	numBallots := 5
+	var keys [][]byte
+	for i := 0; i < numBallots; i++ {
+		ballot := &Ballot{
+			ProcessID:        processID.Marshal(),
+			Nullifier:        big.NewInt(int64(i + 1000)),
+			Address:          big.NewInt(int64(i + 2000)),
+			BallotInputsHash: big.NewInt(int64(i + 3000)),
+		}
+
+		// Push ballot
+		err := st.PushBallot(ballot)
+		c.Assert(err, qt.IsNil)
+
+		// Get and mark as done (verified)
+		b, key, err := st.NextBallot()
+		c.Assert(err, qt.IsNil)
+
+		verifiedBallot := &VerifiedBallot{
+			ProcessID:   b.ProcessID,
+			Nullifier:   b.Nullifier,
+			VoteID:      b.VoteID(),
+			VoterWeight: big.NewInt(1),
+		}
+		err = st.MarkBallotDone(key, verifiedBallot)
+		c.Assert(err, qt.IsNil)
+
+		// Store the verified ballot key for later failure
+		combKey := append(processID.Marshal(), key...)
+		keys = append(keys, combKey)
+	}
+
+	// Check stats before failure
+	proc1, err := st.Process(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(proc1.SequencerStats.PendingVotesCount, qt.Equals, 0)
+	c.Assert(proc1.SequencerStats.VerifiedVotesCount, qt.Equals, numBallots)
+	c.Assert(proc1.SequencerStats.CurrentBatchSize, qt.Equals, numBallots)
+
+	// Mark 3 verified ballots as failed
+	failedCount := 3
+	failedKeys := keys[:failedCount]
+	err = st.MarkVerifiedBallotsFailed(failedKeys...)
+	c.Assert(err, qt.IsNil)
+
+	// Check stats after failure
+	proc2, err := st.Process(processID)
+	c.Assert(err, qt.IsNil)
+	stats := proc2.SequencerStats
+
+	expectedVerified := numBallots - failedCount
+	expectedCurrentBatch := numBallots - failedCount
+
+	c.Assert(stats.PendingVotesCount, qt.Equals, 0)
+	c.Assert(stats.VerifiedVotesCount, qt.Equals, expectedVerified,
+		qt.Commentf("Expected %d verified votes after failure, got %d", expectedVerified, stats.VerifiedVotesCount))
+	c.Assert(stats.CurrentBatchSize, qt.Equals, expectedCurrentBatch,
+		qt.Commentf("Expected current batch size %d after failure, got %d", expectedCurrentBatch, stats.CurrentBatchSize))
+
+	t.Logf("After marking %d ballots failed: pending=%d, verified=%d, currentBatch=%d",
+		failedCount, stats.PendingVotesCount, stats.VerifiedVotesCount, stats.CurrentBatchSize)
+}
+
+// TestMarkBallotBatchFailed tests that marking an aggregated batch as failed
+// properly reverts the aggregation counters.
+func TestMarkBallotBatchFailed(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	// Create a process
+	processID := &types.ProcessID{
+		Address: common.Address{},
+		Nonce:   101,
+		ChainID: 1,
+	}
+
+	err = st.SetProcess(createTestProcess(processID))
+	c.Assert(err, qt.IsNil)
+
+	// Create and process some ballots to verified state
+	numBallots := 8
+	for i := 0; i < numBallots; i++ {
+		ballot := &Ballot{
+			ProcessID:        processID.Marshal(),
+			Nullifier:        big.NewInt(int64(i + 1000)),
+			Address:          big.NewInt(int64(i + 2000)),
+			BallotInputsHash: big.NewInt(int64(i + 3000)),
+		}
+
+		// Push ballot
+		err := st.PushBallot(ballot)
+		c.Assert(err, qt.IsNil)
+
+		// Get and mark as done (verified)
+		b, key, err := st.NextBallot()
+		c.Assert(err, qt.IsNil)
+
+		verifiedBallot := &VerifiedBallot{
+			ProcessID:   b.ProcessID,
+			Nullifier:   b.Nullifier,
+			VoteID:      b.VoteID(),
+			VoterWeight: big.NewInt(1),
+		}
+		err = st.MarkBallotDone(key, verifiedBallot)
+		c.Assert(err, qt.IsNil)
+	}
+
+	// Pull verified ballots and create aggregator batch
+	verifiedBallots, keys, err := st.PullVerifiedBallots(processID.Marshal(), numBallots)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(verifiedBallots), qt.Equals, numBallots)
+
+	// Create aggregator batch
+	aggBallots := make([]*AggregatorBallot, len(verifiedBallots))
+	for i, vb := range verifiedBallots {
+		aggBallots[i] = &AggregatorBallot{
+			VoteID:    vb.VoteID,
+			Nullifier: vb.Nullifier,
+			Address:   vb.Address,
+		}
+	}
+
+	batch := &AggregatorBallotBatch{
+		ProcessID: processID.Marshal(),
+		Ballots:   aggBallots,
+	}
+
+	// Push the batch (this updates aggregated votes and decreases current batch size)
+	err = st.PushBallotBatch(batch)
+	c.Assert(err, qt.IsNil)
+
+	// Mark verified ballots as done
+	err = st.MarkVerifiedBallotsDone(keys...)
+	c.Assert(err, qt.IsNil)
+
+	// Check stats after aggregation
+	proc1, err := st.Process(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(proc1.SequencerStats.VerifiedVotesCount, qt.Equals, numBallots)
+	c.Assert(proc1.SequencerStats.AggregatedVotesCount, qt.Equals, numBallots)
+	c.Assert(proc1.SequencerStats.CurrentBatchSize, qt.Equals, 0)
+
+	// Get the batch key to mark it as failed
+	batchEntry, batchKey, err := st.NextBallotBatch(processID.Marshal())
+	c.Assert(err, qt.IsNil)
+	c.Assert(batchEntry, qt.IsNotNil)
+	c.Assert(len(batchEntry.Ballots), qt.Equals, numBallots)
+
+	// Mark the batch as failed
+	err = st.MarkBallotBatchFailed(batchKey)
+	c.Assert(err, qt.IsNil)
+
+	// Check stats after batch failure
+	proc2, err := st.Process(processID)
+	c.Assert(err, qt.IsNil)
+	stats := proc2.SequencerStats
+
+	// Aggregated votes should be reverted, current batch size should be restored
+	c.Assert(stats.VerifiedVotesCount, qt.Equals, numBallots,
+		qt.Commentf("VerifiedVotesCount should remain %d", numBallots))
+	c.Assert(stats.AggregatedVotesCount, qt.Equals, 0,
+		qt.Commentf("AggregatedVotesCount should be reverted to 0, got %d", stats.AggregatedVotesCount))
+	c.Assert(stats.CurrentBatchSize, qt.Equals, numBallots,
+		qt.Commentf("CurrentBatchSize should be restored to %d, got %d", numBallots, stats.CurrentBatchSize))
+
+	t.Logf("After batch failure: verified=%d, aggregated=%d, currentBatch=%d",
+		stats.VerifiedVotesCount, stats.AggregatedVotesCount, stats.CurrentBatchSize)
+}
+
+// TestProcessStatsNegativeValuePrevention tests that the safeguards prevent
+// negative values in process stats counters.
+func TestProcessStatsNegativeValuePrevention(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	// Create a process
+	processID := &types.ProcessID{
+		Address: common.Address{},
+		Nonce:   102,
+		ChainID: 1,
+	}
+
+	err = st.SetProcess(createTestProcess(processID))
+	c.Assert(err, qt.IsNil)
+
+	// Test attempting to set negative values
+	updates := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsPendingVotes, Delta: -10},   // Should be clamped to 0
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: -5},   // Should be clamped to 0
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: -3}, // Should be clamped to 0
+	}
+
+	err = st.updateProcessStats(processID.Marshal(), updates)
+	c.Assert(err, qt.IsNil)
+
+	// Check that all values are 0 (clamped)
+	proc, err := st.Process(processID)
+	c.Assert(err, qt.IsNil)
+	stats := proc.SequencerStats
+
+	c.Assert(stats.PendingVotesCount, qt.Equals, 0)
+	c.Assert(stats.VerifiedVotesCount, qt.Equals, 0)
+	c.Assert(stats.AggregatedVotesCount, qt.Equals, 0)
+
+	// Test with positive values first, then negative deltas
+	updates1 := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsPendingVotes, Delta: 5},
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 3},
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: 2},
+	}
+
+	err = st.updateProcessStats(processID.Marshal(), updates1)
+	c.Assert(err, qt.IsNil)
+
+	// Now apply negative deltas that would make some values negative
+	updates2 := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsPendingVotes, Delta: -10},   // 5 - 10 = -5, should be clamped to 0
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: -2},   // 3 - 2 = 1, should remain 1
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: -5}, // 2 - 5 = -3, should be clamped to 0
+	}
+
+	err = st.updateProcessStats(processID.Marshal(), updates2)
+	c.Assert(err, qt.IsNil)
+
+	// Check final values
+	proc2, err := st.Process(processID)
+	c.Assert(err, qt.IsNil)
+	finalStats := proc2.SequencerStats
+
+	c.Assert(finalStats.PendingVotesCount, qt.Equals, 0, qt.Commentf("Should be clamped to 0"))
+	c.Assert(finalStats.VerifiedVotesCount, qt.Equals, 1, qt.Commentf("Should be 1"))
+	c.Assert(finalStats.AggregatedVotesCount, qt.Equals, 0, qt.Commentf("Should be clamped to 0"))
+
+	// Test that CurrentBatchSize cannot be negative (should be clamped to 0)
+	updates3 := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsCurrentBatchSize, Delta: -10}, // Should be clamped to 0
+	}
+
+	err = st.updateProcessStats(processID.Marshal(), updates3)
+	c.Assert(err, qt.IsNil)
+
+	proc3, err := st.Process(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(proc3.SequencerStats.CurrentBatchSize, qt.Equals, 0, qt.Commentf("CurrentBatchSize should be clamped to 0 when negative"))
+
+	// Test that LastBatchSize cannot be negative
+	updates4 := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsLastBatchSize, Delta: -5}, // Should be clamped to 0
+	}
+
+	err = st.updateProcessStats(processID.Marshal(), updates4)
+	c.Assert(err, qt.IsNil)
+
+	proc4, err := st.Process(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(proc4.SequencerStats.LastBatchSize, qt.Equals, 0, qt.Commentf("LastBatchSize should be clamped to 0 when negative"))
+
+	t.Logf("Final stats with safeguards: pending=%d, verified=%d, aggregated=%d, currentBatch=%d, lastBatch=%d",
+		finalStats.PendingVotesCount, finalStats.VerifiedVotesCount,
+		finalStats.AggregatedVotesCount, proc3.SequencerStats.CurrentBatchSize, proc4.SequencerStats.LastBatchSize)
+}
