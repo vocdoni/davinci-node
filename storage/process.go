@@ -50,14 +50,15 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 func (s *Storage) ListEndedProcesses() ([][]byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+
+	// Filter out processes that have the encryption keys stored.
 	pids, err := s.listArtifacts(encryptionKeyPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter out processes that are not ended or the encryption keys are not
-	// in the storage.
-	var finalPids [][]byte
+	// Filter the processes to only include those that are ended.
+	var endedPids [][]byte
 	for _, pid := range pids {
 		p := new(types.Process)
 		if err := s.getArtifact(processPrefix, pid, p); err != nil {
@@ -69,9 +70,9 @@ func (s *Storage) ListEndedProcesses() ([][]byte, error) {
 		if p.Status != types.ProcessStatusEnded {
 			continue // Skip if process is not ended
 		}
-		finalPids = append(finalPids, pid)
+		endedPids = append(endedPids, pid)
 	}
-	return finalPids, nil
+	return endedPids, nil
 }
 
 // MetadataHash returns the hash of the metadata.

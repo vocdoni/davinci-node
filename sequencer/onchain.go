@@ -13,7 +13,6 @@ import (
 
 const (
 	transitionOnChainTickInterval = 5 * time.Second
-	finishedListenerTickInterval  = 10 * time.Second
 	resultsOnChainTickInterval    = 5 * time.Second
 )
 
@@ -21,7 +20,6 @@ func (s *Sequencer) startOnchainProcessor() error {
 	// Create tickers for processing on-chain transitions and listening for
 	// finished processes
 	transitionTicker := time.NewTicker(transitionOnChainTickInterval)
-	finishedTicker := time.NewTicker(finishedListenerTickInterval)
 	resultsTicker := time.NewTicker(resultsOnChainTickInterval)
 	// Run a loop in a goroutine to handle the on-chain processing and
 	// finished processes
@@ -29,7 +27,6 @@ func (s *Sequencer) startOnchainProcessor() error {
 		defer transitionTicker.Stop()
 		log.Infow("on-chain processor started",
 			"transitionOnChainInterval", transitionOnChainTickInterval,
-			"finishedListenerInterval", finishedListenerTickInterval,
 			"resultsOnChainInterval", resultsOnChainTickInterval)
 
 		for {
@@ -39,10 +36,8 @@ func (s *Sequencer) startOnchainProcessor() error {
 				return
 			case <-transitionTicker.C:
 				s.processTransitionOnChain()
-			case <-finishedTicker.C:
-				s.listenFinishedProcesses()
 			case <-resultsTicker.C:
-				s.uploadVerifiedResultsToContract()
+				s.processResultsOnChain()
 			}
 		}
 	}()
@@ -151,43 +146,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	return s.contracts.WaitTx(*txHash, time.Second*60)
 }
 
-func (s *Sequencer) listenFinishedProcesses() {
-	// process each registered process ID
-	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
-		// Check if the process has encryption keys, if not, skip it
-		processID := new(types.ProcessID).SetBytes(pid)
-		pubKey, privKey, err := s.stg.EncryptionKeys(processID)
-		if err != nil || pubKey == nil || privKey == nil {
-			return true // Continue to next process ID
-		}
-		// Get the process data from the contract
-		process, err := s.contracts.Process(pid)
-		if err != nil {
-			log.Errorw(err, "failed to get process data from contract")
-			return true // Continue to next process ID
-		}
-		// If the process is not ended, skip it
-		if process.Status != types.ProcessStatusEnded {
-			return true // Continue to next process ID
-		}
-		// If the process is already verifying results, skip it
-		if s.stg.IsVerifyingProcessResults(pid) {
-			log.Debugw("ended process is already verifying results, skipping",
-				"pid", hex.EncodeToString(pid))
-			return true // Continue to next process ID
-		}
-		// If the process has ended, send it to the finalizer to compute the
-		// final results and remove it from the list to avoid reprocessing
-		log.Infow("process ready to finalize",
-			"pid", hex.EncodeToString(pid),
-			"status", process.Status)
-		// Send the process ID to the finalizer
-		s.OndemandCh <- new(types.ProcessID).SetBytes(pid)
-		return true // Continue to next process ID
-	})
-}
-
-func (s *Sequencer) uploadVerifiedResultsToContract() {
+func (s *Sequencer) processResultsOnChain() {
 	// process each registered process ID
 	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
 		res, err := s.stg.PullVerifiedResults(pid)
@@ -252,9 +211,6 @@ func (s *Sequencer) uploadVerifiedResultsToContract() {
 			log.Errorw(err, "failed to mark verified results as uploaded")
 			return true // Continue to next process ID
 		}
-
-		s.pids.Remove(pid) // Remove the process ID from the list after uploading results
-
 		return true
 	})
 }

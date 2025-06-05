@@ -34,6 +34,7 @@ type finalizer struct {
 	wg         sync.WaitGroup
 	ctx        context.Context
 	cancel     context.CancelFunc
+	lock       sync.Mutex // Mutex to ensure that only one process results calculation is running at a time
 }
 
 // New creates a new Finalizer instance.
@@ -206,70 +207,41 @@ func (f *finalizer) finalizeEnded() {
 // It retrieves the process from storage, decrypts the accumulators using the encryption keys,
 // and stores the result back to storage.
 func (f *finalizer) finalize(pid *types.ProcessID) error {
-	// Set the process as verifying results to avoid reprocessing
-	if err := f.stg.MarkResultsProcessVerifying(pid.Marshal()); err != nil {
-		return fmt.Errorf("could not mark process %s as verifying results: %w", pid.String(), err)
-	}
+	f.lock.Lock()
+	defer f.lock.Unlock()
 
-	log.Debugw("finalizing process", "pid", pid.String())
 	// Retrieve the process from storage
 	process, err := f.stg.Process(pid)
 	if err != nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return err
 	}
 
 	// Check if the process is already finalized
 	if process.IsFinalized {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
-		return fmt.Errorf("process %s already finalized", pid.String())
+		log.Debugw("process already finalized, skipping", "pid", pid.String())
+		return nil
 	}
+	log.Debugw("finalizing process", "pid", pid.String())
 
 	// Fetch the encryption key
 	encryptionPubKey, encryptionPrivKey, err := f.stg.EncryptionKeys(pid)
 	if err != nil || encryptionPubKey == nil || encryptionPrivKey == nil {
-		// If we cannot retrieve the encryption keys, we cannot finalize the
-		// process, so we push a empty result to storage and log the error.
-		log.Warnw("could not retrieve encryption keys for process",
-			"pid", pid.String(), "error", err)
-		// Push an empty result to storage to mark the process as finalized
-		return nil
+		return fmt.Errorf("could not retrieve encryption keys for process %s: %w", pid.String(), err)
 	}
 
 	// Open the state for the process
-	log.Debugw("opening state to finalize",
-		"pid", pid.String(),
-		"stateRoot", process.StateRoot)
 	st, err := state.LoadOnRoot(f.stateDB, pid.BigInt(), process.StateRoot.MathBigInt())
 	if err != nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not open state for process %s: %w", pid.String(), err)
 	}
 
 	// Fetch the encrypted accumulators
 	encryptedAddAccumulator, ok := st.ResultsAdd()
 	if !ok {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s", pid.String())
 	}
 	encryptedSubAccumulator, ok := st.ResultsSub()
 	if !ok {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s", pid.String())
 	}
 
@@ -284,28 +256,16 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	addDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedAddAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
-			if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-				log.Warnw("could not discard verifying process results after error",
-					"pid", pid.String(), "error", err)
-			}
 			return fmt.Errorf("invalid ciphertext for process %s: %v", pid.String(), ct)
 		}
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
-			if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-				log.Warnw("could not discard verifying process results after error",
-					"pid", pid.String(), "error", err)
-			}
 			return fmt.Errorf("could not decrypt add accumulator for process %s: %w", pid.String(), err)
 		}
 		addAccumulator[i] = result
 		addAccumulatorsEncrypted[i] = *ct
 		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
 		if err != nil {
-			if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-				log.Warnw("could not discard verifying process results after error",
-					"pid", pid.String(), "error", err)
-			}
 			return fmt.Errorf("could not build decryption proof for add accumulator for process %s: %w", pid.String(), err)
 		}
 	}
@@ -318,28 +278,16 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	subDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedSubAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
-			if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-				log.Warnw("could not discard verifying process results after error",
-					"pid", pid.String(), "error", err)
-			}
 			return fmt.Errorf("invalid ciphertext for process %s: %v", pid.String(), ct)
 		}
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
-			if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-				log.Warnw("could not discard verifying process results after error",
-					"pid", pid.String(), "error", err)
-			}
 			return fmt.Errorf("could not decrypt sub accumulator for process %s: %w", pid.String(), err)
 		}
 		subAccumulator[i] = result
 		subAccumulatorsEncrypted[i] = *ct
 		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
 		if err != nil {
-			if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-				log.Warnw("could not discard verifying process results after error",
-					"pid", pid.String(), "error", err)
-			}
 			return fmt.Errorf("could not build decryption proof for sub accumulator for process %s: %w", pid.String(), err)
 		}
 		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
@@ -358,10 +306,6 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		subDecryptionProofs,
 	)
 	if err != nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not generate witness for process %s: %w", pid.String(), err)
 	}
 	proof, err := f.prover(
@@ -372,19 +316,11 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		solidity.WithProverTargetSolidityVerifier(backend.GROTH16),
 	)
 	if err != nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not generate proof for process %s: %w", pid.String(), err)
 	}
 
 	stateRoot, err := st.RootAsBigInt()
 	if err != nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not get state root for process %s: %w", pid.String(), err)
 	}
 
@@ -402,27 +338,15 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 // setProcessFinalized sets the process as finalized in the storage. If the process is already finalized, it does nothing.
 func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.VerifiedResults) error {
 	if res == nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("cannot finalize process %s with nil results", pid.String())
 	}
 	// Get the process from storage
 	process, err := f.stg.Process(pid)
 	if err != nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not retrieve process %s: %w", pid.Marshal(), err)
 	}
 	// If the process is already finalized, do nothing
 	if process.IsFinalized {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return nil
 	}
 	// Mark the process as finalized
@@ -437,18 +361,10 @@ func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.Verif
 	}
 	// Save the process with the new info
 	if err := f.stg.SetProcess(process); err != nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not store finalized process %s: %w", pid.String(), err)
 	}
 	// Push the verified results to storage
 	if err := f.stg.PushVerifiedResults(res); err != nil {
-		if err := f.stg.DiscardVerifyingProcessResults(pid.Marshal()); err != nil {
-			log.Warnw("could not discard verifying process results after error",
-				"pid", pid.String(), "error", err)
-		}
 		return fmt.Errorf("could not store verified results for process %s: %w", pid.String(), err)
 	}
 	log.Infow("process finalized",

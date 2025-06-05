@@ -95,6 +95,10 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, final
 				// Process already exists
 				continue
 			}
+			if process.IsFinalized {
+				// Process is finalized, skip adding it as a new process
+				continue
+			}
 			log.Debugw("new process found", "pid", process.ID.String())
 			if err := pm.storage.SetProcess(process); err != nil {
 				log.Warnw("failed to store process", "pid", process.ID.String(), "err", err.Error())
