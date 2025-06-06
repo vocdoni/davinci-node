@@ -126,6 +126,12 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		return fmt.Errorf("process ID cannot be empty")
 	}
 
+	// DEBUG: Log start of aggregation
+	log.Infow("DEBUG: aggregateBatch START",
+		"processID", fmt.Sprintf("%x", pid),
+		"timestamp", time.Now().Format(time.RFC3339Nano),
+	)
+
 	// Pull verified ballots from storage
 	ballots, keys, err := s.stg.PullVerifiedBallots(pid, types.VotesPerBatch)
 	if err != nil {
@@ -135,6 +141,12 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	if len(ballots) == 0 {
 		return nil
 	}
+
+	log.Infow("DEBUG: aggregateBatch BALLOTS_PULLED",
+		"processID", fmt.Sprintf("%x", pid),
+		"ballotCount", len(ballots),
+		"timestamp", time.Now().Format(time.RFC3339Nano),
+	)
 
 	log.Debugw("aggregating ballots",
 		"processID", fmt.Sprintf("%x", pid),
