@@ -35,7 +35,12 @@ var ballotStatusNames = map[int]string{
 func (s *Storage) BallotStatus(processID, voteID []byte) (int, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+	return s.ballotStatusUnsafe(processID, voteID)
+}
 
+// ballotStatusUnsafe returns the status of a ballot without acquiring locks.
+// This method assumes the caller already holds the globalLock.
+func (s *Storage) ballotStatusUnsafe(processID, voteID []byte) (int, error) {
 	// Create the composite key: processID/voteID
 	key := createBallotStatusKey(processID, voteID)
 
@@ -130,7 +135,6 @@ func (s *Storage) CleanProcessBallots(processID []byte) (int, error) {
 }
 
 // setBallotStatus is an internal helper to set the status of a ballot.
-// It's exported to be used from other files in the same package.
 func (s *Storage) setBallotStatus(processID, voteID []byte, status int) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotStatusPrefix)
 	defer wTx.Discard()

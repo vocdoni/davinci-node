@@ -11,6 +11,9 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
 )
 
+// DisabledLogging is a global flag to disable logging middleware
+var DisabledLogging = false
+
 // jsonRegex matches common JSON starting patterns
 var jsonRegex = regexp.MustCompile(`^\s*[\[{]`)
 
@@ -34,7 +37,10 @@ func (lc LoggingConfig) shouldSkipLogging(r *http.Request) bool {
 	if log.Level() != log.LogLevelDebug {
 		return true
 	}
-
+	// Skip if logging is disabled
+	if DisabledLogging {
+		return true
+	}
 	// Check if path matches any excluded prefix
 	path := r.URL.Path
 	for _, prefix := range lc.ExcludedPrefixes {
@@ -42,7 +48,6 @@ func (lc LoggingConfig) shouldSkipLogging(r *http.Request) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -79,7 +84,7 @@ func loggingMiddleware(maxBodyLog int) func(http.Handler) http.Handler {
 func loggingMiddlewareWithConfig(config LoggingConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip logging if configured
+			// Skip logging on specific endpoints if configured (e.g., for health checks or other endpoints)
 			if config.shouldSkipLogging(r) {
 				next.ServeHTTP(w, r)
 				return

@@ -93,9 +93,14 @@ func (s *Sequencer) processAvailableBallots() bool {
 		}
 
 		// Process the ballot
+		totalPending, err := s.stg.TotalPendingBallots()
+		if err != nil {
+			// If we can't get the total, just log 0
+			totalPending = 0
+		}
 		log.Infow("processing ballot",
 			"address", ballot.Address.String(),
-			"queued", s.stg.CountPendingBallots(),
+			"queued", totalPending,
 			"voteID", hex.EncodeToString(ballot.VoteID()),
 			"processID", fmt.Sprintf("%x", ballot.ProcessID),
 		)

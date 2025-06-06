@@ -14,15 +14,16 @@ import (
 )
 
 const (
-	defaultNetwork   = "sep"
-	defaultAPIHost   = "0.0.0.0"
-	defaultAPIPort   = 9090
-	defaultBatchTime = 300 * time.Second
-	defaultLogLevel  = "info"
-	defaultLogOutput = "stdout"
-	defaultDatadir   = ".davinci" // Will be prefixed with user's home directory
-	artifactsTimeout = 20 * time.Minute
-	monitorInterval  = 10 * time.Second
+	defaultNetwork       = "sep"
+	defaultAPIHost       = "0.0.0.0"
+	defaultAPIPort       = 9090
+	defaultBatchTime     = 300 * time.Second
+	defaultLogLevel      = "info"
+	defaultLogOutput     = "stdout"
+	defaultLogDisableAPI = false
+	defaultDatadir       = ".davinci" // Will be prefixed with user's home directory
+	artifactsTimeout     = 20 * time.Minute
+	monitorInterval      = 10 * time.Second
 )
 
 // Version is the build version, set at build time with -ldflags
@@ -61,8 +62,9 @@ type BatchConfig struct {
 
 // LogConfig holds logging configuration
 type LogConfig struct {
-	Level  string `mapstructure:"level"`
-	Output string `mapstructure:"output"`
+	Level      string `mapstructure:"level"`
+	Output     string `mapstructure:"output"`
+	DisableAPI bool   `mapstructure:"disableAPI"` // Disable API logging middleware
 }
 
 // WorkerConfig holds worker-related configuration
@@ -91,6 +93,7 @@ func loadConfig() (*Config, error) {
 	v.SetDefault("batch.time", defaultBatchTime)
 	v.SetDefault("log.level", defaultLogLevel)
 	v.SetDefault("log.output", defaultLogOutput)
+	v.SetDefault("log.disableAPI", defaultLogDisableAPI)
 	v.SetDefault("datadir", defaultDatadirPath)
 	v.SetDefault("worker.timeout", 1*time.Minute)
 
@@ -107,6 +110,7 @@ func loadConfig() (*Config, error) {
 	flag.String("web3.results", "", "custom results registry contract address (overrides network default)")
 	flag.StringP("log.level", "l", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
 	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
+	flag.Bool("log.disableAPI", defaultLogDisableAPI, "disable API logging middleware")
 	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
 	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
 	flag.StringP("worker.address", "a", "", "worker Ethereum address (auto-generated if empty)")

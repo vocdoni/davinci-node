@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vocdoni/vocdoni-z-sandbox/api"
+	"github.com/vocdoni/vocdoni-z-sandbox/log"
 	"github.com/vocdoni/vocdoni-z-sandbox/storage"
 )
 
@@ -24,7 +25,11 @@ type APIService struct {
 }
 
 // NewAPI creates a new APIService instance.
-func NewAPI(storage *storage.Storage, host string, port int, network string) *APIService {
+func NewAPI(storage *storage.Storage, host string, port int, network string, disableLogging bool) *APIService {
+	if disableLogging {
+		api.DisabledLogging = disableLogging
+		log.Debugw("API logging is disabled")
+	}
 	return &APIService{
 		storage: storage,
 		host:    host,
