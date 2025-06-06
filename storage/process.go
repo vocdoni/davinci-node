@@ -162,7 +162,7 @@ func (s *Storage) ListEndedProcessWithEncryptionKeys() ([][]byte, error) {
 			}
 			return nil, fmt.Errorf("error retrieving process %x: %w", pid, err)
 		}
-		if p.Status != types.ProcessStatusEnded {
+		if p.Status != types.ProcessStatusEnded || p.IsFinalized {
 			continue // Skip if process is not ended
 		}
 		endedPids = append(endedPids, pid)
