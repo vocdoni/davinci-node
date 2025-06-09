@@ -117,6 +117,9 @@ func (s *Sequencer) Start(ctx context.Context) error {
 		return nil
 	}
 
+	// Start monitoring for new processes
+	s.monitorNewProcesses(s.ctx, NewProcessMonitorInterval)
+
 	// Master mode: start all processors
 	s.finalizer.Start(s.ctx, time.Minute)
 
@@ -140,9 +143,6 @@ func (s *Sequencer) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start on-chain processor: %w", err)
 	}
 
-	// Start monitoring for new processes
-	go s.monitorNewProcesses(s.ctx, NewProcessMonitorInterval)
-
 	log.Infow("sequencer started successfully")
 	return nil
 }
@@ -163,18 +163,20 @@ func (s *Sequencer) monitorNewProcesses(ctx context.Context, tickerInterval time
 	// Check for processes immediately at startup
 	s.checkAndRegisterProcesses()
 
-	// Set up ticker for periodic checks
-	ticker := time.NewTicker(tickerInterval)
-	defer ticker.Stop()
+	go func() {
+		// Set up ticker for periodic checks
+		ticker := time.NewTicker(tickerInterval)
+		defer ticker.Stop()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.checkAndRegisterProcesses()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.checkAndRegisterProcesses()
+			}
 		}
-	}
+	}()
 }
 
 // checkAndRegisterProcesses fetches the list of processes and registers new ones with the sequencer.
