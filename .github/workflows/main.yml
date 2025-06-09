@@ -64,7 +64,7 @@ jobs:
           version: v2.0
 
   job_go_test:
-    runs-on: [self-hosted, z]
+    runs-on: [self-hosted]
     env:
       LOG_PANIC_ON_INVALIDCHARS: true
       LOG_LEVEL: debug
@@ -207,3 +207,14 @@ jobs:
           #RUN_CIRCUIT_TESTS: ${{ env.RUN_CIRCUIT_TESTS }}
           RUN_CIRCUIT_TESTS:
         run: go test -v ./... -timeout=1h -vet=off
+
+  call-docker-release:
+    name: Docker
+    needs: [job_go_checks, job_go_test]
+    # docker releases are triggered only on push to the selected branches at the beginning of this file
+    if: github.event_name == 'push'
+    uses: vocdoni/davinci-node/.github/workflows/docker-release.yml@main
+    secrets: inherit
+    with:
+      image-tag: ${{ github.ref_name }}
+
