@@ -113,8 +113,7 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, final
 				continue
 			}
 			log.Debugw("finalized process found", "pid", process.ID.String())
-			// Update only the finalization status atomically
-			if err := pm.storage.UpdateProcess(process.ID, storage.ProcessUpdateCallbackFinalizationStatus(true)); err != nil {
+			if err := pm.storage.UpdateProcess(process.ID, storage.ProcessUpdateCallbackFinalization(process.Result)); err != nil {
 				log.Warnw("failed to update process finalization status",
 					"pid", process.ID.String(), "err", err.Error())
 			}

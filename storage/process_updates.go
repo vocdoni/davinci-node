@@ -50,11 +50,3 @@ func ProcessUpdateCallbackLastTransitionDate() func(*types.Process) error {
 		return nil
 	}
 }
-
-// ProcessUpdateCallbackFinalizationStatus returns a function that updates only the finalization status
-func ProcessUpdateCallbackFinalizationStatus(isFinalized bool) func(*types.Process) error {
-	return func(p *types.Process) error {
-		p.IsFinalized = isFinalized
-		return nil
-	}
-}

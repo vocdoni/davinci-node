@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/vocdoni-z-sandbox/log"
@@ -228,17 +227,6 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 		return []*VerifiedBallot{}, nil, nil
 	}
 
-	// DEBUG: Log the current process stats before pulling ballots
-	p := &types.Process{}
-	if err := s.getArtifact(processPrefix, processID, p); err == nil {
-		log.Infow("DEBUG: PullVerifiedBallots BEFORE",
-			"processID", fmt.Sprintf("%x", processID),
-			"maxCount", maxCount,
-			"verifiedVotes", p.SequencerStats.VerifiedVotesCount,
-			"currentBatchSize", p.SequencerStats.CurrentBatchSize,
-		)
-	}
-
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	var res []*VerifiedBallot
 	var keys [][]byte
@@ -287,13 +275,6 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 			}
 		}
 	}
-
-	// DEBUG: Log what we're returning
-	log.Infow("DEBUG: PullVerifiedBallots RESULT",
-		"processID", fmt.Sprintf("%x", processID),
-		"ballotsFound", len(res),
-		"keysReserved", len(keys),
-	)
 
 	// Return ErrNotFound if we found no ballots at all
 	if len(res) == 0 {
@@ -459,13 +440,6 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	// DEBUG: Log before pushing batch
-	log.Infow("DEBUG: PushBallotBatch START",
-		"processID", fmt.Sprintf("%x", abb.ProcessID),
-		"batchSize", len(abb.Ballots),
-		"timestamp", time.Now().Format(time.RFC3339Nano),
-	)
-
 	val, err := EncodeArtifact(abb)
 	if err != nil {
 		return fmt.Errorf("encode batch: %w", err)
@@ -480,13 +454,6 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 		return err
 	}
 
-	// DEBUG: Log before stats update
-	log.Infow("DEBUG: PushBallotBatch BEFORE_STATS_UPDATE",
-		"processID", fmt.Sprintf("%x", abb.ProcessID),
-		"batchSize", len(abb.Ballots),
-		"timestamp", time.Now().Format(time.RFC3339Nano),
-	)
-
 	// Update process stats
 	if err := s.updateProcessStats(abb.ProcessID, []ProcessStatsUpdate{
 		{TypeStats: types.TypeStatsAggregatedVotes, Delta: len(abb.Ballots)},
@@ -495,13 +462,6 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 	}); err != nil {
 		return fmt.Errorf("failed to update process stats: %w", err)
 	}
-
-	// DEBUG: Log after stats update
-	log.Infow("DEBUG: PushBallotBatch AFTER_STATS_UPDATE",
-		"processID", fmt.Sprintf("%x", abb.ProcessID),
-		"batchSize", len(abb.Ballots),
-		"timestamp", time.Now().Format(time.RFC3339Nano),
-	)
 
 	// Update status of all ballots in the batch to aggregated
 	// TODO: this should use a single write transaction
