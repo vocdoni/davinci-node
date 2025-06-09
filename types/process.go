@@ -20,6 +20,26 @@ type (
 	MultilingualString map[string]string
 )
 
+// MarshalJSON implements json.Marshaler interface for GenericMetadata
+// Returns an empty object {} instead of null when the map is nil or empty
+func (g GenericMetadata) MarshalJSON() ([]byte, error) {
+	if g == nil {
+		return []byte("{}"), nil
+	}
+	// Use the default map marshaling behavior
+	return json.Marshal(map[string]string(g))
+}
+
+// MarshalJSON implements json.Marshaler interface for MultilingualString
+// Returns an empty object {} instead of null when the map is nil or empty
+func (m MultilingualString) MarshalJSON() ([]byte, error) {
+	if m == nil {
+		return []byte("{}"), nil
+	}
+	// Use the default map marshaling behavior
+	return json.Marshal(map[string]string(m))
+}
+
 type MediaMetadata struct {
 	Header string `json:"header" cbor:"0,keyasint,omitempty"`
 	Logo   string `json:"logo"   cbor:"1,keyasint,omitempty"`
