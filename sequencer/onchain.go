@@ -56,7 +56,7 @@ func (s *Sequencer) processTransitionOnChain() {
 			return true // Continue to next process ID
 		}
 		log.Infow("state transition batch ready for on-chain upload",
-			"pid", hex.EncodeToString([]byte(pid)),
+			"pid", hex.EncodeToString(pid),
 			"batchID", hex.EncodeToString(batchID))
 		// convert the gnark proof to a solidity proof
 		solidityCommitmentProof := new(solidity.Groth16CommitmentProof)

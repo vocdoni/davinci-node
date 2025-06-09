@@ -493,7 +493,6 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 		return fmt.Errorf("decode batch: %w", err)
 	}
 
-	batchSize := len(agg.Ballots)
 	validAggregatedCount := 0
 
 	// Mark all ballots in the batch as error and count how many were actually aggregated
@@ -533,7 +532,7 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 				"error", err.Error(),
 				"processID", fmt.Sprintf("%x", agg.ProcessID),
 				"validAggregatedCount", validAggregatedCount,
-				"totalBatchSize", batchSize,
+				"totalBatchSize", len(agg.Ballots),
 			)
 		}
 	}

@@ -116,8 +116,8 @@ func (s *Storage) setLastStateTransitionDate(pid []byte) error {
 	return s.setArtifact(processPrefix, pid, p)
 }
 
-// SetProcessAccpetingVotes sets the accepting votes flag for a given process ID.
-func (s *Storage) SetProcessAccpetingVotes(pid []byte, accepting bool) error {
+// SetProcessacceptingVotes sets the accepting votes flag for a given process ID.
+func (s *Storage) SetProcessacceptingVotes(pid []byte, accepting bool) error {
 	return s.UpdateProcess(pid, func(p *types.Process) error {
 		p.IsAcceptingVotes = accepting
 		return nil

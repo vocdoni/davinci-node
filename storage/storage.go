@@ -121,7 +121,7 @@ func (s *Storage) setAllProcessesAsNotAcceptingVotes() error {
 		return fmt.Errorf("failed to list processes: %w", err)
 	}
 	for _, pid := range procs {
-		if err := s.SetProcessAccpetingVotes(pid, false); err != nil {
+		if err := s.SetProcessacceptingVotes(pid, false); err != nil {
 			return fmt.Errorf("failed to set process accepting votes to false for %x: %w", pid, err)
 		}
 	}
