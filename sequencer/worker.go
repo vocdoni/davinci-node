@@ -191,7 +191,7 @@ func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
 	}
 
 	// Store the process locally
-	if err := s.stg.SetProcess(&process); err != nil {
+	if err := s.stg.NewProcess(&process); err != nil {
 		return fmt.Errorf("failed to store process locally: %w", err)
 	}
 

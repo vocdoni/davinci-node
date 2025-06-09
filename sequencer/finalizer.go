@@ -339,37 +339,41 @@ func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.Verif
 	if res == nil {
 		return fmt.Errorf("cannot finalize process %s with nil results", pid.String())
 	}
-	// Get the process from storage
-	process, err := f.stg.Process(pid)
-	if err != nil {
-		return fmt.Errorf("could not retrieve process %s: %w", pid.Marshal(), err)
-	}
-	// If the process is already finalized, do nothing
-	if process.IsFinalized {
-		return nil
-	}
-	// Mark the process as finalized
-	process.IsFinalized = true
+
 	// Transform the results accumulators to types.BigInt
-	process.Result = []*types.BigInt{}
+	results := []*types.BigInt{}
 	for _, r := range res.Inputs.Results {
 		if r == nil {
 			r = new(big.Int).SetInt64(0) // Ensure we don't have nil values
 		}
-		process.Result = append(process.Result, (*types.BigInt)(r))
+		results = append(results, (*types.BigInt)(r))
 	}
-	// Save the process with the new info
-	if err := f.stg.SetProcess(process); err != nil {
-		return fmt.Errorf("could not store finalized process %s: %w", pid.String(), err)
+
+	// Update the process atomically to avoid race conditions
+	var stateRoot *types.BigInt
+	if err := f.stg.UpdateProcess(pid.Marshal(), func(p *types.Process) error {
+		// Check if already finalized within the lock
+		if p.IsFinalized {
+			return nil // Already done
+		}
+
+		p.IsFinalized = true
+		p.Result = results
+		stateRoot = p.StateRoot // Capture for logging
+		return nil
+	}); err != nil {
+		return fmt.Errorf("could not update finalized process %s: %w", pid.String(), err)
 	}
+
 	// Push the verified results to storage
 	if err := f.stg.PushVerifiedResults(res); err != nil {
 		return fmt.Errorf("could not store verified results for process %s: %w", pid.String(), err)
 	}
+
 	log.Infow("process finalized",
 		"pid", pid.String(),
-		"stateRoot", process.StateRoot.String(),
-		"result", process.Result)
+		"stateRoot", stateRoot.String(),
+		"result", results)
 	return nil
 }
 

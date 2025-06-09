@@ -20,6 +20,26 @@ type (
 	MultilingualString map[string]string
 )
 
+// MarshalJSON implements json.Marshaler interface for GenericMetadata
+// Returns an empty object {} instead of null when the map is nil or empty
+func (g GenericMetadata) MarshalJSON() ([]byte, error) {
+	if g == nil {
+		return []byte("{}"), nil
+	}
+	// Use the default map marshaling behavior
+	return json.Marshal(map[string]string(g))
+}
+
+// MarshalJSON implements json.Marshaler interface for MultilingualString
+// Returns an empty object {} instead of null when the map is nil or empty
+func (m MultilingualString) MarshalJSON() ([]byte, error) {
+	if m == nil {
+		return []byte("{}"), nil
+	}
+	// Use the default map marshaling behavior
+	return json.Marshal(map[string]string(m))
+}
+
 type MediaMetadata struct {
 	Header string `json:"header" cbor:"0,keyasint,omitempty"`
 	Logo   string `json:"logo"   cbor:"1,keyasint,omitempty"`
@@ -50,7 +70,7 @@ type Metadata struct {
 	Questions   []Question         `json:"questions"   cbor:"3,keyasint,omitempty"`
 	Type        ProcessType        `json:"type" cbor:"4,keyasint,omitempty"`
 	Version     string             `json:"version" cbor:"5,keyasint,omitempty"`
-	Meta        GenericMetadata    `json:"meta,omitempty" cbor:"6,keyasint,omitempty"`
+	Meta        GenericMetadata    `json:"meta" cbor:"6,keyasint,omitempty"`
 }
 
 func (m *Metadata) String() string {
@@ -62,21 +82,48 @@ func (m *Metadata) String() string {
 }
 
 type Process struct {
-	ID                 HexBytes       `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
-	Status             uint8          `json:"status"                   cbor:"1,keyasint,omitempty"`
-	OrganizationId     common.Address `json:"organizationId"           cbor:"2,keyasint,omitempty"`
-	EncryptionKey      *EncryptionKey `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
-	StateRoot          *BigInt        `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
-	Result             []*BigInt      `json:"result"                   cbor:"5,keyasint,omitempty"`
-	StartTime          time.Time      `json:"startTime"                cbor:"6,keyasint,omitempty"`
-	Duration           time.Duration  `json:"duration"                 cbor:"7,keyasint,omitempty"`
-	MetadataURI        string         `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
-	BallotMode         *BallotMode    `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
-	Census             *Census        `json:"census"                   cbor:"10,keyasint,omitempty"`
-	VoteCount          *BigInt        `json:"voteCount"                cbor:"12,keyasint,omitempty"`
-	VoteOverwriteCount *BigInt        `json:"voteOverwriteCount"       cbor:"13,keyasint,omitempty"`
-	IsFinalized        bool           `json:"isFinalized"              cbor:"14,keyasint,omitempty"`
+	ID                 HexBytes              `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
+	Status             uint8                 `json:"status"                   cbor:"1,keyasint,omitempty"`
+	OrganizationId     common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
+	EncryptionKey      *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
+	StateRoot          *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
+	Result             []*BigInt             `json:"result"                   cbor:"5,keyasint,omitempty"`
+	StartTime          time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
+	Duration           time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
+	MetadataURI        string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
+	BallotMode         *BallotMode           `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
+	Census             *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
+	Metadata           *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
+	VoteCount          *BigInt               `json:"voteCount"                cbor:"12,keyasint,omitempty"`
+	VoteOverwriteCount *BigInt               `json:"voteOverwriteCount"       cbor:"13,keyasint,omitempty"`
+	IsFinalized        bool                  `json:"isFinalized"              cbor:"14,keyasint,omitempty"`
+	IsAcceptingVotes   bool                  `json:"isAcceptingVotes"         cbor:"15,keyasint,omitempty"`
+	SequencerStats     SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint"`
 }
+
+type SequencerProcessStats struct {
+	StateTransitionCount        int       `json:"stateTransitionCount" cbor:"0,keyasint,omitempty"`
+	LasStateTransitionDate      time.Time `json:"lastStateTransitionDate" cbor:"1,keyasint,omitempty"`
+	SettledStateTransitionCount int       `json:"settledStateTransitionCount" cbor:"2,keyasint,omitempty"`
+	AggregatedVotesCount        int       `json:"aggregatedVotesCount" cbor:"3,keyasint,omitempty"`
+	VerifiedVotesCount          int       `json:"verifiedVotesCount"   cbor:"4,keyasint,omitempty"`
+	PendingVotesCount           int       `json:"pendingVotesCount"    cbor:"5,keyasint,omitempty"`
+	CurrentBatchSize            int       `json:"currentBatchSize"     cbor:"6,keyasint,omitempty"`
+	LastBatchSize               int       `json:"lastBatchSize"        cbor:"7,keyasint,omitempty"`
+}
+
+// TypeStats are used to identify the type of stats in the Process
+type TypeStats int
+
+const (
+	TypeStatsStateTransitions TypeStats = iota
+	TypeStatsSettledStateTransitions
+	TypeStatsAggregatedVotes
+	TypeStatsVerifiedVotes
+	TypeStatsPendingVotes
+	TypeStatsCurrentBatchSize
+	TypeStatsLastBatchSize
+)
 
 func (p *Process) String() string {
 	data, err := json.Marshal(p)

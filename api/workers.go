@@ -60,7 +60,7 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 	}
 	a.jobsMutex.Unlock()
 
-	log.Debugw("assigned job to worker",
+	log.Infow("assigned job to worker",
 		"voteID", voteIDStr,
 		"worker", workerAddress,
 		"processID", hex.EncodeToString(ballot.ProcessID))
@@ -151,7 +151,7 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 	delete(a.activeJobs, voteIDStr)
 	a.jobsMutex.Unlock()
 
-	log.Debugw("worker job completed",
+	log.Infow("worker job completed",
 		"voteID", voteIDStr,
 		"worker", job.Address,
 		"duration", time.Since(job.Timestamp).String(),
@@ -193,7 +193,7 @@ func (a *API) checkWorkerTimeouts() {
 			"duration", now.Sub(job.Timestamp).String())
 
 		// Remove ballot reservation (this will put it back in the queue)
-		if err := a.storage.RemoveBallot(nil, job.VoteID); err != nil {
+		if err := a.storage.ReleaseBallotReservation(job.VoteID); err != nil {
 			log.Warnw("failed to remove timed out ballot",
 				"error", err.Error(),
 				"voteID", voteIDStr)

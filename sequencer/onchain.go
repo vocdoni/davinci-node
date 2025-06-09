@@ -55,14 +55,8 @@ func (s *Sequencer) processTransitionOnChain() {
 			}
 			return true // Continue to next process ID
 		}
-		// get the process from the storage
-		process, err := s.stg.Process(new(types.ProcessID).SetBytes(pid))
-		if err != nil {
-			log.Errorw(err, "failed to get process data")
-			return true // Continue to next process ID
-		}
 		log.Infow("state transition batch ready for on-chain upload",
-			"pid", hex.EncodeToString([]byte(pid)),
+			"pid", hex.EncodeToString(pid),
 			"batchID", hex.EncodeToString(batchID))
 		// convert the gnark proof to a solidity proof
 		solidityCommitmentProof := new(solidity.Groth16CommitmentProof)
@@ -75,20 +69,22 @@ func (s *Sequencer) processTransitionOnChain() {
 			log.Errorw(err, "failed to push to contract")
 			return true // Continue to next process ID
 		}
-		// update the process state with the new root hash and the vote counts
-		process.StateRoot = (*types.BigInt)(batch.Inputs.RootHashAfter)
-		process.VoteCount = new(types.BigInt).Add(process.VoteCount, new(types.BigInt).SetInt(batch.Inputs.NumNewVotes))
-		process.VoteOverwriteCount = new(types.BigInt).Add(process.VoteOverwriteCount, new(types.BigInt).SetInt(batch.Inputs.NumOverwrites))
-		if err := s.stg.SetProcess(process); err != nil {
+		// update the process state with the new root hash and the vote counts atomically
+		if err := s.stg.UpdateProcess(pid, func(p *types.Process) error {
+			p.StateRoot = (*types.BigInt)(batch.Inputs.RootHashAfter)
+			p.VoteCount = new(types.BigInt).Add(p.VoteCount, new(types.BigInt).SetInt(batch.Inputs.NumNewVotes))
+			p.VoteOverwriteCount = new(types.BigInt).Add(p.VoteOverwriteCount, new(types.BigInt).SetInt(batch.Inputs.NumOverwrites))
+			return nil
+		}); err != nil {
 			log.Errorw(err, "failed to update process data")
 			return true // Continue to next process ID
 		}
 		log.Infow("process state root updated",
-			"pid", hex.EncodeToString([]byte(pid)),
+			"pid", hex.EncodeToString(pid),
 			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
 			"rootHashAfter", batch.Inputs.RootHashAfter.String())
 		// mark the batch as done
-		if err := s.stg.MarkStateTransitionBatchDone(batchID); err != nil {
+		if err := s.stg.MarkStateTransitionBatchDone(batchID, pid); err != nil {
 			log.Errorw(err, "failed to mark state transition batch as done")
 			return true // Continue to next process ID
 		}
