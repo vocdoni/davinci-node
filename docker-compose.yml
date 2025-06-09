@@ -2,6 +2,7 @@ services:
   sequencer:
     build:
       context: ./
+    image: "ghcr.io/vocdoni/davinci-node:${DAVINCI_NODE_TAG:-main}"
     env_file: .env
     environment:
       - DAVINCI_DATADIR=/app/run
