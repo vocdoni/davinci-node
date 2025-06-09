@@ -12,7 +12,16 @@ services:
       - "9090:9090"                     # REST API gateway
     sysctls:
       net.core.somaxconn: 8128
-    restart: ${RESTART:-no}
+    restart: ${RESTART:-unless-stopped}
+
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - com.centurylinklabs.watchtower.enable="false"
+    command: --interval 30 --include-stopped --revive-stopped
+    restart: ${RESTART:-unless-stopped}
 
 volumes:
   run: {}
