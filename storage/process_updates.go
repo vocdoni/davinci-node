@@ -35,6 +35,15 @@ func ProcessUpdateCallbackFinalization(results []*types.BigInt) func(*types.Proc
 	}
 }
 
+// ProcessUpdateCallbackSetStatus returns a function that updates the process status
+// This function is used to set the status of a process, such as ready, ended, canceled, etc.
+func ProcessUpdateCallbackSetStatus(status uint8) func(*types.Process) error {
+	return func(p *types.Process) error {
+		p.Status = status
+		return nil
+	}
+}
+
 // ProcessUpdateCallbackAcceptingVotes returns a function that updates the accepting votes flag
 func ProcessUpdateCallbackAcceptingVotes(accepting bool) func(*types.Process) error {
 	return func(p *types.Process) error {

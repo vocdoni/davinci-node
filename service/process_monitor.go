@@ -85,7 +85,7 @@ func (pm *ProcessMonitor) Stop() {
 	}
 }
 
-func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, finalizedProcCh <-chan *types.Process) {
+func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, endedProcCh <-chan *types.Process) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -103,18 +103,10 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, final
 			if err := pm.storage.NewProcess(process); err != nil {
 				log.Warnw("failed to store new process", "pid", process.ID.String(), "err", err.Error())
 			}
-		case process := <-finalizedProcCh:
-			// Ensure that the process exists in storage before finalizing
-			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err != nil {
-				if err != storage.ErrNotFound {
-					log.Warnw("failed to retrieve process for finalization",
-						"pid", process.ID.String(), "err", err.Error())
-				}
-				continue
-			}
-			log.Debugw("finalized process found", "pid", process.ID.String())
-			if err := pm.storage.UpdateProcess(process.ID, storage.ProcessUpdateCallbackFinalization(process.Result)); err != nil {
-				log.Warnw("failed to update process finalization status",
+		case process := <-endedProcCh:
+			log.Debugw("ended process found", "pid", process.ID.String())
+			if err := pm.storage.UpdateProcess(process.ID, storage.ProcessUpdateCallbackSetStatus(process.Status)); err != nil {
+				log.Warnw("failed to update process to ended status",
 					"pid", process.ID.String(), "err", err.Error())
 			}
 		}
