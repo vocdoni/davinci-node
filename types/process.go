@@ -50,7 +50,7 @@ type Metadata struct {
 	Questions   []Question         `json:"questions"   cbor:"3,keyasint,omitempty"`
 	Type        ProcessType        `json:"type" cbor:"4,keyasint,omitempty"`
 	Version     string             `json:"version" cbor:"5,keyasint,omitempty"`
-	Meta        GenericMetadata    `json:"meta,omitempty" cbor:"6,keyasint,omitempty"`
+	Meta        GenericMetadata    `json:"meta" cbor:"6,keyasint,omitempty"`
 }
 
 func (m *Metadata) String() string {
