@@ -1,0 +1,25 @@
+# Dockerfile.deployer
+FROM ghcr.io/foundry-rs/foundry:latest
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 curl jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a working directory that the user can write to
+RUN mkdir -p /workspace && chown -R 1000:1000 /workspace
+
+# Copy your deploy script in (and make it executable)
+COPY deploy.sh /workspace/deploy.sh
+RUN chmod +x /workspace/deploy.sh && chown 1000:1000 /workspace/deploy.sh
+
+# Switch to the non-root user
+USER 1000:1000
+WORKDIR /workspace
+EXPOSE 8000
+
+# 1) run the deploy script (which writes /workspace/addresses.json)
+# 2) then serve it forever on TCP port 8000
+ENTRYPOINT [ "sh", "-c", "\
+    ./deploy.sh && \
+    python3 -m http.server 8000 --bind 0.0.0.0 --directory /workspace" ]

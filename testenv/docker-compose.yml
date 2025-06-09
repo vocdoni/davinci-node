@@ -1,0 +1,70 @@
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint:
+      - anvil
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8545"
+      - --chain-id
+      - "1337"
+      - --accounts
+      - "1"
+      - --block-time
+      - "4"
+      - -vvvvv
+    ports:
+      - "${ANVIL_PORT:-8545}:8545"
+    volumes:
+      - anvilvol:/chain
+    working_dir: /chain
+
+  deployer:
+    # build from our custom Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile.deployer
+    depends_on:
+      - anvil
+    env_file: .env
+    environment:
+      - BRANCH=${CONTRACTS_BRANCH:-main}
+      - SEPOLIA_RPC_URL=http://anvil:8545
+      - SEPOLIA_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+    ports:
+      - "${DEPLOYER_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/addresses.env"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 60s
+
+  sequencer:
+    image: "ghcr.io/vocdoni/davinci-node:${DAVINCI_NODE_TAG:-main}"
+    env_file: .env
+    depends_on:
+      anvil:
+        condition: service_started
+      deployer:
+        condition: service_healthy
+    environment:
+      - DAVINCI_DATADIR=/app/run
+      - DAVINCI_WEB3_PRIVKEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+      - DAVINCI_WEB3_RPC=http://anvil:8545
+      - DAVINCI_BATCH_TIME=2m
+      - DAVINCI_LOG_LEVEL=debug
+    volumes:
+      - run:/app/run
+      - ./init-sequencer.sh:/init-sequencer.sh:ro
+    ports:
+      - "${SEQUENCER_PORT:-9090}:9090"  # REST API gateway
+    sysctls:
+      net.core.somaxconn: 8128
+    entrypoint: ["/bin/sh", "/init-sequencer.sh"]
+
+
+volumes:
+  anvilvol: {}
+  run: {}
