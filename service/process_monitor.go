@@ -13,8 +13,8 @@ import (
 	"github.com/vocdoni/vocdoni-z-sandbox/types"
 )
 
-// ProcessMonitor represents a service that monitors new voting processes
-// and stores them in the storage queue.
+// ProcessMonitor is a service that monitors new voting processes
+// and stores them in the local storage.
 type ProcessMonitor struct {
 	contracts ContractsService
 	storage   *storage.Storage
@@ -100,8 +100,8 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, final
 				continue
 			}
 			log.Debugw("new process found", "pid", process.ID.String())
-			if err := pm.storage.SetProcess(process); err != nil {
-				log.Warnw("failed to store process", "pid", process.ID.String(), "err", err.Error())
+			if err := pm.storage.NewProcess(process); err != nil {
+				log.Warnw("failed to store new process", "pid", process.ID.String(), "err", err.Error())
 			}
 		case process := <-finalizedProcCh:
 			// Ensure that the process exists in storage before finalizing
@@ -112,13 +112,10 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, final
 				}
 				continue
 			}
-			if process.IsFinalized {
-				continue // Process is already finalized, skip
-			}
 			log.Debugw("finalized process found", "pid", process.ID.String())
-			// Update the process status to finalized
-			if err := pm.storage.SetProcess(process); err != nil {
-				log.Warnw("failed to update finalized process",
+			// Update only the finalization status atomically
+			if err := pm.storage.UpdateProcess(process.ID, storage.ProcessUpdateCallbackFinalizationStatus(true)); err != nil {
+				log.Warnw("failed to update process finalization status",
 					"pid", process.ID.String(), "err", err.Error())
 			}
 		}

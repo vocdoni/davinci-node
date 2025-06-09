@@ -15,6 +15,7 @@ type ProcessStatsUpdate struct {
 
 // updateProcessStats updates multiple process stats in a single operation.
 // This method assumes the caller already holds the globalLock.
+// NOTE: This method should NOT be converted to use UpdateProcess as it would cause nested locking.
 func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) error {
 	if pid == nil {
 		return fmt.Errorf("nil process ID")

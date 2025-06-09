@@ -23,7 +23,30 @@ func (s *Storage) Process(pid *types.ProcessID) (*types.Process, error) {
 	return p, nil
 }
 
-// SetProcess stores a process and its metadata into the storage.
+// NewProcess stores a new process and its metadata into the storage.
+// It checks that the process doesn't already exist to prevent accidental overwrites.
+// For updating existing processes, use UpdateProcess instead to avoid race conditions.
+func (s *Storage) NewProcess(data *types.Process) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	if data == nil {
+		return fmt.Errorf("nil process data")
+	}
+
+	// Check if process already exists
+	existing := &types.Process{}
+	if err := s.getArtifact(processPrefix, data.ID, existing); err == nil {
+		return fmt.Errorf("process already exists: %x", data.ID)
+	} else if err != ErrNotFound {
+		return fmt.Errorf("failed to check process existence: %w", err)
+	}
+
+	return s.setArtifact(processPrefix, data.ID, data)
+}
+
+// SetProcess stores a process (for backward compatibility and tests).
+// DEPRECATED: Use NewProcess for new processes or UpdateProcess for updates.
 func (s *Storage) SetProcess(data *types.Process) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
@@ -32,6 +55,36 @@ func (s *Storage) SetProcess(data *types.Process) error {
 		return fmt.Errorf("nil process data")
 	}
 	return s.setArtifact(processPrefix, data.ID, data)
+}
+
+// UpdateProcess performs an atomic read-modify-write operation on a process.
+// The updateFunc is called with the current process state and can modify it.
+// This ensures no race conditions between concurrent process updates.
+func (s *Storage) UpdateProcess(pid []byte, updateFunc func(*types.Process) error) error {
+	if pid == nil {
+		return fmt.Errorf("nil process ID")
+	}
+
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Read current state
+	p := &types.Process{}
+	if err := s.getArtifact(processPrefix, pid, p); err != nil {
+		return fmt.Errorf("failed to get process for update: %w", err)
+	}
+
+	// Apply the update
+	if err := updateFunc(p); err != nil {
+		return fmt.Errorf("update function failed: %w", err)
+	}
+
+	// Write back atomically
+	if err := s.setArtifact(processPrefix, pid, p); err != nil {
+		return fmt.Errorf("failed to save updated process: %w", err)
+	}
+
+	return nil
 }
 
 // ListProcesses returns the list of process IDs stored in the storage (by
@@ -48,8 +101,7 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 }
 
 // setLastStateTransitionDate updates the last state transition date for a given process ID
-// to the current time.
-// It does not acquire a global lock, so it should be called with caution.
+// to the current time. This method assumes the caller already holds the globalLock.
 func (s *Storage) setLastStateTransitionDate(pid []byte) error {
 	if pid == nil {
 		return fmt.Errorf("nil process ID")
@@ -66,20 +118,10 @@ func (s *Storage) setLastStateTransitionDate(pid []byte) error {
 
 // SetProcessAccpetingVotes sets the accepting votes flag for a given process ID.
 func (s *Storage) SetProcessAccpetingVotes(pid []byte, accepting bool) error {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-
-	if pid == nil {
-		return fmt.Errorf("nil process ID")
-	}
-
-	p := &types.Process{}
-	if err := s.getArtifact(processPrefix, pid, p); err != nil {
-		return err
-	}
-
-	p.IsAcceptingVotes = accepting
-	return s.setArtifact(processPrefix, pid, p)
+	return s.UpdateProcess(pid, func(p *types.Process) error {
+		p.IsAcceptingVotes = accepting
+		return nil
+	})
 }
 
 // SetMetadata stores the metadata into the storage.
