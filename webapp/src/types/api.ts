@@ -30,6 +30,16 @@ export interface SequencerStatsResponse {
   settledStateTransitions: number
 }
 
+export interface Worker {
+  address: string
+  successCount: number
+  failedCount: number
+}
+
+export interface WorkersResponse {
+  workers: Worker[]
+}
+
 export interface ProcessListResponse {
   processes: string[]
 }

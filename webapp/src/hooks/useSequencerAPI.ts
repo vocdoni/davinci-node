@@ -1,6 +1,6 @@
 import { useQuery, UseQueryOptions } from '@tanstack/react-query'
 import { useApi } from '~contexts/ApiContext'
-import { InfoResponse, Process, ProcessListResponse, SequencerStatsResponse } from '~types/api'
+import { InfoResponse, Process, ProcessListResponse, SequencerStatsResponse, WorkersResponse } from '~types/api'
 
 // Helper function to handle API errors
 const handleApiError = async (response: Response) => {
@@ -85,6 +85,20 @@ export const useSequencerStats = (options?: Omit<UseQueryOptions<SequencerStatsR
     queryKey: ['sequencer-stats', apiUrl],
     queryFn: async () => {
       const response = await fetch(`${apiUrl}/sequencer/stats`)
+      return handleApiError(response)
+    },
+    ...options,
+  })
+}
+
+// Fetch workers list
+export const useWorkers = (options?: Omit<UseQueryOptions<WorkersResponse>, 'queryKey' | 'queryFn'>) => {
+  const { apiUrl } = useApi()
+  
+  return useQuery<WorkersResponse>({
+    queryKey: ['workers', apiUrl],
+    queryFn: async () => {
+      const response = await fetch(`${apiUrl}/sequencer/workers`)
       return handleApiError(response)
     },
     ...options,
