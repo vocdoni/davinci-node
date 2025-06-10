@@ -14,7 +14,7 @@ import (
 // APIService represents a service that manages the HTTP API server.
 type APIService struct {
 	storage       *storage.Storage
-	api           *api.API
+	API           *api.API
 	mu            sync.Mutex
 	cancel        context.CancelFunc
 	host          string
@@ -60,7 +60,7 @@ func (as *APIService) Start(ctx context.Context) error {
 
 	// Create API instance with existing storage
 	var err error
-	as.api, err = api.New(&api.APIConfig{
+	as.API, err = api.New(&api.APIConfig{
 		Host:          as.host,
 		Port:          as.port,
 		Storage:       as.storage,

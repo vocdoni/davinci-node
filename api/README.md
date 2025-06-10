@@ -15,6 +15,7 @@ This document describes the HTTP API endpoints for the Vocdoni Z Sandbox API ser
   - [Vote Status](#vote-status)
   - [Ballot Proof Information](#ballot-proof-information)
   - [Worker Management](#worker-management)
+  - [Sequencer Statistics](#sequencer-statistics)
 
 ## Base URL
 
@@ -614,4 +615,26 @@ Gets a list of all worker nodes with their statistics.
 
 **Errors**:
 - 401: Unauthorized (invalid UUID)
+- 50002: Internal server error
+
+### Sequencer Statistics
+
+#### GET /sequencer/stats
+
+Gets overall statistics for the sequencer service, including aggregated metrics across all active processes.
+
+**Response Body**:
+```json
+{
+  "activeProcesses": "number",
+  "pendingVotes": "number",
+  "verifiedVotes": "number",
+  "aggregatedVotes": "number",
+  "stateTransitions": "number",
+  "settledStateTransitions": "number"
+}
+```
+
+**Errors**:
+- 50001: Marshaling server JSON failed
 - 50002: Internal server error
