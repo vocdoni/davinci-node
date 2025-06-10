@@ -2,14 +2,22 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
+	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
+)
+
+const (
+	// SequencerStatsEndpoint is the API endpoint for retrieving sequencer statistics.
+	SequencerStatsEndpoint = "/sequencer/stats"
 )
 
 // StatsMonitorInterval is the interval at which process statistics are logged.
@@ -20,12 +28,24 @@ var StatsMonitorInterval = 60 * time.Second
 type SequencerService struct {
 	Sequencer *sequencer.Sequencer
 	storage   *storage.Storage
+	api       *api.API
+	stats     *sequencerStats
+}
+
+// sequencerStats holds statistics for all active processes.
+type sequencerStats struct {
+	AcriveProcessCount          int `json:"activeProcesses"`
+	PendingVotesCount           int `json:"pendingVotes"`
+	VerifiedVotesCount          int `json:"verifiedVotes"`
+	AggregatedVotesCount        int `json:"aggregatedVotes"`
+	StateTransitionCount        int `json:"stateTransitions"`
+	SettledStateTransitionCount int `json:"settledStateTransitions"`
 }
 
 // NewSequencer creates a new sequencer instance. It will verify new votes, aggregate them into batches,
 // and update the ongoing state with the new ones. The batchTimeWindow defines how long a batch can wait
 // until processed (either the batch becomes full of votes or the time window expires).
-func NewSequencer(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.Duration) *SequencerService {
+func NewSequencer(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.Duration, api *api.API) *SequencerService {
 	s, err := sequencer.New(stg, contracts, batchTimeWindow)
 	if err != nil {
 		log.Fatalf("failed to create sequencer: %v", err)
@@ -33,6 +53,8 @@ func NewSequencer(stg *storage.Storage, contracts *web3.Contracts, batchTimeWind
 	return &SequencerService{
 		Sequencer: s,
 		storage:   stg,
+		api:       api,
+		stats:     new(sequencerStats),
 	}
 }
 
@@ -45,6 +67,12 @@ func (ss *SequencerService) Start(ctx context.Context) error {
 
 	// Start the stats monitor
 	ss.startStatsMonitor(ctx, StatsMonitorInterval)
+
+	// Register the stats handler for the API
+	if ss.api != nil {
+		ss.api.Router().Get(SequencerStatsEndpoint, ss.statsHandler)
+		log.Infow("register handler", "endpoint", SequencerStatsEndpoint, "method", "GET")
+	}
 
 	return nil
 }
@@ -135,4 +163,30 @@ func (ss *SequencerService) logActiveProcessStats() {
 		"settledTransitions": totalSettledStateTransitions,
 		"activeProcesses":    activeProcessCount,
 	})
+	// Update the sequencer stats
+	ss.stats.AcriveProcessCount = activeProcessCount
+	ss.stats.PendingVotesCount = totalPending
+	ss.stats.VerifiedVotesCount = totalVerified
+	ss.stats.AggregatedVotesCount = totalAggregated
+	ss.stats.StateTransitionCount = totalStateTransitions
+	ss.stats.SettledStateTransitionCount = totalSettledStateTransitions
+}
+
+// statsHandler is an HTTP handler that returns the current statistics of the sequencer service.
+func (ss *SequencerService) statsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	jdata, err := json.Marshal(ss.stats)
+	if err != nil {
+		api.ErrMarshalingServerJSONFailed.WithErr(err).Write(w)
+		return
+	}
+	if _, err = w.Write(jdata); err != nil {
+		log.Warnw("failed to write http response", "error", err)
+		return
+	}
+	if _, err := w.Write([]byte("\n")); err != nil {
+		log.Warnw("failed to write on response", "error", err)
+		return
+	}
 }

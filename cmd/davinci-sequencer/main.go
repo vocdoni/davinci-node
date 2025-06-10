@@ -247,7 +247,7 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 
 	// Start sequencer service
 	log.Infow("starting sequencer service", "batchTimeWindow", cfg.Batch.Time.String())
-	services.Sequencer = service.NewSequencer(services.Storage, services.Contracts, cfg.Batch.Time)
+	services.Sequencer = service.NewSequencer(services.Storage, services.Contracts, cfg.Batch.Time, services.API.API)
 	if err := services.Sequencer.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start sequencer service: %w", err)
 	}

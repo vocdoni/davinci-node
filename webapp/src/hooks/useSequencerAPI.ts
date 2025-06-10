@@ -1,6 +1,6 @@
 import { useQuery, UseQueryOptions } from '@tanstack/react-query'
 import { useApi } from '~contexts/ApiContext'
-import { InfoResponse, Process, ProcessListResponse } from '~types/api'
+import { InfoResponse, Process, ProcessListResponse, SequencerStatsResponse } from '~types/api'
 
 // Helper function to handle API errors
 const handleApiError = async (response: Response) => {
@@ -73,6 +73,20 @@ export const useProcesses = (
       return Promise.all(promises)
     },
     enabled: processIds.length > 0,
+    ...options,
+  })
+}
+
+// Fetch sequencer statistics
+export const useSequencerStats = (options?: Omit<UseQueryOptions<SequencerStatsResponse>, 'queryKey' | 'queryFn'>) => {
+  const { apiUrl } = useApi()
+  
+  return useQuery<SequencerStatsResponse>({
+    queryKey: ['sequencer-stats', apiUrl],
+    queryFn: async () => {
+      const response = await fetch(`${apiUrl}/sequencer/stats`)
+      return handleApiError(response)
+    },
     ...options,
   })
 }

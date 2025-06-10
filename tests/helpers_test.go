@@ -251,7 +251,7 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	// Start sequencer service
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
-	vp := service.NewSequencer(stg, contracts, time.Second*30)
+	vp := service.NewSequencer(stg, contracts, time.Second*30, nil)
 	if err := vp.Start(ctx); err != nil {
 		log.Fatal(err)
 	}

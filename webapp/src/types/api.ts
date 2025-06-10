@@ -21,6 +21,15 @@ export interface InfoResponse {
   contracts: ContractAddresses
 }
 
+export interface SequencerStatsResponse {
+  activeProcesses: number
+  pendingVotes: number
+  verifiedVotes: number
+  aggregatedVotes: number
+  stateTransitions: number
+  settledStateTransitions: number
+}
+
 export interface ProcessListResponse {
   processes: string[]
 }

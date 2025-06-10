@@ -270,7 +270,7 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts) err
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
 	// Start sequencer service
-	s.sequencer = service.NewSequencer(stg, contracts, time.Second*30)
+	s.sequencer = service.NewSequencer(stg, contracts, time.Second*30, nil)
 	if err := s.sequencer.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
