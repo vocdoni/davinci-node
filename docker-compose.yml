@@ -9,9 +9,21 @@ services:
     volumes:
       - run:/app/run
     ports:
-      - "9090:9090"                     # REST API gateway
+      - "${DAVINCI_API_PORT:-9090}:9090"                     # REST API gateway
     sysctls:
       net.core.somaxconn: 8128
+    restart: ${RESTART:-unless-stopped}
+
+  webapp:
+    build:
+      context: ./webapp
+      args:
+        - SEQUENCER_API_URL=${SEQUENCER_API_URL:-http://localhost:9090}
+        - BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io/address}
+    ports:
+      - "${DAVINCI_WEBAPP_PORT:-3001}:80"                       # Web UI
+    depends_on:
+      - sequencer
     restart: ${RESTART:-unless-stopped}
 
   watchtower:
