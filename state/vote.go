@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
-	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -42,7 +41,6 @@ func (o *State) AddVote(v *Vote) error {
 	if len(o.votes) >= types.VotesPerBatch {
 		return fmt.Errorf("too many votes for this batch")
 	}
-	log.Warnw("adding vote", "address", v.Address.String(), "nullifier", v.Nullifier.String())
 	// if nullifier exists, it's a vote overwrite, need to count the overwritten
 	// vote so it's later added to circuit.ResultsSub
 	if _, value, err := o.tree.GetBigInt(v.Nullifier); err == nil {
@@ -64,7 +62,6 @@ func (o *State) AddVote(v *Vote) error {
 
 // EncryptedBallot returns the ballot associated with a nullifier
 func (o *State) EncryptedBallot(nullifier *big.Int) (*elgamal.Ballot, error) {
-	log.Warnw("getting encrypted ballot", "nullifier", nullifier.String())
 	_, value, err := o.tree.GetBigInt(nullifier)
 	if err != nil {
 		return nil, err
@@ -77,10 +74,9 @@ func (o *State) EncryptedBallot(nullifier *big.Int) (*elgamal.Ballot, error) {
 }
 
 // Commitment returns the commitment for a given address
-func (o *State) Commitment(address types.HexBytes) (*big.Int, error) {
-	ffAddress := address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
-	// get the commitment for the address
-	_, value, err := o.tree.GetBigInt(ffAddress.MathBigInt())
+func (o *State) Commitment(addressBytes types.HexBytes) (*big.Int, error) {
+	address := common.BytesToAddress(addressBytes)
+	_, value, err := o.tree.GetBigInt(address.Big())
 	if err != nil {
 		return nil, err
 	}

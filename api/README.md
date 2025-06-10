@@ -49,6 +49,11 @@ API errors are returned with appropriate HTTP status codes and a JSON body with 
 | 40010 | 400         | Invalid census ID                          |
 | 40011 | 404         | Census not found                           |
 | 40012 | 400         | Key length exceeded                        |
+| 40013 | 400         | Invalid ballot inputs hash                 |
+| 40014 | 403         | Unauthorized                               |
+| 40015 | 400         | Malformed parameter                        |
+| 40016 | 400         | Malformed nullifier                        |
+| 40017 | 400         | Malformed address                          |
 | 50001 | 500         | Marshaling (server-side) JSON failed       |
 | 50002 | 500         | Internal server error                      |
 
@@ -147,6 +152,107 @@ Creates a new voting process setup and returns it. The process is not permanentl
 - 40005: Invalid signature
 - 50002: Internal server error
 
+### Metadata Management
+
+#### POST /metadata
+
+Sets metadata for a voting process.
+
+**Request Body**:
+```json
+{
+  "title": {
+    "languageCode": "string" // Language code as key, text as value. Example: {"en": "Election", "es": "Elección"}
+  },
+  "description": {
+    "languageCode": "string" // Language code as key, text as value
+  },
+  "media": {
+    "header": "string", // URL to header image
+    "logo": "string"    // URL to logo image
+  },
+  "questions": [
+    {
+      "title": {
+        "languageCode": "string" // Language code as key, text as value
+      },
+      "description": {
+        "languageCode": "string" // Language code as key, text as value
+      },
+      "choices": [
+        {
+          "title": {
+            "languageCode": "string" // Language code as key, text as value
+          },
+          "value": "number",
+          "meta": {
+            "key": "string" // Free-form key-value pairs, can contain any valid JSON
+          }
+        }
+      ],
+      "meta": {
+        "key": "string" // Free-form key-value pairs, can contain any valid JSON
+      }
+    }
+  ],
+  "type": {
+    "name": "string",
+    "properties": {
+      "key": "string" // Free-form key-value pairs, can contain any valid JSON
+    }
+  },
+  "version": "string",
+  "meta": {
+    "key": "string" // Free-form key-value pairs, can contain any valid JSON
+  }
+}
+```
+
+**Response Body**:
+```json
+{
+  "hash": "hexBytes"
+}
+```
+
+**Errors**:
+- 40004: Malformed JSON body
+- 50001: Marshaling server JSON failed
+- 50002: Internal server error
+
+#### GET /metadata/{metadataHash}
+
+Retrieves metadata by its hash.
+
+**URL Parameters**:
+- metadataHash: Metadata hash in hexadecimal format
+
+**Response Body**:
+Returns the complete metadata object as per the POST request format.
+
+**Errors**:
+- 40001: Resource not found
+- 40004: Malformed parameter
+- 50002: Internal server error
+
+#### GET /processes
+
+Lists all available voting process IDs.
+
+**Response Body**:
+```json
+{
+  "processes": [
+    "hexBytes",
+    "hexBytes",
+    "hexBytes"
+  ]
+}
+```
+
+**Errors**:
+- 50002: Internal server error
+
 #### GET /processes/{processId}
 
 Gets information about an existing voting process. It must exist in the smart contract.
@@ -168,7 +274,7 @@ Gets information about an existing voting process. It must exist in the smart co
   "result": ["bigintStr"],
   "startTime": "timestamp",
   "duration": "duration",
-  "metadataURI": "string",
+  "metadataURI": "string", // URI/URL to fetch the process metadata
   "ballotMode": {
     "maxCount": "number",
     "maxValue": "bigintStr",
@@ -184,48 +290,6 @@ Gets information about an existing voting process. It must exist in the smart co
     "maxVotes": "bigintStr",
     "censusRoot": "hexBytes",
     "censusURI": "string"
-  },
-  "metadata": {
-    "title": {
-      "languageCode": "string"
-    },
-    "description": {
-      "languageCode": "string"
-    },
-    "media": {
-      "header": "string",
-      "logo": "string"
-    },
-    "questions": [
-      {
-        "title": {
-          "languageCode": "string"
-        },
-        "description": {
-          "languageCode": "string"
-        },
-        "choices": [
-          {
-            "title": {
-              "languageCode": "string"
-            },
-            "value": "number",
-            "meta": {
-              "key": "string"
-            }
-          }
-        ],
-        "meta": {
-          "key": "string"
-        }
-      }
-    ],
-    "processType": {
-      "name": "string",
-      "properties": {
-        "key": "string"
-      }
-    }
   },
   "voteCount": "bigintStr", // Total number of votes cast in the process
   "voteOverwriteCount": "bigintStr", // Number of times voters changed their vote
@@ -453,9 +517,46 @@ Register a new vote for a voting process.
 - 40009: Invalid ballot proof
 - 50002: Internal server error
 
+#### GET /votes/{processId}/nullifier/{nullifier}
+
+Gets a vote by its nullifier for a specific process.
+
+**URL Parameters**:
+- processId: Process ID in hexadecimal format
+- nullifier: Nullifier value as a decimal string (big.Int representation)
+
+**Response Body**:
+Returns the encrypted ballot if found.
+
+**Errors**:
+- 40001: Resource not found
+- 40006: Malformed process ID
+- 40016: Malformed nullifier
+- 40007: Process not found
+- 50002: Internal server error
+
+#### GET /votes/{processId}/address/{address}
+
+Checks if an address has already voted in a specific process.
+
+**URL Parameters**:
+- processId: Process ID in hexadecimal format
+- address: Ethereum address to check (hex format)
+
+**Response**:
+- 200 OK if the address has already voted
+- 404 Not Found if the address has not voted
+
+**Errors**:
+- 40001: Resource not found (address has not voted)
+- 40006: Malformed process ID
+- 40017: Malformed address
+- 40007: Process not found
+- 50002: Internal server error
+
 ### Vote Status
 
-#### GET /votes/status/{processId}/{voteId}
+#### GET /votes/{processId}/voteId/{voteId}
 
 Gets the status of a specific vote within a voting process.
 
