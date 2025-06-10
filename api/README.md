@@ -299,7 +299,7 @@ Gets information about an existing voting process. It must exist in the smart co
   "sequencerStats": { // Stats about the Sequencer runing the API (not the whole network)
     "stateTransitionCount": "number", // Total number of state transitions performed
     "lastStateTransitionDate": "date", // Date of the most recent state transition
-    "uploadedStateTransitionCount": "number", // Number of state transitions uploaded to the blockchain
+    "settledStateTransitionCount": "number", // Number of state transitions settled to the Ethereum blockchain
     "aggregatedVotesCount": "number", // Total number of votes that have been aggregated into batches
     "verifiedVotesCount": "number", // Total number of votes that have been cryptographically verified
     "pendingVotesCount": "number", // Number of votes waiting to be processed
