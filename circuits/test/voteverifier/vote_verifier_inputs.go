@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/arbo"
-	primitivestest "github.com/vocdoni/gnark-crypto-primitives/testutil"
 	"github.com/vocdoni/davinci-node/circuits"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
@@ -21,6 +20,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
+	primitivestest "github.com/vocdoni/gnark-crypto-primitives/testutil"
 	"go.vocdoni.io/dvote/util"
 )
 

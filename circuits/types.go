@@ -9,12 +9,12 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
-	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
-	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
+	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
+	"github.com/vocdoni/gnark-crypto-primitives/utils"
 )
 
 const (

@@ -7,10 +7,10 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/arbo"
-	gelgamal "github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/types"
+	gelgamal "github.com/vocdoni/gnark-crypto-primitives/elgamal"
 )
 
 // sizes in bytes needed to serialize a Ballot

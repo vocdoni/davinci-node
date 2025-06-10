@@ -10,6 +10,10 @@ This directory contains a Docker Compose setup for testing the Davinci Node with
 
 ## Usage
 
+There is a helper script to start everything `./start.sh`
+
+Or you can do it manually:
+
 1. Start the test environment:
    ```bash
    cd testenv

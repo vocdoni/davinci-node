@@ -7,12 +7,12 @@ import (
 	"github.com/consensys/gnark/std/math/cmp"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
-	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
+	"github.com/vocdoni/gnark-crypto-primitives/utils"
 )
 
 // HashFn is the hash function used in the circuit. It should the equivalent

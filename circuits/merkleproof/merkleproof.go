@@ -6,12 +6,12 @@ import (
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
-	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
+	"github.com/vocdoni/gnark-crypto-primitives/utils"
 )
 
 // MerkleProof stores the leaf, the path, and the root hash.
