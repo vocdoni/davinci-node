@@ -2,77 +2,70 @@ package api
 
 import "strings"
 
+// Route constants for the API endpoints
+
 const (
-	// PingEndpoint is the endpoint for checking the API status
-	PingEndpoint = "/ping"
-	// ProcessesEndpoint is the endpoint for creating a new voting process
-	ProcessesEndpoint = "/processes"
-	// ProcessEndpoint is the endpoint to get the process info
-	ProcessURLParam = "processId"
-	ProcessEndpoint = "/processes/{" + ProcessURLParam + "}"
+	// Health endpoints
+	PingEndpoint = "/ping" // Health check endpoint
 
-	// TestSetProcessEndpoint and TestProcessEndpoint is the endpoint for store
-	// and retrieve the process info for testing. In a real scenatio, this
-	// information should be in the smart contract.
-	TestSetProcessEndpoint = "/processes/test"
-	TestProcessEndpoint    = "/processes/test/{" + ProcessURLParam + "}"
+	// Process endpoints
+	ProcessesEndpoint = "/processes"                           // GET: List processes, POST: Create process
+	ProcessURLParam   = "processId"                            // URL parameter for process ID
+	ProcessEndpoint   = "/processes/{" + ProcessURLParam + "}" // GET: Get process info
 
-	// VotesEndpoint is the endpoint for submitting a vote
-	VotesEndpoint = "/votes"
+	// Test process endpoints - for testing only
+	TestSetProcessEndpoint = "/processes/test"                           // Store process info for testing
+	TestProcessEndpoint    = "/processes/test/{" + ProcessURLParam + "}" // Get test process info
 
-	// VoteStatusEndpoint is the endpoint for checking the status of a vote
-	VoteStatusEndpoint    = VotesEndpoint + "/status/{" + ProcessURLParam + "}/{" + VoteStatusVoteIDParam + "}"
-	VoteStatusVoteIDParam = "voteId"
+	// Vote endpoints
+	VotesEndpoint = "/votes" // POST: Submit a vote
 
-	// VoteByNullifierEndpoint is the endpoint for getting a vote by its nullifier
-	VoteByNullifierEndpoint       = VotesEndpoint + "/{" + ProcessURLParam + "}/{" + VoteByNullifierNullifierParam + "}"
-	VoteByNullifierNullifierParam = "nullifier"
+	// Vote status endpoints
+	VoteStatusVoteIDParam = "voteId"                                                                            // URL parameter for vote ID
+	VoteStatusEndpoint    = VotesEndpoint + "/{" + ProcessURLParam + "}/voteId/{" + VoteStatusVoteIDParam + "}" // GET: Check vote status
 
-	// VoteCheckEndpoint is the endpoint for checking the vote status by address
-	VoteCheckEndpoint     = VotesEndpoint + "/check/{" + ProcessURLParam + "}/{" + VoteCheckAddressParam + "}"
-	VoteCheckAddressParam = "address"
+	// Vote nullifier endpoint
+	VoteByNullifierNullifierParam = "nullifier"                                                                                    // URL parameter for nullifier
+	VoteByNullifierEndpoint       = VotesEndpoint + "/{" + ProcessURLParam + "}/nullifier/{" + VoteByNullifierNullifierParam + "}" // GET: Get vote by nullifier
 
-	// InfoEndpoint is the endpoint for getting ballot proof information
-	InfoEndpoint = "/info"
+	// Vote address check endpoint
+	VoteCheckAddressParam = "address"                                                                            // URL parameter for address
+	VoteCheckEndpoint     = VotesEndpoint + "/{" + ProcessURLParam + "}/address/{" + VoteCheckAddressParam + "}" // GET: Check if address voted
 
-	CensusURLParam = "censusID"
-	// NewCensusEndpoint is the endpoint for creating a new census
-	NewCensusEndpoint = "/censuses"
-	// AddCensusParticipantsEndpoint is the endpoint for adding participants to a census
-	AddCensusParticipantsEndpoint = "/censuses/{" + CensusURLParam + "}/participants"
-	// GetCensusParticipantsEndpoint is the endpoint for getting the participants of a census
-	GetCensusParticipantsEndpoint = "/censuses/{" + CensusURLParam + "}/participants"
-	// GetCensusRootEndpoint is the endpoint for getting the root of a census
-	GetCensusRootEndpoint = "/censuses/{" + CensusURLParam + "}/root"
-	// GetCensusSizeEndpoint is the endpoint for getting the size of a census
-	GetCensusSizeEndpoint = "/censuses/{" + CensusURLParam + "}/size"
-	// DeleteCensusEndpoint is the endpoint for deleting a census
-	DeleteCensusEndpoint = "/censuses/{" + CensusURLParam + "}"
-	// GetCensusProofEndpoint is the endpoint for getting a proof of a census
-	GetCensusProofEndpoint = "/censuses/{" + CensusURLParam + "}/proof"
+	// Info endpoint
+	InfoEndpoint = "/info" // GET: Get ballot proof information
+
+	// Census endpoints
+	CensusURLParam                = "censusId"                                        // URL parameter for census ID
+	NewCensusEndpoint             = "/censuses"                                       // POST: Create a new census
+	AddCensusParticipantsEndpoint = "/censuses/{" + CensusURLParam + "}/participants" // POST: Add participants to census
+	GetCensusParticipantsEndpoint = "/censuses/{" + CensusURLParam + "}/participants" // GET: Get census participants
+	GetCensusRootEndpoint         = "/censuses/{" + CensusURLParam + "}/root"         // GET: Get census root
+	GetCensusSizeEndpoint         = "/censuses/{" + CensusURLParam + "}/size"         // GET: Get census size
+	DeleteCensusEndpoint          = "/censuses/{" + CensusURLParam + "}"              // DELETE: Delete census
+	GetCensusProofEndpoint        = "/censuses/{" + CensusURLParam + "}/proof"        // GET: Get census proof
 
 	// Worker endpoints
-	WorkerUUIDParam         = "uuid"
-	WorkerAddressParam      = "address"
-	WorkersEndpoint         = "/workers"
-	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}"
-	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"
-	WorkersListEndpoint     = WorkersEndpoint
+	WorkerUUIDParam         = "uuid"                                                                      // URL parameter for worker UUID
+	WorkerAddressParam      = "address"                                                                   // URL parameter for worker address
+	WorkersEndpoint         = "/workers"                                                                  // Base worker endpoint
+	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}" // GET: Worker get job
+	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"                              // POST: Worker submit job
+	WorkersListEndpoint     = WorkersEndpoint                                                             // GET: List workers
 
 	// Metadata endpoints
-	MetadataHashParam   = "metadataHash"
-	MetadataSetEndpoint = "/metadata"
-	MetadataGetEndpoint = MetadataSetEndpoint + "/{" + MetadataHashParam + "}"
+	MetadataHashParam   = "metadataHash"                                       // URL parameter for metadata hash
+	MetadataSetEndpoint = "/metadata"                                          // POST: Set metadata
+	MetadataGetEndpoint = MetadataSetEndpoint + "/{" + MetadataHashParam + "}" // GET: Get metadata
 )
 
-// EndpointWithParam replaces the key in the path with the param value
-// provided. It is used to create the endpoint URL with the desired
-// parameters.
+// EndpointWithParam creates an endpoint URL by replacing the parameter placeholder
+// with the actual value. Used to build fully qualified endpoint URLs.
 func EndpointWithParam(path, key, param string) string {
 	return strings.Replace(path, "{"+key+"}", param, 1)
 }
 
-// LogExcludedPrefixes returns the default list of URL prefixes to exclude from logging
+// LogExcludedPrefixes defines URL prefixes to exclude from request logging
 var LogExcludedPrefixes = []string{
 	PingEndpoint,
 	WorkersEndpoint,

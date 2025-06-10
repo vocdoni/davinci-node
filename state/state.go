@@ -2,7 +2,6 @@ package state
 
 import (
 	"fmt"
-	"log"
 	"math/big"
 	"slices"
 
@@ -185,20 +184,16 @@ func (o *State) EndBatch() error {
 	// first get MerkleProofs, since they need to belong to RootHashBefore, i.e.
 	// before MerkleTransitions
 	if o.processProofs.ID, err = o.GenArboProof(KeyProcessID); err != nil {
-		log.Println("Error getting ID proof:", err)
-		return err
+		return fmt.Errorf("could not get ID proof: %w", err)
 	}
 	if o.processProofs.CensusRoot, err = o.GenArboProof(KeyCensusRoot); err != nil {
-		log.Println("Error getting CensusRoot proof:", err)
-		return err
+		return fmt.Errorf("could not get CensusRoot proof: %w", err)
 	}
 	if o.processProofs.BallotMode, err = o.GenArboProof(KeyBallotMode); err != nil {
-		log.Println("Error getting BallotMode proof:", err)
-		return err
+		return fmt.Errorf("could not get BallotMode proof: %w", err)
 	}
 	if o.processProofs.EncryptionKey, err = o.GenArboProof(KeyEncryptionKey); err != nil {
-		log.Println("Error getting EncryptionKey proof:", err)
-		return err
+		return fmt.Errorf("could not get EncryptionKey proof: %w", err)
 	}
 
 	// now build ordered chain of MerkleTransitions. The order should be the
