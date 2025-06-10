@@ -1,6 +1,6 @@
 import { Box, VStack, Alert, AlertIcon, AlertTitle, AlertDescription, Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react'
 import { ApiUrlConfig } from '~components/ApiUrlConfig'
-import { ContractLinks } from '~components/ContractLinks'
+import { SequencerStats } from '~components/SequencerStats'
 import { ProcessList } from '~components/ProcessList'
 import { Workers } from '~components/Workers'
 import { useSequencerInfo } from '~hooks/useSequencerAPI'
@@ -15,7 +15,7 @@ const Dashboard = () => {
         <ApiUrlConfig />
       </Box>
 
-      {/* Contract Links Section */}
+      {/* Sequencer Statistics */}
       <Box>
         {infoError && (
           <Alert status="error" mb={4}>
@@ -24,7 +24,7 @@ const Dashboard = () => {
             <AlertDescription>{infoError.message}</AlertDescription>
           </Alert>
         )}
-        <ContractLinks contracts={info?.contracts} isLoading={infoLoading} />
+        <SequencerStats />
       </Box>
 
       {/* Tabbed Content Section */}
