@@ -104,3 +104,11 @@ type SetMetadataResponse struct {
 type ProcessList struct {
 	Processes []types.HexBytes `json:"processes"`
 }
+
+// HostLoadResponse is the exact shape we return to the client.
+type HostLoadResponse struct {
+	MemStats            any                `json:"memStats,omitempty"`
+	HostLoad1           float64            `json:"hostLoad1,omitempty"`
+	HostMemUsedPercent  float64            `json:"hostMemUsedPercent,omitempty"`
+	HostDiskUsedPercent map[string]float64 `json:"hostDiskUsedPercent,omitempty"`
+}

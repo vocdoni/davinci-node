@@ -13,10 +13,6 @@ const (
 	ProcessURLParam   = "processId"                            // URL parameter for process ID
 	ProcessEndpoint   = "/processes/{" + ProcessURLParam + "}" // GET: Get process info
 
-	// Test process endpoints - for testing only
-	TestSetProcessEndpoint = "/processes/test"                           // Store process info for testing
-	TestProcessEndpoint    = "/processes/test/{" + ProcessURLParam + "}" // Get test process info
-
 	// Vote endpoints
 	VotesEndpoint = "/votes" // POST: Submit a vote
 
@@ -34,6 +30,12 @@ const (
 
 	// Info endpoint
 	InfoEndpoint = "/info" // GET: Get ballot proof information
+
+	// Host load endpoint
+	HostLoadEndpoint = "/info/load" // GET: Get host load metrics
+
+	// Static file serving endpoint
+	StaticFilesEndpoint = "/app*" // GET: Serve static files from the /webapp directory
 
 	// Census endpoints
 	CensusURLParam                = "censusId"                                        // URL parameter for census ID

@@ -113,9 +113,13 @@ func (a *API) registerHandlers() {
 	log.Infow("register handler", "endpoint", InfoEndpoint, "method", "GET")
 	a.router.Get(InfoEndpoint, a.info)
 
+	// host load endpoint
+	log.Infow("register handler", "endpoint", HostLoadEndpoint, "method", "GET")
+	a.router.Get(HostLoadEndpoint, a.hostLoad)
+
 	// static file serving
 	log.Infow("register static handler", "endpoint", "/app/*", "method", "GET")
-	a.router.Get("/app*", staticHandler)
+	a.router.Get(StaticFilesEndpoint, staticHandler)
 
 	// processes endpoints
 	log.Infow("register handler", "endpoint", ProcessesEndpoint, "method", "POST")
