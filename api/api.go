@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,7 +18,8 @@ import (
 )
 
 const (
-	maxRequestBodyLog = 512 // Maximum length of request body to log
+	maxRequestBodyLog = 512      // Maximum length of request body to log
+	webappdir         = "webapp" // Directory where the web application files are located
 )
 
 // APIConfig type represents the configuration for the API HTTP server.
@@ -106,6 +109,10 @@ func (a *API) registerHandlers() {
 		httpWriteOK(w)
 	})
 
+	// static file serving
+	log.Infow("register static handler", "endpoint", "/app/*", "method", "GET")
+	a.router.Get("/app*", staticHandler)
+
 	// processes endpoints
 	log.Infow("register handler", "endpoint", ProcessesEndpoint, "method", "POST")
 	a.router.Post(ProcessesEndpoint, a.newProcess)
@@ -176,4 +183,16 @@ func (a *API) initRouter() {
 	a.router.Use(middleware.Timeout(45 * time.Second))
 
 	a.registerHandlers()
+}
+
+// staticHandler serves static files from the webapp directory.
+func staticHandler(w http.ResponseWriter, r *http.Request) {
+	var filePath string
+	if r.URL.Path == "/app" || r.URL.Path == "/app/" {
+		filePath = path.Join(webappdir, "index.html")
+	} else {
+		filePath = path.Join(webappdir, strings.TrimPrefix(path.Clean(r.URL.Path), "/app"))
+	}
+	// Serve the file using http.ServeFile
+	http.ServeFile(w, r, filePath)
 }

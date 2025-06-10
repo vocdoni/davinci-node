@@ -119,3 +119,21 @@ $ curl -s http://localhost:9090/info | jq .
   }
 }
 ```
+
+## Web UI
+
+The sequencer includes a web UI dashboard accessible at `http://localhost:9090/app`
+
+The UI provides:
+- Smart contract addresses with block explorer links
+- Process list with statistics and real-time updates
+- Detailed process information including voting results
+- Filtering and sorting capabilities
+- API URL configuration
+
+### Configuration
+
+The Web UI supports multiple configuration methods:
+
+1. **Environment Variables**: Set `SEQUENCER_API_URL` and `BLOCK_EXPLORER_URL` when running the container
+2. **In-App**: Use the input field at the top of the dashboard to change the API URL on the fly
