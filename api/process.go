@@ -23,7 +23,7 @@ import (
 )
 
 // newProcess creates a new voting process
-// POST /process
+// POST /processes
 func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	p := &types.ProcessSetup{}
 	if err := json.NewDecoder(r.Body).Decode(p); err != nil {
@@ -127,7 +127,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 // getProcess retrieves a voting process
-// GET /process/{processId}
+// GET /processes/{processId}
 func (a *API) process(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal the process ID
 	pidBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, ProcessURLParam)))
@@ -150,6 +150,23 @@ func (a *API) process(w http.ResponseWriter, r *http.Request) {
 
 	// Write the response
 	httpWriteJSON(w, proc)
+}
+
+// processList retrieves the list of voting processes
+// GET /processes
+func (a *API) processList(w http.ResponseWriter, r *http.Request) {
+	// Retrieve the list of processes
+	processes, err := a.storage.ListProcesses()
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not retrieve processes: %v", err).Write(w)
+		return
+	}
+	processList := ProcessList{}
+	for _, p := range processes {
+		processList.Processes = append(processList.Processes, p)
+	}
+	// Write the response
+	httpWriteJSON(w, &processList)
 }
 
 // setMetadata sets the metadata for a voting process
