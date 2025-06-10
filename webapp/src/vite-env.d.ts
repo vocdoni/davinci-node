@@ -8,3 +8,15 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// Runtime configuration injected by Docker
+interface RuntimeConfig {
+  SEQUENCER_API_URL?: string
+  BLOCK_EXPLORER_URL?: string
+}
+
+declare global {
+  interface Window {
+    __RUNTIME_CONFIG__?: RuntimeConfig
+  }
+}

@@ -84,6 +84,36 @@ webapp/
 └── vite.config.ts      # Vite configuration
 ```
 
+## Configuration Options
+
+The webapp supports multiple ways to configure the Sequencer API URL:
+
+### 1. Environment Variables (Docker)
+When running with Docker, set environment variables:
+```bash
+# Via docker-compose
+SEQUENCER_API_URL=http://my-sequencer:9090 docker-compose up
+
+# Or in .env file
+SEQUENCER_API_URL=http://my-sequencer:9090
+BLOCK_EXPLORER_URL=https://etherscan.io/address
+```
+
+### 2. Environment Variables (Development)
+For local development, create a `.env` file:
+```bash
+SEQUENCER_API_URL=http://localhost:9090
+BLOCK_EXPLORER_URL=https://sepolia.etherscan.io/address
+```
+
+### 3. In-App Configuration
+Use the input field at the top of the dashboard to change the API URL on the fly.
+
+### Priority Order
+1. Runtime configuration (Docker environment variables)
+2. Build-time environment variables (.env file during build)
+3. Default: `http://localhost:9090`
+
 ## Environment Variables
 
 | Variable | Description | Default |
