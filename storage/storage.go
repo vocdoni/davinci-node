@@ -10,8 +10,8 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/storage/census"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/storage/census"
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // MockContracts implements a mock version of web3.Contracts for testing

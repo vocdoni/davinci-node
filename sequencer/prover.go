@@ -14,13 +14,13 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/test"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
-	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
-	teststatetransition "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/statetransition"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/statetransition"
+	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	teststatetransition "github.com/vocdoni/davinci-node/circuits/test/statetransition"
+	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // ProverFunc defines a function type that matches the signature needed for zkSNARK proving

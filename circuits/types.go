@@ -12,9 +12,9 @@ import (
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/crypto"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 const (

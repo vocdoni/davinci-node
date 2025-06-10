@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/config"
+	"github.com/vocdoni/davinci-node/config"
 )
 
 // info returns the information needed by the client to generate a ballot zkSNARK proof

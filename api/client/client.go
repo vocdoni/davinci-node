@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/api"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/api"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 const (

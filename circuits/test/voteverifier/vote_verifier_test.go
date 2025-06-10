@@ -10,9 +10,9 @@ import (
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
-	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
+	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 )
 
 func TestVerifySingleVoteCircuit(t *testing.T) {

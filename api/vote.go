@@ -8,14 +8,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/storage"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
-	"github.com/vocdoni/vocdoni-z-sandbox/util"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 // voteStatus returns the status of a vote for a given processID and voteID

@@ -9,8 +9,8 @@ import (
 
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"github.com/vocdoni/vocdoni-z-sandbox/config"
-	"github.com/vocdoni/vocdoni-z-sandbox/internal"
+	"github.com/vocdoni/davinci-node/config"
+	"github.com/vocdoni/davinci-node/internal"
 )
 
 const (

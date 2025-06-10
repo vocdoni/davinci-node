@@ -5,13 +5,13 @@ import (
 
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/results"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
-	ballotprooftest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/results"
+	"github.com/vocdoni/davinci-node/circuits/statetransition"
+	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 // internalCircuits holds the loaded circuit artifacts for the sequencer

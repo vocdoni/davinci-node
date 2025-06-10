@@ -9,8 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	npbindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // CreateProcess creates a new process in the ProcessRegistry contract.

@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // CensusRef is a reference to a census. It holds the Merkle tree.

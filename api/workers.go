@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/storage"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/storage"
 )
 
 // startWorkerTimeoutMonitor starts the timeout monitor for worker jobs

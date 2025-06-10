@@ -3,8 +3,8 @@ package api
 import (
 	"github.com/google/uuid"
 	"github.com/vocdoni/circom2gnark/parser"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // NewCensus is the response to a new census creation request.

@@ -15,13 +15,13 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/arbo/memdb"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
-	"github.com/vocdoni/vocdoni-z-sandbox/state"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/state"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 const nVotes = 10

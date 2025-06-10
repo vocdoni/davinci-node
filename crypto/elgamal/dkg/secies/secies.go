@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
 )
 
 // ScalarECIES encapsulates methods for encryption and decryption of a scalar, using elliptic curve cryptography.

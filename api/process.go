@@ -9,17 +9,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/state"
-	"github.com/vocdoni/vocdoni-z-sandbox/storage"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
-	"github.com/vocdoni/vocdoni-z-sandbox/util"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/state"
+	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 // newProcess creates a new voting process

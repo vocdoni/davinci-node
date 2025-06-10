@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 // DisabledLogging is a global flag to disable logging middleware

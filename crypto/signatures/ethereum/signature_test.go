@@ -9,7 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 func init() {

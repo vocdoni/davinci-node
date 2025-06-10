@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 // ProcessIDMap provides a thread-safe map for storing and retrieving process IDs.

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
-	"github.com/vocdoni/vocdoni-z-sandbox/storage"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
-	"github.com/vocdoni/vocdoni-z-sandbox/web3"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/sequencer"
+	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
 // StatsMonitorInterval is the interval at which process statistics are logged.

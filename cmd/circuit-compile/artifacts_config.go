@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 // UpdateCircuitArtifactsConfig updates the hash constants in the circuit_artifacts.go file

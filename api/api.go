@@ -11,8 +11,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	stg "github.com/vocdoni/vocdoni-z-sandbox/storage"
+	"github.com/vocdoni/davinci-node/log"
+	stg "github.com/vocdoni/davinci-node/storage"
 )
 
 const (

@@ -10,10 +10,10 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
-	aggregatortest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/aggregator"
-	"github.com/vocdoni/vocdoni-z-sandbox/state"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/statetransition"
+	aggregatortest "github.com/vocdoni/davinci-node/circuits/test/aggregator"
+	"github.com/vocdoni/davinci-node/state"
 	"go.vocdoni.io/dvote/db/metadb"
 )
 

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 // WaitReadyRPC waits for the RPC endpoint to be ready by checking if it returns a valid block number.

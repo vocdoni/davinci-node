@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // Common update functions for use with UpdateProcess

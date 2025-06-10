@@ -3,10 +3,10 @@ package curves
 import (
 	"slices"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	bjj_gnark "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_gnark"
-	bjj_iden3 "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_iden3"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bn254"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
+	bjj_gnark "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	bjj_iden3 "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
+	"github.com/vocdoni/davinci-node/crypto/ecc/bn254"
 )
 
 // New creates a new instance of a Curve implementation based on the provided

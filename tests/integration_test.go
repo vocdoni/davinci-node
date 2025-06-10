@@ -8,13 +8,13 @@ import (
 	"time"
 
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/vocdoni-z-sandbox/api"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/sequencer"
-	"github.com/vocdoni/vocdoni-z-sandbox/service"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/api"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/sequencer"
+	"github.com/vocdoni/davinci-node/service"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestMain(m *testing.M) {

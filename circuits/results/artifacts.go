@@ -1,9 +1,9 @@
 package results
 
 import (
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/config"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/config"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // Artifacts contains the circuit artifacts for the aggregator circuit, which

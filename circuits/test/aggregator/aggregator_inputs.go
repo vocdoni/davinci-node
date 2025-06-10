@@ -14,12 +14,12 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/iden3/go-iden3-crypto/mimc7"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
-	ballottest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/ballotproof"
-	voteverifiertest "github.com/vocdoni/vocdoni-z-sandbox/circuits/test/voteverifier"
-	"github.com/vocdoni/vocdoni-z-sandbox/state"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	voteverifiertest "github.com/vocdoni/davinci-node/circuits/test/voteverifier"
+	"github.com/vocdoni/davinci-node/state"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // AggregatorTestResults struct includes relevant data after AggregatorCircuit

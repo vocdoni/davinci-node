@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/log"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 

@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/merkleproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/state"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/merkleproof"
+	"github.com/vocdoni/davinci-node/state"
 )
 
 // GenerateWitness generates the witness for the state transition circuit

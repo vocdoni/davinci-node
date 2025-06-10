@@ -20,11 +20,11 @@ import (
 
 	bindings "github.com/vocdoni/contracts-z/golang-types"
 	npbindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
-	"github.com/vocdoni/vocdoni-z-sandbox/config"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/signatures/ethereum"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
-	"github.com/vocdoni/vocdoni-z-sandbox/web3/rpc"
+	"github.com/vocdoni/davinci-node/config"
+	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
 const (

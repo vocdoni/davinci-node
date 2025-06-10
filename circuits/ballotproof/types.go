@@ -1,8 +1,8 @@
 package ballotproof
 
 import (
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // BallotProofInputs struct contains the required inputs to compose the

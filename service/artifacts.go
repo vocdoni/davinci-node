@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/aggregator"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/ballotproof"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/results"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/voteverifier"
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
+	"github.com/vocdoni/davinci-node/circuits/results"
+	"github.com/vocdoni/davinci-node/circuits/statetransition"
+	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/log"
 	"golang.org/x/sync/errgroup"
 )
 

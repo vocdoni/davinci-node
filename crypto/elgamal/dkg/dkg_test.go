@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_iden3"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
+	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
 )
 
 func TestDKG(t *testing.T) {

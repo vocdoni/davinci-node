@@ -7,7 +7,7 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
-	"github.com/vocdoni/vocdoni-z-sandbox/storage"
+	"github.com/vocdoni/davinci-node/storage"
 )
 
 func TestAPIService(t *testing.T) {

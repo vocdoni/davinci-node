@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"github.com/fxamacker/cbor/v2"
-	curve "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	curve "github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/types"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"

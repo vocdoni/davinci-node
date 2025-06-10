@@ -9,7 +9,7 @@ import (
 	gecc "github.com/consensys/gnark-crypto/ecc"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto"
+	"github.com/vocdoni/davinci-node/crypto"
 )
 
 const (

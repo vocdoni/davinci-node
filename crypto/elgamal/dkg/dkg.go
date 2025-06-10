@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
 )
 
 // Participant represents a participant in the DKG protocol.

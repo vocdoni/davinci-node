@@ -4,7 +4,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/recursion/groth16"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/circuits/statetransition"
+	"github.com/vocdoni/davinci-node/circuits/statetransition"
 )
 
 func CircuitPlaceholder() *statetransition.StateTransitionCircuit {

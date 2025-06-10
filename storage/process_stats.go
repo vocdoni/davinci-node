@@ -3,8 +3,8 @@ package storage
 import (
 	"fmt"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/log"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // ProcessStatsUpdate represents a single stats update operation

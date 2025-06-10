@@ -7,8 +7,8 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/fxamacker/cbor/v2"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bn254"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
+	"github.com/vocdoni/davinci-node/crypto/ecc/bn254"
+	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 )
 
 func TestNewCiphertext(t *testing.T) {

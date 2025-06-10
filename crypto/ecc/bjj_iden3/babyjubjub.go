@@ -11,8 +11,8 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	babyjubjub "github.com/iden3/go-iden3-crypto/babyjub"
 
-	curve "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	curve "github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // CurveType is the identifier for the BabyJubJub curve implementation using iden3 library

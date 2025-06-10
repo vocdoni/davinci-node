@@ -50,8 +50,8 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/hash/poseidon"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 )
 
 // DecryptionProof is a non-interactive Chaum–Pedersen proof that

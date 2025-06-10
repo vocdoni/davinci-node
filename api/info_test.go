@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/vocdoni-z-sandbox/config"
-	"github.com/vocdoni/vocdoni-z-sandbox/storage"
+	"github.com/vocdoni/davinci-node/config"
+	"github.com/vocdoni/davinci-node/storage"
 )
 
 func TestInfo(t *testing.T) {

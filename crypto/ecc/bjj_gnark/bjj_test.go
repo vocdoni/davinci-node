@@ -6,9 +6,9 @@ import (
 
 	qt "github.com/frankban/quicktest"
 
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	bjjIden3 "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_iden3"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/format"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
+	bjjIden3 "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
+	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 )
 
 func PointFromRTEtoTE(p ecc.Point) ecc.Point {

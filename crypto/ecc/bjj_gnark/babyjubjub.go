@@ -8,8 +8,8 @@ import (
 
 	babyjubjub "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards"
 	"github.com/fxamacker/cbor/v2"
-	curve "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc"
-	"github.com/vocdoni/vocdoni-z-sandbox/types"
+	curve "github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 const CurveType = "bjj_gnark"

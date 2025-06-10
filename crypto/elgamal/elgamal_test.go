@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-	bjj "github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bjj_iden3"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/bn254"
-	"github.com/vocdoni/vocdoni-z-sandbox/crypto/ecc/curves"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
+	"github.com/vocdoni/davinci-node/crypto/ecc/bn254"
+	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 )
 
 func TestGenerateKey(t *testing.T) {
