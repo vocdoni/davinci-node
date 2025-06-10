@@ -88,7 +88,7 @@ func New(conf *APIConfig) (*API, error) {
 	// Initialize router
 	a.initRouter()
 	go func() {
-		log.Infow("Starting API server", "host", conf.Host, "port", conf.Port)
+		log.Infow("starting API server", "host", conf.Host, "port", conf.Port)
 		if err := http.ListenAndServe(fmt.Sprintf("%s:%d", conf.Host, conf.Port), a.router); err != nil {
 			log.Fatalf("failed to start the API server: %v", err)
 		}
@@ -108,6 +108,10 @@ func (a *API) registerHandlers() {
 	a.router.Get(PingEndpoint, func(w http.ResponseWriter, r *http.Request) {
 		httpWriteOK(w)
 	})
+
+	// info endpoint
+	log.Infow("register handler", "endpoint", InfoEndpoint, "method", "GET")
+	a.router.Get(InfoEndpoint, a.info)
 
 	// static file serving
 	log.Infow("register static handler", "endpoint", "/app/*", "method", "GET")
@@ -132,8 +136,6 @@ func (a *API) registerHandlers() {
 	a.router.Post(VotesEndpoint, a.newVote)
 	log.Infow("register handler", "endpoint", VoteStatusEndpoint, "method", "GET")
 	a.router.Get(VoteStatusEndpoint, a.voteStatus)
-	log.Infow("register handler", "endpoint", InfoEndpoint, "method", "GET")
-	a.router.Get(InfoEndpoint, a.info)
 	log.Infow("register handler", "endpoint", VoteByNullifierEndpoint, "method", "GET")
 	a.router.Get(VoteByNullifierEndpoint, a.voteByNullifier)
 	log.Infow("register handler", "endpoint", VoteCheckEndpoint, "method", "GET")
@@ -161,9 +163,11 @@ func (a *API) registerHandlers() {
 		a.router.Get(WorkerGetJobEndpoint, a.workerGetJob)
 		log.Infow("register handler", "endpoint", WorkerSubmitJobEndpoint, "method", "POST")
 		a.router.Post(WorkerSubmitJobEndpoint, a.workerSubmitJob)
-		log.Infow("register handler", "endpoint", WorkersListEndpoint, "method", "GET")
-		a.router.Get(WorkersListEndpoint, a.workersList)
 	}
+
+	// sequencer workers stats endpoint - available even without worker mode
+	log.Infow("register handler", "endpoint", SequencerWorkersEndpoint, "method", "GET")
+	a.router.Get(SequencerWorkersEndpoint, a.workersList)
 }
 
 // initRouter creates the router with all the routes and middleware.

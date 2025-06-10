@@ -1,7 +1,8 @@
-import { Box, VStack, Alert, AlertIcon, AlertTitle, AlertDescription } from '@chakra-ui/react'
+import { Box, VStack, Alert, AlertIcon, AlertTitle, AlertDescription, Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react'
 import { ApiUrlConfig } from '~components/ApiUrlConfig'
 import { ContractLinks } from '~components/ContractLinks'
 import { ProcessList } from '~components/ProcessList'
+import { Workers } from '~components/Workers'
 import { useSequencerInfo } from '~hooks/useSequencerAPI'
 
 const Dashboard = () => {
@@ -26,9 +27,22 @@ const Dashboard = () => {
         <ContractLinks contracts={info?.contracts} isLoading={infoLoading} />
       </Box>
 
-      {/* Process List Section */}
+      {/* Tabbed Content Section */}
       <Box>
-        <ProcessList />
+        <Tabs colorScheme="purple" variant="enclosed">
+          <TabList>
+            <Tab>Active Processes</Tab>
+            <Tab>Workers</Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel px={0}>
+              <ProcessList />
+            </TabPanel>
+            <TabPanel px={0}>
+              <Workers />
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
       </Box>
     </VStack>
   )

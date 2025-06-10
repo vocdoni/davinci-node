@@ -53,6 +53,9 @@ const (
 	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"                              // POST: Worker submit job
 	WorkersListEndpoint     = WorkersEndpoint                                                             // GET: List workers
 
+	// Sequencer endpoints
+	SequencerWorkersEndpoint = "/sequencer/workers" // GET: List worker statistics
+
 	// Metadata endpoints
 	MetadataHashParam   = "metadataHash"                                       // URL parameter for metadata hash
 	MetadataSetEndpoint = "/metadata"                                          // POST: Set metadata
