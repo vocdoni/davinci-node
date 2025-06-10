@@ -6,6 +6,7 @@ import (
 
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -41,7 +42,7 @@ func (o *State) AddVote(v *Vote) error {
 	if len(o.votes) >= types.VotesPerBatch {
 		return fmt.Errorf("too many votes for this batch")
 	}
-
+	log.Warnw("adding vote", "address", v.Address.String(), "nullifier", v.Nullifier.String())
 	// if nullifier exists, it's a vote overwrite, need to count the overwritten
 	// vote so it's later added to circuit.ResultsSub
 	if _, value, err := o.tree.GetBigInt(v.Nullifier); err == nil {
@@ -63,6 +64,7 @@ func (o *State) AddVote(v *Vote) error {
 
 // EncryptedBallot returns the ballot associated with a nullifier
 func (o *State) EncryptedBallot(nullifier *big.Int) (*elgamal.Ballot, error) {
+	log.Warnw("getting encrypted ballot", "nullifier", nullifier.String())
 	_, value, err := o.tree.GetBigInt(nullifier)
 	if err != nil {
 		return nil, err

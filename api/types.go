@@ -99,3 +99,8 @@ type WorkersListResponse struct {
 type SetMetadataResponse struct {
 	Hash types.HexBytes `json:"hash"`
 }
+
+// ProcessList is the response returned by the process list endpoint.
+type ProcessList struct {
+	Processes []types.HexBytes `json:"processes"`
+}
