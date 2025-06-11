@@ -86,7 +86,6 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 			for {
 				select {
 				case <-ticker.C:
-					f.finalizeByDate(time.Now())
 					f.finalizeEnded()
 				case <-f.ctx.Done():
 					return
@@ -150,33 +149,6 @@ func (f *finalizer) Close() {
 	}
 }
 
-// finalizeByDate finalizes all processes that startdate+duration is before the given date
-// and that do not have a result yet.
-func (f *finalizer) finalizeByDate(date time.Time) {
-	pids, err := f.stg.ListProcessWithEncryptionKeys()
-	if err != nil {
-		log.Errorw(err, "could not list processes")
-		return
-	}
-	for _, pidBytes := range pids {
-		pid := new(types.ProcessID)
-		if err := pid.Unmarshal(pidBytes); err != nil {
-			log.Errorw(err, "could not unmarshal process ID")
-			continue
-		}
-
-		process, err := f.stg.Process(pid)
-		if err != nil {
-			continue
-		}
-
-		if !process.IsFinalized && process.StartTime.Add(process.Duration).Before(date) {
-			log.Debugw("found proces to finalize by date", "pid", pid.String())
-			f.OndemandCh <- pid
-		}
-	}
-}
-
 // finalizeEnded finalizes all processes that have ended and do not have a
 // result yet. It retrieves the process IDs from storage, checks if they are
 // finalized, and if not, sends them to the OndemandCh channel for processing.
@@ -193,7 +165,7 @@ func (f *finalizer) finalizeEnded() {
 			log.Errorw(err, "could not retrieve process from storage: "+processID.String())
 			continue
 		}
-		if !process.IsFinalized {
+		if process.Result == nil {
 			log.Debugw("found ended process to finalize", "pid", processID.String())
 			f.OndemandCh <- processID
 		} else {
@@ -216,7 +188,7 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	}
 
 	// Check if the process is already finalized
-	if process.IsFinalized {
+	if process.Status == types.ProcessStatusResults || process.Status == types.ProcessStatusCanceled || process.Result != nil {
 		log.Debugw("process already finalized, skipping", "pid", pid.String())
 		return nil
 	}
@@ -324,7 +296,7 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	}
 
 	// Store the result in the process
-	return f.setProcessFinalized(pid, &storage.VerifiedResults{
+	return f.setProcessResults(pid, &storage.VerifiedResults{
 		ProcessID: pid.Marshal(),
 		Proof:     proof.(*groth16_bn254.Proof),
 		Inputs: storage.ResultsVerifierProofInputs{
@@ -334,8 +306,9 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	})
 }
 
-// setProcessFinalized sets the process as finalized in the storage. If the process is already finalized, it does nothing.
-func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.VerifiedResults) error {
+// setProcessResults sets the results of a finalized process.
+// It updates the process in storage with the results and pushes the verified results.
+func (f *finalizer) setProcessResults(pid *types.ProcessID, res *storage.VerifiedResults) error {
 	if res == nil {
 		return fmt.Errorf("cannot finalize process %s with nil results", pid.String())
 	}
@@ -350,19 +323,8 @@ func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.Verif
 	}
 
 	// Update the process atomically to avoid race conditions
-	var stateRoot *types.BigInt
-	if err := f.stg.UpdateProcess(pid.Marshal(), func(p *types.Process) error {
-		// Check if already finalized within the lock
-		if p.IsFinalized {
-			return nil // Already done
-		}
-
-		p.IsFinalized = true
-		p.Result = results
-		stateRoot = p.StateRoot // Capture for logging
-		return nil
-	}); err != nil {
-		return fmt.Errorf("could not update finalized process %s: %w", pid.String(), err)
+	if err := f.stg.UpdateProcess(pid.Marshal(), storage.ProcessUpdateCallbackFinalization(results)); err != nil {
+		return fmt.Errorf("could not update process %s with results: %w", pid.String(), err)
 	}
 
 	// Push the verified results to storage
@@ -372,14 +334,13 @@ func (f *finalizer) setProcessFinalized(pid *types.ProcessID, res *storage.Verif
 
 	log.Infow("process finalized",
 		"pid", pid.String(),
-		"stateRoot", stateRoot.String(),
 		"result", results)
 	return nil
 }
 
-// WaitUntilFinalized waits until the process is finalized. Returns the result of the process.
+// WaitUntilResults waits until the process is finalized. Returns the result of the process.
 // It ensures proper timeout handling and provides detailed logging for troubleshooting.
-func (f *finalizer) WaitUntilFinalized(ctx context.Context, pid *types.ProcessID) ([]*types.BigInt, error) {
+func (f *finalizer) WaitUntilResults(ctx context.Context, pid *types.ProcessID) ([]*types.BigInt, error) {
 	// Create a timeout context if one wasn't already provided
 	var cancel context.CancelFunc
 	var timeoutCtx context.Context
@@ -393,7 +354,7 @@ func (f *finalizer) WaitUntilFinalized(ctx context.Context, pid *types.ProcessID
 		timeoutCtx = ctx
 	}
 
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	log.Debugw("waiting for process to be finalized", "pid", pid.String())
@@ -407,7 +368,7 @@ func (f *finalizer) WaitUntilFinalized(ctx context.Context, pid *types.ProcessID
 				return nil, fmt.Errorf("could not retrieve process %s: %w", pid.String(), err)
 			}
 
-			if process.IsFinalized && process.Result != nil {
+			if process.Result != nil {
 				return process.Result, nil
 			}
 

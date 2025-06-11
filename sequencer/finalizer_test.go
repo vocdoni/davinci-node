@@ -46,7 +46,7 @@ func TestFinalize(t *testing.T) {
 
 	// Test finalize
 	f.OndemandCh <- pid
-	_, err := f.WaitUntilFinalized(t.Context(), pid)
+	_, err := f.WaitUntilResults(t.Context(), pid)
 	c.Assert(err, qt.IsNil, qt.Commentf("finalize failed: %v", err))
 
 	// Check that the process has been updated with the result
@@ -59,51 +59,6 @@ func TestFinalize(t *testing.T) {
 	expected := big.NewInt(5000)
 	c.Assert(process.Result[0].MathBigInt().Cmp(expected), qt.Equals, 0,
 		qt.Commentf("Expected first result to be 500, got %s", process.Result[0].String()))
-}
-
-// TestFinalizeByDate tests the finalizeByDate functionality of the Finalizer struct
-func TestFinalizeByDate(t *testing.T) {
-	c := qt.New(t)
-
-	// Setup test environment
-	stg, stateDB, pid, _, _, _, cleanup := setupTestEnvironment(t, 10000, 5000)
-	defer cleanup()
-
-	// Update the process with specific start time and duration
-	process, err := stg.Process(pid)
-	c.Assert(err, qt.IsNil)
-
-	// Set the process to start in the past and end in the future
-	startTime := time.Now().Add(-30 * time.Minute) // 30 minutes ago
-	process.Duration = time.Minute * 20            // 20 minute long (so it ended 10 minutes ago)
-	process.StartTime = startTime
-
-	err = stg.SetProcess(process)
-	c.Assert(err, qt.IsNil)
-
-	// Create a finalizer with monitoring disabled
-	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil)
-	f.Start(t.Context(), 0)
-
-	// Call finalizeByDate with current time
-	// This should cause the process to be finalized because endTime < currentTime
-	currentTime := time.Now()
-	f.finalizeByDate(currentTime)
-
-	// Wait for finalization to complete
-	_, err = f.WaitUntilFinalized(t.Context(), pid)
-	c.Assert(err, qt.IsNil, qt.Commentf("finalize by date failed: %v", err))
-
-	// Check that the process has been updated with the result
-	process, err = stg.Process(pid)
-	c.Assert(err, qt.IsNil)
-	c.Assert(process.Result, qt.Not(qt.IsNil))
-
-	// Verify the results are as expected
-	c.Assert(len(process.Result), qt.Equals, types.FieldsPerBallot)
-	expected := big.NewInt(5000)
-	c.Assert(process.Result[0].MathBigInt().Cmp(expected), qt.Equals, 0,
-		qt.Commentf("Expected first result to be 5000, got %s", process.Result[0].String()))
 }
 
 // setupTestEnvironment creates a test environment with necessary objects

@@ -26,10 +26,7 @@ func ProcessUpdateCallbackStateRoot(root *types.BigInt, numNewVotes, numOverwrit
 // ProcessUpdateCallbackFinalization returns a function that marks a process as finalized with results
 func ProcessUpdateCallbackFinalization(results []*types.BigInt) func(*types.Process) error {
 	return func(p *types.Process) error {
-		if p.IsFinalized {
-			return nil // Already finalized
-		}
-		p.IsFinalized = true
+		p.Status = types.ProcessStatusResults
 		p.Result = results
 		return nil
 	}

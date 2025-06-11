@@ -111,7 +111,7 @@ func (ss *SequencerService) logActiveProcessStats() {
 		}
 
 		// Only log if the process is accepting votes
-		if !process.IsAcceptingVotes || process.IsFinalized {
+		if !process.IsAcceptingVotes {
 			continue
 		}
 

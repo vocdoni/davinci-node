@@ -96,7 +96,6 @@ type Process struct {
 	Metadata           *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
 	VoteCount          *BigInt               `json:"voteCount"                cbor:"12,keyasint,omitempty"`
 	VoteOverwriteCount *BigInt               `json:"voteOverwriteCount"       cbor:"13,keyasint,omitempty"`
-	IsFinalized        bool                  `json:"isFinalized"              cbor:"14,keyasint,omitempty"`
 	IsAcceptingVotes   bool                  `json:"isAcceptingVotes"         cbor:"15,keyasint,omitempty"`
 	SequencerStats     SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint"`
 }
