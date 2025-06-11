@@ -195,12 +195,10 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 			continue
 		}
 		if s.ExistsProcessID(pid) && proc.Status != types.ProcessStatusReady {
-			log.Infow("process deregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
 			s.DelProcessID(pid) // Unregister if the process
 			continue
 		}
 		if ParticipateInAllProcesses && !s.ExistsProcessID(pid) && proc.Status == types.ProcessStatusReady {
-			log.Infow("new process registered for sequencing", "processID", fmt.Sprintf("%x", pid))
 			s.AddProcessID(pid)
 		}
 	}

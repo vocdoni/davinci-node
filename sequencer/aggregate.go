@@ -61,7 +61,7 @@ func (s *Sequencer) processPendingBatches() {
 
 		// If we have enough ballots for a full batch, process it regardless of time
 		if ballotCount >= types.VotesPerBatch {
-			return s.processAndUpdateBatch(pid, ballotCount, "full batch")
+			return s.processAndUpdateBatch(pid)
 		}
 
 		// Otherwise, check if we have a first ballot timestamp and if enough time has passed
@@ -80,29 +80,19 @@ func (s *Sequencer) processPendingBatches() {
 		}
 
 		// If we're here, we have some ballots and the time window has elapsed
-		return s.processAndUpdateBatch(pid, ballotCount, fmt.Sprintf("time window elapsed (%.2fs)", timeSinceFirstBallot.Seconds()))
+		return s.processAndUpdateBatch(pid)
 	})
 }
 
 // processAndUpdateBatch handles the processing of a batch of ballots and updates
 // the necessary timestamps. It returns true to continue processing other process IDs.
-func (s *Sequencer) processAndUpdateBatch(pid []byte, ballotCount int, reason string) bool {
-	log.Debugw("batch ready for aggregation",
-		"processID", fmt.Sprintf("%x", pid),
-		"ballotCount", ballotCount,
-		"reason", reason,
-		"batchTimeWindow", s.batchTimeWindow.String(),
-	)
-
+func (s *Sequencer) processAndUpdateBatch(pid []byte) bool {
 	if err := s.aggregateBatch(pid); err != nil {
 		log.Warnw("failed to aggregate batch",
 			"error", err.Error(),
 			"processID", fmt.Sprintf("%x", pid))
 		return true // Continue to next process ID
 	}
-
-	// Update the last update time by re-adding the process ID
-	s.pids.Add(pid) // This will update the timestamp
 
 	// Clear the first ballot timestamp since we've processed the batch
 	s.pids.ClearFirstBallotTime(pid)

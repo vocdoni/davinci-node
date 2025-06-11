@@ -2,6 +2,7 @@ package sequencer
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,8 +13,8 @@ import (
 )
 
 const (
-	transitionOnChainTickInterval = 5 * time.Second
-	resultsOnChainTickInterval    = 5 * time.Second
+	transitionOnChainTickInterval = 10 * time.Second
+	resultsOnChainTickInterval    = 10 * time.Second
 )
 
 func (s *Sequencer) startOnchainProcessor() error {
@@ -143,37 +144,36 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 }
 
 func (s *Sequencer) processResultsOnChain() {
-	// process each registered process ID
-	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
-		res, err := s.stg.PullVerifiedResults(pid)
+	for {
+		res, err := s.stg.NextVerifiedResults()
 		if err != nil {
-			if err != storage.ErrNoMoreElements {
+			if !errors.Is(err, storage.ErrNoMoreElements) {
 				log.Errorw(err, "failed to pull verified results")
 			}
-			return true // Continue to next process ID
+			break
 		}
 		// Transform the gnark proof to a solidity proof and upload it to the
 		// contract.
 		solidityProof := new(solidity.Groth16CommitmentProof)
 		if err := solidityProof.FromGnarkProof(res.Proof); err != nil {
 			log.Errorw(err, "failed to convert gnark proof to solidity proof")
-			return true // Continue to next process ID
+			continue // Continue to next process ID
 		}
 		abiProof, err := solidityProof.ABIEncode()
 		if err != nil {
 			log.Errorw(err, "failed to encode proof for contract upload")
-			return true // Continue to next process ID
+			continue // Continue to next process ID
 		}
 		abiInputs, err := res.Inputs.ABIEncode()
 		if err != nil {
 			log.Errorw(err, "failed to encode inputs for contract upload")
-			return true // Continue to next process ID
+			continue // Continue to next process ID
 		}
-		log.Infow("verified results ready to upload to contract", "pid", hex.EncodeToString(pid))
+		log.Infow("verified results ready to upload to contract", "pid", res.ProcessID.String())
 		// Simulate tx to the contract to check if it will fail and get the root
 		// cause of the failure if it does
 		var pid32 [32]byte
-		copy(pid32[:], pid)
+		copy(pid32[:], res.ProcessID)
 		if err := s.contracts.SimulateContractCall(
 			s.ctx,
 			s.contracts.ContractsAddresses.ProcessRegistry,
@@ -185,28 +185,27 @@ func (s *Sequencer) processResultsOnChain() {
 		); err != nil {
 			log.Warnw("failed to simulate verified results upload",
 				"error", err,
-				"pid", hex.EncodeToString(pid))
+				"pid", res.ProcessID.String())
 		}
 		// submit the proof to the contract
-		txHash, err := s.contracts.SetProcessResults(pid, abiProof, abiInputs)
+		txHash, err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs)
 		if err != nil {
 			log.Errorw(err, "failed to upload verified results to contract")
-			return true // Continue to next process ID
+			continue // Continue to next process ID
 		}
 		// wait for the transaction to be mined
-		if err := s.contracts.WaitTx(*txHash, time.Second*60); err != nil {
+		if err := s.contracts.WaitTx(*txHash, time.Second*120); err != nil {
 			log.Errorw(err, "failed to wait for verified results upload transaction")
-			return true // Continue to next process ID
+			continue // Continue to next process ID
 		}
 		log.Infow("verified results uploaded to contract",
-			"pid", hex.EncodeToString(pid),
+			"pid", hex.EncodeToString(res.ProcessID),
 			"txHash", txHash.String(),
 			"results", res.Inputs.Results)
 
-		if err := s.stg.MarkVerifiedResults(pid); err != nil {
+		if err := s.stg.MarkVerifiedResultsDone(res.ProcessID); err != nil {
 			log.Errorw(err, "failed to mark verified results as uploaded")
-			return true // Continue to next process ID
+			continue // Continue to next process ID
 		}
-		return true
-	})
+	}
 }

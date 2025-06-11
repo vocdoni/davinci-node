@@ -61,7 +61,6 @@ func (p *ProcessIDMap) Remove(pid []byte) bool {
 
 	pidStr := fmt.Sprintf("%x", pid)
 	delete(p.data, pidStr)
-	log.Infow("process ID unregistered", "processID", pidStr)
 	return true
 }
 
