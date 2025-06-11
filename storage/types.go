@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
@@ -255,4 +256,26 @@ func (r *ResultsVerifierProofInputs) ABIEncode() ([]byte, error) {
 		{Type: arrType},
 	}
 	return arguments.Pack(arr)
+}
+
+// ProcessStatsUpdate represents a single stats update operation
+type ProcessStatsUpdate struct {
+	TypeStats types.TypeStats
+	Delta     int
+}
+
+// Stats holds statistics for all processes.
+type Stats struct {
+	VerifiedVotesCount          int       `json:"verifiedVotes" cbor:"0,keyasint,omitempty"`
+	AggregatedVotesCount        int       `json:"aggregatedVotes" cbor:"2,keyasint,omitempty"`
+	StateTransitionCount        int       `json:"stateTransitions" cbor:"3,keyasint,omitempty"`
+	SettledStateTransitionCount int       `json:"settledStateTransitions" cbor:"4,keyasint,omitempty"`
+	LastStateTransitionDate     time.Time `json:"lastStateTransitionDate" cbor:"5,keyasint,omitempty"`
+}
+
+// StatsPendingBallots holds the total number of pending ballots and the last
+// update time.
+type StatsPendingBallots struct {
+	TotalPendingBallots int       `json:"totalPendingBallots" cbor:"0,keyasint,omitempty"`
+	LastUpdateDate      time.Time `json:"lastUpdateDate" cbor:"1,keyasint,omitempty"`
 }

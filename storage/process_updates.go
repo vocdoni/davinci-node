@@ -40,6 +40,9 @@ func ProcessUpdateCallbackFinalization(results []*types.BigInt) func(*types.Proc
 func ProcessUpdateCallbackSetStatus(status uint8) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.Status = status
+		if status != types.ProcessStatusReady {
+			p.IsAcceptingVotes = false // If the process is not ready, it should not accept votes
+		}
 		return nil
 	}
 }

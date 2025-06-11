@@ -700,16 +700,9 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 	// Update process stats
 	if err := s.updateProcessStats(pid, []ProcessStatsUpdate{
 		{TypeStats: types.TypeStatsSettledStateTransitions, Delta: 1},
+		{TypeStats: types.TypeStatsLastTransitionDate, Delta: 0},
 	}); err != nil {
 		log.Warnw("failed to update process stats after marking state transition batch as done",
-			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", pid),
-		)
-	}
-
-	// Update the last state transition date separately
-	if err := s.setLastStateTransitionDate(pid); err != nil {
-		log.Warnw("failed to update last state transition date",
 			"error", err.Error(),
 			"processID", fmt.Sprintf("%x", pid),
 		)

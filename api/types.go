@@ -4,6 +4,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vocdoni/circom2gnark/parser"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -111,4 +112,11 @@ type HostLoadResponse struct {
 	HostLoad1           float64            `json:"hostLoad1,omitempty"`
 	HostMemUsedPercent  float64            `json:"hostMemUsedPercent,omitempty"`
 	HostDiskUsedPercent map[string]float64 `json:"hostDiskUsedPercent,omitempty"`
+}
+
+// SequencerStatsResponse is the response returned by the sequencer stats endpoint.
+type SequencerStatsResponse struct {
+	storage.Stats
+	ActiveProcesses int `json:"activeProcesses"`
+	PendingVotes    int `json:"pendingVotes"`
 }

@@ -601,7 +601,8 @@ Gets overall statistics for the sequencer service, including aggregated metrics 
   "verifiedVotes": "number",
   "aggregatedVotes": "number",
   "stateTransitions": "number",
-  "settledStateTransitions": "number"
+  "settledStateTransitions": "number",
+  "lastStateTransitionDate": "date"
 }
 ```
 

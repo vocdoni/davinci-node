@@ -2,16 +2,17 @@ package storage
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// ProcessStatsUpdate represents a single stats update operation
-type ProcessStatsUpdate struct {
-	TypeStats types.TypeStats
-	Delta     int
-}
+// totalStatsStorageKey is the key used to store total statistics across all processes.
+var totalStatsStorageKey = []byte("totalStatsStorageKey")
+
+// totalPendingBallotsKey is the key used to store the total number of pending ballots across all processes.
+var totalPendingBallotsKey = []byte("totalPendingBallotsKey")
 
 // updateProcessStats updates multiple process stats in a single operation.
 // This method assumes the caller already holds the globalLock.
@@ -30,56 +31,32 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 		return fmt.Errorf("failed to get process for stats update: %w", err)
 	}
 
+	totalStats := &Stats{}
+	if err := s.getArtifact(processPrefix, totalStatsStorageKey, totalStats); err != nil {
+		log.Debugw("initializing to zero sequencer stats")
+		totalStats = new(Stats)
+	}
+
+	totalPending := &StatsPendingBallots{}
+	if err := s.getArtifact(processPrefix, totalPendingBallotsKey, totalPending); err != nil {
+		log.Debugw("initializing to zero pending ballots stats")
+		totalPending = new(StatsPendingBallots)
+	}
+
 	for _, update := range updates {
 		switch update.TypeStats {
 		case types.TypeStatsStateTransitions:
-			newValue := p.SequencerStats.StateTransitionCount + update.Delta
-			if newValue < 0 {
-				log.Warnw("attempted to set negative StateTransitionCount, clamping to 0",
-					"processID", fmt.Sprintf("%x", pid),
-					"currentValue", p.SequencerStats.StateTransitionCount,
-					"delta", update.Delta,
-				)
-				p.SequencerStats.StateTransitionCount = 0
-			} else {
-				p.SequencerStats.StateTransitionCount = newValue
-			}
+			p.SequencerStats.StateTransitionCount += update.Delta
+			totalStats.StateTransitionCount += update.Delta
 		case types.TypeStatsSettledStateTransitions:
-			newValue := p.SequencerStats.SettledStateTransitionCount + update.Delta
-			if newValue < 0 {
-				log.Warnw("attempted to set negative SettledStateTransitionCount, clamping to 0",
-					"processID", fmt.Sprintf("%x", pid),
-					"currentValue", p.SequencerStats.SettledStateTransitionCount,
-					"delta", update.Delta,
-				)
-				p.SequencerStats.SettledStateTransitionCount = 0
-			} else {
-				p.SequencerStats.SettledStateTransitionCount = newValue
-			}
+			p.SequencerStats.SettledStateTransitionCount += update.Delta
+			totalStats.SettledStateTransitionCount += update.Delta
 		case types.TypeStatsAggregatedVotes:
-			newValue := p.SequencerStats.AggregatedVotesCount + update.Delta
-			if newValue < 0 {
-				log.Warnw("attempted to set negative AggregatedVotesCount, clamping to 0",
-					"processID", fmt.Sprintf("%x", pid),
-					"currentValue", p.SequencerStats.AggregatedVotesCount,
-					"delta", update.Delta,
-				)
-				p.SequencerStats.AggregatedVotesCount = 0
-			} else {
-				p.SequencerStats.AggregatedVotesCount = newValue
-			}
+			p.SequencerStats.AggregatedVotesCount += update.Delta
+			totalStats.AggregatedVotesCount += update.Delta
 		case types.TypeStatsVerifiedVotes:
-			newValue := p.SequencerStats.VerifiedVotesCount + update.Delta
-			if newValue < 0 {
-				log.Warnw("attempted to set negative VerifiedVotesCount, clamping to 0",
-					"processID", fmt.Sprintf("%x", pid),
-					"currentValue", p.SequencerStats.VerifiedVotesCount,
-					"delta", update.Delta,
-				)
-				p.SequencerStats.VerifiedVotesCount = 0
-			} else {
-				p.SequencerStats.VerifiedVotesCount = newValue
-			}
+			p.SequencerStats.VerifiedVotesCount += update.Delta
+			totalStats.VerifiedVotesCount += update.Delta
 		case types.TypeStatsPendingVotes:
 			newValue := p.SequencerStats.PendingVotesCount + update.Delta
 			if newValue < 0 {
@@ -88,10 +65,13 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 					"currentValue", p.SequencerStats.PendingVotesCount,
 					"delta", update.Delta,
 				)
+				totalPending.TotalPendingBallots -= p.SequencerStats.PendingVotesCount
 				p.SequencerStats.PendingVotesCount = 0
 			} else {
 				p.SequencerStats.PendingVotesCount = newValue
+				totalPending.TotalPendingBallots += update.Delta
 			}
+			totalPending.LastUpdateDate = time.Now()
 		case types.TypeStatsLastBatchSize:
 			if update.Delta < 0 {
 				log.Warnw("attempted to set negative LastBatchSize, clamping to 0",
@@ -114,6 +94,10 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 			} else {
 				p.SequencerStats.CurrentBatchSize = newValue
 			}
+		case types.TypeStatsLastTransitionDate:
+			t := time.Now()
+			p.SequencerStats.LasStateTransitionDate = t
+			totalStats.LastStateTransitionDate = t
 		default:
 			return fmt.Errorf("unknown type stats: %d", update.TypeStats)
 		}
@@ -122,30 +106,37 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 	if err := s.setArtifact(processPrefix, pid, p); err != nil {
 		return fmt.Errorf("failed to save process after stats update: %w", err)
 	}
+	if err := s.setArtifact(processPrefix, totalStatsStorageKey, totalStats); err != nil {
+		return fmt.Errorf("failed to save total stats after process stats update: %w", err)
+	}
+	if err := s.setArtifact(processPrefix, totalPendingBallotsKey, totalPending); err != nil {
+		return fmt.Errorf("failed to save total pending ballots after process stats update: %w", err)
+	}
 
 	return nil
 }
 
 // TotalPendingBallots returns the total number of pending ballots across all processes
-// by summing up the PendingVotesCount from each process's stats.
-func (s *Storage) TotalPendingBallots() (int, error) {
+func (s *Storage) TotalPendingBallots() int {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	pids, err := s.listArtifacts(processPrefix)
-	if err != nil {
-		return 0, fmt.Errorf("failed to list processes: %w", err)
+	totalPending := &StatsPendingBallots{}
+	if err := s.getArtifact(processPrefix, totalPendingBallotsKey, totalPending); err != nil {
+		return 0
 	}
+	return totalPending.TotalPendingBallots
+}
 
-	totalPending := 0
-	for _, pid := range pids {
-		p := &types.Process{}
-		if err := s.getArtifact(processPrefix, pid, p); err != nil {
-			// Skip processes that can't be loaded
-			continue
-		}
-		totalPending += p.SequencerStats.PendingVotesCount
+// TotalStats returns the total statistics across all processes.
+func (s *Storage) TotalStats() (*Stats, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	totalStats := &Stats{}
+	if err := s.getArtifact(processPrefix, totalStatsStorageKey, totalStats); err != nil {
+		// If not found, return empty stats instead of error
+		return &Stats{}, nil
 	}
-
-	return totalPending, nil
+	return totalStats, nil
 }
