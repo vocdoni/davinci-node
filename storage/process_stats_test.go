@@ -457,10 +457,10 @@ func TestGetTotalPendingBallots(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 	}
 
-	// Test: GetTotalPendingBallots should return sum of all pending votes
-	total, err := st.TotalPendingBallots()
-	c.Assert(err, qt.IsNil)
-	c.Assert(total, qt.Equals, 15, qt.Commentf("Expected total of 5+3+7=15 pending ballots"))
+	// Test: TotalPendingBallots should return 0 initially (since no actual ballots were pushed)
+	// The pre-set PendingVotesCount in processes are not tracked by the new total system
+	total := st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 0, qt.Commentf("Expected 0 as no actual ballots were pushed through the system"))
 
 	// Test: Compare with CountPendingBallots (should be 0 since no actual ballots in queue)
 	actualCount := st.CountPendingBallots()
@@ -476,10 +476,9 @@ func TestGetTotalPendingBallots(t *testing.T) {
 	err = st.PushBallot(ballot1)
 	c.Assert(err, qt.IsNil)
 
-	// GetTotalPendingBallots should now return 16 (15 + 1)
-	total, err = st.TotalPendingBallots()
-	c.Assert(err, qt.IsNil)
-	c.Assert(total, qt.Equals, 16, qt.Commentf("Expected total of 16 pending ballots after adding one"))
+	// TotalPendingBallots should now return 1 (0 + 1)
+	total = st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 1, qt.Commentf("Expected total of 1 pending ballot after adding one"))
 
 	// CountPendingBallots should return 1
 	actualCount = st.CountPendingBallots()
@@ -499,10 +498,15 @@ func TestGetTotalPendingBallots(t *testing.T) {
 	err = st.MarkBallotDone(key, verifiedBallot)
 	c.Assert(err, qt.IsNil)
 
-	// GetTotalPendingBallots should return 15 again (16 - 1)
-	total, err = st.TotalPendingBallots()
+	// TotalPendingBallots should return 0 again (1 - 1)
+	total = st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 0, qt.Commentf("Expected total of 0 pending ballots after processing one"))
+
+	// Test: Verify individual process stats were also updated correctly
+	proc1, err := st.Process(processID1)
 	c.Assert(err, qt.IsNil)
-	c.Assert(total, qt.Equals, 15, qt.Commentf("Expected total of 15 pending ballots after processing one"))
+	c.Assert(proc1.SequencerStats.PendingVotesCount, qt.Equals, 5, qt.Commentf("Process1 should still have its original pending count of 5"))
+	c.Assert(proc1.SequencerStats.VerifiedVotesCount, qt.Equals, 1, qt.Commentf("Process1 should have 1 verified vote"))
 }
 
 // TestMarkVerifiedBallotsFailed tests that marking verified ballots as failed
@@ -728,40 +732,46 @@ func TestProcessStatsNegativeValuePrevention(t *testing.T) {
 	err = st.SetProcess(createTestProcess(processID))
 	c.Assert(err, qt.IsNil)
 
-	// Test attempting to set negative values
+	// Test attempting to set negative values (without clamping for some stats)
 	updates := []ProcessStatsUpdate{
-		{TypeStats: types.TypeStatsPendingVotes, Delta: -10},   // Should be clamped to 0
-		{TypeStats: types.TypeStatsVerifiedVotes, Delta: -5},   // Should be clamped to 0
-		{TypeStats: types.TypeStatsAggregatedVotes, Delta: -3}, // Should be clamped to 0
+		{TypeStats: types.TypeStatsPendingVotes, Delta: -10},           // Should be clamped to 0
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: -5},           // No clamping, should be -5
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: -3},         // No clamping, should be -3
+		{TypeStats: types.TypeStatsStateTransitions, Delta: -2},        // No clamping, should be -2
+		{TypeStats: types.TypeStatsSettledStateTransitions, Delta: -1}, // No clamping, should be -1
 	}
 
 	err = st.updateProcessStats(processID.Marshal(), updates)
 	c.Assert(err, qt.IsNil)
 
-	// Check that all values are 0 (clamped)
+	// Check values - pending should be clamped, others should be negative
 	proc, err := st.Process(processID)
 	c.Assert(err, qt.IsNil)
 	stats := proc.SequencerStats
 
-	c.Assert(stats.PendingVotesCount, qt.Equals, 0)
-	c.Assert(stats.VerifiedVotesCount, qt.Equals, 0)
-	c.Assert(stats.AggregatedVotesCount, qt.Equals, 0)
+	c.Assert(stats.PendingVotesCount, qt.Equals, 0, qt.Commentf("PendingVotesCount should be clamped to 0"))
+	c.Assert(stats.VerifiedVotesCount, qt.Equals, -5, qt.Commentf("VerifiedVotesCount should be -5 (no clamping)"))
+	c.Assert(stats.AggregatedVotesCount, qt.Equals, -3, qt.Commentf("AggregatedVotesCount should be -3 (no clamping)"))
+	c.Assert(stats.StateTransitionCount, qt.Equals, -2, qt.Commentf("StateTransitionCount should be -2 (no clamping)"))
+	c.Assert(stats.SettledStateTransitionCount, qt.Equals, -1, qt.Commentf("SettledStateTransitionCount should be -1 (no clamping)"))
 
 	// Test with positive values first, then negative deltas
 	updates1 := []ProcessStatsUpdate{
 		{TypeStats: types.TypeStatsPendingVotes, Delta: 5},
-		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 3},
-		{TypeStats: types.TypeStatsAggregatedVotes, Delta: 2},
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 8},    // 8 + (-5) = 3
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: 5},  // 5 + (-3) = 2
+		{TypeStats: types.TypeStatsStateTransitions, Delta: 3}, // 3 + (-2) = 1
 	}
 
 	err = st.updateProcessStats(processID.Marshal(), updates1)
 	c.Assert(err, qt.IsNil)
 
-	// Now apply negative deltas that would make some values negative
+	// Now apply negative deltas
 	updates2 := []ProcessStatsUpdate{
-		{TypeStats: types.TypeStatsPendingVotes, Delta: -10},   // 5 - 10 = -5, should be clamped to 0
-		{TypeStats: types.TypeStatsVerifiedVotes, Delta: -2},   // 3 - 2 = 1, should remain 1
-		{TypeStats: types.TypeStatsAggregatedVotes, Delta: -5}, // 2 - 5 = -3, should be clamped to 0
+		{TypeStats: types.TypeStatsPendingVotes, Delta: -10},    // 5 - 10 = -5, should be clamped to 0
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: -2},    // 3 - 2 = 1
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: -5},  // 2 - 5 = -3 (no clamping)
+		{TypeStats: types.TypeStatsStateTransitions, Delta: -2}, // 1 - 2 = -1 (no clamping)
 	}
 
 	err = st.updateProcessStats(processID.Marshal(), updates2)
@@ -774,9 +784,10 @@ func TestProcessStatsNegativeValuePrevention(t *testing.T) {
 
 	c.Assert(finalStats.PendingVotesCount, qt.Equals, 0, qt.Commentf("Should be clamped to 0"))
 	c.Assert(finalStats.VerifiedVotesCount, qt.Equals, 1, qt.Commentf("Should be 1"))
-	c.Assert(finalStats.AggregatedVotesCount, qt.Equals, 0, qt.Commentf("Should be clamped to 0"))
+	c.Assert(finalStats.AggregatedVotesCount, qt.Equals, -3, qt.Commentf("Should be -3 (no clamping)"))
+	c.Assert(finalStats.StateTransitionCount, qt.Equals, -1, qt.Commentf("Should be -1 (no clamping)"))
 
-	// Test that CurrentBatchSize cannot be negative (should be clamped to 0)
+	// Test that CurrentBatchSize can be negative (should be clamped to 0)
 	updates3 := []ProcessStatsUpdate{
 		{TypeStats: types.TypeStatsCurrentBatchSize, Delta: -10}, // Should be clamped to 0
 	}
@@ -800,7 +811,427 @@ func TestProcessStatsNegativeValuePrevention(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(proc4.SequencerStats.LastBatchSize, qt.Equals, 0, qt.Commentf("LastBatchSize should be clamped to 0 when negative"))
 
-	t.Logf("Final stats with safeguards: pending=%d, verified=%d, aggregated=%d, currentBatch=%d, lastBatch=%d",
+	t.Logf("Final stats with safeguards: pending=%d, verified=%d, aggregated=%d, currentBatch=%d, lastBatch=%d, stateTransitions=%d",
 		finalStats.PendingVotesCount, finalStats.VerifiedVotesCount,
-		finalStats.AggregatedVotesCount, proc3.SequencerStats.CurrentBatchSize, proc4.SequencerStats.LastBatchSize)
+		finalStats.AggregatedVotesCount, proc3.SequencerStats.CurrentBatchSize,
+		proc4.SequencerStats.LastBatchSize, finalStats.StateTransitionCount)
+}
+
+// TestTotalStats tests the TotalStats functionality
+func TestTotalStats(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	// Test 1: TotalStats with no processes should return empty stats
+	totalStats, err := st.TotalStats()
+	c.Assert(err, qt.IsNil)
+	c.Assert(totalStats.StateTransitionCount, qt.Equals, 0)
+	c.Assert(totalStats.SettledStateTransitionCount, qt.Equals, 0)
+	c.Assert(totalStats.AggregatedVotesCount, qt.Equals, 0)
+	c.Assert(totalStats.VerifiedVotesCount, qt.Equals, 0)
+
+	// Test 2: Create multiple processes and update their stats
+	process1 := &types.ProcessID{
+		Address: common.Address{1},
+		Nonce:   1,
+		ChainID: 1,
+	}
+	process2 := &types.ProcessID{
+		Address: common.Address{2},
+		Nonce:   2,
+		ChainID: 1,
+	}
+	process3 := &types.ProcessID{
+		Address: common.Address{3},
+		Nonce:   3,
+		ChainID: 1,
+	}
+
+	// Create processes
+	err = st.SetProcess(createTestProcess(process1))
+	c.Assert(err, qt.IsNil)
+	err = st.SetProcess(createTestProcess(process2))
+	c.Assert(err, qt.IsNil)
+	err = st.SetProcess(createTestProcess(process3))
+	c.Assert(err, qt.IsNil)
+
+	// Update stats for process1
+	updates1 := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsStateTransitions, Delta: 2},
+		{TypeStats: types.TypeStatsSettledStateTransitions, Delta: 1},
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: 10},
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 15},
+	}
+	err = st.updateProcessStats(process1.Marshal(), updates1)
+	c.Assert(err, qt.IsNil)
+
+	// Update stats for process2
+	updates2 := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsStateTransitions, Delta: 3},
+		{TypeStats: types.TypeStatsSettledStateTransitions, Delta: 2},
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: 20},
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 25},
+	}
+	err = st.updateProcessStats(process2.Marshal(), updates2)
+	c.Assert(err, qt.IsNil)
+
+	// Update stats for process3
+	updates3 := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsStateTransitions, Delta: 5},
+		{TypeStats: types.TypeStatsSettledStateTransitions, Delta: 4},
+		{TypeStats: types.TypeStatsAggregatedVotes, Delta: 30},
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 35},
+	}
+	err = st.updateProcessStats(process3.Marshal(), updates3)
+	c.Assert(err, qt.IsNil)
+
+	// Test 3: Verify total stats are correctly aggregated
+	totalStats, err = st.TotalStats()
+	c.Assert(err, qt.IsNil)
+	c.Assert(totalStats.StateTransitionCount, qt.Equals, 10, qt.Commentf("Expected 2+3+5=10"))
+	c.Assert(totalStats.SettledStateTransitionCount, qt.Equals, 7, qt.Commentf("Expected 1+2+4=7"))
+	c.Assert(totalStats.AggregatedVotesCount, qt.Equals, 60, qt.Commentf("Expected 10+20+30=60"))
+	c.Assert(totalStats.VerifiedVotesCount, qt.Equals, 75, qt.Commentf("Expected 15+25+35=75"))
+
+	// Test 4: Update existing process and verify totals are updated
+	updatesMore := []ProcessStatsUpdate{
+		{TypeStats: types.TypeStatsStateTransitions, Delta: 1},
+		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 5},
+	}
+	err = st.updateProcessStats(process1.Marshal(), updatesMore)
+	c.Assert(err, qt.IsNil)
+
+	totalStats, err = st.TotalStats()
+	c.Assert(err, qt.IsNil)
+	c.Assert(totalStats.StateTransitionCount, qt.Equals, 11, qt.Commentf("Expected 10+1=11"))
+	c.Assert(totalStats.VerifiedVotesCount, qt.Equals, 80, qt.Commentf("Expected 75+5=80"))
+
+	t.Logf("Final total stats: stateTransitions=%d, settledTransitions=%d, aggregated=%d, verified=%d",
+		totalStats.StateTransitionCount, totalStats.SettledStateTransitionCount,
+		totalStats.AggregatedVotesCount, totalStats.VerifiedVotesCount)
+}
+
+// TestTotalPendingBallotsNewFunctionality tests the new TotalPendingBallots method
+func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	// Test 1: TotalPendingBallots with no processes should return 0
+	total := st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 0)
+
+	// Test 2: Create multiple processes and track pending ballots
+	process1 := &types.ProcessID{
+		Address: common.Address{1},
+		Nonce:   1,
+		ChainID: 1,
+	}
+	process2 := &types.ProcessID{
+		Address: common.Address{2},
+		Nonce:   2,
+		ChainID: 1,
+	}
+
+	// Create processes
+	err = st.SetProcess(createTestProcess(process1))
+	c.Assert(err, qt.IsNil)
+	err = st.SetProcess(createTestProcess(process2))
+	c.Assert(err, qt.IsNil)
+
+	// Test 3: Push ballots to process1 and verify total pending increases
+	ballot1 := &Ballot{
+		ProcessID:        process1.Marshal(),
+		Nullifier:        big.NewInt(1),
+		Address:          big.NewInt(1000),
+		BallotInputsHash: big.NewInt(2000),
+	}
+	ballot2 := &Ballot{
+		ProcessID:        process1.Marshal(),
+		Nullifier:        big.NewInt(2),
+		Address:          big.NewInt(1001),
+		BallotInputsHash: big.NewInt(2001),
+	}
+
+	err = st.PushBallot(ballot1)
+	c.Assert(err, qt.IsNil)
+	total = st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 1)
+
+	err = st.PushBallot(ballot2)
+	c.Assert(err, qt.IsNil)
+	total = st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 2)
+
+	// Test 4: Push ballots to process2
+	ballot3 := &Ballot{
+		ProcessID:        process2.Marshal(),
+		Nullifier:        big.NewInt(3),
+		Address:          big.NewInt(1002),
+		BallotInputsHash: big.NewInt(2002),
+	}
+
+	err = st.PushBallot(ballot3)
+	c.Assert(err, qt.IsNil)
+	total = st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 3)
+
+	// Test 5: Process a ballot and verify total pending decreases
+	b1, key1, err := st.NextBallot()
+	c.Assert(err, qt.IsNil)
+
+	verifiedBallot1 := &VerifiedBallot{
+		ProcessID:   b1.ProcessID,
+		Nullifier:   b1.Nullifier,
+		VoteID:      b1.VoteID(),
+		VoterWeight: big.NewInt(1),
+	}
+	err = st.MarkBallotDone(key1, verifiedBallot1)
+	c.Assert(err, qt.IsNil)
+
+	total = st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 2)
+
+	// Test 6: Process remaining ballots
+	b2, key2, err := st.NextBallot()
+	c.Assert(err, qt.IsNil)
+	verifiedBallot2 := &VerifiedBallot{
+		ProcessID:   b2.ProcessID,
+		Nullifier:   b2.Nullifier,
+		VoteID:      b2.VoteID(),
+		VoterWeight: big.NewInt(1),
+	}
+	err = st.MarkBallotDone(key2, verifiedBallot2)
+	c.Assert(err, qt.IsNil)
+
+	total = st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 1)
+
+	b3, key3, err := st.NextBallot()
+	c.Assert(err, qt.IsNil)
+	verifiedBallot3 := &VerifiedBallot{
+		ProcessID:   b3.ProcessID,
+		Nullifier:   b3.Nullifier,
+		VoteID:      b3.VoteID(),
+		VoterWeight: big.NewInt(1),
+	}
+	err = st.MarkBallotDone(key3, verifiedBallot3)
+	c.Assert(err, qt.IsNil)
+
+	total = st.TotalPendingBallots()
+	c.Assert(total, qt.Equals, 0)
+
+	t.Logf("Successfully tested TotalPendingBallots functionality")
+}
+
+// TestTotalStatsConcurrency tests that total stats remain consistent under concurrent updates
+func TestTotalStatsConcurrency(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	// Create multiple processes
+	numProcesses := 5
+	processes := make([]*types.ProcessID, numProcesses)
+	for i := 0; i < numProcesses; i++ {
+		processes[i] = &types.ProcessID{
+			Address: common.Address{byte(i + 1)},
+			Nonce:   uint64(i + 1),
+			ChainID: 1,
+		}
+		err = st.SetProcess(createTestProcess(processes[i]))
+		c.Assert(err, qt.IsNil)
+	}
+
+	// Run concurrent updates
+	numGoroutines := 10
+	updatesPerGoroutine := 20
+	wg := sync.WaitGroup{}
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(routineID int) {
+			defer wg.Done()
+			for j := 0; j < updatesPerGoroutine; j++ {
+				// Pick a random process
+				processIdx := (routineID + j) % numProcesses
+				processID := processes[processIdx]
+
+				// Update various stats
+				updates := []ProcessStatsUpdate{
+					{TypeStats: types.TypeStatsStateTransitions, Delta: 1},
+					{TypeStats: types.TypeStatsVerifiedVotes, Delta: 2},
+					{TypeStats: types.TypeStatsAggregatedVotes, Delta: 1},
+				}
+
+				// Lock before calling updateProcessStats (as it expects caller to hold the lock)
+				st.globalLock.Lock()
+				if err := st.updateProcessStats(processID.Marshal(), updates); err != nil {
+					st.globalLock.Unlock()
+					panic(err)
+				}
+				st.globalLock.Unlock()
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+
+	// Verify final total stats
+	totalStats, err := st.TotalStats()
+	c.Assert(err, qt.IsNil)
+
+	expectedStateTransitions := numGoroutines * updatesPerGoroutine * 1
+	expectedVerifiedVotes := numGoroutines * updatesPerGoroutine * 2
+	expectedAggregatedVotes := numGoroutines * updatesPerGoroutine * 1
+
+	c.Assert(totalStats.StateTransitionCount, qt.Equals, expectedStateTransitions)
+	c.Assert(totalStats.VerifiedVotesCount, qt.Equals, expectedVerifiedVotes)
+	c.Assert(totalStats.AggregatedVotesCount, qt.Equals, expectedAggregatedVotes)
+
+	t.Logf("Concurrent total stats update successful: stateTransitions=%d, verified=%d, aggregated=%d",
+		totalStats.StateTransitionCount, totalStats.VerifiedVotesCount, totalStats.AggregatedVotesCount)
+}
+
+// TestTotalPendingBallotsIntegration tests that TotalPendingBallots integrates correctly
+// with the existing ballot processing workflow
+func TestTotalPendingBallotsIntegration(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	// Create processes
+	process1 := &types.ProcessID{
+		Address: common.Address{1},
+		Nonce:   1,
+		ChainID: 1,
+	}
+	process2 := &types.ProcessID{
+		Address: common.Address{2},
+		Nonce:   2,
+		ChainID: 1,
+	}
+
+	err = st.SetProcess(createTestProcess(process1))
+	c.Assert(err, qt.IsNil)
+	err = st.SetProcess(createTestProcess(process2))
+	c.Assert(err, qt.IsNil)
+
+	// Test the full workflow: push -> process -> aggregate
+	// Step 1: Push multiple ballots
+	numBallotsP1 := 5
+	numBallotsP2 := 3
+
+	for i := 0; i < numBallotsP1; i++ {
+		ballot := &Ballot{
+			ProcessID:        process1.Marshal(),
+			Nullifier:        big.NewInt(int64(i + 100)),
+			Address:          big.NewInt(int64(i + 1000)),
+			BallotInputsHash: big.NewInt(int64(i + 2000)),
+		}
+		err = st.PushBallot(ballot)
+		c.Assert(err, qt.IsNil)
+	}
+
+	for i := 0; i < numBallotsP2; i++ {
+		ballot := &Ballot{
+			ProcessID:        process2.Marshal(),
+			Nullifier:        big.NewInt(int64(i + 200)),
+			Address:          big.NewInt(int64(i + 3000)),
+			BallotInputsHash: big.NewInt(int64(i + 4000)),
+		}
+		err = st.PushBallot(ballot)
+		c.Assert(err, qt.IsNil)
+	}
+
+	// Verify initial total pending
+	c.Assert(st.TotalPendingBallots(), qt.Equals, numBallotsP1+numBallotsP2)
+
+	// Step 2: Process some ballots
+	processedCount := 0
+	for i := 0; i < 4; i++ { // Process 4 ballots
+		b, key, err := st.NextBallot()
+		c.Assert(err, qt.IsNil)
+
+		verifiedBallot := &VerifiedBallot{
+			ProcessID:   b.ProcessID,
+			Nullifier:   b.Nullifier,
+			VoteID:      b.VoteID(),
+			VoterWeight: big.NewInt(1),
+		}
+		err = st.MarkBallotDone(key, verifiedBallot)
+		c.Assert(err, qt.IsNil)
+		processedCount++
+	}
+
+	// Verify total pending decreased
+	c.Assert(st.TotalPendingBallots(), qt.Equals, numBallotsP1+numBallotsP2-processedCount)
+
+	// Step 3: Get total stats
+	totalStats, err := st.TotalStats()
+	c.Assert(err, qt.IsNil)
+	c.Assert(totalStats.VerifiedVotesCount, qt.Equals, processedCount)
+
+	// Step 4: Aggregate verified ballots from process1
+	// First check which process has verified ballots
+	p1Count := st.CountVerifiedBallots(process1.Marshal())
+	if p1Count > 0 {
+		verifiedBallots, keys, err := st.PullVerifiedBallots(process1.Marshal(), p1Count)
+		c.Assert(err, qt.IsNil)
+
+		// Create aggregator batch
+		aggBallots := make([]*AggregatorBallot, len(verifiedBallots))
+		for i, vb := range verifiedBallots {
+			aggBallots[i] = &AggregatorBallot{
+				VoteID:    vb.VoteID,
+				Nullifier: vb.Nullifier,
+				Address:   vb.Address,
+			}
+		}
+
+		batch := &AggregatorBallotBatch{
+			ProcessID: process1.Marshal(),
+			Ballots:   aggBallots,
+		}
+
+		err = st.PushBallotBatch(batch)
+		c.Assert(err, qt.IsNil)
+
+		err = st.MarkVerifiedBallotsDone(keys...)
+		c.Assert(err, qt.IsNil)
+
+		// Check total stats after aggregation
+		totalStats, err = st.TotalStats()
+		c.Assert(err, qt.IsNil)
+		c.Assert(totalStats.AggregatedVotesCount, qt.Equals, len(verifiedBallots))
+	}
+
+	t.Logf("Integration test completed: totalPending=%d, totalVerified=%d, totalAggregated=%d",
+		st.TotalPendingBallots(), totalStats.VerifiedVotesCount, totalStats.AggregatedVotesCount)
 }

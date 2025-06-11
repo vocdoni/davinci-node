@@ -68,9 +68,16 @@ export const useProcesses = (
     queryKey: ['processes', processIds, apiUrl],
     queryFn: async () => {
       const promises = processIds.map(id =>
-        fetch(`${apiUrl}/processes/${id}`).then(handleApiError)
+        fetch(`${apiUrl}/processes/${id}`)
+          .then(handleApiError)
+          .catch(error => {
+            console.warn(`Failed to fetch process ${id}:`, error.message)
+            return null // Return null for failed processes
+          })
       )
-      return Promise.all(promises)
+      const results = await Promise.all(promises)
+      // Filter out null values (failed fetches)
+      return results.filter((process): process is Process => process !== null)
     },
     enabled: processIds.length > 0,
     ...options,

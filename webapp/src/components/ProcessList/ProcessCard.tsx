@@ -39,7 +39,16 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
 
   const formatDate = (dateString: string) => {
     try {
-      return new Date(dateString).toLocaleString()
+      const date = new Date(dateString)
+      // Check for Go zero time (0001-01-01T00:00:00Z)
+      if (date.getFullYear() <= 1) {
+        return 'N/A'
+      }
+      // Check for invalid date
+      if (isNaN(date.getTime())) {
+        return 'Invalid date'
+      }
+      return date.toLocaleString()
     } catch {
       return 'Invalid date'
     }

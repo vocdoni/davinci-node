@@ -3,7 +3,6 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -98,22 +97,6 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 		return nil, err
 	}
 	return pids, nil
-}
-
-// setLastStateTransitionDate updates the last state transition date for a given process ID
-// to the current time. This method assumes the caller already holds the globalLock.
-func (s *Storage) setLastStateTransitionDate(pid []byte) error {
-	if pid == nil {
-		return fmt.Errorf("nil process ID")
-	}
-
-	p := &types.Process{}
-	if err := s.getArtifact(processPrefix, pid, p); err != nil {
-		return err
-	}
-
-	p.SequencerStats.LasStateTransitionDate = time.Now()
-	return s.setArtifact(processPrefix, pid, p)
 }
 
 // SetProcessacceptingVotes sets the accepting votes flag for a given process ID.

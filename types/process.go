@@ -123,6 +123,7 @@ const (
 	TypeStatsPendingVotes
 	TypeStatsCurrentBatchSize
 	TypeStatsLastBatchSize
+	TypeStatsLastTransitionDate
 )
 
 func (p *Process) String() string {

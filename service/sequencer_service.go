@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/vocdoni/davinci-node/api"
@@ -26,20 +27,10 @@ var StatsMonitorInterval = 60 * time.Second
 
 // SequencerService represents a service that handles background vote processing.
 type SequencerService struct {
-	Sequencer *sequencer.Sequencer
-	storage   *storage.Storage
-	api       *api.API
-	stats     *sequencerStats
-}
-
-// sequencerStats holds statistics for all active processes.
-type sequencerStats struct {
-	AcriveProcessCount          int `json:"activeProcesses"`
-	PendingVotesCount           int `json:"pendingVotes"`
-	VerifiedVotesCount          int `json:"verifiedVotes"`
-	AggregatedVotesCount        int `json:"aggregatedVotes"`
-	StateTransitionCount        int `json:"stateTransitions"`
-	SettledStateTransitionCount int `json:"settledStateTransitions"`
+	Sequencer          *sequencer.Sequencer
+	storage            *storage.Storage
+	api                *api.API
+	activeProcessCount atomic.Int32 // Count of active processes accepting votes
 }
 
 // NewSequencer creates a new sequencer instance. It will verify new votes, aggregate them into batches,
@@ -54,7 +45,6 @@ func NewSequencer(stg *storage.Storage, contracts *web3.Contracts, batchTimeWind
 		Sequencer: s,
 		storage:   stg,
 		api:       api,
-		stats:     new(sequencerStats),
 	}
 }
 
@@ -109,7 +99,6 @@ func (ss *SequencerService) startStatsMonitor(ctx context.Context, interval time
 // track which processes are active.
 func (ss *SequencerService) logActiveProcessStats() {
 	// Track total stats across all processes
-	var totalPending, totalVerified, totalAggregated, totalStateTransitions, totalSettledStateTransitions int
 	activeProcessCount := 0
 
 	// Iterate through active processes using the sequencer's process ID map
@@ -129,13 +118,6 @@ func (ss *SequencerService) logActiveProcessStats() {
 		activeProcessCount++
 		stats := process.SequencerStats
 
-		// Accumulate totals
-		totalPending += stats.PendingVotesCount
-		totalVerified += stats.VerifiedVotesCount
-		totalAggregated += stats.AggregatedVotesCount
-		totalStateTransitions += stats.StateTransitionCount
-		totalSettledStateTransitions += stats.SettledStateTransitionCount
-
 		// Skip processes with no verified votes
 		if stats.VerifiedVotesCount == 0 {
 			continue
@@ -154,29 +136,42 @@ func (ss *SequencerService) logActiveProcessStats() {
 		})
 	}
 
+	totalStats, err := ss.storage.TotalStats()
+	if err != nil {
+		log.Errorw(err, "failed to get total stats")
+		return
+	}
+	pendingVotes := ss.storage.TotalPendingBallots()
+
 	// Log summary statistics
 	log.Monitor("active process statistics summary", map[string]any{
-		"pendingVotes":       totalPending,
-		"verifiedVotes":      totalVerified,
-		"aggregatedVotes":    totalAggregated,
-		"stateTransitions":   totalStateTransitions,
-		"settledTransitions": totalSettledStateTransitions,
+		"pendingVotes":       pendingVotes,
+		"verifiedVotes":      totalStats.VerifiedVotesCount,
+		"aggregatedVotes":    totalStats.AggregatedVotesCount,
+		"stateTransitions":   totalStats.StateTransitionCount,
+		"settledTransitions": totalStats.SettledStateTransitionCount,
+		"lastTransitionTime": totalStats.LastStateTransitionDate.Format(time.RFC3339),
 		"activeProcesses":    activeProcessCount,
 	})
 	// Update the sequencer stats
-	ss.stats.AcriveProcessCount = activeProcessCount
-	ss.stats.PendingVotesCount = totalPending
-	ss.stats.VerifiedVotesCount = totalVerified
-	ss.stats.AggregatedVotesCount = totalAggregated
-	ss.stats.StateTransitionCount = totalStateTransitions
-	ss.stats.SettledStateTransitionCount = totalSettledStateTransitions
+	ss.activeProcessCount.Store(int32(activeProcessCount))
 }
 
 // statsHandler is an HTTP handler that returns the current statistics of the sequencer service.
 func (ss *SequencerService) statsHandler(w http.ResponseWriter, r *http.Request) {
+	sstats, err := ss.storage.TotalStats()
+	if err != nil {
+		api.ErrResourceNotFound.WithErr(err).Write(w)
+		return
+	}
+	stats := &api.SequencerStatsResponse{
+		Stats:           *sstats,
+		ActiveProcesses: int(ss.activeProcessCount.Load()),
+		PendingVotes:    ss.storage.TotalPendingBallots(),
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	jdata, err := json.Marshal(ss.stats)
+	jdata, err := json.Marshal(stats)
 	if err != nil {
 		api.ErrMarshalingServerJSONFailed.WithErr(err).Write(w)
 		return
