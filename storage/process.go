@@ -1,10 +1,9 @@
 package storage
 
 import (
-	"encoding/json"
 	"fmt"
+	"time"
 
-	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -97,14 +96,6 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 		return nil, err
 	}
 	return pids, nil
-}
-
-// SetProcessacceptingVotes sets the accepting votes flag for a given process ID.
-func (s *Storage) SetProcessacceptingVotes(pid []byte, accepting bool) error {
-	return s.UpdateProcess(pid, func(p *types.Process) error {
-		p.IsAcceptingVotes = accepting
-		return nil
-	})
 }
 
 // SetMetadata stores the metadata into the storage.
@@ -202,11 +193,48 @@ func (s *Storage) listProcessesWithEncryptionKeys() ([][]byte, error) {
 	return s.listArtifacts(encryptionKeyPrefix)
 }
 
-// MetadataHash returns the hash of the metadata.
-func MetadataHash(metadata *types.Metadata) []byte {
-	data, err := json.Marshal(metadata)
+// monitorEndedProcesses starts a goroutine that periodically checks for processes
+// that have ended and updates their status accordingly.
+// It runs every 60 seconds to ensure that processes that have reached their
+// duration are marked as ended.
+func (s *Storage) monitorEndedProcesses() {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	go func() {
+		for range ticker.C {
+			s.checkAndUpdateEndedProcesses()
+		}
+	}()
+}
+
+// checkAndUpdateEndedProcesses checks for processes that have ended based on their
+// start time and duration.
+func (s *Storage) checkAndUpdateEndedProcesses() {
+	pids, err := s.ListProcesses()
 	if err != nil {
-		panic(err)
+		log.Errorw(err, "failed to list  processes")
+		return
 	}
-	return ethereum.HashRaw(data)
+
+	for _, pid := range pids {
+		p, err := s.Process(new(types.ProcessID).SetBytes(pid))
+		if err != nil {
+			log.Errorw(err, "failed to retrieve process for monitoring")
+			continue
+		}
+
+		if p.Status != types.ProcessStatusEnded && p.Status != types.ProcessStatusResults {
+			if p.StartTime.Add(p.Duration).Before(time.Now()) {
+				// Update the process status to ended
+				if err := s.UpdateProcess(pid, func(p *types.Process) error {
+					p.Status = types.ProcessStatusEnded
+					return nil
+				}); err != nil {
+					log.Errorw(err, "failed to update process status to ended")
+					continue
+				}
+				log.Infow("process status updated to ended", "pid", pid)
+			}
+		}
+	}
 }
