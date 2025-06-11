@@ -6,24 +6,64 @@ services:
     env_file: .env
     environment:
       - DAVINCI_DATADIR=/app/run
-      - SEQUENCER_API_URL=${SEQUENCER_API_URL:-http://localhost:9090}
+      - SEQUENCER_API_URL=${SEQUENCER_API_URL:-http://localhost:${DAVINCI_API_PORT:-9090}}
       - BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io/address}
     volumes:
       - run:/app/run
     ports:
-      - "${DAVINCI_API_PORT:-9090}:9090"                     # REST API gateway and Web UI
+      - "${DAVINCI_API_PORT:-9090}:${DAVINCI_API_PORT:-9090}"
     sysctls:
       net.core.somaxconn: 8128
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${DAVINCI_API_PORT:-9090}/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: ${RESTART:-unless-stopped}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sequencer.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.sequencer.entrypoints=websecure"
+      - "traefik.http.routers.sequencer.tls=true"
+      - "traefik.http.routers.sequencer.tls.certresolver=le"
+      - "traefik.http.services.sequencer.loadbalancer.server.port=${DAVINCI_API_PORT:-9090}"
+
+  traefik:
+    image: traefik:3.4.0
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    command:
+      - "--log.level=DEBUG"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.le.acme.email=root@vocdoni.io"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+    restart: ${RESTART:-unless-stopped}
+    profiles:
+      - prod
 
   watchtower:
     image: containrrr/watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    labels:
-      - com.centurylinklabs.watchtower.enable="false"
-    command: --interval 30 --include-stopped --revive-stopped
+    command: --interval 300 --label-enable --include-stopped --revive-stopped
     restart: ${RESTART:-unless-stopped}
+    depends_on:
+      - sequencer
+    profiles:
+      - prod
 
 volumes:
-  run: {}
+  run:
+    driver: local
