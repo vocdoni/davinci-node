@@ -10,6 +10,7 @@ import (
 
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
 )
 
@@ -187,10 +188,20 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 		return
 	}
 
-	for _, proc := range procesList {
-		if ParticipateInAllProcesses && !s.ExistsProcessID(proc) {
-			log.Infow("new process registered for sequencing", "processID", fmt.Sprintf("%x", proc))
-			s.AddProcessID(proc)
+	for _, pid := range procesList {
+		proc, err := s.stg.Process(new(types.ProcessID).SetBytes(pid)) // Ensure the process is loaded in storage
+		if err != nil {
+			log.Warnw("failed to get process for registration", "processID", fmt.Sprintf("%x", pid), "error", err)
+			continue
+		}
+		if s.ExistsProcessID(pid) && proc.Status != types.ProcessStatusReady {
+			log.Infow("process deregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
+			s.DelProcessID(pid) // Unregister if the process
+			continue
+		}
+		if ParticipateInAllProcesses && !s.ExistsProcessID(pid) && proc.Status == types.ProcessStatusReady {
+			log.Infow("new process registered for sequencing", "processID", fmt.Sprintf("%x", pid))
+			s.AddProcessID(pid)
 		}
 	}
 }
@@ -205,7 +216,7 @@ func (s *Sequencer) AddProcessID(pid []byte) {
 	if s.pids.Add(pid) {
 		log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
 	}
-	if err := s.stg.SetProcessacceptingVotes(pid, true); err != nil {
+	if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackAcceptingVotes(true)); err != nil {
 		log.Warnw("failed to set process accepting votes", "processID", fmt.Sprintf("%x", pid), "error", err)
 	}
 }
@@ -219,7 +230,7 @@ func (s *Sequencer) DelProcessID(pid []byte) {
 	if s.pids.Remove(pid) {
 		log.Infow("process ID unregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
 	}
-	if err := s.stg.SetProcessacceptingVotes(pid, false); err != nil {
+	if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackAcceptingVotes(false)); err != nil {
 		log.Warnw("failed to set process not accepting votes", "processID", fmt.Sprintf("%x", pid), "error", err)
 	}
 }

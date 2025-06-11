@@ -79,6 +79,9 @@ func New(db db.Database) *Storage {
 		log.Errorw(err, "failed to clear stale reservations")
 	}
 
+	// start monitoring for ended processes
+	s.monitorEndedProcesses()
+
 	return s
 }
 
@@ -122,7 +125,7 @@ func (s *Storage) setAllProcessesAsNotAcceptingVotes() error {
 		return fmt.Errorf("failed to list processes: %w", err)
 	}
 	for _, pid := range procs {
-		if err := s.SetProcessacceptingVotes(pid, false); err != nil {
+		if err := s.UpdateProcess(pid, ProcessUpdateCallbackAcceptingVotes(false)); err != nil {
 			return fmt.Errorf("failed to set process accepting votes to false for %x: %w", pid, err)
 		}
 	}
