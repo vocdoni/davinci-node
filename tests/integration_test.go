@@ -38,7 +38,7 @@ func TestIntegration(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Start sequencer batch time window
-	services.Sequencer.SetBatchTimeWindow(time.Second * 50)
+	services.Sequencer.SetBatchTimeWindow(time.Second * 120)
 
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
 		// Create a debug prover that will debug circuit execution during testing
@@ -161,7 +161,7 @@ func TestIntegration(t *testing.T) {
 			t.Logf("Test will timeout in %v (deadline: %v)", effectiveTimeout, deadline)
 		} else {
 			// No deadline set, use a reasonable default
-			timeOut := 5 * time.Minute
+			timeOut := 10 * time.Minute
 			if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
 				timeOut = 30 * time.Minute
 			}

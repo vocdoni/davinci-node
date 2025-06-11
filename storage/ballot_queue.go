@@ -745,39 +745,35 @@ func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
 	return nil
 }
 
-// PullVerifiedResults retrieves the verified results for a given processID.
-// It initializes a read transaction over the verifiedResultPrefix and
-// retrieves the value for the given processID. If the value is found, it
-// decodes it into a VerifiedResults struct and returns it. If the value is
-// not found, it returns ErrNotFound. If any other error occurs during the
-// retrieval or decoding, it returns an error with a descriptive message.
-// It also removes the reservation for verifying results if it exists.
-func (s *Storage) PullVerifiedResults(processID []byte) (*VerifiedResults, error) {
+// NextVerifiedResults retrieves the next verified results from the storage.
+// It does not make any reservations, so its up to the caller to ensure that
+// the results are processed and marked as verified before calling this function
+// again. It returns the next verified results or ErrNoMoreElements if there
+// are no more verified results available.
+func (s *Storage) NextVerifiedResults() (*VerifiedResults, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-
-	// initialize the read transaction over the results prefix
 	pr := prefixeddb.NewPrefixedReader(s.db, verifiedResultPrefix)
-
-	// get the value for the given processID
-	val, err := pr.Get(processID)
-	if err != nil {
-		if err.Error() == arbo.ErrKeyNotFound.Error() {
-			return nil, ErrNoMoreElements
-		}
-		return nil, fmt.Errorf("get verified results: %w", err)
+	var chosenVal []byte
+	if err := pr.Iterate(nil, func(_, v []byte) bool {
+		chosenVal = v
+		return false
+	}); err != nil {
+		return nil, fmt.Errorf("iterate verified results: %w", err)
 	}
-
-	// decode the verified results struct
+	if chosenVal == nil {
+		return nil, ErrNoMoreElements
+	}
 	var res VerifiedResults
-	if err := DecodeArtifact(val, &res); err != nil {
+	if err := DecodeArtifact(chosenVal, &res); err != nil {
 		return nil, fmt.Errorf("decode verified results: %w", err)
 	}
-
+	// Return the verified results
 	return &res, nil
 }
 
-func (s *Storage) MarkVerifiedResults(processID []byte) error {
+// MarkVerifiedResultsDone marks the results for a given processID as verified.
+func (s *Storage) MarkVerifiedResultsDone(processID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
