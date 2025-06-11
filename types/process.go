@@ -103,7 +103,7 @@ type Process struct {
 
 type SequencerProcessStats struct {
 	StateTransitionCount        int       `json:"stateTransitionCount" cbor:"0,keyasint,omitempty"`
-	LasStateTransitionDate      time.Time `json:"lastStateTransitionDate" cbor:"1,keyasint,omitempty"`
+	LastStateTransitionDate     time.Time `json:"lastStateTransitionDate" cbor:"1,keyasint,omitempty"`
 	SettledStateTransitionCount int       `json:"settledStateTransitionCount" cbor:"2,keyasint,omitempty"`
 	AggregatedVotesCount        int       `json:"aggregatedVotesCount" cbor:"3,keyasint,omitempty"`
 	VerifiedVotesCount          int       `json:"verifiedVotesCount"   cbor:"4,keyasint,omitempty"`

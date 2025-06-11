@@ -58,7 +58,7 @@ func ProcessUpdateCallbackAcceptingVotes(accepting bool) func(*types.Process) er
 // ProcessUpdateCallbackLastTransitionDate returns a function that updates the last state transition date
 func ProcessUpdateCallbackLastTransitionDate() func(*types.Process) error {
 	return func(p *types.Process) error {
-		p.SequencerStats.LasStateTransitionDate = time.Now()
+		p.SequencerStats.LastStateTransitionDate = time.Now()
 		return nil
 	}
 }
