@@ -98,7 +98,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
 
   const formatDuration = (durationNs: string | number) => {
     try {
-      let ns = typeof durationNs === 'string' ? parseInt(durationNs) : durationNs
+      const ns = typeof durationNs === 'string' ? parseInt(durationNs) : durationNs
       if (isNaN(ns) || ns <= 0) return 'N/A'
       
       // Go sends duration in nanoseconds, convert to milliseconds
@@ -339,7 +339,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                     </Badge>
                   </WrapItem>
                 )}
-                {process.isFinalized && (
+                {process.status === ProcessStatus.RESULTS && (
                   <WrapItem>
                     <Badge colorScheme="blue" variant="outline" size="sm">
                       <Icon as={FaCheckCircle} mr={1} />

@@ -92,7 +92,6 @@ export interface Process {
   census: Census
   voteCount: string
   voteOverwriteCount: string
-  isFinalized: boolean
   isAcceptingVotes: boolean
   sequencerStats: SequencerProcessStats
 }
