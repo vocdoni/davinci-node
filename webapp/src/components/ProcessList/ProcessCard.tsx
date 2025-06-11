@@ -15,7 +15,6 @@ import {
   Stat,
   StatLabel,
   StatNumber,
-  StatHelpText,
   IconButton,
   Tooltip,
   Progress,

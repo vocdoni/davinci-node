@@ -1,4 +1,4 @@
-import { Box, ChakraProvider, Container, Flex } from '@chakra-ui/react'
+import { Box, ChakraProvider, Container } from '@chakra-ui/react'
 import { Outlet } from 'react-router-dom'
 import { theme } from '~themes/main'
 import { Navbar } from './Navbar'

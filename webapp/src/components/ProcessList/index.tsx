@@ -14,7 +14,7 @@ import {
   Checkbox,
 } from '@chakra-ui/react'
 import { useProcessList, useProcesses } from '~hooks/useSequencerAPI'
-import { Process, ProcessStatus, ProcessStatusLabel } from '~types/api'
+import { ProcessStatus, ProcessStatusLabel } from '~types/api'
 import { ProcessCard } from './ProcessCard'
 
 export const ProcessList = () => {

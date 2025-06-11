@@ -6,7 +6,7 @@ import { Workers } from '~components/Workers'
 import { useSequencerInfo } from '~hooks/useSequencerAPI'
 
 const Dashboard = () => {
-  const { data: info, error: infoError, isLoading: infoLoading } = useSequencerInfo()
+  const { error: infoError } = useSequencerInfo()
 
   return (
     <VStack spacing={8} align="stretch">
