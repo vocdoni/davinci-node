@@ -197,7 +197,7 @@ func TestIntegration(t *testing.T) {
 
 		t.Log("All votes published, finalizing process...")
 		finishProcessOnContract(t, services.Contracts, pid)
-		results, err := services.Sequencer.WaitUntilFinalized(t.Context(), pid)
+		results, err := services.Sequencer.WaitUntilResults(t.Context(), pid)
 		c.Assert(err, qt.IsNil)
 		c.Logf("Results calculated: %v, waiting for onchain results...", results)
 

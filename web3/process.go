@@ -349,7 +349,6 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		VoteCount:          (*types.BigInt)(p.VoteCount),
 		VoteOverwriteCount: (*types.BigInt)(p.VoteOverwriteCount),
 		Result:             results,
-		IsFinalized:        p.Status == types.ProcessStatusResults,
 	}, nil
 }
 

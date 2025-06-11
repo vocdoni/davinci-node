@@ -92,11 +92,6 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, ended
 			return
 		case process := <-newProcCh:
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
-				// Process already exists
-				continue
-			}
-			if process.IsFinalized {
-				// Process is finalized, skip adding it as a new process
 				continue
 			}
 			log.Debugw("new process found", "pid", process.ID.String())
