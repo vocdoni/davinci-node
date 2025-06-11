@@ -132,7 +132,7 @@ func (ss *SequencerService) logActiveProcessStats() {
 			"lastBatchSize":      stats.LastBatchSize,
 			"stateTransitions":   stats.StateTransitionCount,
 			"settledTransitions": stats.SettledStateTransitionCount,
-			"lastTransitionTime": stats.LasStateTransitionDate.Format(time.RFC3339),
+			"lastTransitionTime": stats.LastStateTransitionDate.Format(time.RFC3339),
 		})
 	}
 

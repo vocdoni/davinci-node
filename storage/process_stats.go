@@ -32,13 +32,13 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 	}
 
 	totalStats := &Stats{}
-	if err := s.getArtifact(processPrefix, totalStatsStorageKey, totalStats); err != nil {
+	if err := s.getArtifact(statsPrefix, totalStatsStorageKey, totalStats); err != nil {
 		log.Debugw("initializing to zero sequencer stats")
 		totalStats = new(Stats)
 	}
 
 	totalPending := &StatsPendingBallots{}
-	if err := s.getArtifact(processPrefix, totalPendingBallotsKey, totalPending); err != nil {
+	if err := s.getArtifact(statsPrefix, totalPendingBallotsKey, totalPending); err != nil {
 		log.Debugw("initializing to zero pending ballots stats")
 		totalPending = new(StatsPendingBallots)
 	}
@@ -96,7 +96,7 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 			}
 		case types.TypeStatsLastTransitionDate:
 			t := time.Now()
-			p.SequencerStats.LasStateTransitionDate = t
+			p.SequencerStats.LastStateTransitionDate = t
 			totalStats.LastStateTransitionDate = t
 		default:
 			return fmt.Errorf("unknown type stats: %d", update.TypeStats)
@@ -106,10 +106,10 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 	if err := s.setArtifact(processPrefix, pid, p); err != nil {
 		return fmt.Errorf("failed to save process after stats update: %w", err)
 	}
-	if err := s.setArtifact(processPrefix, totalStatsStorageKey, totalStats); err != nil {
+	if err := s.setArtifact(statsPrefix, totalStatsStorageKey, totalStats); err != nil {
 		return fmt.Errorf("failed to save total stats after process stats update: %w", err)
 	}
-	if err := s.setArtifact(processPrefix, totalPendingBallotsKey, totalPending); err != nil {
+	if err := s.setArtifact(statsPrefix, totalPendingBallotsKey, totalPending); err != nil {
 		return fmt.Errorf("failed to save total pending ballots after process stats update: %w", err)
 	}
 
@@ -122,7 +122,7 @@ func (s *Storage) TotalPendingBallots() int {
 	defer s.globalLock.Unlock()
 
 	totalPending := &StatsPendingBallots{}
-	if err := s.getArtifact(processPrefix, totalPendingBallotsKey, totalPending); err != nil {
+	if err := s.getArtifact(statsPrefix, totalPendingBallotsKey, totalPending); err != nil {
 		return 0
 	}
 	return totalPending.TotalPendingBallots
@@ -134,7 +134,7 @@ func (s *Storage) TotalStats() (*Stats, error) {
 	defer s.globalLock.Unlock()
 
 	totalStats := &Stats{}
-	if err := s.getArtifact(processPrefix, totalStatsStorageKey, totalStats); err != nil {
+	if err := s.getArtifact(statsPrefix, totalStatsStorageKey, totalStats); err != nil {
 		// If not found, return empty stats instead of error
 		return &Stats{}, nil
 	}
