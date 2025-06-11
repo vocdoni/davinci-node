@@ -14,22 +14,18 @@ services:
       - "${DAVINCI_API_PORT:-9090}:${DAVINCI_API_PORT:-9090}"
     sysctls:
       net.core.somaxconn: 8128
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${DAVINCI_API_PORT:-9090}/healthz"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
     restart: ${RESTART:-unless-stopped}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.sequencer.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.sequencer.rule=PathPrefix(`/`)"
       - "traefik.http.routers.sequencer.entrypoints=websecure"
       - "traefik.http.routers.sequencer.tls=true"
       - "traefik.http.routers.sequencer.tls.certresolver=le"
       - "traefik.http.services.sequencer.loadbalancer.server.port=${DAVINCI_API_PORT:-9090}"
+      - "traefik.http.routers.sequencer.tls.domains[0].main=${DOMAIN}"
 
   traefik:
-    image: traefik:3.4.0
+    image: traefik:3.4.1
     ports:
       - "80:80"
       - "443:443"
@@ -37,7 +33,7 @@ services:
       - "./letsencrypt:/letsencrypt"
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     command:
-      - "--log.level=DEBUG"
+      - "--log.level=INFO"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -50,6 +46,8 @@ services:
       - "--certificatesresolvers.le.acme.email=root@vocdoni.io"
       - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
     restart: ${RESTART:-unless-stopped}
+    depends_on:
+      - sequencer
     profiles:
       - prod
 
