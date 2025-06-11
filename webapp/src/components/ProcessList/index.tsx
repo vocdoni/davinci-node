@@ -40,16 +40,16 @@ export const ProcessList = () => {
     }
 
     // Sort: 
-    // 1. First show processes that are not finalized and status=READY
+    // 1. First show processes that are READY (not finalized)
     // 2. Then show the rest ordered by date (most recent first)
     return filtered.sort((a, b) => {
-      // Group 1: Not finalized and status=READY
-      const aIsReadyNotFinalized = !a.isFinalized && a.status === ProcessStatus.READY
-      const bIsReadyNotFinalized = !b.isFinalized && b.status === ProcessStatus.READY
+      // Group 1: READY status (not finalized)
+      const aIsReady = a.status === ProcessStatus.READY
+      const bIsReady = b.status === ProcessStatus.READY
       
-      // If different groups, prioritize READY not finalized
-      if (aIsReadyNotFinalized && !bIsReadyNotFinalized) return -1
-      if (!aIsReadyNotFinalized && bIsReadyNotFinalized) return 1
+      // If different groups, prioritize READY
+      if (aIsReady && !bIsReady) return -1
+      if (!aIsReady && bIsReady) return 1
       
       // Within the same group or for all others, sort by date (most recent first)
       const aDate = new Date(a.startTime).getTime()

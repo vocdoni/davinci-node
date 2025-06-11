@@ -195,10 +195,10 @@ func (s *Storage) listProcessesWithEncryptionKeys() ([][]byte, error) {
 
 // monitorEndedProcesses starts a goroutine that periodically checks for processes
 // that have ended and updates their status accordingly.
-// It runs every 60 seconds to ensure that processes that have reached their
+// It runs every 30 seconds to ensure that processes that have reached their
 // duration are marked as ended.
 func (s *Storage) monitorEndedProcesses() {
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	go func() {
 		for range ticker.C {
@@ -223,7 +223,9 @@ func (s *Storage) checkAndUpdateEndedProcesses() {
 			continue
 		}
 
-		if p.Status != types.ProcessStatusEnded && p.Status != types.ProcessStatusResults {
+		if p.Status != types.ProcessStatusEnded &&
+			p.Status != types.ProcessStatusResults &&
+			p.Status != types.ProcessStatusCanceled {
 			if p.StartTime.Add(p.Duration).Before(time.Now()) {
 				// Update the process status to ended
 				if err := s.UpdateProcess(pid, func(p *types.Process) error {
