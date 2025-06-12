@@ -135,14 +135,17 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	process.Census.MaxVotes.SetUint64(1000)
 
 	// Store the process
-	err = stg.SetProcess(process)
+	err = stg.NewProcess(process)
 	if err != nil {
 		t.Fatalf("failed to store process: %v", err)
 	}
 
 	// Setup state with test data
 	process.StateRoot = setupTestState(t, stateDB, pid, pubKey, addValue, subValue)
-	err = stg.SetProcess(process)
+	err = stg.UpdateProcess(pid.Marshal(), func(p *types.Process) error {
+		p.StateRoot = process.StateRoot
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("failed to store process: %v", err)
 	}

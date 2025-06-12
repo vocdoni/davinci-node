@@ -34,7 +34,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 		ChainID: 1,
 	}
 
-	err = st.SetProcess(createTestProcess(processID))
+	err = st.NewProcess(createTestProcess(processID))
 	c.Assert(err, qt.IsNil)
 
 	// Test concurrent ballot processing
@@ -126,7 +126,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 		ChainID: 1,
 	}
 
-	err = st.SetProcess(createTestProcess(processID))
+	err = st.NewProcess(createTestProcess(processID))
 	c.Assert(err, qt.IsNil)
 
 	// Create and process some ballots
@@ -227,7 +227,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 		ChainID: 1,
 	}
 
-	err = st.SetProcess(createTestProcess(processID))
+	err = st.NewProcess(createTestProcess(processID))
 	c.Assert(err, qt.IsNil)
 
 	// Simulate the race condition scenario
@@ -453,7 +453,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 
 	// Store all processes
 	for _, process := range processes {
-		err = st.SetProcess(process)
+		err = st.NewProcess(process)
 		c.Assert(err, qt.IsNil)
 	}
 
@@ -529,7 +529,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 		ChainID: 1,
 	}
 
-	err = st.SetProcess(createTestProcess(processID))
+	err = st.NewProcess(createTestProcess(processID))
 	c.Assert(err, qt.IsNil)
 
 	// Create and process some ballots to verified state
@@ -616,7 +616,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 		ChainID: 1,
 	}
 
-	err = st.SetProcess(createTestProcess(processID))
+	err = st.NewProcess(createTestProcess(processID))
 	c.Assert(err, qt.IsNil)
 
 	// Create and process some ballots to verified state
@@ -729,7 +729,7 @@ func TestProcessStatsNegativeValuePrevention(t *testing.T) {
 		ChainID: 1,
 	}
 
-	err = st.SetProcess(createTestProcess(processID))
+	err = st.NewProcess(createTestProcess(processID))
 	c.Assert(err, qt.IsNil)
 
 	// Test attempting to set negative values (without clamping for some stats)
@@ -855,11 +855,11 @@ func TestTotalStats(t *testing.T) {
 	}
 
 	// Create processes
-	err = st.SetProcess(createTestProcess(process1))
+	err = st.NewProcess(createTestProcess(process1))
 	c.Assert(err, qt.IsNil)
-	err = st.SetProcess(createTestProcess(process2))
+	err = st.NewProcess(createTestProcess(process2))
 	c.Assert(err, qt.IsNil)
-	err = st.SetProcess(createTestProcess(process3))
+	err = st.NewProcess(createTestProcess(process3))
 	c.Assert(err, qt.IsNil)
 
 	// Update stats for process1
@@ -947,9 +947,9 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	}
 
 	// Create processes
-	err = st.SetProcess(createTestProcess(process1))
+	err = st.NewProcess(createTestProcess(process1))
 	c.Assert(err, qt.IsNil)
-	err = st.SetProcess(createTestProcess(process2))
+	err = st.NewProcess(createTestProcess(process2))
 	c.Assert(err, qt.IsNil)
 
 	// Test 3: Push ballots to process1 and verify total pending increases
@@ -1058,7 +1058,7 @@ func TestTotalStatsConcurrency(t *testing.T) {
 			Nonce:   uint64(i + 1),
 			ChainID: 1,
 		}
-		err = st.SetProcess(createTestProcess(processes[i]))
+		err = st.NewProcess(createTestProcess(processes[i]))
 		c.Assert(err, qt.IsNil)
 	}
 
@@ -1138,9 +1138,9 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 		ChainID: 1,
 	}
 
-	err = st.SetProcess(createTestProcess(process1))
+	err = st.NewProcess(createTestProcess(process1))
 	c.Assert(err, qt.IsNil)
-	err = st.SetProcess(createTestProcess(process2))
+	err = st.NewProcess(createTestProcess(process2))
 	c.Assert(err, qt.IsNil)
 
 	// Test the full workflow: push -> process -> aggregate

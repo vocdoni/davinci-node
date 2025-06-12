@@ -86,7 +86,7 @@ func TestProcess(t *testing.T) {
 		},
 	}
 
-	err = st.SetProcess(testProcess)
+	err = st.NewProcess(testProcess)
 	c.Assert(err, qt.IsNil)
 
 	// Get and verify data and metadata
@@ -109,7 +109,7 @@ func TestProcess(t *testing.T) {
 	}
 	process.ID = anotherProcessID.Marshal()
 
-	err = st.SetProcess(process)
+	err = st.NewProcess(process)
 	c.Assert(err, qt.IsNil)
 
 	// Verify list now contains both processes

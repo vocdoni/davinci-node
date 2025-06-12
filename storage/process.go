@@ -43,18 +43,6 @@ func (s *Storage) NewProcess(data *types.Process) error {
 	return s.setArtifact(processPrefix, data.ID, data)
 }
 
-// SetProcess stores a process (for backward compatibility and tests).
-// DEPRECATED: Use NewProcess for new processes or UpdateProcess for updates.
-func (s *Storage) SetProcess(data *types.Process) error {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-
-	if data == nil {
-		return fmt.Errorf("nil process data")
-	}
-	return s.setArtifact(processPrefix, data.ID, data)
-}
-
 // UpdateProcess performs an atomic read-modify-write operation on a process.
 // The updateFunc is called with the current process state and can modify it.
 // This ensures no race conditions between concurrent process updates.
