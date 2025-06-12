@@ -541,14 +541,16 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                     </Text>
                     <VStack align="stretch" spacing={3}>
                       {(() => {
-                        const totalVotes = process.result.reduce((sum, votes) => {
+                        // Use maxCount from ballotMode to determine how many options to show
+                        const maxCount = process.ballotMode.maxCount
+                        const resultsToShow = process.result.slice(0, maxCount)
+                        
+                        const totalVotes = resultsToShow.reduce((sum, votes) => {
                           return sum + BigInt(votes)
                         }, BigInt(0))
                         
-                        return process.result
-                          .map((result, index) => ({ result, index }))
-                          .filter(({ result }) => BigInt(result) > 0)
-                          .map(({ result, index }) => {
+                        return resultsToShow
+                          .map((result, index) => {
                             const votes = BigInt(result)
                             const percentage = totalVotes > 0 
                               ? Number((votes * BigInt(100)) / totalVotes) 
