@@ -20,23 +20,26 @@ COPY go.mod go.sum ./
 # Download dependencies with cache
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
-# Copy source code
+# Copy source code and helper script
 COPY . .
-# Find and copy libwasmer.so to system location before building
+COPY scripts/find-wasmer-lib.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/find-wasmer-lib.sh
+
 # Build with cache mounts and proper library path
 ARG BUILDARGS
 
-# Copy the libwasmer.so from the cache to a system location
-RUN --mount=type=cache,target=/go/pkg/mod \
-    cp /go/pkg/mod/github.com/iden3/wasmer-go@v0.0.1/wasmer/packaged/lib/linux-amd64/libwasmer.so \
-    /usr/lib/libwasmer.so
-
+# Find and copy libwasmer.so dynamically, then build
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    # First, prepare a libwasmer.so for the build
+    /usr/local/bin/find-wasmer-lib.sh save && \
+    # Build the binary
     CGO_ENABLED=1 \
     go build -trimpath \
     -ldflags="-w -s -X=github.com/vocdoni/davinci-node/internal.Version=$(git describe --always --tags --dirty --match='v[0-9]*' 2>/dev/null || echo dev)" \
-    -o davinci-sequencer $BUILDARGS ./cmd/davinci-sequencer
+    -o davinci-sequencer $BUILDARGS ./cmd/davinci-sequencer && \
+    # After building, use ldd to find the correct libwasmer.so path
+    /usr/local/bin/find-wasmer-lib.sh save-after-build
 
 # Final minimal image
 FROM debian:bookworm-slim
@@ -50,9 +53,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Support for go-rapidsnark witness calculator (https://github.com/iden3/go-rapidsnark/tree/main/witness)
-# Note: The libwasmer.so path might change, run ldd davinci-sequencer to find the correct path if needed
-COPY --from=builder /usr/lib/libwasmer.so \
-    /go/pkg/mod/github.com/iden3/wasmer-go@v0.0.1/wasmer/packaged/lib/linux-amd64/libwasmer.so
+# Copy the helper script and library files from builder
+COPY --from=builder /usr/local/bin/find-wasmer-lib.sh /usr/local/bin/
+COPY --from=builder /src/libwasmer.so /src/wasmer_path.txt ./
+RUN chmod +x /usr/local/bin/find-wasmer-lib.sh && \
+    /usr/local/bin/find-wasmer-lib.sh restore && \
+    rm /usr/local/bin/find-wasmer-lib.sh libwasmer.so wasmer_path.txt
 
 # Copy binaries and webapp
 COPY --from=builder /src/davinci-sequencer ./
