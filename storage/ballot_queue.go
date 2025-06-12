@@ -14,7 +14,7 @@ import (
 )
 
 /*
-	dbPrefix = bs
+	dbPrefix = vs
 	processID_voteID = status
 	processID_voteID = 0 -> pending
 	processID_voteID = 1 -> verified
@@ -59,8 +59,8 @@ func (s *Storage) PushBallot(b *Ballot) error {
 		)
 	}
 
-	// Set ballot status to pending
-	return s.setBallotStatus(b.ProcessID, b.VoteID(), BallotStatusPending)
+	// Set vote ID status to pending
+	return s.setVoteIDStatus(b.ProcessID, b.VoteID(), VoteIDStatusPending)
 }
 
 // NextBallot returns the next non-reserved ballot, creates a reservation, and
@@ -152,8 +152,8 @@ func (s *Storage) RemoveBallot(processID, voteID []byte) error {
 		)
 	}
 
-	// Update ballot status to error
-	return s.setBallotStatus(processID, voteID, BallotStatusError)
+	// Update vote ID status to error
+	return s.setVoteIDStatus(processID, voteID, VoteIDStatusError)
 }
 
 // ReleaseBallotReservation removes the reservation for a ballot.
@@ -211,8 +211,8 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 		return fmt.Errorf("failed to update process stats: %w", err)
 	}
 
-	// Update ballot status to verified
-	return s.setBallotStatus(vb.ProcessID, voteID, BallotStatusVerified)
+	// Update vote ID status to verified
+	return s.setVoteIDStatus(vb.ProcessID, voteID, VoteIDStatusVerified)
 }
 
 // PullVerifiedBallots returns a list of non-reserved verified ballots for a
@@ -376,19 +376,19 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 			return fmt.Errorf("get verified ballot: %w", err)
 		}
 
-		// Check current ballot status to avoid double-processing
-		currentStatus, err := s.ballotStatusUnsafe(ballot.ProcessID, ballot.VoteID)
+		// Check current vote ID status to avoid double-processing
+		currentStatus, err := s.voteIDStatusUnsafe(ballot.ProcessID, ballot.VoteID)
 		if err != nil {
-			log.Warnw("could not get ballot status during failure marking",
+			log.Warnw("could not get vote ID status during failure marking",
 				"processID", fmt.Sprintf("%x", ballot.ProcessID),
 				"voteID", hex.EncodeToString(ballot.VoteID),
 				"error", err.Error())
 			// Continue processing as the ballot might still be valid
-		} else if currentStatus != BallotStatusVerified {
-			log.Warnw("ballot is not in verified status, skipping counter updates",
+		} else if currentStatus != VoteIDStatusVerified {
+			log.Warnw("vote ID is not in verified status, skipping counter updates",
 				"processID", fmt.Sprintf("%x", ballot.ProcessID),
 				"voteID", hex.EncodeToString(ballot.VoteID),
-				"currentStatus", BallotStatusName(currentStatus))
+				"currentStatus", VoteIDStatusName(currentStatus))
 			// Still remove the ballot from verified queue but don't update counters
 		} else {
 			// Only count ballots that were actually in verified status
@@ -396,9 +396,9 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 			processBallots[processKey] = append(processBallots[processKey], *ballot)
 		}
 
-		// Mark the ballot as error
-		if err := s.setBallotStatus(ballot.ProcessID, ballot.VoteID, BallotStatusError); err != nil {
-			return fmt.Errorf("set ballot status to error: %w", err)
+		// Mark the vote ID as error
+		if err := s.setVoteIDStatus(ballot.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
+			return fmt.Errorf("set vote ID status to error: %w", err)
 		}
 
 		// Remove reservation
@@ -463,11 +463,11 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 		return fmt.Errorf("failed to update process stats: %w", err)
 	}
 
-	// Update status of all ballots in the batch to aggregated
+	// Update status of all vote IDs in the batch to aggregated
 	// TODO: this should use a single write transaction
 	for _, ballot := range abb.Ballots {
-		if err := s.setBallotStatus(abb.ProcessID, ballot.VoteID, BallotStatusAggregated); err != nil {
-			log.Warnw("failed to set ballot status to aggregated", "error", err.Error())
+		if err := s.setVoteIDStatus(abb.ProcessID, ballot.VoteID, VoteIDStatusAggregated); err != nil {
+			log.Warnw("failed to set vote ID status to aggregated", "error", err.Error())
 		}
 	}
 
@@ -495,29 +495,29 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 
 	validAggregatedCount := 0
 
-	// Mark all ballots in the batch as error and count how many were actually aggregated
+	// Mark all vote IDs in the batch as error and count how many were actually aggregated
 	for _, ballot := range agg.Ballots {
-		// Check current ballot status to avoid double-processing
-		currentStatus, err := s.ballotStatusUnsafe(agg.ProcessID, ballot.VoteID)
+		// Check current vote ID status to avoid double-processing
+		currentStatus, err := s.voteIDStatusUnsafe(agg.ProcessID, ballot.VoteID)
 		if err != nil {
-			log.Warnw("could not get ballot status during batch failure",
+			log.Warnw("could not get vote ID status during batch failure",
 				"processID", fmt.Sprintf("%x", agg.ProcessID),
 				"voteID", hex.EncodeToString(ballot.VoteID),
 				"error", err.Error())
 			// Continue processing as the ballot might still be valid
 			validAggregatedCount++
-		} else if currentStatus == BallotStatusAggregated {
+		} else if currentStatus == VoteIDStatusAggregated {
 			// Only count ballots that were actually in aggregated status
 			validAggregatedCount++
 		} else {
-			log.Warnw("ballot is not in aggregated status during batch failure",
+			log.Warnw("vote ID is not in aggregated status during batch failure",
 				"processID", fmt.Sprintf("%x", agg.ProcessID),
 				"voteID", hex.EncodeToString(ballot.VoteID),
-				"currentStatus", BallotStatusName(currentStatus))
+				"currentStatus", VoteIDStatusName(currentStatus))
 		}
 
-		if err := s.setBallotStatus(agg.ProcessID, ballot.VoteID, BallotStatusError); err != nil {
-			log.Warnw("failed to set ballot status to error", "error", err.Error())
+		if err := s.setVoteIDStatus(agg.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
+			log.Warnw("failed to set vote ID status to error", "error", err.Error())
 		}
 	}
 
@@ -635,10 +635,10 @@ func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 		return fmt.Errorf("failed to update process stats: %w", err)
 	}
 
-	// Update status of all ballots in the batch to processed
+	// Update status of all vote IDs in the batch to processed
 	for _, ballot := range stb.Ballots {
-		if err := s.setBallotStatus(stb.ProcessID, ballot.VoteID, BallotStatusProcessed); err != nil {
-			log.Warnw("failed to set ballot status to processed", "error", err.Error())
+		if err := s.setVoteIDStatus(stb.ProcessID, ballot.VoteID, VoteIDStatusProcessed); err != nil {
+			log.Warnw("failed to set vote ID status to processed", "error", err.Error())
 		}
 	}
 
@@ -688,6 +688,46 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+
+	// Get the state transition batch before deleting it to extract vote IDs
+	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
+	val, err := pr.Get(k)
+	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("get state transition batch: %w", err)
+		}
+		// If batch not found, just continue with cleanup
+	} else {
+		// Decode the batch to get the vote IDs
+		var stb StateTransitionBatch
+		if err := DecodeArtifact(val, &stb); err != nil {
+			log.Warnw("failed to decode state transition batch for vote ID settlement",
+				"error", err.Error(),
+				"processID", fmt.Sprintf("%x", pid),
+			)
+		} else {
+			// Extract vote IDs from the batch
+			voteIDs := make([][]byte, len(stb.Ballots))
+			for i, ballot := range stb.Ballots {
+				voteIDs[i] = ballot.VoteID
+			}
+
+			// Mark all vote IDs in the batch as settled (using unsafe version to avoid deadlock)
+			if err := s.markVoteIDsSettledUnsafe(pid, voteIDs); err != nil {
+				log.Warnw("failed to mark vote IDs as settled",
+					"error", err.Error(),
+					"processID", fmt.Sprintf("%x", pid),
+					"voteIDCount", len(voteIDs),
+				)
+			} else {
+				log.Debugw("marked vote IDs as settled",
+					"processID", fmt.Sprintf("%x", pid),
+					"voteIDCount", len(voteIDs),
+				)
+			}
+		}
+	}
+
 	// Remove reservation
 	if err := s.deleteArtifact(stateTransitionReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition reservation: %w", err)
