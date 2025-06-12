@@ -134,6 +134,9 @@ func New(db db.Database) *Storage {
 	// start monitoring for ended processes
 	s.monitorEndedProcesses()
 
+	// start monitoring for stale reservations
+	s.monitorStaleReservations()
+
 	return s
 }
 
@@ -154,6 +157,7 @@ func (s *Storage) recover() error {
 		ballotReservationPrefix,
 		verifiedBallotReservPrefix,
 		aggregBatchReservPrefix,
+		stateTransitionReservPrefix,
 	}
 
 	for _, prefix := range prefixes {
@@ -192,7 +196,7 @@ func (s *Storage) Close() {
 }
 
 // releaseStaleReservations checks and frees stale reservations.
-func (s *Storage) ReleaseStaleReservations(maxAge time.Duration) error {
+func (s *Storage) releaseStaleReservations(maxAge time.Duration) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -210,6 +214,11 @@ func (s *Storage) ReleaseStaleReservations(maxAge time.Duration) error {
 
 	// Release stale aggregated batch reservations
 	if err := s.releaseStaleInPrefix(aggregBatchReservPrefix, now, maxAge); err != nil {
+		return err
+	}
+
+	// Release stale state transition reservations
+	if err := s.releaseStaleInPrefix(stateTransitionReservPrefix, now, maxAge); err != nil {
 		return err
 	}
 
@@ -237,14 +246,22 @@ func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Dur
 		return nil
 	}
 
+	// Delete all stale keys in a single transaction
 	for _, sk := range staleKeys {
 		if err := wTx.Delete(sk); err != nil {
 			return fmt.Errorf("delete stale reservation: %w", err)
 		}
-		if err := wTx.Commit(); err != nil {
-			return fmt.Errorf("commit stale deletion: %w", err)
-		}
 	}
+
+	// Commit once after all deletions
+	if err := wTx.Commit(); err != nil {
+		return fmt.Errorf("commit stale deletion: %w", err)
+	}
+
+	if len(staleKeys) > 0 {
+		log.Debugw("released stale reservations", "prefix", string(prefix), "count", len(staleKeys))
+	}
+
 	return nil
 }
 
@@ -361,4 +378,20 @@ func (s *Storage) CensusDB() *census.CensusDB {
 // StateDB returns the state database instance.
 func (s *Storage) StateDB() db.Database {
 	return s.stateDB
+}
+
+// monitorStaleReservations starts a goroutine that periodically checks for and
+// releases stale reservations. This prevents reservations from being stuck
+// indefinitely if workers crash or fail to release them properly.
+func (s *Storage) monitorStaleReservations() {
+	ticker := time.NewTicker(60 * time.Second) // Check every minute
+	go func() {
+		defer ticker.Stop()
+		for range ticker.C {
+			// Release reservations older than 5 minutes
+			if err := s.releaseStaleReservations(5 * time.Minute); err != nil {
+				log.Warnw("failed to release stale reservations", "error", err)
+			}
+		}
+	}()
 }
