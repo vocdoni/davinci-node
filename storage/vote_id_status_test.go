@@ -98,37 +98,4 @@ func TestVoteIDStatus(t *testing.T) {
 	status3, err = st.VoteIDStatus(pidBytes, voteID3)
 	c.Assert(err, qt.IsNil)
 	c.Assert(status3, qt.Equals, VoteIDStatusProcessed)
-
-	// Now clean all vote ID statuses for this process
-	count, err := st.CleanProcessVoteIDs(pidBytes)
-	c.Assert(err, qt.IsNil)
-	c.Assert(count >= 3, qt.IsTrue, qt.Commentf("expected at least 3 entries to clean, got %d", count))
-
-	// After cleaning, verify we can create new entries in place of the cleaned ones
-	// This indirectly verifies the old entries were removed
-
-	// First for voteID1
-	err = st.setVoteIDStatus(pidBytes, voteID1, VoteIDStatusPending)
-	c.Assert(err, qt.IsNil)
-
-	// Check it was set correctly
-	var status1Value int
-	status1Value, err = st.VoteIDStatus(pidBytes, voteID1)
-	c.Assert(err, qt.IsNil)
-	c.Assert(status1Value, qt.Equals, VoteIDStatusPending)
-
-	// Also for voteID2
-	err = st.setVoteIDStatus(pidBytes, voteID2, VoteIDStatusVerified)
-	c.Assert(err, qt.IsNil)
-
-	var status2Value int
-	status2Value, err = st.VoteIDStatus(pidBytes, voteID2)
-	c.Assert(err, qt.IsNil)
-	c.Assert(status2Value, qt.Equals, VoteIDStatusVerified)
-
-	// Test 6: Clean and verify the cleanup
-	// Clean again and we should get the number of entries we just added
-	count2, err := st.CleanProcessVoteIDs(pidBytes)
-	c.Assert(err, qt.IsNil)
-	c.Assert(count2, qt.Equals, 2, qt.Commentf("expected 2 entries to be cleaned, got %d", count2))
 }

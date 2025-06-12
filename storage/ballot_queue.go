@@ -713,7 +713,7 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 			}
 
 			// Mark all vote IDs in the batch as settled (using unsafe version to avoid deadlock)
-			if err := s.markVoteIDsSettledUnsafe(pid, voteIDs); err != nil {
+			if err := s.markVoteIDsSettled(pid, voteIDs); err != nil {
 				log.Warnw("failed to mark vote IDs as settled",
 					"error", err.Error(),
 					"processID", fmt.Sprintf("%x", pid),

@@ -1,3 +1,55 @@
+/*
+Package storage provides a persistent storage layer for the Davinci node sequencer.
+
+# Storage Organization
+
+The storage uses a key-value database with prefixed namespaces to organize different types of data:
+
+## Process Management
+- p/  : processID → Process metadata (status, times, ballot mode, census info)
+- ek/ : processID → Encryption keys (public and private keys for ballot encryption)
+- md/ : metadataHash → Process metadata content (questions, choices, descriptions)
+
+## Ballot Processing Pipeline
+
+The ballot processing follows these stages:
+
+1. Pending Ballots
+  - b/  : voteID → Ballot (incoming ballots waiting to be verified)
+  - br/ : voteID → reservation timestamp (prevents concurrent processing)
+
+2. Verified Ballots
+  - vb/ : processID + voteID → VerifiedBallot (ballots that passed verification)
+  - vbr/: processID + voteID → reservation timestamp
+
+3. Aggregated Batches
+  - ag/ : processID + hash → AggregatorBallotBatch (groups of verified ballots)
+  - agr/: processID + hash → reservation timestamp
+
+4. State Transitions
+  - st/ : processID + hash → StateTransitionBatch (state changes ready for chain)
+  - str/: processID + hash → reservation timestamp
+
+5. Verified Results
+  - vr/ : processID → VerifiedResults (final tally results with proof)
+
+## Vote Tracking
+  - vs/ : processID + voteID → status byte
+    Status values: 0=pending, 1=verified, 2=aggregated, 3=processed, 4=settled, 5=error
+
+## Statistics
+- s/  : various keys for process and global statistics
+  - processID → process-specific stats
+  - "totalStatsStorageKey" → global aggregated stats
+  - "totalPendingBallotsKey" → total pending ballot count
+
+## Worker Stats
+- ws/ : workerAddress → WorkerStats (success/failure counts per worker)
+
+## Separate Databases
+- cs_ : prefix for census database (merkle trees for voter eligibility)
+- st_ : prefix for state database (merkle trees for vote state)
+*/
 package storage
 
 import (
@@ -105,7 +157,7 @@ func (s *Storage) recover() error {
 	}
 
 	for _, prefix := range prefixes {
-		if err := s.clearAllReservations(prefix); err != nil {
+		if err := s.cleanAllReservations(prefix); err != nil {
 			if strings.Contains(err.Error(), "pebble: closed") {
 				return fmt.Errorf("database closed")
 			}
@@ -127,37 +179,6 @@ func (s *Storage) setAllProcessesAsNotAcceptingVotes() error {
 	for _, pid := range procs {
 		if err := s.UpdateProcess(pid, ProcessUpdateCallbackAcceptingVotes(false)); err != nil {
 			return fmt.Errorf("failed to set process accepting votes to false for %x: %w", pid, err)
-		}
-	}
-	return nil
-}
-
-// clearAllReservations iterates over the given reservation prefix and removes
-// all reservation entries. This ensures that no item remains "reserved" after
-// a crash.
-func (s *Storage) clearAllReservations(prefix []byte) error {
-	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
-	defer wTx.Discard()
-	var keysToDelete [][]byte
-	// Collect all keys to delete
-	if err := wTx.Iterate(nil, func(k, _ []byte) bool {
-		kCopy := make([]byte, len(k))
-		copy(kCopy, k)
-		keysToDelete = append(keysToDelete, kCopy)
-		return true
-	}); err != nil {
-		return fmt.Errorf("failed to iterate over reservation keys: %w", err)
-	}
-	// Delete them in a write transaction
-	if len(keysToDelete) > 0 {
-		log.Debugw("clearing queue reservations", "count", len(keysToDelete))
-		for _, kk := range keysToDelete {
-			if err := wTx.Delete(kk); err != nil {
-				return fmt.Errorf("failed to delete reservation key %x: %w", kk, err)
-			}
-		}
-		if err := wTx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit reservation deletion: %w", err)
 		}
 	}
 	return nil
