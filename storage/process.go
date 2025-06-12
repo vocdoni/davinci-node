@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -223,7 +224,7 @@ func (s *Storage) checkAndUpdateEndedProcesses() {
 					log.Errorw(err, "failed to update process status to ended")
 					continue
 				}
-				log.Infow("process status updated to ended", "pid", pid)
+				log.Infow("process status updated to ended", "pid", hex.EncodeToString(pid))
 			}
 		}
 	}
