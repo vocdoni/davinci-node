@@ -46,11 +46,5 @@ jobs:
           tags: |
             vocdoni/davinci-node:latest,
             vocdoni/davinci-node:${{ steps.vars.outputs.IMAGE_TAG_CLEAN }},
-            vocdoni/davinci-node:${{ steps.vars.outputs.IMAGE_TAG_CLEAN }}-${{ steps.vars.outputs.DATE_IN_SECS }}
-            vocdoni/davinci-node:commit-${{ steps.vars.outputs.GIT_HASH_SHORT }},
             ghcr.io/vocdoni/davinci-node:latest,
             ghcr.io/vocdoni/davinci-node:${{ steps.vars.outputs.IMAGE_TAG_CLEAN }},
-            ghcr.io/vocdoni/davinci-node:${{ steps.vars.outputs.IMAGE_TAG_CLEAN }}-${{ steps.vars.outputs.DATE_IN_SECS }}
-            ghcr.io/vocdoni/davinci-node:commit-${{ steps.vars.outputs.GIT_HASH_SHORT }},
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
