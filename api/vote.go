@@ -23,7 +23,7 @@ import (
 )
 
 // voteStatus returns the status of a vote for a given processID and voteID
-// GET /votes/status/{processId}/{voteId}
+// GET /votes/{processId}/voteId/{voteId}
 func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	// Get the processID and voteID from the URL
 	processIDHex := chi.URLParam(r, ProcessURLParam)
@@ -41,23 +41,25 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the ballot status
-	status, err := a.storage.BallotStatus(processID, voteID)
+	// Get the vote ID status
+	status, err := a.storage.VoteIDStatus(processID, voteID)
 	if err != nil {
-		log.Debugw("ballot status not found", "processID", processIDHex, "voteID", voteIDHex, "error", err)
-		ErrResourceNotFound.WithErr(err).Write(w)
+		if errors.Is(err, storage.ErrNotFound) {
+			ErrResourceNotFound.WithErr(err).Write(w)
+			return
+		}
+		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
 	}
 
-	// Return the status response
 	response := VoteStatusResponse{
-		Status: storage.BallotStatusName(status),
+		Status: storage.VoteIDStatusName(status),
 	}
 	httpWriteJSON(w, response)
 }
 
 // voteByNullifier retrieves an encrypted ballot by its nullifier for a given processID
-// GET /votes/{processId}/{nullifier}
+// GET /votes/{processId}/nullifier/{nullifier}
 func (a *API) voteByNullifier(w http.ResponseWriter, r *http.Request) {
 	// Get the processID
 	processIDBytes, err := types.HexStringToHexBytes(chi.URLParam(r, ProcessURLParam))
@@ -98,7 +100,7 @@ func (a *API) voteByNullifier(w http.ResponseWriter, r *http.Request) {
 }
 
 // checkAddress checks if an address has already voted in a given process
-// GET /votes/checkAddress/{processId}/{address}
+// GET /votes/{processId}/address/{address}
 func (a *API) checkAddress(w http.ResponseWriter, r *http.Request) {
 	// Get the processID
 	processIDBytes, err := types.HexStringToHexBytes(chi.URLParam(r, ProcessURLParam))

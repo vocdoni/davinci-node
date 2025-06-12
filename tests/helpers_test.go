@@ -461,12 +461,12 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	}
 }
 
-func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes) (bool, []types.HexBytes) {
+func checkVoteStatus(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes, expectedStatus string) (bool, []types.HexBytes) {
 	c := qt.New(t)
-	// Check vote status and return whether all votes are processed
+	// Check vote status and return whether all votes have the expected status
 	txt := strings.Builder{}
-	txt.WriteString("Vote status: ")
-	allProcessed := true
+	txt.WriteString(fmt.Sprintf("Vote status (expecting %s): ", expectedStatus))
+	allExpectedStatus := true
 
 	failed := []types.HexBytes{}
 	// Check status for each vote
@@ -490,15 +490,17 @@ func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.Proces
 		// Verify the status is valid
 		c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
 
-		// Check if the vote is processed
+		// Check if the vote has the expected status
 		switch statusResponse.Status {
-		case storage.BallotStatusName(storage.BallotStatusError):
-			allProcessed = allProcessed && true
-			failed = append(failed, voteID)
-		case storage.BallotStatusName(storage.BallotStatusProcessed):
-			allProcessed = allProcessed && true
+		case storage.VoteIDStatusName(storage.VoteIDStatusError):
+			allExpectedStatus = allExpectedStatus && (expectedStatus == storage.VoteIDStatusName(storage.VoteIDStatusError))
+			if expectedStatus != storage.VoteIDStatusName(storage.VoteIDStatusError) {
+				failed = append(failed, voteID)
+			}
+		case expectedStatus:
+			allExpectedStatus = allExpectedStatus && true
 		default:
-			allProcessed = false
+			allExpectedStatus = false
 		}
 		// Write to the string builder for logging
 		txt.WriteString(fmt.Sprintf("#%d:%s ", i, statusResponse.Status))
@@ -506,7 +508,7 @@ func checkProcessedVotes(t *testing.T, cli *client.HTTPclient, pid *types.Proces
 
 	// Log the vote status
 	t.Log(txt.String())
-	return allProcessed, failed
+	return allExpectedStatus, failed
 }
 
 func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) int {

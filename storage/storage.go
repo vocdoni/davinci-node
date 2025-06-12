@@ -24,7 +24,7 @@ var (
 	// Prefixes
 	ballotPrefix                = []byte("b/")
 	ballotReservationPrefix     = []byte("br/")
-	ballotStatusPrefix          = []byte("bs/")
+	voteIDStatusPrefix          = []byte("vs/")
 	verifiedBallotPrefix        = []byte("vb/")
 	verifiedBallotReservPrefix  = []byte("vbr/")
 	aggregBatchPrefix           = []byte("ag/")

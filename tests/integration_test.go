@@ -14,6 +14,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
+	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -177,14 +178,15 @@ func TestIntegration(t *testing.T) {
 		for {
 			select {
 			case <-ticker.C:
-				if allProcessed, failed := checkProcessedVotes(t, cli, pid, voteIDs); !allProcessed {
+				// Check that votes are settled (state transitions confirmed on blockchain)
+				if allSettled, failed := checkVoteStatus(t, cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
 					continue
 				} else if len(failed) > 0 {
 					hexFailed := make([]string, len(failed))
 					for i, v := range failed {
 						hexFailed[i] = v.String()
 					}
-					t.Fatalf("Some votes failed to process: %v", hexFailed)
+					t.Fatalf("Some votes failed to be settled: %v", hexFailed)
 				}
 				if publishedVotes(t, services.Contracts, pid) < numBallots {
 					continue
@@ -210,6 +212,22 @@ func TestIntegration(t *testing.T) {
 					continue
 				}
 				t.Logf("Results published: %v", results)
+
+				// Check that all vote IDs are now marked as "settled"
+				t.Log("Checking that all vote IDs are marked as settled...")
+				if allSettled, failedSettled := checkVoteStatus(t, cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
+					if len(failedSettled) > 0 {
+						hexFailedSettled := make([]string, len(failedSettled))
+						for i, v := range failedSettled {
+							hexFailedSettled[i] = v.String()
+						}
+						t.Logf("Some votes are not yet settled: %v, waiting...", hexFailedSettled)
+						continue
+					}
+					t.Log("Not all votes are settled yet, waiting...")
+					continue
+				}
+				t.Log("All votes are now marked as settled!")
 				return
 			case <-timeoutCh:
 				c.Fatalf("Timeout waiting for votes to be processed and published at contract")
