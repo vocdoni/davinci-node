@@ -58,7 +58,7 @@ func TestBallotQueue(t *testing.T) {
 	}
 
 	// Create the process first
-	err = st.SetProcess(createTestProcess(&processID))
+	err = st.NewProcess(createTestProcess(&processID))
 	c.Assert(err, qt.IsNil)
 
 	// Scenario: No ballots initially
@@ -217,7 +217,7 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 	}
 
 	// Create the process first
-	err = st.SetProcess(createTestProcess(&processID))
+	err = st.NewProcess(createTestProcess(&processID))
 	c.Assert(err, qt.IsNil)
 
 	// Create 5 ballots with fixed data for deterministic testing
@@ -333,7 +333,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	}
 
 	// Create the process first
-	err = st.SetProcess(createTestProcess(&processID))
+	err = st.NewProcess(createTestProcess(&processID))
 	c.Assert(err, qt.IsNil)
 
 	// Test 1: Empty state
