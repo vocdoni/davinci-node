@@ -68,6 +68,7 @@ func main() {
 		createOrg                        = flag.Bool("createOrganization", true, "create a new organization")
 		voteCount                        = flag.Int("voteCount", 10, "number of votes to cast")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
+		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", config.AvailableNetworks))
 	)
 	flag.Parse()
 	log.Init("debug", "stdout", nil)
@@ -86,10 +87,36 @@ func main() {
 	// If no web3rpcs are provided, use the default ones from chainlist
 	var err error
 	if len(*web3rpcs) == 0 {
-		if *web3rpcs, err = chainlist.EndpointList(defaultNetwork, 10); err != nil {
+		if *web3rpcs, err = chainlist.EndpointList(*web3Network, 10); err != nil {
 			log.Fatal(err)
 		}
 	}
+
+	// If the web3Network is not the default one, use the default contracts for that network or the provided addresses
+	if *web3Network != defaultNetwork {
+		contractAddrs := config.DefaultConfig[*web3Network]
+		if *organizationRegistryAddress == defaultContracts.OrganizationRegistrySmartContract {
+			*organizationRegistryAddress = contractAddrs.OrganizationRegistrySmartContract
+		}
+		if *processRegistryAddress == defaultContracts.ProcessRegistrySmartContract {
+			*processRegistryAddress = contractAddrs.ProcessRegistrySmartContract
+		}
+		if *stateTransitionZKVerifierAddress == defaultContracts.StateTransitionZKVerifier {
+			*stateTransitionZKVerifierAddress = contractAddrs.StateTransitionZKVerifier
+		}
+		if *resultsZKVerifierAddress == defaultContracts.ResultsZKVerifier {
+			*resultsZKVerifierAddress = contractAddrs.ResultsZKVerifier
+		}
+	}
+
+	log.Infow("using web3 configuration",
+		"network", *web3Network,
+		"organizationRegistryAddress", *organizationRegistryAddress,
+		"processRegistryAddress", *processRegistryAddress,
+		"stateTransitionZKVerifierAddress", *stateTransitionZKVerifierAddress,
+		"resultsZKVerifierAddress", *resultsZKVerifierAddress,
+		"web3rpcs", *web3rpcs,
+	)
 
 	// Intance contracts with the provided web3rpcs
 	contracts, err := web3.New(*web3rpcs)
@@ -122,7 +149,7 @@ func main() {
 		log.Infow("no remote sequencer endpoint provided, starting a local one...")
 		// Start a local sequencer
 		service := new(localService)
-		if err := service.Start(testCtx, contracts); err != nil {
+		if err := service.Start(testCtx, contracts, *web3Network); err != nil {
 			log.Fatal(err)
 		}
 		defer service.Stop()
@@ -259,7 +286,7 @@ type localService struct {
 	api            *service.APIService
 }
 
-func (s *localService) Start(ctx context.Context, contracts *web3.Contracts) error {
+func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, network string) error {
 	// Create storage with a in-memory database
 	stg := storage.New(memdb.New())
 	sequencer.AggregatorTickerInterval = time.Second * 2
@@ -275,7 +302,7 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts) err
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Start API service
-	s.api = service.NewAPI(stg, defaultSequencerHost, defaultSequencerPort, defaultNetwork, false)
+	s.api = service.NewAPI(stg, defaultSequencerHost, defaultSequencerPort, network, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}
