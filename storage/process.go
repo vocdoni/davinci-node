@@ -187,8 +187,8 @@ func (s *Storage) listProcessesWithEncryptionKeys() ([][]byte, error) {
 // duration are marked as ended.
 func (s *Storage) monitorEndedProcesses() {
 	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
 	go func() {
+		defer ticker.Stop()
 		for range ticker.C {
 			s.checkAndUpdateEndedProcesses()
 		}
