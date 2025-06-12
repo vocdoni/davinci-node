@@ -4,7 +4,24 @@ import { useSequencerInfo } from '~hooks/useSequencerAPI'
 
 export const Navbar = () => {
   const { data: info, isLoading } = useSequencerInfo()
-  const blockExplorerUrl = import.meta.env.BLOCK_EXPLORER_URL || 'https://sepolia.etherscan.io/address'
+  
+  // Get block explorer URL from runtime config (injected by Docker) or fallback to build-time env var
+  const getBlockExplorerUrl = (): string => {
+    // 1. Check runtime config (injected by Docker)
+    if (window.__RUNTIME_CONFIG__?.BLOCK_EXPLORER_URL) {
+      return window.__RUNTIME_CONFIG__.BLOCK_EXPLORER_URL
+    }
+    
+    // 2. Check build-time env var
+    if (import.meta.env.BLOCK_EXPLORER_URL) {
+      return import.meta.env.BLOCK_EXPLORER_URL
+    }
+    
+    // 3. Default fallback
+    return 'https://sepolia.etherscan.io/address'
+  }
+  
+  const blockExplorerUrl = getBlockExplorerUrl()
 
   return (
     <Box bg="white" shadow="sm" borderBottom="1px" borderColor="gray.200">
