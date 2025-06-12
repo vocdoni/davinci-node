@@ -18,6 +18,7 @@ const (
 	VoteIDStatusProcessed
 	VoteIDStatusSettled
 	VoteIDStatusError
+	VoteIDStatusTimeout
 )
 
 // voteIDStatusNames maps status codes to human-readable names
@@ -28,6 +29,7 @@ var voteIDStatusNames = map[int]string{
 	VoteIDStatusProcessed:  "processed",
 	VoteIDStatusSettled:    "settled",
 	VoteIDStatusError:      "error",
+	VoteIDStatusTimeout:    "timeout",
 }
 
 // VoteIDStatus returns the status of a vote ID for a given processID and voteID.
@@ -73,12 +75,12 @@ func VoteIDStatusName(status int) string {
 func (s *Storage) MarkVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	return s.markVoteIDsSettledUnsafe(processID, voteIDs)
+	return s.markVoteIDsSettled(processID, voteIDs)
 }
 
 // markVoteIDsSettledUnsafe marks a list of vote IDs as settled without acquiring locks.
 // This method assumes the caller already holds the globalLock.
-func (s *Storage) markVoteIDsSettledUnsafe(processID []byte, voteIDs [][]byte) error {
+func (s *Storage) markVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
 	// Use a transaction for better atomicity
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), voteIDStatusPrefix)
 	defer wTx.Discard()
@@ -95,48 +97,58 @@ func (s *Storage) markVoteIDsSettledUnsafe(processID []byte, voteIDs [][]byte) e
 	return wTx.Commit()
 }
 
-// CleanProcessVoteIDs removes all vote ID status entries for a given processID.
-// Returns the number of entries removed and any error encountered.
-func (s *Storage) CleanProcessVoteIDs(processID []byte) (int, error) {
+// MarkProcessVoteIDsTimeout marks all unsettled vote IDs for a process as timeout.
+// This is called when a process ends to indicate that votes were not processed
+// due to process termination, but preserves the vote ID records for voter queries.
+func (s *Storage) MarkProcessVoteIDsTimeout(processID []byte) (int, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+	return s.markProcessVoteIDsTimeout(processID)
+}
 
-	log.Debugw("starting vote ID status cleanup", "processID", fmt.Sprintf("%x", processID))
-
+// markProcessVoteIDsTimeoutUnsafe marks all unsettled vote IDs for a process as timeout
+// without acquiring locks. This method assumes the caller already holds the globalLock.
+func (s *Storage) markProcessVoteIDsTimeout(processID []byte) (int, error) {
 	prefixedDB := prefixeddb.NewPrefixedDatabase(s.db, voteIDStatusPrefix)
+	wTx := prefixedDB.WriteTx()
+	defer wTx.Discard()
 
-	// read all keys and store them in memory
-	var keysToDelete [][]byte
-	if err := prefixedDB.Iterate(processID, func(k, _ []byte) bool {
-		// Make a complete copy of the key to avoid any issues with the iteration
-		keyCopy := make([]byte, len(k))
-		copy(keyCopy, k)
-		keysToDelete = append(keysToDelete, append(processID, keyCopy...))
+	var updatedCount int
+
+	// Iterate through all vote IDs for this process
+	if err := prefixedDB.Iterate(processID, func(k, v []byte) bool {
+		// Create the full key
+		fullKey := append(processID, k...)
+
+		// Get current status
+		currentStatus, err := bytesToInt(v)
+		if err != nil {
+			log.Warnw("invalid vote ID status format during timeout marking",
+				"key", fmt.Sprintf("%x", fullKey), "error", err)
+			return true
+		}
+
+		// Only mark as timeout if not already settled
+		if currentStatus != VoteIDStatusSettled {
+			timeoutStatus := intToBytes(VoteIDStatusTimeout)
+			if err := wTx.Set(fullKey, timeoutStatus); err != nil {
+				log.Warnw("failed to mark vote ID as timeout",
+					"key", fmt.Sprintf("%x", fullKey), "error", err)
+				return true
+			}
+			updatedCount++
+		}
 		return true
 	}); err != nil {
 		return 0, fmt.Errorf("error iterating vote ID status keys: %w", err)
 	}
 
-	if len(keysToDelete) == 0 {
-		return 0, nil
-	}
-
-	wTx := prefixedDB.WriteTx()
-	defer wTx.Discard()
-
-	// delete all keys in the transaction
-	for _, key := range keysToDelete {
-		if err := wTx.Delete(key); err != nil {
-			log.Warnw("error deleting vote ID status", "key", fmt.Sprintf("%x", key), "error", err)
-			return 0, fmt.Errorf("error deleting vote ID status: %w", err)
-		}
-	}
-
 	if err := wTx.Commit(); err != nil {
-		return 0, fmt.Errorf("error committing deletion transaction: %w", err)
+		return 0, fmt.Errorf("error committing timeout status updates: %w", err)
 	}
 
-	return len(keysToDelete), nil
+	log.Debugw("marked vote IDs as timeout", "processID", fmt.Sprintf("%x", processID), "count", updatedCount)
+	return updatedCount, nil
 }
 
 // setVoteIDStatus is an internal helper to set the status of a vote ID.

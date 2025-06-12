@@ -225,6 +225,9 @@ func (s *Storage) checkAndUpdateEndedProcesses() {
 					continue
 				}
 				log.Infow("process status updated to ended", "pid", hex.EncodeToString(pid))
+				if err := s.cleanupEndedProcess(pid); err != nil {
+					log.Errorw(err, "failed to cleanup ended process "+hex.EncodeToString(pid))
+				}
 			}
 		}
 	}
