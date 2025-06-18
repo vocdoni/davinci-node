@@ -158,7 +158,7 @@ type CensusProof struct {
 
 // Valid checks that the CensusProof is well-formed
 func (cp *CensusProof) Valid() bool {
-	return cp.Root != nil && cp.Key != nil && cp.Value != nil &&
+	return cp != nil && cp.Root != nil && cp.Key != nil && cp.Value != nil &&
 		cp.Siblings != nil && cp.Weight != nil
 }
 

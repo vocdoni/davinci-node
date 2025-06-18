@@ -113,13 +113,12 @@ func TestIntegration(t *testing.T) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote := createVote(c, pid, ballotMode, encryptionKey, signers[i])
+			vote, _, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], nil, nil)
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
-
 			// Make the request to cast the vote
 			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
@@ -130,15 +129,29 @@ func TestIntegration(t *testing.T) {
 			err = json.NewDecoder(bytes.NewReader(body)).Decode(&voteResponse)
 			c.Assert(err, qt.IsNil)
 			c.Assert(voteResponse.VoteID, qt.Not(qt.IsNil))
-			c.Logf("Vote %d created with ID: %s", i, voteResponse.VoteID.String())
+			c.Logf("Vote %d (addr: %s - k: %s) created with ID: %s", i, vote.Address.String(), k.String(), voteResponse.VoteID.String())
 
 			// Save the voteID for status checks
 			voteIDs = append(voteIDs, voteResponse.VoteID)
 			count++
+			// try to send the vote again to check for duplicate handling
+			body, status, err = cli.Request("POST", vote, nil, api.VotesEndpoint)
+			c.Assert(err, qt.IsNil)
+			c.Assert(status, qt.Equals, 400)
+			c.Assert(string(body), qt.Contains, api.ErrBallotAlreadySubmitted.Err.Error())
 		}
 		c.Assert(count, qt.Equals, numBallots)
 		// Wait for the vote to be registered
 		t.Logf("Waiting for %d votes to be registered and aggregated", count)
+	})
+
+	c.Run("create invalid votes", func(c *qt.C) {
+		vote := createVoteFromInvalidVoter(c, pid, ballotMode, encryptionKey)
+		// Make the request to try cast the vote
+		body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+		c.Assert(err, qt.IsNil)
+		c.Assert(status, qt.Equals, 400)
+		c.Assert(string(body), qt.Contains, api.ErrMalformedBody.Withf("invalid census proof").Error())
 	})
 
 	c.Run("wait for process votes", func(c *qt.C) {
@@ -179,14 +192,14 @@ func TestIntegration(t *testing.T) {
 			select {
 			case <-ticker.C:
 				// Check that votes are settled (state transitions confirmed on blockchain)
-				if allSettled, failed := checkVoteStatus(t, cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
-					continue
-				} else if len(failed) > 0 {
-					hexFailed := make([]string, len(failed))
-					for i, v := range failed {
-						hexFailed[i] = v.String()
+				if allSettled, failed := checkVoteStatus(t, cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusProcessed)); !allSettled {
+					if len(failed) > 0 {
+						hexFailed := make([]string, len(failed))
+						for i, v := range failed {
+							hexFailed[i] = v.String()
+						}
+						t.Fatalf("Some votes failed to be processed: %v", hexFailed)
 					}
-					t.Fatalf("Some votes failed to be settled: %v", hexFailed)
 				}
 				if publishedVotes(t, services.Contracts, pid) < numBallots {
 					continue
@@ -221,8 +234,7 @@ func TestIntegration(t *testing.T) {
 						for i, v := range failedSettled {
 							hexFailedSettled[i] = v.String()
 						}
-						t.Logf("Some votes are not yet settled: %v, waiting...", hexFailedSettled)
-						continue
+						t.Fatalf("Some votes are not yet settled: %v, waiting...", hexFailedSettled)
 					}
 					t.Log("Not all votes are settled yet, waiting...")
 					continue
