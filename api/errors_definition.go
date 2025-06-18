@@ -40,6 +40,7 @@ var (
 	ErrMalformedParam          = Error{Code: 40015, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed parameter")}
 	ErrMalformedNullifier      = Error{Code: 40016, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed nullifier")}
 	ErrMalformedAddress        = Error{Code: 40017, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed address")}
+	ErrBallotAlreadySubmitted  = Error{Code: 40018, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("ballot already submitted")}
 
 	ErrMarshalingServerJSONFailed = Error{Code: 50001, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("marshaling (server-side) JSON failed")}
 	ErrGenericInternalServerError = Error{Code: 50002, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("internal server error")}

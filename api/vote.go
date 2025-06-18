@@ -251,6 +251,10 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// push the ballot to the sequencer storage queue to be verified, aggregated
 	// and published
 	if err := a.storage.PushBallot(ballot); err != nil {
+		if errors.Is(err, storage.ErroBallotAlreadyExists) {
+			ErrBallotAlreadySubmitted.Write(w)
+			return
+		}
 		ErrGenericInternalServerError.Withf("could not push ballot: %v", err).Write(w)
 		return
 	}
