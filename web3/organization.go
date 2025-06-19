@@ -17,7 +17,7 @@ func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.Or
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to create transact options: %w", err)
 	}
-	tx, err := c.organizations.CreateOrganization(txOpts, address, orgInfo.Name, orgInfo.MetadataURI, []common.Address{c.signer.Address()})
+	tx, err := c.organizations.CreateOrganization(txOpts, orgInfo.Name, orgInfo.MetadataURI, []common.Address{c.signer.Address()})
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to create organization: %w", err)
 	}
@@ -27,14 +27,14 @@ func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.Or
 // Organization returns the organization with the given address from the OrganizationRegistry contract.
 func (c *Contracts) Organization(address common.Address) (*types.OrganizationInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
-	name, uri, err := c.organizations.GetOrganization(&bind.CallOpts{Context: ctx}, address)
+	org, err := c.organizations.GetOrganization(&bind.CallOpts{Context: ctx}, address)
 	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get organization: %w", err)
 	}
 	return &types.OrganizationInfo{
-		Name:        name,
-		MetadataURI: uri,
+		Name:        org.Name,
+		MetadataURI: org.MetadataURI,
 	}, nil
 }
 
@@ -56,7 +56,7 @@ func (c *Contracts) MonitorOrganizationCreatedByPolling(ctx context.Context, int
 					continue
 				}
 				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.organizations.FilterOrganizationCreated(&bind.FilterOpts{Start: c.lastWatchOrgBlock, End: &end, Context: ctxQuery}, nil, nil)
+				iter, err := c.organizations.FilterOrganizationCreated(&bind.FilterOpts{Start: c.lastWatchOrgBlock, End: &end, Context: ctxQuery}, nil)
 				cancel()
 				if err != nil || iter == nil {
 					log.Warnw("failed to filter organization created, retrying", "err", err)
