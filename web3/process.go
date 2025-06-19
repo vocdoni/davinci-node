@@ -20,13 +20,7 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create transact options: %w", err)
 	}
-	pid := types.ProcessID{
-		Address: process.OrganizationId,
-		Nonce:   txOpts.Nonce.Uint64(),
-		ChainID: uint32(c.ChainID),
-	}
-	pid32 := [32]byte{}
-	copy(pid32[:], pid.Marshal())
+
 	p := process2ContractProcess(process)
 	tx, err := c.processes.NewProcess(
 		txOpts,
@@ -36,16 +30,23 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 		p.BallotMode,
 		p.Census,
 		p.MetadataURI,
-		p.OrganizationId,
-		pid32,
 		p.EncryptionKey,
 		p.LatestStateRoot,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create process: %w", err)
 	}
+	// get the next process ID from the contract
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get next process ID: %w", err)
+	}
+	pidDecoded := &types.ProcessID{}
+	pidDecoded.SetBytes(pid[:])
 	hash := tx.Hash()
-	return &pid, &hash, nil
+	return pidDecoded, &hash, nil
 }
 
 // Process returns the process with the given ID from the ProcessRegistry contract.
