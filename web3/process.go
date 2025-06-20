@@ -137,7 +137,7 @@ func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (*common.
 	return &hash, nil
 }
 
-func (c *Contracts) SetProcessStatus(processID []byte, status uint8) (*common.Hash, error) {
+func (c *Contracts) SetProcessStatus(processID []byte, status types.ProcessStatus) (*common.Hash, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
@@ -334,7 +334,7 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 	}
 
 	return &types.Process{
-		Status:         p.Status,
+		Status:         types.ProcessStatus(p.Status),
 		OrganizationId: p.OrganizationId,
 		EncryptionKey: &types.EncryptionKey{
 			X: (*types.BigInt)(p.EncryptionKey.X),
@@ -371,7 +371,7 @@ type ProcessRegistryProcess struct {
 func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	var prp ProcessRegistryProcess
 
-	prp.Status = p.Status
+	prp.Status = uint8(p.Status)
 	prp.OrganizationId = p.OrganizationId
 	prp.EncryptionKey = npbindings.IProcessRegistryEncryptionKey{
 		X: p.EncryptionKey.X.MathBigInt(),

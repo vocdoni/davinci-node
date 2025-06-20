@@ -176,6 +176,10 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrResourceNotFound.Withf("could not get process: %v", err).Write(w)
 		return
 	}
+	// check that the process is ready to accept votes
+	if process.Status != types.ProcessStatusReady {
+		ErrProcessNotAcceptingVotes.Withf("status: %s", process.Status).Write(w)
+	}
 	// check that the census root is the same as the one in the process
 	if !bytes.Equal(process.Census.CensusRoot, vote.CensusProof.Root) {
 		ErrInvalidCensusProof.Withf("census root mismatch").Write(w)
@@ -251,8 +255,17 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// push the ballot to the sequencer storage queue to be verified, aggregated
 	// and published
 	if err := a.storage.PushBallot(ballot); err != nil {
-		ErrGenericInternalServerError.Withf("could not push ballot: %v", err).Write(w)
-		return
+		switch {
+		case errors.Is(err, storage.ErroBallotAlreadyExists):
+			ErrBallotAlreadySubmitted.Write(w)
+			return
+		case errors.Is(err, storage.ErrNullifierProcessing):
+			ErrBallotAlreadyProcessing.Write(w)
+			return
+		default:
+			ErrGenericInternalServerError.Withf("could not push ballot: %v", err).Write(w)
+			return
+		}
 	}
 
 	// Get the vote ID and return it to the client

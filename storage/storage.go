@@ -69,13 +69,15 @@ import (
 )
 
 var (
-	ErrKeyAlreadyExists = errors.New("key already exists")
-	ErrNotFound         = errors.New("not found")
-	ErrNoMoreElements   = errors.New("no more elements")
+	ErrKeyAlreadyExists    = errors.New("key already exists")
+	ErrNotFound            = errors.New("not found")
+	ErrNoMoreElements      = errors.New("no more elements")
+	ErrNullifierProcessing = errors.New("nullifier is being processed")
 
 	// Prefixes
 	ballotPrefix                = []byte("b/")
 	ballotReservationPrefix     = []byte("br/")
+	processingNullifierPrefix   = []byte("pn/")
 	voteIDStatusPrefix          = []byte("vs/")
 	verifiedBallotPrefix        = []byte("vb/")
 	verifiedBallotReservPrefix  = []byte("vbr/")
