@@ -76,6 +76,7 @@ type ResultsProofs struct {
 type Vote struct {
 	circuits.Vote[frontend.Variable]
 	OverwrittenBallot circuits.Ballot
+	IsOverwrite       frontend.Variable
 }
 
 // Define declares the circuit's constraints
@@ -126,8 +127,12 @@ func (c StateTransitionCircuit) proofInputsHash(api frontend.API, idx int) front
 		circuits.FrontendError(api, "failed to create mimc7 hash function: ", err)
 		return 0
 	}
+	// select between the overwritten ballot and the original ballot based on
+	// the IsOverwrite flag
+	v := c.Votes[idx]
+	v.Ballot = *v.Ballot.Select(api, v.IsOverwrite, &c.Votes[idx].OverwrittenBallot, &v.Ballot)
 	// calculate the hash of the public inputs of the proof of the i-th vote
-	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, c.Votes[idx].Vote)...); err != nil {
+	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, v.Vote)...); err != nil {
 		circuits.FrontendError(api, "failed to write mimc7 hash function: ", err)
 		return 0
 	}
@@ -311,8 +316,8 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	for i, b := range circuit.VotesProofs.Ballot {
 		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].Ballot, zero))
 		overwrittenSum.Add(api, overwrittenSum, circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
-		ballotCount = api.Add(ballotCount, api.Select(b.IsInsertOrUpdate(api), 1, 0))
-		overwrittenCount = api.Add(overwrittenCount, api.Select(b.IsUpdate(api), 1, 0))
+		ballotCount = api.Add(ballotCount, b.IsInsertOrUpdate(api))
+		overwrittenCount = api.Add(overwrittenCount, b.IsUpdate(api))
 	}
 
 	circuit.Results.NewResultsAdd.AssertIsEqual(api,

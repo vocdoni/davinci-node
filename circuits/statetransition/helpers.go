@@ -35,12 +35,23 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 	witness.Process.EncryptionKey.PubKey[0] = o.Process().EncryptionKey.PubKey[0]
 	witness.Process.EncryptionKey.PubKey[1] = o.Process().EncryptionKey.PubKey[1]
 
+	// update stats
+	witness.NumNewVotes = o.BallotCount()
+	witness.NumOverwrites = o.OverwriteCount()
+
 	for i, v := range o.PaddedVotes() {
 		witness.Votes[i].Nullifier = v.Nullifier
 		witness.Votes[i].Ballot = *v.Ballot.ToGnark()
 		witness.Votes[i].Address = v.Address
 		witness.Votes[i].Commitment = v.Commitment
 		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
+		witness.Votes[i].IsOverwrite = 0
+		// the vote is an overwrite if its index is greater than the number of
+		// new votes and less than the total number of votes (NumNewVotes +
+		// NumOverwrites)
+		if i >= o.BallotCount() && i < o.BallotCount()+o.OverwriteCount() {
+			witness.Votes[i].IsOverwrite = 1
+		}
 	}
 
 	witness.ProcessProofs = ProcessProofs{}
@@ -90,9 +101,6 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 		NewResultsAdd: *o.NewResultsAdd().ToGnark(),
 		NewResultsSub: *o.NewResultsSub().ToGnark(),
 	}
-	// update stats
-	witness.NumNewVotes = o.BallotCount()
-	witness.NumOverwrites = o.OverwriteCount()
 	// RootHashAfter
 	witness.RootHashAfter, err = o.RootAsBigInt()
 	if err != nil {
