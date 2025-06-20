@@ -7,13 +7,38 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+type ProcessStatus uint8
+
 const (
-	ProcessStatusReady    = uint8(iota) // Process is ready to be started
-	ProcessStatusEnded                  // Process has ended and waiting for results
-	ProcessStatusCanceled               // Process has been canceled
-	ProcessStatusPaused                 // Process is paused
-	ProcessStatusResults                // Process has results available
+	ProcessStatusReady    = ProcessStatus(iota) // Process is ready to be started
+	ProcessStatusEnded                          // Process has ended and waiting for results
+	ProcessStatusCanceled                       // Process has been canceled
+	ProcessStatusPaused                         // Process is paused
+	ProcessStatusResults                        // Process has results available
+
+	ProcessStatusReadyName    = "ready"
+	ProcessStatusEndedName    = "ended"
+	ProcessStatusCanceledName = "canceled"
+	ProcessStatusPausedName   = "paused"
+	ProcessStatusResultsName  = "results"
 )
+
+func (s ProcessStatus) String() string {
+	switch s {
+	case ProcessStatusReady:
+		return ProcessStatusReadyName
+	case ProcessStatusEnded:
+		return ProcessStatusEndedName
+	case ProcessStatusCanceled:
+		return ProcessStatusCanceledName
+	case ProcessStatusPaused:
+		return ProcessStatusPausedName
+	case ProcessStatusResults:
+		return ProcessStatusResultsName
+	default:
+		return "unknown"
+	}
+}
 
 type (
 	GenericMetadata    map[string]string
@@ -83,7 +108,7 @@ func (m *Metadata) String() string {
 
 type Process struct {
 	ID                 HexBytes              `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
-	Status             uint8                 `json:"status"                   cbor:"1,keyasint,omitempty"`
+	Status             ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
 	OrganizationId     common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
 	EncryptionKey      *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
 	StateRoot          *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`

@@ -342,4 +342,21 @@ func TestIntegration(t *testing.T) {
 			}
 		}
 	})
+
+	c.Run("try to send votes to ended process", func(c *qt.C) {
+		for i := range signers {
+			// generate a vote for the first participant
+			vote, _, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], secrets[i], ks[i])
+			// generate census proof for first participant
+			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
+			c.Assert(censusProof, qt.Not(qt.IsNil))
+			c.Assert(censusProof.Siblings, qt.IsNotNil)
+			vote.CensusProof = *censusProof
+			// Make the request to cast the vote
+			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+			c.Assert(err, qt.IsNil)
+			c.Assert(status, qt.Equals, 400)
+			c.Assert(string(body), qt.Contains, api.ErrProcessNotAcceptingVotes.Error())
+		}
+	})
 }
