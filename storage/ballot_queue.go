@@ -770,19 +770,21 @@ func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
 
 	// initialize the write transaction over the results prefix
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedResultPrefix)
+	defer wTx.Discard()
+
+	// check if the processID already exists
+	if _, err := wTx.Get(res.ProcessID); err == nil {
+		// raise an error if the processID already exists
+		return fmt.Errorf("verified results for processID %x already exists", res.ProcessID)
+	}
 
 	// set the key-value pair in the write transaction using the processID as
 	// the key
 	if err := wTx.Set(res.ProcessID, val); err != nil {
-		wTx.Discard()
 		return err
 	}
 
-	if err := wTx.Commit(); err != nil {
-		return err
-	}
-
-	return nil
+	return wTx.Commit()
 }
 
 // NextVerifiedResults retrieves the next verified results from the storage.
@@ -793,21 +795,30 @@ func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
 func (s *Storage) NextVerifiedResults() (*VerifiedResults, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+
+	log.Debugw("searching for verified results", "prefix", hex.EncodeToString(verifiedResultPrefix))
+
 	pr := prefixeddb.NewPrefixedReader(s.db, verifiedResultPrefix)
 	var chosenVal []byte
-	if err := pr.Iterate(nil, func(_, v []byte) bool {
+	if err := pr.Iterate(nil, func(k, v []byte) bool {
+		log.Debugw("found verified result entry", "key", hex.EncodeToString(k), "keyLen", len(k))
 		chosenVal = v
 		return false
 	}); err != nil {
 		return nil, fmt.Errorf("iterate verified results: %w", err)
 	}
 	if chosenVal == nil {
+		log.Debugw("no verified results found in storage")
 		return nil, ErrNoMoreElements
 	}
 	var res VerifiedResults
 	if err := DecodeArtifact(chosenVal, &res); err != nil {
 		return nil, fmt.Errorf("decode verified results: %w", err)
 	}
+
+	log.Debugw("retrieved verified results from storage",
+		"processID", hex.EncodeToString(res.ProcessID))
+
 	// Return the verified results
 	return &res, nil
 }

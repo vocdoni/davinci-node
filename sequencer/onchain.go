@@ -144,11 +144,14 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 }
 
 func (s *Sequencer) processResultsOnChain() {
+	log.Debugw("checking for verified results to push onchain")
 	for {
 		res, err := s.stg.NextVerifiedResults()
 		if err != nil {
 			if !errors.Is(err, storage.ErrNoMoreElements) {
 				log.Errorw(err, "failed to pull verified results")
+			} else {
+				log.Debugw("no verified results available for onchain processing")
 			}
 			break
 		}
