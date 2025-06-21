@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
@@ -192,7 +193,8 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		log.Debugw("process already finalized, skipping", "pid", pid.String())
 		return nil
 	}
-	log.Debugw("finalizing process", "pid", pid.String())
+
+	log.Debugw("finalizing process", "pid", pid.String(), "stateRoot", process.StateRoot.String())
 
 	// Fetch the encryption key
 	encryptionPubKey, encryptionPrivKey, err := f.stg.EncryptionKeys(pid)
@@ -204,6 +206,17 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	st, err := state.LoadOnRoot(f.stateDB, pid.BigInt(), process.StateRoot.MathBigInt())
 	if err != nil {
 		return fmt.Errorf("could not open state for process %s: %w", pid.String(), err)
+	}
+
+	// Ensure the state root matches the process state root
+	stateRoot, err := st.Root()
+	if err != nil {
+		return fmt.Errorf("could not get state root for process %s: %w", pid.String(), err)
+	}
+	processStateRoot := state.BigIntToBytes(process.StateRoot.MathBigInt())
+	if !bytes.Equal(stateRoot, processStateRoot) {
+		return fmt.Errorf("state root is not synced or mismatch for process %s: expected %x, got %s",
+			pid.String(), processStateRoot, stateRoot)
 	}
 
 	// Fetch the encrypted accumulators
@@ -290,7 +303,7 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		return fmt.Errorf("could not generate proof for process %s: %w", pid.String(), err)
 	}
 
-	stateRoot, err := st.RootAsBigInt()
+	stateRootBI, err := st.RootAsBigInt()
 	if err != nil {
 		return fmt.Errorf("could not get state root for process %s: %w", pid.String(), err)
 	}
@@ -300,7 +313,7 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		ProcessID: pid.Marshal(),
 		Proof:     proof.(*groth16_bn254.Proof),
 		Inputs: storage.ResultsVerifierProofInputs{
-			StateRoot: stateRoot,
+			StateRoot: stateRootBI,
 			Results:   resultsAccumulator,
 		},
 	})
@@ -332,9 +345,10 @@ func (f *finalizer) setProcessResults(pid *types.ProcessID, res *storage.Verifie
 		return fmt.Errorf("could not store verified results for process %s: %w", pid.String(), err)
 	}
 
-	log.Infow("process finalized",
+	log.Infow("process finalized and pushed to storage queue",
 		"pid", pid.String(),
 		"result", results)
+
 	return nil
 }
 
