@@ -19,7 +19,7 @@ const (
 	// Vote status endpoints
 	VoteStatusVoteIDParam = "voteId"                                                                            // URL parameter for vote ID
 	VoteStatusEndpoint    = VotesEndpoint + "/{" + ProcessURLParam + "}/voteId/{" + VoteStatusVoteIDParam + "}" // GET: Check vote status
-	
+
 	// Vote address endpoint
 	VoteByAddressAddressParam = "address"                                                                                // URL parameter for address
 	VoteByAddressEndpoint     = VotesEndpoint + "/{" + ProcessURLParam + "}/address/{" + VoteByAddressAddressParam + "}" // GET: Get vote by address

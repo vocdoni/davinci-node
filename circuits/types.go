@@ -439,7 +439,7 @@ type EmulatedCiphertext[F emulated.FieldParams] struct {
 type EmulatedBallot[F emulated.FieldParams] [types.FieldsPerBallot]EmulatedCiphertext[F]
 
 // EmulatedVote is a copy of the Vote struct, but using the emulated.Element
-// type as generic type for the Address field and the EmulatedBallot type for 
+// type as generic type for the Address field and the EmulatedBallot type for
 // the Ballot field.
 type EmulatedVote[F emulated.FieldParams] struct {
 	Address emulated.Element[F]
