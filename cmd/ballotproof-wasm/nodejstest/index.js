@@ -74,8 +74,6 @@ async function main() {
     } else {
       const parsedResult = JSON.parse(result.data);
       console.log('\nBallot Proof Generated:');
-      console.log('- Commitment:', parsedResult.circuitInputs.commitment);
-      console.log('- Nullifier:', parsedResult.circuitInputs.nullifier);
       console.log('- Signature Hash:', parsedResult.signatureHash);
       console.log('\nFull Circuit Inputs:', JSON.stringify(parsedResult.circuitInputs, null, 2));
     }

@@ -170,8 +170,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	hashInputs = append(hashInputs, ballotMode.Serialize()...)
 	hashInputs = append(hashInputs, encryptionKey.Serialize()...)
 	hashInputs = append(hashInputs, b.Address)
-	hashInputs = append(hashInputs, b.Commitment)
-	hashInputs = append(hashInputs, b.Nullifier)
 	hashInputs = append(hashInputs, b.EncryptedBallot.BigInts()...)
 
 	inputHash, err := mimc7.Hash(hashInputs, nil)
@@ -202,10 +200,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
-			Commitment: emulated.ValueOf[sw_bn254.ScalarField](b.Commitment),
-			Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](b.Nullifier),
-			Ballot:     *b.EncryptedBallot.ToGnarkEmulatedBN254(),
+			Address: emulated.ValueOf[sw_bn254.ScalarField](b.Address),
+			Ballot:  *b.EncryptedBallot.ToGnarkEmulatedBN254(),
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
@@ -247,7 +243,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		"pid", pid.String(),
 		"voteID", hex.EncodeToString(b.VoteID()),
 		"address", b.Address.String(),
-		"nullifier", b.Nullifier.String(),
 		"took", time.Since(startTime).String(),
 	)
 
@@ -256,8 +251,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		VoteID:          b.VoteID(),
 		ProcessID:       b.ProcessID,
 		VoterWeight:     b.VoterWeight,
-		Nullifier:       b.Nullifier,
-		Commitment:      b.Commitment,
 		EncryptedBallot: b.EncryptedBallot,
 		Address:         b.Address,
 		Proof:           proof.(*groth16_bls12377.Proof),

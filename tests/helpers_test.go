@@ -472,7 +472,6 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	}
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	secret := util.RandomBytes(16)
 	k, err := elgamal.RandK()
 	c.Assert(err, qt.IsNil)
 	// generate random ballot fields
@@ -490,7 +489,6 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:   address.Bytes(),
 		ProcessID: pid.Marshal(),
-		Secret:    secret,
 		EncryptionKey: []*types.BigInt{
 			(*types.BigInt)(encKey.X),
 			(*types.BigInt)(encKey.Y),
@@ -519,8 +517,6 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	return api.Vote{
 		ProcessID:        wasmResult.ProccessID,
 		Address:          wasmInputs.Address,
-		Commitment:       wasmResult.Commitment,
-		Nullifier:        wasmResult.Nullifier,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,

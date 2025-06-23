@@ -329,18 +329,14 @@ func (p Process[T]) VarsToEmulatedElementBN254(api frontend.API) Process[emulate
 // Vote is a struct that contains all data related to a vote.
 // Is a generic struct that can be used with any type of circuit input.
 type Vote[T any] struct {
-	Nullifier  T
-	Ballot     Ballot
-	Address    T
-	Commitment T
+	Ballot  Ballot
+	Address T
 }
 
 func (v Vote[T]) ToEmulated(api frontend.API) EmulatedVote[sw_bn254.ScalarField] {
 	return EmulatedVote[sw_bn254.ScalarField]{
-		Nullifier:  *varToEmulatedElementBN254(api, v.Nullifier),
-		Ballot:     v.Ballot.ToEmulatedBallot(api),
-		Address:    *varToEmulatedElementBN254(api, v.Address),
-		Commitment: *varToEmulatedElementBN254(api, v.Commitment),
+		Ballot:  v.Ballot.ToEmulatedBallot(api),
+		Address: *varToEmulatedElementBN254(api, v.Address),
 	}
 }
 
@@ -352,8 +348,6 @@ func (v Vote[T]) SerializeAsVars() []frontend.Variable {
 	}
 	list := []frontend.Variable{}
 	list = append(list, v.Address)
-	list = append(list, v.Commitment)
-	list = append(list, v.Nullifier)
 	list = append(list, v.Ballot.SerializeVars()...)
 	return list
 }
@@ -445,26 +439,20 @@ type EmulatedCiphertext[F emulated.FieldParams] struct {
 type EmulatedBallot[F emulated.FieldParams] [types.FieldsPerBallot]EmulatedCiphertext[F]
 
 // EmulatedVote is a copy of the Vote struct, but using the emulated.Element
-// type as generic type for the Address, Commitment and Nullifier fields, and
-// the EmulatedBallot type for the Ballot field.
+// type as generic type for the Address field and the EmulatedBallot type for 
+// the Ballot field.
 type EmulatedVote[F emulated.FieldParams] struct {
-	Address    emulated.Element[F]
-	Commitment emulated.Element[F]
-	Nullifier  emulated.Element[F]
-	Ballot     EmulatedBallot[F]
+	Address emulated.Element[F]
+	Ballot  EmulatedBallot[F]
 }
 
 // Serialize returns a slice with the vote parameters in order
 //
 //	EmulatedVote.Address
-//	EmulatedVote.Commitment
-//	EmulatedVote.Nullifier
 //	EmulatedVote.Ballot
 func (z *EmulatedVote[F]) Serialize() []emulated.Element[F] {
 	list := []emulated.Element[F]{}
 	list = append(list, z.Address)
-	list = append(list, z.Commitment)
-	list = append(list, z.Nullifier)
 	list = append(list, z.Ballot.Serialize()...)
 	return list
 }
@@ -472,8 +460,6 @@ func (z *EmulatedVote[F]) Serialize() []emulated.Element[F] {
 // SerializeForBallotProof returns a slice with the vote parameters in order
 //
 //	EmulatedVote.Address
-//	EmulatedVote.Commitment
-//	EmulatedVote.Nullifier
 //	EmulatedVote.Ballot (in Twisted Edwards format)
 func (zt *EmulatedVote[F]) SerializeForBallotProof(api frontend.API) []emulated.Element[sw_bn254.ScalarField] {
 	z, ok := any(zt).(*EmulatedVote[sw_bn254.ScalarField])
@@ -482,8 +468,6 @@ func (zt *EmulatedVote[F]) SerializeForBallotProof(api frontend.API) []emulated.
 	}
 	list := []emulated.Element[sw_bn254.ScalarField]{}
 	list = append(list, z.Address)
-	list = append(list, z.Commitment)
-	list = append(list, z.Nullifier)
 	list = append(list, z.Ballot.SerializeAsTE(api)...)
 	return list
 }

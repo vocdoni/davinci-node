@@ -32,8 +32,6 @@ type VoteVerifierTestResults struct {
 	Addresses        []*big.Int
 	ProcessID        *big.Int
 	CensusRoot       *big.Int
-	Nullifiers       []*big.Int
-	Commitments      []*big.Int
 	Ballots          []elgamal.Ballot
 }
 
@@ -84,7 +82,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 	encryptionKey := circuits.EncryptionKeyFromECCPoint(ek)
 	// circuits assignments, voters data and proofs
 	var assignments []voteverifier.VerifyVoteCircuit
-	inputsHashes, addresses, nullifiers, commitments := []*big.Int{}, []*big.Int{}, []*big.Int{}, []*big.Int{}
+	inputsHashes, addresses := []*big.Int{}, []*big.Int{}
 	ballots := []elgamal.Ballot{}
 	var finalProcessID *big.Int
 	for i, voter := range votersData {
@@ -96,8 +94,6 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			finalProcessID = voterProof.ProcessID
 		}
 		addresses = append(addresses, voterProof.Address)
-		commitments = append(commitments, voterProof.Commitment)
-		nullifiers = append(nullifiers, voterProof.Nullifier)
 		ballots = append(ballots, *voterProof.Ballot)
 		// convert the circom inputs hash to the field of the curve used by the
 		// circuit as input for MIMC hash
@@ -120,8 +116,6 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 		hashInputs = append(hashInputs, circuits.MockBallotMode().Serialize()...)
 		hashInputs = append(hashInputs, encryptionKey.Serialize()...)
 		hashInputs = append(hashInputs, voterProof.Address)
-		hashInputs = append(hashInputs, voterProof.Commitment)
-		hashInputs = append(hashInputs, voterProof.Nullifier)
 		hashInputs = append(hashInputs, voterProof.Ballot.FromTEtoRTE().BigInts()...)
 		// hash the inputs to generate the inputs hash
 		inputsHash, err := mimc7.Hash(hashInputs, nil)
@@ -139,10 +133,8 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 			// circom inputs
 			Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-				Address:    emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
-				Commitment: emulated.ValueOf[sw_bn254.ScalarField](voterProof.Commitment),
-				Ballot:     *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
-				Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](voterProof.Nullifier),
+				Address: emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
+				Ballot:  *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
 			},
 			UserWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
 			Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
@@ -172,8 +164,6 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			Addresses:        addresses,
 			ProcessID:        finalProcessID,
 			CensusRoot:       testCensus.Root,
-			Nullifiers:       nullifiers,
-			Commitments:      commitments,
 			Ballots:          ballots,
 		}, voteverifier.VerifyVoteCircuit{
 			CircomProof:           circomPlaceholder.Proof,

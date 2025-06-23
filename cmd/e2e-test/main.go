@@ -497,7 +497,6 @@ func createVote(
 ) (api.Vote, error) {
 	// Emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	secret := util.RandomBytes(16)
 	k, err := elgamal.RandK()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate random k: %v", err)
@@ -520,7 +519,6 @@ func createVote(
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:   address.Bytes(),
 		ProcessID: pid.Marshal(),
-		Secret:    secret,
 		EncryptionKey: []*types.BigInt{
 			(*types.BigInt)(encKey.X),
 			(*types.BigInt)(encKey.Y),
@@ -565,8 +563,6 @@ func createVote(
 	return api.Vote{
 		ProcessID:        wasmResult.ProccessID,
 		Address:          wasmInputs.Address,
-		Commitment:       wasmResult.Commitment,
-		Nullifier:        wasmResult.Nullifier,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,

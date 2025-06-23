@@ -8,7 +8,6 @@ This WASM module enables client-side cryptographic operations for private voting
 
 - Ballot encryption using ElGamal cryptography
 - Generation of zero-knowledge proof inputs
-- Calculation of commitments and nullifiers
 - Preparation of circuit inputs for zero-knowledge proofs
 
 ## Usage
@@ -56,8 +55,6 @@ if (result.error) {
 ## Key Components
 
 - **Ballot Encryption**: Uses ElGamal encryption to protect vote privacy
-- **Nullifier Generation**: Creates a unique identifier that proves a vote was cast without revealing who cast it
-- **Commitment**: Cryptographically binds a voter to their ballot while preserving privacy
 - **Circuit Inputs**: Prepares the data needed for zero-knowledge proof generation
 
 ## Output Format
@@ -85,9 +82,6 @@ The module returns a JSON object with the following structure:
       "curveType": "bjj_gnark",
       "ciphertexts": [...]
     },
-    "nullifier": "...",        // Nullifier to prevent double voting
-    "commitment": "...",       // Commitment linking voter to ballot
-    "secret": "...",           // Secret (in circuit format)
     "inputsHash": "0x...",     // Hash of all inputs
     "inputsHashBigInt": "..."  // Big integer representation of input hash
   },
@@ -132,9 +126,6 @@ The module returns a JSON object with the following structure:
       // Additional ciphertexts...
     ]
   },
-  "nullifier": "9147474934240440483314732763366645198687962537096354787587696363360508609183",
-  "commitment": "6318921145501236088885839097668362318092907579751083698945861468270252428163",
-  "secret": "180938008061752692438535425262477716790",
   "inputsHash": "0x075b7831e5e4900990e5735ed498b75f40245c2e174b3dc7c5f9c00aff95a9b5",
   "inputsHashBigInt": "20216726076643980110130881325941807260575759913044419930205112959360291940791"
 }

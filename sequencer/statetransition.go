@@ -195,10 +195,8 @@ func (s *Sequencer) stateBatchToWitness(
 	// add the new ballots to the state
 	for _, v := range batch.Ballots {
 		if err := processState.AddVote(&state.Vote{
-			Nullifier:  v.Nullifier,
-			Ballot:     v.EncryptedBallot,
-			Address:    v.Address,
-			Commitment: v.Commitment,
+			Ballot:  v.EncryptedBallot,
+			Address: v.Address,
 		}); err != nil {
 			return nil, fmt.Errorf("failed to add vote: %w", err)
 		}

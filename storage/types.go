@@ -46,16 +46,13 @@ type EncryptionKeys struct {
 
 // VerifiedBallot is the struct that contains the information of a ballot which
 // has been verified by the sequencer. It includes the process ID, the voter
-// weight, the nullifier, the commitment, the encrypted ballot, the address,
-// the inputs hash of the proof and the proof itself. The proof should be in
-// the BLS12-377 curve, which is the one used by the verifier circuit and
-// verified by the aggregator circuit.
+// weight, the encrypted ballot, the address, the inputs hash of the proof and
+// the proof itself. The proof should be in the BLS12-377 curve, which is the
+// one used by the verifier circuit and verified by the aggregator circuit.
 type VerifiedBallot struct {
 	VoteID          types.HexBytes          `json:"voteId"`
 	ProcessID       types.HexBytes          `json:"processId"`
 	VoterWeight     *big.Int                `json:"voterWeight"`
-	Nullifier       *big.Int                `json:"nullifier"`
-	Commitment      *big.Int                `json:"commitment"`
 	EncryptedBallot *elgamal.Ballot         `json:"encryptedBallot"`
 	Address         *big.Int                `json:"address"`
 	InputsHash      *big.Int                `json:"inputsHash"`
@@ -63,19 +60,16 @@ type VerifiedBallot struct {
 }
 
 // Ballot is the struct that contains the information of a ballot. It includes
-// the process ID, the voter weight, the nullifier, the commitment, the
-// encrypted ballot, the address, the inputs hash of the proof and the proof
-// itself. The proof should be in the BN254 curve and ready for recursive
-// verification. It also includes the signature of the ballot, which is a
-// ECDSA signature. Finally, it includes the census proof, which proves that
-// the voter is in the census; and the public key of the voter, a compressed
-// ECDSA public key.
+// the process ID, the voter weight, the encrypted ballot, the address, the
+// inputs hash of the proof and the proof itself. The proof should be in the
+// BN254 curve and ready for recursive verification. It also includes the
+// signature of the ballot, which is a ECDSA signature. Finally, it includes
+// the census proof, which proves that the voter is in the census; and the
+// public key of the voter, a compressed ECDSA public key.
 type Ballot struct {
 	ProcessID        types.HexBytes                                        `json:"processId"`
 	VoterWeight      *big.Int                                              `json:"voterWeight"`
 	EncryptedBallot  *elgamal.Ballot                                       `json:"encryptedBallot"`
-	Nullifier        *big.Int                                              `json:"nullifier"`
-	Commitment       *big.Int                                              `json:"commitment"`
 	Address          *big.Int                                              `json:"address"`
 	BallotInputsHash *big.Int                                              `json:"ballotInputsHash"`
 	BallotProof      recursion.Proof[sw_bn254.G1Affine, sw_bn254.G2Affine] `json:"ballotProof"`
@@ -89,10 +83,9 @@ type Ballot struct {
 // that comes from a third-party library (gnark) and it should be checked by
 // the library itself.
 func (b *Ballot) Valid() bool {
-	if b.ProcessID == nil || b.VoterWeight == nil || b.Nullifier == nil ||
-		b.Commitment == nil || b.Address == nil || b.BallotInputsHash == nil ||
-		b.EncryptedBallot == nil || b.Signature == nil || b.CensusProof == nil ||
-		b.PubKey == nil {
+	if b.ProcessID == nil || b.VoterWeight == nil || b.Address == nil ||
+		b.BallotInputsHash == nil || b.EncryptedBallot == nil ||
+		b.Signature == nil || b.CensusProof == nil || b.PubKey == nil {
 		log.Debug("ballot is not valid, nil fields")
 		return false
 	}
@@ -131,12 +124,6 @@ func (b *Ballot) String() string {
 	if b.VoterWeight != nil {
 		s.WriteString("VoterWeight: " + b.VoterWeight.String() + ", ")
 	}
-	if b.Nullifier != nil {
-		s.WriteString("Nullifier: " + b.Nullifier.String() + ", ")
-	}
-	if b.Commitment != nil {
-		s.WriteString("Commitment: " + b.Commitment.String() + ", ")
-	}
 	if b.Address != nil {
 		s.WriteString("Address: " + b.Address.String() + ", ")
 	}
@@ -161,12 +148,9 @@ func (b *Ballot) String() string {
 
 // AggregatorBallot is the struct that contains the information of a ballot
 // which has been verified and aggregated in a batch by the sequencer. It
-// includes the nullifier, the commitment, the address and the encrypted
-// ballot.
+// includes the address and the encrypted ballot.
 type AggregatorBallot struct {
 	VoteID          types.HexBytes  `json:"voteId"`
-	Nullifier       *big.Int        `json:"nullifiers"`
-	Commitment      *big.Int        `json:"commitments"`
 	Address         *big.Int        `json:"address"`
 	EncryptedBallot *elgamal.Ballot `json:"encryptedBallot"`
 }

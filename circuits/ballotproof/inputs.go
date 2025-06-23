@@ -17,9 +17,7 @@ import (
 // the data required to cast a vote sending it to the sequencer API. It receives
 // the BallotProofWasmInputs struct and returns the BallotProofWasmResult
 // struct. This method parses the public encryption key for the desired process
-// and encrypts the ballot fields with the secret K provided. It also generates
-// the commitment and nullifier for the vote, using the address, process ID
-// and the secret provided.
+// and encrypts the ballot fields with the secret K provided.
 func GenerateBallotProofInputs(
 	inputs *BallotProofInputs,
 ) (*BallotProofInputsResult, error) {
@@ -41,15 +39,6 @@ func GenerateBallotProofInputs(
 	}
 	// get encryption key point for circom
 	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(encryptionKey.Point())
-	// calculate the commitment and nullifier
-	commitment, nullifier, err := CommitmentAndNullifier(
-		inputs.Address.BigInt(),
-		inputs.ProcessID.BigInt(),
-		inputs.Secret.BigInt(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error calculating commitment and nullifier: %v", err.Error())
-	}
 	// ballot mode as circuit ballot mode
 	ballotMode := circuits.BallotModeToCircuit(inputs.BallotMode)
 	// safe address and processID
@@ -61,8 +50,6 @@ func GenerateBallotProofInputs(
 		inputs.BallotMode,
 		encryptionKey,
 		inputs.Address,
-		commitment,
-		nullifier,
 		ballot,
 		inputs.Weight,
 	)
@@ -72,8 +59,6 @@ func GenerateBallotProofInputs(
 	return &BallotProofInputsResult{
 		ProccessID:       inputs.ProcessID,
 		Address:          inputs.Address,
-		Commitment:       commitment,
-		Nullifier:        nullifier,
 		Ballot:           ballot.FromRTEtoTE(),
 		BallotInputsHash: (*types.BigInt)(ballotInputsHash),
 		VoteID:           crypto.BigIntToFFwithPadding(ballotInputsHash.MathBigInt(), circuits.VoteVerifierCurve.ScalarField()),
@@ -93,9 +78,6 @@ func GenerateBallotProofInputs(
 			PK:              []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
 			K:               inputs.K.MathBigInt().String(),
 			Cipherfields:    circuits.BigIntArrayToStringArray(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
-			Nullifier:       nullifier.String(),
-			Commitment:      commitment.String(),
-			Secret:          inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
 			InputsHash:      ballotInputsHash.String(),
 		},
 	}, nil

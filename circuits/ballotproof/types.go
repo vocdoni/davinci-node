@@ -10,7 +10,6 @@ import (
 type BallotProofInputs struct {
 	ProcessID     types.HexBytes    `json:"processID"`
 	Address       types.HexBytes    `json:"address"`
-	Secret        types.HexBytes    `json:"secret"`
 	EncryptionKey []*types.BigInt   `json:"encryptionKey"`
 	K             *types.BigInt     `json:"k"`
 	BallotMode    *types.BallotMode `json:"ballotMode"`
@@ -36,9 +35,6 @@ type CircomInputs struct {
 	PK              []string `json:"pk"`
 	K               string   `json:"k"`
 	Cipherfields    []string `json:"cipherfields"`
-	Nullifier       string   `json:"nullifier"`
-	Commitment      string   `json:"commitment"`
-	Secret          string   `json:"secret"`
 	InputsHash      string   `json:"inputs_hash"`
 }
 
@@ -51,8 +47,6 @@ type CircomInputs struct {
 type BallotProofInputsResult struct {
 	ProccessID       types.HexBytes  `json:"processID"`
 	Address          types.HexBytes  `json:"address"`
-	Commitment       *types.BigInt   `json:"commitment"`
-	Nullifier        *types.BigInt   `json:"nullifier"`
 	Ballot           *elgamal.Ballot `json:"ballot"`
 	BallotInputsHash *types.BigInt   `json:"ballotInputHash"`
 	VoteID           types.HexBytes  `json:"voteID"`

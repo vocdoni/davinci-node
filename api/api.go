@@ -140,10 +140,8 @@ func (a *API) registerHandlers() {
 	a.router.Post(VotesEndpoint, a.newVote)
 	log.Infow("register handler", "endpoint", VoteStatusEndpoint, "method", "GET")
 	a.router.Get(VoteStatusEndpoint, a.voteStatus)
-	log.Infow("register handler", "endpoint", VoteByNullifierEndpoint, "method", "GET")
-	a.router.Get(VoteByNullifierEndpoint, a.voteByNullifier)
-	log.Infow("register handler", "endpoint", VoteCheckEndpoint, "method", "GET")
-	a.router.Get(VoteCheckEndpoint, a.checkAddress)
+	log.Infow("register handler", "endpoint", VoteByAddressEndpoint, "method", "GET")
+	a.router.Get(VoteByAddressEndpoint, a.voteByAddress)
 
 	// census endpoints
 	log.Infow("register handler", "endpoint", NewCensusEndpoint, "method", "POST")

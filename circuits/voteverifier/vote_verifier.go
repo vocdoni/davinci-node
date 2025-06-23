@@ -33,8 +33,6 @@
 //   - UserWeight: The weight of the user that is voting.
 //   - EncryptionPubKey: The public key used to encrypt the votes in the
 //     package.
-//   - Nullifier: The nullifier of the votes in the package.
-//   - Commitment: The commitment of the votes in the package.
 //   - ProcessId: The process id of the votes in the package.
 //   - Ballot: The encrypted votes in the package.
 //   - CensusRoot: The root of the census tree.

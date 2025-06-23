@@ -69,13 +69,11 @@ func TestBallotQueue(t *testing.T) {
 	// Create ballots with fixed data for deterministic testing
 	ballot1 := &Ballot{
 		ProcessID:        processID.Marshal(),
-		Nullifier:        new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
 		Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
 		BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
 	}
 	ballot2 := &Ballot{
 		ProcessID:        processID.Marshal(),
-		Nullifier:        new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
 		Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
 		BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
 	}
@@ -96,13 +94,12 @@ func TestBallotQueue(t *testing.T) {
 	// Verify count decreased due to reservation
 	c.Assert(st.CountPendingBallots(), qt.Equals, 1, qt.Commentf("should have 1 pending ballot after reserving one"))
 
-	// Store the first ballot's nullifier to track which one we got
-	firstNullifier := b1.Nullifier.String()
+	// Store the first ballot's address to track which one we got
+	firstAddress := b1.Address.String()
 
 	// Mark the first ballot done, provide a verified ballot
 	verified1 := &VerifiedBallot{
 		ProcessID:   processID.Marshal(),
-		Nullifier:   b1.Nullifier,
 		VoterWeight: big.NewInt(42),
 	}
 	c.Assert(st.MarkBallotDone(b1key, verified1), qt.IsNil)
@@ -118,16 +115,15 @@ func TestBallotQueue(t *testing.T) {
 
 	// Verify we got a different ballot than the first one
 	c.Assert(
-		b2.Nullifier.String(),
+		b2.Address.String(),
 		qt.Not(qt.Equals),
-		firstNullifier,
+		firstAddress,
 		qt.Commentf("second ballot should be different from first"),
 	)
 
 	// Mark second ballot done as well
 	verified2 := &VerifiedBallot{
 		ProcessID:   processID.Marshal(),
-		Nullifier:   b2.Nullifier,
 		VoterWeight: big.NewInt(24),
 	}
 	c.Assert(st.MarkBallotDone(b2key, verified2), qt.IsNil)
@@ -224,7 +220,6 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 	for i := range 5 {
 		ballot := &Ballot{
 			ProcessID:        processID.Marshal(),
-			Nullifier:        new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 32)),
 			Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
 			BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 32)),
 		}
@@ -239,7 +234,6 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 
 		verified := &VerifiedBallot{
 			ProcessID:   processID.Marshal(),
-			Nullifier:   b.Nullifier,
 			VoterWeight: big.NewInt(int64(i+1) * 10), // Different weights for identification
 		}
 		c.Assert(st.MarkBallotDone(key, verified), qt.IsNil)
@@ -344,11 +338,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	batch1 := &AggregatorBallotBatch{
 		ProcessID: processID.Marshal(),
 		Ballots: []*AggregatorBallot{
-			{
-				Nullifier:  new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
-				Address:    new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
-				Commitment: new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
-			},
+			{Address: new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20))},
 		},
 	}
 
@@ -360,7 +350,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("should retrieve the batch"))
 	c.Assert(b1, qt.IsNotNil)
 	c.Assert(len(b1.Ballots), qt.Equals, 1)
-	c.Assert(b1.Ballots[0].Nullifier.Cmp(batch1.Ballots[0].Nullifier), qt.Equals, 0)
+	c.Assert(b1.Ballots[0].Address.Cmp(batch1.Ballots[0].Address), qt.Equals, 0)
 
 	// Mark batch done and wait a moment
 	c.Assert(st.MarkBallotBatchDone(b1key), qt.IsNil)
@@ -369,11 +359,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	batch2 := &AggregatorBallotBatch{
 		ProcessID: processID.Marshal(),
 		Ballots: []*AggregatorBallot{
-			{
-				Nullifier:  new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
-				Address:    new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
-				Commitment: new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
-			},
+			{Address: new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20))},
 		},
 	}
 
@@ -385,7 +371,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(b2, qt.IsNotNil)
 	c.Assert(len(b2.Ballots), qt.Equals, 1)
-	c.Assert(b2.Ballots[0].Nullifier.Cmp(batch2.Ballots[0].Nullifier), qt.Equals, 0)
+	c.Assert(b2.Ballots[0].Address.Cmp(batch2.Ballots[0].Address), qt.Equals, 0)
 
 	// Mark batch2 done and wait
 	c.Assert(st.MarkBallotBatchDone(b2key), qt.IsNil)
@@ -394,11 +380,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	batch3 := &AggregatorBallotBatch{
 		ProcessID: processID.Marshal(),
 		Ballots: []*AggregatorBallot{
-			{
-				Nullifier:  new(big.Int).SetBytes(bytes.Repeat([]byte{3}, 32)),
-				Address:    new(big.Int).SetBytes(bytes.Repeat([]byte{3}, 20)),
-				Commitment: new(big.Int).SetBytes(bytes.Repeat([]byte{3}, 32)),
-			},
+			{Address: new(big.Int).SetBytes(bytes.Repeat([]byte{3}, 20))},
 		},
 	}
 
@@ -408,7 +390,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(b3, qt.IsNotNil)
 	c.Assert(len(b3.Ballots), qt.Equals, 1)
-	c.Assert(b3.Ballots[0].Nullifier.Cmp(batch3.Ballots[0].Nullifier), qt.Equals, 0)
+	c.Assert(b3.Ballots[0].Address.Cmp(batch3.Ballots[0].Address), qt.Equals, 0)
 
 	// Mark batch3 done
 	c.Assert(st.MarkBallotBatchDone(b3key), qt.IsNil)

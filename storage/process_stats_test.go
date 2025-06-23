@@ -51,7 +51,6 @@ func TestProcessStatsConcurrency(t *testing.T) {
 				// Create a unique ballot
 				ballot := &Ballot{
 					ProcessID:        processID.Marshal(),
-					Nullifier:        big.NewInt(int64(routineID*1000 + j)),
 					Address:          big.NewInt(int64(routineID*10000 + j)),
 					BallotInputsHash: big.NewInt(int64(routineID*100000 + j)),
 				}
@@ -72,7 +71,6 @@ func TestProcessStatsConcurrency(t *testing.T) {
 				// Mark it as done (pending -1, verified +1, currentBatch +1)
 				verifiedBallot := &VerifiedBallot{
 					ProcessID:   b.ProcessID,
-					Nullifier:   b.Nullifier,
 					VoteID:      b.VoteID(),
 					VoterWeight: big.NewInt(1),
 				}
@@ -134,7 +132,6 @@ func TestProcessStatsAggregation(t *testing.T) {
 	for i := 0; i < numBallots; i++ {
 		ballot := &Ballot{
 			ProcessID:        processID.Marshal(),
-			Nullifier:        big.NewInt(int64(i)),
 			Address:          big.NewInt(int64(i + 1000)),
 			BallotInputsHash: big.NewInt(int64(i + 2000)),
 		}
@@ -149,7 +146,6 @@ func TestProcessStatsAggregation(t *testing.T) {
 
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
-			Nullifier:   b.Nullifier,
 			VoteID:      b.VoteID(),
 			VoterWeight: big.NewInt(1),
 		}
@@ -174,9 +170,8 @@ func TestProcessStatsAggregation(t *testing.T) {
 	aggBallots := make([]*AggregatorBallot, len(verifiedBallots))
 	for i, vb := range verifiedBallots {
 		aggBallots[i] = &AggregatorBallot{
-			VoteID:    vb.VoteID,
-			Nullifier: vb.Nullifier,
-			Address:   vb.Address,
+			VoteID:  vb.VoteID,
+			Address: vb.Address,
 		}
 	}
 
@@ -244,7 +239,6 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 			for j := 0; j < ballotsPerWorker; j++ {
 				ballot := &Ballot{
 					ProcessID:        processID.Marshal(),
-					Nullifier:        big.NewInt(int64(workerID*1000 + j)),
 					Address:          big.NewInt(int64(workerID*10000 + j)),
 					BallotInputsHash: big.NewInt(int64(workerID*100000 + j)),
 				}
@@ -264,7 +258,6 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 
 				verifiedBallot := &VerifiedBallot{
 					ProcessID:   b.ProcessID,
-					Nullifier:   b.Nullifier,
 					VoteID:      b.VoteID(),
 					VoterWeight: big.NewInt(1),
 				}
@@ -295,9 +288,8 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 				aggBallots := make([]*AggregatorBallot, len(verifiedBallots))
 				for j, vb := range verifiedBallots {
 					aggBallots[j] = &AggregatorBallot{
-						VoteID:    vb.VoteID,
-						Nullifier: vb.Nullifier,
-						Address:   vb.Address,
+						VoteID:  vb.VoteID,
+						Address: vb.Address,
 					}
 				}
 
@@ -469,7 +461,6 @@ func TestGetTotalPendingBallots(t *testing.T) {
 	// Test: Add some actual ballots and verify stats are updated
 	ballot1 := &Ballot{
 		ProcessID:        processID1.Marshal(),
-		Nullifier:        big.NewInt(1),
 		Address:          big.NewInt(1000),
 		BallotInputsHash: big.NewInt(2000),
 	}
@@ -491,7 +482,6 @@ func TestGetTotalPendingBallots(t *testing.T) {
 
 	verifiedBallot := &VerifiedBallot{
 		ProcessID:   b.ProcessID,
-		Nullifier:   b.Nullifier,
 		VoteID:      b.VoteID(),
 		VoterWeight: big.NewInt(1),
 	}
@@ -538,7 +528,6 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 	for i := 0; i < numBallots; i++ {
 		ballot := &Ballot{
 			ProcessID:        processID.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 1000)),
 			Address:          big.NewInt(int64(i + 2000)),
 			BallotInputsHash: big.NewInt(int64(i + 3000)),
 		}
@@ -553,7 +542,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
-			Nullifier:   b.Nullifier,
+			Address:     b.Address,
 			VoteID:      b.VoteID(),
 			VoterWeight: big.NewInt(1),
 		}
@@ -624,7 +613,6 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 	for i := 0; i < numBallots; i++ {
 		ballot := &Ballot{
 			ProcessID:        processID.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 1000)),
 			Address:          big.NewInt(int64(i + 2000)),
 			BallotInputsHash: big.NewInt(int64(i + 3000)),
 		}
@@ -639,7 +627,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
-			Nullifier:   b.Nullifier,
+			Address:     b.Address,
 			VoteID:      b.VoteID(),
 			VoterWeight: big.NewInt(1),
 		}
@@ -656,9 +644,8 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 	aggBallots := make([]*AggregatorBallot, len(verifiedBallots))
 	for i, vb := range verifiedBallots {
 		aggBallots[i] = &AggregatorBallot{
-			VoteID:    vb.VoteID,
-			Nullifier: vb.Nullifier,
-			Address:   vb.Address,
+			VoteID:  vb.VoteID,
+			Address: vb.Address,
 		}
 	}
 
@@ -955,13 +942,11 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	// Test 3: Push ballots to process1 and verify total pending increases
 	ballot1 := &Ballot{
 		ProcessID:        process1.Marshal(),
-		Nullifier:        big.NewInt(1),
 		Address:          big.NewInt(1000),
 		BallotInputsHash: big.NewInt(2000),
 	}
 	ballot2 := &Ballot{
 		ProcessID:        process1.Marshal(),
-		Nullifier:        big.NewInt(2),
 		Address:          big.NewInt(1001),
 		BallotInputsHash: big.NewInt(2001),
 	}
@@ -979,7 +964,6 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	// Test 4: Push ballots to process2
 	ballot3 := &Ballot{
 		ProcessID:        process2.Marshal(),
-		Nullifier:        big.NewInt(3),
 		Address:          big.NewInt(1002),
 		BallotInputsHash: big.NewInt(2002),
 	}
@@ -995,7 +979,6 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 
 	verifiedBallot1 := &VerifiedBallot{
 		ProcessID:   b1.ProcessID,
-		Nullifier:   b1.Nullifier,
 		VoteID:      b1.VoteID(),
 		VoterWeight: big.NewInt(1),
 	}
@@ -1010,7 +993,6 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	verifiedBallot2 := &VerifiedBallot{
 		ProcessID:   b2.ProcessID,
-		Nullifier:   b2.Nullifier,
 		VoteID:      b2.VoteID(),
 		VoterWeight: big.NewInt(1),
 	}
@@ -1024,7 +1006,6 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	verifiedBallot3 := &VerifiedBallot{
 		ProcessID:   b3.ProcessID,
-		Nullifier:   b3.Nullifier,
 		VoteID:      b3.VoteID(),
 		VoterWeight: big.NewInt(1),
 	}
@@ -1151,7 +1132,6 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 	for i := 0; i < numBallotsP1; i++ {
 		ballot := &Ballot{
 			ProcessID:        process1.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 100)),
 			Address:          big.NewInt(int64(i + 1000)),
 			BallotInputsHash: big.NewInt(int64(i + 2000)),
 		}
@@ -1162,7 +1142,6 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 	for i := 0; i < numBallotsP2; i++ {
 		ballot := &Ballot{
 			ProcessID:        process2.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 200)),
 			Address:          big.NewInt(int64(i + 3000)),
 			BallotInputsHash: big.NewInt(int64(i + 4000)),
 		}
@@ -1181,7 +1160,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
-			Nullifier:   b.Nullifier,
+			Address:     b.Address,
 			VoteID:      b.VoteID(),
 			VoterWeight: big.NewInt(1),
 		}
@@ -1209,9 +1188,8 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 		aggBallots := make([]*AggregatorBallot, len(verifiedBallots))
 		for i, vb := range verifiedBallots {
 			aggBallots[i] = &AggregatorBallot{
-				VoteID:    vb.VoteID,
-				Nullifier: vb.Nullifier,
-				Address:   vb.Address,
+				VoteID:  vb.VoteID,
+				Address: vb.Address,
 			}
 		}
 

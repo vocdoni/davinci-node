@@ -149,8 +149,6 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		proofsInputsHashInputs = append(proofsInputsHashInputs, ballots[i].InputsHash)
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
 			VoteID:          ballots[i].VoteID,
-			Nullifier:       ballots[i].Nullifier,
-			Commitment:      ballots[i].Commitment,
 			Address:         ballots[i].Address,
 			EncryptedBallot: ballots[i].EncryptedBallot,
 		})

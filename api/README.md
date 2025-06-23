@@ -53,7 +53,6 @@ API errors are returned with appropriate HTTP status codes and a JSON body with 
 | 40013 | 400         | Invalid ballot inputs hash                 |
 | 40014 | 403         | Unauthorized                               |
 | 40015 | 400         | Malformed parameter                        |
-| 40016 | 400         | Malformed nullifier                        |
 | 40017 | 400         | Malformed address                          |
 | 50001 | 500         | Marshaling (server-side) JSON failed       |
 | 50002 | 500         | Internal server error                      |
@@ -472,8 +471,6 @@ Register a new vote for a voting process.
 ```json
 {
   "processId": "hexBytes",
-  "commitment": "bigintStr",
-  "nullifier": "bigintStr",
   "censusProof": {
     "root": "hexBytes",
     "key": "hexBytes",
@@ -522,38 +519,19 @@ Register a new vote for a voting process.
 - 40009: Invalid ballot proof
 - 50002: Internal server error
 
-#### GET /votes/{processId}/nullifier/{nullifier}
+#### GET /votes/{processId}/address/{address}
 
-Gets a vote by its nullifier for a specific process.
+Gets a vote by its address for a specific process.
 
 **URL Parameters**:
 - processId: Process ID in hexadecimal format
-- nullifier: Nullifier value as a decimal string (big.Int representation)
+- address: address value as a hexdecimal string
 
 **Response Body**:
 Returns the encrypted ballot if found.
 
 **Errors**:
 - 40001: Resource not found
-- 40006: Malformed process ID
-- 40016: Malformed nullifier
-- 40007: Process not found
-- 50002: Internal server error
-
-#### GET /votes/{processId}/address/{address}
-
-Checks if an address has already voted in a specific process.
-
-**URL Parameters**:
-- processId: Process ID in hexadecimal format
-- address: Ethereum address to check (hex format)
-
-**Response**:
-- 200 OK if the address has already voted
-- 404 Not Found if the address has not voted
-
-**Errors**:
-- 40001: Resource not found (address has not voted)
 - 40006: Malformed process ID
 - 40017: Malformed address
 - 40007: Process not found

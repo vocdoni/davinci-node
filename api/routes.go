@@ -19,14 +19,10 @@ const (
 	// Vote status endpoints
 	VoteStatusVoteIDParam = "voteId"                                                                            // URL parameter for vote ID
 	VoteStatusEndpoint    = VotesEndpoint + "/{" + ProcessURLParam + "}/voteId/{" + VoteStatusVoteIDParam + "}" // GET: Check vote status
-
-	// Vote nullifier endpoint
-	VoteByNullifierNullifierParam = "nullifier"                                                                                    // URL parameter for nullifier
-	VoteByNullifierEndpoint       = VotesEndpoint + "/{" + ProcessURLParam + "}/nullifier/{" + VoteByNullifierNullifierParam + "}" // GET: Get vote by nullifier
-
-	// Vote address check endpoint
-	VoteCheckAddressParam = "address"                                                                            // URL parameter for address
-	VoteCheckEndpoint     = VotesEndpoint + "/{" + ProcessURLParam + "}/address/{" + VoteCheckAddressParam + "}" // GET: Check if address voted
+	
+	// Vote address endpoint
+	VoteByAddressAddressParam = "address"                                                                                // URL parameter for address
+	VoteByAddressEndpoint     = VotesEndpoint + "/{" + ProcessURLParam + "}/address/{" + VoteByAddressAddressParam + "}" // GET: Get vote by address
 
 	// Info endpoint
 	InfoEndpoint = "/info" // GET: Get ballot proof information

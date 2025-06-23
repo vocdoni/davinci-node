@@ -76,8 +76,6 @@ func TestDebugVoteVerifier(t *testing.T) {
 	hashInputs = append(hashInputs, ballotMode.Serialize()...)
 	hashInputs = append(hashInputs, encryptionKey.Serialize()...)
 	hashInputs = append(hashInputs, vote.Address.BigInt().MathBigInt())
-	hashInputs = append(hashInputs, vote.Commitment.MathBigInt())
-	hashInputs = append(hashInputs, vote.Nullifier.MathBigInt())
 	hashInputs = append(hashInputs, rteBallot.BigInts()...)
 
 	inputHash, err := mimc7.Hash(hashInputs, nil)
@@ -115,10 +113,8 @@ func TestDebugVoteVerifier(t *testing.T) {
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address:    emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Key.BigInt().MathBigInt()),
-			Commitment: emulated.ValueOf[sw_bn254.ScalarField](vote.Commitment.MathBigInt()),
-			Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](vote.Nullifier.MathBigInt()),
-			Ballot:     *rteBallot.ToGnarkEmulatedBN254(),
+			Address: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Key.BigInt().MathBigInt()),
+			Ballot:  *rteBallot.ToGnarkEmulatedBN254(),
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Weight.MathBigInt()),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{

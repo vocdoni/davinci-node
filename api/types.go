@@ -33,8 +33,6 @@ type CensusParticipants struct {
 // the user to cast a vote in a process.
 type Vote struct {
 	ProcessID        types.HexBytes      `json:"processId"`
-	Commitment       *types.BigInt       `json:"commitment"`
-	Nullifier        *types.BigInt       `json:"nullifier"`
 	CensusProof      types.CensusProof   `json:"censusProof"`
 	Ballot           *elgamal.Ballot     `json:"ballot"`
 	BallotProof      *parser.CircomProof `json:"ballotProof"`

@@ -169,7 +169,6 @@ func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types
 	for i := 0; i < 3; i++ {
 		ballot1 := &Ballot{
 			ProcessID:        processID1.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 100)),
 			Address:          big.NewInt(int64(i + 1000)),
 			BallotInputsHash: big.NewInt(int64(i + 2000)),
 		}
@@ -178,7 +177,6 @@ func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types
 
 		ballot2 := &Ballot{
 			ProcessID:        processID2.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 200)),
 			Address:          big.NewInt(int64(i + 3000)),
 			BallotInputsHash: big.NewInt(int64(i + 4000)),
 		}
@@ -194,7 +192,7 @@ func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types
 		if bytes.Equal(b1.ProcessID, processID1.Marshal()) {
 			vb1 := &VerifiedBallot{
 				ProcessID:   b1.ProcessID,
-				Nullifier:   b1.Nullifier,
+				Address:     b1.Address,
 				VoteID:      b1.VoteID(),
 				VoterWeight: big.NewInt(1),
 			}
@@ -208,7 +206,7 @@ func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types
 		if bytes.Equal(b2.ProcessID, processID2.Marshal()) {
 			vb2 := &VerifiedBallot{
 				ProcessID:   b2.ProcessID,
-				Nullifier:   b2.Nullifier,
+				Address:     b2.Address,
 				VoteID:      b2.VoteID(),
 				VoterWeight: big.NewInt(1),
 			}
@@ -235,9 +233,8 @@ func createAggregatorBatch(c *qt.C, st *Storage, processID *types.ProcessID) {
 		ProcessID: processID.Marshal(),
 		Ballots: []*AggregatorBallot{
 			{
-				VoteID:    []byte("aggvote1"),
-				Nullifier: big.NewInt(1001),
-				Address:   big.NewInt(2001),
+				VoteID:  []byte("aggvote1"),
+				Address: big.NewInt(2001),
 			},
 		},
 	}
@@ -250,9 +247,8 @@ func createStateTransition(c *qt.C, st *Storage, processID *types.ProcessID) {
 		ProcessID: processID.Marshal(),
 		Ballots: []*AggregatorBallot{
 			{
-				VoteID:    []byte("stvote1"),
-				Nullifier: big.NewInt(3001),
-				Address:   big.NewInt(4001),
+				VoteID:  []byte("stvote1"),
+				Address: big.NewInt(4001),
 			},
 		},
 	}
@@ -338,7 +334,6 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 	for i := 0; i < 2; i++ {
 		ballot := &Ballot{
 			ProcessID:        processID.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 500)),
 			Address:          big.NewInt(int64(i + 5000)),
 			BallotInputsHash: big.NewInt(int64(i + 6000)),
 		}
@@ -356,7 +351,7 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 
 		vb := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
-			Nullifier:   b.Nullifier,
+			Address:     b.Address,
 			VoteID:      b.VoteID(),
 			VoterWeight: big.NewInt(1),
 		}
@@ -371,9 +366,8 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 	aggBallots := make([]*AggregatorBallot, len(verifiedBallots))
 	for i, vb := range verifiedBallots {
 		aggBallots[i] = &AggregatorBallot{
-			VoteID:    vb.VoteID,
-			Nullifier: vb.Nullifier,
-			Address:   vb.Address,
+			VoteID:  vb.VoteID,
+			Address: vb.Address,
 		}
 	}
 

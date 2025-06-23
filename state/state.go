@@ -73,7 +73,6 @@ type VotesProofs struct {
 	ResultsAdd *ArboTransition
 	ResultsSub *ArboTransition
 	Ballot     [types.VotesPerBatch]*ArboTransition
-	Commitment [types.VotesPerBatch]*ArboTransition
 }
 
 // New creates or opens a State stored in the passed database.
@@ -205,21 +204,9 @@ func (o *State) EndBatch() error {
 	for i := range o.votesProofs.Ballot {
 		if i < len(o.Votes()) {
 			o.votesProofs.Ballot[i], err = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].Nullifier, o.Votes()[i].Ballot.BigInts()...)
+				o.Votes()[i].Address, o.Votes()[i].Ballot.BigInts()...)
 		} else {
 			o.votesProofs.Ballot[i], err = ArboTransitionFromNoop(o)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	// add Commitments
-	for i := range o.votesProofs.Commitment {
-		if i < len(o.Votes()) {
-			o.votesProofs.Commitment[i], err = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].Address, o.Votes()[i].Commitment)
-		} else {
-			o.votesProofs.Commitment[i], err = ArboTransitionFromNoop(o)
 		}
 		if err != nil {
 			return err
@@ -335,10 +322,8 @@ func (o *State) PaddedVotes() []*Vote {
 	log.Infof("Current batch has %d votes", len(v))
 	for len(v) < types.VotesPerBatch {
 		v = append(v, &Vote{
-			Address:    big.NewInt(0),
-			Commitment: big.NewInt(0),
-			Nullifier:  big.NewInt(0),
-			Ballot:     elgamal.NewBallot(Curve),
+			Address: big.NewInt(0),
+			Ballot:  elgamal.NewBallot(Curve),
 		})
 	}
 	return v
