@@ -176,7 +176,10 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrResourceNotFound.Withf("could not get process: %v", err).Write(w)
 		return
 	}
-	// check that the process is ready to accept votes
+	// check that the process is ready to accept votes, it does not mean that
+	// the vote will be accepted, but it is a precondition to accept the vote,
+	// for example, if the process is not in this sequencer, the vote will be
+	// rejected
 	if process.Status != types.ProcessStatusReady {
 		ErrProcessNotAcceptingVotes.Withf("status: %s", process.Status).Write(w)
 	}

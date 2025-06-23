@@ -32,9 +32,7 @@ func (s *Storage) PushBallot(b *Ballot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	// Check if the ballot is already processing
-	if processing, err := s.isNullifierProcessing(b.Nullifier); err != nil {
-		return fmt.Errorf("check nullifier processing: %w", err)
-	} else if processing {
+	if processing := s.IsNullifierProcessing(b.Nullifier); processing {
 		return ErrNullifierProcessing
 	}
 
@@ -67,9 +65,7 @@ func (s *Storage) PushBallot(b *Ballot) error {
 	}
 
 	// Lock the ballot nullifier to prevent overwrites until processing is done.
-	if err := s.lockNullifier(b.Nullifier); err != nil {
-		return fmt.Errorf("lock nullifier: %w", err)
-	}
+	s.lockNullifier(b.Nullifier)
 
 	// Set vote ID status to pending
 	return s.setVoteIDStatus(b.ProcessID, b.VoteID(), VoteIDStatusPending)
@@ -424,9 +420,7 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 		}
 
 		// Release nullifier lock
-		if err := s.releaseNullifier(ballot.Nullifier); err != nil {
-			return fmt.Errorf("release nullifier: %w", err)
-		}
+		s.releaseNullifier(ballot.Nullifier)
 	}
 
 	// Update process stats for each process (only for ballots that were actually verified)
@@ -534,9 +528,7 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 		}
 
 		// Release nullifier lock
-		if err := s.releaseNullifier(ballot.Nullifier); err != nil {
-			return fmt.Errorf("release nullifier: %w", err)
-		}
+		s.releaseNullifier(ballot.Nullifier)
 
 		// Set vote ID status to error
 		if err := s.setVoteIDStatus(agg.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
@@ -736,9 +728,7 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 				voteIDs[i] = ballot.VoteID
 
 				// Release nullifier lock
-				if err := s.releaseNullifier(ballot.Nullifier); err != nil {
-					return fmt.Errorf("release nullifier: %w", err)
-				}
+				s.releaseNullifier(ballot.Nullifier)
 			}
 
 			// Mark all vote IDs in the batch as settled (using unsafe version to avoid deadlock)
