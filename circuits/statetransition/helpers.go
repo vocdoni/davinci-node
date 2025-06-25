@@ -37,7 +37,7 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 
 	// update stats
 	witness.NumNewVotes = o.BallotCount()
-	witness.NumOverwrites = o.OverwriteCount()
+	witness.NumOverwritten = o.OverwriteCount()
 
 	for i, v := range o.PaddedVotes() {
 		witness.Votes[i].Nullifier = v.Nullifier

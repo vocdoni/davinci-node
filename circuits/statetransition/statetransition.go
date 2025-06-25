@@ -24,7 +24,7 @@ type StateTransitionCircuit struct {
 	RootHashBefore frontend.Variable `gnark:",public"`
 	RootHashAfter  frontend.Variable `gnark:",public"`
 	NumNewVotes    frontend.Variable `gnark:",public"`
-	NumOverwrites  frontend.Variable `gnark:",public"`
+	NumOverwritten frontend.Variable `gnark:",public"`
 	// Private data inputs
 	Process circuits.Process[frontend.Variable]
 	Votes   [types.VotesPerBatch]Vote
@@ -149,18 +149,15 @@ func (c StateTransitionCircuit) proofInputsHash(api frontend.API, idx int) front
 // to transform the hash, first to an emulated element of the bn254 curve,
 // and then to an emulated element of the bw6761 curve.
 func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API) (groth16.Witness[sw_bw6761.ScalarField], error) {
-	// calculate the number of valid votes (it should be the number of new
-	// votes plus the number of overwrites)
-	validVotes := api.Add(c.NumNewVotes, c.NumOverwrites)
 	// the witness should be a bw6761 element, and it should include the
 	// number of valid votes as public input
 	witness := groth16.Witness[sw_bw6761.ScalarField]{
-		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(validVotes)},
+		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(c.NumNewVotes)},
 	}
 	// iterate over votes inputs to select between valid hashes and dummy ones
 	hashes := []frontend.Variable{}
 	for i := range types.VotesPerBatch {
-		isValid := cmp.IsLess(api, i, validVotes)
+		isValid := cmp.IsLess(api, i, c.NumNewVotes)
 		inputsHash := c.proofInputsHash(api, i)
 		hashes = append(hashes, api.Select(isValid, inputsHash, 1))
 	}
@@ -322,5 +319,5 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	circuit.Results.NewResultsSub.AssertIsEqual(api,
 		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, overwrittenSum))
 	api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
-	api.AssertIsEqual(circuit.NumOverwrites, overwrittenCount)
+	api.AssertIsEqual(circuit.NumOverwritten, overwrittenCount)
 }
