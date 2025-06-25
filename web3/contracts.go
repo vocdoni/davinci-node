@@ -17,8 +17,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	npbindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
-	vbindings "github.com/vocdoni/contracts-z/golang-types/verifiers"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types/non-proxy"
+	vbindings "github.com/vocdoni/davinci-contracts/golang-types/verifiers"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"

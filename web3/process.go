@@ -8,7 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	npbindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types/non-proxy"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -63,18 +63,18 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	}
 
 	return contractProcess2Process(&ProcessRegistryProcess{
-		Status:             p.Status,
-		OrganizationId:     p.OrganizationId,
-		EncryptionKey:      p.EncryptionKey,
-		LatestStateRoot:    p.LatestStateRoot,
-		StartTime:          p.StartTime,
-		Duration:           p.Duration,
-		MetadataURI:        p.MetadataURI,
-		BallotMode:         p.BallotMode,
-		Census:             p.Census,
-		VoteCount:          p.VoteCount,
+		Status:               p.Status,
+		OrganizationId:       p.OrganizationId,
+		EncryptionKey:        p.EncryptionKey,
+		LatestStateRoot:      p.LatestStateRoot,
+		StartTime:            p.StartTime,
+		Duration:             p.Duration,
+		MetadataURI:          p.MetadataURI,
+		BallotMode:           p.BallotMode,
+		Census:               p.Census,
+		VoteCount:            p.VoteCount,
 		VoteOverwrittenCount: p.VoteOverwriteCount,
-		Result:             p.Result,
+		Result:               p.Result,
 	})
 }
 
@@ -355,18 +355,18 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 
 // ProcessRegistryProcess is a mirror of the on-chain process tuple constructed with the auto-generated bindings
 type ProcessRegistryProcess struct {
-	Status             uint8
-	OrganizationId     common.Address
-	EncryptionKey      npbindings.IProcessRegistryEncryptionKey
-	LatestStateRoot    *big.Int
-	StartTime          *big.Int
-	Duration           *big.Int
-	MetadataURI        string
-	BallotMode         npbindings.IProcessRegistryBallotMode
-	Census             npbindings.IProcessRegistryCensus
-	VoteCount          *big.Int
+	Status               uint8
+	OrganizationId       common.Address
+	EncryptionKey        npbindings.IProcessRegistryEncryptionKey
+	LatestStateRoot      *big.Int
+	StartTime            *big.Int
+	Duration             *big.Int
+	MetadataURI          string
+	BallotMode           npbindings.IProcessRegistryBallotMode
+	Census               npbindings.IProcessRegistryCensus
+	VoteCount            *big.Int
 	VoteOverwrittenCount *big.Int
-	Result             []*big.Int
+	Result               []*big.Int
 }
 
 func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
