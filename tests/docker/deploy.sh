@@ -12,11 +12,11 @@ done
 echo " ✅"
 
 # clone if necessary
-if [ ! -d /workspace/contracts-z ]; then
+if [ ! -d /workspace/davinci-contracts ]; then
   BRANCH=${BRANCH:-main}
   git clone --branch "$BRANCH" --single-branch https://github.com/vocdoni/davinci-contracts.git
 fi
-cd contracts-z
+cd davinci-contracts
 
 head -n -5 foundry.toml > foundry.tmp && mv foundry.tmp foundry.toml
 
