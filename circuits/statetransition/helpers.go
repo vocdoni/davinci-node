@@ -45,13 +45,6 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 		witness.Votes[i].Address = v.Address
 		witness.Votes[i].Commitment = v.Commitment
 		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
-		witness.Votes[i].IsOverwrite = 0
-		// the vote is an overwrite if its index is greater than the number of
-		// new votes and less than the total number of votes (NumNewVotes +
-		// NumOverwrites)
-		if i >= o.BallotCount() && i < o.BallotCount()+o.OverwriteCount() {
-			witness.Votes[i].IsOverwrite = 1
-		}
 	}
 
 	witness.ProcessProofs = ProcessProofs{}

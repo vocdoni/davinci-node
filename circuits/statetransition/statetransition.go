@@ -76,7 +76,6 @@ type ResultsProofs struct {
 type Vote struct {
 	circuits.Vote[frontend.Variable]
 	OverwrittenBallot circuits.Ballot
-	IsOverwrite       frontend.Variable
 }
 
 // Define declares the circuit's constraints
@@ -129,10 +128,8 @@ func (c StateTransitionCircuit) proofInputsHash(api frontend.API, idx int) front
 	}
 	// select between the overwritten ballot and the original ballot based on
 	// the IsOverwrite flag
-	v := c.Votes[idx]
-	v.Ballot = *v.Ballot.Select(api, v.IsOverwrite, &c.Votes[idx].OverwrittenBallot, &v.Ballot)
 	// calculate the hash of the public inputs of the proof of the i-th vote
-	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, v.Vote)...); err != nil {
+	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, c.Votes[idx].Vote)...); err != nil {
 		circuits.FrontendError(api, "failed to write mimc7 hash function: ", err)
 		return 0
 	}

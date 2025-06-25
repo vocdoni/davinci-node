@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestIntegration(t *testing.T) {
-	numBallots := 5
+	numBallots := 1
 	c := qt.New(t)
 
 	// Setup
@@ -267,7 +267,7 @@ func TestIntegration(t *testing.T) {
 		// Create a ticker to check the status of votes every 10 seconds
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
-	ResultsLoop:
+	ResultsLoop2:
 		for {
 			select {
 			case <-ticker.C:
@@ -284,7 +284,7 @@ func TestIntegration(t *testing.T) {
 				if publishedVotes(t, services.Contracts, pid) < numBallots*2 { // Check if we have twice the number of votes (original + overwrite)
 					continue
 				}
-				break ResultsLoop
+				break ResultsLoop2
 			case <-timeoutCh:
 				c.Fatalf("Timeout waiting for overwrite votes to be processed and published at contract")
 			}

@@ -10,6 +10,7 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/db/prefixeddb"
@@ -331,6 +332,7 @@ func (o *State) OverwrittenBallots() []*elgamal.Ballot {
 // values.
 func (o *State) PaddedVotes() []*Vote {
 	v := slices.Clone(o.votes)
+	log.Infof("Current batch has %d votes", len(v))
 	for len(v) < types.VotesPerBatch {
 		v = append(v, &Vote{
 			Address:    big.NewInt(0),
