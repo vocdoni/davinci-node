@@ -10,6 +10,7 @@ import (
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // FrontendError function is an in-circuit function to print an error message
@@ -31,6 +32,20 @@ func BigIntArrayToN(arr []*big.Int, n int) []*big.Int {
 			bigArr[i] = arr[i]
 		} else {
 			bigArr[i] = big.NewInt(0)
+		}
+	}
+	return bigArr
+}
+
+// BigIntArrayToNInternal pads the types.BigInt array to n elements, if needed,
+// with zeros.
+func BigIntArrayToNInternal(arr []*big.Int, n int) []*types.BigInt {
+	bigArr := make([]*types.BigInt, n)
+	for i := range n {
+		if i < len(arr) {
+			bigArr[i] = new(types.BigInt).SetBigInt(arr[i])
+		} else {
+			bigArr[i] = types.NewInt(0)
 		}
 	}
 	return bigArr
