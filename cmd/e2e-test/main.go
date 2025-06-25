@@ -405,23 +405,23 @@ func createProcess(
 	ballotMode types.BallotMode,
 ) (*types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
-	nonce, err := contracts.AccountNonce()
+
+	processId, err := contracts.NextProcessID(contracts.AccountAddress())
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get account nonce: %v", err)
+		return nil, nil, fmt.Errorf("failed to get next process ID: %v", err)
 	}
 
 	// Sign the process creation request
-	signature, err := contracts.SignMessage(fmt.Appendf(nil, "%d%d", contracts.ChainID, nonce))
+	signature, err := contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processId.String()))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to sign process creation request: %v", err)
 	}
 
 	// Make the request to create the process
 	process := &types.ProcessSetup{
+		ProcessID:  processId.Marshal(),
 		CensusRoot: censusRoot,
 		BallotMode: &ballotMode,
-		Nonce:      nonce,
-		ChainID:    uint32(contracts.ChainID),
 		Signature:  signature,
 	}
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)

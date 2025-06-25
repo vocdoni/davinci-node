@@ -43,6 +43,7 @@ var (
 	ErrBallotAlreadySubmitted   = Error{Code: 40018, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("ballot already submitted")}
 	ErrBallotAlreadyProcessing  = Error{Code: 40019, HTTPstatus: http.StatusConflict, Err: fmt.Errorf("ballot is already processing")}
 	ErrProcessNotAcceptingVotes = Error{Code: 40020, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("process is not accepting votes")}
+	ErrInvalidChainID           = Error{Code: 40018, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("not supported chain Id")}
 
 	ErrMarshalingServerJSONFailed = Error{Code: 50001, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("marshaling (server-side) JSON failed")}
 	ErrGenericInternalServerError = Error{Code: 50002, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("internal server error")}

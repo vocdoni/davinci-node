@@ -34,6 +34,12 @@ func (p *ProcessID) SetBytes(data []byte) *ProcessID {
 	return p
 }
 
+// IsValid checks if the ProcessID is valid.
+// A valid ProcessID must have a non-zero ChainID, Address, and Nonce
+func (p *ProcessID) IsValid() bool {
+	return p != nil && p.ChainID != 0 && !bytes.Equal(p.Address.Bytes(), common.Address{}.Bytes()) && p.Nonce != 0
+}
+
 // BigInt returns a BigInt representation of the ProcessId.
 func (p *ProcessID) BigInt() *big.Int {
 	if p == nil {
