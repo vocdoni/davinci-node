@@ -169,7 +169,7 @@ func (s *Sequencer) processResultsOnChain() {
 			log.Errorw(err, "failed to encode inputs for contract upload")
 			continue // Continue to next process ID
 		}
-		log.Infow("verified results ready to upload to contract", "pid", res.ProcessID.String())
+		log.Debugw("verified results ready to upload to contract", "pid", res.ProcessID.String())
 		// Simulate tx to the contract to check if it will fail and get the root
 		// cause of the failure if it does
 		var pid32 [32]byte
