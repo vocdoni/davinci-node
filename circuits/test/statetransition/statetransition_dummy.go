@@ -15,15 +15,14 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/types"
 )
 
 // DummyAggCircuit is dummy aggregator circuit
 type DummyAggCircuit struct {
-	ValidProofs        frontend.Variable                                           `gnark:",public"`
-	ProofsInputsHashes [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
-	SecretInput        frontend.Variable                                           `gnark:",secret"`
-	nbConstraints      int
+	ValidProofs   frontend.Variable                      `gnark:",public"`
+	InputsHash    emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
+	SecretInput   frontend.Variable                      `gnark:",secret"`
+	nbConstraints int
 }
 
 // Define defines a dummy aggregator circuit
@@ -43,10 +42,8 @@ func (c *DummyAggCircuit) Define(api frontend.API) error {
 		res = api.Mul(res, c.SecretInput)
 	}
 	api.AssertIsEqual(c.ValidProofs, c.ValidProofs)
-	for _, input := range c.ProofsInputsHashes {
-		for _, limb := range input.Limbs {
-			api.AssertIsEqual(limb, limb)
-		}
+	for _, input := range c.InputsHash.Limbs {
+		api.AssertIsEqual(input, input)
 	}
 	return nil
 }
@@ -64,19 +61,11 @@ func DummyAggPlaceholderWithConstraints(nbConstraints int) *DummyAggCircuit {
 }
 
 // DummyAggAssignment returns the assignment of a dummy aggregator circuit.
-func DummyAggAssignment(hashes []frontend.Variable) *DummyAggCircuit {
-	inputs := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
-	for i := range types.VotesPerBatch {
-		if i < len(hashes) {
-			inputs[i] = emulated.ValueOf[sw_bn254.ScalarField](hashes[i])
-		} else {
-			inputs[i] = emulated.ValueOf[sw_bn254.ScalarField](0)
-		}
-	}
+func DummyAggAssignment(validProofs, hash frontend.Variable) *DummyAggCircuit {
 	return &DummyAggCircuit{
-		ValidProofs:        len(hashes),
-		ProofsInputsHashes: inputs,
-		SecretInput:        0,
+		ValidProofs: validProofs,
+		InputsHash:  emulated.ValueOf[sw_bn254.ScalarField](hash),
+		SecretInput: 0,
 	}
 }
 
@@ -100,12 +89,12 @@ func DummyAggProofPlaceholder() (
 }
 
 // DummyAggProof returns a dummy aggregator proof
-func DummyAggProof(hashes []frontend.Variable) (
+func DummyAggProof(validProofs, hash frontend.Variable) (
 	*stdgroth16.Proof[sw_bw6761.G1Affine, sw_bw6761.G2Affine],
 	*stdgroth16.VerifyingKey[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl], error,
 ) {
 	_, _, proof, vk, err := Prove(
-		DummyAggPlaceholderWithConstraints(0), DummyAggAssignment(hashes),
+		DummyAggPlaceholderWithConstraints(0), DummyAggAssignment(validProofs, hash),
 		circuits.StateTransitionCurve.ScalarField(), circuits.AggregatorCurve.ScalarField())
 	if err != nil {
 		return nil, nil, err
