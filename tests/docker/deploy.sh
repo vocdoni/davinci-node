@@ -14,24 +14,21 @@ echo " ✅"
 # clone if necessary
 if [ ! -d /workspace/davinci-contracts ]; then
   BRANCH=${BRANCH:-main}
+  echo "Cloning davinci-contracts branch: $BRANCH"
   git clone --branch "$BRANCH" --single-branch https://github.com/vocdoni/davinci-contracts.git
 fi
 cd davinci-contracts
 
 head -n -5 foundry.toml > foundry.tmp && mv foundry.tmp foundry.toml
 
+cp .env.example .env
+
 forge clean && forge build
 
 LOG=$(forge script \
   --chain-id 1337 \
-  script/non-proxy/DeployAll.s.sol:TestDeployAllScript \
-  --rpc-url http://anvil:8545 \
-  --broadcast \
-  --slow \
-  --optimize \
-  --optimizer-runs 200 \
-  -- \
-  --vvvv)
+  script/DeployAll.s.sol:DeployAllScript \
+  --rpc-url http://anvil:8545)
 
 # echo it so you still see it in CI logs
 echo "$LOG"
