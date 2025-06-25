@@ -168,7 +168,7 @@ func validateConfig(cfg *Config) error {
 
 	// Validate network
 	validNetwork := false
-	for _, n := range config.AvailableNetworks {
+	for n := range config.AvailableNetworks {
 		if cfg.Web3.Network == n {
 			validNetwork = true
 			break

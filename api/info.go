@@ -37,6 +37,9 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 			StateTransitionZKVerifier: contracts.StateTransitionZKVerifier,
 			ResultsZKVerifier:         contracts.ResultsZKVerifier,
 		},
+		Network: map[string]uint32{
+			a.network: config.AvailableNetworks[a.network],
+		},
 	}
 
 	// Write the response

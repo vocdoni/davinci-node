@@ -64,6 +64,7 @@ type BallotProofInfo struct {
 	VerificationKeyURL   string            `json:"verificationKeyUrl"`
 	VerificationKeyHash  string            `json:"verificationKeyHash"`
 	Contracts            ContractAddresses `json:"contracts"`
+	Network              map[string]uint32 `json:"network,omitempty"`
 }
 
 // VoteResponse is the response returned by the vote submission endpoint.

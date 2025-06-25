@@ -25,7 +25,7 @@ var DefaultConfig = map[string]DavinciWeb3Config{
 }
 
 // AvailableNetworks contains the list of networks where Davinci is deployed.
-var AvailableNetworks = []string{
-	"sep",
-	"uzh",
+var AvailableNetworks = map[string]uint32{
+	"sep": 11155111,
+	"uzh": 710,
 }

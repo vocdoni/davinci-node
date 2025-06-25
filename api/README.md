@@ -94,6 +94,9 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
     "process": "address",
     "organization": "address",
     "results": "address"
+  },
+  "network": { 
+    "sep": 11155111
   }
 }
 ```
@@ -107,11 +110,15 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
 
 #### POST /processes
 
-Creates a new voting process setup and returns it. The process is not permanently stored.
+Creates a new voting process setup and returns it.
+
+The signature is the byte representation of the string `I am creating a new voting process for the davinci.vote protocol identified with id {processId}`,
+where `processId` is the hexadecimal string (without `0x` prefix) of the process identifier fetch on the smart contract.
 
 **Request Body**:
 ```json
 {
+  "processId": "hexBytes",
   "censusRoot": "hexBytes",
   "ballotMode": {
     "maxCount": "number",
@@ -123,8 +130,6 @@ Creates a new voting process setup and returns it. The process is not permanentl
     "maxTotalCost": "bigintStr",
     "minTotalCost": "bigintStr"
   },
-  "nonce": "number",
-  "chainId": "number",
   "signature": "hexBytes"
 }
 ```

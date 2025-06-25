@@ -346,19 +346,18 @@ func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
 }
 
 func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, censusRoot []byte, ballotMode types.BallotMode) (*types.ProcessID, *types.EncryptionKey) {
-	// Create test process request
-	nonce, err := contracts.AccountNonce()
+	// Geth the next process ID from the contracts
+	processID, err := contracts.NextProcessID(contracts.AccountAddress())
 	c.Assert(err, qt.IsNil)
 
 	// Sign the process creation request
-	signature, err := contracts.SignMessage(fmt.Appendf(nil, "%d%d", contracts.ChainID, nonce))
+	signature, err := contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processID.Marshal()))
 	c.Assert(err, qt.IsNil)
 
 	process := &types.ProcessSetup{
+		ProcessID:  processID.Marshal(),
 		CensusRoot: censusRoot,
 		BallotMode: &ballotMode,
-		Nonce:      nonce,
-		ChainID:    uint32(contracts.ChainID),
 		Signature:  signature,
 	}
 
