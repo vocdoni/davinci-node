@@ -78,6 +78,23 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	})
 }
 
+// NextProcessID returns the next process ID that will be created in the ProcessRegistry contract for the given address.
+func (c *Contracts) NextProcessID(address common.Address) (*types.ProcessID, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+
+	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get next process ID: %w", err)
+	}
+	pidDecoded := &types.ProcessID{}
+	pidDecoded.SetBytes(pid[:])
+	if !pidDecoded.IsValid() {
+		return nil, fmt.Errorf("invalid process ID: %s", pidDecoded.String())
+	}
+	return pidDecoded, nil
+}
+
 // StateRoot returns the state root of the process with the given ID. It
 // returns an error if the process does not exist or if there is an issue with
 // the contract call.

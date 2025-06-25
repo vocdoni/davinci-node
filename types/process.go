@@ -21,6 +21,9 @@ const (
 	ProcessStatusCanceledName = "canceled"
 	ProcessStatusPausedName   = "paused"
 	ProcessStatusResultsName  = "results"
+
+	// NewProcessMessageToSign is the message to sign when creating a new voting process
+	NewProcessMessageToSign = "I am creating a new voting process for the davinci.vote protocol identified with id %s"
 )
 
 func (s ProcessStatus) String() string {
@@ -213,20 +216,16 @@ func (o *OrganizationInfo) String() string {
 
 // ProcessSetup is the struct to create a new voting process
 type ProcessSetup struct {
+	ProcessID  HexBytes    `json:"processId"`
 	CensusRoot HexBytes    `json:"censusRoot"`
 	BallotMode *BallotMode `json:"ballotMode"`
-	Nonce      uint64      `json:"nonce"`
-	ChainID    uint32      `json:"chainId"`
 	Signature  HexBytes    `json:"signature"`
 }
 
 // ProcessSetupResponse represents the response of a voting process
 type ProcessSetupResponse struct {
-	ProcessID        HexBytes    `json:"processId"`
+	ProcessID        HexBytes    `json:"processId,omitempty"`
 	EncryptionPubKey [2]*BigInt  `json:"encryptionPubKey,omitempty"`
 	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
-	ChainID          uint32      `json:"chainId,omitempty"`
-	Nonce            uint64      `json:"nonce,omitempty"`
-	Address          string      `json:"address,omitempty"`
 	BallotMode       *BallotMode `json:"ballotMode,omitempty"`
 }

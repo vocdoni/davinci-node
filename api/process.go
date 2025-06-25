@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
@@ -30,8 +31,31 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
 	}
+
+	// Unmarshal de process ID
+	pid := new(types.ProcessID).SetBytes(p.ProcessID)
+
+	if !pid.IsValid() {
+		ErrMalformedProcessID.With("invalid process ID").Write(w)
+		return
+	}
+
+	// Extract our network from the process ID to validate the chain ID
+	networkInfo, ok := config.AvailableNetworks[a.network]
+	if !ok {
+		ErrGenericInternalServerError.With("unknown network").Write(w)
+		return
+	}
+
+	// Validate the chain ID
+	if pid.ChainID != networkInfo {
+		ErrInvalidChainID.Withf("%d", pid.ChainID).Write(w)
+		return
+	}
+
 	// Extract the address from the signature
-	address, err := ethereum.AddrFromSignature(fmt.Appendf(nil, "%d%d", p.ChainID, p.Nonce), new(ethereum.ECDSASignature).SetBytes(p.Signature))
+	signedMessage := fmt.Sprintf(types.NewProcessMessageToSign, pid.Marshal())
+	address, err := ethereum.AddrFromSignature([]byte(signedMessage), new(ethereum.ECDSASignature).SetBytes(p.Signature))
 	if err != nil {
 		ErrInvalidSignature.Withf("could not extract address from signature: %v", err).Write(w)
 		return
@@ -43,13 +67,6 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create the process ID
-	pid := types.ProcessID{
-		Address: address,
-		Nonce:   p.Nonce,
-		ChainID: p.ChainID,
-	}
-
 	// Generate the elgamal key
 	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
 	if err != nil {
@@ -59,9 +76,9 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	x, y := publicKey.Point()
 
 	// Store the encryption keys or retrieve them if they already exist
-	if err := a.storage.SetEncryptionKeys(&pid, publicKey, privateKey); err != nil {
+	if err := a.storage.SetEncryptionKeys(pid, publicKey, privateKey); err != nil {
 		if errors.Is(err, storage.ErrKeyAlreadyExists) {
-			pub, _, err := a.storage.EncryptionKeys(&pid)
+			pub, _, err := a.storage.EncryptionKeys(pid)
 			if err != nil {
 				ErrGenericInternalServerError.Withf("could not retrieve encryption keys: %v", err).Write(w)
 				return
@@ -117,7 +134,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// Write the response
 	log.Infow("new process setup query",
 		"address", address.String(),
-		"processId", pr.ProcessID.String(),
+		"processId", pid.String(),
 		"pubKeyX", pr.EncryptionPubKey[0].String(),
 		"pubKeyY", pr.EncryptionPubKey[1].String(),
 		"stateRoot", pr.StateRoot.String(),
