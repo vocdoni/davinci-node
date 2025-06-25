@@ -166,7 +166,7 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	// checking that the state transition proving key on the sequencer is compatible with the state transition verification key on the smart contract.
 	stkey, err := process.GetSTVerifierVKeyHash(&bind.CallOpts{Context: ctx})
 	if err != nil {
-		return fmt.Errorf("failed to get verifier address: %w", err)
+		return fmt.Errorf("failed to get state transition verifier address: %w", err)
 	}
 	if !bytes.Equal(stkey[:], types.HexStringToHexBytesMustUnmarshal(config.StateTransitionProvingKeyHash)) {
 		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, stkey)
@@ -175,7 +175,7 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	// checking that the results proving key on the sequencer is compatible with the results verification key on the smart contract.
 	rkey, err := process.GetRVerifierVKeyHash(&bind.CallOpts{Context: ctx})
 	if err != nil {
-		return fmt.Errorf("failed to get verifier address: %w", err)
+		return fmt.Errorf("failed to get results verifier address: %w", err)
 	}
 	if !bytes.Equal(rkey[:], types.HexStringToHexBytesMustUnmarshal(config.ResultsVerifierProvingKeyHash)) {
 		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, rkey)

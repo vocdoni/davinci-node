@@ -25,6 +25,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.deployer
+    container_name: deployer
     depends_on:
       - anvil
     user: "${UID}:${GID}"

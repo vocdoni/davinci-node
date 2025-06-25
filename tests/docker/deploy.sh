@@ -25,13 +25,16 @@ cp .env.example .env
 
 forge clean && forge build
 
-LOG=$(forge script \
+forge script \
   --chain-id 1337 \
-  script/DeployAll.s.sol:DeployAllScript \
-  --rpc-url http://anvil:8545)
-
-# echo it so you still see it in CI logs
-echo "$LOG"
+  script/non-proxy/DeployAll.s.sol:DeployAllScript \
+  --rpc-url http://anvil:8545 \
+  --broadcast \
+  --slow \
+  --optimize \
+  --optimizer-runs 200 \
+  -- \
+  --vvvv
 
 # 4) extract addresses into JSON
 OUTPUT=/addresses.json
