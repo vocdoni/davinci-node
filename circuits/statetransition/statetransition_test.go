@@ -141,7 +141,6 @@ func testCircuitExportSolidity(t *testing.T, c, w frontend.Circuit) {
 }
 
 func TestCircuitExportSolidity(t *testing.T) {
-	t.Skip("TODO: fix this test")
 	witness := newMockWitness(t)
 	testCircuitExportSolidity(t,
 		statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
@@ -153,7 +152,6 @@ func TestCircuitCompile(t *testing.T) {
 }
 
 func TestCircuitProve(t *testing.T) {
-	t.Skip("TODO: fix this test")
 	s := newMockState(t)
 	{
 		witness := newMockTransitionWithVotes(t, s,
@@ -213,7 +211,6 @@ func TestCircuitAggregatorProofCompile(t *testing.T) {
 }
 
 func TestCircuitAggregatorProofProve(t *testing.T) {
-	t.Skip("TODO: fix this test")
 	witness := newMockWitness(t)
 	testCircuitProve(t, &CircuitAggregatorProof{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
@@ -324,17 +321,12 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 		t.Fatal(err)
 	}
 
-	inputsHashes, err := aggregatorWitnessHashesForTest(s)
+	aggregatorHash, err := aggregatorWitnessHashForTest(s)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	hashes := make([]frontend.Variable, len(inputsHashes))
-	for i := range inputsHashes {
-		hashes[i] = inputsHashes[i]
-	}
-
-	proof, vk, err := statetransitiontest.DummyAggProof(hashes)
+	proof, vk, err := statetransitiontest.DummyAggProof(s.BallotCount(), aggregatorHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,10 +335,18 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 	return witness
 }
 
+// newMockWitness returns a witness with an overwritten vote
 func newMockWitness(t *testing.T) *statetransition.StateTransitionCircuit {
-	return newMockTransitionWithVotes(t, newMockState(t),
+	// First initialize a state with a transition of 2 new votes,
+	s := newMockState(t)
+	_ = newMockTransitionWithVotes(t, s,
 		newMockVote(0, 10),
 		newMockVote(1, 10),
+	)
+	// so now we can return a transition where vote 1 is overwritten
+	// and add 3 more votes
+	return newMockTransitionWithVotes(t, s,
+		newMockVote(1, 20),
 		newMockVote(2, 20),
 		newMockVote(3, 20),
 		newMockVote(4, 20),
@@ -407,7 +407,7 @@ func newMockVote(index, amount int64) *state.Vote {
 	}
 }
 
-// aggregatorWitnessHashesForTest uses the following values for each vote
+// aggregatorWitnessHashForTest uses the following values for each vote
 //
 //	process.ID
 //	process.CensusRoot
@@ -420,7 +420,7 @@ func newMockVote(index, amount int64) *state.Vote {
 //
 // to calculate a subhash of each process+vote, then hashes all subhashes
 // and returns the final hash
-func aggregatorWitnessHashesForTest(o *state.State) ([]*big.Int, error) {
+func aggregatorWitnessHashForTest(o *state.State) (*big.Int, error) {
 	hashes := []*big.Int{}
 	for _, v := range o.PaddedVotes() {
 		inputs := []*big.Int{}
@@ -432,7 +432,21 @@ func aggregatorWitnessHashesForTest(o *state.State) ([]*big.Int, error) {
 		}
 		hashes = append(hashes, h)
 	}
-	return hashes, nil
+	// calculate final hash
+	finalHashInputs := []*big.Int{}
+	for i := range types.VotesPerBatch {
+		if i < o.BallotCount() {
+			finalHashInputs = append(finalHashInputs, hashes[i])
+		} else {
+			finalHashInputs = append(finalHashInputs, big.NewInt(1))
+		}
+	}
+	finalHash, err := mimc7.Hash(finalHashInputs, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return finalHash, nil
 }
 
 func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
