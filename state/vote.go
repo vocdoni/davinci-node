@@ -48,9 +48,9 @@ func (o *State) AddVote(v *Vote) error {
 		if err != nil {
 			return err
 		}
-		o.overwriteSum.Add(o.overwriteSum, oldVote)
+		o.overwrittenSum.Add(o.overwrittenSum, oldVote)
 		o.overwrittenBallots = append(o.overwrittenBallots, oldVote)
-		o.overwriteCount++
+		o.overwrittenCount++
 	}
 	o.ballotSum.Add(o.ballotSum, v.Ballot)
 	o.ballotCount++

@@ -10,14 +10,14 @@ import (
 // Common update functions for use with UpdateProcess
 
 // ProcessUpdateCallbackStateRoot returns a function that updates the state root and vote counts
-func ProcessUpdateCallbackStateRoot(root *types.BigInt, numNewVotes, numOverwrites *big.Int) func(*types.Process) error {
+func ProcessUpdateCallbackStateRoot(root *types.BigInt, numNewVotes, numOverwritten *big.Int) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.StateRoot = root
 		if numNewVotes != nil {
 			p.VoteCount = new(types.BigInt).Add(p.VoteCount, (*types.BigInt)(numNewVotes))
 		}
-		if numOverwrites != nil {
-			p.VoteOverwriteCount = new(types.BigInt).Add(p.VoteOverwriteCount, (*types.BigInt)(numOverwrites))
+		if numOverwritten != nil {
+			p.VoteOverwrittenCount = new(types.BigInt).Add(p.VoteOverwrittenCount, (*types.BigInt)(numOverwritten))
 		}
 		return nil
 	}

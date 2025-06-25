@@ -202,18 +202,18 @@ type StateTransitionBatchProofInputs struct {
 	RootHashBefore *big.Int `json:"rootHashBefore"`
 	RootHashAfter  *big.Int `json:"rootHashAfter"`
 	NumNewVotes    int      `json:"numNewVotes"`
-	NumOverwrites  int      `json:"numOverwrites"`
+	NumOverwritten int      `json:"numOverwritten"`
 }
 
 // ABIEncode packs the four fields as a single static uint256[4] blob:
 //
-//	[ rootHashBefore, rootHashAfter, numNewVotes, numOverwrites ]
+//	[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten ]
 func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
 	arr := [4]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
 		big.NewInt(int64(s.NumNewVotes)),
-		big.NewInt(int64(s.NumOverwrites)),
+		big.NewInt(int64(s.NumOverwritten)),
 	}
 	arrType, err := abi.NewType("uint256[4]", "", nil)
 	if err != nil {

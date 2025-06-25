@@ -72,7 +72,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		BallotMode:         p.BallotMode,
 		Census:             p.Census,
 		VoteCount:          p.VoteCount,
-		VoteOverwriteCount: p.VoteOverwriteCount,
+		VoteOverwrittenCount: p.VoteOverwriteCount,
 		Result:             p.Result,
 	})
 }
@@ -340,15 +340,15 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 			X: (*types.BigInt)(p.EncryptionKey.X),
 			Y: (*types.BigInt)(p.EncryptionKey.Y),
 		},
-		StateRoot:          (*types.BigInt)(p.LatestStateRoot),
-		StartTime:          time.Unix(int64(p.StartTime.Uint64()), 0),
-		Duration:           time.Duration(p.Duration.Uint64()) * time.Second,
-		MetadataURI:        p.MetadataURI,
-		BallotMode:         &mode,
-		Census:             &census,
-		VoteCount:          (*types.BigInt)(p.VoteCount),
-		VoteOverwriteCount: (*types.BigInt)(p.VoteOverwriteCount),
-		Result:             results,
+		StateRoot:            (*types.BigInt)(p.LatestStateRoot),
+		StartTime:            time.Unix(int64(p.StartTime.Uint64()), 0),
+		Duration:             time.Duration(p.Duration.Uint64()) * time.Second,
+		MetadataURI:          p.MetadataURI,
+		BallotMode:           &mode,
+		Census:               &census,
+		VoteCount:            (*types.BigInt)(p.VoteCount),
+		VoteOverwrittenCount: (*types.BigInt)(p.VoteOverwrittenCount),
+		Result:               results,
 	}, nil
 }
 
@@ -364,7 +364,7 @@ type ProcessRegistryProcess struct {
 	BallotMode         npbindings.IProcessRegistryBallotMode
 	Census             npbindings.IProcessRegistryCensus
 	VoteCount          *big.Int
-	VoteOverwriteCount *big.Int
+	VoteOverwrittenCount *big.Int
 	Result             []*big.Int
 }
 
@@ -399,7 +399,7 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	prp.Census.MaxVotes = p.Census.MaxVotes.MathBigInt()
 	prp.Census.CensusURI = p.Census.CensusURI
 	prp.VoteCount = p.VoteCount.MathBigInt()
-	prp.VoteOverwriteCount = p.VoteOverwriteCount.MathBigInt()
+	prp.VoteOverwrittenCount = p.VoteOverwrittenCount.MathBigInt()
 	if p.Result != nil {
 		prp.Result = make([]*big.Int, len(p.Result))
 		for i, r := range p.Result {

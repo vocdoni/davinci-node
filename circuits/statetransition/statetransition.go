@@ -126,8 +126,6 @@ func (c StateTransitionCircuit) proofInputsHash(api frontend.API, idx int) front
 		circuits.FrontendError(api, "failed to create mimc7 hash function: ", err)
 		return 0
 	}
-	// select between the overwritten ballot and the original ballot based on
-	// the IsOverwrite flag
 	// calculate the hash of the public inputs of the proof of the i-th vote
 	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, c.Votes[idx].Vote)...); err != nil {
 		circuits.FrontendError(api, "failed to write mimc7 hash function: ", err)
@@ -302,7 +300,7 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 
 // VerifyBallots counts the ballots using homomorphic encryption and checks
 // that the number of ballots is equal to the number of new votes and
-// overwrites. It uses the Ballot structure to count the ballots.
+// overwritten votes. It uses the Ballot structure to count the ballots.
 func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	ballotSum, overwrittenSum, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0

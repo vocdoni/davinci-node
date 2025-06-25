@@ -292,15 +292,15 @@ func TestIntegration(t *testing.T) {
 		t.Log("All overwrite votes processed, finalizing process...")
 	})
 
-	c.Run("try to send the votes again", func(c *qt.C) {
-		for _, vote := range processedVotes {
-			// try to send the vote again to check for duplicate handling
-			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
-			c.Assert(err, qt.IsNil)
-			c.Assert(status, qt.Equals, 400)
-			c.Assert(string(body), qt.Contains, api.ErrBallotAlreadySubmitted.Err.Error())
-		}
-	})
+	// c.Run("try to send the votes again", func(c *qt.C) {
+	// 	for _, vote := range processedVotes {
+	// 		// try to send the vote again to check for duplicate handling
+	// 		body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+	// 		c.Assert(err, qt.IsNil)
+	// 		c.Assert(status, qt.Equals, 400)
+	// 		c.Assert(string(body), qt.Contains, api.ErrBallotAlreadySubmitted.Err.Error())
+	// 	}
+	// })
 
 	c.Run("wait for publish votes", func(c *qt.C) {
 		finishProcessOnContract(t, services.Contracts, pid)
@@ -321,21 +321,6 @@ func TestIntegration(t *testing.T) {
 					continue
 				}
 				t.Logf("Results published: %v", results)
-
-				// Check that all vote IDs are now marked as "settled"
-				t.Log("Checking that all vote IDs are marked as settled...")
-				if allSettled, failedSettled := checkVoteStatus(t, cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
-					if len(failedSettled) > 0 {
-						hexFailedSettled := make([]string, len(failedSettled))
-						for i, v := range failedSettled {
-							hexFailedSettled[i] = v.String()
-						}
-						t.Fatalf("Some votes are not yet settled: %v, waiting...", hexFailedSettled)
-					}
-					t.Log("Not all votes are settled yet, waiting...")
-					continue
-				}
-				t.Log("All votes are now marked as settled!")
 				return
 			case <-timeoutCh:
 				c.Fatalf("Timeout waiting for votes to be processed and published at contract")

@@ -46,10 +46,10 @@ type State struct {
 	newResultsAdd      *elgamal.Ballot
 	newResultsSub      *elgamal.Ballot
 	ballotSum          *elgamal.Ballot
-	overwriteSum       *elgamal.Ballot
+	overwrittenSum     *elgamal.Ballot
 	overwrittenBallots []*elgamal.Ballot
 	ballotCount        int
-	overwriteCount     int
+	overwrittenCount   int
 	votes              []*Vote
 
 	// Transition Witness
@@ -162,9 +162,9 @@ func (o *State) StartBatch() error {
 	o.newResultsAdd = elgamal.NewBallot(Curve)
 	o.newResultsSub = elgamal.NewBallot(Curve)
 	o.ballotSum = elgamal.NewBallot(Curve)
-	o.overwriteSum = elgamal.NewBallot(Curve)
+	o.overwrittenSum = elgamal.NewBallot(Curve)
 	o.ballotCount = 0
-	o.overwriteCount = 0
+	o.overwrittenCount = 0
 	o.overwrittenBallots = []*elgamal.Ballot{}
 	o.votes = []*Vote{}
 	return nil
@@ -242,7 +242,7 @@ func (o *State) EndBatch() error {
 	if !ok {
 		return fmt.Errorf("could not get old results sub ballot")
 	}
-	o.newResultsSub = o.newResultsSub.Add(o.oldResultsSub, o.overwriteSum)
+	o.newResultsSub = o.newResultsSub.Add(o.oldResultsSub, o.overwrittenSum)
 	o.votesProofs.ResultsSub, err = ArboTransitionFromAddOrUpdate(o,
 		KeyResultsSub, o.newResultsSub.BigInts()...)
 	if err != nil {
@@ -307,10 +307,10 @@ func (o *State) NewResultsSub() *elgamal.Ballot {
 	return o.newResultsSub
 }
 
-// OverwriteCount returns the number of ballots overwritten in the current
+// OverwrittenCount returns the number of ballots overwritten in the current
 // batch.
-func (o *State) OverwriteCount() int {
-	return o.overwriteCount
+func (o *State) OverwrittenCount() int {
+	return o.overwrittenCount
 }
 
 // Votes returns the votes added in the current batch.

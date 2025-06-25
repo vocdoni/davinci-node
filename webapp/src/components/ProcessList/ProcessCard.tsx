@@ -318,7 +318,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
   }
 
   return (
-    <Card variant="outline" borderColor={borderColor} bg={bgColor}>
+    <Card variant="outline" borderColor={borderColor} bg={bgColor} id={process.id}>
       <CardBody>
         <VStack align="stretch" spacing={4}>
           {/* Header Section */}
@@ -433,7 +433,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                     <VStack align="start" spacing={2}>
                       <HexField label="Organization" value={process.organizationId} fieldName="orgId" />
                       <CompactField label="Total Votes" value={process.voteCount} />
-                      <CompactField label="Vote Changes" value={process.voteOverwriteCount} />
+                      <CompactField label="Vote Changes" value={process.voteOverwrittenCount} />
                       <CompactField label="Start Time" value={formatDate(process.startTime)} />
                     </VStack>
                   </GridItem>

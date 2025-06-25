@@ -441,7 +441,7 @@ func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
 	t.Log("public: RootHashBefore", util.PrettyHex(witness.RootHashBefore))
 	t.Log("public: RootHashAfter", util.PrettyHex(witness.RootHashAfter))
 	t.Log("public: NumVotes", util.PrettyHex(witness.NumNewVotes))
-	t.Log("public: NumOverwrites", util.PrettyHex(witness.NumOverwritten))
+	t.Log("public: NumOverwritten", util.PrettyHex(witness.NumOverwritten))
 	for name, mts := range map[string][types.VotesPerBatch]merkleproof.MerkleTransition{
 		"Ballot":     witness.VotesProofs.Ballot,
 		"Commitment": witness.VotesProofs.Commitment,
