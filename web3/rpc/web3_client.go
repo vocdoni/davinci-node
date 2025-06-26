@@ -344,7 +344,7 @@ func (c *Client) BlockNumber(ctx context.Context) (uint64, error) {
 func (c *Client) retryAndCheckErr(uri string, fn func() (any, error)) (any, error) {
 	var res any
 	var err error
-	for i := 0; i < defaultRetries; i++ {
+	for range defaultRetries {
 		res, err = fn()
 		if err == nil {
 			return res, nil

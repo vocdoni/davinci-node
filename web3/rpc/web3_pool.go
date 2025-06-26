@@ -225,7 +225,7 @@ func (nm *Web3Pool) NetworkInfoByChainID(chainID uint64) *Web3Endpoint {
 // It retries to connect to the web3 provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
 func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.Client, err error) {
-	for i := 0; i < DefaultMaxWeb3ClientRetries; i++ {
+	for range DefaultMaxWeb3ClientRetries {
 		if client, err = ethclient.DialContext(ctx, uri); err != nil {
 			continue
 		}
@@ -238,7 +238,7 @@ func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.
 // It retries to connect to the rpc provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
 func connectNodeRawRPC(ctx context.Context, uri string) (client *rpc.Client, err error) {
-	for i := 0; i < DefaultMaxWeb3ClientRetries; i++ {
+	for range DefaultMaxWeb3ClientRetries {
 		if client, err = rpc.DialContext(ctx, uri); err != nil {
 			continue
 		}

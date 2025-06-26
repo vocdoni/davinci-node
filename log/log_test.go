@@ -51,9 +51,8 @@ func BenchmarkLogger(b *testing.B) {
 	logTestWriter = io.Discard // to not grow a buffer
 	Init("debug", logTestWriterName, nil)
 
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		doLogs()
 	}
 }

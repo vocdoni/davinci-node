@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"math/big"
 	"path/filepath"
 	"sync"
@@ -43,16 +44,16 @@ func TestProcessStatsConcurrency(t *testing.T) {
 	wg := sync.WaitGroup{}
 
 	// Start multiple goroutines that will process ballots concurrently
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(routineID int) {
 			defer wg.Done()
 			for j := 0; j < ballotsPerGoroutine; j++ {
 				// Create a unique ballot
 				ballot := &Ballot{
-					ProcessID:        processID.Marshal(),
-					Address:          big.NewInt(int64(routineID*10000 + j)),
-					BallotInputsHash: big.NewInt(int64(routineID*100000 + j)),
+					ProcessID: processID.Marshal(),
+					Address:   big.NewInt(int64(routineID*10000 + j)),
+					VoteID:    fmt.Appendf(nil, "vote%d", routineID*100+j),
 				}
 
 				// Push ballot (pending +1)
@@ -129,11 +130,11 @@ func TestProcessStatsAggregation(t *testing.T) {
 
 	// Create and process some ballots
 	numBallots := 10
-	for i := 0; i < numBallots; i++ {
+	for i := range numBallots {
 		ballot := &Ballot{
-			ProcessID:        processID.Marshal(),
-			Address:          big.NewInt(int64(i + 1000)),
-			BallotInputsHash: big.NewInt(int64(i + 2000)),
+			ProcessID: processID.Marshal(),
+			Address:   big.NewInt(int64(i + 1000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
 
 		// Push ballot
@@ -232,15 +233,15 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 	ballotsPerWorker := 20
 
 	// Worker goroutines that process individual ballots
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
 			for j := 0; j < ballotsPerWorker; j++ {
 				ballot := &Ballot{
-					ProcessID:        processID.Marshal(),
-					Address:          big.NewInt(int64(workerID*10000 + j)),
-					BallotInputsHash: big.NewInt(int64(workerID*100000 + j)),
+					ProcessID: processID.Marshal(),
+					Address:   big.NewInt(int64(workerID*10000 + j)),
+					VoteID:    fmt.Appendf(nil, "vote%d-%d", workerID, j),
 				}
 
 				// Push and process ballot
@@ -272,7 +273,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 5; i++ { // Try to aggregate 5 times
+		for range 5 { // Try to aggregate 5 times
 			time.Sleep(10 * time.Millisecond) // Small delay
 
 			// Try to pull and aggregate verified ballots
@@ -525,11 +526,11 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 	// Create and process some ballots to verified state
 	numBallots := 5
 	var keys [][]byte
-	for i := 0; i < numBallots; i++ {
+	for i := range numBallots {
 		ballot := &Ballot{
-			ProcessID:        processID.Marshal(),
-			Address:          big.NewInt(int64(i + 2000)),
-			BallotInputsHash: big.NewInt(int64(i + 3000)),
+			ProcessID: processID.Marshal(),
+			Address:   big.NewInt(int64(i + 2000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
 
 		// Push ballot
@@ -610,11 +611,11 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 
 	// Create and process some ballots to verified state
 	numBallots := 8
-	for i := 0; i < numBallots; i++ {
+	for i := range numBallots {
 		ballot := &Ballot{
-			ProcessID:        processID.Marshal(),
-			Address:          big.NewInt(int64(i + 2000)),
-			BallotInputsHash: big.NewInt(int64(i + 3000)),
+			ProcessID: processID.Marshal(),
+			Address:   big.NewInt(int64(i + 2000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
 
 		// Push ballot
@@ -941,14 +942,14 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 
 	// Test 3: Push ballots to process1 and verify total pending increases
 	ballot1 := &Ballot{
-		ProcessID:        process1.Marshal(),
-		Address:          big.NewInt(1000),
-		BallotInputsHash: big.NewInt(2000),
+		ProcessID: process1.Marshal(),
+		Address:   big.NewInt(1000),
+		VoteID:    fmt.Appendf(nil, "vote1"),
 	}
 	ballot2 := &Ballot{
-		ProcessID:        process1.Marshal(),
-		Address:          big.NewInt(1001),
-		BallotInputsHash: big.NewInt(2001),
+		ProcessID: process1.Marshal(),
+		Address:   big.NewInt(1001),
+		VoteID:    fmt.Appendf(nil, "vote2"),
 	}
 
 	err = st.PushBallot(ballot1)
@@ -963,9 +964,9 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 
 	// Test 4: Push ballots to process2
 	ballot3 := &Ballot{
-		ProcessID:        process2.Marshal(),
-		Address:          big.NewInt(1002),
-		BallotInputsHash: big.NewInt(2002),
+		ProcessID: process2.Marshal(),
+		Address:   big.NewInt(1002),
+		VoteID:    fmt.Appendf(nil, "vote3"),
 	}
 
 	err = st.PushBallot(ballot3)
@@ -1033,7 +1034,7 @@ func TestTotalStatsConcurrency(t *testing.T) {
 	// Create multiple processes
 	numProcesses := 5
 	processes := make([]*types.ProcessID, numProcesses)
-	for i := 0; i < numProcesses; i++ {
+	for i := range numProcesses {
 		processes[i] = &types.ProcessID{
 			Address: common.Address{byte(i + 1)},
 			Nonce:   uint64(i + 1),
@@ -1048,7 +1049,7 @@ func TestTotalStatsConcurrency(t *testing.T) {
 	updatesPerGoroutine := 20
 	wg := sync.WaitGroup{}
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(routineID int) {
 			defer wg.Done()
@@ -1129,21 +1130,21 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 	numBallotsP1 := 5
 	numBallotsP2 := 3
 
-	for i := 0; i < numBallotsP1; i++ {
+	for i := range numBallotsP1 {
 		ballot := &Ballot{
-			ProcessID:        process1.Marshal(),
-			Address:          big.NewInt(int64(i + 1000)),
-			BallotInputsHash: big.NewInt(int64(i + 2000)),
+			ProcessID: process1.Marshal(),
+			Address:   big.NewInt(int64(i + 1000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
 		err = st.PushBallot(ballot)
 		c.Assert(err, qt.IsNil)
 	}
 
-	for i := 0; i < numBallotsP2; i++ {
+	for i := range numBallotsP2 {
 		ballot := &Ballot{
-			ProcessID:        process2.Marshal(),
-			Address:          big.NewInt(int64(i + 3000)),
-			BallotInputsHash: big.NewInt(int64(i + 4000)),
+			ProcessID: process2.Marshal(),
+			Address:   big.NewInt(int64(i + 3000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i+numBallotsP1),
 		}
 		err = st.PushBallot(ballot)
 		c.Assert(err, qt.IsNil)
@@ -1154,7 +1155,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 
 	// Step 2: Process some ballots
 	processedCount := 0
-	for i := 0; i < 4; i++ { // Process 4 ballots
+	for range 4 { // Process 4 ballots
 		b, key, err := st.NextBallot()
 		c.Assert(err, qt.IsNil)
 

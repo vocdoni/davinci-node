@@ -87,7 +87,7 @@ func TestDKG(t *testing.T) {
 	wg := sync.WaitGroup{}
 	sem := make(chan struct{}, maxParallel)
 
-	for i := 0; i < numVoters; i++ {
+	for range numVoters {
 		voteValue, err := rand.Int(rand.Reader, big.NewInt(int64(maxValue)))
 		c.Assert(err, qt.IsNil)
 		expectedSum.Add(expectedSum, voteValue)

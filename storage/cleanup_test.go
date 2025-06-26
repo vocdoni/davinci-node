@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -166,26 +167,26 @@ func TestVoteIDStatusTimeout(t *testing.T) {
 
 func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types.ProcessID) {
 	// Create pending ballots for both processes
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		ballot1 := &Ballot{
-			ProcessID:        processID1.Marshal(),
-			Address:          big.NewInt(int64(i + 1000)),
-			BallotInputsHash: big.NewInt(int64(i + 2000)),
+			ProcessID: processID1.Marshal(),
+			Address:   big.NewInt(int64(i + 1000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
 		err := st.PushBallot(ballot1)
 		c.Assert(err, qt.IsNil)
 
 		ballot2 := &Ballot{
-			ProcessID:        processID2.Marshal(),
-			Address:          big.NewInt(int64(i + 3000)),
-			BallotInputsHash: big.NewInt(int64(i + 4000)),
+			ProcessID: processID2.Marshal(),
+			Address:   big.NewInt(int64(i + 3000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i+3),
 		}
 		err = st.PushBallot(ballot2)
 		c.Assert(err, qt.IsNil)
 	}
 
 	// Process some ballots to verified state for both processes
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		// Process ballot for processID1
 		b1, key1, err := st.NextBallot()
 		c.Assert(err, qt.IsNil)
@@ -331,11 +332,11 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 
 	// Create and process ballots through the full pipeline
 	ballots := make([]*Ballot, 2)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		ballot := &Ballot{
-			ProcessID:        processID.Marshal(),
-			Address:          big.NewInt(int64(i + 5000)),
-			BallotInputsHash: big.NewInt(int64(i + 6000)),
+			ProcessID: processID.Marshal(),
+			Address:   big.NewInt(int64(i + 5000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
 		err := st.PushBallot(ballot)
 		c.Assert(err, qt.IsNil)
@@ -345,7 +346,7 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 	}
 
 	// Process to verified
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		b, key, err := st.NextBallot()
 		c.Assert(err, qt.IsNil)
 

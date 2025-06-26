@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -68,14 +69,14 @@ func TestBallotQueue(t *testing.T) {
 
 	// Create ballots with fixed data for deterministic testing
 	ballot1 := &Ballot{
-		ProcessID:        processID.Marshal(),
-		Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
-		BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 32)),
+		ProcessID: processID.Marshal(),
+		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
+		VoteID:    fmt.Append(nil, "vote1"),
 	}
 	ballot2 := &Ballot{
-		ProcessID:        processID.Marshal(),
-		Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
-		BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 32)),
+		ProcessID: processID.Marshal(),
+		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
+		VoteID:    fmt.Append(nil, "vote2"),
 	}
 
 	// Push the ballots
@@ -219,15 +220,15 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 	// Create 5 ballots with fixed data for deterministic testing
 	for i := range 5 {
 		ballot := &Ballot{
-			ProcessID:        processID.Marshal(),
-			Address:          new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
-			BallotInputsHash: new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 32)),
+			ProcessID: processID.Marshal(),
+			Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i+1),
 		}
 		c.Assert(st.PushBallot(ballot), qt.IsNil)
 	}
 
 	// Process all ballots and convert them to verified ballots
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		b, key, err := st.NextBallot()
 		c.Assert(err, qt.IsNil)
 		c.Assert(b, qt.IsNotNil)
