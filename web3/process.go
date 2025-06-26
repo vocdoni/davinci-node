@@ -258,6 +258,11 @@ func (c *Contracts) MonitorProcessFinalization(ctx context.Context, interval tim
 						log.Errorw(err, "failed to get process while monitoring process creation")
 						continue
 					}
+					if iter.Event.NewStatus != uint8(types.ProcessStatusEnded) {
+						log.Warnw("process monitor got an unhandled status change (old=%d, new=%d), ignoring...",
+							iter.Event.OldStatus, iter.Event.NewStatus)
+						continue
+					}
 					process.ID = iter.Event.ProcessId[:]
 					ch <- process
 				}
