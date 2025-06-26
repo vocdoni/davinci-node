@@ -102,7 +102,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
-		composeEnv[zContractsBranchNameEnvVarName] = "f/results_status"
+		composeEnv[zContractsBranchNameEnvVarName] = "r/sequencer_overwrites_issues"
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
@@ -402,7 +402,76 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	return pid, encryptionKeys
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer) api.Vote {
+func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, secret []byte, k *big.Int) (api.Vote, []byte, *big.Int) {
+	var err error
+	// emulate user inputs
+	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
+	if len(secret) == 0 {
+		secret = util.RandomBytes(16)
+	}
+	if k == nil {
+		k, err = elgamal.RandK()
+		c.Assert(err, qt.IsNil)
+	}
+	// generate random ballot fields
+	randFields := ballotprooftest.GenBallotFieldsForTest(
+		int(bm.MaxCount),
+		int(bm.MaxValue.MathBigInt().Int64()),
+		int(bm.MinValue.MathBigInt().Int64()),
+		bm.ForceUniqueness)
+	// cast fields to types.BigInt
+	fields := []*types.BigInt{}
+	for _, f := range randFields {
+		fields = append(fields, (*types.BigInt)(f))
+	}
+	c.Logf("creating vote for address %s with fields %v", address.Hex(), fields)
+	// compose wasm inputs
+	wasmInputs := &ballotproof.BallotProofInputs{
+		Address:   address.Bytes(),
+		ProcessID: pid.Marshal(),
+		Secret:    secret,
+		EncryptionKey: []*types.BigInt{
+			(*types.BigInt)(encKey.X),
+			(*types.BigInt)(encKey.Y),
+		},
+		K:           (*types.BigInt)(k),
+		BallotMode:  bm,
+		Weight:      (*types.BigInt)(new(big.Int).SetUint64(circuits.MockWeight)),
+		FieldValues: fields,
+	}
+	// generate the inputs for the ballot proof circuit
+	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
+	c.Assert(err, qt.IsNil)
+	// encode the inputs to json
+	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)
+	c.Assert(err, qt.IsNil)
+	// generate the proof using the circom circuit
+	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
+	c.Assert(err, qt.IsNil)
+	// convert the proof to gnark format
+	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
+	c.Assert(err, qt.IsNil)
+	// sign the hash of the circuit inputs
+	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
+	c.Assert(err, qt.IsNil)
+	// return the vote ready to be sent to the sequencer
+	return api.Vote{
+		ProcessID:        wasmResult.ProccessID,
+		Address:          wasmInputs.Address,
+		Commitment:       wasmResult.Commitment,
+		Nullifier:        wasmResult.Nullifier,
+		Ballot:           wasmResult.Ballot,
+		BallotProof:      circomProof,
+		BallotInputsHash: wasmResult.BallotInputsHash,
+		Signature:        signature.Bytes(),
+	}, secret, k
+}
+
+func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) api.Vote {
+	privKey, err := ethereum.NewSigner()
+	if err != nil {
+		c.Fatalf("failed to generate signer: %v", err)
+	}
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	secret := util.RandomBytes(16)

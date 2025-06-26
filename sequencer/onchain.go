@@ -74,7 +74,7 @@ func (s *Sequencer) processTransitionOnChain() {
 		if err := s.stg.UpdateProcess(pid, func(p *types.Process) error {
 			p.StateRoot = (*types.BigInt)(batch.Inputs.RootHashAfter)
 			p.VoteCount = new(types.BigInt).Add(p.VoteCount, new(types.BigInt).SetInt(batch.Inputs.NumNewVotes))
-			p.VoteOverwriteCount = new(types.BigInt).Add(p.VoteOverwriteCount, new(types.BigInt).SetInt(batch.Inputs.NumOverwrites))
+			p.VoteOverwrittenCount = new(types.BigInt).Add(p.VoteOverwrittenCount, new(types.BigInt).SetInt(batch.Inputs.NumOverwritten))
 			return nil
 		}); err != nil {
 			log.Errorw(err, "failed to update process data")
