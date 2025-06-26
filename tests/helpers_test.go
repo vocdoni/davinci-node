@@ -427,7 +427,6 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:   address.Bytes(),
 		ProcessID: pid.Marshal(),
-		Secret:    secret,
 		EncryptionKey: []*types.BigInt{
 			(*types.BigInt)(encKey.X),
 			(*types.BigInt)(encKey.Y),
@@ -454,10 +453,8 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	c.Assert(err, qt.IsNil)
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID:        wasmResult.ProccessID,
+		ProcessID:        wasmResult.ProcessID,
 		Address:          wasmInputs.Address,
-		Commitment:       wasmResult.Commitment,
-		Nullifier:        wasmResult.Nullifier,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,

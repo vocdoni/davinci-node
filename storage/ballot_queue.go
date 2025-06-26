@@ -32,7 +32,7 @@ func (s *Storage) PushBallot(b *Ballot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	// Check if the ballot is already processing
-	if processing := s.IsNullifierProcessing(b.Nullifier); processing {
+	if processing := s.IsNullifierProcessing(b.VoteID.BigInt().MathBigInt()); processing {
 		return ErrNullifierProcessing
 	}
 
@@ -65,7 +65,7 @@ func (s *Storage) PushBallot(b *Ballot) error {
 	}
 
 	// Lock the ballot nullifier to prevent overwrites until processing is done.
-	s.lockNullifier(b.Nullifier)
+	s.lockNullifier(b.VoteID.BigInt().MathBigInt())
 
 	// Set vote ID status to pending
 	return s.setVoteIDStatus(b.ProcessID, b.VoteID, VoteIDStatusPending)
@@ -420,7 +420,7 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 		}
 
 		// Release nullifier lock
-		s.releaseNullifier(ballot.Nullifier)
+		s.releaseNullifier(ballot.VoteID.BigInt().MathBigInt())
 	}
 
 	// Update process stats for each process (only for ballots that were actually verified)
@@ -528,7 +528,7 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 		}
 
 		// Release nullifier lock
-		s.releaseNullifier(ballot.Nullifier)
+		s.releaseNullifier(ballot.VoteID.BigInt().MathBigInt())
 
 		// Set vote ID status to error
 		if err := s.setVoteIDStatus(agg.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
@@ -728,7 +728,7 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 				voteIDs[i] = ballot.VoteID
 
 				// Release nullifier lock
-				s.releaseNullifier(ballot.Nullifier)
+				s.releaseNullifier(ballot.VoteID.BigInt().MathBigInt())
 			}
 
 			// Mark all vote IDs in the batch as settled (using unsafe version to avoid deadlock)
