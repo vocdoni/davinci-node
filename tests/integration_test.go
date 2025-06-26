@@ -1,9 +1,7 @@
 package tests
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"math/big"
 	"os"
 	"testing"
@@ -30,7 +28,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestIntegration(t *testing.T) {
-	numBallots := 1
+	numBallots := 5
 	c := qt.New(t)
 
 	// Setup
@@ -138,14 +136,13 @@ func TestIntegration(t *testing.T) {
 
 	// Store the voteIDs returned from the API to check their status later
 	var voteIDs []types.HexBytes
-	var secrets [][]byte
 	var ks []*big.Int
 
 	c.Run("create votes", func(c *qt.C) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote, secret, k := createVote(c, pid, ballotMode, encryptionKey, signers[i], nil, nil)
+			vote, k := createVote(c, pid, ballotMode, encryptionKey, signers[i], nil)
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
@@ -158,7 +155,6 @@ func TestIntegration(t *testing.T) {
 
 			// Save the voteID for status checks
 			voteIDs = append(voteIDs, vote.VoteID)
-			secrets = append(secrets, secret)
 			ks = append(ks, k)
 			count++
 		}
@@ -179,7 +175,7 @@ func TestIntegration(t *testing.T) {
 	c.Run("try to overwrite valid votes", func(c *qt.C) {
 		for i := range signers {
 			// generate a vote for the first participant
-			vote, _, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], secrets[i], ks[i])
+			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
@@ -256,26 +252,20 @@ func TestIntegration(t *testing.T) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote, _, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], secrets[i], ks[i])
+			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
 			// Make the request to cast the vote
-			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
 			c.Assert(status, qt.Equals, 200)
-
-			// Parse the response body to get the vote ID
-			var voteResponse api.VoteResponse
-			err = json.NewDecoder(bytes.NewReader(body)).Decode(&voteResponse)
-			c.Assert(err, qt.IsNil)
-			c.Assert(voteResponse.VoteID, qt.Not(qt.IsNil))
-			c.Logf("Vote %d (addr: %s - k: %s) created with ID: %s", i, vote.Address.String(), ks[i].String(), voteResponse.VoteID.String())
+			c.Logf("Vote %d (addr: %s - k: %s) created with ID: %s", i, vote.Address.String(), ks[i].String(), vote.VoteID)
 
 			// Save the voteID for status checks
-			voteIDs = append(voteIDs, voteResponse.VoteID)
+			voteIDs = append(voteIDs, vote.VoteID)
 			processedVotes = append(processedVotes, vote)
 			count++
 		}
@@ -352,7 +342,7 @@ func TestIntegration(t *testing.T) {
 	c.Run("try to send votes to ended process", func(c *qt.C) {
 		for i := range signers {
 			// generate a vote for the first participant
-			vote, _, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], secrets[i], ks[i])
+			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))

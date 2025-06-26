@@ -40,7 +40,7 @@ const (
 	testLocalAccountPrivKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 	// envarionment variable names
 	deployerServerPortEnvVarName      = "DEPLOYER_SERVER"                        // environment variable name for deployer server port
-	zContractsBranchNameEnvVarName    = "SEQUENCER_Z_CONTRACTS_BRANCH"           // environment variable name for z-contracts branch
+	contractsBranchNameEnvVarName     = "SEQUENCER_CONTRACTS_BRANCH"             // environment variable name for z-contracts branch
 	privKeyEnvVarName                 = "SEQUENCER_PRIV_KEY"                     // environment variable name for private key
 	rpcUrlEnvVarName                  = "SEQUENCER_RPC_URL"                      // environment variable name for RPC URL
 	anvilPortEnvVarName               = "ANVIL_PORT_RPC_HTTP"                    // environment variable name for Anvil port
@@ -102,6 +102,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
+		composeEnv[contractsBranchNameEnvVarName] = "r/remove_voter_nullifier_and_commitment"
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
@@ -400,13 +401,10 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	return pid, encryptionKeys
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, secret []byte, k *big.Int) (api.Vote, []byte, *big.Int) {
+func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, *big.Int) {
 	var err error
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	if len(secret) == 0 {
-		secret = util.RandomBytes(16)
-	}
 	if k == nil {
 		k, err = elgamal.RandK()
 		c.Assert(err, qt.IsNil)
@@ -455,11 +453,12 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	return api.Vote{
 		ProcessID:        wasmResult.ProcessID,
 		Address:          wasmInputs.Address,
+		VoteID:           wasmResult.VoteID,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
-	}, secret, k
+	}, k
 }
 
 func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) api.Vote {
