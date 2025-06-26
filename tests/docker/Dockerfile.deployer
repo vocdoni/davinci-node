@@ -3,9 +3,12 @@ FROM ghcr.io/foundry-rs/foundry:latest
 
 USER root
 # Install netcat
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update &&\
+    apt-get install -y --no-install-recommends python3 curl ca-certificates gnupg && \
+    curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
+    apt-get install -y nodejs && \
+    node -v && npm -v && npx -v && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy your deploy script in (and make it executable)
 COPY deploy.sh /deploy.sh

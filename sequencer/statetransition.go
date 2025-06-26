@@ -120,7 +120,7 @@ func (s *Sequencer) processPendingTransitions() {
 				RootHashBefore: processState.RootHashBefore(),
 				RootHashAfter:  rootHashAfter,
 				NumNewVotes:    processState.BallotCount(),
-				NumOverwrites:  processState.OverwriteCount(),
+				NumOverwritten: processState.OverwrittenCount(),
 			},
 		}); err != nil {
 			log.Errorw(err, "failed to push state transition batch")

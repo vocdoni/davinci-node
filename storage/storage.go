@@ -56,6 +56,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -69,9 +70,10 @@ import (
 )
 
 var (
-	ErrKeyAlreadyExists = errors.New("key already exists")
-	ErrNotFound         = errors.New("not found")
-	ErrNoMoreElements   = errors.New("no more elements")
+	ErrKeyAlreadyExists    = errors.New("key already exists")
+	ErrNotFound            = errors.New("not found")
+	ErrNoMoreElements      = errors.New("no more elements")
+	ErrNullifierProcessing = errors.New("nullifier is being processed")
 
 	// Prefixes
 	ballotPrefix                = []byte("b/")
@@ -107,6 +109,7 @@ type Storage struct {
 	globalLock  sync.Mutex              // Lock for global operations
 	workersLock sync.Mutex              // Lock for worker-related operations
 	cache       *lru.Cache[string, any] // Cache for artifacts
+	nullifiers  sync.Map                // Map to track nullifiers being processed
 }
 
 // New creates a new Storage instance.
@@ -169,7 +172,8 @@ func (s *Storage) recover() error {
 		}
 	}
 
-	return nil
+	// Finally, recover nullifiers that were being processed
+	return s.recoverNullifiers()
 }
 
 // setAllProcessesAsNotAcceptingVotes sets the accepting votes flag to false for all
@@ -394,4 +398,68 @@ func (s *Storage) monitorStaleReservations() {
 			}
 		}
 	}()
+}
+
+// recoverNullifiers method recovers the nullifiers that were being processed
+// when the node stopped or crashed. It loads the nullifiers from verified and
+// aggregated ballots to be released where they can be processed again.
+//
+// This method should be called after locking the global lock to ensure
+// thread safety.
+func (s *Storage) recoverNullifiers() error {
+	// Recover nullifiers from verified ballots
+	var outerErr error
+	verifiedBallotsReader := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
+	if err := verifiedBallotsReader.Iterate(nil, func(k, v []byte) bool {
+		// Decode the verified ballot to extract nullifiers
+		vb := &VerifiedBallot{}
+		if err := DecodeArtifact(v, vb); err != nil {
+			outerErr = fmt.Errorf("failed to decode verified ballot: %w", err)
+			return false
+		}
+		s.lockNullifier(vb.Nullifier)
+		return true // Continue iterating
+	}); err != nil {
+		return fmt.Errorf("failed to iterate verified ballots: %w", err)
+	}
+	// If there was an error decoding any verified ballot, return it
+	if outerErr != nil {
+		return outerErr
+	}
+
+	// Recover nullifiers from aggregated batches
+	aggregatedBallotsReader := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
+	if err := aggregatedBallotsReader.Iterate(nil, func(k, v []byte) bool {
+		// Decode the aggregated ballot batch to extract nullifiers
+		abb := &AggregatorBallotBatch{}
+		if err := DecodeArtifact(v, abb); err != nil {
+			outerErr = fmt.Errorf("failed to decode aggregated ballot batch: %w", err)
+			return false // Stop iterating on error
+		}
+		for _, ballot := range abb.Ballots {
+			s.lockNullifier(ballot.Nullifier)
+		}
+		return true // Continue iterating
+	}); err != nil {
+		return fmt.Errorf("failed to iterate aggregated ballot batches: %w", err)
+	}
+	return outerErr
+}
+
+// lockNullifier locks a nullifier to prevent concurrent processing.
+func (s *Storage) lockNullifier(nullifier *big.Int) {
+	s.nullifiers.Store(nullifier.String(), struct{}{})
+}
+
+// IsNullifierProcessing checks if a nullifier is currently being processed.
+func (s *Storage) IsNullifierProcessing(nullifier *big.Int) bool {
+	if _, exists := s.nullifiers.Load(nullifier.String()); exists {
+		return true // Is processing
+	}
+	return false // Not processing
+}
+
+// releaseNullifier releases a nullifier after processing is complete or failed.
+func (s *Storage) releaseNullifier(nullifier *big.Int) {
+	s.nullifiers.Delete(nullifier.String())
 }

@@ -293,7 +293,7 @@ Gets information about an existing voting process. It must exist in the smart co
     "censusURI": "string"
   },
   "voteCount": "bigintStr", // Total number of votes cast in the process
-  "voteOverwriteCount": "bigintStr", // Number of times voters changed their vote
+  "voteOverwrittenCount": "bigintStr", // Number of times voters changed their vote
   "isAcceptingVotes": "boolean", // Whether the Sequencer is currently accepting votes for this process
 
   "sequencerStats": { // Stats about the Sequencer runing the API (not the whole network)

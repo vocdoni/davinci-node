@@ -8,7 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	npbindings "github.com/vocdoni/contracts-z/golang-types/non-proxy"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types/non-proxy"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -63,18 +63,18 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	}
 
 	return contractProcess2Process(&ProcessRegistryProcess{
-		Status:             p.Status,
-		OrganizationId:     p.OrganizationId,
-		EncryptionKey:      p.EncryptionKey,
-		LatestStateRoot:    p.LatestStateRoot,
-		StartTime:          p.StartTime,
-		Duration:           p.Duration,
-		MetadataURI:        p.MetadataURI,
-		BallotMode:         p.BallotMode,
-		Census:             p.Census,
-		VoteCount:          p.VoteCount,
-		VoteOverwriteCount: p.VoteOverwriteCount,
-		Result:             p.Result,
+		Status:               p.Status,
+		OrganizationId:       p.OrganizationId,
+		EncryptionKey:        p.EncryptionKey,
+		LatestStateRoot:      p.LatestStateRoot,
+		StartTime:            p.StartTime,
+		Duration:             p.Duration,
+		MetadataURI:          p.MetadataURI,
+		BallotMode:           p.BallotMode,
+		Census:               p.Census,
+		VoteCount:            p.VoteCount,
+		VoteOverwrittenCount: p.VoteOverwriteCount,
+		Result:               p.Result,
 	})
 }
 
@@ -138,7 +138,7 @@ func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (*common.
 	return &hash, nil
 }
 
-func (c *Contracts) SetProcessStatus(processID []byte, status uint8) (*common.Hash, error) {
+func (c *Contracts) SetProcessStatus(processID []byte, status types.ProcessStatus) (*common.Hash, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
@@ -335,44 +335,44 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 	}
 
 	return &types.Process{
-		Status:         p.Status,
+		Status:         types.ProcessStatus(p.Status),
 		OrganizationId: p.OrganizationId,
 		EncryptionKey: &types.EncryptionKey{
 			X: (*types.BigInt)(p.EncryptionKey.X),
 			Y: (*types.BigInt)(p.EncryptionKey.Y),
 		},
-		StateRoot:          (*types.BigInt)(p.LatestStateRoot),
-		StartTime:          time.Unix(int64(p.StartTime.Uint64()), 0),
-		Duration:           time.Duration(p.Duration.Uint64()) * time.Second,
-		MetadataURI:        p.MetadataURI,
-		BallotMode:         &mode,
-		Census:             &census,
-		VoteCount:          (*types.BigInt)(p.VoteCount),
-		VoteOverwriteCount: (*types.BigInt)(p.VoteOverwriteCount),
-		Result:             results,
+		StateRoot:            (*types.BigInt)(p.LatestStateRoot),
+		StartTime:            time.Unix(int64(p.StartTime.Uint64()), 0),
+		Duration:             time.Duration(p.Duration.Uint64()) * time.Second,
+		MetadataURI:          p.MetadataURI,
+		BallotMode:           &mode,
+		Census:               &census,
+		VoteCount:            (*types.BigInt)(p.VoteCount),
+		VoteOverwrittenCount: (*types.BigInt)(p.VoteOverwrittenCount),
+		Result:               results,
 	}, nil
 }
 
 // ProcessRegistryProcess is a mirror of the on-chain process tuple constructed with the auto-generated bindings
 type ProcessRegistryProcess struct {
-	Status             uint8
-	OrganizationId     common.Address
-	EncryptionKey      npbindings.IProcessRegistryEncryptionKey
-	LatestStateRoot    *big.Int
-	StartTime          *big.Int
-	Duration           *big.Int
-	MetadataURI        string
-	BallotMode         npbindings.IProcessRegistryBallotMode
-	Census             npbindings.IProcessRegistryCensus
-	VoteCount          *big.Int
-	VoteOverwriteCount *big.Int
-	Result             []*big.Int
+	Status               uint8
+	OrganizationId       common.Address
+	EncryptionKey        npbindings.IProcessRegistryEncryptionKey
+	LatestStateRoot      *big.Int
+	StartTime            *big.Int
+	Duration             *big.Int
+	MetadataURI          string
+	BallotMode           npbindings.IProcessRegistryBallotMode
+	Census               npbindings.IProcessRegistryCensus
+	VoteCount            *big.Int
+	VoteOverwrittenCount *big.Int
+	Result               []*big.Int
 }
 
 func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	var prp ProcessRegistryProcess
 
-	prp.Status = p.Status
+	prp.Status = uint8(p.Status)
 	prp.OrganizationId = p.OrganizationId
 	prp.EncryptionKey = npbindings.IProcessRegistryEncryptionKey{
 		X: p.EncryptionKey.X.MathBigInt(),
@@ -400,7 +400,7 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	prp.Census.MaxVotes = p.Census.MaxVotes.MathBigInt()
 	prp.Census.CensusURI = p.Census.CensusURI
 	prp.VoteCount = p.VoteCount.MathBigInt()
-	prp.VoteOverwriteCount = p.VoteOverwriteCount.MathBigInt()
+	prp.VoteOverwrittenCount = p.VoteOverwrittenCount.MathBigInt()
 	if p.Result != nil {
 		prp.Result = make([]*big.Int, len(p.Result))
 		for i, r := range p.Result {

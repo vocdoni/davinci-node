@@ -31,6 +31,11 @@ var ErroBallotAlreadyExists = errors.New("ballot already exists")
 func (s *Storage) PushBallot(b *Ballot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+	// Check if the ballot is already processing
+	if processing := s.IsNullifierProcessing(b.Nullifier); processing {
+		return ErrNullifierProcessing
+	}
+
 	val, err := EncodeArtifact(b)
 	if err != nil {
 		return fmt.Errorf("encode ballot: %w", err)
@@ -58,6 +63,9 @@ func (s *Storage) PushBallot(b *Ballot) error {
 			"voteID", hex.EncodeToString(b.VoteID()),
 		)
 	}
+
+	// Lock the ballot nullifier to prevent overwrites until processing is done.
+	s.lockNullifier(b.Nullifier)
 
 	// Set vote ID status to pending
 	return s.setVoteIDStatus(b.ProcessID, b.VoteID(), VoteIDStatusPending)
@@ -410,6 +418,9 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 		if err := s.deleteArtifact(verifiedBallotPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 			return fmt.Errorf("delete verified ballot: %w", err)
 		}
+
+		// Release nullifier lock
+		s.releaseNullifier(ballot.Nullifier)
 	}
 
 	// Update process stats for each process (only for ballots that were actually verified)
@@ -516,9 +527,14 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 				"currentStatus", VoteIDStatusName(currentStatus))
 		}
 
+		// Release nullifier lock
+		s.releaseNullifier(ballot.Nullifier)
+
+		// Set vote ID status to error
 		if err := s.setVoteIDStatus(agg.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 			log.Warnw("failed to set vote ID status to error", "error", err.Error())
 		}
+
 	}
 
 	// Only update process stats for ballots that were actually aggregated
@@ -710,6 +726,9 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 			voteIDs := make([][]byte, len(stb.Ballots))
 			for i, ballot := range stb.Ballots {
 				voteIDs[i] = ballot.VoteID
+
+				// Release nullifier lock
+				s.releaseNullifier(ballot.Nullifier)
 			}
 
 			// Mark all vote IDs in the batch as settled (using unsafe version to avoid deadlock)
