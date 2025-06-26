@@ -11,16 +11,16 @@ type DavinciWeb3Config struct {
 // DefaultConfig contains the default smart contract addresses for Davinci by network.
 var DefaultConfig = map[string]DavinciWeb3Config{
 	"sep": {
-		ProcessRegistrySmartContract:      "0xa536520468523BC0732396956BAa644D97B8A342",
-		OrganizationRegistrySmartContract: "0x4b8f6A584Beb64EC95ffc9E530E386B4770185bb",
-		ResultsZKVerifier:                 "0x3F879C7174F30856EBA6A86E15895eF47477F637",
-		StateTransitionZKVerifier:         "0x9e9aB32412c860ED67F5BAEeF6f75dd1FabBcb34",
+		ProcessRegistrySmartContract:      "0xe3E73E831a059203d41Ae27D6D39d62726775379",
+		OrganizationRegistrySmartContract: "0x78025f376d662b9C21a5f9465b091763048bCcCC",
+		ResultsZKVerifier:                 "0x9eAC754B0848F5549AE6d3740e1A6202f19BE8A6",
+		StateTransitionZKVerifier:         "0x81C58e330E35Ba5D54439ECaC59c6FE503F05Fc7",
 	},
 	"uzh": {
-		ProcessRegistrySmartContract:      "0x04e823c0b2021E7976FAC2Ba8F8D9748CB800299",
-		OrganizationRegistrySmartContract: "0x08AA2EDF223935B0C5D68FC4E1E70Ab7DD46Ef36",
-		ResultsZKVerifier:                 "0x0D244BAC819e2C6E241c64438eeB42df38Be4297",
-		StateTransitionZKVerifier:         "0x2aa97d71EFDE7635512AF1be2b75eaB0F4Fa934A",
+		ProcessRegistrySmartContract:      "0x650937867b8c9D7261DEAD8d94eb47cf15A80Ded",
+		OrganizationRegistrySmartContract: "0x49E2E261a734454f07b27D1A6978FFAE44618D03",
+		ResultsZKVerifier:                 "0xfc14B2Bbcee53d74362416b1031dE78c667016b6",
+		StateTransitionZKVerifier:         "0xAaE00882AD969543c308Ed60c3145db7264A02f4",
 	},
 }
 
