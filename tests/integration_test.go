@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"math/big"
 	"os"
@@ -91,19 +92,47 @@ func TestIntegration(t *testing.T) {
 		}
 
 		pid, encryptionKey = createProcess(c, services.Contracts, cli, root, *ballotMode)
-
-		// Wait for the process to be registered
-		for {
-			if _, err := services.Storage.Process(pid); err == nil {
-				break
+		// create a timeout for the process creation, if it is greater than the test timeout
+		// use the test timeout
+		createProcessTimeout := time.Minute * 2
+		if timeout, hasDeadline := t.Deadline(); hasDeadline {
+			remainingTime := time.Until(timeout)
+			if remainingTime < createProcessTimeout {
+				createProcessTimeout = remainingTime
 			}
-			time.Sleep(time.Millisecond * 200)
+		}
+		// Wait for the process to be registered
+		createProcessCtx, cancel := context.WithTimeout(ctx, createProcessTimeout)
+		defer cancel()
+
+	CreateProcessLoop:
+		for {
+			select {
+			case <-createProcessCtx.Done():
+				c.Fatal("Timeout waiting for process to be created and registered")
+				c.FailNow()
+			default:
+				if _, err := services.Storage.Process(pid); err == nil {
+					break CreateProcessLoop
+				}
+				time.Sleep(time.Millisecond * 200)
+			}
 		}
 		t.Logf("Process ID: %s", pid.String())
 
 		// Wait for the process to be registered in the sequencer
-		for !services.Sequencer.ExistsProcessID(pid.Marshal()) {
-			time.Sleep(time.Millisecond * 200)
+		for {
+			select {
+			case <-createProcessCtx.Done():
+				c.Fatal("Timeout waiting for process to be registered in sequencer")
+				c.FailNow()
+			default:
+				if services.Sequencer.ExistsProcessID(pid.Marshal()) {
+					t.Logf("Process ID %s registered in sequencer", pid.String())
+					return
+				}
+				time.Sleep(time.Millisecond * 200)
+			}
 		}
 	})
 
