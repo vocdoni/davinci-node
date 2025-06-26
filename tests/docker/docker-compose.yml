@@ -1,5 +1,6 @@
 services:
   anvil:
+    container_name: anvil
     image: ghcr.io/foundry-rs/foundry:latest
     entrypoint:
       - anvil

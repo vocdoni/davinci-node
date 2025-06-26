@@ -23,6 +23,8 @@ head -n -5 foundry.toml > foundry.tmp && mv foundry.tmp foundry.toml
 
 cp .env.example .env
 
+export CHAIN_ID=1337
+
 forge clean && forge build
 
 forge script \
