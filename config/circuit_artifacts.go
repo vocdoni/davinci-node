@@ -12,8 +12,8 @@ const (
 )
 
 var (
-	// BallotProoCircuitURL is the URL for the ballot proof circuit WASM file
-	BallotProoCircuitURL = fmt.Sprintf("%s/%s/%s.wasm", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofCircuitHash)
+	// BallotProofCircuitURL is the URL for the ballot proof circuit WASM file
+	BallotProofCircuitURL = fmt.Sprintf("%s/%s/%s.wasm", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofCircuitHash)
 	// BallotProofCircuitHash is the hash of the ballot proof circuit
 	BallotProofCircuitHash = "997ac6e60efe7fc8ac7e7ed204f303cc24da993c397f7b93778412974bbc3717"
 	// BallotProofProvingKeyURL is the URL for the ballot proof proving key

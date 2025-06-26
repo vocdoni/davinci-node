@@ -102,7 +102,6 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
-		composeEnv[contractsBranchNameEnvVarName] = "r/remove_voter_nullifier_and_commitment"
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")

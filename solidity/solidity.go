@@ -102,8 +102,8 @@ func (p *Groth16CommitmentProof) FromGnarkProof(proof groth16.Proof) error {
 	return nil
 }
 
-// String returns a JSON representation of the Groth16CommitmentProof as a 
-// string. This is useful for debugging or logging purposes. If marshalling 
+// String returns a JSON representation of the Groth16CommitmentProof as a
+// string. This is useful for debugging or logging purposes. If marshalling
 // fails, it returns an empty JSON object as a string.
 func (p *Groth16CommitmentProof) String() string {
 	jsonProof, err := json.Marshal(p)

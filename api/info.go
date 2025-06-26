@@ -21,7 +21,7 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 
 	// Build the response with the necessary circuit information
 	response := &BallotProofInfo{
-		CircuitURL:           config.BallotProoCircuitURL,
+		CircuitURL:           config.BallotProofCircuitURL,
 		CircuitHash:          config.BallotProofCircuitHash,
 		ProvingKeyURL:        config.BallotProofProvingKeyURL,
 		ProvingKeyHash:       config.BallotProofProvingKeyHash,
