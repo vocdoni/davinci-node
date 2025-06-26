@@ -42,6 +42,7 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 	for i, v := range o.PaddedVotes() {
 		witness.Votes[i].Ballot = *v.Ballot.ToGnark()
 		witness.Votes[i].Address = v.Address
+		witness.Votes[i].VoteID = v.VoteID.BigInt().MathBigInt()
 		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
 	}
 

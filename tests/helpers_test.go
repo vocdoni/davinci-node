@@ -480,23 +480,15 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 		int(bm.MaxValue.MathBigInt().Int64()),
 		int(bm.MinValue.MathBigInt().Int64()),
 		bm.ForceUniqueness)
-	// cast fields to types.BigInt
-	fields := []*types.BigInt{}
-	for _, f := range randFields {
-		fields = append(fields, (*types.BigInt)(f))
-	}
 	// compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
-		Address:   address.Bytes(),
-		ProcessID: pid.Marshal(),
-		EncryptionKey: []*types.BigInt{
-			(*types.BigInt)(encKey.X),
-			(*types.BigInt)(encKey.Y),
-		},
-		K:           (*types.BigInt)(k),
-		BallotMode:  bm,
-		Weight:      (*types.BigInt)(new(big.Int).SetUint64(circuits.MockWeight)),
-		FieldValues: fields,
+		Address:       address.Bytes(),
+		ProcessID:     pid.Marshal(),
+		EncryptionKey: []*types.BigInt{encKey.X, encKey.Y},
+		K:             new(types.BigInt).SetBigInt(k),
+		BallotMode:    bm,
+		Weight:        new(types.BigInt).SetUint64(circuits.MockWeight),
+		FieldValues:   randFields[:],
 	}
 	// generate the inputs for the ballot proof circuit
 	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
@@ -515,12 +507,13 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	c.Assert(err, qt.IsNil)
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID:        wasmResult.ProccessID,
+		ProcessID:        wasmResult.ProcessID,
 		Address:          wasmInputs.Address,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
+		VoteID:           wasmResult.VoteID,
 	}
 }
 

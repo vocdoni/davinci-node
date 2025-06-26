@@ -11,6 +11,7 @@ import (
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
 	Address *big.Int
+	VoteID  types.HexBytes
 	Ballot  *elgamal.Ballot
 }
 

@@ -159,6 +159,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		process.BallotMode,
 		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
 		vote.Address,
+		vote.VoteID.BigInt(),
 		vote.Ballot.FromTEtoRTE(),
 		vote.CensusProof.Weight,
 	)
@@ -192,7 +193,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not decode signature: %v", err).Write(w)
 		return
 	}
-	signatureOk, pubkey := signature.VerifyBLS12377(vote.BallotInputsHash.MathBigInt(), common.BytesToAddress(vote.Address))
+	signatureOk, pubkey := signature.Verify(vote.VoteID, common.BytesToAddress(vote.Address))
 	if !signatureOk {
 		ErrInvalidSignature.Write(w)
 		return
@@ -209,6 +210,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		Signature:        signature,
 		CensusProof:      &vote.CensusProof,
 		PubKey:           pubkey,
+		VoteID:           vote.VoteID,
 	}
 
 	// push the ballot to the sequencer storage queue to be verified, aggregated
@@ -227,12 +229,5 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get the vote ID and return it to the client
-	voteID := ballot.VoteID()
-
-	// Return the voteID to the client using the VoteResponse struct
-	response := VoteResponse{
-		VoteID: voteID,
-	}
-	httpWriteJSON(w, response)
+	httpWriteOK(w)
 }

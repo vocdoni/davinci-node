@@ -193,7 +193,7 @@ func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types
 			vb1 := &VerifiedBallot{
 				ProcessID:   b1.ProcessID,
 				Address:     b1.Address,
-				VoteID:      b1.VoteID(),
+				VoteID:      b1.VoteID,
 				VoterWeight: big.NewInt(1),
 			}
 			err = st.MarkBallotDone(key1, vb1)
@@ -207,7 +207,7 @@ func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types
 			vb2 := &VerifiedBallot{
 				ProcessID:   b2.ProcessID,
 				Address:     b2.Address,
-				VoteID:      b2.VoteID(),
+				VoteID:      b2.VoteID,
 				VoterWeight: big.NewInt(1),
 			}
 			err = st.MarkBallotDone(key2, vb2)
@@ -341,7 +341,7 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 		c.Assert(err, qt.IsNil)
 
 		ballots[i] = ballot
-		voteIDs[i] = ballot.VoteID()
+		voteIDs[i] = ballot.VoteID
 	}
 
 	// Process to verified
@@ -352,7 +352,7 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 		vb := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
 			Address:     b.Address,
-			VoteID:      b.VoteID(),
+			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
 		err = st.MarkBallotDone(key, vb)

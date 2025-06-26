@@ -56,6 +56,7 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 		InputsHash: dummyEmulatedBN254,
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
 			Address: dummyEmulatedBN254,
+			VoteID:  dummyEmulatedBN254,
 			Ballot:  *elgamal.NewBallot(curve).ToGnarkEmulatedBN254(),
 		},
 		UserWeight: dummyEmulatedBN254,

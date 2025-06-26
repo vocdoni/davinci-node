@@ -394,8 +394,9 @@ func newMockVote(index, amount int64) *state.Vote {
 	address := big.NewInt(int64(index) + int64(mockAddressesOffset)) // mock
 
 	return &state.Vote{
-		Ballot:  ballot,
 		Address: address,
+		VoteID:  util.RandomBytes(20),
+		Ballot:  ballot,
 	}
 }
 

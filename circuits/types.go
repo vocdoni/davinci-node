@@ -74,7 +74,7 @@ func (bm BallotMode[T]) Bytes() []byte {
 	}
 	buf := bytes.Buffer{}
 	for _, bigint := range bmbi.Serialize() {
-		buf.Write(arbo.BigIntToBytes(crypto.SerializedFieldSize, bigint))
+		buf.Write(arbo.BigIntToBytes(crypto.SignatureCircuitVariableLen, bigint))
 	}
 	return buf.Bytes()
 }
@@ -121,23 +121,23 @@ func (bm BallotMode[T]) VarsToEmulatedElementBN254(api frontend.API) BallotMode[
 // representing 8 big.Ints as little-endian.
 func DeserializeBallotMode(data []byte) (BallotMode[*big.Int], error) {
 	// Validate the input length
-	expectedSize := 8 * crypto.SerializedFieldSize
+	expectedSize := 8 * crypto.SignatureCircuitVariableLen
 	if len(data) != expectedSize {
 		return BallotMode[*big.Int]{}, fmt.Errorf("invalid input length for BallotMode: got %d bytes, expected %d bytes", len(data), expectedSize)
 	}
 	// Helper function to extract *big.Int from a serialized slice
 	readBigInt := func(offset int) *big.Int {
-		return arbo.BytesToBigInt(data[offset : offset+crypto.SerializedFieldSize])
+		return arbo.BytesToBigInt(data[offset : offset+crypto.SignatureCircuitVariableLen])
 	}
 	return BallotMode[*big.Int]{
-		MaxCount:        readBigInt(0 * crypto.SerializedFieldSize),
-		ForceUniqueness: readBigInt(1 * crypto.SerializedFieldSize),
-		MaxValue:        readBigInt(2 * crypto.SerializedFieldSize),
-		MinValue:        readBigInt(3 * crypto.SerializedFieldSize),
-		MaxTotalCost:    readBigInt(4 * crypto.SerializedFieldSize),
-		MinTotalCost:    readBigInt(5 * crypto.SerializedFieldSize),
-		CostExp:         readBigInt(6 * crypto.SerializedFieldSize),
-		CostFromWeight:  readBigInt(7 * crypto.SerializedFieldSize),
+		MaxCount:        readBigInt(0 * crypto.SignatureCircuitVariableLen),
+		ForceUniqueness: readBigInt(1 * crypto.SignatureCircuitVariableLen),
+		MaxValue:        readBigInt(2 * crypto.SignatureCircuitVariableLen),
+		MinValue:        readBigInt(3 * crypto.SignatureCircuitVariableLen),
+		MaxTotalCost:    readBigInt(4 * crypto.SignatureCircuitVariableLen),
+		MinTotalCost:    readBigInt(5 * crypto.SignatureCircuitVariableLen),
+		CostExp:         readBigInt(6 * crypto.SignatureCircuitVariableLen),
+		CostFromWeight:  readBigInt(7 * crypto.SignatureCircuitVariableLen),
 	}, nil
 }
 
@@ -196,7 +196,7 @@ func (k EncryptionKey[T]) Bytes() []byte {
 	}
 	buf := bytes.Buffer{}
 	for _, bigint := range ekbi.Serialize() {
-		buf.Write(arbo.BigIntToBytes(crypto.SerializedFieldSize, bigint))
+		buf.Write(arbo.BigIntToBytes(crypto.SignatureCircuitVariableLen, bigint))
 	}
 	return buf.Bytes()
 }
@@ -251,18 +251,18 @@ func (k EncryptionKey[T]) AsVar() EncryptionKey[frontend.Variable] {
 // representing 2 big.Ints as little-endian.
 func DeserializeEncryptionKey(data []byte) (EncryptionKey[*big.Int], error) {
 	// Validate the input length
-	expectedSize := 2 * crypto.SerializedFieldSize
+	expectedSize := 2 * crypto.SignatureCircuitVariableLen
 	if len(data) != expectedSize {
 		return EncryptionKey[*big.Int]{}, fmt.Errorf("invalid input length for EncryptionKey: got %d bytes, expected %d bytes", len(data), expectedSize)
 	}
 	// Helper function to extract *big.Int from a serialized slice
 	readBigInt := func(offset int) *big.Int {
-		return arbo.BytesToBigInt(data[offset : offset+crypto.SerializedFieldSize])
+		return arbo.BytesToBigInt(data[offset : offset+crypto.SignatureCircuitVariableLen])
 	}
 	return EncryptionKey[*big.Int]{
 		PubKey: [2]*big.Int{
-			readBigInt(0 * crypto.SerializedFieldSize),
-			readBigInt(1 * crypto.SerializedFieldSize),
+			readBigInt(0 * crypto.SignatureCircuitVariableLen),
+			readBigInt(1 * crypto.SignatureCircuitVariableLen),
 		},
 	}, nil
 }
@@ -330,6 +330,7 @@ func (p Process[T]) VarsToEmulatedElementBN254(api frontend.API) Process[emulate
 // Is a generic struct that can be used with any type of circuit input.
 type Vote[T any] struct {
 	Ballot  Ballot
+	VoteID  T
 	Address T
 }
 
@@ -348,6 +349,7 @@ func (v Vote[T]) SerializeAsVars() []frontend.Variable {
 	}
 	list := []frontend.Variable{}
 	list = append(list, v.Address)
+	list = append(list, v.VoteID)
 	list = append(list, v.Ballot.SerializeVars()...)
 	return list
 }
@@ -439,20 +441,23 @@ type EmulatedCiphertext[F emulated.FieldParams] struct {
 type EmulatedBallot[F emulated.FieldParams] [types.FieldsPerBallot]EmulatedCiphertext[F]
 
 // EmulatedVote is a copy of the Vote struct, but using the emulated.Element
-// type as generic type for the Address field and the EmulatedBallot type for
-// the Ballot field.
+// type as generic type for the Address, VoteID fields and the EmulatedBallot
+// type for the Ballot field.
 type EmulatedVote[F emulated.FieldParams] struct {
 	Address emulated.Element[F]
+	VoteID  emulated.Element[F]
 	Ballot  EmulatedBallot[F]
 }
 
 // Serialize returns a slice with the vote parameters in order
 //
 //	EmulatedVote.Address
+//	EmulatedVote.VoteID
 //	EmulatedVote.Ballot
 func (z *EmulatedVote[F]) Serialize() []emulated.Element[F] {
 	list := []emulated.Element[F]{}
 	list = append(list, z.Address)
+	list = append(list, z.VoteID)
 	list = append(list, z.Ballot.Serialize()...)
 	return list
 }
@@ -460,6 +465,7 @@ func (z *EmulatedVote[F]) Serialize() []emulated.Element[F] {
 // SerializeForBallotProof returns a slice with the vote parameters in order
 //
 //	EmulatedVote.Address
+//	EmulatedVote.VoteID
 //	EmulatedVote.Ballot (in Twisted Edwards format)
 func (zt *EmulatedVote[F]) SerializeForBallotProof(api frontend.API) []emulated.Element[sw_bn254.ScalarField] {
 	z, ok := any(zt).(*EmulatedVote[sw_bn254.ScalarField])
@@ -468,6 +474,7 @@ func (zt *EmulatedVote[F]) SerializeForBallotProof(api frontend.API) []emulated.
 	}
 	list := []emulated.Element[sw_bn254.ScalarField]{}
 	list = append(list, z.Address)
+	list = append(list, z.VoteID)
 	list = append(list, z.Ballot.SerializeAsTE(api)...)
 	return list
 }

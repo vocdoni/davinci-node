@@ -39,6 +39,7 @@ type Vote struct {
 	BallotInputsHash *types.BigInt       `json:"ballotInputsHash"`
 	Address          types.HexBytes      `json:"address"`
 	Signature        types.HexBytes      `json:"signature"`
+	VoteID           types.HexBytes      `json:"voteId"`
 }
 
 // ContractAddresses holds the smart contract addresses needed by the client

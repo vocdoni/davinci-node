@@ -71,7 +71,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 				// Mark it as done (pending -1, verified +1, currentBatch +1)
 				verifiedBallot := &VerifiedBallot{
 					ProcessID:   b.ProcessID,
-					VoteID:      b.VoteID(),
+					VoteID:      b.VoteID,
 					VoterWeight: big.NewInt(1),
 				}
 				err = st.MarkBallotDone(key, verifiedBallot)
@@ -146,7 +146,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
-			VoteID:      b.VoteID(),
+			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
 		err = st.MarkBallotDone(key, verifiedBallot)
@@ -258,7 +258,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 
 				verifiedBallot := &VerifiedBallot{
 					ProcessID:   b.ProcessID,
-					VoteID:      b.VoteID(),
+					VoteID:      b.VoteID,
 					VoterWeight: big.NewInt(1),
 				}
 				if err := st.MarkBallotDone(key, verifiedBallot); err != nil {
@@ -482,7 +482,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 
 	verifiedBallot := &VerifiedBallot{
 		ProcessID:   b.ProcessID,
-		VoteID:      b.VoteID(),
+		VoteID:      b.VoteID,
 		VoterWeight: big.NewInt(1),
 	}
 	err = st.MarkBallotDone(key, verifiedBallot)
@@ -543,7 +543,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
 			Address:     b.Address,
-			VoteID:      b.VoteID(),
+			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
 		err = st.MarkBallotDone(key, verifiedBallot)
@@ -628,7 +628,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
 			Address:     b.Address,
-			VoteID:      b.VoteID(),
+			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
 		err = st.MarkBallotDone(key, verifiedBallot)
@@ -979,7 +979,7 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 
 	verifiedBallot1 := &VerifiedBallot{
 		ProcessID:   b1.ProcessID,
-		VoteID:      b1.VoteID(),
+		VoteID:      b1.VoteID,
 		VoterWeight: big.NewInt(1),
 	}
 	err = st.MarkBallotDone(key1, verifiedBallot1)
@@ -993,7 +993,7 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	verifiedBallot2 := &VerifiedBallot{
 		ProcessID:   b2.ProcessID,
-		VoteID:      b2.VoteID(),
+		VoteID:      b2.VoteID,
 		VoterWeight: big.NewInt(1),
 	}
 	err = st.MarkBallotDone(key2, verifiedBallot2)
@@ -1006,7 +1006,7 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	verifiedBallot3 := &VerifiedBallot{
 		ProcessID:   b3.ProcessID,
-		VoteID:      b3.VoteID(),
+		VoteID:      b3.VoteID,
 		VoterWeight: big.NewInt(1),
 	}
 	err = st.MarkBallotDone(key3, verifiedBallot3)
@@ -1161,7 +1161,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
 			Address:     b.Address,
-			VoteID:      b.VoteID(),
+			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
 		err = st.MarkBallotDone(key, verifiedBallot)

@@ -41,11 +41,11 @@ func (s *Storage) PushBallot(b *Ballot) error {
 		return fmt.Errorf("encode ballot: %w", err)
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotPrefix)
-	if _, err := wTx.Get(b.VoteID()); err == nil {
+	if _, err := wTx.Get(b.VoteID); err == nil {
 		wTx.Discard()
 		return ErroBallotAlreadyExists
 	}
-	if err := wTx.Set(b.VoteID(), val); err != nil {
+	if err := wTx.Set(b.VoteID, val); err != nil {
 		wTx.Discard()
 		return err
 	}
@@ -60,7 +60,7 @@ func (s *Storage) PushBallot(b *Ballot) error {
 		log.Warnw("failed to update process stats after pushing ballot",
 			"error", err.Error(),
 			"processID", fmt.Sprintf("%x", b.ProcessID),
-			"voteID", hex.EncodeToString(b.VoteID()),
+			"voteID", hex.EncodeToString(b.VoteID),
 		)
 	}
 
@@ -68,7 +68,7 @@ func (s *Storage) PushBallot(b *Ballot) error {
 	s.lockNullifier(b.Nullifier)
 
 	// Set vote ID status to pending
-	return s.setVoteIDStatus(b.ProcessID, b.VoteID(), VoteIDStatusPending)
+	return s.setVoteIDStatus(b.ProcessID, b.VoteID, VoteIDStatusPending)
 }
 
 // NextBallot returns the next non-reserved ballot, creates a reservation, and
@@ -118,7 +118,7 @@ func (s *Storage) nextBallot() (*Ballot, []byte, error) {
 
 	// The key must match the ballot's VoteID
 	// When using prefixed iteration, ensure we use the ballot's actual VoteID as the key
-	voteID := b.VoteID()
+	voteID := b.VoteID
 
 	// Verify that the chosen key matches the ballot's VoteID
 	if !bytes.Equal(chosenKey, voteID) {

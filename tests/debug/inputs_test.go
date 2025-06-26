@@ -99,7 +99,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	// Test the signature is correctly generated
 	signer, err := ethereum.NewSignerFromHex("45d17557419bc5f4e1dab368badd10de5226667109239c0c613641e17ce5b03b")
 	c.Assert(err, qt.IsNil)
-	blsCircomInputsHash := crypto.BigIntToFFwithPadding(vote.BallotInputsHash.MathBigInt(), circuits.VoteVerifierCurve.ScalarField())
+	blsCircomInputsHash := crypto.BigIntToFFToSign(vote.BallotInputsHash.MathBigInt(), circuits.VoteVerifierCurve.ScalarField())
 	localSignature, err := signer.Sign(blsCircomInputsHash)
 	c.Assert(err, qt.IsNil)
 	c.Assert(localSignature.R.String(), qt.DeepEquals, signature.R.String(), qt.Commentf("signature.R"))

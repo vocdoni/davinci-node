@@ -152,20 +152,12 @@ func TestIntegration(t *testing.T) {
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
 			// Make the request to cast the vote
-			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
+			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
 			c.Assert(status, qt.Equals, 200)
 
-			// Parse the response body to get the vote ID
-			var voteResponse api.VoteResponse
-			err = json.NewDecoder(bytes.NewReader(body)).Decode(&voteResponse)
-			c.Assert(err, qt.IsNil)
-			c.Assert(voteResponse.VoteID, qt.Not(qt.IsNil))
-			c.Logf("Vote %d (addr: %s - k: %s) created with ID: %s", i, vote.Address.String(), k.String(), voteResponse.VoteID.String())
-
 			// Save the voteID for status checks
-			voteIDs = append(voteIDs, voteResponse.VoteID)
-			// Save the secret and key for vote overwrites
+			voteIDs = append(voteIDs, vote.VoteID)
 			secrets = append(secrets, secret)
 			ks = append(ks, k)
 			count++

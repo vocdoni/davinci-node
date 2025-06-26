@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"math/rand/v2"
 	"time"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	gnarkecdsa "github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
@@ -33,6 +32,7 @@ type VoteVerifierTestResults struct {
 	ProcessID        *big.Int
 	CensusRoot       *big.Int
 	Ballots          []elgamal.Ballot
+	VoteIDs          []types.HexBytes
 }
 
 // VoterTestData struct includes the information required to generate the test
@@ -47,7 +47,7 @@ type VoterTestData struct {
 // and the assignments for a VerifyVoteCircuit including the provided voters. If
 // processId is nil, it will be randomly generated. If something fails it
 // returns an error.
-func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
+func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.ProcessID) (
 	VoteVerifierTestResults, voteverifier.VerifyVoteCircuit,
 	[]voteverifier.VerifyVoteCircuit, error,
 ) {
@@ -75,18 +75,22 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 	}
 	// common data
-	if processId != nil {
-		processId = util.RandomBytes(20)
+	if processID == nil {
+		processID = &types.ProcessID{
+			Address: common.BytesToAddress(util.RandomBytes(20)),
+			Nonce:   rand.Uint64(),
+			ChainID: rand.Uint32(),
+		}
 	}
 	ek := ballottest.GenEncryptionKeyForTest()
 	encryptionKey := circuits.EncryptionKeyFromECCPoint(ek)
 	// circuits assignments, voters data and proofs
 	var assignments []voteverifier.VerifyVoteCircuit
-	inputsHashes, addresses := []*big.Int{}, []*big.Int{}
+	inputsHashes, addresses, voteIDs := []*big.Int{}, []*big.Int{}, []types.HexBytes{}
 	ballots := []elgamal.Ballot{}
 	var finalProcessID *big.Int
 	for i, voter := range votersData {
-		voterProof, err := ballottest.BallotProofForTest(voter.Address.Bytes(), processId, ek)
+		voterProof, err := ballottest.BallotProofForTest(voter.Address.Bytes(), processID, ek)
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, fmt.Errorf("ballotproof inputs: %w", err)
 		}
@@ -94,12 +98,10 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			finalProcessID = voterProof.ProcessID
 		}
 		addresses = append(addresses, voterProof.Address)
+		voteIDs = append(voteIDs, voterProof.VoteID)
 		ballots = append(ballots, *voterProof.Ballot)
-		// convert the circom inputs hash to the field of the curve used by the
-		// circuit as input for MIMC hash
-		blsCircomInputsHash := crypto.BigIntToFFwithPadding(voterProof.InputsHash, circuits.VoteVerifierCurve.ScalarField())
 		// sign the inputs hash with the private key
-		signature, err := ballottest.SignECDSAForTest(voter.PrivKey, blsCircomInputsHash)
+		signature, err := ballottest.SignECDSAForTest(voter.PrivKey, voterProof.VoteID)
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 		}
@@ -109,16 +111,15 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			emulatedSiblings[j] = emulated.ValueOf[sw_bn254.ScalarField](s)
 		}
 		// hash the inputs of gnark circuit (except weight and including census root)
-		// TODO: move this into a helper func, consistent with circuits.VoteVerifierInputs
-		hashInputs := []*big.Int{}
-		hashInputs = append(hashInputs, voterProof.ProcessID)
-		hashInputs = append(hashInputs, testCensus.Root)
-		hashInputs = append(hashInputs, circuits.MockBallotMode().Serialize()...)
-		hashInputs = append(hashInputs, encryptionKey.Serialize()...)
-		hashInputs = append(hashInputs, voterProof.Address)
-		hashInputs = append(hashInputs, voterProof.Ballot.FromTEtoRTE().BigInts()...)
-		// hash the inputs to generate the inputs hash
-		inputsHash, err := mimc7.Hash(hashInputs, nil)
+		inputsHash, err := voteverifier.VoteVerifierInputHash(
+			voterProof.ProcessID,
+			circuits.MockBallotMode(),
+			encryptionKey,
+			voterProof.Address,
+			voterProof.VoteID,
+			voterProof.Ballot.FromTEtoRTE(),
+			testCensus.Root,
+		)
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 		}
@@ -134,6 +135,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			// circom inputs
 			Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
 				Address: emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
+				VoteID:  emulated.ValueOf[sw_bn254.ScalarField](voterProof.VoteID.BigInt().MathBigInt()),
 				Ballot:  *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
 			},
 			UserWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
@@ -165,6 +167,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processId []byte) (
 			ProcessID:        finalProcessID,
 			CensusRoot:       testCensus.Root,
 			Ballots:          ballots,
+			VoteIDs:          voteIDs,
 		}, voteverifier.VerifyVoteCircuit{
 			CircomProof:           circomPlaceholder.Proof,
 			CircomVerificationKey: circomPlaceholder.Vk,

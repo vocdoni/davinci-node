@@ -2,6 +2,7 @@ package voteverifiertest
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 )
 
 func TestVerifySingleVoteCircuit(t *testing.T) {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	c := qt.New(t)
 	// generate voter account
 	s, err := ballottest.GenECDSAaccountForTest()
@@ -51,6 +53,7 @@ func TestVerifyNoValidVoteCircuit(t *testing.T) {
 }
 
 func TestVerifyMultipleVotesCircuit(t *testing.T) {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
 		t.Skip("skipping circuit tests...")
 	}
@@ -66,8 +69,7 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	assert := test.NewAssert(t)
 	now := time.Now()
-	for i, assignment := range assignments {
-		c.Logf("proof %d of %d", i+1, len(assignments))
+	for _, assignment := range assignments {
 		err := test.IsSolved(&placeholder, &assignment, ecc.BLS12_377.ScalarField())
 		assert.NoError(err)
 	}

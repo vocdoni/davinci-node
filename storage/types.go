@@ -14,8 +14,6 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -76,6 +74,7 @@ type Ballot struct {
 	Signature        *ethereum.ECDSASignature                              `json:"signature"`
 	CensusProof      *types.CensusProof                                    `json:"censusProof"`
 	PubKey           types.HexBytes                                        `json:"publicKey"`
+	VoteID           types.HexBytes                                        `json:"voteId"`
 }
 
 // Valid method checks if the Ballot is valid. A ballot is valid if all its
@@ -102,17 +101,6 @@ func (b *Ballot) Valid() bool {
 		return false
 	}
 	return true
-}
-
-// VoteID returns the vote ID of the ballot. The vote ID is the hash of the
-// ballot inputs. It is used to identify the ballot in the state transition
-// circuit. The vote ID is a big integer that is converted to a byte array
-// using the BigIntToFFwithPadding function.
-func (b *Ballot) VoteID() []byte {
-	if b.BallotInputsHash == nil {
-		return nil
-	}
-	return crypto.BigIntToFFwithPadding(b.BallotInputsHash, circuits.VoteVerifierCurve.ScalarField())
 }
 
 func (b *Ballot) String() string {

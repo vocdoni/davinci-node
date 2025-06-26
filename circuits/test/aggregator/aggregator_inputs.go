@@ -33,7 +33,7 @@ type AggregatorTestResults struct {
 // AggregatorInputsForTest returns the AggregatorTestResults, the placeholder
 // and the assignments of a AggregatorCircuit for the processId provided
 // generating nValidVotes. If something fails it returns an error.
-func AggregatorInputsForTest(processId []byte, nValidVotes int) (
+func AggregatorInputsForTest(processID *types.ProcessID, nValidVotes int) (
 	*AggregatorTestResults, *aggregator.AggregatorCircuit, *aggregator.AggregatorCircuit, error,
 ) {
 	now := time.Now()
@@ -52,7 +52,7 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 		})
 	}
 	// generate vote verifier circuit and inputs
-	vvInputs, vvPlaceholder, vvAssigments, err := voteverifiertest.VoteVerifierInputsForTest(vvData, processId)
+	vvInputs, vvPlaceholder, vvAssigments, err := voteverifiertest.VoteVerifierInputsForTest(vvData, processID)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("voteverifier inputs: %w", err)
 	}
@@ -130,6 +130,7 @@ func AggregatorInputsForTest(processId []byte, nValidVotes int) (
 	for i := range nValidVotes {
 		votes = append(votes, state.Vote{
 			Address: vvInputs.Addresses[i],
+			VoteID:  vvInputs.VoteIDs[i],
 			Ballot:  vvInputs.Ballots[i].FromTEtoRTE(),
 		})
 	}
