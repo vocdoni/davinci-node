@@ -1,6 +1,14 @@
 package ballotproof
 
 import (
+	"fmt"
+	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -8,9 +16,8 @@ import (
 // BallotProofInputs struct contains the required inputs to compose the
 // data to generate the witness for a ballot proof using the circom circuit.
 type BallotProofInputs struct {
-	ProcessID     types.HexBytes    `json:"processID"`
+	ProcessID     types.HexBytes    `json:"processId"`
 	Address       types.HexBytes    `json:"address"`
-	Secret        types.HexBytes    `json:"secret"`
 	EncryptionKey []*types.BigInt   `json:"encryptionKey"`
 	K             *types.BigInt     `json:"k"`
 	BallotMode    *types.BallotMode `json:"ballotMode"`
@@ -18,28 +25,84 @@ type BallotProofInputs struct {
 	FieldValues   []*types.BigInt   `json:"fieldValues"`
 }
 
+// VoteID generates a unique identifier for the vote based on the process ID,
+// address and k value. This ID is used to sign the vote and prove ownership.
+// It returns the vote ID as a HexBytes type or an error if the inputs are
+// invalid or something goes wrong during the generation of the ID. It calls
+// the VoteID function with the process ID, address and k value converted to
+// the appropriate types.
+func (b *BallotProofInputs) VoteID() (*types.BigInt, error) {
+	if b == nil {
+		return nil, fmt.Errorf("ballot proof inputs cannot be nil")
+	}
+	pid := new(types.ProcessID).SetBytes(b.ProcessID)
+	address := new(common.Address)
+	address.SetBytes([]byte(b.Address))
+	return VoteID(*pid, *address, b.K)
+}
+
+// VoteIDForSign returns the vote ID in a format suitable for signing and
+// verify the signature inside the circuit. It pads the vote ID to ensure it
+// is of the correct length for signing.
+func (b *BallotProofInputs) VoteIDForSign() (types.HexBytes, error) {
+	voteID, err := b.VoteID()
+	if err != nil {
+		return nil, fmt.Errorf("error generating vote ID: %v", err.Error())
+	}
+	// return crypto.BigIntToFFToSign(voteID.MathBigInt(), circuits.VoteVerifierCurve.ScalarField()), nil
+	return crypto.PadToSign(voteID.Bytes()), err
+}
+
+func (b *BallotProofInputs) Serialize(ballot *elgamal.Ballot) ([]*big.Int, error) {
+	// safe address and processID
+	ffAddress := b.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
+	ffProcessID := b.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
+	// convert the encryption key to twisted edwards form
+	encryptionKey := new(bjj.BJJ).SetPoint(b.EncryptionKey[0].MathBigInt(), b.EncryptionKey[1].MathBigInt())
+	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(encryptionKey.Point())
+	// ballot mode as circuit ballot mode
+	circuitBallotMode := circuits.BallotModeToCircuit(b.BallotMode)
+	// vote ID
+	voteID, err := b.VoteID()
+	if err != nil {
+		return nil, fmt.Errorf("error generating vote ID: %w", err)
+	}
+	// compose a list with the inputs of the circuit to hash them
+	inputsHash := []*big.Int{ffProcessID.MathBigInt()}                // process id
+	inputsHash = append(inputsHash, circuitBallotMode.Serialize()...) // ballot mode serialized
+	inputsHash = append(inputsHash,
+		encryptionKeyXTE,       // encryption key x coordinate
+		encryptionKeyYTE,       // encryption key y coordinate
+		ffAddress.MathBigInt(), // address
+		voteID.MathBigInt(),    // vote ID
+	)
+	// ballot (in twisted edwards form)
+	inputsHash = append(inputsHash, ballot.FromRTEtoTE().BigInts()...)
+	// weight
+	inputsHash = append(inputsHash, b.Weight.MathBigInt())
+	return inputsHash, nil
+}
+
 // CircomInputs struct contains the data of the witness to generate a ballot
 // proof using the circom circuit.
 type CircomInputs struct {
-	Fields          []string `json:"fields"`
-	MaxCount        string   `json:"max_count"`
-	ForceUniqueness string   `json:"force_uniqueness"`
-	MaxValue        string   `json:"max_value"`
-	MinValue        string   `json:"min_value"`
-	MaxTotalCost    string   `json:"max_total_cost"`
-	MinTotalCost    string   `json:"min_total_cost"`
-	CostExp         string   `json:"cost_exp"`
-	CostFromWeight  string   `json:"cost_from_weight"`
-	Address         string   `json:"address"`
-	Weight          string   `json:"weight"`
-	ProcessID       string   `json:"process_id"`
-	PK              []string `json:"pk"`
-	K               string   `json:"k"`
-	Cipherfields    []string `json:"cipherfields"`
-	Nullifier       string   `json:"nullifier"`
-	Commitment      string   `json:"commitment"`
-	Secret          string   `json:"secret"`
-	InputsHash      string   `json:"inputs_hash"`
+	Fields          []*types.BigInt `json:"fields"`
+	MaxCount        *types.BigInt   `json:"max_count"`
+	ForceUniqueness *types.BigInt   `json:"force_uniqueness"`
+	MaxValue        *types.BigInt   `json:"max_value"`
+	MinValue        *types.BigInt   `json:"min_value"`
+	MaxTotalCost    *types.BigInt   `json:"max_total_cost"`
+	MinTotalCost    *types.BigInt   `json:"min_total_cost"`
+	CostExp         *types.BigInt   `json:"cost_exp"`
+	CostFromWeight  *types.BigInt   `json:"cost_from_weight"`
+	Address         *types.BigInt   `json:"address"`
+	Weight          *types.BigInt   `json:"weight"`
+	ProcessID       *types.BigInt   `json:"process_id"`
+	VoteID          *types.BigInt   `json:"vote_id"`
+	PK              []*types.BigInt `json:"pk"`
+	K               *types.BigInt   `json:"k"`
+	Cipherfields    []*types.BigInt `json:"cipherfields"`
+	InputsHash      *types.BigInt   `json:"inputs_hash"`
 }
 
 // BallotProofInputsResult struct contains the result of composing the data to
@@ -49,12 +112,10 @@ type CircomInputs struct {
 // used by the API to verify the resulting circom proof and the voteID, which
 // is signed by the user to prove the ownership of the vote.
 type BallotProofInputsResult struct {
-	ProccessID       types.HexBytes  `json:"processID"`
+	ProcessID        types.HexBytes  `json:"processId"`
 	Address          types.HexBytes  `json:"address"`
-	Commitment       *types.BigInt   `json:"commitment"`
-	Nullifier        *types.BigInt   `json:"nullifier"`
 	Ballot           *elgamal.Ballot `json:"ballot"`
-	BallotInputsHash *types.BigInt   `json:"ballotInputHash"`
+	BallotInputsHash *types.BigInt   `json:"ballotInputsHash"`
 	VoteID           types.HexBytes  `json:"voteID"`
 	CircomInputs     *CircomInputs   `json:"circomInputs"`
 }

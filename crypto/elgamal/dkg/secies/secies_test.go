@@ -166,7 +166,7 @@ func TestEncryptDecryptRandomMessages(t *testing.T) {
 	recipientPublicKey := recipient.publicKey
 	numMessages := 100
 
-	for i := 0; i < numMessages; i++ {
+	for range numMessages {
 		// Generate a random message
 		message, err := rand.Int(rand.Reader, curvePoint.Order())
 		c.Assert(err, qt.IsNil)

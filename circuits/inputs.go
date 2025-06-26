@@ -14,8 +14,6 @@ import (
 //	Process.BallotMode
 //	Process.EncryptionKey (in Twisted Edwards format)
 //	EmulatedVote.Address
-//	EmulatedVote.Commitment
-//	EmulatedVote.Nullifier
 //	EmulatedVote.Ballot (in Twisted Edwards format)
 //	userWeight
 func CircomInputs(api frontend.API,
@@ -40,8 +38,6 @@ func CircomInputs(api frontend.API,
 //	Process.BallotMode (in RTE format)
 //	Process.EncryptionKey
 //	EmulatedVote.Address
-//	EmulatedVote.Commitment
-//	EmulatedVote.Nullifier
 //	EmulatedVote.Ballot (in RTE format)
 func EmulatedVoteVerifierInputs(
 	process Process[emulated.Element[sw_bn254.ScalarField]],

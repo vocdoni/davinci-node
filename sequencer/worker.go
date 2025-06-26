@@ -124,7 +124,7 @@ func (s *Sequencer) processWorkerJob() error {
 		return err
 	}
 
-	log.Debugw("processing worker job", "voteID", fmt.Sprintf("%x", ballot.VoteID()))
+	log.Debugw("processing worker job", "voteID", fmt.Sprintf("%x", ballot.VoteID))
 
 	// Ensure the Process exists in local storage - fetch from master if needed
 	pid := new(types.ProcessID)
@@ -149,7 +149,7 @@ func (s *Sequencer) processWorkerJob() error {
 	if err != nil {
 		log.Warnw("failed to process ballot in worker mode",
 			"error", err.Error(),
-			"voteID", fmt.Sprintf("%x", ballot.VoteID()))
+			"voteID", fmt.Sprintf("%x", ballot.VoteID))
 		return fmt.Errorf("failed to process ballot: %w", err)
 	}
 
@@ -230,7 +230,7 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 		s.AddProcessID(ballot.ProcessID)
 
 		log.Debugw("fetched job from master",
-			"voteID", fmt.Sprintf("%x", ballot.VoteID()),
+			"voteID", fmt.Sprintf("%x", ballot.VoteID),
 			"processID", fmt.Sprintf("%x", ballot.ProcessID))
 
 		return &ballot, nil

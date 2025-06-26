@@ -5,7 +5,6 @@ import (
 	"math/big"
 
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
@@ -17,9 +16,7 @@ import (
 // the data required to cast a vote sending it to the sequencer API. It receives
 // the BallotProofWasmInputs struct and returns the BallotProofWasmResult
 // struct. This method parses the public encryption key for the desired process
-// and encrypts the ballot fields with the secret K provided. It also generates
-// the commitment and nullifier for the vote, using the address, process ID
-// and the secret provided.
+// and encrypts the ballot fields with the secret K provided.
 func GenerateBallotProofInputs(
 	inputs *BallotProofInputs,
 ) (*BallotProofInputsResult, error) {
@@ -37,66 +34,58 @@ func GenerateBallotProofInputs(
 	// encrypt the ballot
 	ballot, err := elgamal.NewBallot(encryptionKey).Encrypt(fields, encryptionKey, inputs.K.MathBigInt())
 	if err != nil {
-		return nil, fmt.Errorf("error encrypting ballot: %v", err.Error())
+		return nil, fmt.Errorf("error encrypting ballot: %w", err)
 	}
 	// get encryption key point for circom
 	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(encryptionKey.Point())
-	// calculate the commitment and nullifier
-	commitment, nullifier, err := CommitmentAndNullifier(
-		inputs.Address.BigInt(),
-		inputs.ProcessID.BigInt(),
-		inputs.Secret.BigInt(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error calculating commitment and nullifier: %v", err.Error())
-	}
 	// ballot mode as circuit ballot mode
 	ballotMode := circuits.BallotModeToCircuit(inputs.BallotMode)
-	// safe address and processID
-	ffAddress := inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
-	ffProcessID := inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
+	// calculate the vote ID
+	voteID, err := inputs.VoteID()
+	if err != nil {
+		return nil, fmt.Errorf("error generating vote ID: %w", err)
+	}
+	voteIDForSign, err := inputs.VoteIDForSign()
+	if err != nil {
+		return nil, fmt.Errorf("error generating vote ID for sign: %w", err)
+	}
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := BallotInputsHash(
 		inputs.ProcessID,
 		inputs.BallotMode,
 		encryptionKey,
 		inputs.Address,
-		commitment,
-		nullifier,
+		voteID,
 		ballot,
 		inputs.Weight,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error calculating ballot input hash: %v", err.Error())
+		return nil, fmt.Errorf("error calculating ballot input hash: %w", err)
 	}
 	return &BallotProofInputsResult{
-		ProccessID:       inputs.ProcessID,
+		ProcessID:        inputs.ProcessID,
 		Address:          inputs.Address,
-		Commitment:       commitment,
-		Nullifier:        nullifier,
 		Ballot:           ballot.FromRTEtoTE(),
-		BallotInputsHash: (*types.BigInt)(ballotInputsHash),
-		VoteID:           crypto.BigIntToFFwithPadding(ballotInputsHash.MathBigInt(), circuits.VoteVerifierCurve.ScalarField()),
+		BallotInputsHash: ballotInputsHash,
+		VoteID:           voteIDForSign,
 		CircomInputs: &CircomInputs{
-			Fields:          circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
-			MaxCount:        ballotMode.MaxCount.String(),
-			ForceUniqueness: ballotMode.ForceUniqueness.String(),
-			MaxValue:        ballotMode.MaxValue.String(),
-			MinValue:        ballotMode.MinValue.String(),
-			MaxTotalCost:    ballotMode.MaxTotalCost.String(),
-			MinTotalCost:    ballotMode.MinTotalCost.String(),
-			CostExp:         ballotMode.CostExp.String(),
-			CostFromWeight:  ballotMode.CostFromWeight.String(),
-			Address:         ffAddress.String(),
-			Weight:          inputs.Weight.MathBigInt().String(),
-			ProcessID:       ffProcessID.String(),
-			PK:              []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
-			K:               inputs.K.MathBigInt().String(),
-			Cipherfields:    circuits.BigIntArrayToStringArray(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
-			Nullifier:       nullifier.String(),
-			Commitment:      commitment.String(),
-			Secret:          inputs.Secret.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).String(),
-			InputsHash:      ballotInputsHash.String(),
+			Fields:          circuits.BigIntArrayToNInternal(fields[:], types.FieldsPerBallot),
+			MaxCount:        new(types.BigInt).SetBigInt(ballotMode.MaxCount),
+			ForceUniqueness: new(types.BigInt).SetBigInt(ballotMode.ForceUniqueness),
+			MaxValue:        new(types.BigInt).SetBigInt(ballotMode.MaxValue),
+			MinValue:        new(types.BigInt).SetBigInt(ballotMode.MinValue),
+			MaxTotalCost:    new(types.BigInt).SetBigInt(ballotMode.MaxTotalCost),
+			MinTotalCost:    new(types.BigInt).SetBigInt(ballotMode.MinTotalCost),
+			CostExp:         new(types.BigInt).SetBigInt(ballotMode.CostExp),
+			CostFromWeight:  new(types.BigInt).SetBigInt(ballotMode.CostFromWeight),
+			Address:         inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()),
+			Weight:          inputs.Weight,
+			ProcessID:       inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()),
+			VoteID:          voteID,
+			PK:              types.SliceOf([]*big.Int{circomEncryptionKeyX, circomEncryptionKeyY}, types.BigIntConverter),
+			K:               inputs.K,
+			Cipherfields:    circuits.BigIntArrayToNInternal(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
+			InputsHash:      ballotInputsHash,
 		},
 	}, nil
 }

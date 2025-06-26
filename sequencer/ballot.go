@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
@@ -13,14 +12,10 @@ import (
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	gnarkecdsa "github.com/consensys/gnark/std/signature/ecdsa"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/iden3/go-iden3-crypto/mimc7"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/storage/census"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -95,7 +90,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 		log.Infow("processing ballot",
 			"address", ballot.Address.String(),
 			"queued", s.stg.TotalPendingBallots(),
-			"voteID", hex.EncodeToString(ballot.VoteID()),
+			"voteID", hex.EncodeToString(ballot.VoteID),
 			"processID", fmt.Sprintf("%x", ballot.ProcessID),
 		)
 
@@ -158,36 +153,20 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 
 	log.Debugw("preparing ballot inputs", "pid", pid.String())
 	// Transform process data to circuit types
-	processID := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), b.ProcessID.BigInt().MathBigInt())
-	root := arbo.BytesToBigInt(process.Census.CensusRoot)
-	ballotMode := circuits.BallotModeToCircuit(process.BallotMode)
-	encryptionKey := circuits.EncryptionKeyToCircuit(*process.EncryptionKey)
-
-	// Calculate inputs hash
-	hashInputs := make([]*big.Int, 0, 8+len(b.EncryptedBallot.BigInts()))
-	hashInputs = append(hashInputs, processID)
-	hashInputs = append(hashInputs, root)
-	hashInputs = append(hashInputs, ballotMode.Serialize()...)
-	hashInputs = append(hashInputs, encryptionKey.Serialize()...)
-	hashInputs = append(hashInputs, b.Address)
-	hashInputs = append(hashInputs, b.Commitment)
-	hashInputs = append(hashInputs, b.Nullifier)
-	hashInputs = append(hashInputs, b.EncryptedBallot.BigInts()...)
-
-	inputHash, err := mimc7.Hash(hashInputs, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash inputs: %w", err)
+	inputs := new(voteverifier.VoteVerifierInputs)
+	if err := inputs.FromProcessBallot(process, b); err != nil {
+		return nil, fmt.Errorf("failed to prepare inputs from process and ballot: %w", err)
 	}
 
-	// Process census proof
-	siblings, err := census.BigIntSiblings(b.CensusProof.Siblings)
+	// Calculate inputs hash
+	inputHash, err := inputs.InputsHash()
 	if err != nil {
-		return nil, fmt.Errorf("failed to unpack census proof siblings: %w", err)
+		return nil, fmt.Errorf("failed to generate inputs hash: %w", err)
 	}
 
 	// Convert siblings to emulated elements
 	emulatedSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
-	for i, s := range circuits.BigIntArrayToN(siblings, types.CensusTreeMaxLevels) {
+	for i, s := range circuits.BigIntArrayToN(inputs.CensusSiblings, types.CensusTreeMaxLevels) {
 		emulatedSiblings[i] = emulated.ValueOf[sw_bn254.ScalarField](s)
 	}
 
@@ -202,17 +181,16 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
-			Commitment: emulated.ValueOf[sw_bn254.ScalarField](b.Commitment),
-			Nullifier:  emulated.ValueOf[sw_bn254.ScalarField](b.Nullifier),
-			Ballot:     *b.EncryptedBallot.ToGnarkEmulatedBN254(),
+			Address: emulated.ValueOf[sw_bn254.ScalarField](b.Address),
+			VoteID:  emulated.ValueOf[sw_bn254.ScalarField](b.VoteID.BigInt().MathBigInt()),
+			Ballot:  *b.EncryptedBallot.ToGnarkEmulatedBN254(),
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-			ID:            emulated.ValueOf[sw_bn254.ScalarField](processID),
-			CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](root),
-			EncryptionKey: encryptionKey.BigIntsToEmulatedElementBN254(),
-			BallotMode:    ballotMode.BigIntsToEmulatedElementBN254(),
+			ID:            emulated.ValueOf[sw_bn254.ScalarField](inputs.ProcessID),
+			CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusRoot),
+			EncryptionKey: inputs.EncryptionKey.BigIntsToEmulatedElementBN254(),
+			BallotMode:    inputs.BallotMode.BigIntsToEmulatedElementBN254(),
 		},
 		CensusSiblings: emulatedSiblings,
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
@@ -231,7 +209,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		circuits.AggregatorCurve.ScalarField(),
 		circuits.VoteVerifierCurve.ScalarField(),
 	)
-	log.Debugw("generating vote verification proof...", "pid", pid.String(), "voteID", hex.EncodeToString(b.VoteID()))
+	log.Debugw("generating vote verification proof...", "pid", pid.String(), "voteID", hex.EncodeToString(b.VoteID))
 	proof, err := s.prover(
 		circuits.VoteVerifierCurve,
 		s.vvCcs,
@@ -245,19 +223,16 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 
 	log.Infow("ballot verified",
 		"pid", pid.String(),
-		"voteID", hex.EncodeToString(b.VoteID()),
+		"voteID", hex.EncodeToString(b.VoteID),
 		"address", b.Address.String(),
-		"nullifier", b.Nullifier.String(),
 		"took", time.Since(startTime).String(),
 	)
 
 	// Create and return the verified ballot
 	return &storage.VerifiedBallot{
-		VoteID:          b.VoteID(),
+		VoteID:          b.VoteID,
 		ProcessID:       b.ProcessID,
 		VoterWeight:     b.VoterWeight,
-		Nullifier:       b.Nullifier,
-		Commitment:      b.Commitment,
 		EncryptedBallot: b.EncryptedBallot,
 		Address:         b.Address,
 		Proof:           proof.(*groth16_bls12377.Proof),

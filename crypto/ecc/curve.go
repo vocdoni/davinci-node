@@ -79,6 +79,10 @@ type Point interface {
 	// Point returns the X and Y coordinates of the elliptic curve element.
 	Point() (*big.Int, *big.Int)
 
+	// BigInts returns the X and Y coordinates of the elliptic curve element as
+	// a slice of big.Int.
+	BigInts() []*big.Int
+
 	// SetPoint sets the X and Y coordinates of the elliptic curve element. Modifies the receiver.
 	SetPoint(x, y *big.Int) Point
 

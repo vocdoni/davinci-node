@@ -171,6 +171,13 @@ func (p *BJJ) Point() (*big.Int, *big.Int) {
 	return x, y
 }
 
+// BigInts returns the X and Y coordinates of the elliptic curve element as
+// a slice of big.Int in Reduced Twisted Edwards coordinates.
+func (p *BJJ) BigInts() []*big.Int {
+	x, y := p.Point()
+	return []*big.Int{x, y}
+}
+
 // SetPoint sets the elliptic curve element from the X and Y coordinates in
 // Reduced Twisted Edwards coordinates.
 func (p *BJJ) SetPoint(x, y *big.Int) curve.Point {

@@ -6,24 +6,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"math/big"
 	"time"
 
 	"github.com/iden3/go-iden3-crypto/babyjub"
-	"github.com/iden3/go-iden3-crypto/mimc7"
-	"github.com/iden3/go-iden3-crypto/poseidon"
 	"github.com/iden3/go-rapidsnark/prover"
 	"github.com/iden3/go-rapidsnark/witness"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/util"
 )
 
 //go:embed circom_assets/ballot_proof.wasm
@@ -65,10 +61,10 @@ func GenEncryptionKeyForTest() ecc.Point {
 // GenBallotFieldsForTest generates a list of n random fields between min and max
 // values. If unique is true, the fields will be unique.
 // The items between n and NFields are padded with big.Int(0)
-func GenBallotFieldsForTest(n, max, min int, unique bool) [types.FieldsPerBallot]*big.Int {
-	fields := [types.FieldsPerBallot]*big.Int{}
+func GenBallotFieldsForTest(n, max, min int, unique bool) [types.FieldsPerBallot]*types.BigInt {
+	fields := [types.FieldsPerBallot]*types.BigInt{}
 	for i := range len(fields) {
-		fields[i] = big.NewInt(0)
+		fields[i] = types.NewInt(0)
 	}
 	stored := map[string]bool{}
 	for i := range n {
@@ -82,37 +78,13 @@ func GenBallotFieldsForTest(n, max, min int, unique bool) [types.FieldsPerBallot
 			// if it should be unique and it's already stored, skip it,
 			// otherwise add it to the list of fields and continue
 			if !unique || !stored[field.String()] {
-				fields[i] = field
+				fields[i] = fields[i].SetBigInt(field)
 				stored[field.String()] = true
 				break
 			}
 		}
 	}
 	return fields
-}
-
-// GenCommitmentAndNullifierForTest generates a commitment and nullifier for the
-// given address, processID and secret values. It uses the Poseidon hash
-// function over BabyJubJub curve to generate the commitment and nullifier.
-// The commitment is generated using the address, processID and secret value,
-// while the nullifier is generated using the commitment and secret value.
-func GenCommitmentAndNullifierForTest(address, processID, secret []byte) (*big.Int, *big.Int, error) {
-	commitment, err := poseidon.Hash([]*big.Int{
-		crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(address)),
-		crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(processID)),
-		crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(secret)),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	nullifier, err := poseidon.Hash([]*big.Int{
-		commitment,
-		crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(secret)),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return commitment, nullifier, nil
 }
 
 // CompileAndGenerateProofForTest compiles a circom circuit, generates the witness and
@@ -144,101 +116,57 @@ func CompileAndGenerateProofForTest(inputs []byte) (string, string, error) {
 type VoterProofResult struct {
 	ProcessID  *big.Int
 	Address    *big.Int
-	Nullifier  *big.Int
-	Commitment *big.Int
 	Ballot     *elgamal.Ballot
 	Proof      string
 	PubInputs  string
 	InputsHash *big.Int
+	VoteID     types.HexBytes
 }
 
-// BallotProofForTest function return the information after proving a valid ballot
-// for the voter address, process id and encryption key provided. It generates
-// and encrypts the fields for the ballot, the nullifier and the commitment for
-// the user and generates a proof of a valid vote. It returns a *VoterProofResult
-// and an error if it fails.
-func BallotProofForTest(address, processId []byte, encryptionKey ecc.Point) (*VoterProofResult, error) {
+// BallotProofForTest function return the information after proving a valid
+// ballot for the voter address, process id and encryption key provided. It
+// generates and encrypts the fields for the ballot and generates a proof of
+// a valid vote. It returns a *VoterProofResult and an error if it fails.
+func BallotProofForTest(address []byte, processID *types.ProcessID, encryptionKey ecc.Point) (*VoterProofResult, error) {
 	now := time.Now()
-	log.Println("BallotProof inputs generation start")
 	// generate random fields
 	fields := GenBallotFieldsForTest(circuits.MockMaxCount, circuits.MockMaxValue, circuits.MockMinValue, circuits.MockForceUniqueness > 0)
-	// encrypt the fields
+	// generate voter k
 	k, err := elgamal.RandK()
 	if err != nil {
 		return nil, err
 	}
-	ballot, err := elgamal.NewBallot(encryptionKey).Encrypt(fields, encryptionKey, k)
+	// generate ballot proof inputs
+	ballotProofInputs := &ballotproof.BallotProofInputs{
+		ProcessID:     processID.Marshal(),
+		Address:       address,
+		EncryptionKey: types.SliceOf(encryptionKey.BigInts(), types.BigIntConverter),
+		K:             new(types.BigInt).SetBigInt(k),
+		BallotMode:    circuits.MockBallotModeInternal(),
+		Weight:        new(types.BigInt).SetInt(circuits.MockWeight),
+		FieldValues:   fields[:],
+	}
+	proofInputs, err := ballotproof.GenerateBallotProofInputs(ballotProofInputs)
+	if err != nil {
+		return nil, fmt.Errorf("generate ballot proof inputs: %w", err)
+	}
+	// generate ballot proof
+	bCircomInputs, err := json.Marshal(proofInputs.CircomInputs)
 	if err != nil {
 		return nil, err
 	}
-	// get encryption key point
-	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(encryptionKey.Point())
-
-	// generate and store voter nullifier and commitments
-	secret := util.RandomBytes(16)
-	commitment, nullifier, err := GenCommitmentAndNullifierForTest(address, processId, secret)
-	if err != nil {
-		return nil, err
-	}
-	ffAddress := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(address))
-	ffProcessID := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(processId))
-	// group the circom inputs to hash
-	bigCircomInputs := []*big.Int{ffProcessID}
-	bigCircomInputs = append(bigCircomInputs, circuits.MockBallotMode().Serialize()...)
-	bigCircomInputs = append(bigCircomInputs,
-		circomEncryptionKeyX,
-		circomEncryptionKeyY,
-		ffAddress,
-		commitment,
-		nullifier,
-	)
-	bigCircomInputs = append(bigCircomInputs, ballot.FromRTEtoTE().BigInts()...)
-	bigCircomInputs = append(bigCircomInputs, big.NewInt(int64(circuits.MockWeight)))
-	circomInputsHash, err := mimc7.Hash(bigCircomInputs, nil)
-	if err != nil {
-		return nil, err
-	}
-	// init circom inputs
-	circomInputs := map[string]any{
-		"fields":           circuits.BigIntArrayToStringArray(fields[:], types.FieldsPerBallot),
-		"max_count":        fmt.Sprint(circuits.MockMaxCount),
-		"force_uniqueness": fmt.Sprint(circuits.MockForceUniqueness),
-		"max_value":        fmt.Sprint(circuits.MockMaxValue),
-		"min_value":        fmt.Sprint(circuits.MockMinValue),
-		"max_total_cost":   fmt.Sprint(int(math.Pow(float64(circuits.MockMaxValue), float64(circuits.MockCostExp))) * circuits.MockMaxCount),
-		"min_total_cost":   fmt.Sprint(circuits.MockMaxCount),
-		"cost_exp":         fmt.Sprint(circuits.MockCostExp),
-		"cost_from_weight": fmt.Sprint(circuits.MockCostFromWeight),
-		"address":          ffAddress.String(),
-		"weight":           fmt.Sprint(circuits.MockWeight),
-		"process_id":       ffProcessID.String(),
-		"pk":               []string{circomEncryptionKeyX.String(), circomEncryptionKeyY.String()},
-		"k":                k.String(),
-		"cipherfields":     circuits.BigIntArrayToStringArray(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
-		"nullifier":        nullifier.String(),
-		"commitment":       commitment.String(),
-		"secret":           crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), new(big.Int).SetBytes(secret)).String(),
-		"inputs_hash":      circomInputsHash.String(),
-	}
-	bCircomInputs, err := json.Marshal(circomInputs)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("%s\n", string(bCircomInputs))
-	// create circom proof and public signals
 	circomProof, circomPubInputs, err := CompileAndGenerateProofForTest(bCircomInputs)
 	if err != nil {
 		return nil, fmt.Errorf("create circom proof: %w", err)
 	}
 	log.Printf("Ballot proof generation ends, it tooks %s", time.Since(now))
 	return &VoterProofResult{
-		ProcessID:  ffProcessID,
-		Address:    ffAddress,
-		Nullifier:  nullifier,
-		Commitment: commitment,
-		Ballot:     ballot.FromRTEtoTE(),
+		ProcessID:  proofInputs.CircomInputs.ProcessID.MathBigInt(),
+		Address:    proofInputs.CircomInputs.Address.MathBigInt(),
+		Ballot:     proofInputs.Ballot,
 		Proof:      circomProof,
 		PubInputs:  circomPubInputs,
-		InputsHash: circomInputsHash,
+		InputsHash: proofInputs.BallotInputsHash.MathBigInt(),
+		VoteID:     proofInputs.VoteID,
 	}, nil
 }

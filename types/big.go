@@ -11,6 +11,11 @@ import (
 // the big number. Note that a nil pointer value marshals as the empty string.
 type BigInt big.Int
 
+// NewInt creates a new BigInt from the given integer value.
+func NewInt(x int) *BigInt {
+	return new(BigInt).SetInt(x)
+}
+
 // MarshalText returns the decimal string representation of the big number.
 // If the receiver is nil, we return "0".
 func (i *BigInt) MarshalText() ([]byte, error) {
@@ -117,6 +122,11 @@ func (i *BigInt) SetUint64(x uint64) *BigInt {
 
 func (i *BigInt) SetInt(x int) *BigInt {
 	return (*BigInt)(i.MathBigInt().SetUint64(uint64(x)))
+}
+
+// SetBigInt sets the value of x to the big number.
+func (i *BigInt) SetBigInt(x *big.Int) *BigInt {
+	return (*BigInt)(i.MathBigInt().Set(x))
 }
 
 // Equal helps us with go-cmp.

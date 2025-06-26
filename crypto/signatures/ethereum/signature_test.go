@@ -135,21 +135,24 @@ func TestECDSASignature_Verify(t *testing.T) {
 
 	// Check our wrapper matches ethereum's native function
 	t.Logf("pubkey: %x", pubKey)
-	t.Logf("verification: %t", sig.Verify(msg, address))
-	c.Assert(sig.Verify(msg, address), qt.Equals, ethcrypto.VerifySignature(pubKey, HashMessage(msg), verifyBytes[:64]))
+	ok, _ := sig.Verify(msg, address)
+	t.Logf("verification: %t", ok)
+	c.Assert(ok, qt.Equals, ethcrypto.VerifySignature(pubKey, HashMessage(msg), verifyBytes[:64]))
 
 	// Verify with wrong message
 	wrongMsg := []byte("wrong message")
+	ok, _ = sig.Verify(wrongMsg, address)
 	c.Assert(ethcrypto.VerifySignature(pubKey, HashMessage(wrongMsg), verifyBytes[:64]), qt.IsFalse)
-	c.Assert(sig.Verify(wrongMsg, address), qt.IsFalse)
+	c.Assert(ok, qt.IsFalse)
 
 	// Verify with wrong public key
 	wrongPrivKey, err := ethcrypto.GenerateKey()
 	c.Assert(err, qt.IsNil)
 	wrongPubKey := ethcrypto.FromECDSAPub(&wrongPrivKey.PublicKey)
 	wrongAddr := ethcrypto.PubkeyToAddress(wrongPrivKey.PublicKey)
+	ok, _ = sig.Verify(msg, wrongAddr)
 	c.Assert(ethcrypto.VerifySignature(wrongPubKey, HashMessage(msg), verifyBytes[:64]), qt.IsFalse)
-	c.Assert(sig.Verify(msg, wrongAddr), qt.IsFalse)
+	c.Assert(ok, qt.IsFalse)
 
 	// Test invalid signature
 	invalidSig := &ECDSASignature{
@@ -157,7 +160,8 @@ func TestECDSASignature_Verify(t *testing.T) {
 		S: big.NewInt(456),
 	}
 	c.Assert(invalidSig.Valid(), qt.IsFalse)
-	c.Assert(invalidSig.Verify(msg, address), qt.IsFalse)
+	ok, _ = invalidSig.Verify(msg, address)
+	c.Assert(ok, qt.IsFalse)
 }
 
 func TestAddrFromSignature(t *testing.T) {

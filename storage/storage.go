@@ -417,7 +417,7 @@ func (s *Storage) recoverNullifiers() error {
 			outerErr = fmt.Errorf("failed to decode verified ballot: %w", err)
 			return false
 		}
-		s.lockNullifier(vb.Nullifier)
+		s.lockNullifier(vb.VoteID.BigInt().MathBigInt())
 		return true // Continue iterating
 	}); err != nil {
 		return fmt.Errorf("failed to iterate verified ballots: %w", err)
@@ -437,7 +437,7 @@ func (s *Storage) recoverNullifiers() error {
 			return false // Stop iterating on error
 		}
 		for _, ballot := range abb.Ballots {
-			s.lockNullifier(ballot.Nullifier)
+			s.lockNullifier(ballot.VoteID.BigInt().MathBigInt())
 		}
 		return true // Continue iterating
 	}); err != nil {

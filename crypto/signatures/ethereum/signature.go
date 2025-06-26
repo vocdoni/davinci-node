@@ -105,34 +105,26 @@ func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
 	return sig
 }
 
-// VerifyBLS12377 checks if the signature is valid for the given input and public key.
-// The public key should be an ecdsa address. The input
-// should be a big integer that will be converted in a byte slice ensuring that
-// the final value is in the expected scalar field (BLS12_377) and has the
-// expected size.
+// VerifyBLS12377 checks if the signature is valid for the given input and
+// public key. The public key should be an ecdsa address. The input should be
+// a big integer that will be converted in a byte slice ensuring that the final
+// value is in the expected scalar field (BLS12_377) and has the expected size.
 func (sig *ECDSASignature) VerifyBLS12377(signedInput *big.Int, expectedAddress common.Address) (bool, []byte) {
-	if !sig.Valid() {
-		return false, nil
-	}
-	ffInput := crypto.BigIntToFFwithPadding(signedInput, gecc.BLS12_377.ScalarField())
-	pubKey, err := ethcrypto.SigToPub(HashMessage(ffInput), sig.Bytes())
-	if err != nil {
-		return false, nil
-	}
-	return bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes()), ethcrypto.FromECDSAPub(pubKey)
+	ffInput := crypto.BigIntToFFToSign(signedInput, gecc.BLS12_377.ScalarField())
+	return sig.Verify(ffInput, expectedAddress)
 }
 
 // Verify checks if the signature is valid for the given input and public key.
-func (sig *ECDSASignature) Verify(signedInput []byte, expectedAddress common.Address) bool {
+func (sig *ECDSASignature) Verify(signedInput []byte, expectedAddress common.Address) (bool, []byte) {
 	if !sig.Valid() {
-		return false
+		return false, nil
 	}
 	pubKey, err := ethcrypto.SigToPub(HashMessage(signedInput), sig.Bytes())
 	if err != nil {
-		return false
+		return false, nil
 	}
 	// Check if the public key matches the expected address
-	return bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes())
+	return bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes()), ethcrypto.FromECDSAPub(pubKey)
 }
 
 // String returns a string representation of the ECDSASignature, including

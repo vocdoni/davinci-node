@@ -1,6 +1,7 @@
 package solidity
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -99,6 +100,17 @@ func (p *Groth16CommitmentProof) FromGnarkProof(proof groth16.Proof) error {
 	p.Commitments = com
 	p.CommitmentPok = comPok
 	return nil
+}
+
+// String returns a JSON representation of the Groth16CommitmentProof as a
+// string. This is useful for debugging or logging purposes. If marshalling
+// fails, it returns an empty JSON object as a string.
+func (p *Groth16CommitmentProof) String() string {
+	jsonProof, err := json.Marshal(p)
+	if err != nil {
+		return "{}" // Return empty JSON if marshalling fails
+	}
+	return string(jsonProof)
 }
 
 // ABIEncode encodes the Groth16CommitmentProof to an ABI-encoded byte slice

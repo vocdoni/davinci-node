@@ -71,7 +71,8 @@ func TestSign(t *testing.T) {
 
 	// Verify the signature
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	c.Assert(signature.Verify(message, address), qt.IsTrue)
+	ok, _ := signature.Verify(message, address)
+	c.Assert(ok, qt.IsTrue)
 
 	// Try to recover the address from the signature
 	recoveredAddr, err := AddrFromSignature(message, signature)

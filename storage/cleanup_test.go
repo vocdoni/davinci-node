@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -166,36 +167,34 @@ func TestVoteIDStatusTimeout(t *testing.T) {
 
 func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types.ProcessID) {
 	// Create pending ballots for both processes
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		ballot1 := &Ballot{
-			ProcessID:        processID1.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 100)),
-			Address:          big.NewInt(int64(i + 1000)),
-			BallotInputsHash: big.NewInt(int64(i + 2000)),
+			ProcessID: processID1.Marshal(),
+			Address:   big.NewInt(int64(i + 1000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
 		err := st.PushBallot(ballot1)
 		c.Assert(err, qt.IsNil)
 
 		ballot2 := &Ballot{
-			ProcessID:        processID2.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 200)),
-			Address:          big.NewInt(int64(i + 3000)),
-			BallotInputsHash: big.NewInt(int64(i + 4000)),
+			ProcessID: processID2.Marshal(),
+			Address:   big.NewInt(int64(i + 3000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i+3),
 		}
 		err = st.PushBallot(ballot2)
 		c.Assert(err, qt.IsNil)
 	}
 
 	// Process some ballots to verified state for both processes
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		// Process ballot for processID1
 		b1, key1, err := st.NextBallot()
 		c.Assert(err, qt.IsNil)
 		if bytes.Equal(b1.ProcessID, processID1.Marshal()) {
 			vb1 := &VerifiedBallot{
 				ProcessID:   b1.ProcessID,
-				Nullifier:   b1.Nullifier,
-				VoteID:      b1.VoteID(),
+				Address:     b1.Address,
+				VoteID:      b1.VoteID,
 				VoterWeight: big.NewInt(1),
 			}
 			err = st.MarkBallotDone(key1, vb1)
@@ -208,8 +207,8 @@ func setupTestDataForCleanup(c *qt.C, st *Storage, processID1, processID2 *types
 		if bytes.Equal(b2.ProcessID, processID2.Marshal()) {
 			vb2 := &VerifiedBallot{
 				ProcessID:   b2.ProcessID,
-				Nullifier:   b2.Nullifier,
-				VoteID:      b2.VoteID(),
+				Address:     b2.Address,
+				VoteID:      b2.VoteID,
 				VoterWeight: big.NewInt(1),
 			}
 			err = st.MarkBallotDone(key2, vb2)
@@ -235,9 +234,8 @@ func createAggregatorBatch(c *qt.C, st *Storage, processID *types.ProcessID) {
 		ProcessID: processID.Marshal(),
 		Ballots: []*AggregatorBallot{
 			{
-				VoteID:    []byte("aggvote1"),
-				Nullifier: big.NewInt(1001),
-				Address:   big.NewInt(2001),
+				VoteID:  []byte("aggvote1"),
+				Address: big.NewInt(2001),
 			},
 		},
 	}
@@ -250,9 +248,8 @@ func createStateTransition(c *qt.C, st *Storage, processID *types.ProcessID) {
 		ProcessID: processID.Marshal(),
 		Ballots: []*AggregatorBallot{
 			{
-				VoteID:    []byte("stvote1"),
-				Nullifier: big.NewInt(3001),
-				Address:   big.NewInt(4001),
+				VoteID:  []byte("stvote1"),
+				Address: big.NewInt(4001),
 			},
 		},
 	}
@@ -335,29 +332,28 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 
 	// Create and process ballots through the full pipeline
 	ballots := make([]*Ballot, 2)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		ballot := &Ballot{
-			ProcessID:        processID.Marshal(),
-			Nullifier:        big.NewInt(int64(i + 500)),
-			Address:          big.NewInt(int64(i + 5000)),
-			BallotInputsHash: big.NewInt(int64(i + 6000)),
+			ProcessID: processID.Marshal(),
+			Address:   big.NewInt(int64(i + 5000)),
+			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
 		err := st.PushBallot(ballot)
 		c.Assert(err, qt.IsNil)
 
 		ballots[i] = ballot
-		voteIDs[i] = ballot.VoteID()
+		voteIDs[i] = ballot.VoteID
 	}
 
 	// Process to verified
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		b, key, err := st.NextBallot()
 		c.Assert(err, qt.IsNil)
 
 		vb := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
-			Nullifier:   b.Nullifier,
-			VoteID:      b.VoteID(),
+			Address:     b.Address,
+			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
 		err = st.MarkBallotDone(key, vb)
@@ -371,9 +367,8 @@ func setupBallotsToSettledState(c *qt.C, st *Storage, processID *types.ProcessID
 	aggBallots := make([]*AggregatorBallot, len(verifiedBallots))
 	for i, vb := range verifiedBallots {
 		aggBallots[i] = &AggregatorBallot{
-			VoteID:    vb.VoteID,
-			Nullifier: vb.Nullifier,
-			Address:   vb.Address,
+			VoteID:  vb.VoteID,
+			Address: vb.Address,
 		}
 	}
 

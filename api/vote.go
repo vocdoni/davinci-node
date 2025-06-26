@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"math/big"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -58,9 +57,10 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	httpWriteJSON(w, response)
 }
 
-// voteByNullifier retrieves an encrypted ballot by its nullifier for a given processID
-// GET /votes/{processId}/nullifier/{nullifier}
-func (a *API) voteByNullifier(w http.ResponseWriter, r *http.Request) {
+// voteByAddress retrieves an encrypted ballot by its address for a given
+// processID
+// GET /votes/{processId}/address/{address}
+func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	// Get the processID
 	processIDBytes, err := types.HexStringToHexBytes(chi.URLParam(r, ProcessURLParam))
 	if err != nil {
@@ -69,49 +69,8 @@ func (a *API) voteByNullifier(w http.ResponseWriter, r *http.Request) {
 	}
 	processID := new(types.ProcessID).SetBytes(processIDBytes)
 
-	// Get the nullifier (string representation of a big.Int)
-	nullifierStr := chi.URLParam(r, VoteByNullifierNullifierParam)
-	nullifier, valid := new(big.Int).SetString(nullifierStr, 10)
-	if !valid {
-		ErrMalformedNullifier.Write(w)
-		return
-	}
-
-	// Open the state for the process
-	s, err := state.New(a.storage.StateDB(), processID.BigInt())
-	if err != nil {
-		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
-		return
-	}
-	defer func() {
-		if err := s.Close(); err != nil {
-			log.Warnw("could not close state", "processID", processID.String(), "error", err.Error())
-		}
-	}()
-
-	// Get the ballot by nullifier
-	ballot, err := s.EncryptedBallot(nullifier)
-	if err != nil {
-		ErrResourceNotFound.WithErr(err).Write(w)
-		return
-	}
-
-	httpWriteJSON(w, ballot)
-}
-
-// checkAddress checks if an address has already voted in a given process
-// GET /votes/{processId}/address/{address}
-func (a *API) checkAddress(w http.ResponseWriter, r *http.Request) {
-	// Get the processID
-	processIDBytes, err := types.HexStringToHexBytes(chi.URLParam(r, ProcessURLParam))
-	if err != nil {
-		ErrMalformedProcessID.Write(w)
-		return
-	}
-	processID := new(types.ProcessID).SetBytes(processIDBytes)
-
 	// Get the address
-	address, err := types.HexStringToHexBytes(chi.URLParam(r, VoteCheckAddressParam))
+	address, err := types.HexStringToHexBytes(chi.URLParam(r, VoteByAddressAddressParam))
 	if err != nil {
 		ErrMalformedAddress.Write(w)
 		return
@@ -129,8 +88,8 @@ func (a *API) checkAddress(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Check if the address has already voted (by checking the commitment)
-	_, err = s.Commitment(address)
+	// Get the ballot by address
+	ballot, err := s.EncryptedBallot(address.BigInt().MathBigInt())
 	if err != nil {
 		if errors.Is(err, arbo.ErrKeyNotFound) {
 			ErrResourceNotFound.Write(w)
@@ -139,7 +98,8 @@ func (a *API) checkAddress(w http.ResponseWriter, r *http.Request) {
 		ErrGenericInternalServerError.Withf("could not get commitment: %v", err).Write(w)
 		return
 	}
-	httpWriteOK(w)
+
+	httpWriteJSON(w, ballot)
 }
 
 // newVote creates a new vote and pushes it to the sequencer queue
@@ -152,8 +112,8 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// sanity checks
-	if vote.Ballot == nil || vote.Nullifier == nil || vote.Commitment == nil ||
-		vote.BallotInputsHash == nil || vote.Address == nil || vote.Signature == nil {
+	if vote.Ballot == nil || vote.BallotInputsHash == nil ||
+		vote.Address == nil || vote.Signature == nil {
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
@@ -199,8 +159,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		process.BallotMode,
 		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
 		vote.Address,
-		vote.Commitment,
-		vote.Nullifier,
+		vote.VoteID.BigInt(),
 		vote.Ballot.FromTEtoRTE(),
 		vote.CensusProof.Weight,
 	)
@@ -234,7 +193,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not decode signature: %v", err).Write(w)
 		return
 	}
-	signatureOk, pubkey := signature.VerifyBLS12377(vote.BallotInputsHash.MathBigInt(), common.BytesToAddress(vote.Address))
+	signatureOk, pubkey := signature.Verify(vote.VoteID, common.BytesToAddress(vote.Address))
 	if !signatureOk {
 		ErrInvalidSignature.Write(w)
 		return
@@ -245,14 +204,13 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		VoterWeight: vote.CensusProof.Weight.MathBigInt(),
 		// convert the ballot from TE (circom) to RTE (gnark)
 		EncryptedBallot:  vote.Ballot.FromTEtoRTE(),
-		Nullifier:        vote.Nullifier.MathBigInt(),
-		Commitment:       vote.Commitment.MathBigInt(),
 		Address:          vote.Address.BigInt().MathBigInt(),
 		BallotInputsHash: vote.BallotInputsHash.MathBigInt(),
 		BallotProof:      proof.Proof,
 		Signature:        signature,
 		CensusProof:      &vote.CensusProof,
 		PubKey:           pubkey,
+		VoteID:           vote.VoteID,
 	}
 
 	// push the ballot to the sequencer storage queue to be verified, aggregated
@@ -271,12 +229,5 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get the vote ID and return it to the client
-	voteID := ballot.VoteID()
-
-	// Return the voteID to the client using the VoteResponse struct
-	response := VoteResponse{
-		VoteID: voteID,
-	}
-	httpWriteJSON(w, response)
+	httpWriteOK(w)
 }

@@ -169,6 +169,12 @@ func (g *BJJ) Point() (*big.Int, *big.Int) {
 	return g.inner.X, g.inner.Y
 }
 
+// BigInts returns the x and y coordinates of the point as a slice of big.Int
+func (g *BJJ) BigInts() []*big.Int {
+	x, y := g.Point()
+	return []*big.Int{x, y}
+}
+
 // SetPoint sets the point to the given x and y coordinates and returns the point
 func (g *BJJ) SetPoint(x, y *big.Int) curve.Point {
 	g = &BJJ{inner: babyjubjub.NewPoint()}

@@ -33,17 +33,7 @@ It uses the standard Go compiler (not TinyGo) and the `syscall/js` package to cr
 
 The following cryptographic operations are performed:
 
-1. **Commitment Generation**: Uses the Poseidon hash function to create a commitment from the address, processID, and secret values.
-   ```
-   commitment = poseidon(address, processID, secret)
-   ```
-
-2. **Nullifier Generation**: Uses the Poseidon hash function to create a nullifier from the commitment and secret values.
-   ```
-   nullifier = poseidon(commitment, secret)
-   ```
-
-3. **Ballot Encryption**: Simulates the encryption of ballot field values (in a real implementation, this would use elliptic curve cryptography with the ElGamal algorithm).
+1. **Ballot Encryption**: Simulates the encryption of ballot field values (in a real implementation, this would use elliptic curve cryptography with the ElGamal algorithm).
 
 ## Available Functions
 
@@ -83,7 +73,5 @@ This will:
 
 ```
 Ballot Proof Generated:
-- Commitment: 6318921145501236088885839097668362318092907579751083698945861468270252428163
-- Nullifier: 9147474934240440483314732763366645198687962537096354787587696363360508609183
 - Signature Hash: 0x1f1e0cd2_63189211_91474749
 ```

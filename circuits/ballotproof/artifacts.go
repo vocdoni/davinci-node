@@ -13,7 +13,7 @@ var Artifacts = circuits.NewCircuitArtifacts(
 	circuits.BallotProofCurve,
 	&circuits.Artifact{
 		Name:      "ballot-proof wasm",
-		RemoteURL: config.BallotProoCircuitURL,
+		RemoteURL: config.BallotProofCircuitURL,
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.BallotProofCircuitHash),
 	},
 	&circuits.Artifact{
