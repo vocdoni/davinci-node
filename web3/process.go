@@ -21,6 +21,17 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 		return nil, nil, fmt.Errorf("failed to create transact options: %w", err)
 	}
 
+	// get the next process ID from the contract before creating the process to
+	// get the correct ID for the process that will be created
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx}, c.AccountAddress())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get next process ID: %w", err)
+	}
+	pidDecoded := &types.ProcessID{}
+	pidDecoded.SetBytes(pid[:])
+
 	p := process2ContractProcess(process)
 	tx, err := c.processes.NewProcess(
 		txOpts,
@@ -36,15 +47,6 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create process: %w", err)
 	}
-	// get the next process ID from the contract
-	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
-	defer cancel()
-	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get next process ID: %w", err)
-	}
-	pidDecoded := &types.ProcessID{}
-	pidDecoded.SetBytes(pid[:])
 	hash := tx.Hash()
 	return pidDecoded, &hash, nil
 }
@@ -83,7 +85,7 @@ func (c *Contracts) NextProcessID(address common.Address) (*types.ProcessID, err
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
-	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx})
+	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx}, address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get next process ID: %w", err)
 	}

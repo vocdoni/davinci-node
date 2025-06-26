@@ -64,7 +64,7 @@ type Services struct {
 func setupAPI(ctx context.Context, db *storage.Storage) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
-	api := service.NewAPI(db, "127.0.0.1", tmpPort, "local", false)
+	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", false)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
 	}
@@ -102,7 +102,6 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
-		composeEnv[zContractsBranchNameEnvVarName] = "r/sequencer_overwrites_issues"
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
