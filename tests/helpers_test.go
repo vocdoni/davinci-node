@@ -351,7 +351,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	c.Assert(err, qt.IsNil)
 
 	// Sign the process creation request
-	signature, err := contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processID.Marshal()))
+	signature, err := contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processID.String()))
 	c.Assert(err, qt.IsNil)
 
 	process := &types.ProcessSetup{

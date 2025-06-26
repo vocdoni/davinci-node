@@ -54,7 +54,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract the address from the signature
-	signedMessage := fmt.Sprintf(types.NewProcessMessageToSign, pid.Marshal())
+	signedMessage := fmt.Sprintf(types.NewProcessMessageToSign, pid.String())
 	address, err := ethereum.AddrFromSignature([]byte(signedMessage), new(ethereum.ECDSASignature).SetBytes(p.Signature))
 	if err != nil {
 		ErrInvalidSignature.Withf("could not extract address from signature: %v", err).Write(w)
