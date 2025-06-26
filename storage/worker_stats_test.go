@@ -166,7 +166,7 @@ func TestWorkerStatsConcurrency(t *testing.T) {
 
 	// Run concurrent increments
 	done := make(chan struct{}, numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer func() { done <- struct{}{} }()
 			for j := 0; j < incrementsPerGoroutine; j++ {
@@ -180,7 +180,7 @@ func TestWorkerStatsConcurrency(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 

@@ -44,7 +44,7 @@ func TestInfo(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Verify the returned data
-		c.Assert(response.CircuitURL, qt.Equals, config.BallotProoCircuitURL)
+		c.Assert(response.CircuitURL, qt.Equals, config.BallotProofCircuitURL)
 		c.Assert(response.CircuitHash, qt.Equals, config.BallotProofCircuitHash)
 		c.Assert(response.ProvingKeyURL, qt.Equals, config.BallotProofProvingKeyURL)
 		c.Assert(response.ProvingKeyHash, qt.Equals, config.BallotProofProvingKeyHash)

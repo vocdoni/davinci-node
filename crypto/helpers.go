@@ -1,23 +1,50 @@
-// Package crypto provides cryptographic utilities and helper functions for the Vocdoni system.
-// It includes functions for working with finite fields, serialization, and other cryptographic operations.
+// Package crypto provides cryptographic utilities and helper functions for
+// the Vocdoni system. It includes functions for working with finite fields,
+// serialization, and other cryptographic operations.
 package crypto
 
 import "math/big"
 
-// SerializedFieldSize is the standard size in bytes for serialized field elements
-const SerializedFieldSize = 32 // bytes
+// SignatureCircuitVariableLen is the standard size in bytes for serialized
+// field elements
+const SignatureCircuitVariableLen = 32 // bytes
 
-// BigIntToFFwithPadding transform the inputs bigInt to the field provided, if it is
-// not done, the circuit will transform it during the witness calculation and
-// the resulting hash will be different. Moreover, the input hash should be
-// 32 bytes so if it is not, fill with zeros at the beginning of the bytes
+// BigIntToFFToSign transform the inputs bigInt to the field provided, if it
+// is not done, the circuit will transform it during the witness calculation
+// and the resulting hash will be different. Moreover, the input hash should
+// be 32 bytes so if it is not, fill with zeros at the beginning of the bytes
 // representation.
-func BigIntToFFwithPadding(input, base *big.Int) []byte {
-	hash := BigToFF(base, input).Bytes()
-	for len(hash) < SerializedFieldSize {
-		hash = append([]byte{0}, hash...)
+func BigIntToFFToSign(input, base *big.Int) []byte {
+	return BigIntToBytesToSign(BigToFF(base, input))
+}
+
+// BigIntToBytesToSign converts a big.Int to a byte slice, ensuring that
+// the resulting byte slice has SignatureCircuitVariableLen bytes. If the
+// byte slice is shorter than SerializedFieldSize, it prepends zeros until
+// the length is equal to SerializedFieldSize. If the byte slice is longer,
+// it truncates it to the last SerializedFieldSize bytes.
+func BigIntToBytesToSign(input *big.Int) []byte {
+	return PadToSign(input.Bytes())
+}
+
+// PadToSign pads the input byte slice to ensure it has a length of
+// SignatureCircuitVariableLen bytes. If the input is shorter, it prepends
+// zeros until the length is equal to SignatureCircuitVariableLen. If the
+// input is longer, it truncates it to the last SignatureCircuitVariableLen
+// bytes.
+func PadToSign(input []byte) []byte {
+	// if the length of the input is less than SerializedFieldSize, pad with
+	// zeros at the beginning until it reaches SerializedFieldSize
+	if len(input) < SignatureCircuitVariableLen {
+		for len(input) < SignatureCircuitVariableLen {
+			input = append([]byte{0}, input...)
+		}
+	} else if len(input) > SignatureCircuitVariableLen {
+		// if the length of the input is greater than SerializedFieldSize,
+		// truncate it to SerializedFieldSize bytes
+		input = input[len(input)-SignatureCircuitVariableLen:]
 	}
-	return hash
+	return input
 }
 
 // BigToFF function returns the finite field representation of the big.Int

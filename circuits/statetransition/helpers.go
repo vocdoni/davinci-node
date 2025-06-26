@@ -40,10 +40,9 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 	witness.NumOverwritten = o.OverwrittenCount()
 
 	for i, v := range o.PaddedVotes() {
-		witness.Votes[i].Nullifier = v.Nullifier
 		witness.Votes[i].Ballot = *v.Ballot.ToGnark()
 		witness.Votes[i].Address = v.Address
-		witness.Votes[i].Commitment = v.Commitment
+		witness.Votes[i].VoteID = v.VoteID.BigInt().MathBigInt()
 		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
 	}
 
@@ -67,13 +66,6 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 	// add Ballots
 	for i := range witness.VotesProofs.Ballot {
 		witness.VotesProofs.Ballot[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Ballot[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	// add Commitments
-	for i := range witness.VotesProofs.Commitment {
-		witness.VotesProofs.Commitment[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Commitment[i])
 		if err != nil {
 			return nil, err
 		}

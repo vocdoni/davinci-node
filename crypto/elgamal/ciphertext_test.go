@@ -204,7 +204,7 @@ func TestBallotMarshalCBOR(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Compare points
-		for i := 0; i < len(ballot.Ciphertexts); i++ {
+		for i := range len(ballot.Ciphertexts) {
 			x1, y1 := ballot.Ciphertexts[i].C1.Point()
 			x2, y2 := unmarshaled.Ciphertexts[i].C1.Point()
 			c.Assert(x1.Cmp(x2), qt.Equals, 0)
@@ -249,7 +249,7 @@ func TestBallotMarshalJSON(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Compare points for each ciphertext.
-		for i := 0; i < len(ballot.Ciphertexts); i++ {
+		for i := range len(ballot.Ciphertexts) {
 			// Compare C1.
 			x1, y1 := ballot.Ciphertexts[i].C1.Point()
 			x2, y2 := unmarshaled.Ciphertexts[i].C1.Point()

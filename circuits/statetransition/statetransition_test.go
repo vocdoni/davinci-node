@@ -371,15 +371,10 @@ func newMockState(t *testing.T) *state.State {
 	return s
 }
 
-const (
-	mockNullifiersOffset = 100
-	mockAddressesOffset  = 200
-)
+const mockAddressesOffset = 200
 
 // newMockVote creates a new vote
 func newMockVote(index, amount int64) *state.Vote {
-	nullifier := big.NewInt(int64(index) + int64(mockNullifiersOffset)) // mock
-
 	// generate a public mocked key
 	publicKey, _, err := elgamal.GenerateKey(state.Curve)
 	if err != nil {
@@ -397,13 +392,11 @@ func newMockVote(index, amount int64) *state.Vote {
 	}
 
 	address := big.NewInt(int64(index) + int64(mockAddressesOffset)) // mock
-	commitment := big.NewInt(amount + 256)
 
 	return &state.Vote{
-		Nullifier:  nullifier,
-		Ballot:     ballot,
-		Address:    address,
-		Commitment: commitment,
+		Address: address,
+		VoteID:  util.RandomBytes(20),
+		Ballot:  ballot,
 	}
 }
 
@@ -414,8 +407,6 @@ func newMockVote(index, amount int64) *state.Vote {
 //	process.BallotMode
 //	process.EncryptionKey
 //	vote.Address
-//	vote.Commitment
-//	vote.Nullifier
 //	vote.Ballot
 //
 // to calculate a subhash of each process+vote, then hashes all subhashes
@@ -457,8 +448,7 @@ func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
 	t.Log("public: NumVotes", util.PrettyHex(witness.NumNewVotes))
 	t.Log("public: NumOverwritten", util.PrettyHex(witness.NumOverwritten))
 	for name, mts := range map[string][types.VotesPerBatch]merkleproof.MerkleTransition{
-		"Ballot":     witness.VotesProofs.Ballot,
-		"Commitment": witness.VotesProofs.Commitment,
+		"Ballot": witness.VotesProofs.Ballot,
 	} {
 		for _, mt := range mts {
 			t.Log(name, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",

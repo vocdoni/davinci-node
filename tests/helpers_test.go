@@ -40,7 +40,7 @@ const (
 	testLocalAccountPrivKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 	// envarionment variable names
 	deployerServerPortEnvVarName      = "DEPLOYER_SERVER"                        // environment variable name for deployer server port
-	zContractsBranchNameEnvVarName    = "SEQUENCER_Z_CONTRACTS_BRANCH"           // environment variable name for z-contracts branch
+	contractsBranchNameEnvVarName     = "SEQUENCER_CONTRACTS_BRANCH"             // environment variable name for z-contracts branch
 	privKeyEnvVarName                 = "SEQUENCER_PRIV_KEY"                     // environment variable name for private key
 	rpcUrlEnvVarName                  = "SEQUENCER_RPC_URL"                      // environment variable name for RPC URL
 	anvilPortEnvVarName               = "ANVIL_PORT_RPC_HTTP"                    // environment variable name for Anvil port
@@ -400,13 +400,10 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	return pid, encryptionKeys
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, secret []byte, k *big.Int) (api.Vote, []byte, *big.Int) {
+func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, *big.Int) {
 	var err error
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	if len(secret) == 0 {
-		secret = util.RandomBytes(16)
-	}
 	if k == nil {
 		k, err = elgamal.RandK()
 		c.Assert(err, qt.IsNil)
@@ -427,7 +424,6 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:   address.Bytes(),
 		ProcessID: pid.Marshal(),
-		Secret:    secret,
 		EncryptionKey: []*types.BigInt{
 			(*types.BigInt)(encKey.X),
 			(*types.BigInt)(encKey.Y),
@@ -454,15 +450,14 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	c.Assert(err, qt.IsNil)
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID:        wasmResult.ProccessID,
+		ProcessID:        wasmResult.ProcessID,
 		Address:          wasmInputs.Address,
-		Commitment:       wasmResult.Commitment,
-		Nullifier:        wasmResult.Nullifier,
+		VoteID:           wasmResult.VoteID,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
-	}, secret, k
+	}, k
 }
 
 func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) api.Vote {
@@ -472,7 +467,6 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	}
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	secret := util.RandomBytes(16)
 	k, err := elgamal.RandK()
 	c.Assert(err, qt.IsNil)
 	// generate random ballot fields
@@ -481,24 +475,15 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 		int(bm.MaxValue.MathBigInt().Int64()),
 		int(bm.MinValue.MathBigInt().Int64()),
 		bm.ForceUniqueness)
-	// cast fields to types.BigInt
-	fields := []*types.BigInt{}
-	for _, f := range randFields {
-		fields = append(fields, (*types.BigInt)(f))
-	}
 	// compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
-		Address:   address.Bytes(),
-		ProcessID: pid.Marshal(),
-		Secret:    secret,
-		EncryptionKey: []*types.BigInt{
-			(*types.BigInt)(encKey.X),
-			(*types.BigInt)(encKey.Y),
-		},
-		K:           (*types.BigInt)(k),
-		BallotMode:  bm,
-		Weight:      (*types.BigInt)(new(big.Int).SetUint64(circuits.MockWeight)),
-		FieldValues: fields,
+		Address:       address.Bytes(),
+		ProcessID:     pid.Marshal(),
+		EncryptionKey: []*types.BigInt{encKey.X, encKey.Y},
+		K:             new(types.BigInt).SetBigInt(k),
+		BallotMode:    bm,
+		Weight:        new(types.BigInt).SetUint64(circuits.MockWeight),
+		FieldValues:   randFields[:],
 	}
 	// generate the inputs for the ballot proof circuit
 	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
@@ -517,14 +502,13 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	c.Assert(err, qt.IsNil)
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID:        wasmResult.ProccessID,
+		ProcessID:        wasmResult.ProcessID,
 		Address:          wasmInputs.Address,
-		Commitment:       wasmResult.Commitment,
-		Nullifier:        wasmResult.Nullifier,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
+		VoteID:           wasmResult.VoteID,
 	}
 }
 

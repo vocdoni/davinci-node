@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/iden3/go-iden3-crypto/babyjub"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 const (
@@ -67,5 +68,18 @@ func MockBallotModeEmulated() BallotMode[emulated.Element[sw_bn254.ScalarField]]
 		MinTotalCost:    emulated.ValueOf[sw_bn254.ScalarField](MockMaxCount),
 		CostExp:         emulated.ValueOf[sw_bn254.ScalarField](MockCostExp),
 		CostFromWeight:  emulated.ValueOf[sw_bn254.ScalarField](MockCostFromWeight),
+	}
+}
+
+func MockBallotModeInternal() *types.BallotMode {
+	return &types.BallotMode{
+		MaxCount:        MockMaxCount,
+		ForceUniqueness: MockForceUniqueness == 1,
+		MaxValue:        new(types.BigInt).SetInt(MockMaxValue),
+		MinValue:        new(types.BigInt).SetInt(MockMinValue),
+		MaxTotalCost:    new(types.BigInt).SetInt(MockMaxTotalCost),
+		MinTotalCost:    new(types.BigInt).SetInt(MockMinTotalCost),
+		CostExponent:    MockCostExp,
+		CostFromWeight:  MockCostFromWeight == 1,
 	}
 }

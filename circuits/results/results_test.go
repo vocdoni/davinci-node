@@ -22,6 +22,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 const nVotes = 10
@@ -131,9 +132,8 @@ func newMockVote(pubKey ecc.Point, index, amount int) *state.Vote {
 		panic(fmt.Errorf("error encrypting: %v", err))
 	}
 	return &state.Vote{
-		Nullifier:  big.NewInt(int64(index + 100)), // mock
-		Ballot:     ballot,
-		Address:    big.NewInt(int64(index + 200)), // mock
-		Commitment: big.NewInt(int64(index + 300)), // mock
+		Ballot:  ballot,
+		VoteID:  util.RandomBytes(20),
+		Address: big.NewInt(int64(index + 200)), // mock
 	}
 }

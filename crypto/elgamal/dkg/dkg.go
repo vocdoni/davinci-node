@@ -46,7 +46,7 @@ func (p *Participant) GenerateSecretPolynomial() {
 	degree := p.Threshold - 1
 
 	// Generate random coefficients.
-	for i := 0; i <= degree; i++ {
+	for range degree + 1 {
 		coeff, err := rand.Int(rand.Reader, p.CurvePoint.Order())
 		if err != nil {
 			panic(err)

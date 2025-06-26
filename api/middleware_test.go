@@ -241,7 +241,7 @@ func BenchmarkLoggingMiddleware(b *testing.B) {
 	jsonBody := `{"key": "value", "number": 123, "array": [1, 2, 3]}`
 
 	b.Run("JSON body", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			req := httptest.NewRequest("POST", "/test", strings.NewReader(jsonBody))
 			rec := httptest.NewRecorder()
 			wrappedHandler.ServeHTTP(rec, req)
@@ -250,7 +250,7 @@ func BenchmarkLoggingMiddleware(b *testing.B) {
 
 	b.Run("Binary body", func(b *testing.B) {
 		binaryBody := bytes.Repeat([]byte{0x00, 0x01, 0x02, 0x03}, 100)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			req := httptest.NewRequest("POST", "/test", bytes.NewReader(binaryBody))
 			rec := httptest.NewRecorder()
 			wrappedHandler.ServeHTTP(rec, req)
@@ -258,7 +258,7 @@ func BenchmarkLoggingMiddleware(b *testing.B) {
 	})
 
 	b.Run("No body", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			req := httptest.NewRequest("GET", "/test", nil)
 			rec := httptest.NewRecorder()
 			wrappedHandler.ServeHTTP(rec, req)

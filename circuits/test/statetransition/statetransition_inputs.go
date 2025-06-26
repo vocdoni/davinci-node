@@ -14,6 +14,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	aggregatortest "github.com/vocdoni/davinci-node/circuits/test/aggregator"
 	"github.com/vocdoni/davinci-node/state"
+	"github.com/vocdoni/davinci-node/types"
 	"go.vocdoni.io/dvote/db/metadb"
 )
 
@@ -27,7 +28,7 @@ type StateTransitionTestResults struct {
 // StateTransitionInputsForTest returns the StateTransitionTestResults, the placeholder
 // and the assignments of a StateTransitionCircuit for the processId provided
 // generating nValidVoters. If something fails it returns an error.
-func StateTransitionInputsForTest(processId []byte, nValidVoters int) (
+func StateTransitionInputsForTest(processId *types.ProcessID, nValidVoters int) (
 	*StateTransitionTestResults, *statetransition.StateTransitionCircuit, *statetransition.StateTransitionCircuit, error,
 ) {
 	// generate aggregator circuit and inputs

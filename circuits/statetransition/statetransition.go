@@ -59,10 +59,8 @@ type ProcessProofs struct {
 // VotesProofs struct contains the Merkle transition proofs for the ballots and
 // commitments.
 type VotesProofs struct {
-	// Key is Nullifier, LeafHash is smt.Hash1(encoded(Ballot.Serialize()))
+	// Key is Address, LeafHash is smt.Hash1(encoded(Ballot.Serialize()))
 	Ballot [types.VotesPerBatch]merkleproof.MerkleTransition
-	// Key is Address, LeafHash is smt.Hash1(encoded(Commitment))
-	Commitment [types.VotesPerBatch]merkleproof.MerkleTransition
 }
 
 // ResultsProofs struct contains the Merkle transition proofs for the addition
@@ -216,9 +214,6 @@ func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, 
 	for i := range circuit.VotesProofs.Ballot {
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
 	}
-	for i := range circuit.VotesProofs.Commitment {
-		root = circuit.VotesProofs.Commitment[i].Verify(api, hFn, root)
-	}
 	root = circuit.ResultsProofs.ResultsAdd.Verify(api, hFn, root)
 	root = circuit.ResultsProofs.ResultsSub.Verify(api, hFn, root)
 	api.AssertIsEqual(root, circuit.RootHashAfter)
@@ -249,28 +244,16 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	}
 	// Votes
 	for i, v := range circuit.Votes {
-		// Nullifier
-		nullifierKey, err := merkleproof.TruncateMerkleTreeKey(api, v.Nullifier, types.StateKeyMaxLen)
-		if err != nil {
-			circuits.FrontendError(api, "failed to truncate nullifier key: ", err)
-			return
-		}
-		api.AssertIsEqual(nullifierKey, circuit.VotesProofs.Ballot[i].NewKey)
 		// Address
 		addressKey, err := merkleproof.TruncateMerkleTreeKey(api, v.Address, types.StateKeyMaxLen)
 		if err != nil {
 			circuits.FrontendError(api, "failed to truncate address key: ", err)
 			return
 		}
-		api.AssertIsEqual(addressKey, circuit.VotesProofs.Commitment[i].NewKey)
+		api.AssertIsEqual(addressKey, circuit.VotesProofs.Ballot[i].NewKey)
 		// Ballot
 		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.Ballot.SerializeVars()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
-			return
-		}
-		// Commitment
-		if err := circuit.VotesProofs.Commitment[i].VerifyNewLeafHash(api, hFn, v.Commitment); err != nil {
-			circuits.FrontendError(api, "failed to verify commitment vote proof leaf hash: ", err)
 			return
 		}
 		// OverwrittenBallot

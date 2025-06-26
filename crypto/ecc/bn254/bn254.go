@@ -167,6 +167,12 @@ func (g *G1) Point() (*big.Int, *big.Int) {
 	return g.inner.X.BigInt(new(big.Int)), g.inner.Y.BigInt(new(big.Int))
 }
 
+// BigInts returns the x and y coordinates of the point as a slice of big.Int
+func (g *G1) BigInts() []*big.Int {
+	x, y := g.Point()
+	return []*big.Int{x, y}
+}
+
 // SetPoint sets the point to the given x and y coordinates and returns the point
 func (g *G1) SetPoint(x, y *big.Int) curve.Point {
 	g = &G1{inner: new(bn254.G1Affine)}

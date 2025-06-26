@@ -15,7 +15,7 @@ import (
 
 // sizes in bytes needed to serialize a Ballot
 const (
-	sizeCoord            = crypto.SerializedFieldSize
+	sizeCoord            = crypto.SignatureCircuitVariableLen
 	sizePoint            = 2 * sizeCoord
 	sizeCiphertext       = 2 * sizePoint
 	SerializedBallotSize = types.FieldsPerBallot * sizeCiphertext

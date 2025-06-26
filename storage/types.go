@@ -14,8 +14,6 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -46,16 +44,13 @@ type EncryptionKeys struct {
 
 // VerifiedBallot is the struct that contains the information of a ballot which
 // has been verified by the sequencer. It includes the process ID, the voter
-// weight, the nullifier, the commitment, the encrypted ballot, the address,
-// the inputs hash of the proof and the proof itself. The proof should be in
-// the BLS12-377 curve, which is the one used by the verifier circuit and
-// verified by the aggregator circuit.
+// weight, the encrypted ballot, the address, the inputs hash of the proof and
+// the proof itself. The proof should be in the BLS12-377 curve, which is the
+// one used by the verifier circuit and verified by the aggregator circuit.
 type VerifiedBallot struct {
 	VoteID          types.HexBytes          `json:"voteId"`
 	ProcessID       types.HexBytes          `json:"processId"`
 	VoterWeight     *big.Int                `json:"voterWeight"`
-	Nullifier       *big.Int                `json:"nullifier"`
-	Commitment      *big.Int                `json:"commitment"`
 	EncryptedBallot *elgamal.Ballot         `json:"encryptedBallot"`
 	Address         *big.Int                `json:"address"`
 	InputsHash      *big.Int                `json:"inputsHash"`
@@ -63,25 +58,23 @@ type VerifiedBallot struct {
 }
 
 // Ballot is the struct that contains the information of a ballot. It includes
-// the process ID, the voter weight, the nullifier, the commitment, the
-// encrypted ballot, the address, the inputs hash of the proof and the proof
-// itself. The proof should be in the BN254 curve and ready for recursive
-// verification. It also includes the signature of the ballot, which is a
-// ECDSA signature. Finally, it includes the census proof, which proves that
-// the voter is in the census; and the public key of the voter, a compressed
-// ECDSA public key.
+// the process ID, the voter weight, the encrypted ballot, the address, the
+// inputs hash of the proof and the proof itself. The proof should be in the
+// BN254 curve and ready for recursive verification. It also includes the
+// signature of the ballot, which is a ECDSA signature. Finally, it includes
+// the census proof, which proves that the voter is in the census; and the
+// public key of the voter, a compressed ECDSA public key.
 type Ballot struct {
 	ProcessID        types.HexBytes                                        `json:"processId"`
 	VoterWeight      *big.Int                                              `json:"voterWeight"`
 	EncryptedBallot  *elgamal.Ballot                                       `json:"encryptedBallot"`
-	Nullifier        *big.Int                                              `json:"nullifier"`
-	Commitment       *big.Int                                              `json:"commitment"`
 	Address          *big.Int                                              `json:"address"`
 	BallotInputsHash *big.Int                                              `json:"ballotInputsHash"`
 	BallotProof      recursion.Proof[sw_bn254.G1Affine, sw_bn254.G2Affine] `json:"ballotProof"`
 	Signature        *ethereum.ECDSASignature                              `json:"signature"`
 	CensusProof      *types.CensusProof                                    `json:"censusProof"`
 	PubKey           types.HexBytes                                        `json:"publicKey"`
+	VoteID           types.HexBytes                                        `json:"voteId"`
 }
 
 // Valid method checks if the Ballot is valid. A ballot is valid if all its
@@ -89,10 +82,9 @@ type Ballot struct {
 // that comes from a third-party library (gnark) and it should be checked by
 // the library itself.
 func (b *Ballot) Valid() bool {
-	if b.ProcessID == nil || b.VoterWeight == nil || b.Nullifier == nil ||
-		b.Commitment == nil || b.Address == nil || b.BallotInputsHash == nil ||
-		b.EncryptedBallot == nil || b.Signature == nil || b.CensusProof == nil ||
-		b.PubKey == nil {
+	if b.ProcessID == nil || b.VoterWeight == nil || b.Address == nil ||
+		b.BallotInputsHash == nil || b.EncryptedBallot == nil ||
+		b.Signature == nil || b.CensusProof == nil || b.PubKey == nil {
 		log.Debug("ballot is not valid, nil fields")
 		return false
 	}
@@ -111,17 +103,6 @@ func (b *Ballot) Valid() bool {
 	return true
 }
 
-// VoteID returns the vote ID of the ballot. The vote ID is the hash of the
-// ballot inputs. It is used to identify the ballot in the state transition
-// circuit. The vote ID is a big integer that is converted to a byte array
-// using the BigIntToFFwithPadding function.
-func (b *Ballot) VoteID() []byte {
-	if b.BallotInputsHash == nil {
-		return nil
-	}
-	return crypto.BigIntToFFwithPadding(b.BallotInputsHash, circuits.VoteVerifierCurve.ScalarField())
-}
-
 func (b *Ballot) String() string {
 	s := strings.Builder{}
 	s.WriteString("Ballot{")
@@ -130,12 +111,6 @@ func (b *Ballot) String() string {
 	}
 	if b.VoterWeight != nil {
 		s.WriteString("VoterWeight: " + b.VoterWeight.String() + ", ")
-	}
-	if b.Nullifier != nil {
-		s.WriteString("Nullifier: " + b.Nullifier.String() + ", ")
-	}
-	if b.Commitment != nil {
-		s.WriteString("Commitment: " + b.Commitment.String() + ", ")
 	}
 	if b.Address != nil {
 		s.WriteString("Address: " + b.Address.String() + ", ")
@@ -161,12 +136,9 @@ func (b *Ballot) String() string {
 
 // AggregatorBallot is the struct that contains the information of a ballot
 // which has been verified and aggregated in a batch by the sequencer. It
-// includes the nullifier, the commitment, the address and the encrypted
-// ballot.
+// includes the address and the encrypted ballot.
 type AggregatorBallot struct {
 	VoteID          types.HexBytes  `json:"voteId"`
-	Nullifier       *big.Int        `json:"nullifiers"`
-	Commitment      *big.Int        `json:"commitments"`
 	Address         *big.Int        `json:"address"`
 	EncryptedBallot *elgamal.Ballot `json:"encryptedBallot"`
 }
@@ -225,6 +197,17 @@ func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
 	return arguments.Pack(arr)
 }
 
+// String returns a JSON representation of the StateTransitionBatchProofInputs
+// as a string. This is useful for debugging or logging purposes. If marshalling
+// fails, it returns an empty JSON object as a string.
+func (s *StateTransitionBatchProofInputs) String() string {
+	jsonInputs, err := json.Marshal(s)
+	if err != nil {
+		return "{}" // Return empty JSON if marshalling fails
+	}
+	return string(jsonInputs)
+}
+
 // VerifiedResults is the struct that contains the information of a results
 // of a process which has been verified by the sequencer. It includes the
 // process ID, the proof of the results and the inputs of the proof.
@@ -257,6 +240,17 @@ func (r *ResultsVerifierProofInputs) ABIEncode() ([]byte, error) {
 		{Type: arrType},
 	}
 	return arguments.Pack(arr)
+}
+
+// String returns a JSON representation of the ResultsVerifierProofInputs
+// as a string. This is useful for debugging or logging purposes. If
+// marshalling fails, it returns an empty JSON object as a string.
+func (s *ResultsVerifierProofInputs) String() string {
+	jsonInputs, err := json.Marshal(s)
+	if err != nil {
+		return "{}" // Return empty JSON if marshalling fails
+	}
+	return string(jsonInputs)
 }
 
 // ProcessStatsUpdate represents a single stats update operation

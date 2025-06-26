@@ -33,8 +33,6 @@
 //   - UserWeight: The weight of the user that is voting.
 //   - EncryptionPubKey: The public key used to encrypt the votes in the
 //     package.
-//   - Nullifier: The nullifier of the votes in the package.
-//   - Commitment: The commitment of the votes in the package.
 //   - ProcessId: The process id of the votes in the package.
 //   - Ballot: The encrypted votes in the package.
 //   - CensusRoot: The root of the census tree.
@@ -163,27 +161,29 @@ func (c VerifyVoteCircuit) checkInputsHash(api frontend.API) {
 // public key and message provided. It derives the address from the public key
 // and verifies it matches the provided address. As a circuit method, it does
 // not return any value, but it asserts that the signature is valid for the
-// public key and message provided, and that the derived address matches the
+// public key and voteID provided, and that the derived address matches the
 // provided address.
-func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API, circomHash emulated.Element[sw_bn254.ScalarField]) {
-	// we need to prefix the message with the Ethereum signing prefix
-	// and the length of the message to be signed
+func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
+	// we need to prefix the message with the Ethereum signing prefix and the
+	// length of the message before hashing it, so we need to convert the
+	// ethereum prefix to bytes and append the length of the message
 	prefix := utils.BytesFromString(fmt.Sprintf("%s%d", ethereum.SigningPrefix, ethereum.HashLength), len(ethereum.SigningPrefix)+2)
-	circomHashVar, err := utils.PackScalarToVar(api, circomHash)
+	// convert the voteID to a variable and then unpack it to the emulated
+	// secp256k1 field, so we can use it in the signature verification
+	msgVar, err := utils.PackScalarToVar(api, c.Vote.VoteID)
 	if err != nil {
 		circuits.FrontendError(api, "failed to pack circomHash", err)
 	}
-	circomHashSecp256, err := utils.UnpackVarToScalar[emulated.Secp256k1Fr](api, circomHashVar)
+	msgSecp256, err := utils.UnpackVarToScalar[emulated.Secp256k1Fr](api, msgVar)
 	if err != nil {
 		circuits.FrontendError(api, "failed to unpack circomHash", err)
 	}
 	// first convert the message to bytes and swap the endianness of the content (the hash of the data to be signed)
-	content, err := utils.BytesFromElement(api, *circomHashSecp256)
+	content, err := utils.BytesFromElement(api, *msgSecp256)
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert circomHash to bytes", err)
 	}
 	content = utils.SwapEndianness(content)
-
 	// concatenate the prefix and content to create the hash to be signed
 	msg := utils.Bytes(append(prefix[:], content[:]...))
 	keccak, err := sha3.NewLegacyKeccak256(api)
@@ -191,7 +191,6 @@ func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API, circomHash emul
 		circuits.FrontendError(api, "failed to create hash function", err)
 	}
 	keccak.Write(msg)
-
 	// we need to swap the endianess again and convert the bytes back to the emulated secp256k1 field
 	hash := utils.SwapEndianness(keccak.Sum())
 	emulatedHash, err := utils.U8ToElem[emulated.Secp256k1Fr](api, hash)
@@ -227,9 +226,10 @@ func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API, circomHash emul
 // over the bn254 curve. As a circuit method, it does not return any value, but
 // it asserts that the proof is valid for the public inputs provided by the
 // user.
-func (c VerifyVoteCircuit) verifyCircomProof(api frontend.API, circomHash emulated.Element[sw_bn254.ScalarField]) {
+func (c VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
+	// calculate the hash of the circom circuit inputs
 	witness := groth16.Witness[sw_bn254.ScalarField]{
-		Public: []emulated.Element[sw_bn254.ScalarField]{circomHash},
+		Public: []emulated.Element[sw_bn254.ScalarField]{c.circomHash(api)},
 	}
 	// verify the ballot proof over the bn254 curve (used by circom)
 	verifier, err := groth16.NewVerifier[sw_bn254.ScalarField, sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl](api)
@@ -280,15 +280,13 @@ func (c VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
 }
 
 func (c VerifyVoteCircuit) Define(api frontend.API) error {
-	// calculate the hash of the circom circuit inputs
-	circomHash := c.circomHash(api)
 	// check the hash of the inputs provided by the user
 	c.checkInputsHash(api)
 	// verify the signature of the public inputs
-	c.verifySigForAddress(api, circomHash)
+	c.verifySigForAddress(api)
 	// verify the census proof
 	c.verifyCensusProof(api)
 	// verify the ballot proof
-	c.verifyCircomProof(api, circomHash)
+	c.verifyCircomProof(api)
 	return nil
 }

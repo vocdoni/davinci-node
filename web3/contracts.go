@@ -481,9 +481,9 @@ func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
 // ForEachABI calls fn(name, abi) for each non-nil *abi.ABI field.
 // Stops and returns an error if fn returns an error.
 func (c *ContractABIs) ForEachABI(fn func(fieldName string, a *abi.ABI) error) error {
-	v := reflect.ValueOf(c).Elem()      // reflect.Value of the struct
-	t := v.Type()                       // reflect.Type of the struct
-	for i := 0; i < v.NumField(); i++ { // loop fields
+	v := reflect.ValueOf(c).Elem() // reflect.Value of the struct
+	t := v.Type()                  // reflect.Type of the struct
+	for i := range v.NumField() {  // loop fields
 		fieldVal := v.Field(i)
 		if fieldVal.IsNil() {
 			continue
