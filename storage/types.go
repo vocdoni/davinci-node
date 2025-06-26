@@ -197,6 +197,17 @@ func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
 	return arguments.Pack(arr)
 }
 
+// String returns a JSON representation of the StateTransitionBatchProofInputs
+// as a string. This is useful for debugging or logging purposes. If marshalling
+// fails, it returns an empty JSON object as a string.
+func (s *StateTransitionBatchProofInputs) String() string {
+	jsonInputs, err := json.Marshal(s)
+	if err != nil {
+		return "{}" // Return empty JSON if marshalling fails
+	}
+	return string(jsonInputs)
+}
+
 // VerifiedResults is the struct that contains the information of a results
 // of a process which has been verified by the sequencer. It includes the
 // process ID, the proof of the results and the inputs of the proof.
@@ -229,6 +240,17 @@ func (r *ResultsVerifierProofInputs) ABIEncode() ([]byte, error) {
 		{Type: arrType},
 	}
 	return arguments.Pack(arr)
+}
+
+// String returns a JSON representation of the ResultsVerifierProofInputs
+// as a string. This is useful for debugging or logging purposes. If
+// marshalling fails, it returns an empty JSON object as a string.
+func (s *ResultsVerifierProofInputs) String() string {
+	jsonInputs, err := json.Marshal(s)
+	if err != nil {
+		return "{}" // Return empty JSON if marshalling fails
+	}
+	return string(jsonInputs)
 }
 
 // ProcessStatsUpdate represents a single stats update operation

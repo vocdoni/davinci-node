@@ -111,7 +111,12 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	if err != nil {
 		return fmt.Errorf("failed to encode inputs: %w", err)
 	}
-	log.Debugw("proof ready to submit to the contract", "pid", hex.EncodeToString(processID))
+	log.Debugw("proof ready to submit to the contract",
+		"pid", hex.EncodeToString(processID),
+		"abiProof", hex.EncodeToString(abiProof),
+		"abiInputs", hex.EncodeToString(abiInputs),
+		"strProof", proof.String(),
+		"strInputs", inputs.String())
 
 	// Simulate tx to the contract to check if it will fail and get the root
 	// cause of the failure if it does
@@ -169,7 +174,12 @@ func (s *Sequencer) processResultsOnChain() {
 			log.Errorw(err, "failed to encode inputs for contract upload")
 			continue // Continue to next process ID
 		}
-		log.Debugw("verified results ready to upload to contract", "pid", res.ProcessID.String())
+		log.Debugw("verified results ready to upload to contract",
+			"pid", res.ProcessID.String(),
+			"abiProof", hex.EncodeToString(abiProof),
+			"abiInputs", hex.EncodeToString(abiInputs),
+			"strProof", solidityProof.String(),
+			"strInputs", res.Inputs.String())
 		// Simulate tx to the contract to check if it will fail and get the root
 		// cause of the failure if it does
 		var pid32 [32]byte
