@@ -26,6 +26,7 @@ import (
 	"github.com/vocdoni/davinci-node/util"
 
 	"go.vocdoni.io/dvote/db/metadb"
+	"go.vocdoni.io/dvote/tree/arbo"
 )
 
 const falseStr = "false"
@@ -360,15 +361,27 @@ func newMockState(t *testing.T) *state.State {
 		t.Fatal(err)
 	}
 
-	censusRoot, ok := new(big.Int).SetString("fa787cbbf6946ab8f19f20da15cbf9a513715c628fbca4f1f62898e16546410b", 16)
+	// works OK
+	// bigint, ok := new(big.Int).SetString("2817317694462019436770266608879253550118248106338821465697945218725074581009", 10)
+	// FAILs with 'inputs values not inside Finite Field'
+	bigint, ok := new(big.Int).SetString("7595981628404630863938405923325067073441592305429377300826679620114249573502", 10)
 	if !ok {
 		t.Fatal(err)
 	}
+	bigintLE := arbo.BigIntToBytesLE(32, bigint)
+	bigint = new(big.Int).SetBytes(bigintLE)
 
+	encryptionKey := circuits.MockEncryptionKey()
+	encryptionKey = circuits.EncryptionKey[*big.Int]{
+		PubKey: [2]*big.Int{
+			bigint,
+			encryptionKey.PubKey[1],
+		},
+	}
 	if err := s.Initialize(
-		censusRoot,
+		new(big.Int).SetBytes(util.RandomBytes(16)),
 		circuits.MockBallotMode(),
-		circuits.MockEncryptionKey(),
+		encryptionKey,
 	); err != nil {
 		t.Fatal(err)
 	}
