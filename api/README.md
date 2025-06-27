@@ -501,14 +501,8 @@ Register a new vote for a voting process.
   },
   "ballotInputsHash": "bigintStr",
   "publicKey": "hexBytes",
-  "signature": "hexBytes"
-}
-```
-
-**Response Body**:
-```json
-{
-  "voteId": "hexBytes"
+  "signature": "hexBytes",
+  "voteId": "hexBytes",
 }
 ```
 
