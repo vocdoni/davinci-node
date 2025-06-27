@@ -80,7 +80,7 @@ var (
 	// BallotProofWasmHelperURL is the default URL for the WASM helper
 	BallotProofWasmHelperURL = fmt.Sprintf("%s/%s/ballot_proof_inputs.wasm", DefaultArtifactsBaseURL, DefaultArtifactsRelease)
 	// BallotProofWasmHelperHash is the hash of the WASM helper
-	BallotProofWasmHelperHash = "c4ed7904768e8fe10424b9a99d52b6b7c7ff83209efe114e534da23a67011364"
+	BallotProofWasmHelperHash = "7f9bdff2e042e9a9569fd40007a49f3b0cac4f2b8d9a7c1a7fe09eb0d89058c6"
 	// BallotProofWasmExecJsURL is the default URL for the WASM exec JS
 	BallotProofWasmExecJsURL = fmt.Sprintf("%s/%s/wasm_exec.js", DefaultArtifactsBaseURL, DefaultArtifactsRelease)
 	// BallotProofWasmExecJsHash is the hash of the WASM exec JS

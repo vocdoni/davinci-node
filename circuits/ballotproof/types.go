@@ -116,6 +116,6 @@ type BallotProofInputsResult struct {
 	Address          types.HexBytes  `json:"address"`
 	Ballot           *elgamal.Ballot `json:"ballot"`
 	BallotInputsHash *types.BigInt   `json:"ballotInputsHash"`
-	VoteID           types.HexBytes  `json:"voteID"`
+	VoteID           types.HexBytes  `json:"voteId"`
 	CircomInputs     *CircomInputs   `json:"circomInputs"`
 }
