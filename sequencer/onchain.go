@@ -26,6 +26,7 @@ func (s *Sequencer) startOnchainProcessor() error {
 	// finished processes
 	go func() {
 		defer transitionTicker.Stop()
+		defer resultsTicker.Stop()
 		log.Infow("on-chain processor started",
 			"transitionOnChainInterval", transitionOnChainTickInterval,
 			"resultsOnChainInterval", resultsOnChainTickInterval)
