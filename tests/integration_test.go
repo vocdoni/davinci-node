@@ -221,7 +221,7 @@ func TestIntegration(t *testing.T) {
 		// Create a ticker to check the status of votes every 10 seconds
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
-	ResultsLoop:
+	SettledVotesLoop:
 		for {
 			select {
 			case <-ticker.C:
@@ -238,7 +238,7 @@ func TestIntegration(t *testing.T) {
 				if publishedVotes(t, services.Contracts, pid) < numBallots {
 					continue
 				}
-				break ResultsLoop
+				break SettledVotesLoop
 			case <-timeoutCh:
 				c.Fatalf("Timeout waiting for votes to be settled and published at contract")
 			}
@@ -292,7 +292,7 @@ func TestIntegration(t *testing.T) {
 						t.Fatalf("Some overwrite votes failed to be processed: %v", hexFailed)
 					}
 				}
-				if publishedVotes(t, services.Contracts, pid) < numBallots*2 { // Check if we have twice the number of votes (original + overwrite)
+				if publishedOverwriteVotes(t, services.Contracts, pid) < numBallots {
 					continue
 				}
 				break ResultsLoop2

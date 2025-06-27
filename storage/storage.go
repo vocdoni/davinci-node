@@ -53,6 +53,7 @@ The ballot processing follows these stages:
 package storage
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -104,6 +105,8 @@ type reservationRecord struct {
 // Storage manages artifacts in various stages with reservations.
 type Storage struct {
 	db          db.Database
+	ctx         context.Context
+	cancel      context.CancelFunc
 	censusDB    *census.CensusDB
 	stateDB     db.Database
 	globalLock  sync.Mutex              // Lock for global operations
@@ -118,8 +121,11 @@ func New(db db.Database) *Storage {
 	if err != nil {
 		log.Fatalf("failed to create LRU cache: %v", err)
 	}
+	internalCtx, cancel := context.WithCancel(context.Background())
 	s := &Storage{
 		db:       db,
+		ctx:      internalCtx,
+		cancel:   cancel,
 		stateDB:  prefixeddb.NewPrefixedDatabase(db, stateDBprefix),
 		censusDB: census.NewCensusDB(prefixeddb.NewPrefixedDatabase(db, censusDBprefix)),
 		cache:    cache,
@@ -194,6 +200,17 @@ func (s *Storage) setAllProcessesAsNotAcceptingVotes() error {
 
 // Close closes the storage.
 func (s *Storage) Close() {
+	s.cancel() // Cancel the context to stop any ongoing operations
+	// recover panic to check if the database is already closed
+	defer func() {
+		if r := recover(); r != nil {
+			if strings.Contains(fmt.Sprintf("%v", r), "closed") {
+				log.Warn("storage database already closed")
+				return
+			}
+			log.Errorf("storage close panic: %v", r)
+		}
+	}()
 	if err := s.db.Close(); err != nil {
 		fmt.Printf("failed to close storage: %v", err)
 	}
@@ -391,10 +408,15 @@ func (s *Storage) monitorStaleReservations() {
 	ticker := time.NewTicker(60 * time.Second) // Check every minute
 	go func() {
 		defer ticker.Stop()
-		for range ticker.C {
-			// Release reservations older than 5 minutes
-			if err := s.releaseStaleReservations(5 * time.Minute); err != nil {
-				log.Warnw("failed to release stale reservations", "error", err)
+		for {
+			select {
+			case <-s.ctx.Done():
+				log.Info("monitorStaleReservations stopped")
+				return
+			case <-ticker.C:
+				if err := s.releaseStaleReservations(5 * time.Minute); err != nil {
+					log.Warnw("failed to release stale reservations", "error", err)
+				}
 			}
 		}
 	}()

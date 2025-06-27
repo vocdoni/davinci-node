@@ -261,7 +261,6 @@ func shutdownServices(services *Services) {
 	if services == nil {
 		return
 	}
-
 	// Stop services in reverse order of startup
 	if services.Sequencer != nil {
 		services.Sequencer.Stop()
@@ -272,4 +271,5 @@ func shutdownServices(services *Services) {
 	if services.ProcessMon != nil {
 		services.ProcessMon.Stop()
 	}
+	services.Storage.Close() // Close storage last
 }

@@ -283,26 +283,27 @@ func main() {
 type localService struct {
 	sequencer      *service.SequencerService
 	processMonitor *service.ProcessMonitor
+	storage        *storage.Storage
 	api            *service.APIService
 }
 
 func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, network string) error {
 	// Create storage with a in-memory database
-	stg := storage.New(memdb.New())
+	s.storage = storage.New(memdb.New())
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
 	// Monitor new processes from the contracts
-	s.processMonitor = service.NewProcessMonitor(contracts, stg, time.Second*2)
+	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, time.Second*2)
 	if err := s.processMonitor.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
 	// Start sequencer service
-	s.sequencer = service.NewSequencer(stg, contracts, time.Second*30, nil)
+	s.sequencer = service.NewSequencer(s.storage, contracts, time.Second*30, nil)
 	if err := s.sequencer.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Start API service
-	s.api = service.NewAPI(stg, defaultSequencerHost, defaultSequencerPort, network, false)
+	s.api = service.NewAPI(s.storage, defaultSequencerHost, defaultSequencerPort, network, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}
@@ -318,6 +319,9 @@ func (s *localService) Stop() {
 	}
 	if s.api != nil {
 		s.api.Stop()
+	}
+	if s.storage != nil {
+		s.storage.Close()
 	}
 }
 

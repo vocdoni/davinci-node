@@ -190,8 +190,14 @@ func (s *Storage) monitorEndedProcesses() {
 	ticker := time.NewTicker(30 * time.Second)
 	go func() {
 		defer ticker.Stop()
-		for range ticker.C {
-			s.checkAndUpdateEndedProcesses()
+		for {
+			select {
+			case <-s.ctx.Done():
+				log.Info("monitorEndedProcesses stopped")
+				return
+			case <-ticker.C:
+				s.checkAndUpdateEndedProcesses()
+			}
 		}
 	}()
 }

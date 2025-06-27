@@ -241,6 +241,7 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	kv, err := metadb.New(db.TypePebble, t.TempDir())
 	qt.Assert(t, err, qt.IsNil)
 	stg := storage.New(kv)
+	t.Cleanup(stg.Close)
 
 	services := &Services{
 		Storage:   stg,
@@ -570,6 +571,16 @@ func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessI
 		return 0
 	}
 	return int(process.VoteCount.MathBigInt().Int64())
+}
+
+func publishedOverwriteVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) int {
+	c := qt.New(t)
+	process, err := contracts.Process(pid.Marshal())
+	c.Assert(err, qt.IsNil)
+	if process == nil || process.VoteOverwrittenCount == nil {
+		return 0
+	}
+	return int(process.VoteOverwrittenCount.MathBigInt().Int64())
 }
 
 func finishProcessOnContract(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) {

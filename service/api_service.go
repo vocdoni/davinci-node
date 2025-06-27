@@ -85,7 +85,6 @@ func (as *APIService) Stop() {
 		as.cancel()
 		as.cancel = nil
 	}
-	as.storage.Close()
 }
 
 // HostPort returns the host and port of the API server.
