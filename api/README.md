@@ -92,7 +92,8 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
   "contracts": {
     "process": "address",
     "organization": "address",
-    "results": "address"
+    "stateTransitionVerifier": "address",
+    "resultsVerifier": "address",
   },
   "network": { 
     "sep": 11155111

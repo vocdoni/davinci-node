@@ -571,6 +571,7 @@ func createVote(
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
+		VoteID:           wasmResult.VoteID,
 	}, nil
 }
 
@@ -595,20 +596,13 @@ func generateCensusProof(cli *client.HTTPclient, root []byte, key []byte) (types
 
 func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
 	// Make the request to cast the vote
-	body, status, err := cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
+	_, status, err := cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to cast vote: %v", err)
 	} else if status != http.StatusOK {
 		return nil, fmt.Errorf("failed to cast vote, status code: %d", status)
 	}
-
-	// Parse the response body to get the vote ID
-	var voteResponse api.VoteResponse
-	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&voteResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode vote response: %v", err)
-	}
-
-	return voteResponse.VoteID, nil
+	return vote.VoteID, nil
 }
 
 func listenSmartContractVotesCount(
