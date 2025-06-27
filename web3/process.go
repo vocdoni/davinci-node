@@ -114,14 +114,6 @@ func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
 func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, oldRoot *types.BigInt) (*common.Hash, error) {
-	stateRoot, err := c.StateRoot(processID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get process: %w", err)
-	}
-	// if !bytes.Equal(stateRoot, oldRoot) {
-	if stateRoot.MathBigInt().Cmp(oldRoot.MathBigInt()) != 0 {
-		return nil, fmt.Errorf("process state root mismatch: %x != %x", stateRoot, oldRoot)
-	}
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
