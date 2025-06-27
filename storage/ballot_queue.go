@@ -807,7 +807,7 @@ func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
 }
 
 // NextVerifiedResults retrieves the next verified results from the storage.
-// It does not make any reservations, so its up to the caller to ensure that
+// It does not make any reservations, so its up to the calle to ensure that
 // the results are processed and marked as verified before calling this function
 // again. It returns the next verified results or ErrNoMoreElements if there
 // are no more verified results available.
@@ -856,4 +856,16 @@ func (s *Storage) MarkVerifiedResultsDone(processID []byte) error {
 	}
 
 	return tx.Commit()
+}
+
+// HasVerifiedResults checks if verified results exist for a given processID.
+// This is used to prevent re-generation of results that have already been
+// generated but may have failed to upload to the contract.
+func (s *Storage) HasVerifiedResults(processID []byte) bool {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	pr := prefixeddb.NewPrefixedReader(s.db, verifiedResultPrefix)
+	_, err := pr.Get(processID)
+	return err == nil
 }

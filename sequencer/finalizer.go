@@ -166,12 +166,23 @@ func (f *finalizer) finalizeEnded() {
 			log.Errorw(err, "could not retrieve process from storage: "+processID.String())
 			continue
 		}
-		if process.Result == nil {
-			log.Debugw("found ended process to finalize", "pid", processID.String())
-			f.OndemandCh <- processID
-		} else {
+
+		// Check if process already has results in the process record
+		if process.Result != nil {
 			log.Debugw("process already finalized, skipping", "pid", processID.String())
+			continue
 		}
+
+		// Also check if verified results already exist in storage
+		// This prevents re-generation when results were generated but failed to upload
+		if f.stg.HasVerifiedResults(processID.Marshal()) {
+			log.Debugw("verified results already exist in storage, skipping finalization",
+				"pid", processID.String())
+			continue
+		}
+
+		log.Debugw("found ended process to finalize", "pid", processID.String())
+		f.OndemandCh <- processID
 	}
 }
 
