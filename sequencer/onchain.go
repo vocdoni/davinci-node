@@ -15,6 +15,7 @@ import (
 const (
 	transitionOnChainTickInterval = 10 * time.Second
 	resultsOnChainTickInterval    = 10 * time.Second
+	maxResultsUploadRetries       = 3
 )
 
 func (s *Sequencer) startOnchainProcessor() error {
@@ -163,16 +164,28 @@ func (s *Sequencer) processResultsOnChain() {
 		solidityProof := new(solidity.Groth16CommitmentProof)
 		if err := solidityProof.FromGnarkProof(res.Proof); err != nil {
 			log.Errorw(err, "failed to convert gnark proof to solidity proof")
+			// Mark as done to avoid getting stuck
+			if err := s.stg.MarkVerifiedResultsDone(res.ProcessID); err != nil {
+				log.Errorw(err, "failed to mark verified results as done after proof conversion failure")
+			}
 			continue // Continue to next process ID
 		}
 		abiProof, err := solidityProof.ABIEncode()
 		if err != nil {
 			log.Errorw(err, "failed to encode proof for contract upload")
+			// Mark as done to avoid getting stuck
+			if err := s.stg.MarkVerifiedResultsDone(res.ProcessID); err != nil {
+				log.Errorw(err, "failed to mark verified results as done after proof encoding failure")
+			}
 			continue // Continue to next process ID
 		}
 		abiInputs, err := res.Inputs.ABIEncode()
 		if err != nil {
 			log.Errorw(err, "failed to encode inputs for contract upload")
+			// Mark as done to avoid getting stuck
+			if err := s.stg.MarkVerifiedResultsDone(res.ProcessID); err != nil {
+				log.Errorw(err, "failed to mark verified results as done after inputs encoding failure")
+			}
 			continue // Continue to next process ID
 		}
 		log.Debugw("verified results ready to upload to contract",
@@ -198,24 +211,61 @@ func (s *Sequencer) processResultsOnChain() {
 				"error", err,
 				"pid", res.ProcessID.String())
 		}
-		// submit the proof to the contract
-		txHash, err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs)
-		if err != nil {
-			log.Errorw(err, "failed to upload verified results to contract")
-			continue // Continue to next process ID
-		}
-		// wait for the transaction to be mined
-		if err := s.contracts.WaitTx(*txHash, time.Second*120); err != nil {
-			log.Errorw(err, "failed to wait for verified results upload transaction")
-			continue // Continue to next process ID
-		}
-		log.Infow("verified results uploaded to contract",
-			"pid", hex.EncodeToString(res.ProcessID),
-			"txHash", txHash.String(),
-			"results", res.Inputs.Results)
 
+		// Try to upload with retries
+		var uploadSuccess bool
+		var lastErr error
+
+		for attempt := range maxResultsUploadRetries {
+			if attempt > 0 {
+				log.Debugw("retrying verified results upload",
+					"attempt", attempt+1,
+					"processID", res.ProcessID.String())
+				time.Sleep(time.Second * 2) // Simple 2-second delay between retries
+			}
+
+			// submit the proof to the contract
+			txHash, err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs)
+			if err != nil {
+				lastErr = err
+				log.Warnw("failed to upload verified results",
+					"attempt", attempt+1,
+					"error", err,
+					"processID", res.ProcessID.String())
+				continue
+			}
+
+			// wait for the transaction to be mined
+			if err := s.contracts.WaitTx(*txHash, time.Second*120); err != nil {
+				lastErr = err
+				log.Warnw("failed to wait for verified results upload transaction",
+					"attempt", attempt+1,
+					"error", err,
+					"processID", res.ProcessID.String())
+				continue
+			}
+
+			// Success!
+			log.Infow("verified results uploaded to contract",
+				"pid", hex.EncodeToString(res.ProcessID),
+				"txHash", txHash.String(),
+				"results", res.Inputs.Results,
+				"attempt", attempt+1)
+			uploadSuccess = true
+			break
+		}
+
+		if !uploadSuccess {
+			log.Warnw("discarding verified results after failed upload attempts",
+				"processID", res.ProcessID.String(),
+				"maxRetries", maxResultsUploadRetries,
+				"lastError", lastErr.Error())
+		}
+
+		// Always mark as done - whether success or failure after max retries
+		// This ensures we don't get stuck on the same result forever
 		if err := s.stg.MarkVerifiedResultsDone(res.ProcessID); err != nil {
-			log.Errorw(err, "failed to mark verified results as uploaded")
+			log.Errorw(err, "failed to mark verified results as done")
 			continue // Continue to next process ID
 		}
 	}
