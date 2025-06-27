@@ -360,8 +360,13 @@ func newMockState(t *testing.T) *state.State {
 		t.Fatal(err)
 	}
 
+	censusRoot, ok := new(big.Int).SetString("fa787cbbf6946ab8f19f20da15cbf9a513715c628fbca4f1f62898e16546410b", 16)
+	if !ok {
+		t.Fatal(err)
+	}
+
 	if err := s.Initialize(
-		new(big.Int).SetBytes(util.RandomBytes(16)),
+		censusRoot,
 		circuits.MockBallotMode(),
 		circuits.MockEncryptionKey(),
 	); err != nil {
