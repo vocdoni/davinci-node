@@ -2,7 +2,7 @@ services:
   sequencer:
     build:
       context: ./
-    image: "ghcr.io/vocdoni/davinci-node:${DAVINCI_NODE_TAG:-main}"
+    image: "ghcr.io/vocdoni/davinci-node:guitest"
     env_file: .env
     environment:
       - DAVINCI_DATADIR=/app/run
@@ -11,56 +11,10 @@ services:
     volumes:
       - run:/app/run
     ports:
-      - "${DAVINCI_API_PORT:-9090}:${DAVINCI_API_PORT:-9090}"
+      - "9092:${DAVINCI_API_PORT:-9090}"
     sysctls:
       net.core.somaxconn: 8128
     restart: ${RESTART:-unless-stopped}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.sequencer.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.sequencer.entrypoints=websecure"
-      - "traefik.http.routers.sequencer.tls=true"
-      - "traefik.http.routers.sequencer.tls.certresolver=le"
-      - "traefik.http.services.sequencer.loadbalancer.server.port=${DAVINCI_API_PORT:-9090}"
-      - "traefik.http.routers.sequencer.tls.domains[0].main=${DOMAIN}"
-
-  traefik:
-    image: traefik:3.4.1
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - "./letsencrypt:/letsencrypt"
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-    command:
-      - "--log.level=INFO"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.le.acme.httpchallenge=true"
-      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.le.acme.email=root@vocdoni.io"
-      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-    restart: ${RESTART:-unless-stopped}
-    depends_on:
-      - sequencer
-    profiles:
-      - prod
-
-  watchtower:
-    image: containrrr/watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 300 --label-enable --include-stopped --revive-stopped
-    restart: ${RESTART:-unless-stopped}
-    depends_on:
-      - sequencer
-    profiles:
-      - prod
 
 volumes:
   run:
