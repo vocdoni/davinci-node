@@ -204,8 +204,15 @@ func main() {
 		"root", hex.EncodeToString(censusRoot),
 		"participants", len(signers))
 
+	testCensusRoot, ok := new(big.Int).SetString("baf4972f2324594b3cac2330fa56d34ef049b8b93e2eefc737f108b975019801", 16)
+	if !ok {
+		log.Fatal(err)
+	}
+	bigintLE := arbo.BigIntToBytes(32, testCensusRoot)
+	testCensusRoot = new(big.Int).SetBytes(bigintLE)
+
 	// Create a new process with mocked ballot mode
-	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, censusRoot, mockedBallotMode)
+	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, testCensusRoot.Bytes(), mockedBallotMode)
 	if err != nil {
 		log.Errorw(err, "failed to create process")
 		return
