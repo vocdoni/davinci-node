@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -235,6 +236,12 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 }
 
 func NewTestService(t *testing.T, ctx context.Context) *Services {
+	// Download circuit artifacts
+	tempDir := "./test-artifacts"
+	qt.Assert(t, os.MkdirAll(tempDir, 0755), qt.IsNil)
+	err := service.DownloadArtifacts(time.Minute*20, path.Join(tempDir, "artifacts"))
+	qt.Assert(t, err, qt.IsNil)
+
 	// Initialize the web3 contracts
 	contracts := setupWeb3(t, ctx)
 
@@ -274,15 +281,19 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	return services
 }
 
-func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.Signer) {
+func createCensus(cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.Signer, error) {
 	// Create a new census
 	body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewCensusEndpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create census: %w", err)
+	} else if code != http.StatusOK {
+		return nil, nil, nil, fmt.Errorf("failed to create census, status code: %d", code)
+	}
 
 	var resp api.NewCensus
-	err = json.NewDecoder(bytes.NewReader(body)).Decode(&resp)
-	c.Assert(err, qt.IsNil)
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&resp); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to decode new census response: %w", err)
+	}
 
 	// Generate random participants
 	signers := []*ethereum.Signer{}
@@ -290,7 +301,7 @@ func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.Cen
 	for range size {
 		signer, err := ethereum.NewSigner()
 		if err != nil {
-			c.Fatalf("failed to generate signer: %v", err)
+			return nil, nil, nil, fmt.Errorf("failed to create new signer: %w", err)
 		}
 		censusParticipants.Participants = append(censusParticipants.Participants, &api.CensusParticipant{
 			Key:    signer.Address().Bytes(),
@@ -302,81 +313,90 @@ func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.Cen
 	// Add participants to census
 	addEnpoint := api.EndpointWithParam(api.AddCensusParticipantsEndpoint, api.CensusURLParam, resp.Census.String())
 	_, code, err = cli.Request(http.MethodPost, censusParticipants, nil, addEnpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to add census participants: %w", err)
+	} else if code != http.StatusOK {
+		return nil, nil, nil, fmt.Errorf("failed to add census participants, status code: %d", code)
+	}
 
 	// Get census root
 	getRootEnpoint := api.EndpointWithParam(api.GetCensusRootEndpoint, api.CensusURLParam, resp.Census.String())
 	body, code, err = cli.Request(http.MethodGet, nil, nil, getRootEnpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to get census root: %w", err)
+	} else if code != http.StatusOK {
+		return nil, nil, nil, fmt.Errorf("failed to get census root, status code: %d", code)
+	}
 
 	var rootResp api.CensusRoot
-	err = json.NewDecoder(bytes.NewReader(body)).Decode(&rootResp)
-	c.Assert(err, qt.IsNil)
-
-	return rootResp.Root, censusParticipants.Participants, signers
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&rootResp); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to decode census root response: %w", err)
+	}
+	return rootResp.Root, censusParticipants.Participants, signers, err
 }
 
-func generateCensusProof(c *qt.C, cli *client.HTTPclient, root []byte, key []byte) *types.CensusProof {
+func generateCensusProof(cli *client.HTTPclient, root []byte, key []byte) (*types.CensusProof, error) {
 	// Get proof for the key
 	getProofEnpoint := api.EndpointWithParam(api.GetCensusProofEndpoint, api.CensusURLParam, hex.EncodeToString(root))
 	body, code, err := cli.Request(http.MethodGet, nil, []string{"key", hex.EncodeToString(key)}, getProofEnpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get census proof: %w", err)
+	} else if code != http.StatusOK {
+		return nil, fmt.Errorf("failed to get census proof, status code: %d", code)
+	}
 
 	var proof types.CensusProof
-	err = json.NewDecoder(bytes.NewReader(body)).Decode(&proof)
-	c.Assert(err, qt.IsNil)
-
-	return &proof
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&proof); err != nil {
+		return nil, fmt.Errorf("failed to decode census proof response: %w", err)
+	}
+	return &proof, nil
 }
 
-func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
+func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	orgAddr := contracts.AccountAddress()
 	txHash, err := contracts.CreateOrganization(orgAddr, &types.OrganizationInfo{
 		Name:        fmt.Sprintf("Vocdoni test %x", orgAddr[:4]),
 		MetadataURI: "https://vocdoni.io",
 	})
-	c.Assert(err, qt.IsNil)
-
-	err = contracts.WaitTx(txHash, time.Second*30)
-	c.Assert(err, qt.IsNil)
-	return orgAddr
+	if err != nil {
+		return common.Address{}, fmt.Errorf("failed to create organization: %w", err)
+	}
+	return orgAddr, contracts.WaitTx(txHash, time.Second*30)
 }
 
-func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, censusRoot []byte, ballotMode types.BallotMode) (*types.ProcessID, *types.EncryptionKey) {
+func createProcess(contracts *web3.Contracts, cli *client.HTTPclient, censusRoot []byte, ballotMode types.BallotMode) (*types.ProcessID, *types.EncryptionKey, error) {
 	// Geth the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get next process ID: %w", err)
+	}
 
 	// Sign the process creation request
 	signature, err := contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processID.String()))
-	c.Assert(err, qt.IsNil)
-
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to sign process creation message: %w", err)
+	}
+	// Create the process setup request
 	process := &types.ProcessSetup{
 		ProcessID:  processID.Marshal(),
 		CensusRoot: censusRoot,
 		BallotMode: &ballotMode,
 		Signature:  signature,
 	}
-
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK, qt.Commentf("response body %s", string(body)))
-
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create process: %w", err)
+	} else if code != http.StatusOK {
+		return nil, nil, fmt.Errorf("failed to create process, status code: %d", code)
+	}
 	var resp types.ProcessSetupResponse
-	err = json.NewDecoder(bytes.NewReader(body)).Decode(&resp)
-	c.Assert(err, qt.IsNil)
-	c.Assert(resp.ProcessID, qt.Not(qt.IsNil))
-	c.Assert(resp.EncryptionPubKey[0], qt.Not(qt.IsNil))
-	c.Assert(resp.EncryptionPubKey[1], qt.Not(qt.IsNil))
-
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&resp); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode process setup response: %w", err)
+	}
 	encryptionKeys := &types.EncryptionKey{
 		X: resp.EncryptionPubKey[0],
 		Y: resp.EncryptionPubKey[1],
 	}
-
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
 		Status:         0,
 		OrganizationId: contracts.AccountAddress(),
@@ -393,21 +413,26 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 			CensusOrigin: 0,
 		},
 	})
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create process: %w", err)
+	}
 
-	err = contracts.WaitTx(*txHash, time.Second*15)
-	c.Assert(err, qt.IsNil)
+	if err := contracts.WaitTx(*txHash, time.Second*15); err != nil {
+		return nil, nil, fmt.Errorf("failed to wait for process creation transaction: %w", err)
+	}
 
-	return pid, encryptionKeys
+	return pid, encryptionKeys, nil
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, *big.Int) {
+func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, *big.Int, error) {
 	var err error
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	if k == nil {
 		k, err = elgamal.RandK()
-		c.Assert(err, qt.IsNil)
+		if err != nil {
+			return api.Vote{}, nil, fmt.Errorf("failed to generate random k: %w", err)
+		}
 	}
 	// generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
@@ -420,7 +445,6 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	for _, f := range randFields {
 		fields = append(fields, (*types.BigInt)(f))
 	}
-	c.Logf("creating vote for address %s with fields %v", address.Hex(), fields)
 	// compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:   address.Bytes(),
@@ -436,19 +460,29 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	}
 	// generate the inputs for the ballot proof circuit
 	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, nil, fmt.Errorf("failed to generate ballot proof inputs: %w", err)
+	}
 	// encode the inputs to json
 	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, nil, fmt.Errorf("failed to encode circom inputs: %w", err)
+	}
 	// generate the proof using the circom circuit
 	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, nil, fmt.Errorf("failed to generate ballot proof: %w", err)
+	}
 	// convert the proof to gnark format
 	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, nil, fmt.Errorf("failed to convert circom proof to gnark proof: %w", err)
+	}
 	// sign the hash of the circuit inputs
 	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, nil, fmt.Errorf("failed to sign vote ID: %w", err)
+	}
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
 		ProcessID:        wasmResult.ProcessID,
@@ -458,18 +492,20 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
-	}, k
+	}, k, nil
 }
 
-func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) api.Vote {
+func createVoteFromInvalidVoter(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
 	privKey, err := ethereum.NewSigner()
 	if err != nil {
-		c.Fatalf("failed to generate signer: %v", err)
+		return api.Vote{}, fmt.Errorf("failed to generate new signer: %w", err)
 	}
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	k, err := elgamal.RandK()
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to generate random k: %w", err)
+	}
 	// generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.MaxCount),
@@ -488,19 +524,29 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	}
 	// generate the inputs for the ballot proof circuit
 	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to generate ballot proof inputs: %w", err)
+	}
 	// encode the inputs to json
 	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to encode circom inputs: %w", err)
+	}
 	// generate the proof using the circom circuit
 	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to generate ballot proof: %w", err)
+	}
 	// convert the proof to gnark format
 	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to convert circom proof to gnark proof: %w", err)
+	}
 	// sign the hash of the circuit inputs
 	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to sign vote ID: %w", err)
+	}
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
 		ProcessID:        wasmResult.ProcessID,
@@ -510,11 +556,10 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 		VoteID:           wasmResult.VoteID,
-	}
+	}, nil
 }
 
-func checkVoteStatus(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes, expectedStatus string) (bool, []types.HexBytes) {
-	c := qt.New(t)
+func checkVoteStatus(cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes, expectedStatus string) (bool, []types.HexBytes, error) {
 	// Check vote status and return whether all votes have the expected status
 	txt := strings.Builder{}
 	txt.WriteString(fmt.Sprintf("Vote status (expecting %s): ", expectedStatus))
@@ -531,16 +576,22 @@ func checkVoteStatus(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID,
 
 		// Make the request to get the vote status
 		body, statusCode, err := cli.Request("GET", nil, nil, statusEndpoint)
-		c.Assert(err, qt.IsNil)
-		c.Assert(statusCode, qt.Equals, 200)
+		if err != nil {
+			return false, nil, fmt.Errorf("error getting vote status for %s: %w", voteID.String(), err)
+		} else if statusCode != 200 {
+			return false, nil, fmt.Errorf("unexpected status code %d for vote %s", statusCode, voteID.String())
+		}
 
 		// Parse the response body to get the status
 		var statusResponse api.VoteStatusResponse
-		err = json.NewDecoder(bytes.NewReader(body)).Decode(&statusResponse)
-		c.Assert(err, qt.IsNil)
+		if err := json.NewDecoder(bytes.NewReader(body)).Decode(&statusResponse); err != nil {
+			return false, nil, fmt.Errorf("error decoding vote status response for %s: %w", voteID.String(), err)
+		}
 
 		// Verify the status is valid
-		c.Assert(statusResponse.Status, qt.Not(qt.Equals), "")
+		if statusResponse.Status == "" {
+			return false, nil, fmt.Errorf("empty status for vote %s", voteID.String())
+		}
 
 		// Check if the vote has the expected status
 		switch statusResponse.Status {
@@ -559,46 +610,49 @@ func checkVoteStatus(t *testing.T, cli *client.HTTPclient, pid *types.ProcessID,
 	}
 
 	// Log the vote status
-	t.Log(txt.String())
-	return allExpectedStatus, failed
+	return allExpectedStatus, failed, nil
 }
 
-func publishedVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) int {
-	c := qt.New(t)
+func publishedVotes(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid.Marshal())
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get process %s: %w", pid.String(), err)
+	}
 	if process == nil || process.VoteCount == nil {
-		return 0
+		return 0, fmt.Errorf("process %s not found or has no votes", pid.String())
 	}
-	return int(process.VoteCount.MathBigInt().Int64())
+	return int(process.VoteCount.MathBigInt().Int64()), nil
 }
 
-func publishedOverwriteVotes(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) int {
-	c := qt.New(t)
+func publishedOverwriteVotes(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid.Marshal())
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get process %s: %w", pid, err)
+	}
 	if process == nil || process.VoteOverwrittenCount == nil {
-		return 0
+		return 0, fmt.Errorf("process %s not found or has no overwritten votes", pid.String())
 	}
-	return int(process.VoteOverwrittenCount.MathBigInt().Int64())
+	return int(process.VoteOverwrittenCount.MathBigInt().Int64()), nil
 }
 
-func finishProcessOnContract(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) {
-	c := qt.New(t)
+func finishProcessOnContract(contracts *web3.Contracts, pid *types.ProcessID) error {
 	txHash, err := contracts.SetProcessStatus(pid.Marshal(), types.ProcessStatusEnded)
-	c.Assert(err, qt.IsNil)
-	c.Assert(txHash, qt.IsNotNil)
-	err = contracts.WaitTx(*txHash, time.Second*30)
-	c.Assert(err, qt.IsNil)
-	t.Logf("process %s finished successfully", pid.String())
+	if err != nil {
+		return fmt.Errorf("failed to set process status: %w", err)
+	}
+	if err := contracts.WaitTx(*txHash, time.Second*30); err != nil {
+		return fmt.Errorf("failed to wait for process status tx: %w", err)
+	}
+	return nil
 }
 
-func publishedResults(t *testing.T, contracts *web3.Contracts, pid *types.ProcessID) []*types.BigInt {
-	c := qt.New(t)
+func publishedResults(contracts *web3.Contracts, pid *types.ProcessID) ([]*types.BigInt, error) {
 	process, err := contracts.Process(pid.Marshal())
-	c.Assert(err, qt.IsNil)
-	if process == nil || process.Status != types.ProcessStatusResults || len(process.Result) == 0 {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process %s: %w", pid.String(), err)
 	}
-	return process.Result
+	if process == nil || process.Status != types.ProcessStatusResults || len(process.Result) == 0 {
+		return nil, fmt.Errorf("process %s is not in results status or has no results", pid.String())
+	}
+	return process.Result, nil
 }

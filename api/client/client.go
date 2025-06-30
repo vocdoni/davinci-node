@@ -113,6 +113,7 @@ func (c *HTTPclient) Request(method string, jsonBody any, params []string, urlPa
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to marshal JSON: %w", err)
 		}
+		log.Infow("request body:", string(body))
 	}
 
 	// Parse the base host URL
