@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math/big"
 )
 
 // BallotMode is the struct to define the rules of a ballot
@@ -27,24 +26,6 @@ func (b *BallotMode) Validate() error {
 		return fmt.Errorf("maxCount %d is greater than max size %d", b.MaxCount, maxCountMax)
 	}
 
-	// Validate MaxValue
-	if b.MaxValue == nil {
-		return fmt.Errorf("maxValue is nil")
-	}
-	maxValueMax := 16
-	if b.MaxValue.MathBigInt().Cmp(big.NewInt(int64(maxValueMax))) > 0 {
-		return fmt.Errorf("maxValue %s is greater than max size %d", b.MaxValue.String(), maxValueMax)
-	}
-
-	// Validate MinValue
-	if b.MinValue == nil {
-		return fmt.Errorf("minValue is nil")
-	}
-	minValueMax := 16
-	if b.MinValue.MathBigInt().Cmp(big.NewInt(int64(minValueMax))) > 0 {
-		return fmt.Errorf("minValue %s is greater than max size %d", b.MinValue.String(), minValueMax)
-	}
-
 	// Validate MaxTotalCost
 	if b.MaxTotalCost == nil {
 		return fmt.Errorf("maxTotalCost is nil")
@@ -63,11 +44,6 @@ func (b *BallotMode) Validate() error {
 	// Ensure MinTotalCost is not greater than MaxTotalCost
 	if b.MinTotalCost.MathBigInt().Cmp(b.MaxTotalCost.MathBigInt()) > 0 {
 		return fmt.Errorf("minTotalCost %s is greater than maxTotalCost %s", b.MinTotalCost.String(), b.MaxTotalCost.String())
-	}
-
-	// Validate CostExponent
-	if b.CostExponent > 8 {
-		return fmt.Errorf("costExponent %d is greater than max size 8", b.CostExponent)
 	}
 
 	return nil
