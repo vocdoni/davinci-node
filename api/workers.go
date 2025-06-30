@@ -14,12 +14,21 @@ import (
 
 // startWorkerTimeoutMonitor starts the timeout monitor for worker jobs
 func (a *API) startWorkerTimeoutMonitor() {
+	a.jobsManager = newJobsManager(a.workerTimeout)
+	a.jobsManager.start(a.parentCtx)
+
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			a.checkWorkerTimeouts()
+		for {
+			select {
+			case failedJob := <-a.jobsManager.failedJobs:
+				a.processFailedJob(failedJob)
+			case <-a.parentCtx.Done():
+				log.Infow("worker timeout monitor stopped")
+				return
+			}
 		}
 	}()
 }
@@ -33,6 +42,15 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 	// Validate UUID
 	if uuid != a.workerUUID.String() {
 		ErrUnauthorized.Write(w)
+		return
+	}
+
+	// Check if worker is available
+	if !a.jobsManager.isWorkerAvailable(workerAddress) {
+		log.Warnw("worker not available",
+			"worker", workerAddress,
+			"uuid", uuid)
+		ErrWorkerNotAvailable.Write(w)
 		return
 	}
 
@@ -52,13 +70,14 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 
 	// Track the job
 	voteIDStr := hex.EncodeToString(key)
-	a.jobsMutex.Lock()
-	a.activeJobs[voteIDStr] = &workerJob{
-		VoteID:    key,
-		Address:   workerAddress,
-		Timestamp: time.Now(),
+	_, ok := a.jobsManager.registerJob(workerAddress, key)
+	if !ok {
+		log.Warnw("no available workers for job",
+			"voteID", voteIDStr,
+			"worker", workerAddress)
+		ErrGenericInternalServerError.Withf("no available workers for job").Write(w)
+		return
 	}
-	a.jobsMutex.Unlock()
 
 	log.Infow("assigned job to worker",
 		"voteID", voteIDStr,
@@ -110,11 +129,9 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 	// Validate job ownership
 	voteIDStr := hex.EncodeToString(vb.VoteID)
 
-	a.jobsMutex.RLock()
-	job, exists := a.activeJobs[voteIDStr]
-	a.jobsMutex.RUnlock()
-
-	if !exists {
+	// Set job as completed
+	job := a.jobsManager.completeJob(vb.VoteID, true)
+	if job == nil {
 		log.Warnw("job not found or expired",
 			"voteID", voteIDStr)
 		ErrResourceNotFound.Withf("job not found or expired").Write(w)
@@ -146,11 +163,6 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove from active jobs
-	a.jobsMutex.Lock()
-	delete(a.activeJobs, voteIDStr)
-	a.jobsMutex.Unlock()
-
 	log.Infow("worker job completed",
 		"voteID", voteIDStr,
 		"worker", job.Address,
@@ -170,46 +182,29 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 	httpWriteJSON(w, response)
 }
 
-// checkWorkerTimeouts removes timed out jobs and their reservations
-func (a *API) checkWorkerTimeouts() {
+// processFailedJob handles the processing of a failed job. It logs the
+// timeout, releases the ballot reservation, and updates worker stats.
+// This function is called by the jobs manager when a job fails.
+func (a *API) processFailedJob(job *workerJob) {
 	now := time.Now()
-	var timedOutJobs []*workerJob
+	voteIDStr := hex.EncodeToString(job.VoteID)
+	log.Warnw("job timeout",
+		"voteID", voteIDStr,
+		"worker", job.Address,
+		"duration", now.Sub(job.Timestamp).String())
 
-	a.jobsMutex.Lock()
-	for voteID, job := range a.activeJobs {
-		if now.Sub(job.Timestamp) > a.workerTimeout {
-			timedOutJobs = append(timedOutJobs, job)
-			delete(a.activeJobs, voteID)
-		}
-	}
-	a.jobsMutex.Unlock()
-
-	// Process timeouts
-	for _, job := range timedOutJobs {
-		voteIDStr := hex.EncodeToString(job.VoteID)
-		log.Warnw("job timeout",
-			"voteID", voteIDStr,
-			"worker", job.Address,
-			"duration", now.Sub(job.Timestamp).String())
-
-		// Remove ballot reservation (this will put it back in the queue)
-		if err := a.storage.ReleaseBallotReservation(job.VoteID); err != nil {
-			log.Warnw("failed to remove timed out ballot",
-				"error", err.Error(),
-				"voteID", voteIDStr)
-		}
-
-		// Update worker failed count
-		if err := a.storage.IncreaseWorkerFailedJobCount(job.Address, 1); err != nil {
-			log.Warnw("failed to update worker failed stats",
-				"error", err.Error(),
-				"worker", job.Address)
-		}
+	// Remove ballot reservation (this will put it back in the queue)
+	if err := a.storage.ReleaseBallotReservation(job.VoteID); err != nil {
+		log.Warnw("failed to remove timed out ballot",
+			"error", err.Error(),
+			"voteID", voteIDStr)
 	}
 
-	if len(timedOutJobs) > 0 {
-		log.Infow("processed job timeouts",
-			"count", len(timedOutJobs))
+	// Update worker failed count
+	if err := a.storage.IncreaseWorkerFailedJobCount(job.Address, 1); err != nil {
+		log.Warnw("failed to update worker failed stats",
+			"error", err.Error(),
+			"worker", job.Address)
 	}
 }
 

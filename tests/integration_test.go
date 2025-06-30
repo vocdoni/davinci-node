@@ -31,9 +31,12 @@ func TestIntegration(t *testing.T) {
 	numBallots := 5
 	c := qt.New(t)
 
+	testWorkerSeed := "test-seed"
+	testWorkerTimeout := time.Second * 5
+
 	// Setup
 	ctx := t.Context()
-	services := NewTestService(t, ctx)
+	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTimeout)
 	_, port := services.API.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)

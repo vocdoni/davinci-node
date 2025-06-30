@@ -40,6 +40,9 @@ func NewAPI(storage *storage.Storage, host string, port int, network string, dis
 
 // SetWorkerConfig configures the worker settings for the API service.
 func (as *APIService) SetWorkerConfig(urlSeed string, timeout time.Duration) {
+	log.Debugw("Setting worker configuration",
+		"urlSeed", urlSeed,
+		"timeout", timeout)
 	as.mu.Lock()
 	defer as.mu.Unlock()
 	as.workerUrlSeed = urlSeed
@@ -60,7 +63,7 @@ func (as *APIService) Start(ctx context.Context) error {
 
 	// Create API instance with existing storage
 	var err error
-	as.API, err = api.New(&api.APIConfig{
+	as.API, err = api.New(ctx, &api.APIConfig{
 		Host:          as.host,
 		Port:          as.port,
 		Storage:       as.storage,

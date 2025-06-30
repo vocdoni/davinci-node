@@ -1,12 +1,11 @@
 package api
 
 import (
-	"crypto/sha256"
+	"context"
 	"fmt"
 	"net/http"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -43,20 +42,13 @@ type API struct {
 	// Worker fields
 	workerUUID    *uuid.UUID
 	workerTimeout time.Duration
-	// Worker job tracking: voteID -> workerJob
-	activeJobs map[string]*workerJob
-	jobsMutex  sync.RWMutex
-}
-
-type workerJob struct {
-	VoteID    []byte
-	Address   string
-	Timestamp time.Time
+	jobsManager   *jobsManager    // Manages worker jobs and timeouts
+	parentCtx     context.Context // Context to stop the API server
 }
 
 // New creates a new API instance with the given configuration.
 // It also initializes the storage and starts the HTTP server.
-func New(conf *APIConfig) (*API, error) {
+func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	if conf == nil {
 		return nil, fmt.Errorf("missing API configuration")
 	}
@@ -67,18 +59,16 @@ func New(conf *APIConfig) (*API, error) {
 		storage:       conf.Storage,
 		network:       conf.Network,
 		workerTimeout: conf.WorkerTimeout,
-		activeJobs:    make(map[string]*workerJob),
+		parentCtx:     ctx,
 	}
 
 	// Initialize worker UUID if enabled
 	if conf.WorkerUrlSeed != "" {
 		var err error
-		hash := sha256.Sum256([]byte(conf.WorkerUrlSeed))
-		u, err := uuid.FromBytes(hash[:16]) // Convert first 16 bytes to UUID
+		a.workerUUID, err = WorkerSeedToUUID(conf.WorkerUrlSeed)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create worker UUID: %w", err)
 		}
-		a.workerUUID = &u
 		log.Infow("worker API enabled", "url", fmt.Sprintf("%s/%s", WorkersEndpoint, a.workerUUID))
 
 		// Start timeout monitor
