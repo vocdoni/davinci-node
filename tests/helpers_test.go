@@ -61,10 +61,18 @@ type Services struct {
 
 // setupAPI creates and starts a new API server for testing.
 // It returns the server port.
-func setupAPI(ctx context.Context, db *storage.Storage) (*service.APIService, error) {
+func setupAPI(
+	ctx context.Context,
+	db *storage.Storage,
+	workerSeed string,
+	workerTimeout time.Duration,
+) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
 	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", false)
+
+	api.SetWorkerConfig(workerSeed, workerTimeout)
+
 	if err := api.Start(ctx); err != nil {
 		return nil, err
 	}
@@ -234,7 +242,7 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
-func NewTestService(t *testing.T, ctx context.Context) *Services {
+func NewTestService(t *testing.T, ctx context.Context, workerSecret string, workerTimeout time.Duration) *Services {
 	// Initialize the web3 contracts
 	contracts := setupWeb3(t, ctx)
 
@@ -266,7 +274,7 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	t.Cleanup(pm.Stop)
 
 	// Start API service
-	api, err := setupAPI(ctx, stg)
+	api, err := setupAPI(ctx, stg, workerSecret, workerTimeout)
 	qt.Assert(t, err, qt.IsNil)
 	t.Cleanup(api.Stop)
 	services.API = api
