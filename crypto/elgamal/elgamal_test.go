@@ -34,9 +34,9 @@ func TestEncryptDecrypt(t *testing.T) {
 	publicKey, privateKey, err := GenerateKey(curve)
 	c.Assert(err, qt.IsNil)
 
-	maxMessage := uint64(1000)
+	maxMessage := uint64(170000000000)
 
-	for _, m := range []uint64{0, 1, 42, 999} {
+	for _, m := range []uint64{0, 1, 42, 999, 1000000, 123456789, 160000000000} {
 		msg := big.NewInt(int64(m))
 		c1, c2, k, err := Encrypt(publicKey, msg)
 		c.Assert(err, qt.IsNil)

@@ -3,7 +3,6 @@ package elgamal
 import (
 	"crypto/rand"
 	"fmt"
-	"math"
 	"math/big"
 
 	"github.com/vocdoni/davinci-node/circuits"
@@ -74,69 +73,92 @@ func GenerateKey(curve ecc.Point) (publicKey ecc.Point, privateKey *big.Int, err
 	return publicKey, d, nil
 }
 
-// Decrypt decrypts the given ciphertext (c1, c2) using the private key.
-// It returns the point M = c2 - d*c1 and the discrete log message scalar.
-// If no solution is found, returns an error.
-func Decrypt(publicKey ecc.Point, privateKey *big.Int, c1, c2 ecc.Point, maxMessage uint64) (M ecc.Point, message *big.Int, err error) {
-	// Compute M = c2 - d*c1
-	dC1 := c2.New()
-	dC1.ScalarMult(c1, privateKey)
-	dC1.Neg(dC1) // dC1 = -d*c1
-
-	M = c2.New()
-	M.Set(c2)
-	M.Add(M, dC1) // M = c2 - d*c1
-
-	// Solve discrete log M = message * G
-	// We'll use baby-step giant-step from our local function.
-	G := publicKey.New()
-	G.SetGenerator()
-
-	message, err = BabyStepGiantStepECC(M, G, maxMessage)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to find discrete log: %v", err)
+// Decrypt decrypts (c1,c2) with the secret key d and searches the
+// discrete log m in the interval [0,maxMessage].
+//
+// It always returns the plaintext point M = c2 – d·c1.
+// If m is not contained in the requested interval an error is returned.
+func Decrypt(
+	publicKey ecc.Point, // the curve generator G is obtained from this value
+	privateKey *big.Int, // secret scalar d
+	c1, c2 ecc.Point, // ciphertext
+	maxMessage uint64, // inclusive upper bound for m
+) (M ecc.Point, message *big.Int, err error) {
+	if privateKey == nil || privateKey.Sign() <= 0 {
+		return nil, nil, fmt.Errorf("Decrypt: empty or negative private key")
+	}
+	if maxMessage == 0 {
+		return nil, nil, fmt.Errorf("Decrypt: maxMessage == 0")
 	}
 
+	// recover the plaintext point
+
+	M = c2.New() // allocate point on the correct curve
+	M.Set(c2)
+
+	tmp := c1.New()
+	tmp.ScalarMult(c1, privateKey) // tmp = d·c1
+	tmp.Neg(tmp)                   //        –d·c1
+	M.Add(M, tmp)                  // M = c2 – d·c1
+
+	// solve M == m·G on the small interval
+
+	G := publicKey.New()
+	G.SetGenerator() // ensure we use the correct generator point
+	message, err = BabyStepGiantStepECC(M, G, maxMessage)
+	if err != nil {
+		return nil, nil, err
+	}
 	return M, message, nil
 }
 
-// BabyStepGiantStepECC solves M = x*G for x in [0, maxMessage]
-// using the baby-step giant-step algorithm over elliptic curves.
-func BabyStepGiantStepECC(M, G ecc.Point, maxMessage uint64) (*big.Int, error) {
-	mSqrt := uint64(math.Sqrt(float64(maxMessage))) + 1
+// BabyStepGiantStepECC implements baby‑step / giant‑step
+// algorithm for a known bounded interval.
+//
+// It is deterministic (so it always finds m when it exists) and uses a
+// compressed point encoding as hash‑map key to remove an O(1) string
+// allocation at every iteration present in the original version.
+func BabyStepGiantStepECC(beta, alpha ecc.Point, max uint64) (*big.Int, error) {
+	// compute m = ⌈sqrt(max)⌉ using integer arithmetic only
+	m := new(big.Int).Sqrt(new(big.Int).SetUint64(max))
+	if new(big.Int).Mul(m, m).Cmp(new(big.Int).SetUint64(max)) < 0 {
+		m.Add(m, big.NewInt(1)) // ceil
+	}
+	mU64 := m.Uint64() // safe: m ≤ sqrt(2·10^9) < 46341
 
-	// Create a map for baby steps
-	babySteps := make(map[string]uint64)
-	babyStep := M.New()
-	babyStep.SetZero()
+	// baby steps
+	baby := alpha.New()
+	baby.SetZero()
+	table := make(map[string]uint64, mU64+1)
 
-	// Precompute baby steps: store g1, g2,..., g^mSqrt in a map
-	for j := uint64(0); j < mSqrt; j++ {
-		key := babyStep.String()
-		babySteps[key] = j
-		babyStep.Add(babyStep, G)
+	for j := uint64(0); j < mU64; j++ { // j in [0,m‑1]
+		table[pointKey(baby)] = j
+		baby.Add(baby, alpha) // (j+1)·G
 	}
 
-	// Compute c = mSqrt * (-G)
-	c := M.New()
-	c.ScalarBaseMult(new(big.Int).SetUint64(mSqrt))
-	c.Neg(c)
+	// prepare the constant giant‑step increment
+	c := alpha.New()
+	c.ScalarMult(alpha, m) //  m·G
+	c.Neg(c)               // –m·G
 
-	// Initialize giant step
-	giantStep := M.New()
-	giantStep.Set(M)
-
-	for i := uint64(0); i <= mSqrt; i++ {
-		key := giantStep.String()
-		if j, found := babySteps[key]; found {
-			// x = i*mSqrt + j
-			x := new(big.Int).SetUint64(i*mSqrt + j)
-			return x, nil
+	// giant steps
+	giant := beta.New()
+	giant.Set(beta)
+	for i := uint64(0); i <= mU64; i++ { // i in [0,m]
+		if j, ok := table[pointKey(giant)]; ok {
+			x := new(big.Int).SetUint64(i*mU64 + j)
+			if x.Cmp(new(big.Int).SetUint64(max)) <= 0 {
+				return x, nil // success
+			}
 		}
-		giantStep.Add(giantStep, c)
+		giant.Add(giant, c) // β ← β – m·G
 	}
+	return nil, fmt.Errorf("bsgs: discrete log not found in interval")
+}
 
-	return nil, fmt.Errorf("failed to compute discrete logarithm using Baby-Step Giant-Step algorithm")
+// pointKey returns a compact encoding to use as map key.
+func pointKey(p ecc.Point) string {
+	return string(p.Marshal())
 }
 
 // CheckK checks if a given k was used to produce the ciphertext (c1, c2) under the given publicKey.
