@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -74,6 +75,8 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	x, y := publicKey.Point()
+	log.Warnf("GenerateKey generated privateKey: %d", privateKey)
+	log.Warnw("GenerateKey generated pubkey", "x", x, "y", y)
 
 	// Store the encryption keys or retrieve them if they already exist
 	if err := a.storage.SetEncryptionKeys(pid, publicKey, privateKey); err != nil {
@@ -89,6 +92,20 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	ekx, ok := new(big.Int).SetString("7595981628404630863938405923325067073441592305429377300826679620114249573502", 10)
+	if !ok {
+		log.Fatal(err)
+	}
+	eky, ok := new(big.Int).SetString("12857947384288156102016962986404427219865102064129031221318823090182658615149", 10)
+	if !ok {
+		log.Fatal(err)
+	}
+
+	x, y = ekx, eky
+	log.Warnw("new pubkey (after retrieval or rewrite)", "new_x", x, "new_y", y)
+	log.Warn("but publicKey is still", publicKey.BigInts())
+
 	// prepare inputs for the state ready for the state transition circuit:
 	// - the process ID that should be in the scalar field of the circuit curve
 	// - the census root that should be in encoded according to the arbo format
