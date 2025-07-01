@@ -27,19 +27,21 @@ const (
 
 // finalizer is responsible for finalizing processes.
 type finalizer struct {
-	stg        *storage.Storage
-	stateDB    db.Database
-	circuits   *internalCircuits // Internal circuit artifacts for proof generation and verification
-	prover     ProverFunc        // Function for generating zero-knowledge proofs
-	OndemandCh chan *types.ProcessID
-	wg         sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
-	lock       sync.Mutex // Mutex to ensure that only one process results calculation is running at a time
+	stg              *storage.Storage
+	stateDB          db.Database
+	circuits         *internalCircuits // Internal circuit artifacts for proof generation and verification
+	prover           ProverFunc        // Function for generating zero-knowledge proofs
+	OndemandCh       chan *types.ProcessID
+	wg               sync.WaitGroup
+	ctx              context.Context
+	cancel           context.CancelFunc
+	lock             sync.Mutex // Mutex to ensure that only one process results calculation is running at a time
+	failuresCounters sync.Map   // Map to keep track of failed for processes
+	maxRetries       int        // Maximum number of retries for a process before skipping it
 }
 
 // New creates a new Finalizer instance.
-func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, prover ProverFunc) *finalizer {
+func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, prover ProverFunc, maxRetries int) *finalizer {
 	// Default prover function if none is provided
 	if prover == nil {
 		prover = DefaultProver
@@ -50,6 +52,7 @@ func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuit
 		stateDB:    stateDB,
 		circuits:   ca,
 		prover:     prover,
+		maxRetries: maxRetries,
 		OndemandCh: make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
 	}
 }
@@ -69,6 +72,7 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 			case pid := <-f.OndemandCh:
 				go func(pid *types.ProcessID) {
 					if err := f.finalize(pid); err != nil {
+						f.pidFailed(pid)
 						log.Errorw(err, fmt.Sprintf("finalizing process %s", pid.String()))
 					}
 				}(pid) // Use a goroutine to avoid blocking the channel
@@ -178,6 +182,11 @@ func (f *finalizer) finalizeEnded() {
 		if f.stg.HasVerifiedResults(processID.Marshal()) {
 			log.Debugw("verified results already exist in storage, skipping finalization",
 				"pid", processID.String())
+			continue
+		}
+
+		if f.skipProcess(processID) {
+			log.Debugw("skipping process due to too many failures", "pid", processID.String())
 			continue
 		}
 
@@ -407,4 +416,27 @@ func (f *finalizer) WaitUntilResults(ctx context.Context, pid *types.ProcessID) 
 				pid.String())
 		}
 	}
+}
+
+func (f *finalizer) pidFailed(pid *types.ProcessID) {
+	// Increment the retry count for the process
+	var failedCounter int
+	if count, ok := f.failuresCounters.LoadOrStore(pid.String(), 0); ok {
+		failedCounter = count.(int)
+	}
+	failedCounter += 1
+	f.failuresCounters.Store(pid.String(), failedCounter)
+
+	// Log the failure
+	log.Warnw("process failed to finalize", "pid", pid.String(), "retryCount", failedCounter)
+}
+
+func (f *finalizer) skipProcess(pid *types.ProcessID) bool {
+	// Check if the process has failed too many times
+	if count, ok := f.failuresCounters.Load(pid.String()); ok {
+		if count.(int) >= f.maxRetries {
+			return true
+		}
+	}
+	return false
 }
