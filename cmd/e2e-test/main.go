@@ -204,15 +204,8 @@ func main() {
 		"root", hex.EncodeToString(censusRoot),
 		"participants", len(signers))
 
-	testCensusRoot, ok := new(big.Int).SetString("baf4972f2324594b3cac2330fa56d34ef049b8b93e2eefc737f108b975019801", 16)
-	if !ok {
-		log.Fatal(err)
-	}
-	bigintLE := arbo.BigIntToBytes(32, testCensusRoot)
-	testCensusRoot = new(big.Int).SetBytes(bigintLE)
-
 	// Create a new process with mocked ballot mode
-	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, testCensusRoot.Bytes(), mockedBallotMode)
+	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, censusRoot, mockedBallotMode)
 	if err != nil {
 		log.Errorw(err, "failed to create process")
 		return
@@ -420,10 +413,37 @@ func createProcess(
 ) (*types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
 
-	processId, err := contracts.NextProcessID(contracts.AccountAddress())
+	// processId, err := contracts.NextProcessID(contracts.AccountAddress())
+	// if err != nil {
+	// 	return nil, nil, fmt.Errorf("failed to get next process ID: %v", err)
+	// }
+
+	processIDBytes, err := hex.DecodeString("00aa36a7deb8699659be5d41a0e57e179d6cb42e00b9200c000000000000001d")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get next process ID: %v", err)
+		log.Fatal(err)
 	}
+
+	testCensusRoot, ok := new(big.Int).SetString("baf4972f2324594b3cac2330fa56d34ef049b8b93e2eefc737f108b975019801", 16)
+	if !ok {
+		log.Fatal("not ok")
+	}
+	censusRoot = testCensusRoot.Bytes()
+
+	ballotMode = types.BallotMode{
+		MaxCount:        1,
+		ForceUniqueness: false,
+		MaxValue:        new(types.BigInt).SetUint64(3),
+		MinValue:        new(types.BigInt).SetUint64(0),
+		MaxTotalCost:    new(types.BigInt).SetUint64(3),
+		MinTotalCost:    new(types.BigInt).SetUint64(0),
+		CostExponent:    0,
+		CostFromWeight:  false,
+	}
+
+	processId := &types.ProcessID{}
+	processId.SetBytes(processIDBytes)
+	log.Warnf("pid bytes: %x", processIDBytes)
+	log.Warnf("pid marsh: %x", processId.Marshal())
 
 	// Sign the process creation request
 	signature, err := contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processId.String()))
