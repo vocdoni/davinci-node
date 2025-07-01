@@ -418,12 +418,12 @@ func createProcess(
 	// 	return nil, nil, fmt.Errorf("failed to get next process ID: %v", err)
 	// }
 
-	processIDBytes, err := hex.DecodeString("00aa36a7deb8699659be5d41a0e57e179d6cb42e00b9200c000000000000001c")
+	processIDBytes, err := hex.DecodeString("000002c6a62e32147e9c1ea76da552be6e0636f1984143af0000000000000005")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	testCensusRoot, ok := new(big.Int).SetString("baf4972f2324594b3cac2330fa56d34ef049b8b93e2eefc737f108b975019801", 16)
+	testCensusRoot, ok := new(big.Int).SetString("112fc61ee2d3496f3e590fcd80222c8c5851ec7e6102a48529de944fd1981b0d", 16)
 	if !ok {
 		log.Fatal("not ok")
 	}
