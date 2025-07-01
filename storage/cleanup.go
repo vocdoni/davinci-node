@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/util"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
@@ -70,6 +71,7 @@ func (s *Storage) cleanupEndedProcess(processID []byte) error {
 // Since pending ballots are keyed by voteID only, we must iterate through all
 // pending ballots and check their ProcessID field.
 func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	var keysToDelete [][]byte
 
@@ -112,6 +114,7 @@ func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
 // cleanVerifiedBallotsForProcess removes all verified ballots for a given processID.
 // Verified ballots are efficiently accessible using processID prefix.
 func (s *Storage) cleanVerifiedBallotsForProcess(processID []byte) error {
+	defer util.HandleClosedDBPanic()
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	var keysToDelete [][]byte
 
@@ -150,6 +153,7 @@ func (s *Storage) cleanVerifiedBallotsForProcess(processID []byte) error {
 
 // cleanAggregatorBatchesForProcess removes all aggregator batches for a given processID.
 func (s *Storage) cleanAggregatorBatchesForProcess(processID []byte) error {
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	var keysToDelete [][]byte
 
@@ -187,6 +191,7 @@ func (s *Storage) cleanAggregatorBatchesForProcess(processID []byte) error {
 
 // cleanStateTransitionsForProcess removes all state transitions for a given processID.
 func (s *Storage) cleanStateTransitionsForProcess(processID []byte) error {
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
 	var keysToDelete [][]byte
 
@@ -226,6 +231,7 @@ func (s *Storage) cleanStateTransitionsForProcess(processID []byte) error {
 // all reservation entries. This ensures that no item remains "reserved" after
 // a crash.
 func (s *Storage) cleanAllReservations(prefix []byte) error {
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
 	defer wTx.Discard()
 	var keysToDelete [][]byte
