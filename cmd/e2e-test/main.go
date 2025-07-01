@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	flag "github.com/spf13/pflag"
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
@@ -25,6 +27,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -432,7 +435,7 @@ func createProcess(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create process: %v", err)
 	} else if code != http.StatusOK {
-		return nil, nil, fmt.Errorf("failed to create process, status code: %d", code)
+		return nil, nil, fmt.Errorf("failed to create process, status code %d: %s", code, body)
 	}
 
 	// Decode process response
@@ -461,6 +464,45 @@ func createProcess(
 			CensusOrigin: 0,
 		},
 	}
+
+	// Initialize the state
+	st, err := state.New(memdb.New(), processId.BigInt())
+	if err != nil {
+		log.Fatal("die")
+	}
+	defer func() {
+		if err := st.Close(); err != nil {
+			log.Warnw("failed to close state", "error", err)
+		}
+	}()
+	bigCensusRoot := arbo.BytesToBigInt(censusRoot)
+
+	// Initialize the state with the census root and the encryption key
+	// If the state is already initialized, we ignore the error and continue with the process setup
+	if err := st.Initialize(
+		bigCensusRoot,
+		circuits.BallotModeToCircuit(&ballotMode),
+		circuits.EncryptionKeyToCircuit(*encryptionKeys)); err != nil {
+		if !errors.Is(err, state.ErrStateAlreadyInitialized) {
+			log.Fatal("die")
+		}
+	}
+
+	root, err := st.RootAsBigInt()
+	if err != nil {
+		log.Fatal("die")
+	}
+
+	log.Warnf("PI  %x = %d", processId.Marshal(), processId.BigInt())
+	log.Warnf("CR1 %x = %d", censusRoot, process.CensusRoot.BigInt().MathBigInt())
+	log.Warnf("CR2 %x = %d", censusRoot, newProcess.Census.CensusRoot.BigInt().MathBigInt())
+	log.Warnf("CR3 %x = %d", censusRoot, bigCensusRoot)
+	log.Warnf("BM  %+v", ballotMode)
+	log.Warnf("BMC %+v", circuits.BallotModeToCircuit(&ballotMode))
+	log.Warnf("EK  %+v", encryptionKeys)
+	log.Warnf("EK2 %+v", circuits.EncryptionKeyToCircuit(*encryptionKeys))
+	log.Warnf("SR  %x = %d", root.Bytes(), root)
+
 	// Create process in the contracts
 	pid, txHash, err := contracts.CreateProcess(newProcess)
 	if err != nil {
@@ -490,6 +532,9 @@ func createProcess(
 			return nil, nil, fmt.Errorf("process creation timeout: %v", processCtx.Err())
 		}
 	}
+
+	log.Fatal("die")
+
 	return pid, encryptionKeys, nil
 }
 
