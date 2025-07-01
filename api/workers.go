@@ -14,7 +14,7 @@ import (
 
 // startWorkerTimeoutMonitor starts the timeout monitor for worker jobs
 func (a *API) startWorkerTimeoutMonitor() {
-	a.jobsManager = newJobsManager(a.workerTimeout)
+	a.jobsManager = newJobsManager(a.workerTimeout, a.banRules)
 	a.jobsManager.start(a.parentCtx)
 
 	go func() {
@@ -46,11 +46,11 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if worker is available
-	if !a.jobsManager.isWorkerAvailable(workerAddress) {
+	if available, err := a.jobsManager.isWorkerAvailable(workerAddress); !available {
 		log.Warnw("worker not available",
 			"worker", workerAddress,
 			"uuid", uuid)
-		ErrWorkerNotAvailable.Write(w)
+		ErrWorkerNotAvailable.WithErr(err).Write(w)
 		return
 	}
 
