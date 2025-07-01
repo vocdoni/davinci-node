@@ -32,6 +32,7 @@ type APIConfig struct {
 	WorkerEnabled bool          // Enable worker API endpoints
 	WorkerUrlSeed string        // URL seed for worker authentication
 	WorkerTimeout time.Duration // Worker job timeout
+	BanRules      *BanRules     // Custom ban rules for workers
 }
 
 // API type represents the API HTTP server with JWT authentication capabilities.
@@ -44,6 +45,7 @@ type API struct {
 	workerTimeout time.Duration
 	jobsManager   *jobsManager    // Manages worker jobs and timeouts
 	parentCtx     context.Context // Context to stop the API server
+	banRules      *BanRules       // Rules for banning workers based on job failures
 }
 
 // New creates a new API instance with the given configuration.
@@ -55,11 +57,15 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	if conf.Storage == nil {
 		return nil, fmt.Errorf("missing storage instance")
 	}
+
 	a := &API{
 		storage:       conf.Storage,
 		network:       conf.Network,
 		workerTimeout: conf.WorkerTimeout,
 		parentCtx:     ctx,
+	}
+	if conf.BanRules != nil {
+		a.banRules = conf.BanRules
 	}
 
 	// Initialize worker UUID if enabled

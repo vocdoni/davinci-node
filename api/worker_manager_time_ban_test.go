@@ -11,9 +11,9 @@ import (
 func TestWorkerTimeBanCoverage(t *testing.T) {
 	c := qt.New(t)
 
-	rules := banRules{
-		timeout:             3 * time.Minute,
-		maxConsecutiveFails: 3,
+	rules := &BanRules{
+		BanTimeout:          3 * time.Minute,
+		FailuresToGetBanned: 3,
 	}
 
 	t.Run("Time-based banning scenarios", func(t *testing.T) {
@@ -67,7 +67,7 @@ func TestWorkerTimeBanCoverage(t *testing.T) {
 
 		// Reset consecutive fails but keep future ban time
 		atomic.StoreInt64(&worker.consecutiveFails, 0)
-		worker.setBannedUntil(time.Now().Add(1*time.Hour))
+		worker.setBannedUntil(time.Now().Add(1 * time.Hour))
 		c.Assert(worker.isBanned(rules), qt.IsTrue) // Still banned due to time
 
 		// Clear ban time - should not be banned

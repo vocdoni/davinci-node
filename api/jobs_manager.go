@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
@@ -37,14 +38,14 @@ type jobsManager struct {
 // newJobsManager creates a new jobs manager with the specified job timeout
 // and ticker interval. If no ticker interval is provided, it defaults to 10
 // seconds. It initializes an internal worker manager with default ban rules.
-func newJobsManager(jobTimeout time.Duration, tickerInterval ...time.Duration) *jobsManager {
+func newJobsManager(jobTimeout time.Duration, banRules *BanRules, tickerInterval ...time.Duration) *jobsManager {
 	interval := 10 * time.Second // default production interval
 	if len(tickerInterval) > 0 {
 		interval = tickerInterval[0]
 	}
 	return &jobsManager{
 		pending:        make(map[string]*workerJob),
-		wm:             newWorkerManager(defaultBanRules),
+		wm:             newWorkerManager(banRules),
 		failedJobs:     make(chan *workerJob), // Unbuffered channel for failed jobs
 		jobTimeout:     jobTimeout,
 		tickerInterval: interval,
@@ -56,6 +57,9 @@ func newJobsManager(jobTimeout time.Duration, tickerInterval ...time.Duration) *
 // manage the lifecycle of the jobs manager, allowing it to be stopped
 // gracefully.
 func (jm *jobsManager) start(ctx context.Context) {
+	log.Infow("Starting jobs manager",
+		"jobTimeout", jm.jobTimeout,
+		"tickerInterval", jm.tickerInterval)
 	jm.ctx, jm.cancel = context.WithCancel(ctx)
 	jm.wm.start(ctx)
 
@@ -107,7 +111,7 @@ func (jm *jobsManager) checkTimeouts() {
 	now := time.Now()
 	for key, job := range jm.pending {
 		if now.After(job.Expiration) {
-			log.Debugf("Job with vote ID %s has expired", job.VoteID)
+			log.Debugf("Job with vote ID %x has expired", job.VoteID)
 			jm.wm.workerResult(job.Address, false) // Notify worker manager of timeout
 			jm.failedJobs <- job                   // Send to failed jobs channel (blocking)
 			delete(jm.pending, key)                // Remove expired job
@@ -117,26 +121,26 @@ func (jm *jobsManager) checkTimeouts() {
 
 // isWorkerAvailable checks if a worker is available for a new job. It verifies
 // if the worker exists, is not banned, and does not have any pending jobs.
-func (jm *jobsManager) isWorkerAvailable(workerAddr string) bool {
+func (jm *jobsManager) isWorkerAvailable(workerAddr string) (bool, error) {
 	worker, ok := jm.wm.getWorker(workerAddr)
 	if !ok {
-		return true // Worker does not exist, consider available
+		return true, nil // Worker does not exist, consider available
 	}
 	// Check if worker is banned
 	if worker.isBanned(jm.wm.rules) {
 		log.Warnf("Worker %s is banned", workerAddr)
-		return false // Worker is banned
+		return false, fmt.Errorf("worker banned") // Worker is banned
 	}
 	// Check if worker has pending jobs
 	jm.pendingMtx.RLock()
 	defer jm.pendingMtx.RUnlock()
 	for _, job := range jm.pending {
 		if job.Address == worker.ID {
-			log.Debugf("Worker %s has pending job for vote ID %s", workerAddr, job.VoteID)
-			return false // Worker has pending jobs
+			log.Debugf("Worker %s has pending job for vote ID %x", workerAddr, job.VoteID)
+			return false, fmt.Errorf("worker busy") // Worker has pending jobs
 		}
 	}
-	return true // Worker is available
+	return true, nil // Worker is available
 }
 
 // registerJob registers a new job for a worker. It checks if the worker is
@@ -154,7 +158,7 @@ func (jm *jobsManager) registerJob(workerAddr string, voteID []byte) (*workerJob
 	}
 	// Check if worker is available
 	if worker.isBanned(jm.wm.rules) {
-		log.Warnf("Worker %s is banned, cannot register job for vote ID %s", workerAddr, voteID)
+		log.Warnf("Worker %s is banned, cannot register job for vote ID %x", workerAddr, voteID)
 		return nil, false // Worker is banned
 	}
 	job := &workerJob{
@@ -164,7 +168,7 @@ func (jm *jobsManager) registerJob(workerAddr string, voteID []byte) (*workerJob
 		Expiration: time.Now().Add(jm.jobTimeout), // Default expiration
 	}
 	jm.pending[hex.EncodeToString(voteID)] = job
-	log.Debugf("Job registered: %s for worker %s", voteID, workerAddr)
+	log.Debugf("Job registered: %x for worker %s", voteID, workerAddr)
 	return job, true
 }
 

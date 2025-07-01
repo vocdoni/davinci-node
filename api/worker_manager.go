@@ -9,18 +9,18 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 )
 
-// banRules defines the rules for banning workers. It includes the duration
+// BanRules defines the rules for banning workers. It includes the duration
 // for which a worker is banned and the maximum number of consecutive failed
 // jobs before a worker is banned.
-type banRules struct {
-	timeout             time.Duration // Duration for which the worker is banned
-	maxConsecutiveFails int           // Maximum consecutive failed jobs before banning
+type BanRules struct {
+	BanTimeout          time.Duration // Duration for which the worker is banned
+	FailuresToGetBanned int           // Maximum consecutive failed jobs before banning
 }
 
-// defaultBanRules provides the default ban rules for workers
-var defaultBanRules = banRules{
-	timeout:             3 * time.Minute, // Ban for 3 minutes
-	maxConsecutiveFails: 10,              // 3 consecutive failed jobs
+// DefaultBanRules provides the default ban rules for workers
+var DefaultBanRules = &BanRules{
+	BanTimeout:          3 * time.Minute, // Ban for 3 minutes
+	FailuresToGetBanned: 5,               // 3 consecutive failed jobs
 }
 
 // worker represents a worker that processes jobs
@@ -31,9 +31,12 @@ type worker struct {
 }
 
 // isBanned checks if the worker is banned based on the provided rules
-func (w *worker) isBanned(rules banRules) bool {
+func (w *worker) isBanned(rules *BanRules) bool {
+	if rules == nil {
+		return false // no rules provided, not banned
+	}
 	consecutiveFails := atomic.LoadInt64(&w.consecutiveFails)
-	if consecutiveFails > int64(rules.maxConsecutiveFails) {
+	if consecutiveFails > int64(rules.FailuresToGetBanned) {
 		return true
 	}
 
@@ -74,21 +77,25 @@ type workerManager struct {
 	workers        sync.Map
 	innerCtx       context.Context
 	cancelFunc     context.CancelFunc
-	rules          banRules
+	rules          *BanRules
 	tickerInterval time.Duration
 }
 
 // newWorkerManager creates a new worker manager with the specified ban rules.
 // It initializes the worker map and sets up the context for managing workers.
 // An optional ticker interval can be provided; defaults to 10 seconds if not specified.
-func newWorkerManager(rules banRules, tickerInterval ...time.Duration) *workerManager {
+func newWorkerManager(rules *BanRules, tickerInterval ...time.Duration) *workerManager {
 	interval := 10 * time.Second // default production interval
 	if len(tickerInterval) > 0 {
 		interval = tickerInterval[0]
 	}
+	banRules := DefaultBanRules
+	if rules != nil {
+		banRules = rules
+	}
 	return &workerManager{
 		workers:        sync.Map{},
-		rules:          rules,
+		rules:          banRules,
 		tickerInterval: interval,
 	}
 }
@@ -97,6 +104,10 @@ func newWorkerManager(rules banRules, tickerInterval ...time.Duration) *workerMa
 // workers. It starts a goroutine that periodically checks for banned workers,
 // bans them if necessary, and resets their status after the ban period.
 func (wm *workerManager) start(ctx context.Context) {
+	log.Infow("Starting worker manager",
+		"banTimeout", wm.rules.BanTimeout,
+		"failuresToGetBanned", wm.rules.FailuresToGetBanned,
+		"tickerInterval", wm.tickerInterval)
 	wm.innerCtx, wm.cancelFunc = context.WithCancel(ctx)
 
 	go func() {
@@ -202,7 +213,7 @@ func (wm *workerManager) resetWorker(id string) {
 // preventing it from processing jobs until the ban period expires.
 func (wm *workerManager) setBanDuration(workerID string) {
 	if w, ok := wm.getWorker(workerID); ok {
-		banTime := time.Now().Add(wm.rules.timeout)
+		banTime := time.Now().Add(wm.rules.BanTimeout)
 		w.setBannedUntil(banTime)
 		log.Warnf("Worker %s banned until %s", workerID, banTime)
 	}

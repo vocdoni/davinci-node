@@ -50,9 +50,11 @@ type Web3Config struct {
 
 // APIConfig holds the API-specific configuration
 type APIConfig struct {
-	Host          string `mapstructure:"host"`       // API host address
-	Port          int    `mapstructure:"port"`       // API port number
-	WorkerUrlSeed string `mapstructure:"workerSeed"` // URL seed for worker authentication
+	Host                      string        `mapstructure:"host"`                      // API host address
+	Port                      int           `mapstructure:"port"`                      // API port number
+	WorkerUrlSeed             string        `mapstructure:"workerSeed"`                // URL seed for worker authentication
+	WorkerBanTimeout          time.Duration `mapstructure:"workerBanTimeout"`          // Timeout for worker ban
+	WorkerFailuresToGetBanned int           `mapstructure:"workerFailuresToGetBanned"` // Number of failed jobs to get banned
 }
 
 // BatchConfig holds batch processing configuration
@@ -115,6 +117,8 @@ func loadConfig() (*Config, error) {
 	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
 	flag.StringP("worker.address", "a", "", "worker Ethereum address (auto-generated if empty)")
 	flag.StringP("worker.masterURL", "w", "", "master worker URL (required for running in worker mode)")
+	flag.Duration("api.workerBanTimeout", 5*time.Minute, "timeout for worker ban in seconds")
+	flag.Int("api.workerFailuresToGetBanned", 5, "number of failed jobs to get banned")
 
 	// Configure usage information
 	flag.Usage = func() {

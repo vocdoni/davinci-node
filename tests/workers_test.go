@@ -1,8 +1,9 @@
 package tests
 
 import (
-	"context"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,15 +12,22 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 func TestWorkerIntegration(t *testing.T) {
 	c := qt.New(t)
-	workerTimeout := time.Second * 5
-	testSeed := "test-seed"
+	numBallots := 20                     // number of ballots to be sent in the process
+	testSeed := "test-seed"              // seed for the workers UUID of main sequencer
+	workerTimeout := 5 * time.Second     // timeout for worker jobs
+	failedJobsToGetBanned := 3           // number of failed jobs to get banned
+	workerBanTimeout := 30 * time.Second // timeout for worker ban
 	// Setup
 	ctx := t.Context()
-	services := NewTestService(t, ctx, testSeed, workerTimeout)
+	services := NewTestService(t, ctx, testSeed, workerTimeout, &api.BanRules{
+		BanTimeout:          workerBanTimeout,
+		FailuresToGetBanned: failedJobsToGetBanned,
+	})
 	_, port := services.API.HostPort()
 	mainAPIUUID, err := api.WorkerSeedToUUID(testSeed)
 	c.Assert(err, qt.IsNil)
@@ -32,62 +40,35 @@ func TestWorkerIntegration(t *testing.T) {
 		pid           *types.ProcessID
 		encryptionKey *types.EncryptionKey
 		ballotMode    *types.BallotMode
-		signers       []*ethereum.Signer
-		proof         *types.CensusProof
 		root          []byte
 	)
 
-	c.Run("create organization", func(c *qt.C) {
-		orgAddr := createOrganization(c, services.Contracts)
-		t.Logf("Organization address: %s", orgAddr.String())
-	})
-
-	c.Run("launch a ghost worker", func(c *qt.C) {
+	workerAddr := fmt.Sprintf("0x%s", util.RandomHex(20))
+	c.Run("launch a worker with no jobs pending", func(c *qt.C) {
 		getJobEndpoint := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, mainAPIUUID.String())
-		getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, services.Contracts.AccountAddress().String())
+		getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, workerAddr)
 		body, status, err := cli.Request(http.MethodGet, nil, nil, getJobEndpoint)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
 		c.Assert(status, qt.Equals, http.StatusNoContent, qt.Commentf("Expected 204 No Content, got %d: %s", status, string(body)))
 		c.Log("Ghost worker job request successful, no job available yet")
 	})
 
-	c.Run("launch a ghost worker", func(c *qt.C) {
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		defer cancel()
-		// make a request to the api to get a job until get banned
-		for {
-			select {
-			case <-ctx.Done():
-				c.Fatal("Timeout waiting for ghost worker job request")
-				c.FailNow()
-			case <-ticker.C:
-				getJobEndpoint := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, mainAPIUUID.String())
-				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, services.Contracts.AccountAddress().String())
-				body, status, err := cli.Request(http.MethodGet, nil, nil, getJobEndpoint)
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
-				c.Assert(status, qt.Equals, http.StatusNoContent, qt.Commentf("Expected 204 No Content, got %d: %s", status, string(body)))
-				c.Log("Ghost worker job request successful, no job available yet")
-			}
-		}
-	})
+	var timeoutCh <-chan time.Time
+	if deadline, hasDeadline := t.Deadline(); hasDeadline {
+		remainingTime := time.Until(deadline)
+		timeoutCh = time.After(remainingTime)
+	} else {
+		timeoutCh = time.After(10 * time.Minute)
+	}
 
+	var signers []*ethereum.Signer
 	c.Run("create process", func(c *qt.C) {
 		// Create census with numBallot participants
 		var participants []*api.CensusParticipant
-		root, participants, signers = createCensus(c, cli, 1)
+		root, participants, signers = createCensus(c, cli, numBallots)
 		c.Assert(participants, qt.Not(qt.IsNil))
 		c.Assert(signers, qt.Not(qt.IsNil))
-		c.Assert(len(participants), qt.Equals, 1)
-
-		// Generate proof for first participant
-		proof = generateCensusProof(c, cli, root, participants[0].Key)
-		c.Assert(proof, qt.Not(qt.IsNil))
-		c.Assert(proof.Siblings, qt.IsNotNil)
-		// Check the first proof key is the same as the participant key and signer address
-		qt.Assert(t, proof.Key.String(), qt.DeepEquals, participants[0].Key.String())
-		qt.Assert(t, string(proof.Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
+		c.Assert(len(participants), qt.Equals, numBallots)
 
 		ballotMode = &types.BallotMode{
 			MaxCount:        circuits.MockMaxCount,
@@ -99,25 +80,13 @@ func TestWorkerIntegration(t *testing.T) {
 			CostFromWeight:  circuits.MockCostFromWeight == 1,
 			CostExponent:    circuits.MockCostExp,
 		}
-
 		pid, encryptionKey = createProcess(c, services.Contracts, cli, root, *ballotMode)
-		// create a timeout for the process creation, if it is greater than the test timeout
-		// use the test timeout
-		createProcessTimeout := time.Minute * 2
-		if timeout, hasDeadline := t.Deadline(); hasDeadline {
-			remainingTime := time.Until(timeout)
-			if remainingTime < createProcessTimeout {
-				createProcessTimeout = remainingTime
-			}
-		}
-		// Wait for the process to be registered
-		createProcessCtx, cancel := context.WithTimeout(ctx, createProcessTimeout)
-		defer cancel()
 
+		// Wait for the process to be registered
 	CreateProcessLoop:
 		for {
 			select {
-			case <-createProcessCtx.Done():
+			case <-timeoutCh:
 				c.Fatal("Timeout waiting for process to be created and registered")
 				c.FailNow()
 			default:
@@ -132,7 +101,7 @@ func TestWorkerIntegration(t *testing.T) {
 		// Wait for the process to be registered in the sequencer
 		for {
 			select {
-			case <-createProcessCtx.Done():
+			case <-timeoutCh:
 				c.Fatal("Timeout waiting for process to be registered in sequencer")
 				c.FailNow()
 			default:
@@ -145,7 +114,8 @@ func TestWorkerIntegration(t *testing.T) {
 		}
 	})
 
-	c.Run("send a vote", func(c *qt.C) {
+	var voteIDs []types.HexBytes
+	c.Run("send votes", func(c *qt.C) {
 		for _, signer := range signers {
 			// generate a vote for the first participant
 			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signer, nil)
@@ -158,7 +128,59 @@ func TestWorkerIntegration(t *testing.T) {
 			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
 			c.Assert(status, qt.Equals, 200)
+			voteIDs = append(voteIDs, vote.VoteID)
 		}
 	})
-	time.Sleep(5 * time.Minute)
+
+	c.Run("ban worker", func(c *qt.C) {
+	BanLoop:
+		for {
+			select {
+			case <-timeoutCh:
+				c.Fatal("Timeout waiting for ghost worker to be banned")
+				c.FailNow()
+				return
+			default:
+				// make a request to the api to get a job until get banned
+				getJobEndpoint := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, mainAPIUUID.String())
+				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, workerAddr)
+				body, status, err := cli.Request(http.MethodGet, nil, nil, getJobEndpoint)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
+				if status == http.StatusOK || status == http.StatusNoContent {
+					continue
+				} else if status == http.StatusBadRequest && strings.Contains(string(body), "worker busy") {
+					// wait for the requested job timeout to request again
+					time.Sleep(workerTimeout)
+					continue
+				}
+				c.Assert(status, qt.Equals, http.StatusBadRequest, qt.Commentf("Expected 400 Bad Request, got %d", status))
+				c.Assert(string(body), qt.Contains, "worker banned", qt.Commentf("Expected worker to be banned: %s", string(body)))
+				break BanLoop
+			}
+		}
+	})
+
+	c.Run("unbar worker", func(c *qt.C) {
+	UnbanLoop:
+		for {
+			select {
+			case <-timeoutCh:
+				c.Fatal("Timeout waiting for ghost worker to be banned")
+				c.FailNow()
+				return
+			default:
+				// make a request to the api to get a job until get unbanned
+				getJobEndpoint := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, mainAPIUUID.String())
+				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, workerAddr)
+				body, status, err := cli.Request(http.MethodGet, nil, nil, getJobEndpoint)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
+				if status == http.StatusBadRequest || strings.Contains(string(body), "worker banned") {
+					time.Sleep(workerBanTimeout)
+					continue
+				}
+				c.Assert(status, qt.Equals, http.StatusOK, qt.Commentf("Expected 200 OK, got %d", status))
+				break UnbanLoop
+			}
+		}
+	})
 }

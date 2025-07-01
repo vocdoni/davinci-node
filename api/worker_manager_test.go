@@ -13,9 +13,9 @@ import (
 func TestNewWorkerManager(t *testing.T) {
 	c := qt.New(t)
 
-	rules := banRules{
-		timeout:             5 * time.Minute,
-		maxConsecutiveFails: 5,
+	rules := &BanRules{
+		BanTimeout:          5 * time.Minute,
+		FailuresToGetBanned: 5,
 	}
 
 	wm := newWorkerManager(rules)
@@ -29,9 +29,9 @@ func TestNewWorkerManager(t *testing.T) {
 func TestWorkerIsBanned(t *testing.T) {
 	c := qt.New(t)
 
-	rules := banRules{
-		timeout:             3 * time.Minute,
-		maxConsecutiveFails: 3,
+	rules := &BanRules{
+		BanTimeout:          3 * time.Minute,
+		FailuresToGetBanned: 3,
 	}
 
 	tests := []struct {
@@ -82,7 +82,7 @@ func TestWorkerIsBanned(t *testing.T) {
 func TestWorkerManagerAddWorker(t *testing.T) {
 	c := qt.New(t)
 
-	wm := newWorkerManager(defaultBanRules)
+	wm := newWorkerManager(DefaultBanRules)
 
 	// Test adding a new worker
 	worker1 := wm.addWorker("worker1")
@@ -105,7 +105,7 @@ func TestWorkerManagerAddWorker(t *testing.T) {
 func TestWorkerManagerGetWorker(t *testing.T) {
 	c := qt.New(t)
 
-	wm := newWorkerManager(defaultBanRules)
+	wm := newWorkerManager(DefaultBanRules)
 
 	// Test getting non-existent worker
 	worker, exists := wm.getWorker("nonexistent")
@@ -123,7 +123,7 @@ func TestWorkerManagerGetWorker(t *testing.T) {
 func TestWorkerManagerWorkerResult(t *testing.T) {
 	c := qt.New(t)
 
-	wm := newWorkerManager(defaultBanRules)
+	wm := newWorkerManager(DefaultBanRules)
 
 	// Test success result on new worker
 	wm.workerResult("worker1", true)
@@ -154,9 +154,9 @@ func TestWorkerManagerWorkerResult(t *testing.T) {
 func TestWorkerManagerBannedWorkers(t *testing.T) {
 	c := qt.New(t)
 
-	rules := banRules{
-		timeout:             3 * time.Minute,
-		maxConsecutiveFails: 2,
+	rules := &BanRules{
+		BanTimeout:          3 * time.Minute,
+		FailuresToGetBanned: 2,
 	}
 	wm := newWorkerManager(rules)
 
@@ -185,7 +185,7 @@ func TestWorkerManagerBannedWorkers(t *testing.T) {
 func TestWorkerManagerResetWorker(t *testing.T) {
 	c := qt.New(t)
 
-	wm := newWorkerManager(defaultBanRules)
+	wm := newWorkerManager(DefaultBanRules)
 
 	// Add worker with failures
 	wm.addWorker("worker1")
@@ -210,9 +210,9 @@ func TestWorkerManagerResetWorker(t *testing.T) {
 func TestWorkerManagerSetBanDuration(t *testing.T) {
 	c := qt.New(t)
 
-	rules := banRules{
-		timeout:             5 * time.Minute,
-		maxConsecutiveFails: 3,
+	rules := &BanRules{
+		BanTimeout:          5 * time.Minute,
+		FailuresToGetBanned: 3,
 	}
 	wm := newWorkerManager(rules)
 
@@ -237,7 +237,7 @@ func TestWorkerManagerSetBanDuration(t *testing.T) {
 func TestWorkerManagerStartStop(t *testing.T) {
 	c := qt.New(t)
 
-	wm := newWorkerManager(defaultBanRules)
+	wm := newWorkerManager(DefaultBanRules)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -265,9 +265,9 @@ func TestWorkerManagerBanUnbanCycle(t *testing.T) {
 	c := qt.New(t)
 
 	// Use short timeout for testing
-	rules := banRules{
-		timeout:             100 * time.Millisecond,
-		maxConsecutiveFails: 2,
+	rules := &BanRules{
+		BanTimeout:          100 * time.Millisecond,
+		FailuresToGetBanned: 2,
 	}
 	wm := newWorkerManager(rules)
 
@@ -311,9 +311,9 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 
 	t.Run("Real start method with fast ticker - complete ban/unban cycle", func(t *testing.T) {
 		// Test the actual start() method with configurable fast ticker
-		rules := banRules{
-			timeout:             200 * time.Millisecond, // Short timeout for testing
-			maxConsecutiveFails: 1,
+		rules := &BanRules{
+			BanTimeout:          200 * time.Millisecond, // Short timeout for testing
+			FailuresToGetBanned: 1,
 		}
 		// Use REAL start method with fast ticker interval
 		wm := newWorkerManager(rules, 100*time.Millisecond)
@@ -336,7 +336,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		// Verify workers are banned but no ban duration set yet
 		banned := wm.bannedWorkers()
 		c.Assert(len(banned), qt.Equals, 2)
-		
+
 		worker1, exists1 := wm.getWorker("worker1")
 		worker2, exists2 := wm.getWorker("worker2")
 		c.Assert(exists1, qt.IsTrue)
@@ -369,9 +369,9 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 
 	t.Run("Real start method - context cancellation behavior", func(t *testing.T) {
 		// Test real start method context cancellation
-		rules := banRules{
-			timeout:             1 * time.Second,
-			maxConsecutiveFails: 1,
+		rules := &BanRules{
+			BanTimeout:          1 * time.Second,
+			FailuresToGetBanned: 1,
 		}
 		wm := newWorkerManager(rules, 50*time.Millisecond) // Fast ticker
 
@@ -387,7 +387,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		// Add workers
 		wm.addWorker("worker1")
 		wm.addWorker("worker2")
-		
+
 		// Verify workers exist
 		_, exists1 := wm.getWorker("worker1")
 		_, exists2 := wm.getWorker("worker2")
@@ -409,9 +409,9 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 
 	t.Run("Real start method - ticker interval verification", func(t *testing.T) {
 		// Test that different ticker intervals work correctly
-		rules := banRules{
-			timeout:             100 * time.Millisecond,
-			maxConsecutiveFails: 1,
+		rules := &BanRules{
+			BanTimeout:          100 * time.Millisecond,
+			FailuresToGetBanned: 1,
 		}
 
 		// Test with custom interval
@@ -449,9 +449,9 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 
 	t.Run("Real start method - no banned workers scenario", func(t *testing.T) {
 		// Test ticker behavior when no workers are banned
-		rules := banRules{
-			timeout:             200 * time.Millisecond,
-			maxConsecutiveFails: 5, // High threshold
+		rules := &BanRules{
+			BanTimeout:          200 * time.Millisecond,
+			FailuresToGetBanned: 5, // High threshold
 		}
 		wm := newWorkerManager(rules, 50*time.Millisecond)
 
@@ -489,7 +489,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 func TestWorkerManagerConcurrency(t *testing.T) {
 	c := qt.New(t)
 
-	wm := newWorkerManager(defaultBanRules)
+	wm := newWorkerManager(DefaultBanRules)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -510,7 +510,7 @@ func TestWorkerManagerConcurrency(t *testing.T) {
 			wm.addWorker(workerID)
 
 			// Perform some operations on the worker
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				wm.workerResult(workerID, j%2 == 0) // Alternate success/failure
 			}
 		}(i)
@@ -539,7 +539,7 @@ func TestWorkerManagerConcurrency(t *testing.T) {
 func TestWorkerManagerContextCancellation(t *testing.T) {
 	c := qt.New(t)
 
-	wm := newWorkerManager(defaultBanRules)
+	wm := newWorkerManager(DefaultBanRules)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	wm.start(ctx)
@@ -565,9 +565,9 @@ func TestWorkerManagerEdgeCases(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Zero max consecutive fails", func(t *testing.T) {
-		rules := banRules{
-			timeout:             1 * time.Minute,
-			maxConsecutiveFails: 0,
+		rules := &BanRules{
+			BanTimeout:          1 * time.Minute,
+			FailuresToGetBanned: 0,
 		}
 		wm := newWorkerManager(rules)
 
@@ -579,9 +579,9 @@ func TestWorkerManagerEdgeCases(t *testing.T) {
 	})
 
 	t.Run("Negative max consecutive fails", func(t *testing.T) {
-		rules := banRules{
-			timeout:             1 * time.Minute,
-			maxConsecutiveFails: -1,
+		rules := &BanRules{
+			BanTimeout:          1 * time.Minute,
+			FailuresToGetBanned: -1,
 		}
 		wm := newWorkerManager(rules)
 
@@ -591,7 +591,7 @@ func TestWorkerManagerEdgeCases(t *testing.T) {
 	})
 
 	t.Run("Empty worker ID", func(t *testing.T) {
-		wm := newWorkerManager(defaultBanRules)
+		wm := newWorkerManager(DefaultBanRules)
 
 		worker := wm.addWorker("")
 		c.Assert(worker.ID, qt.Equals, "")

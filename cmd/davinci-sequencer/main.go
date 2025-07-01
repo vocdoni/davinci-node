@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
@@ -237,7 +238,10 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 
 	// Configure worker API if enabled
 	if cfg.API.WorkerUrlSeed != "" {
-		services.API.SetWorkerConfig(cfg.API.WorkerUrlSeed, cfg.Worker.Timeout)
+		services.API.SetWorkerConfig(cfg.API.WorkerUrlSeed, cfg.Worker.Timeout, &api.BanRules{
+			BanTimeout:          cfg.API.WorkerBanTimeout,
+			FailuresToGetBanned: cfg.API.WorkerFailuresToGetBanned,
+		})
 	}
 
 	// Start API service
