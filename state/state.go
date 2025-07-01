@@ -141,6 +141,12 @@ func (o *State) Initialize(
 	if err := o.tree.AddBigInt(KeyResultsSub, elgamal.NewBallot(Curve).BigInts()...); err != nil {
 		return err
 	}
+	log.Warnf("PI: %x = %d", o.processID.Bytes(), o.processID)
+	log.Warnf("BM: %+v", o.BallotMode())
+	log.Warnf("EK: %+v", o.EncryptionKey().PubKey)
+	log.Warnf("CR: %x || %x", o.CensusRoot().Bytes(), arbo.BigIntToBytes(32, o.CensusRoot()))
+	root, _ := o.RootAsBigInt()
+	log.Warnf("SR: %x = %d", root.Bytes(), root)
 	return nil
 }
 
