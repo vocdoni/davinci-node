@@ -9,6 +9,8 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+var _ ContractsService = &MockContracts{}
+
 // MockContracts implements a mock version of web3.Contracts for testing
 type MockContracts struct {
 	processes []*types.Process
@@ -46,8 +48,8 @@ func (m *MockContracts) MonitorProcessCreation(ctx context.Context, interval tim
 	return ch, nil
 }
 
-func (m *MockContracts) MonitorProcessFinalization(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
-	return make(chan *types.Process), nil
+func (m *MockContracts) MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error) {
+	return make(chan *types.ProcessWithStatusChange), nil
 }
 
 func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {

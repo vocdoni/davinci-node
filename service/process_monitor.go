@@ -26,7 +26,7 @@ type ProcessMonitor struct {
 // ContractsService defines the interface for web3 contract operations.
 type ContractsService interface {
 	MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
-	MonitorProcessFinalization(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
+	MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error)
 	CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error)
 	AccountAddress() common.Address
 	WaitTx(hash common.Hash, timeout time.Duration) error
@@ -61,16 +61,16 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 	newProcChan, err := pm.contracts.MonitorProcessCreation(ctx, pm.interval)
 	if err != nil {
 		pm.cancel = nil
-		return fmt.Errorf("failed to start process monitoring: %w", err)
+		return fmt.Errorf("failed to start monitor of process creation: %w", err)
 	}
 
-	finalizedProcChan, err := pm.contracts.MonitorProcessFinalization(ctx, pm.interval)
+	changedStatusProcChan, err := pm.contracts.MonitorProcessStatusChanges(ctx, pm.interval)
 	if err != nil {
 		pm.cancel = nil
-		return fmt.Errorf("failed to start finalized process monitoring: %w", err)
+		return fmt.Errorf("failed to start monitor of process status changes: %w", err)
 	}
 
-	go pm.monitorProcesses(ctx, newProcChan, finalizedProcChan)
+	go pm.monitorProcesses(ctx, newProcChan, changedStatusProcChan)
 	return nil
 }
 
@@ -85,12 +85,14 @@ func (pm *ProcessMonitor) Stop() {
 	}
 }
 
-func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, endedProcCh <-chan *types.Process) {
+func (pm *ProcessMonitor) monitorProcesses(ctx context.Context,
+	newProcChan <-chan *types.Process, changedStatusProcChan <-chan *types.ProcessWithStatusChange,
+) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case process := <-newProcCh:
+		case process := <-newProcChan:
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
@@ -98,10 +100,11 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context, newProcCh, ended
 			if err := pm.storage.NewProcess(process); err != nil {
 				log.Warnw("failed to store new process", "pid", process.ID.String(), "err", err.Error())
 			}
-		case process := <-endedProcCh:
-			log.Debugw("ended process found", "pid", process.ID.String())
+		case process := <-changedStatusProcChan:
+			log.Debugw("process changed status", "pid", process.ID.String(),
+				"old", process.OldStatus.String(), "new", process.NewStatus.String())
 			if err := pm.storage.UpdateProcess(process.ID, storage.ProcessUpdateCallbackSetStatus(process.Status)); err != nil {
-				log.Warnw("failed to update process to ended status",
+				log.Warnw("failed to update process status",
 					"pid", process.ID.String(), "err", err.Error())
 			}
 		}
