@@ -345,7 +345,9 @@ func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
 	return orgAddr
 }
 
-func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, censusRoot []byte, ballotMode types.BallotMode) (*types.ProcessID, *types.EncryptionKey) {
+func createProcessInSequencer(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient,
+	censusRoot []byte, ballotMode *types.BallotMode,
+) (*types.ProcessID, *types.EncryptionKey, *types.HexBytes) {
 	// Geth the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
 	c.Assert(err, qt.IsNil)
@@ -357,7 +359,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	process := &types.ProcessSetup{
 		ProcessID:  processID.Marshal(),
 		CensusRoot: censusRoot,
-		BallotMode: &ballotMode,
+		BallotMode: ballotMode,
 		Signature:  signature,
 	}
 
@@ -376,16 +378,21 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 		X: resp.EncryptionPubKey[0],
 		Y: resp.EncryptionPubKey[1],
 	}
+	return processID, encryptionKeys, &resp.StateRoot
+}
 
+func createProcessInContracts(c *qt.C, contracts *web3.Contracts,
+	censusRoot []byte, ballotMode *types.BallotMode, encryptionKey *types.EncryptionKey, stateRoot *types.HexBytes,
+) *types.ProcessID {
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
 		Status:         0,
 		OrganizationId: contracts.AccountAddress(),
-		EncryptionKey:  encryptionKeys,
-		StateRoot:      resp.StateRoot.BigInt(),
+		EncryptionKey:  encryptionKey,
+		StateRoot:      stateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
-		BallotMode:     &ballotMode,
+		BallotMode:     ballotMode,
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
 			MaxVotes:     new(types.BigInt).SetUint64(1000),
@@ -398,7 +405,7 @@ func createProcess(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient, c
 	err = contracts.WaitTx(*txHash, time.Second*15)
 	c.Assert(err, qt.IsNil)
 
-	return pid, encryptionKeys
+	return pid
 }
 
 func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, *big.Int) {
