@@ -64,7 +64,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
 
-	return contractProcess2Process(&ProcessRegistryProcess{
+	process, err := contractProcess2Process(&ProcessRegistryProcess{
 		Status:               p.Status,
 		OrganizationId:       p.OrganizationId,
 		EncryptionKey:        p.EncryptionKey,
@@ -78,6 +78,11 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		VoteOverwrittenCount: p.VoteOverwriteCount,
 		Result:               p.Result,
 	})
+	if err != nil {
+		return nil, err
+	}
+	process.ID = processID
+	return process, nil
 }
 
 // NextProcessID returns the next process ID that will be created in the ProcessRegistry contract for the given address.
@@ -203,7 +208,6 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 						log.Errorw(err, "failed to get process while monitoring process creation")
 						continue
 					}
-					process.ID = iter.Event.ProcessId[:]
 					ch <- process
 				}
 			}
@@ -250,7 +254,6 @@ func (c *Contracts) MonitorProcessFinalization(ctx context.Context, interval tim
 						log.Errorw(err, "failed to get process while monitoring process creation")
 						continue
 					}
-					process.ID = iter.Event.ProcessId[:]
 					ch <- process
 				}
 			}
@@ -301,7 +304,6 @@ func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<
 							return // Skip already ended processes
 						}
 						if p.OrganizationId.Cmp(common.Address{}) != 0 {
-							p.ID = event.ProcessId[:]
 							ch2 <- p
 							break
 						}
