@@ -89,7 +89,33 @@ func TestIntegration(t *testing.T) {
 			CostExponent:    circuits.MockCostExp,
 		}
 
-		pid, encryptionKey = createProcess(c, services.Contracts, cli, root, *ballotMode)
+		// first try to reproduce some bugs we had in sequencer in the past
+		{
+			// create a different censusRoot for testing
+			root2, _, _ := createCensus(c, cli, numBallots*2)
+			// createProcessInSequencer should be idempotent, but there was a bug in this. Test it's fixed
+			pid1, encryptionKey1, stateRoot1 := createProcessInSequencer(c, services.Contracts, cli, root2, ballotMode)
+			pid2, encryptionKey2, stateRoot2 := createProcessInSequencer(c, services.Contracts, cli, root2, ballotMode)
+			c.Assert(pid2.String(), qt.Equals, pid1.String())
+			c.Assert(encryptionKey2, qt.DeepEquals, encryptionKey1)
+			c.Assert(stateRoot2.String(), qt.Equals, stateRoot1.String())
+			// a subsequent call to create process, same processID but with different censusRoot
+			// should return the same encryptionKey but yield a different stateRoot.
+			pid3, encryptionKey3, stateRoot3 := createProcessInSequencer(c, services.Contracts, cli, root, ballotMode)
+			c.Assert(pid3.String(), qt.Equals, pid1.String())
+			c.Assert(encryptionKey3, qt.DeepEquals, encryptionKey1)
+			c.Assert(stateRoot3.String(), qt.Not(qt.Equals), stateRoot1.String(),
+				qt.Commentf("sequencer is returning the same state root although process parameters changed"))
+		}
+		// this final call is the good one, with the real censusRoot, should return the correct stateRoot and encryptionKey that
+		// we'll use to create process in contracts
+		var stateRoot *types.HexBytes
+		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, root, ballotMode)
+
+		// now create process in contracts
+		pid2 := createProcessInContracts(c, services.Contracts, root, ballotMode, encryptionKey, stateRoot)
+		c.Assert(pid2.String(), qt.Equals, pid.String())
+
 		// create a timeout for the process creation, if it is greater than the test timeout
 		// use the test timeout
 		createProcessTimeout := time.Minute * 2
