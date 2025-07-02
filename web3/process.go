@@ -216,20 +216,19 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 	return ch, nil
 }
 
-// MonitorProcessFinalization monitors the finalization of processes by polling
+// MonitorProcessStatusChanges monitors the status changes in processes by polling
 // the ProcessRegistry contract every interval. It returns a channel that emits
-// finalized processes. A finalized process is one that has its status set to
-// ProcessStatusEnded.
-func (c *Contracts) MonitorProcessFinalization(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
-	ch := make(chan *types.Process)
+// processes with the old and new status.
+func (c *Contracts) MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error) {
+	updatedProcChan := make(chan *types.ProcessWithStatusChange)
 	go func() {
-		defer close(ch)
+		defer close(updatedProcChan)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
-				log.Infow("exiting monitor process finalization")
+				log.Infow("exiting monitor process updates")
 				return
 			case <-ticker.C:
 				end := c.CurrentBlock()
@@ -251,15 +250,19 @@ func (c *Contracts) MonitorProcessFinalization(ctx context.Context, interval tim
 					}
 					process, err := c.Process(iter.Event.ProcessId[:])
 					if err != nil {
-						log.Errorw(err, "failed to get process while monitoring process creation")
+						log.Errorw(err, "failed to get process while monitoring process status changes")
 						continue
 					}
-					ch <- process
+					updatedProcChan <- &types.ProcessWithStatusChange{
+						Process:   process,
+						OldStatus: types.ProcessStatus(iter.Event.OldStatus),
+						NewStatus: types.ProcessStatus(iter.Event.NewStatus),
+					}
 				}
 			}
 		}
 	}()
-	return ch, nil
+	return updatedProcChan, nil
 }
 
 // MonitorProcessCreationBySubscription monitors the creation of new processes by subscribing to the ProcessRegistry contract.

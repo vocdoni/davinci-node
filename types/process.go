@@ -128,6 +128,13 @@ type Process struct {
 	SequencerStats       SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint"`
 }
 
+// ProcessWithStatusChange extends types.Process to add OldStatus and NewStatus fields
+type ProcessWithStatusChange struct {
+	*Process
+	OldStatus ProcessStatus
+	NewStatus ProcessStatus
+}
+
 type SequencerProcessStats struct {
 	StateTransitionCount        int       `json:"stateTransitionCount" cbor:"0,keyasint,omitempty"`
 	LastStateTransitionDate     time.Time `json:"lastStateTransitionDate" cbor:"1,keyasint,omitempty"`
