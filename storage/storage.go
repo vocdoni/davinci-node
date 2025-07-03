@@ -320,7 +320,6 @@ func (s *Storage) deleteArtifact(prefix, key []byte) error {
 // setArtifact helper function stores any kind of artifact in the storage. It
 // receives the prefix of the key, the key itself and the artifact to store. If
 // the key is not provided, it generates it by hashing the artifact itself.
-// It returns ErrKeyAlreadyExists if the key already exists.
 func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 	// encode the artifact
 	data, err := EncodeArtifact(artifact)
