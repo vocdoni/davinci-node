@@ -12,9 +12,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto"
-	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -67,28 +64,13 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate the elgamal key
-	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
+	// Fetch the elgamal key from storage
+	publicKey, _, err := a.storage.FetchOrGenerateEncryptionKeys(pid)
 	if err != nil {
-		ErrGenericInternalServerError.Withf("could not generate elgamal key: %v", err).Write(w)
+		ErrGenericInternalServerError.Withf("could not fetch or generate encryption keys: %v", err).Write(w)
 		return
 	}
-	x, y := publicKey.Point()
 
-	// Store the encryption keys or retrieve them if they already exist
-	if err := a.storage.SetEncryptionKeys(pid, publicKey, privateKey); err != nil {
-		if errors.Is(err, storage.ErrKeyAlreadyExists) {
-			pub, _, err := a.storage.EncryptionKeys(pid)
-			if err != nil {
-				ErrGenericInternalServerError.Withf("could not retrieve encryption keys: %v", err).Write(w)
-				return
-			}
-			x, y = pub.Point()
-		} else {
-			ErrGenericInternalServerError.Withf("could not store encryption keys: %v", err).Write(w)
-			return
-		}
-	}
 	// prepare inputs for the state ready for the state transition circuit:
 	// - the process ID that should be in the scalar field of the circuit curve
 	// - the census root that should be in encoded according to the arbo format
@@ -124,6 +106,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create the process response
+	x, y := publicKey.Point()
 	pr := &types.ProcessSetupResponse{
 		ProcessID:        pid.Marshal(),
 		EncryptionPubKey: [2]*types.BigInt{(*types.BigInt)(x), (*types.BigInt)(y)},
