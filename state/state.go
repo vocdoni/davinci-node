@@ -6,7 +6,10 @@ import (
 	"slices"
 
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
@@ -78,6 +81,8 @@ type VotesProofs struct {
 // New creates or opens a State stored in the passed database.
 // The processId is used as a prefix for the keys in the database.
 func New(db db.Database, processId *big.Int) (*State, error) {
+	// the process ID must be in the scalar field of the circuit curve
+	processId = crypto.BigToFF(circuits.StateTransitionCurve.ScalarField(), processId)
 	pdb := prefixeddb.NewPrefixedDatabase(db, processId.Bytes())
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     pdb,
@@ -109,6 +114,32 @@ func LoadOnRoot(db db.Database, processId, root *big.Int) (*State, error) {
 		return nil, err
 	}
 	return state, nil
+}
+
+// CalculateInitialRoot returns the root of the tree that would result from initializing
+// a state with the passed parameters. It uses an ephemereal tree, nothing is written down to storage.
+func CalculateInitialRoot(processID, censusRoot *big.Int, ballotMode *types.BallotMode, publicKey ecc.Point) (*big.Int, error) {
+	// Initialize the state in a memDB, just to calculate stateRoot
+	st, err := New(memdb.New(), processID)
+	if err != nil {
+		return nil, fmt.Errorf("could not create state: %v", err)
+	}
+
+	defer func() {
+		if err := st.Close(); err != nil {
+			log.Warnw("failed to close state", "error", err)
+		}
+	}()
+
+	// Initialize the state with the census root, ballot mode and the encryption key
+	if err := st.Initialize(
+		censusRoot,
+		circuits.BallotModeToCircuit(ballotMode),
+		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
+		return nil, fmt.Errorf("could not initialize state: %v", err)
+	}
+
+	return st.RootAsBigInt()
 }
 
 // Initialize creates a new State, initialized with the passed parameters.
