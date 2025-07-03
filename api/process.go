@@ -9,9 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/config"
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -72,36 +70,10 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// prepare inputs for the state ready for the state transition circuit:
-	// - the process ID that should be in the scalar field of the circuit curve
-	// - the census root that should be in encoded according to the arbo format
-	ffPID := crypto.BigToFF(circuits.StateTransitionCurve.ScalarField(), pid.BigInt())
-	bigCensusRoot := arbo.BytesToBigInt(p.CensusRoot)
-	// Initialize the state
-	st, err := state.New(a.storage.StateDB(), ffPID)
+	// - the census root must be encoded according to the arbo format
+	root, err := state.CalculateInitialRoot(pid.BigInt(), arbo.BytesToBigInt(p.CensusRoot), p.BallotMode, publicKey)
 	if err != nil {
-		ErrGenericInternalServerError.Withf("could not create state: %v", err).Write(w)
-		return
-	}
-	defer func() {
-		if err := st.Close(); err != nil {
-			log.Warnw("failed to close state", "error", err)
-		}
-	}()
-
-	// Initialize the state with the census root and the encryption key
-	// If the state is already initialized, we ignore the error and continue with the process setup
-	if err := st.Initialize(bigCensusRoot,
-		circuits.BallotModeToCircuit(p.BallotMode),
-		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
-		if !errors.Is(err, state.ErrStateAlreadyInitialized) {
-			ErrGenericInternalServerError.Withf("could not initialize state: %v", err).Write(w)
-			return
-		}
-	}
-
-	root, err := st.RootAsBigInt()
-	if err != nil {
-		ErrGenericInternalServerError.Withf("could not get state root: %v", err).Write(w)
+		ErrGenericInternalServerError.Withf("could not calculate state root: %v", err).Write(w)
 		return
 	}
 
