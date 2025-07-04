@@ -72,51 +72,58 @@ func (s *Sequencer) processAvailableBallots() bool {
 	processed := false
 
 	for {
-		// Try to fetch the next ballot
-		ballot, key, err := s.stg.NextBallot()
-		if err != nil {
-			if !errors.Is(err, storage.ErrNoMoreElements) {
-				log.Errorw(err, "failed to get next ballot")
-			}
+		select {
+		case <-s.ctx.Done():
+			log.Infow("ballot processor stopped")
 			return processed
-		}
-
-		// Skip processing if the process is not registered
-		if !s.ExistsProcessID(ballot.ProcessID) {
-			log.Debugw("skipping ballot, process not registered", "processID", ballot.ProcessID.String())
-			continue
-		}
-
-		log.Infow("processing ballot",
-			"address", ballot.Address.String(),
-			"queued", s.stg.TotalPendingBallots(),
-			"voteID", hex.EncodeToString(ballot.VoteID),
-			"processID", fmt.Sprintf("%x", ballot.ProcessID),
-		)
-
-		verifiedBallot, err := s.processBallot(ballot)
-		if err != nil {
-			log.Warnw("invalid ballot",
-				"error", err.Error(),
-				"ballot", ballot.String(),
-			)
-			if err := s.stg.RemoveBallot(ballot.ProcessID, key); err != nil {
-				log.Warnw("failed to remove invalid ballot", "error", err.Error())
+		default:
+			// Continue processing ballots
+			// Try to fetch the next ballot
+			ballot, key, err := s.stg.NextBallot()
+			if err != nil {
+				if !errors.Is(err, storage.ErrNoMoreElements) {
+					log.Errorw(err, "failed to get next ballot")
+				}
+				return processed
 			}
-			continue
-		}
 
-		// Mark the ballot as processed
-		if err := s.stg.MarkBallotDone(key, verifiedBallot); err != nil {
-			log.Warnw("failed to mark ballot as processed",
-				"error", err.Error(),
+			// Skip processing if the process is not registered
+			if !s.ExistsProcessID(ballot.ProcessID) {
+				log.Debugw("skipping ballot, process not registered", "processID", ballot.ProcessID.String())
+				continue
+			}
+
+			log.Infow("processing ballot",
 				"address", ballot.Address.String(),
+				"queued", s.stg.TotalPendingBallots(),
+				"voteID", hex.EncodeToString(ballot.VoteID),
 				"processID", fmt.Sprintf("%x", ballot.ProcessID),
 			)
-			continue
-		}
 
-		processed = true
+			verifiedBallot, err := s.processBallot(ballot)
+			if err != nil {
+				log.Warnw("invalid ballot",
+					"error", err.Error(),
+					"ballot", ballot.String(),
+				)
+				if err := s.stg.RemoveBallot(ballot.ProcessID, key); err != nil {
+					log.Warnw("failed to remove invalid ballot", "error", err.Error())
+				}
+				continue
+			}
+
+			// Mark the ballot as processed
+			if err := s.stg.MarkBallotDone(key, verifiedBallot); err != nil {
+				log.Warnw("failed to mark ballot as processed",
+					"error", err.Error(),
+					"address", ballot.Address.String(),
+					"processID", fmt.Sprintf("%x", ballot.ProcessID),
+				)
+				continue
+			}
+
+			processed = true
+		}
 	}
 }
 

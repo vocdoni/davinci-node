@@ -6,6 +6,7 @@ import (
 	"time"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/util"
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/db/metadb"
 )
@@ -183,6 +184,7 @@ func TestRecoverClearsAllReservations(t *testing.T) {
 
 // Helper function to set test reservations directly
 func (s *Storage) setTestReservation(prefix, key, data []byte) error {
+	defer util.HandleClosedDBPanic()
 	wTx := s.db.WriteTx()
 	defer wTx.Discard()
 

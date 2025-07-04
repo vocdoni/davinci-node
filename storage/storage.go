@@ -66,6 +66,7 @@ import (
 
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage/census"
+	"github.com/vocdoni/davinci-node/util"
 	"go.vocdoni.io/dvote/db"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
@@ -202,15 +203,7 @@ func (s *Storage) setAllProcessesAsNotAcceptingVotes() error {
 func (s *Storage) Close() {
 	s.cancel() // Cancel the context to stop any ongoing operations
 	// recover panic to check if the database is already closed
-	defer func() {
-		if r := recover(); r != nil {
-			if strings.Contains(fmt.Sprintf("%v", r), "closed") {
-				log.Warn("storage database already closed")
-				return
-			}
-			log.Errorf("storage close panic: %v", r)
-		}
-	}()
+	defer util.HandleClosedDBPanic()
 	if err := s.db.Close(); err != nil {
 		fmt.Printf("failed to close storage: %v", err)
 	}
@@ -247,6 +240,7 @@ func (s *Storage) releaseStaleReservations(maxAge time.Duration) error {
 }
 
 func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Duration) error {
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
 	defer wTx.Discard()
 	var staleKeys [][]byte
@@ -291,6 +285,7 @@ func (s *Storage) setReservation(prefix, key []byte) error {
 	if err != nil {
 		return err
 	}
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
 	defer wTx.Discard()
 	if _, err := wTx.Get(key); err == nil {
@@ -303,12 +298,14 @@ func (s *Storage) setReservation(prefix, key []byte) error {
 }
 
 func (s *Storage) isReserved(prefix, key []byte) bool {
+	defer util.HandleClosedDBPanic()
 	_, err := prefixeddb.NewPrefixedReader(s.db, prefix).Get(key)
 	return err == nil
 }
 
 func (s *Storage) deleteArtifact(prefix, key []byte) error {
 	// instance a write transaction with the prefix provided
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
 	defer wTx.Discard()
 	if err := wTx.Delete(key); err != nil {
@@ -333,6 +330,7 @@ func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 	}
 
 	// instance a write transaction with the prefix provided
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
 	defer wTx.Discard()
 
@@ -351,6 +349,7 @@ func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 func (s *Storage) getArtifact(prefix []byte, key []byte, out any) error {
 	var data []byte
 	var err error
+	defer util.HandleClosedDBPanic()
 	db := prefixeddb.NewPrefixedDatabase(s.db, prefix)
 	if key != nil {
 		data, err = db.Get(key)
@@ -378,6 +377,7 @@ func (s *Storage) getArtifact(prefix []byte, key []byte, out any) error {
 
 // listArtifacts retrieves all the keys for a given prefix.
 func (s *Storage) listArtifacts(prefix []byte) ([][]byte, error) {
+	defer util.HandleClosedDBPanic()
 	var keys [][]byte
 	if err := prefixeddb.NewPrefixedReader(s.db, prefix).Iterate(nil, func(k, _ []byte) bool {
 		kcopy := make([]byte, len(k))
@@ -428,6 +428,7 @@ func (s *Storage) monitorStaleReservations() {
 // This method should be called after locking the global lock to ensure
 // thread safety.
 func (s *Storage) recoverNullifiers() error {
+	defer util.HandleClosedDBPanic()
 	// Recover nullifiers from verified ballots
 	var outerErr error
 	verifiedBallotsReader := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)

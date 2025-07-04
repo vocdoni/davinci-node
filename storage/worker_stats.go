@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 
+	"github.com/vocdoni/davinci-node/util"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
@@ -53,6 +54,7 @@ func (s *Storage) ListWorkerJobCount() (map[string][2]int64, error) {
 
 	result := make(map[string][2]int64)
 
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, workerStatsPrefix)
 	err := pr.Iterate(nil, func(k, v []byte) bool {
 		var stats WorkerStats

@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/util"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
@@ -47,6 +48,7 @@ func (s *Storage) voteIDStatusUnsafe(processID, voteID []byte) (int, error) {
 	key := createVoteIDStatusKey(processID, voteID)
 
 	// Get the status value
+	defer util.HandleClosedDBPanic()
 	reader := prefixeddb.NewPrefixedReader(s.db, voteIDStatusPrefix)
 	statusBytes, err := reader.Get(key)
 	if err != nil || statusBytes == nil {
@@ -82,6 +84,7 @@ func (s *Storage) MarkVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
 // This method assumes the caller already holds the globalLock.
 func (s *Storage) markVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
 	// Use a transaction for better atomicity
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), voteIDStatusPrefix)
 	defer wTx.Discard()
 
@@ -109,6 +112,7 @@ func (s *Storage) MarkProcessVoteIDsTimeout(processID []byte) (int, error) {
 // markProcessVoteIDsTimeoutUnsafe marks all unsettled vote IDs for a process as timeout
 // without acquiring locks. This method assumes the caller already holds the globalLock.
 func (s *Storage) markProcessVoteIDsTimeout(processID []byte) (int, error) {
+	defer util.HandleClosedDBPanic()
 	prefixedDB := prefixeddb.NewPrefixedDatabase(s.db, voteIDStatusPrefix)
 	wTx := prefixedDB.WriteTx()
 	defer wTx.Discard()
@@ -153,6 +157,7 @@ func (s *Storage) markProcessVoteIDsTimeout(processID []byte) (int, error) {
 
 // setVoteIDStatus is an internal helper to set the status of a vote ID.
 func (s *Storage) setVoteIDStatus(processID, voteID []byte, status int) error {
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), voteIDStatusPrefix)
 	defer wTx.Discard()
 

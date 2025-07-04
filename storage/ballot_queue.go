@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
@@ -40,6 +41,7 @@ func (s *Storage) PushBallot(b *Ballot) error {
 	if err != nil {
 		return fmt.Errorf("encode ballot: %w", err)
 	}
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotPrefix)
 	if _, err := wTx.Get(b.VoteID); err == nil {
 		wTx.Discard()
@@ -92,6 +94,7 @@ func (s *Storage) NextBallotForWorker() (*Ballot, []byte, error) {
 }
 
 func (s *Storage) nextBallot() (*Ballot, []byte, error) {
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	var chosenKey, chosenVal []byte
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
@@ -199,6 +202,7 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 	if err != nil {
 		return fmt.Errorf("encode verified ballot: %w", err)
 	}
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedBallotPrefix)
 	// key with processID as prefix + unique portion from original key
 	combKey := append(slices.Clone(vb.ProcessID), voteID...)
@@ -235,6 +239,7 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 		return []*VerifiedBallot{}, nil, nil
 	}
 
+	defer util.HandleClosedDBPanic()
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	var res []*VerifiedBallot
 	var keys [][]byte
@@ -299,6 +304,7 @@ func (s *Storage) CountPendingBallots() int {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
+	defer util.HandleClosedDBPanic()
 	rd := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	count := 0
 	if err := rd.Iterate(nil, func(k, _ []byte) bool {
@@ -320,6 +326,7 @@ func (s *Storage) CountVerifiedBallots(processID []byte) int {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
+	defer util.HandleClosedDBPanic()
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	count := 0
 	if err := rd.Iterate(processID, func(k, _ []byte) bool {
@@ -455,6 +462,7 @@ func (s *Storage) PushBallotBatch(abb *AggregatorBallotBatch) error {
 	if err != nil {
 		return fmt.Errorf("encode batch: %w", err)
 	}
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), aggregBatchPrefix)
 	key := hashKey(val)
 	if err := wTx.Set(append(slices.Clone(abb.ProcessID), key...), val); err != nil {
@@ -493,6 +501,7 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	val, err := pr.Get(key)
 	if err != nil {
@@ -571,6 +580,7 @@ func (s *Storage) NextBallotBatch(processID []byte) (*AggregatorBallotBatch, []b
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	var chosenKey, chosenVal []byte
 	if err := pr.Iterate(processID, func(k, v []byte) bool {
@@ -629,6 +639,7 @@ func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 	}
 
 	// initialize the write transaction over the state transition prefix
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), stateTransitionPrefix)
 
 	// create the key by hashing the value
@@ -665,6 +676,7 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	// initialize the read transaction over the state transition prefix
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
 	var chosenKey, chosenVal []byte
 	if err := pr.Iterate(processID, func(k, v []byte) bool {
@@ -706,6 +718,7 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 	defer s.globalLock.Unlock()
 
 	// Get the state transition batch before deleting it to extract vote IDs
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
 	val, err := pr.Get(k)
 	if err != nil {
@@ -788,6 +801,7 @@ func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
 	}
 
 	// initialize the write transaction over the results prefix
+	defer util.HandleClosedDBPanic()
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedResultPrefix)
 	defer wTx.Discard()
 
@@ -815,6 +829,7 @@ func (s *Storage) NextVerifiedResults() (*VerifiedResults, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, verifiedResultPrefix)
 	var chosenVal []byte
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
@@ -845,6 +860,7 @@ func (s *Storage) MarkVerifiedResultsDone(processID []byte) error {
 	defer s.globalLock.Unlock()
 
 	// initialize the read transaction over the results prefix
+	defer util.HandleClosedDBPanic()
 	tx := s.db.WriteTx()
 	pr := prefixeddb.NewPrefixedWriteTx(tx, verifiedResultPrefix)
 	// remove the value for the given processID
@@ -865,6 +881,7 @@ func (s *Storage) HasVerifiedResults(processID []byte) bool {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
+	defer util.HandleClosedDBPanic()
 	pr := prefixeddb.NewPrefixedReader(s.db, verifiedResultPrefix)
 	_, err := pr.Get(processID)
 	return err == nil

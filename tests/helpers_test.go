@@ -61,10 +61,17 @@ type Services struct {
 
 // setupAPI creates and starts a new API server for testing.
 // It returns the server port.
-func setupAPI(ctx context.Context, db *storage.Storage) (*service.APIService, error) {
+func setupAPI(
+	ctx context.Context,
+	db *storage.Storage,
+	workerSeed string,
+	workerTimeout time.Duration,
+	banRules *api.BanRules,
+) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
 	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", false)
+	api.SetWorkerConfig(workerSeed, workerTimeout, banRules)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
 	}
@@ -234,14 +241,13 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
-func NewTestService(t *testing.T, ctx context.Context) *Services {
+func NewTestService(t *testing.T, ctx context.Context, workerSecret string, workerTimeout time.Duration, banRules *api.BanRules) *Services {
 	// Initialize the web3 contracts
 	contracts := setupWeb3(t, ctx)
 
 	kv, err := metadb.New(db.TypePebble, t.TempDir())
 	qt.Assert(t, err, qt.IsNil)
 	stg := storage.New(kv)
-	t.Cleanup(stg.Close)
 
 	services := &Services{
 		Storage:   stg,
@@ -255,7 +261,6 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	if err := vp.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
-	t.Cleanup(vp.Stop)
 	services.Sequencer = vp.Sequencer
 
 	// Start process monitor
@@ -263,14 +268,18 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	if err := pm.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
-	t.Cleanup(pm.Stop)
 
 	// Start API service
-	api, err := setupAPI(ctx, stg)
+	api, err := setupAPI(ctx, stg, workerSecret, workerTimeout, banRules)
 	qt.Assert(t, err, qt.IsNil)
-	t.Cleanup(api.Stop)
 	services.API = api
 
+	t.Cleanup(func() {
+		api.Stop()
+		pm.Stop()
+		vp.Stop()
+		stg.Close()
+	})
 	return services
 }
 
@@ -338,10 +347,10 @@ func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
 		Name:        fmt.Sprintf("Vocdoni test %x", orgAddr[:4]),
 		MetadataURI: "https://vocdoni.io",
 	})
-	c.Assert(err, qt.IsNil)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to create organization: %v", err))
 
 	err = contracts.WaitTx(txHash, time.Second*30)
-	c.Assert(err, qt.IsNil)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to wait for organization creation transaction: %v", err))
 	return orgAddr
 }
 
@@ -386,6 +395,7 @@ func createProcessInContracts(c *qt.C, contracts *web3.Contracts,
 ) *types.ProcessID {
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
 		Status:         0,
+		ID:             processID.Marshal(),
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKey,
 		StateRoot:      stateRoot.BigInt(),
