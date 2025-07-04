@@ -23,9 +23,10 @@ services:
       - "traefik.http.routers.sequencer.tls.certresolver=le"
       - "traefik.http.services.sequencer.loadbalancer.server.port=${DAVINCI_API_PORT:-9090}"
       - "traefik.http.routers.sequencer.tls.domains[0].main=${DOMAIN}"
+      - "com.centurylinklabs.watchtower.enable=true"
 
   traefik:
-    image: traefik:3.4.1
+    image: traefik:latest
     ports:
       - "80:80"
       - "443:443"
@@ -45,6 +46,7 @@ services:
       - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.le.acme.email=root@vocdoni.io"
       - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "com.centurylinklabs.watchtower.enable=true"
     restart: ${RESTART:-unless-stopped}
     depends_on:
       - sequencer
