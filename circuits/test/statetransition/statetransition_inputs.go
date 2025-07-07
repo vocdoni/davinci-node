@@ -13,9 +13,9 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	aggregatortest "github.com/vocdoni/davinci-node/circuits/test/aggregator"
+	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
-	"go.vocdoni.io/dvote/db/metadb"
 )
 
 // StateTransitionTestResults struct includes relevant data after StateTransitionCircuit

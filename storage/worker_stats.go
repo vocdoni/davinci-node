@@ -3,7 +3,7 @@ package storage
 import (
 	"fmt"
 
-	"go.vocdoni.io/dvote/db/prefixeddb"
+	"github.com/vocdoni/davinci-node/db/prefixeddb"
 )
 
 var workerStatsPrefix = []byte("ws/")

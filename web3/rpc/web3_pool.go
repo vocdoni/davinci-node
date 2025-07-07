@@ -25,7 +25,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	"go.vocdoni.io/dvote/log"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 const (

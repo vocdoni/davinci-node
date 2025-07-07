@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
-	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
 // Vote ID status constants
