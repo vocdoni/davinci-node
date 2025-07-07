@@ -9,7 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/internal/dbtest"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
-	"go.vocdoni.io/dvote/util"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 func TestWriteTx(t *testing.T) {

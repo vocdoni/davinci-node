@@ -8,9 +8,9 @@ import (
 	"slices"
 
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
-	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
 /*

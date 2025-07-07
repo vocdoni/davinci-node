@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
-	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
 // cleanupEndedProcess removes all ballots, batches, state transitions and their

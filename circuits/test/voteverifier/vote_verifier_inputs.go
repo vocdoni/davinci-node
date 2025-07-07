@@ -19,8 +19,8 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 	primitivestest "github.com/vocdoni/gnark-crypto-primitives/testutil"
-	"go.vocdoni.io/dvote/util"
 )
 
 // VoteVerifierTestResults struct includes relevant data after VerifyVoteCircuit

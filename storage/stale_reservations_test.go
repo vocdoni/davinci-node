@@ -6,8 +6,8 @@ import (
 	"time"
 
 	qt "github.com/frankban/quicktest"
-	"go.vocdoni.io/dvote/db"
-	"go.vocdoni.io/dvote/db/metadb"
+	"github.com/vocdoni/davinci-node/db"
+	"github.com/vocdoni/davinci-node/db/metadb"
 )
 
 func TestReleaseStaleReservations(t *testing.T) {

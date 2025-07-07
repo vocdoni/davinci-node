@@ -25,7 +25,7 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 
-	"go.vocdoni.io/dvote/db/metadb"
+	"github.com/vocdoni/davinci-node/db/metadb"
 )
 
 const falseStr = "false"

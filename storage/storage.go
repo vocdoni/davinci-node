@@ -64,10 +64,10 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
+	"github.com/vocdoni/davinci-node/db"
+	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage/census"
-	"go.vocdoni.io/dvote/db"
-	"go.vocdoni.io/dvote/db/prefixeddb"
 )
 
 var (
