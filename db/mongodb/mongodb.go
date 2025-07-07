@@ -148,7 +148,11 @@ func (tx *WriteTx) Iterate(prefix []byte, callback func(key, value []byte) bool)
 	if err != nil {
 		return err
 	}
-	defer cursor.Close(context.TODO())
+	defer func() {
+		if err := cursor.Close(context.TODO()); err != nil {
+			log.Errorw(err, "error closing cursor")
+		}
+	}()
 
 	for cursor.Next(context.TODO()) {
 		var kv KeyVal

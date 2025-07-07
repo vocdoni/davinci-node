@@ -52,11 +52,13 @@ func TestIterate(t *testing.T, d db.Database) {
 
 	wTx := d.WriteTx()
 	defer wTx.Discard()
-	for i := 0; i < prefix0NumKeys; i++ {
-		wTx.Set(append(prefix0, []byte(strconv.Itoa(i))...), []byte(strconv.Itoa(i)))
+	for i := range prefix0NumKeys {
+		err := wTx.Set(append(prefix0, []byte(strconv.Itoa(i))...), []byte(strconv.Itoa(i)))
+		qt.Assert(t, err, qt.IsNil)
 	}
-	for i := 0; i < prefix1NumKeys; i++ {
-		wTx.Set(append(prefix1, []byte(strconv.Itoa(i))...), []byte(strconv.Itoa(i)))
+	for i := range prefix1NumKeys {
+		err := wTx.Set(append(prefix1, []byte(strconv.Itoa(i))...), []byte(strconv.Itoa(i)))
+		qt.Assert(t, err, qt.IsNil)
 	}
 	err := wTx.Commit()
 	qt.Assert(t, err, qt.IsNil)
@@ -149,8 +151,9 @@ func TestWriteTxApply(t *testing.T, d db.Database) {
 	wTx0 := d.WriteTx()
 	defer wTx0.Discard()
 
-	for i := 0; i < 10; i++ {
-		wTx0.Set([]byte(strconv.Itoa(i)), []byte(strconv.Itoa(i)))
+	for i := range 10 {
+		err := wTx0.Set([]byte(strconv.Itoa(i)), []byte(strconv.Itoa(i)))
+		qt.Assert(t, err, qt.IsNil)
 	}
 
 	wTx1 := d.WriteTx()
