@@ -1,4 +1,4 @@
-package api
+package workers
 
 import (
 	"context"
@@ -9,29 +9,29 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 )
 
-// BanRules defines the rules for banning workers. It includes the duration
-// for which a worker is banned and the maximum number of consecutive failed
-// jobs before a worker is banned.
-type BanRules struct {
+// WorkerBanRules defines the rules for banning workers. It includes the
+// duration for which a worker is banned and the maximum number of consecutive
+// failed jobs before a worker is banned.
+type WorkerBanRules struct {
 	BanTimeout          time.Duration // Duration for which the worker is banned
 	FailuresToGetBanned int           // Maximum consecutive failed jobs before banning
 }
 
-// DefaultBanRules provides the default ban rules for workers
-var DefaultBanRules = &BanRules{
+// DefaultWorkerBanRules provides the default ban rules for workers
+var DefaultWorkerBanRules = &WorkerBanRules{
 	BanTimeout:          3 * time.Minute, // Ban for 3 minutes
 	FailuresToGetBanned: 5,               // 3 consecutive failed jobs
 }
 
-// worker represents a worker that processes jobs
-type worker struct {
+// Worker represents a Worker that processes jobs
+type Worker struct {
 	ID               string
 	consecutiveFails int64 // atomic counter
 	bannedUntilNanos int64 // atomic Unix nanoseconds, 0 = not banned
 }
 
-// isBanned checks if the worker is banned based on the provided rules
-func (w *worker) isBanned(rules *BanRules) bool {
+// IsBanned checks if the worker is banned based on the provided rules
+func (w *Worker) IsBanned(rules *WorkerBanRules) bool {
 	if rules == nil {
 		return false // no rules provided, not banned
 	}
@@ -48,8 +48,8 @@ func (w *worker) isBanned(rules *BanRules) bool {
 	return time.Now().UnixNano() < bannedUntil
 }
 
-// getBannedUntil returns the ban expiration time as a time.Time
-func (w *worker) getBannedUntil() time.Time {
+// GetBannedUntil returns the ban expiration time as a time.Time
+func (w *Worker) GetBannedUntil() time.Time {
 	nanos := atomic.LoadInt64(&w.bannedUntilNanos)
 	if nanos == 0 {
 		return time.Time{} // zero time
@@ -57,8 +57,8 @@ func (w *worker) getBannedUntil() time.Time {
 	return time.Unix(0, nanos)
 }
 
-// setBannedUntil sets the ban expiration time atomically
-func (w *worker) setBannedUntil(t time.Time) {
+// SetBannedUntil sets the ban expiration time atomically
+func (w *Worker) SetBannedUntil(t time.Time) {
 	var nanos int64
 	if !t.IsZero() {
 		nanos = t.UnixNano()
@@ -66,48 +66,48 @@ func (w *worker) setBannedUntil(t time.Time) {
 	atomic.StoreInt64(&w.bannedUntilNanos, nanos)
 }
 
-// getConsecutiveFails returns the current consecutive failure count
-func (w *worker) getConsecutiveFails() int {
+// SetConsecutiveFails returns the current consecutive failure count
+func (w *Worker) SetConsecutiveFails() int {
 	return int(atomic.LoadInt64(&w.consecutiveFails))
 }
 
-// workerManager manages workers and their ban status. It tracks workers, bans
+// WorkerManager manages workers and their ban status. It tracks workers, bans
 // them based on rules, and resets their status after the ban period.
-type workerManager struct {
+type WorkerManager struct {
 	workers        sync.Map
 	innerCtx       context.Context
 	cancelFunc     context.CancelFunc
-	rules          *BanRules
+	rules          *WorkerBanRules
 	tickerInterval time.Duration
 }
 
-// newWorkerManager creates a new worker manager with the specified ban rules.
+// NewWorkerManager creates a new worker manager with the specified ban rules.
 // It initializes the worker map and sets up the context for managing workers.
 // An optional ticker interval can be provided; defaults to 10 seconds if not specified.
-func newWorkerManager(rules *BanRules, tickerInterval ...time.Duration) *workerManager {
+func NewWorkerManager(rules *WorkerBanRules, tickerInterval ...time.Duration) *WorkerManager {
 	interval := 10 * time.Second // default production interval
 	if len(tickerInterval) > 0 {
 		interval = tickerInterval[0]
 	}
-	banRules := DefaultBanRules
+	banRules := DefaultWorkerBanRules
 	if rules != nil {
 		banRules = rules
 	}
-	return &workerManager{
+	return &WorkerManager{
 		workers:        sync.Map{},
 		rules:          banRules,
 		tickerInterval: interval,
 	}
 }
 
-// start initializes the worker manager, setting up a context for managing
+// Start initializes the worker manager, setting up a context for managing
 // workers. It starts a goroutine that periodically checks for banned workers,
 // bans them if necessary, and resets their status after the ban period.
-func (wm *workerManager) start(ctx context.Context) {
-	log.Infow("Starting worker manager",
-		"banTimeout", wm.rules.BanTimeout,
+func (wm *WorkerManager) Start(ctx context.Context) {
+	log.Infow("starting worker manager",
+		"banTimeout", wm.rules.BanTimeout.String(),
 		"failuresToGetBanned", wm.rules.FailuresToGetBanned,
-		"tickerInterval", wm.tickerInterval)
+		"tickerInterval", wm.tickerInterval.String())
 	wm.innerCtx, wm.cancelFunc = context.WithCancel(ctx)
 
 	go func() {
@@ -118,31 +118,31 @@ func (wm *workerManager) start(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				// Stop the worker manager when the context is done
-				wm.stop()
+				wm.Stop()
 				return
 			case <-ticker.C:
-				banned := wm.bannedWorkers()
+				banned := wm.BannedWorkers()
 				for _, w := range banned {
-					bannedUntil := w.getBannedUntil()
+					bannedUntil := w.GetBannedUntil()
 					if bannedUntil.IsZero() {
 						// Ban the worker for the configured timeout
-						wm.setBanDuration(w.ID)
+						wm.SetBanDuration(w.ID)
 					} else if time.Now().After(bannedUntil) {
 						// Unban the worker after the ban period
-						wm.resetWorker(w.ID)
+						wm.ResetWorker(w.ID)
 					}
 				}
 			}
 		}
 	}()
-	log.Info("Worker manager started")
+	log.Info("worker manager started")
 }
 
-// stop stops the worker manager, cancels the context, and clears all workers.
+// Stop stops the worker manager, cancels the context, and clears all workers.
 // It ensures that all workers are removed and no further actions are taken.
 // This is typically called when the application is shutting down or when
 // the worker manager is no longer needed.
-func (wm *workerManager) stop() {
+func (wm *WorkerManager) Stop() {
 	if wm.cancelFunc != nil {
 		wm.cancelFunc()
 	}
@@ -153,39 +153,39 @@ func (wm *workerManager) stop() {
 	})
 }
 
-// addWorker adds a new worker to the manager. If the worker already exists,
+// AddWorker adds a new worker to the manager. If the worker already exists,
 // it returns the existing worker without adding a new one. If it's a new
 // worker, it initializes a new worker instance, stores it in the worker map,
 // and returns the worker instance.
-func (wm *workerManager) addWorker(id string) *worker {
-	if w, exists := wm.getWorker(id); exists {
+func (wm *WorkerManager) AddWorker(id string) *Worker {
+	if w, exists := wm.GetWorker(id); exists {
 		log.Warnf("Worker %s already exists, not adding again", id)
 		// Worker already exists, no need to add again
 		return w
 	}
-	w := &worker{ID: id}
+	w := &Worker{ID: id}
 	wm.workers.Store(id, w)
 	log.Debugf("Worker added: %s", id)
 	return w
 }
 
-// getWorker retrieves a worker by its ID. If the worker exists, it returns
+// GetWorker retrieves a worker by its ID. If the worker exists, it returns
 // the worker instance and a boolean indicating success. If the worker does
 // not exist, it returns nil and false.
-func (wm *workerManager) getWorker(id string) (*worker, bool) {
+func (wm *WorkerManager) GetWorker(id string) (*Worker, bool) {
 	if w, ok := wm.workers.Load(id); ok {
-		return w.(*worker), true
+		return w.(*Worker), true
 	}
 	return nil, false
 }
 
-// bannedWorkers returns a slice of workers that are currently banned based on
+// BannedWorkers returns a slice of workers that are currently banned based on
 // the ban rules. It iterates through all workers in the manager, checks if
 // they are banned according to the rules, and collects them in a slice.
-func (wm *workerManager) bannedWorkers() []*worker {
-	var banned []*worker
+func (wm *WorkerManager) BannedWorkers() []*Worker {
+	var banned []*Worker
 	wm.workers.Range(func(key, value any) bool {
-		if w, ok := value.(*worker); ok && w.isBanned(wm.rules) {
+		if w, ok := value.(*Worker); ok && w.IsBanned(wm.rules) {
 			banned = append(banned, w)
 		}
 		return true // continue iteration
@@ -194,39 +194,39 @@ func (wm *workerManager) bannedWorkers() []*worker {
 	return banned
 }
 
-// resetWorker resets the worker's status by creating a new worker instance
+// ResetWorker resets the worker's status by creating a new worker instance
 // with the same ID. This effectively clears the worker's consecutive fails
 // and banned status, allowing the worker to be reused without any previous
 // restrictions. It is typically called when a worker has been banned and
 // the ban period has expired, or when a worker needs to be reset for any
 // reason.
-func (wm *workerManager) resetWorker(id string) {
-	if _, ok := wm.getWorker(id); ok {
-		wm.workers.Store(id, &worker{ID: id})
+func (wm *WorkerManager) ResetWorker(id string) {
+	if _, ok := wm.GetWorker(id); ok {
+		wm.workers.Store(id, &Worker{ID: id})
 		log.Debugf("Worker %s reset", id)
 	}
 }
 
-// setBanDuration sets the ban duration for a worker. It updates the worker's
+// SetBanDuration sets the ban duration for a worker. It updates the worker's
 // ban expiration time to the current time plus the ban timeout defined in the
 // rules. This effectively bans the worker for the specified duration,
 // preventing it from processing jobs until the ban period expires.
-func (wm *workerManager) setBanDuration(workerID string) {
-	if w, ok := wm.getWorker(workerID); ok {
+func (wm *WorkerManager) SetBanDuration(workerID string) {
+	if w, ok := wm.GetWorker(workerID); ok {
 		banTime := time.Now().Add(wm.rules.BanTimeout)
-		w.setBannedUntil(banTime)
+		w.SetBannedUntil(banTime)
 		log.Warnf("Worker %s banned until %s", workerID, banTime)
 	}
 }
 
-// workerResult updates the worker's status based on the result of a job.
+// WorkerResult updates the worker's status based on the result of a job.
 // If the job was successful, it resets the worker's consecutive fails to zero.
 // If the job failed, it increments the worker's consecutive fails count.
 // This method uses atomic operations to ensure thread safety.
-func (wm *workerManager) workerResult(id string, success bool) {
-	w, ok := wm.getWorker(id)
+func (wm *WorkerManager) WorkerResult(id string, success bool) {
+	w, ok := wm.GetWorker(id)
 	if !ok {
-		w = &worker{ID: id}
+		w = &Worker{ID: id}
 		wm.workers.Store(id, w)
 	}
 

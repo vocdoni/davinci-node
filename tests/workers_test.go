@@ -13,6 +13,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/workers"
 )
 
 func TestWorkerIntegration(t *testing.T) {
@@ -24,7 +25,7 @@ func TestWorkerIntegration(t *testing.T) {
 	workerBanTimeout := 30 * time.Second // timeout for worker ban
 	// Setup
 	ctx := t.Context()
-	services := NewTestService(t, ctx, testSeed, workerTimeout, &api.BanRules{
+	services := NewTestService(t, ctx, testSeed, workerTimeout, &workers.WorkerBanRules{
 		BanTimeout:          workerBanTimeout,
 		FailuresToGetBanned: failedJobsToGetBanned,
 	})
@@ -39,8 +40,9 @@ func TestWorkerIntegration(t *testing.T) {
 	var (
 		pid           *types.ProcessID
 		encryptionKey *types.EncryptionKey
+		stateRoot     *types.HexBytes
 		ballotMode    *types.BallotMode
-		root          []byte
+		censusRoot    []byte
 	)
 
 	workerAddr := fmt.Sprintf("0x%s", util.RandomHex(20))
@@ -65,7 +67,7 @@ func TestWorkerIntegration(t *testing.T) {
 	c.Run("create process", func(c *qt.C) {
 		// Create census with numBallot participants
 		var participants []*api.CensusParticipant
-		root, participants, signers = createCensus(c, cli, numBallots)
+		censusRoot, participants, signers = createCensus(c, cli, numBallots)
 		c.Assert(participants, qt.Not(qt.IsNil))
 		c.Assert(signers, qt.Not(qt.IsNil))
 		c.Assert(len(participants), qt.Equals, numBallots)
@@ -80,7 +82,9 @@ func TestWorkerIntegration(t *testing.T) {
 			CostFromWeight:  circuits.MockCostFromWeight == 1,
 			CostExponent:    circuits.MockCostExp,
 		}
-		pid, encryptionKey = createProcess(c, services.Contracts, cli, root, *ballotMode)
+		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, censusRoot, ballotMode)
+		pid2 := createProcessInContracts(c, services.Contracts, censusRoot, ballotMode, encryptionKey, stateRoot)
+		c.Assert(pid2.String(), qt.Equals, pid.String())
 
 		// Wait for the process to be registered
 	CreateProcessLoop:
@@ -120,7 +124,7 @@ func TestWorkerIntegration(t *testing.T) {
 			// generate a vote for the first participant
 			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signer, nil)
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, root, signer.Address().Bytes())
+			censusProof := generateCensusProof(c, cli, censusRoot, signer.Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof

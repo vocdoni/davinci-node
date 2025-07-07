@@ -52,7 +52,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 	[]voteverifier.VerifyVoteCircuit, error,
 ) {
 	now := time.Now()
-	log.Println("VoteVerifier inputs generation start")
+	log.Println("voteVerifier inputs generation start")
 	circomPlaceholder, err := circuits.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
 	if err != nil {
 		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
@@ -159,7 +159,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 			CircomProof: recursiveProof.Proof,
 		})
 	}
-	log.Printf("VoteVerifier inputs generation ends, it tooks %s\n", time.Since(now))
+	log.Printf("voteVerifier inputs generation ends, it tooks %s\n", time.Since(now))
 	return VoteVerifierTestResults{
 			InputsHashes:     inputsHashes,
 			EncryptionPubKey: encryptionKey,

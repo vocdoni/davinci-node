@@ -159,7 +159,7 @@ func BallotProofForTest(address []byte, processID *types.ProcessID, encryptionKe
 	if err != nil {
 		return nil, fmt.Errorf("create circom proof: %w", err)
 	}
-	log.Printf("Ballot proof generation ends, it tooks %s", time.Since(now))
+	log.Printf("ballot proof generation ends, it tooks %s", time.Since(now))
 	return &VoterProofResult{
 		ProcessID:  proofInputs.CircomInputs.ProcessID.MathBigInt(),
 		Address:    proofInputs.CircomInputs.Address.MathBigInt(),

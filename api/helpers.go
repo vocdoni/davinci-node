@@ -53,6 +53,8 @@ func httpWriteOK(w http.ResponseWriter) {
 	}
 }
 
+// WorkerSeedToUUID converts a worker seed string into a UUID. It uses the
+// first 16 bytes of the SHA256 hash of the seed to create a UUID.
 func WorkerSeedToUUID(seed string) (*uuid.UUID, error) {
 	var err error
 	// Use the first 8 characters of the SHA256 hash of the seed as a UUID

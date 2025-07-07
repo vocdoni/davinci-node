@@ -1,4 +1,4 @@
-package api
+package workers
 
 import (
 	"context"
@@ -20,15 +20,15 @@ func TestNewJobsManager(t *testing.T) {
 
 	t.Run("Default configuration", func(t *testing.T) {
 		jobTimeout := 5 * time.Minute
-		jm := newJobsManager(jobTimeout, nil)
+		jm := NewJobsManager(jobTimeout, nil)
 
 		c.Assert(jm, qt.IsNotNil)
-		c.Assert(jm.jobTimeout, qt.Equals, jobTimeout)
+		c.Assert(jm.JobTimeout, qt.Equals, jobTimeout)
 		c.Assert(jm.tickerInterval, qt.Equals, 10*time.Second) // Default interval
 		c.Assert(jm.pending, qt.IsNotNil)
 		c.Assert(len(jm.pending), qt.Equals, 0)
-		c.Assert(jm.failedJobs, qt.IsNotNil)
-		c.Assert(jm.wm, qt.IsNotNil)
+		c.Assert(jm.FailedJobs, qt.IsNotNil)
+		c.Assert(jm.WorkerManager, qt.IsNotNil)
 		c.Assert(jm.ctx, qt.IsNil) // Should be nil until start() is called
 		c.Assert(jm.cancel, qt.IsNil)
 	})
@@ -36,9 +36,9 @@ func TestNewJobsManager(t *testing.T) {
 	t.Run("Custom ticker interval", func(t *testing.T) {
 		jobTimeout := 2 * time.Minute
 		tickerInterval := 100 * time.Millisecond
-		jm := newJobsManager(jobTimeout, nil, tickerInterval)
+		jm := NewJobsManager(jobTimeout, nil, tickerInterval)
 
-		c.Assert(jm.jobTimeout, qt.Equals, jobTimeout)
+		c.Assert(jm.JobTimeout, qt.Equals, jobTimeout)
 		c.Assert(jm.tickerInterval, qt.Equals, tickerInterval)
 	})
 }
@@ -46,24 +46,24 @@ func TestNewJobsManager(t *testing.T) {
 func TestJobsManagerStartStop(t *testing.T) {
 	c := qt.New(t)
 
-	jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+	jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Test start
-	jm.start(ctx)
+	jm.Start(ctx)
 	c.Assert(jm.ctx, qt.IsNotNil)
 	c.Assert(jm.cancel, qt.IsNotNil)
 
 	// Test stop
-	jm.stop()
+	jm.Stop()
 
 	// Verify cleanup
 	c.Assert(len(jm.pending), qt.Equals, 0)
 
 	// Verify channel is closed by trying to receive (should not block)
 	select {
-	case _, ok := <-jm.failedJobs:
+	case _, ok := <-jm.FailedJobs:
 		c.Assert(ok, qt.IsFalse) // Channel should be closed
 	default:
 		t.Error("Expected channel to be closed")
@@ -74,9 +74,9 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Register job for new worker", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
-		job, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		job, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 
 		c.Assert(ok, qt.IsTrue)
 		c.Assert(job, qt.IsNotNil)
@@ -93,12 +93,12 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 	})
 
 	t.Run("Register job for existing worker", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Add worker first
-		jm.wm.addWorker(testWorkerAddr)
+		jm.WorkerManager.AddWorker(testWorkerAddr)
 
-		job, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		job, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 
 		c.Assert(ok, qt.IsTrue)
 		c.Assert(job, qt.IsNotNil)
@@ -106,15 +106,15 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 	})
 
 	t.Run("Register job for banned worker", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Add worker and make it fail to get banned
-		jm.wm.addWorker(testWorkerAddr)
+		jm.WorkerManager.AddWorker(testWorkerAddr)
 		for range 15 { // Exceed default ban threshold
-			jm.wm.workerResult(testWorkerAddr, false)
+			jm.WorkerManager.WorkerResult(testWorkerAddr, false)
 		}
 
-		job, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		job, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 
 		c.Assert(ok, qt.IsFalse)
 		c.Assert(job, qt.IsNil)
@@ -122,7 +122,7 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 	})
 
 	t.Run("Register multiple jobs", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		jobs := []struct {
 			worker string
@@ -134,7 +134,7 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 		}
 
 		for _, jobData := range jobs {
-			job, ok := jm.registerJob(jobData.worker, jobData.voteID)
+			job, ok := jm.RegisterJob(jobData.worker, jobData.voteID)
 			c.Assert(ok, qt.IsTrue)
 			c.Assert(job, qt.IsNotNil)
 		}
@@ -147,46 +147,46 @@ func TestJobsManagerIsWorkerAvailable(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("New worker is available", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
-		available, err := jm.isWorkerAvailable("new-worker")
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		available, err := jm.IsWorkerAvailable("new-worker")
 		c.Assert(err, qt.IsNil)
 		c.Assert(available, qt.IsTrue)
 	})
 
 	t.Run("Banned worker is not available", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Add worker and ban it
-		jm.wm.addWorker(testWorkerAddr)
+		jm.WorkerManager.AddWorker(testWorkerAddr)
 		for range 15 { // Exceed ban threshold
-			jm.wm.workerResult(testWorkerAddr, false)
+			jm.WorkerManager.WorkerResult(testWorkerAddr, false)
 		}
 
-		available, err := jm.isWorkerAvailable(testWorkerAddr)
+		available, err := jm.IsWorkerAvailable(testWorkerAddr)
 		c.Assert(available, qt.IsFalse)
 		c.Assert(err, qt.ErrorMatches, "worker banned")
 	})
 
 	t.Run("Worker with pending job is not available", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Register a job for the worker
-		_, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 
 		// Worker should not be available
-		available, err := jm.isWorkerAvailable(testWorkerAddr)
+		available, err := jm.IsWorkerAvailable(testWorkerAddr)
 		c.Assert(available, qt.IsFalse)
 		c.Assert(err, qt.ErrorMatches, "worker busy")
 	})
 
 	t.Run("Worker without pending jobs is available", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Add worker but no jobs
-		jm.wm.addWorker(testWorkerAddr)
+		jm.WorkerManager.AddWorker(testWorkerAddr)
 
-		available, err := jm.isWorkerAvailable(testWorkerAddr)
+		available, err := jm.IsWorkerAvailable(testWorkerAddr)
 		c.Assert(available, qt.IsTrue)
 		c.Assert(err, qt.IsNil)
 	})
@@ -196,15 +196,15 @@ func TestJobsManagerCompleteJob(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Complete existing job successfully", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Register job first
-		originalJob, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		originalJob, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 		c.Assert(len(jm.pending), qt.Equals, 1)
 
 		// Complete job successfully
-		completedJob := jm.completeJob(testVoteID, true)
+		completedJob := jm.CompleteJob(testVoteID, true)
 
 		c.Assert(completedJob, qt.IsNotNil)
 		c.Assert(completedJob, qt.Equals, originalJob)
@@ -212,7 +212,7 @@ func TestJobsManagerCompleteJob(t *testing.T) {
 
 		// Verify no failed job was sent to channel
 		select {
-		case <-jm.failedJobs:
+		case <-jm.FailedJobs:
 			t.Error("No failed job should be sent for successful completion")
 		default:
 			// Expected - no failed job
@@ -220,22 +220,22 @@ func TestJobsManagerCompleteJob(t *testing.T) {
 	})
 
 	t.Run("Complete existing job with failure", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Register job first
-		originalJob, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		originalJob, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 
 		// Start a goroutine to consume the failed job to prevent blocking
-		var receivedJob *workerJob
+		var receivedJob *WorkerJob
 		done := make(chan bool)
 		go func() {
-			receivedJob = <-jm.failedJobs
+			receivedJob = <-jm.FailedJobs
 			done <- true
 		}()
 
 		// Complete job with failure
-		completedJob := jm.completeJob(testVoteID, false)
+		completedJob := jm.CompleteJob(testVoteID, false)
 
 		c.Assert(completedJob, qt.IsNotNil)
 		c.Assert(completedJob, qt.Equals, originalJob)
@@ -251,10 +251,10 @@ func TestJobsManagerCompleteJob(t *testing.T) {
 	})
 
 	t.Run("Complete non-existent job", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 		voteID := []byte("nonexistent")
 
-		completedJob := jm.completeJob(voteID, true)
+		completedJob := jm.CompleteJob(voteID, true)
 
 		c.Assert(completedJob, qt.IsNil)
 	})
@@ -264,10 +264,10 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("No expired jobs", func(t *testing.T) {
-		jm := newJobsManager(1*time.Hour, nil, 50*time.Millisecond) // Long timeout
+		jm := NewJobsManager(1*time.Hour, nil, 50*time.Millisecond) // Long timeout
 
 		// Register job with long timeout
-		_, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 
 		// Check timeouts
@@ -278,7 +278,7 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 
 		// No failed jobs should be sent
 		select {
-		case <-jm.failedJobs:
+		case <-jm.FailedJobs:
 			t.Error("No failed job should be sent for non-expired job")
 		default:
 			// Expected
@@ -286,20 +286,20 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 	})
 
 	t.Run("Expired jobs are removed and sent to failed channel", func(t *testing.T) {
-		jm := newJobsManager(1*time.Millisecond, nil, 50*time.Millisecond) // Very short timeout
+		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond) // Very short timeout
 
 		// Register job with short timeout
-		originalJob, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		originalJob, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 
 		// Wait for job to expire
 		time.Sleep(10 * time.Millisecond)
 
 		// Start a goroutine to consume the failed job to prevent blocking
-		var receivedJob *workerJob
+		var receivedJob *WorkerJob
 		done := make(chan bool)
 		go func() {
-			receivedJob = <-jm.failedJobs
+			receivedJob = <-jm.FailedJobs
 			done <- true
 		}()
 
@@ -319,7 +319,7 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 	})
 
 	t.Run("Multiple expired jobs", func(t *testing.T) {
-		jm := newJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
 
 		// Register multiple jobs
 		jobs := [][]byte{
@@ -329,7 +329,7 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 		}
 
 		for _, testVoteID := range jobs {
-			_, ok := jm.registerJob("worker1", testVoteID)
+			_, ok := jm.RegisterJob("worker1", testVoteID)
 			c.Assert(ok, qt.IsTrue)
 		}
 
@@ -339,11 +339,11 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// Start a goroutine to consume all failed jobs to prevent blocking
-		var receivedJobs []*workerJob
+		var receivedJobs []*WorkerJob
 		done := make(chan bool)
 		go func() {
 			for range 3 {
-				job := <-jm.failedJobs
+				job := <-jm.FailedJobs
 				receivedJobs = append(receivedJobs, job)
 			}
 			done <- true
@@ -368,25 +368,25 @@ func TestJobsManagerRealStartWithConfigurableTicker(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Real start method with fast ticker - timeout detection", func(t *testing.T) {
-		jm := newJobsManager(100*time.Millisecond, nil, 50*time.Millisecond) // Fast ticker and short timeout
+		jm := NewJobsManager(100*time.Millisecond, nil, 50*time.Millisecond) // Fast ticker and short timeout
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
 		// Start a goroutine to consume failed jobs to prevent blocking
-		var receivedJob *workerJob
+		var receivedJob *WorkerJob
 		jobReceived := make(chan bool)
 		go func() {
-			receivedJob = <-jm.failedJobs
+			receivedJob = <-jm.FailedJobs
 			jobReceived <- true
 		}()
 
 		// Start the real jobs manager
-		jm.start(ctx)
-		defer jm.stop()
+		jm.Start(ctx)
+		defer jm.Stop()
 
 		// Register a job that will expire
-		originalJob, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		originalJob, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 
 		// Use thread-safe access to check pending jobs
@@ -410,15 +410,15 @@ func TestJobsManagerRealStartWithConfigurableTicker(t *testing.T) {
 	})
 
 	t.Run("Context cancellation stops ticker", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
 		// Start jobs manager
-		jm.start(ctx)
+		jm.Start(ctx)
 
 		// Register a job
-		_, ok := jm.registerJob("worker1", []byte("vote123"))
+		_, ok := jm.RegisterJob("worker1", []byte("vote123"))
 		c.Assert(ok, qt.IsTrue)
 
 		// Thread-safe check of pending jobs
@@ -443,11 +443,11 @@ func TestJobsManagerRealStartWithConfigurableTicker(t *testing.T) {
 	t.Run("Ticker interval verification", func(t *testing.T) {
 		// Test with custom interval
 		customInterval := 25 * time.Millisecond
-		jm := newJobsManager(1*time.Minute, nil, customInterval)
+		jm := NewJobsManager(1*time.Minute, nil, customInterval)
 		c.Assert(jm.tickerInterval, qt.Equals, customInterval)
 
 		// Test with default interval
-		jmDefault := newJobsManager(1*time.Minute, nil)
+		jmDefault := NewJobsManager(1*time.Minute, nil)
 		c.Assert(jmDefault.tickerInterval, qt.Equals, 10*time.Second)
 	})
 }
@@ -456,13 +456,13 @@ func TestJobsManagerConcurrency(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Concurrent job registration and completion", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		jm.start(ctx)
-		defer jm.stop()
+		jm.Start(ctx)
+		defer jm.Stop()
 
 		const numWorkers = 50
 		const numJobs = 10
@@ -478,11 +478,11 @@ func TestJobsManagerConcurrency(t *testing.T) {
 
 				for j := range numJobs {
 					voteID := fmt.Appendf(nil, "vote-%d-%d", workerID, j)
-					job, ok := jm.registerJob(testWorkerAddr, testVoteID)
+					job, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 					if ok && job != nil {
 						// Randomly complete some jobs
 						if j%2 == 0 {
-							jm.completeJob(voteID, true)
+							jm.CompleteJob(voteID, true)
 						}
 					}
 				}
@@ -495,7 +495,7 @@ func TestJobsManagerConcurrency(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 				testWorkerAddr := fmt.Sprintf("worker-%d", i%numWorkers)
-				_, _ = jm.isWorkerAvailable(testWorkerAddr)
+				_, _ = jm.IsWorkerAvailable(testWorkerAddr)
 			}(i)
 		}
 
@@ -510,62 +510,62 @@ func TestJobsManagerWorkerManagerIntegration(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Job completion updates worker manager", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Register and complete job successfully
-		_, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 
 		// Get initial worker state
-		worker, exists := jm.wm.getWorker(testWorkerAddr)
+		worker, exists := jm.WorkerManager.GetWorker(testWorkerAddr)
 		c.Assert(exists, qt.IsTrue)
-		initialFails := worker.getConsecutiveFails()
+		initialFails := worker.SetConsecutiveFails()
 
 		// Complete job successfully
-		jm.completeJob(testVoteID, true)
+		jm.CompleteJob(testVoteID, true)
 
 		// Worker consecutive fails should be reset
-		worker, exists = jm.wm.getWorker(testWorkerAddr)
+		worker, exists = jm.WorkerManager.GetWorker(testWorkerAddr)
 		c.Assert(exists, qt.IsTrue)
-		c.Assert(worker.getConsecutiveFails(), qt.Equals, 0)
+		c.Assert(worker.SetConsecutiveFails(), qt.Equals, 0)
 
 		// Register and fail a job
 		voteID2 := []byte("vote456")
-		_, ok = jm.registerJob(testWorkerAddr, voteID2)
+		_, ok = jm.RegisterJob(testWorkerAddr, voteID2)
 		c.Assert(ok, qt.IsTrue)
 
 		// Start a goroutine to consume the failed job to prevent blocking
 		done := make(chan bool)
 		go func() {
-			<-jm.failedJobs // Consume the failed job
+			<-jm.FailedJobs // Consume the failed job
 			done <- true
 		}()
 
-		jm.completeJob(voteID2, false)
+		jm.CompleteJob(voteID2, false)
 
 		// Wait for failed job to be consumed
 		select {
 		case <-done:
 			// Worker consecutive fails should increase
-			worker, exists = jm.wm.getWorker(testWorkerAddr)
+			worker, exists = jm.WorkerManager.GetWorker(testWorkerAddr)
 			c.Assert(exists, qt.IsTrue)
-			c.Assert(worker.getConsecutiveFails(), qt.Equals, initialFails+1)
+			c.Assert(worker.SetConsecutiveFails(), qt.Equals, initialFails+1)
 		case <-time.After(100 * time.Millisecond):
 			t.Error("Failed job should be sent to channel")
 		}
 	})
 
 	t.Run("Timeout updates worker manager", func(t *testing.T) {
-		jm := newJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
 
 		// Register job that will timeout
-		_, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 
 		// Get initial worker state
-		worker, exists := jm.wm.getWorker(testWorkerAddr)
+		worker, exists := jm.WorkerManager.GetWorker(testWorkerAddr)
 		c.Assert(exists, qt.IsTrue)
-		initialFails := worker.getConsecutiveFails()
+		initialFails := worker.SetConsecutiveFails()
 
 		// Wait for timeout and check
 		time.Sleep(10 * time.Millisecond)
@@ -573,7 +573,7 @@ func TestJobsManagerWorkerManagerIntegration(t *testing.T) {
 		// Start a goroutine to consume the failed job to prevent blocking
 		done := make(chan bool)
 		go func() {
-			<-jm.failedJobs // Consume the failed job
+			<-jm.FailedJobs // Consume the failed job
 			done <- true
 		}()
 
@@ -583,9 +583,9 @@ func TestJobsManagerWorkerManagerIntegration(t *testing.T) {
 		select {
 		case <-done:
 			// Worker consecutive fails should increase due to timeout
-			worker, exists = jm.wm.getWorker(testWorkerAddr)
+			worker, exists = jm.WorkerManager.GetWorker(testWorkerAddr)
 			c.Assert(exists, qt.IsTrue)
-			c.Assert(worker.getConsecutiveFails(), qt.Equals, initialFails+1)
+			c.Assert(worker.SetConsecutiveFails(), qt.Equals, initialFails+1)
 		case <-time.After(100 * time.Millisecond):
 			t.Error("Failed job should be sent to channel")
 		}
@@ -596,16 +596,16 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Zero timeout duration", func(t *testing.T) {
-		jm := newJobsManager(0, nil, 50*time.Millisecond) // Zero timeout
+		jm := NewJobsManager(0, nil, 50*time.Millisecond) // Zero timeout
 
 		// Register job with zero timeout (should expire immediately)
-		_, ok := jm.registerJob(testWorkerAddr, testVoteID)
+		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
 		c.Assert(ok, qt.IsTrue)
 
 		// Start a goroutine to consume the failed job to prevent blocking
 		done := make(chan bool)
 		go func() {
-			<-jm.failedJobs // Consume the failed job
+			<-jm.FailedJobs // Consume the failed job
 			done <- true
 		}()
 
@@ -623,47 +623,47 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 	})
 
 	t.Run("Nil vote ID", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Register job with nil vote ID
-		job, ok := jm.registerJob(testWorkerAddr, nil)
+		job, ok := jm.RegisterJob(testWorkerAddr, nil)
 		c.Assert(ok, qt.IsTrue)
 		c.Assert(job, qt.IsNotNil)
 		c.Assert(job.VoteID, qt.IsNil)
 
 		// Should be able to complete it
-		completedJob := jm.completeJob(nil, true)
+		completedJob := jm.CompleteJob(nil, true)
 		c.Assert(completedJob, qt.IsNotNil)
 	})
 
 	t.Run("Empty worker address", func(t *testing.T) {
-		jm := newJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
 
 		// Register job with empty worker address
-		job, ok := jm.registerJob("", testVoteID)
+		job, ok := jm.RegisterJob("", testVoteID)
 		c.Assert(ok, qt.IsTrue)
 		c.Assert(job, qt.IsNotNil)
 		c.Assert(job.Address, qt.Equals, "")
 	})
 
 	t.Run("Unbuffered channel behavior", func(t *testing.T) {
-		jm := newJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
 
 		// Register multiple jobs that will expire
 		for i := 0; i < 5; i++ {
 			voteID := fmt.Appendf(nil, "vote%d", i)
-			jm.registerJob("worker1", voteID)
+			jm.RegisterJob("worker1", voteID)
 		}
 
 		// Wait for expiration
 		time.Sleep(10 * time.Millisecond)
 
 		// Start a goroutine to consume failed jobs to prevent blocking
-		var receivedJobs []*workerJob
+		var receivedJobs []*WorkerJob
 		done := make(chan bool)
 		go func() {
 			for range 5 {
-				job := <-jm.failedJobs
+				job := <-jm.FailedJobs
 				receivedJobs = append(receivedJobs, job)
 			}
 			done <- true
@@ -681,10 +681,10 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 	})
 
 	t.Run("Blocking behavior with no consumer", func(t *testing.T) {
-		jm := newJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
+		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
 
 		// Register a job that will expire
-		jm.registerJob("worker1", testVoteID)
+		jm.RegisterJob("worker1", testVoteID)
 
 		// Wait for expiration
 		time.Sleep(10 * time.Millisecond)
@@ -705,7 +705,7 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 		}
 
 		// Now consume the failed job to unblock checkTimeouts
-		failedJob := <-jm.failedJobs
+		failedJob := <-jm.FailedJobs
 		c.Assert(failedJob, qt.IsNotNil)
 
 		// checkTimeouts should now complete

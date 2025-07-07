@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/workers"
 )
 
 // APIService represents a service that manages the HTTP API server.
@@ -22,7 +23,7 @@ type APIService struct {
 	network       string
 	workerUrlSeed string
 	workerTimeout time.Duration
-	banRules      *api.BanRules // Custom ban rules for workers
+	banRules      *workers.WorkerBanRules // Custom ban rules for workers
 }
 
 // NewAPI creates a new APIService instance.
@@ -40,8 +41,8 @@ func NewAPI(storage *storage.Storage, host string, port int, network string, dis
 }
 
 // SetWorkerConfig configures the worker settings for the API service.
-func (as *APIService) SetWorkerConfig(urlSeed string, timeout time.Duration, banRules *api.BanRules) {
-	log.Debugw("Setting worker configuration",
+func (as *APIService) SetWorkerConfig(urlSeed string, timeout time.Duration, banRules *workers.WorkerBanRules) {
+	log.Debugw("setting worker configuration",
 		"urlSeed", urlSeed,
 		"timeout", timeout)
 	as.mu.Lock()

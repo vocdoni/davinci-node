@@ -33,6 +33,7 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/web3"
+	"github.com/vocdoni/davinci-node/workers"
 )
 
 const (
@@ -66,7 +67,7 @@ func setupAPI(
 	db *storage.Storage,
 	workerSeed string,
 	workerTimeout time.Duration,
-	banRules *api.BanRules,
+	banRules *workers.WorkerBanRules,
 ) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
@@ -241,7 +242,7 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
-func NewTestService(t *testing.T, ctx context.Context, workerSecret string, workerTimeout time.Duration, banRules *api.BanRules) *Services {
+func NewTestService(t *testing.T, ctx context.Context, workerSecret string, workerTimeout time.Duration, banRules *workers.WorkerBanRules) *Services {
 	// Initialize the web3 contracts
 	contracts := setupWeb3(t, ctx)
 
@@ -395,7 +396,6 @@ func createProcessInContracts(c *qt.C, contracts *web3.Contracts,
 ) *types.ProcessID {
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
 		Status:         0,
-		ID:             processID.Marshal(),
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKey,
 		StateRoot:      stateRoot.BigInt(),

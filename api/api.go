@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vocdoni/davinci-node/log"
 	stg "github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/workers"
 )
 
 const (
@@ -29,10 +30,10 @@ type APIConfig struct {
 	Storage *stg.Storage // Optional: use existing storage instance
 	Network string       // Optional: web3 network shortname
 	// Worker configuration
-	WorkerEnabled bool          // Enable worker API endpoints
-	WorkerUrlSeed string        // URL seed for worker authentication
-	WorkerTimeout time.Duration // Worker job timeout
-	BanRules      *BanRules     // Custom ban rules for workers
+	WorkerEnabled bool                    // Enable worker API endpoints
+	WorkerUrlSeed string                  // URL seed for worker authentication
+	WorkerTimeout time.Duration           // Worker job timeout
+	BanRules      *workers.WorkerBanRules // Custom ban rules for workers
 }
 
 // API type represents the API HTTP server with JWT authentication capabilities.
@@ -43,9 +44,9 @@ type API struct {
 	// Worker fields
 	workerUUID    *uuid.UUID
 	workerTimeout time.Duration
-	jobsManager   *jobsManager    // Manages worker jobs and timeouts
-	parentCtx     context.Context // Context to stop the API server
-	banRules      *BanRules       // Rules for banning workers based on job failures
+	jobsManager   *workers.JobsManager    // Manages worker jobs and timeouts
+	parentCtx     context.Context         // Context to stop the API server
+	banRules      *workers.WorkerBanRules // Rules for banning workers based on job failures
 }
 
 // New creates a new API instance with the given configuration.

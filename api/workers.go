@@ -10,12 +10,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/workers"
 )
 
 // startWorkerTimeoutMonitor starts the timeout monitor for worker jobs
 func (a *API) startWorkerTimeoutMonitor() {
-	a.jobsManager = newJobsManager(a.workerTimeout, a.banRules)
-	a.jobsManager.start(a.parentCtx)
+	a.jobsManager = workers.NewJobsManager(a.workerTimeout, a.banRules)
+	a.jobsManager.Start(a.parentCtx)
 
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
@@ -23,7 +24,7 @@ func (a *API) startWorkerTimeoutMonitor() {
 
 		for {
 			select {
-			case failedJob := <-a.jobsManager.failedJobs:
+			case failedJob := <-a.jobsManager.FailedJobs:
 				a.processFailedJob(failedJob)
 			case <-a.parentCtx.Done():
 				log.Infow("worker timeout monitor stopped")
@@ -46,7 +47,7 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if worker is available
-	if available, err := a.jobsManager.isWorkerAvailable(workerAddress); !available {
+	if available, err := a.jobsManager.IsWorkerAvailable(workerAddress); !available {
 		log.Warnw("worker not available",
 			"worker", workerAddress,
 			"uuid", uuid)
@@ -70,7 +71,7 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 
 	// Track the job
 	voteIDStr := hex.EncodeToString(key)
-	_, ok := a.jobsManager.registerJob(workerAddress, key)
+	_, ok := a.jobsManager.RegisterJob(workerAddress, key)
 	if !ok {
 		log.Warnw("no available workers for job",
 			"voteID", voteIDStr,
@@ -130,7 +131,7 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 	voteIDStr := hex.EncodeToString(vb.VoteID)
 
 	// Set job as completed
-	job := a.jobsManager.completeJob(vb.VoteID, true)
+	job := a.jobsManager.CompleteJob(vb.VoteID, true)
 	if job == nil {
 		log.Warnw("job not found or expired",
 			"voteID", voteIDStr)
@@ -185,7 +186,7 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 // processFailedJob handles the processing of a failed job. It logs the
 // timeout, releases the ballot reservation, and updates worker stats.
 // This function is called by the jobs manager when a job fails.
-func (a *API) processFailedJob(job *workerJob) {
+func (a *API) processFailedJob(job *workers.WorkerJob) {
 	now := time.Now()
 	voteIDStr := hex.EncodeToString(job.VoteID)
 	log.Warnw("job timeout",
