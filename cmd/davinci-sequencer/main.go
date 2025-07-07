@@ -86,6 +86,9 @@ func runWorkerMode(cfg *Config) {
 	if cfg.Worker.Address == "" {
 		log.Fatalf("worker address is required (use --worker.address flag)")
 	}
+	if cfg.Worker.Name == "" {
+		log.Fatalf("worker name is required (use --worker.name flag)")
+	}
 
 	// Initialize storage database (only for local process tracking)
 	log.Infow("initializing storage", "datadir", cfg.Datadir, "type", db.TypePebble)
@@ -106,6 +109,7 @@ func runWorkerMode(cfg *Config) {
 		storage,
 		cfg.Worker.MasterURL,
 		cfg.Worker.Address,
+		cfg.Worker.Name,
 	)
 	if err != nil {
 		log.Fatalf("failed to create worker: %v", err)

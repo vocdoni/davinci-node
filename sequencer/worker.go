@@ -32,7 +32,7 @@ var ErrNoJobAvailable = errors.New("no job available")
 //   - workerAddress: Ethereum address identifying this worker
 //
 // Returns a configured Sequencer instance for worker mode or an error if initialization fails.
-func NewWorker(stg *storage.Storage, masterURL string, workerAddress string) (*Sequencer, error) {
+func NewWorker(stg *storage.Storage, masterURL, workerAddress, workerName string) (*Sequencer, error) {
 	if stg == nil {
 		return nil, fmt.Errorf("storage cannot be nil")
 	}
@@ -41,6 +41,9 @@ func NewWorker(stg *storage.Storage, masterURL string, workerAddress string) (*S
 	}
 	if workerAddress == "" {
 		return nil, fmt.Errorf("workerAddress must be provided")
+	}
+	if workerName == "" {
+		return nil, fmt.Errorf("workerName must be provided")
 	}
 
 	startTime := time.Now()
@@ -204,7 +207,7 @@ func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
 
 // fetchJobFromMaster performs GET request to master
 func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
-	url := fmt.Sprintf("%s/%s", s.masterURL, s.workerAddress)
+	url := fmt.Sprintf("%s/%s/%s", s.masterURL, s.workerName, s.workerAddress)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Get(url)

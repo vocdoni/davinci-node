@@ -2,12 +2,21 @@ package workers
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/storage"
 )
+
+type WorkerInfo struct {
+	Address      string `json:"address"`
+	Name         string `json:"name"`
+	SuccessCount int64  `json:"successCount"`
+	FailedCount  int64  `json:"failedCount"`
+}
 
 // WorkerBanRules defines the rules for banning workers. It includes the
 // duration for which a worker is banned and the maximum number of consecutive
@@ -25,9 +34,10 @@ var DefaultWorkerBanRules = &WorkerBanRules{
 
 // Worker represents a Worker that processes jobs
 type Worker struct {
-	ID               string
-	consecutiveFails int64 // atomic counter
-	bannedUntilNanos int64 // atomic Unix nanoseconds, 0 = not banned
+	Address          string
+	Name             string // Name of the worker for identification
+	consecutiveFails int64  // atomic counter
+	bannedUntilNanos int64  // atomic Unix nanoseconds, 0 = not banned
 }
 
 // IsBanned checks if the worker is banned based on the provided rules
@@ -74,6 +84,7 @@ func (w *Worker) SetConsecutiveFails() int {
 // WorkerManager manages workers and their ban status. It tracks workers, bans
 // them based on rules, and resets their status after the ban period.
 type WorkerManager struct {
+	stg            *storage.Storage
 	workers        sync.Map
 	innerCtx       context.Context
 	cancelFunc     context.CancelFunc
@@ -84,7 +95,7 @@ type WorkerManager struct {
 // NewWorkerManager creates a new worker manager with the specified ban rules.
 // It initializes the worker map and sets up the context for managing workers.
 // An optional ticker interval can be provided; defaults to 10 seconds if not specified.
-func NewWorkerManager(rules *WorkerBanRules, tickerInterval ...time.Duration) *WorkerManager {
+func NewWorkerManager(stg *storage.Storage, rules *WorkerBanRules, tickerInterval ...time.Duration) *WorkerManager {
 	interval := 10 * time.Second // default production interval
 	if len(tickerInterval) > 0 {
 		interval = tickerInterval[0]
@@ -94,6 +105,7 @@ func NewWorkerManager(rules *WorkerBanRules, tickerInterval ...time.Duration) *W
 		banRules = rules
 	}
 	return &WorkerManager{
+		stg:            stg,
 		workers:        sync.Map{},
 		rules:          banRules,
 		tickerInterval: interval,
@@ -126,10 +138,10 @@ func (wm *WorkerManager) Start(ctx context.Context) {
 					bannedUntil := w.GetBannedUntil()
 					if bannedUntil.IsZero() {
 						// Ban the worker for the configured timeout
-						wm.SetBanDuration(w.ID)
+						wm.SetBanDuration(w.Address)
 					} else if time.Now().After(bannedUntil) {
 						// Unban the worker after the ban period
-						wm.ResetWorker(w.ID)
+						wm.ResetWorker(w.Address)
 					}
 				}
 			}
@@ -157,23 +169,26 @@ func (wm *WorkerManager) Stop() {
 // it returns the existing worker without adding a new one. If it's a new
 // worker, it initializes a new worker instance, stores it in the worker map,
 // and returns the worker instance.
-func (wm *WorkerManager) AddWorker(id string) *Worker {
-	if w, exists := wm.GetWorker(id); exists {
-		log.Warnf("Worker %s already exists, not adding again", id)
+func (wm *WorkerManager) AddWorker(address, name string) *Worker {
+	if w, exists := wm.GetWorker(address); exists {
+		log.Warnf("Worker %s already exists, not adding again", address)
 		// Worker already exists, no need to add again
 		return w
 	}
-	w := &Worker{ID: id}
-	wm.workers.Store(id, w)
-	log.Debugf("Worker added: %s", id)
+	w := &Worker{
+		Address: address,
+		Name:    name, // Set the worker's name for identification
+	}
+	wm.workers.Store(address, w)
+	log.Debugf("Worker added: %s", address)
 	return w
 }
 
-// GetWorker retrieves a worker by its ID. If the worker exists, it returns
-// the worker instance and a boolean indicating success. If the worker does
-// not exist, it returns nil and false.
-func (wm *WorkerManager) GetWorker(id string) (*Worker, bool) {
-	if w, ok := wm.workers.Load(id); ok {
+// GetWorker retrieves a worker by its address. If the worker exists, it
+// returns the worker instance and a boolean indicating success. If the
+// worker does not exist, it returns nil and false.
+func (wm *WorkerManager) GetWorker(address string) (*Worker, bool) {
+	if w, ok := wm.workers.Load(address); ok {
 		return w.(*Worker), true
 	}
 	return nil, false
@@ -195,15 +210,15 @@ func (wm *WorkerManager) BannedWorkers() []*Worker {
 }
 
 // ResetWorker resets the worker's status by creating a new worker instance
-// with the same ID. This effectively clears the worker's consecutive fails
-// and banned status, allowing the worker to be reused without any previous
-// restrictions. It is typically called when a worker has been banned and
-// the ban period has expired, or when a worker needs to be reset for any
-// reason.
-func (wm *WorkerManager) ResetWorker(id string) {
-	if _, ok := wm.GetWorker(id); ok {
-		wm.workers.Store(id, &Worker{ID: id})
-		log.Debugf("Worker %s reset", id)
+// with the same address. This effectively clears the worker's consecutive
+// fails and banned status, allowing the worker to be reused without any
+// previous restrictions. It is typically called when a worker has been
+// banned and the ban period has expired, or when a worker needs to be
+// reset for any reason.
+func (wm *WorkerManager) ResetWorker(address string) {
+	if _, ok := wm.GetWorker(address); ok {
+		wm.workers.Store(address, &Worker{Address: address})
+		log.Debugf("Worker %s reset", address)
 	}
 }
 
@@ -211,11 +226,11 @@ func (wm *WorkerManager) ResetWorker(id string) {
 // ban expiration time to the current time plus the ban timeout defined in the
 // rules. This effectively bans the worker for the specified duration,
 // preventing it from processing jobs until the ban period expires.
-func (wm *WorkerManager) SetBanDuration(workerID string) {
-	if w, ok := wm.GetWorker(workerID); ok {
+func (wm *WorkerManager) SetBanDuration(address string) {
+	if w, ok := wm.GetWorker(address); ok {
 		banTime := time.Now().Add(wm.rules.BanTimeout)
 		w.SetBannedUntil(banTime)
-		log.Warnf("Worker %s banned until %s", workerID, banTime)
+		log.Warnf("Worker %s banned until %s", address, banTime)
 	}
 }
 
@@ -223,16 +238,57 @@ func (wm *WorkerManager) SetBanDuration(workerID string) {
 // If the job was successful, it resets the worker's consecutive fails to zero.
 // If the job failed, it increments the worker's consecutive fails count.
 // This method uses atomic operations to ensure thread safety.
-func (wm *WorkerManager) WorkerResult(id string, success bool) {
-	w, ok := wm.GetWorker(id)
+func (wm *WorkerManager) WorkerResult(address string, success bool) error {
+	w, ok := wm.GetWorker(address)
 	if !ok {
-		w = &Worker{ID: id}
-		wm.workers.Store(id, w)
+		w = &Worker{Address: address}
+		wm.workers.Store(address, w)
 	}
 
 	if success {
 		atomic.StoreInt64(&w.consecutiveFails, 0)
+		return wm.stg.IncreaseWorkerJobCount(address, 1)
 	} else {
 		atomic.AddInt64(&w.consecutiveFails, 1)
+		return wm.stg.IncreaseWorkerFailedJobCount(address, 1)
 	}
+}
+
+// WorkerStats retrieves the statistics for a specific worker by its ID. The
+// statistics include the worker's name, success count, and failed count. If
+// the worker does not exist, it returns an error indicating that the worker
+// was not found.
+func (wm *WorkerManager) WorkerStats(address string) (*WorkerInfo, error) {
+	if _, ok := wm.GetWorker(address); !ok {
+		return nil, fmt.Errorf("worker %s not found", address)
+	}
+	stats := wm.stg.WorkerStats(address)
+	return &WorkerInfo{
+		Address:      address,
+		Name:         stats.Name,
+		SuccessCount: stats.SuccessCount,
+		FailedCount:  stats.FailedCount,
+	}, nil
+}
+
+// ListWorkerStats retrieves the statistics for all workers managed by the
+// WorkerManager. It returns a slice of WorkerInfo containing the address,
+// name, success count, and failed count for each worker. If there is an error
+// retrieving the statistics, it returns an error.
+func (wm *WorkerManager) ListWorkerStats() ([]*WorkerInfo, error) {
+	stats, err := wm.stg.ListWorkerJobCount()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list worker stats: %w", err)
+	}
+
+	result := []*WorkerInfo{}
+	for address, counts := range stats {
+		result = append(result, &WorkerInfo{
+			Address:      address,
+			Name:         counts.Name,
+			SuccessCount: counts.SuccessCount,
+			FailedCount:  counts.FailedCount,
+		})
+	}
+	return result, nil
 }

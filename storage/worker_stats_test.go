@@ -23,8 +23,7 @@ func TestIncreaseWorkerJobCount(t *testing.T) {
 	address := "0x1234567890abcdef"
 
 	// Test initial count
-	success, failed, err := storage.WorkerJobCount(address)
-	c.Assert(err, qt.IsNil)
+	success, failed := storage.WorkerJobCount(address)
 	c.Assert(success, qt.Equals, int64(0))
 	c.Assert(failed, qt.Equals, int64(0))
 
@@ -33,8 +32,7 @@ func TestIncreaseWorkerJobCount(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Check updated count
-	success, failed, err = storage.WorkerJobCount(address)
-	c.Assert(err, qt.IsNil)
+	success, failed = storage.WorkerJobCount(address)
 	c.Assert(success, qt.Equals, int64(5))
 	c.Assert(failed, qt.Equals, int64(0))
 
@@ -42,8 +40,7 @@ func TestIncreaseWorkerJobCount(t *testing.T) {
 	err = storage.IncreaseWorkerJobCount(address, 3)
 	c.Assert(err, qt.IsNil)
 
-	success, failed, err = storage.WorkerJobCount(address)
-	c.Assert(err, qt.IsNil)
+	success, failed = storage.WorkerJobCount(address)
 	c.Assert(success, qt.Equals, int64(8))
 	c.Assert(failed, qt.Equals, int64(0))
 }
@@ -66,8 +63,7 @@ func TestIncreaseWorkerFailedJobCount(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Check updated count
-	success, failed, err := storage.WorkerJobCount(address)
-	c.Assert(err, qt.IsNil)
+	success, failed := storage.WorkerJobCount(address)
 	c.Assert(success, qt.Equals, int64(0))
 	c.Assert(failed, qt.Equals, int64(2))
 
@@ -75,8 +71,7 @@ func TestIncreaseWorkerFailedJobCount(t *testing.T) {
 	err = storage.IncreaseWorkerFailedJobCount(address, 1)
 	c.Assert(err, qt.IsNil)
 
-	success, failed, err = storage.WorkerJobCount(address)
-	c.Assert(err, qt.IsNil)
+	success, failed = storage.WorkerJobCount(address)
 	c.Assert(success, qt.Equals, int64(0))
 	c.Assert(failed, qt.Equals, int64(3))
 }
@@ -126,8 +121,8 @@ func TestListWorkerJobCount(t *testing.T) {
 	for addr, expected := range expectedStats {
 		actual, exists := workerStats[addr]
 		c.Assert(exists, qt.IsTrue, qt.Commentf("Worker %s not found in results", addr))
-		c.Assert(actual[0], qt.Equals, expected[0], qt.Commentf("Worker %s success count", addr))
-		c.Assert(actual[1], qt.Equals, expected[1], qt.Commentf("Worker %s failed count", addr))
+		c.Assert(actual.SuccessCount, qt.Equals, expected[0], qt.Commentf("Worker %s success count", addr))
+		c.Assert(actual.FailedCount, qt.Equals, expected[1], qt.Commentf("Worker %s failed count", addr))
 	}
 }
 
@@ -143,8 +138,7 @@ func TestWorkerJobCountNonExistent(t *testing.T) {
 	defer storage.Close()
 
 	// Check non-existent worker
-	success, failed, err := storage.WorkerJobCount("0xnonexistent")
-	c.Assert(err, qt.IsNil)
+	success, failed := storage.WorkerJobCount("0xnonexistent")
 	c.Assert(success, qt.Equals, int64(0))
 	c.Assert(failed, qt.Equals, int64(0))
 }
@@ -185,8 +179,7 @@ func TestWorkerStatsConcurrency(t *testing.T) {
 	}
 
 	// Check final counts
-	success, failed, err := storage.WorkerJobCount(address)
-	c.Assert(err, qt.IsNil)
+	success, failed := storage.WorkerJobCount(address)
 
 	expectedTotal := int64(numGoroutines * incrementsPerGoroutine)
 	actualTotal := success + failed

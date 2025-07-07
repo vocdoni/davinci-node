@@ -4,23 +4,46 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/db"
+	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/storage"
 )
 
-const testWorkerAddr = "worker1"
+const (
+	testWorkerAddr = "0x123456789"
+	testWorkerName = "TestWorker1"
+)
 
 var testVoteID = []byte("vote123")
+
+func storageForTest(t *testing.T) *storage.Storage {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	t.Cleanup(func() {
+		// remove the temporary directory after the test
+		_ = os.RemoveAll(tempDir)
+	})
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+	return storage.New(db)
+}
 
 func TestNewJobsManager(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Default configuration", func(t *testing.T) {
 		jobTimeout := 5 * time.Minute
-		jm := NewJobsManager(jobTimeout, nil)
+
+		jm := NewJobsManager(storageForTest(t), jobTimeout, nil)
 
 		c.Assert(jm, qt.IsNotNil)
 		c.Assert(jm.JobTimeout, qt.Equals, jobTimeout)
@@ -36,7 +59,7 @@ func TestNewJobsManager(t *testing.T) {
 	t.Run("Custom ticker interval", func(t *testing.T) {
 		jobTimeout := 2 * time.Minute
 		tickerInterval := 100 * time.Millisecond
-		jm := NewJobsManager(jobTimeout, nil, tickerInterval)
+		jm := NewJobsManager(storageForTest(t), jobTimeout, nil, tickerInterval)
 
 		c.Assert(jm.JobTimeout, qt.Equals, jobTimeout)
 		c.Assert(jm.tickerInterval, qt.Equals, tickerInterval)
@@ -46,7 +69,7 @@ func TestNewJobsManager(t *testing.T) {
 func TestJobsManagerStartStop(t *testing.T) {
 	c := qt.New(t)
 
-	jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+	jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -74,11 +97,14 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Register job for new worker", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
-		job, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
+		// Register job for the worker
+		job, err := jm.RegisterJob(testWorkerAddr, testVoteID)
 
-		c.Assert(ok, qt.IsTrue)
+		c.Assert(err, qt.IsNil)
 		c.Assert(job, qt.IsNotNil)
 		c.Assert(job.VoteID, qt.DeepEquals, testVoteID)
 		c.Assert(job.Address, qt.Equals, testWorkerAddr)
@@ -93,36 +119,36 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 	})
 
 	t.Run("Register job for existing worker", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
 		// Add worker first
-		jm.WorkerManager.AddWorker(testWorkerAddr)
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
-		job, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-
-		c.Assert(ok, qt.IsTrue)
+		job, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 		c.Assert(job, qt.IsNotNil)
 		c.Assert(job.Address, qt.Equals, testWorkerAddr)
 	})
 
 	t.Run("Register job for banned worker", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
 		// Add worker and make it fail to get banned
-		jm.WorkerManager.AddWorker(testWorkerAddr)
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 		for range 15 { // Exceed default ban threshold
-			jm.WorkerManager.WorkerResult(testWorkerAddr, false)
+			err := jm.WorkerManager.WorkerResult(testWorkerAddr, false)
+			c.Assert(err, qt.IsNil)
 		}
 
-		job, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
+		job, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.ErrorIs, ErrWorkerBanned)
 
-		c.Assert(ok, qt.IsFalse)
 		c.Assert(job, qt.IsNil)
 		c.Assert(len(jm.pending), qt.Equals, 0)
 	})
 
 	t.Run("Register multiple jobs", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
 		jobs := []struct {
 			worker string
@@ -134,8 +160,9 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 		}
 
 		for _, jobData := range jobs {
-			job, ok := jm.RegisterJob(jobData.worker, jobData.voteID)
-			c.Assert(ok, qt.IsTrue)
+			jm.WorkerManager.AddWorker(jobData.worker, fmt.Sprintf("Worker %s", jobData.worker))
+			job, err := jm.RegisterJob(jobData.worker, jobData.voteID)
+			c.Assert(err, qt.IsNil)
 			c.Assert(job, qt.IsNotNil)
 		}
 
@@ -147,19 +174,20 @@ func TestJobsManagerIsWorkerAvailable(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("New worker is available", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 		available, err := jm.IsWorkerAvailable("new-worker")
 		c.Assert(err, qt.IsNil)
 		c.Assert(available, qt.IsTrue)
 	})
 
 	t.Run("Banned worker is not available", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
 		// Add worker and ban it
-		jm.WorkerManager.AddWorker(testWorkerAddr)
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 		for range 15 { // Exceed ban threshold
-			jm.WorkerManager.WorkerResult(testWorkerAddr, false)
+			err := jm.WorkerManager.WorkerResult(testWorkerAddr, false)
+			c.Assert(err, qt.IsNil)
 		}
 
 		available, err := jm.IsWorkerAvailable(testWorkerAddr)
@@ -168,11 +196,14 @@ func TestJobsManagerIsWorkerAvailable(t *testing.T) {
 	})
 
 	t.Run("Worker with pending job is not available", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register a job for the worker
-		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Worker should not be available
 		available, err := jm.IsWorkerAvailable(testWorkerAddr)
@@ -181,10 +212,10 @@ func TestJobsManagerIsWorkerAvailable(t *testing.T) {
 	})
 
 	t.Run("Worker without pending jobs is available", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
 		// Add worker but no jobs
-		jm.WorkerManager.AddWorker(testWorkerAddr)
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		available, err := jm.IsWorkerAvailable(testWorkerAddr)
 		c.Assert(available, qt.IsTrue)
@@ -196,11 +227,14 @@ func TestJobsManagerCompleteJob(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Complete existing job successfully", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register job first
-		originalJob, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		originalJob, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 		c.Assert(len(jm.pending), qt.Equals, 1)
 
 		// Complete job successfully
@@ -220,11 +254,14 @@ func TestJobsManagerCompleteJob(t *testing.T) {
 	})
 
 	t.Run("Complete existing job with failure", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register job first
-		originalJob, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		originalJob, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Start a goroutine to consume the failed job to prevent blocking
 		var receivedJob *WorkerJob
@@ -251,7 +288,7 @@ func TestJobsManagerCompleteJob(t *testing.T) {
 	})
 
 	t.Run("Complete non-existent job", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 		voteID := []byte("nonexistent")
 
 		completedJob := jm.CompleteJob(voteID, true)
@@ -264,11 +301,14 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("No expired jobs", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Hour, nil, 50*time.Millisecond) // Long timeout
+		jm := NewJobsManager(storageForTest(t), 1*time.Hour, nil, 50*time.Millisecond) // Long timeout
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register job with long timeout
-		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Check timeouts
 		jm.checkTimeouts()
@@ -286,11 +326,14 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 	})
 
 	t.Run("Expired jobs are removed and sent to failed channel", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond) // Very short timeout
+		jm := NewJobsManager(storageForTest(t), 1*time.Millisecond, nil, 50*time.Millisecond) // Very short timeout
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register job with short timeout
-		originalJob, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		originalJob, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Wait for job to expire
 		time.Sleep(10 * time.Millisecond)
@@ -319,7 +362,7 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 	})
 
 	t.Run("Multiple expired jobs", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Millisecond, nil, 50*time.Millisecond)
 
 		// Register multiple jobs
 		jobs := [][]byte{
@@ -329,8 +372,10 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 		}
 
 		for _, testVoteID := range jobs {
-			_, ok := jm.RegisterJob("worker1", testVoteID)
-			c.Assert(ok, qt.IsTrue)
+			// Add worker first
+			jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
+			_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+			c.Assert(err, qt.IsNil)
 		}
 
 		c.Assert(len(jm.pending), qt.Equals, 3)
@@ -368,7 +413,7 @@ func TestJobsManagerRealStartWithConfigurableTicker(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Real start method with fast ticker - timeout detection", func(t *testing.T) {
-		jm := NewJobsManager(100*time.Millisecond, nil, 50*time.Millisecond) // Fast ticker and short timeout
+		jm := NewJobsManager(storageForTest(t), 100*time.Millisecond, nil, 50*time.Millisecond) // Fast ticker and short timeout
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -385,9 +430,12 @@ func TestJobsManagerRealStartWithConfigurableTicker(t *testing.T) {
 		jm.Start(ctx)
 		defer jm.Stop()
 
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
+
 		// Register a job that will expire
-		originalJob, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		originalJob, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Use thread-safe access to check pending jobs
 		jm.pendingMtx.RLock()
@@ -410,16 +458,19 @@ func TestJobsManagerRealStartWithConfigurableTicker(t *testing.T) {
 	})
 
 	t.Run("Context cancellation stops ticker", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
 		// Start jobs manager
 		jm.Start(ctx)
 
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
+
 		// Register a job
-		_, ok := jm.RegisterJob("worker1", []byte("vote123"))
-		c.Assert(ok, qt.IsTrue)
+		_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Thread-safe check of pending jobs
 		jm.pendingMtx.RLock()
@@ -443,11 +494,11 @@ func TestJobsManagerRealStartWithConfigurableTicker(t *testing.T) {
 	t.Run("Ticker interval verification", func(t *testing.T) {
 		// Test with custom interval
 		customInterval := 25 * time.Millisecond
-		jm := NewJobsManager(1*time.Minute, nil, customInterval)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, customInterval)
 		c.Assert(jm.tickerInterval, qt.Equals, customInterval)
 
 		// Test with default interval
-		jmDefault := NewJobsManager(1*time.Minute, nil)
+		jmDefault := NewJobsManager(storageForTest(t), 1*time.Minute, nil)
 		c.Assert(jmDefault.tickerInterval, qt.Equals, 10*time.Second)
 	})
 }
@@ -456,7 +507,7 @@ func TestJobsManagerConcurrency(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Concurrent job registration and completion", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -478,8 +529,9 @@ func TestJobsManagerConcurrency(t *testing.T) {
 
 				for j := range numJobs {
 					voteID := fmt.Appendf(nil, "vote-%d-%d", workerID, j)
-					job, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-					if ok && job != nil {
+					jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
+					job, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+					if err == nil && job != nil {
 						// Randomly complete some jobs
 						if j%2 == 0 {
 							jm.CompleteJob(voteID, true)
@@ -510,11 +562,14 @@ func TestJobsManagerWorkerManagerIntegration(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Job completion updates worker manager", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register and complete job successfully
-		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Get initial worker state
 		worker, exists := jm.WorkerManager.GetWorker(testWorkerAddr)
@@ -531,8 +586,8 @@ func TestJobsManagerWorkerManagerIntegration(t *testing.T) {
 
 		// Register and fail a job
 		voteID2 := []byte("vote456")
-		_, ok = jm.RegisterJob(testWorkerAddr, voteID2)
-		c.Assert(ok, qt.IsTrue)
+		_, err = jm.RegisterJob(testWorkerAddr, voteID2)
+		c.Assert(err, qt.IsNil)
 
 		// Start a goroutine to consume the failed job to prevent blocking
 		done := make(chan bool)
@@ -556,11 +611,14 @@ func TestJobsManagerWorkerManagerIntegration(t *testing.T) {
 	})
 
 	t.Run("Timeout updates worker manager", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Millisecond, nil, 50*time.Millisecond)
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register job that will timeout
-		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Get initial worker state
 		worker, exists := jm.WorkerManager.GetWorker(testWorkerAddr)
@@ -596,11 +654,14 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 	c := qt.New(t)
 
 	t.Run("Zero timeout duration", func(t *testing.T) {
-		jm := NewJobsManager(0, nil, 50*time.Millisecond) // Zero timeout
+		jm := NewJobsManager(storageForTest(t), 0, nil, 50*time.Millisecond) // Zero timeout
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register job with zero timeout (should expire immediately)
-		_, ok := jm.RegisterJob(testWorkerAddr, testVoteID)
-		c.Assert(ok, qt.IsTrue)
+		_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Start a goroutine to consume the failed job to prevent blocking
 		done := make(chan bool)
@@ -623,11 +684,14 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 	})
 
 	t.Run("Nil vote ID", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register job with nil vote ID
-		job, ok := jm.RegisterJob(testWorkerAddr, nil)
-		c.Assert(ok, qt.IsTrue)
+		job, err := jm.RegisterJob(testWorkerAddr, nil)
+		c.Assert(err, qt.IsNil)
 		c.Assert(job, qt.IsNotNil)
 		c.Assert(job.VoteID, qt.IsNil)
 
@@ -637,22 +701,24 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 	})
 
 	t.Run("Empty worker address", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Minute, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
 
 		// Register job with empty worker address
-		job, ok := jm.RegisterJob("", testVoteID)
-		c.Assert(ok, qt.IsTrue)
-		c.Assert(job, qt.IsNotNil)
-		c.Assert(job.Address, qt.Equals, "")
+		job, err := jm.RegisterJob("", testVoteID)
+		c.Assert(err, qt.ErrorIs, ErrWorkerNotFound)
+		c.Assert(job, qt.IsNil)
 	})
 
 	t.Run("Unbuffered channel behavior", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Millisecond, nil, 50*time.Millisecond)
 
 		// Register multiple jobs that will expire
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			voteID := fmt.Appendf(nil, "vote%d", i)
-			jm.RegisterJob("worker1", voteID)
+			// Add worker first
+			jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
+			_, err := jm.RegisterJob(testWorkerAddr, voteID)
+			c.Assert(err, qt.IsNil)
 		}
 
 		// Wait for expiration
@@ -681,10 +747,14 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 	})
 
 	t.Run("Blocking behavior with no consumer", func(t *testing.T) {
-		jm := NewJobsManager(1*time.Millisecond, nil, 50*time.Millisecond)
+		jm := NewJobsManager(storageForTest(t), 1*time.Millisecond, nil, 50*time.Millisecond)
+
+		// Add worker first
+		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
 		// Register a job that will expire
-		jm.RegisterJob("worker1", testVoteID)
+		_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
+		c.Assert(err, qt.IsNil)
 
 		// Wait for expiration
 		time.Sleep(10 * time.Millisecond)

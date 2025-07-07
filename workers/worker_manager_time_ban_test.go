@@ -18,7 +18,7 @@ func TestWorkerTimeBanCoverage(t *testing.T) {
 
 	t.Run("Time-based banning scenarios", func(t *testing.T) {
 		worker := &Worker{
-			ID:               "test-worker",
+			Address:          "test-worker",
 			consecutiveFails: 0, // No consecutive fails
 		}
 
@@ -48,7 +48,7 @@ func TestWorkerTimeBanCoverage(t *testing.T) {
 	t.Run("Combined consecutive fails and time-based banning", func(t *testing.T) {
 		// Test worker that is banned by consecutive fails AND has a time-based ban
 		worker := &Worker{
-			ID:               "test-worker",
+			Address:          "test-worker",
 			consecutiveFails: 5, // Above threshold
 		}
 
@@ -77,7 +77,7 @@ func TestWorkerTimeBanCoverage(t *testing.T) {
 
 	t.Run("Edge cases for time comparison", func(t *testing.T) {
 		worker := &Worker{
-			ID:               "test-worker",
+			Address:          "test-worker",
 			consecutiveFails: 0,
 		}
 

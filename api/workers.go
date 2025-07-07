@@ -15,7 +15,7 @@ import (
 
 // startWorkerTimeoutMonitor starts the timeout monitor for worker jobs
 func (a *API) startWorkerTimeoutMonitor() {
-	a.jobsManager = workers.NewJobsManager(a.workerTimeout, a.banRules)
+	a.jobsManager = workers.NewJobsManager(a.storage, a.workerTimeout, a.banRules)
 	a.jobsManager.Start(a.parentCtx)
 
 	go func() {
@@ -25,7 +25,19 @@ func (a *API) startWorkerTimeoutMonitor() {
 		for {
 			select {
 			case failedJob := <-a.jobsManager.FailedJobs:
-				a.processFailedJob(failedJob)
+				now := time.Now()
+				voteIDStr := hex.EncodeToString(failedJob.VoteID)
+				log.Warnw("job failed or timed out",
+					"voteID", voteIDStr,
+					"workerAddr", failedJob.Address,
+					"duration", now.Sub(failedJob.Timestamp).String())
+
+				// Remove ballot reservation (this will put it back in the queue)
+				if err := a.storage.ReleaseBallotReservation(failedJob.VoteID); err != nil {
+					log.Warnw("failed to remove timed out ballot",
+						"error", err.Error(),
+						"voteID", voteIDStr)
+				}
 			case <-a.parentCtx.Done():
 				log.Infow("worker timeout monitor stopped")
 				return
@@ -34,16 +46,22 @@ func (a *API) startWorkerTimeoutMonitor() {
 	}()
 }
 
-// workerGetJob handles GET /workers/{uuid}/{address}
+// workerGetJob handles GET /workers/{uuid}/{workerName}/{workerAddress}
 func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 	// Extract UUID and address from URL params
 	uuid := chi.URLParam(r, WorkerUUIDParam)
+	workerName := chi.URLParam(r, WorkerNameParam)
 	workerAddress := chi.URLParam(r, WorkerAddressParam)
 
 	// Validate UUID
 	if uuid != a.workerUUID.String() {
 		ErrUnauthorized.Write(w)
 		return
+	}
+
+	// If the worker is not registered, add it
+	if _, ok := a.jobsManager.WorkerManager.GetWorker(workerAddress); !ok {
+		a.jobsManager.WorkerManager.AddWorker(workerAddress, workerName)
 	}
 
 	// Check if worker is available
@@ -71,11 +89,11 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 
 	// Track the job
 	voteIDStr := hex.EncodeToString(key)
-	_, ok := a.jobsManager.RegisterJob(workerAddress, key)
-	if !ok {
+	if _, err := a.jobsManager.RegisterJob(workerAddress, key); err != nil {
 		log.Warnw("no available workers for job",
 			"voteID", voteIDStr,
-			"worker", workerAddress)
+			"worker", workerAddress,
+			"error", err.Error())
 		ErrGenericInternalServerError.Withf("no available workers for job").Write(w)
 		return
 	}
@@ -148,14 +166,7 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update worker stats
-	if err := a.storage.IncreaseWorkerJobCount(job.Address, 1); err != nil {
-		log.Warnw("failed to update worker success stats",
-			"error", err.Error(),
-			"worker", job.Address)
-	}
-
-	success, failed, err := a.storage.WorkerJobCount(job.Address)
+	stats, err := a.jobsManager.WorkerManager.WorkerStats(job.Address)
 	if err != nil {
 		log.Warnw("failed to get worker job count",
 			"error", err.Error(),
@@ -166,72 +177,46 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	log.Infow("worker job completed",
 		"voteID", voteIDStr,
-		"worker", job.Address,
+		"workerAddr", job.Address,
+		"workerName", stats.Name,
 		"duration", time.Since(job.Timestamp).String(),
-		"successCount", success,
-		"failedCount", failed,
+		"successCount", stats.SuccessCount,
+		"failedCount", stats.FailedCount,
 	)
 
 	// Prepare response
 	response := WorkerJobResponse{
 		VoteID:       vb.VoteID,
 		Address:      job.Address,
-		SuccessCount: success,
-		FailedCount:  failed,
+		SuccessCount: stats.SuccessCount,
+		FailedCount:  stats.FailedCount,
 	}
 
 	httpWriteJSON(w, response)
 }
 
-// processFailedJob handles the processing of a failed job. It logs the
-// timeout, releases the ballot reservation, and updates worker stats.
-// This function is called by the jobs manager when a job fails.
-func (a *API) processFailedJob(job *workers.WorkerJob) {
-	now := time.Now()
-	voteIDStr := hex.EncodeToString(job.VoteID)
-	log.Warnw("job timeout",
-		"voteID", voteIDStr,
-		"worker", job.Address,
-		"duration", now.Sub(job.Timestamp).String())
-
-	// Remove ballot reservation (this will put it back in the queue)
-	if err := a.storage.ReleaseBallotReservation(job.VoteID); err != nil {
-		log.Warnw("failed to remove timed out ballot",
-			"error", err.Error(),
-			"voteID", voteIDStr)
-	}
-
-	// Update worker failed count
-	if err := a.storage.IncreaseWorkerFailedJobCount(job.Address, 1); err != nil {
-		log.Warnw("failed to update worker failed stats",
-			"error", err.Error(),
-			"worker", job.Address)
-	}
-}
-
 // workersList handles GET /workers
 func (a *API) workersList(w http.ResponseWriter, r *http.Request) {
 	// Get all worker statistics
-	workerStats, err := a.storage.ListWorkerJobCount()
+	workerStats, err := a.jobsManager.WorkerManager.ListWorkerStats()
 	if err != nil {
 		log.Warnw("failed to get worker statistics",
 			"error", err.Error())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
 	}
-
-	// Build response
-	workers := make([]WorkerInfo, 0, len(workerStats))
-	for address, stats := range workerStats {
-		workers = append(workers, WorkerInfo{
-			Address:      address,
-			SuccessCount: stats[0],
-			FailedCount:  stats[1],
-		})
+	apiWorkers := make([]WorkerInfo, len(workerStats))
+	for i, worker := range workerStats {
+		apiWorkers[i] = WorkerInfo{
+			// omit the address to prevent exposing it
+			Name:         worker.Name,
+			SuccessCount: worker.SuccessCount,
+			FailedCount:  worker.FailedCount,
+		}
 	}
 
 	response := WorkersListResponse{
-		Workers: workers,
+		Workers: apiWorkers,
 	}
 
 	httpWriteJSON(w, response)

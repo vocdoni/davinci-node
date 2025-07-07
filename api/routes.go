@@ -44,12 +44,13 @@ const (
 	GetCensusProofEndpoint        = "/censuses/{" + CensusURLParam + "}/proof"        // GET: Get census proof
 
 	// Worker endpoints
-	WorkerUUIDParam         = "uuid"                                                                      // URL parameter for worker UUID
-	WorkerAddressParam      = "address"                                                                   // URL parameter for worker address
-	WorkersEndpoint         = "/workers"                                                                  // Base worker endpoint
-	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}" // GET: Worker get job
-	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"                              // POST: Worker submit job
-	WorkersListEndpoint     = WorkersEndpoint                                                             // GET: List workers
+	WorkerUUIDParam         = "uuid"                                                                                                // URL parameter for worker UUID
+	WorkerAddressParam      = "address"                                                                                             // URL parameter for worker address
+	WorkerNameParam         = "name"                                                                                                // URL parameter for worker name
+	WorkersEndpoint         = "/workers"                                                                                            // Base worker endpoint
+	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerNameParam + "}/{" + WorkerAddressParam + "}" // GET: Worker get job
+	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"                                                        // POST: Worker submit job
+	WorkersListEndpoint     = WorkersEndpoint                                                                                       // GET: List workers
 
 	// Sequencer endpoints
 	SequencerWorkersEndpoint = "/sequencer/workers" // GET: List worker statistics

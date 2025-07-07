@@ -74,6 +74,7 @@ type WorkerConfig struct {
 	MasterURL string        `mapstructure:"masterURL"` // URL seed for master worker endpoint
 	Timeout   time.Duration `mapstructure:"timeout"`   // Timeout for worker jobs
 	Address   string        `mapstructure:"address"`   // Ethereum address for the worker (auto-generated if empty)
+	Name      string        `mapstructure:"name"`      // Name of the worker for identification
 }
 
 // loadConfig loads configuration from flags, environment variables, and defaults
@@ -115,7 +116,8 @@ func loadConfig() (*Config, error) {
 	flag.Bool("log.disableAPI", defaultLogDisableAPI, "disable API logging middleware")
 	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
 	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
-	flag.StringP("worker.address", "a", "", "worker Ethereum address (auto-generated if empty)")
+	flag.StringP("worker.address", "a", "", "worker Ethereum address")
+	flag.String("worker.name", "", "worker name for identification")
 	flag.StringP("worker.masterURL", "w", "", "master worker URL (required for running in worker mode)")
 	flag.Duration("api.workerBanTimeout", 5*time.Minute, "timeout for worker ban in seconds")
 	flag.Int("api.workerFailuresToGetBanned", 5, "number of failed jobs to get banned")

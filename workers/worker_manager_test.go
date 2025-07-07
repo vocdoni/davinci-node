@@ -18,7 +18,7 @@ func TestNewWorkerManager(t *testing.T) {
 		FailuresToGetBanned: 5,
 	}
 
-	wm := NewWorkerManager(rules)
+	wm := NewWorkerManager(storageForTest(t), rules)
 
 	c.Assert(wm, qt.IsNotNil)
 	c.Assert(wm.rules, qt.Equals, rules)
@@ -69,7 +69,7 @@ func TestWorkerIsBanned(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			worker := &Worker{
-				ID:               "test-worker",
+				Address:          "test-worker",
 				consecutiveFails: int64(tt.consecutiveFails),
 			}
 
@@ -82,30 +82,30 @@ func TestWorkerIsBanned(t *testing.T) {
 func TestWorkerManagerAddWorker(t *testing.T) {
 	c := qt.New(t)
 
-	wm := NewWorkerManager(DefaultWorkerBanRules)
+	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
 
 	// Test adding a new worker
-	worker1 := wm.AddWorker("worker1")
+	worker1 := wm.AddWorker(testWorkerAddr, testWorkerName)
 	c.Assert(worker1, qt.IsNotNil)
-	c.Assert(worker1.ID, qt.Equals, "worker1")
+	c.Assert(worker1.Address, qt.Equals, testWorkerAddr)
 	c.Assert(worker1.SetConsecutiveFails(), qt.Equals, 0)
 	c.Assert(worker1.GetBannedUntil().IsZero(), qt.IsTrue)
 
 	// Test adding the same worker again (should return existing)
-	worker1Again := wm.AddWorker("worker1")
+	worker1Again := wm.AddWorker(testWorkerAddr, testWorkerName)
 	c.Assert(worker1Again, qt.Equals, worker1)
 
 	// Test adding a different worker
-	worker2 := wm.AddWorker("worker2")
+	worker2 := wm.AddWorker("worker2", testWorkerName)
 	c.Assert(worker2, qt.IsNotNil)
-	c.Assert(worker2.ID, qt.Equals, "worker2")
+	c.Assert(worker2.Address, qt.Equals, "worker2")
 	c.Assert(worker2, qt.Not(qt.Equals), worker1)
 }
 
 func TestWorkerManagerGetWorker(t *testing.T) {
 	c := qt.New(t)
 
-	wm := NewWorkerManager(DefaultWorkerBanRules)
+	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
 
 	// Test getting non-existent worker
 	worker, exists := wm.GetWorker("nonexistent")
@@ -113,7 +113,7 @@ func TestWorkerManagerGetWorker(t *testing.T) {
 	c.Assert(exists, qt.IsFalse)
 
 	// Add a worker and test getting it
-	addedWorker := wm.AddWorker("test-worker")
+	addedWorker := wm.AddWorker("test-worker", testWorkerName)
 	retrievedWorker, exists := wm.GetWorker("test-worker")
 	c.Assert(retrievedWorker, qt.IsNotNil)
 	c.Assert(exists, qt.IsTrue)
@@ -123,30 +123,35 @@ func TestWorkerManagerGetWorker(t *testing.T) {
 func TestWorkerManagerWorkerResult(t *testing.T) {
 	c := qt.New(t)
 
-	wm := NewWorkerManager(DefaultWorkerBanRules)
+	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
 
 	// Test success result on new worker
-	wm.WorkerResult("worker1", true)
-	worker, exists := wm.GetWorker("worker1")
+	err := wm.WorkerResult(testWorkerAddr, true)
+	c.Assert(err, qt.IsNil)
+	worker, exists := wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker.SetConsecutiveFails(), qt.Equals, 0)
 
 	// Test failure result
-	wm.WorkerResult("worker1", false)
-	worker, exists = wm.GetWorker("worker1")
+	err = wm.WorkerResult(testWorkerAddr, false)
+	c.Assert(err, qt.IsNil)
+	worker, exists = wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker.SetConsecutiveFails(), qt.Equals, 1)
 
 	// Test multiple failures
-	wm.WorkerResult("worker1", false)
-	wm.WorkerResult("worker1", false)
-	worker, exists = wm.GetWorker("worker1")
+	err = wm.WorkerResult(testWorkerAddr, false)
+	c.Assert(err, qt.IsNil)
+	err = wm.WorkerResult(testWorkerAddr, false)
+	c.Assert(err, qt.IsNil)
+	worker, exists = wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker.SetConsecutiveFails(), qt.Equals, 3)
 
 	// Test success resets failures
-	wm.WorkerResult("worker1", true)
-	worker, exists = wm.GetWorker("worker1")
+	err = wm.WorkerResult(testWorkerAddr, true)
+	c.Assert(err, qt.IsNil)
+	worker, exists = wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker.SetConsecutiveFails(), qt.Equals, 0)
 }
@@ -158,47 +163,55 @@ func TestWorkerManagerBannedWorkers(t *testing.T) {
 		BanTimeout:          3 * time.Minute,
 		FailuresToGetBanned: 2,
 	}
-	wm := NewWorkerManager(rules)
+	wm := NewWorkerManager(storageForTest(t), rules)
 
 	// Initially no banned workers
 	banned := wm.BannedWorkers()
 	c.Assert(len(banned), qt.Equals, 0)
 
 	// Add workers with different failure counts
-	wm.AddWorker("worker1")
-	wm.WorkerResult("worker1", false) // 1 failure
-	wm.WorkerResult("worker1", false) // 2 failures
+	wm.AddWorker(testWorkerAddr, testWorkerName)
+	err := wm.WorkerResult(testWorkerAddr, false) // 1 failure
+	c.Assert(err, qt.IsNil)
+	err = wm.WorkerResult(testWorkerAddr, false) // 2 failures
+	c.Assert(err, qt.IsNil)
 
-	wm.AddWorker("worker2")
-	wm.WorkerResult("worker2", false) // 1 failure
-	wm.WorkerResult("worker2", false) // 2 failures
-	wm.WorkerResult("worker2", false) // 3 failures - should be banned
+	wm.AddWorker("worker2", testWorkerName)
+	err = wm.WorkerResult("worker2", false) // 1 failure
+	c.Assert(err, qt.IsNil)
+	err = wm.WorkerResult("worker2", false) // 2 failures
+	c.Assert(err, qt.IsNil)
+	err = wm.WorkerResult("worker2", false) // 3 failures - should be banned
+	c.Assert(err, qt.IsNil)
 
-	wm.AddWorker("worker3")
-	wm.WorkerResult("worker3", true) // success
+	wm.AddWorker("worker3", testWorkerName)
+	err = wm.WorkerResult("worker3", true) // success
+	c.Assert(err, qt.IsNil)
 
 	banned = wm.BannedWorkers()
 	c.Assert(len(banned), qt.Equals, 1)
-	c.Assert(banned[0].ID, qt.Equals, "worker2")
+	c.Assert(banned[0].Address, qt.Equals, "worker2")
 }
 
 func TestWorkerManagerResetWorker(t *testing.T) {
 	c := qt.New(t)
 
-	wm := NewWorkerManager(DefaultWorkerBanRules)
+	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
 
 	// Add worker with failures
-	wm.AddWorker("worker1")
-	wm.WorkerResult("worker1", false)
-	wm.WorkerResult("worker1", false)
+	wm.AddWorker(testWorkerAddr, testWorkerName)
+	err := wm.WorkerResult(testWorkerAddr, false)
+	c.Assert(err, qt.IsNil)
+	err = wm.WorkerResult(testWorkerAddr, false)
+	c.Assert(err, qt.IsNil)
 
-	worker, _ := wm.GetWorker("worker1")
+	worker, _ := wm.GetWorker(testWorkerAddr)
 	c.Assert(worker.SetConsecutiveFails(), qt.Equals, 2)
 
 	// Reset worker
-	wm.ResetWorker("worker1")
+	wm.ResetWorker(testWorkerAddr)
 
-	worker, exists := wm.GetWorker("worker1")
+	worker, exists := wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker.SetConsecutiveFails(), qt.Equals, 0)
 	c.Assert(worker.GetBannedUntil().IsZero(), qt.IsTrue)
@@ -214,17 +227,17 @@ func TestWorkerManagerSetBanDuration(t *testing.T) {
 		BanTimeout:          5 * time.Minute,
 		FailuresToGetBanned: 3,
 	}
-	wm := NewWorkerManager(rules)
+	wm := NewWorkerManager(storageForTest(t), rules)
 
 	// Add worker
-	wm.AddWorker("worker1")
+	wm.AddWorker(testWorkerAddr, testWorkerName)
 
 	// Set ban duration
 	beforeBan := time.Now()
-	wm.SetBanDuration("worker1")
+	wm.SetBanDuration(testWorkerAddr)
 	afterBan := time.Now()
 
-	worker, exists := wm.GetWorker("worker1")
+	worker, exists := wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	bannedUntil := worker.GetBannedUntil()
 	c.Assert(bannedUntil.After(beforeBan.Add(4*time.Minute)), qt.IsTrue)
@@ -237,7 +250,7 @@ func TestWorkerManagerSetBanDuration(t *testing.T) {
 func TestWorkerManagerStartStop(t *testing.T) {
 	c := qt.New(t)
 
-	wm := NewWorkerManager(DefaultWorkerBanRules)
+	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -247,7 +260,7 @@ func TestWorkerManagerStartStop(t *testing.T) {
 	c.Assert(wm.cancelFunc, qt.IsNotNil)
 
 	// Add a worker to verify it exists
-	wm.AddWorker("test-worker")
+	wm.AddWorker("test-worker", testWorkerName)
 	worker, exists := wm.GetWorker("test-worker")
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker, qt.IsNotNil)
@@ -269,7 +282,7 @@ func TestWorkerManagerBanUnbanCycle(t *testing.T) {
 		BanTimeout:          100 * time.Millisecond,
 		FailuresToGetBanned: 2,
 	}
-	wm := NewWorkerManager(rules)
+	wm := NewWorkerManager(storageForTest(t), rules)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -278,19 +291,22 @@ func TestWorkerManagerBanUnbanCycle(t *testing.T) {
 	defer wm.Stop()
 
 	// Add worker and make it fail enough to be banned
-	wm.AddWorker("worker1")
-	wm.WorkerResult("worker1", false) // 1 failure
-	wm.WorkerResult("worker1", false) // 2 failures
-	wm.WorkerResult("worker1", false) // 3 failures - should be banned
+	wm.AddWorker(testWorkerAddr, testWorkerName)
+	err := wm.WorkerResult(testWorkerAddr, false) // 1 failure
+	c.Assert(err, qt.IsNil)                       // Should be nil
+	err = wm.WorkerResult(testWorkerAddr, false)  // 2 failures
+	c.Assert(err, qt.IsNil)                       // Should be nil
+	err = wm.WorkerResult(testWorkerAddr, false)  // 3 failures - should be banned
+	c.Assert(err, qt.IsNil)                       // Should be nil
 
 	// Verify worker is banned
 	banned := wm.BannedWorkers()
 	c.Assert(len(banned), qt.Equals, 1)
 
 	// Manually trigger ban duration setting (since ticker runs every 10 seconds)
-	wm.SetBanDuration("worker1")
+	wm.SetBanDuration(testWorkerAddr)
 
-	worker, exists := wm.GetWorker("worker1")
+	worker, exists := wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker.GetBannedUntil().IsZero(), qt.IsFalse)
 
@@ -298,9 +314,9 @@ func TestWorkerManagerBanUnbanCycle(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Manually trigger worker reset (since ticker runs every 10 seconds)
-	wm.ResetWorker("worker1")
+	wm.ResetWorker(testWorkerAddr)
 
-	worker, exists = wm.GetWorker("worker1")
+	worker, exists = wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker.SetConsecutiveFails(), qt.Equals, 0)
 	c.Assert(worker.GetBannedUntil().IsZero(), qt.IsTrue)
@@ -316,7 +332,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 			FailuresToGetBanned: 1,
 		}
 		// Use REAL start method with fast ticker interval
-		wm := NewWorkerManager(rules, 100*time.Millisecond)
+		wm := NewWorkerManager(storageForTest(t), rules, 100*time.Millisecond)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -326,18 +342,22 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		defer wm.Stop()
 
 		// Set up workers in banned state
-		wm.AddWorker("worker1")
-		wm.AddWorker("worker2")
-		wm.WorkerResult("worker1", false) // 1 failure
-		wm.WorkerResult("worker1", false) // 2 failures - should be banned
-		wm.WorkerResult("worker2", false) // 1 failure
-		wm.WorkerResult("worker2", false) // 2 failures - should be banned
+		wm.AddWorker(testWorkerAddr, testWorkerName)
+		wm.AddWorker("worker2", testWorkerName)
+		err := wm.WorkerResult(testWorkerAddr, false) // 1 failure
+		c.Assert(err, qt.IsNil)                       // Should be nil
+		err = wm.WorkerResult(testWorkerAddr, false)  // 2 failures - should be banned
+		c.Assert(err, qt.IsNil)                       // Should be nil
+		err = wm.WorkerResult("worker2", false)       // 1 failure
+		c.Assert(err, qt.IsNil)                       // Should be nil
+		err = wm.WorkerResult("worker2", false)       // 2 failures - should be banned
+		c.Assert(err, qt.IsNil)                       // Should be nil
 
 		// Verify workers are banned but no ban duration set yet
 		banned := wm.BannedWorkers()
 		c.Assert(len(banned), qt.Equals, 2)
 
-		worker1, exists1 := wm.GetWorker("worker1")
+		worker1, exists1 := wm.GetWorker(testWorkerAddr)
 		worker2, exists2 := wm.GetWorker("worker2")
 		c.Assert(exists1, qt.IsTrue)
 		c.Assert(exists2, qt.IsTrue)
@@ -348,7 +368,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		time.Sleep(150 * time.Millisecond)
 
 		// Verify ban durations were set by the real background logic
-		worker1, _ = wm.GetWorker("worker1")
+		worker1, _ = wm.GetWorker(testWorkerAddr)
 		worker2, _ = wm.GetWorker("worker2")
 		c.Assert(worker1.GetBannedUntil().IsZero(), qt.IsFalse, qt.Commentf("Ban duration should be set after ticker"))
 		c.Assert(worker2.GetBannedUntil().IsZero(), qt.IsFalse, qt.Commentf("Ban duration should be set after ticker"))
@@ -357,7 +377,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		time.Sleep(350 * time.Millisecond)
 
 		// Verify workers were reset by the real background logic
-		worker1, exists1 = wm.GetWorker("worker1")
+		worker1, exists1 = wm.GetWorker(testWorkerAddr)
 		worker2, exists2 = wm.GetWorker("worker2")
 		c.Assert(exists1, qt.IsTrue)
 		c.Assert(exists2, qt.IsTrue)
@@ -373,7 +393,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 			BanTimeout:          1 * time.Second,
 			FailuresToGetBanned: 1,
 		}
-		wm := NewWorkerManager(rules, 50*time.Millisecond) // Fast ticker
+		wm := NewWorkerManager(storageForTest(t), rules, 50*time.Millisecond) // Fast ticker
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -385,11 +405,11 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		c.Assert(wm.cancelFunc, qt.IsNotNil)
 
 		// Add workers
-		wm.AddWorker("worker1")
-		wm.AddWorker("worker2")
+		wm.AddWorker(testWorkerAddr, testWorkerName)
+		wm.AddWorker("worker2", testWorkerName)
 
 		// Verify workers exist
-		_, exists1 := wm.GetWorker("worker1")
+		_, exists1 := wm.GetWorker(testWorkerAddr)
 		_, exists2 := wm.GetWorker("worker2")
 		c.Assert(exists1, qt.IsTrue)
 		c.Assert(exists2, qt.IsTrue)
@@ -401,7 +421,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// Verify the real stop() was called and workers cleared
-		_, exists1 = wm.GetWorker("worker1")
+		_, exists1 = wm.GetWorker(testWorkerAddr)
 		_, exists2 = wm.GetWorker("worker2")
 		c.Assert(exists1, qt.IsFalse)
 		c.Assert(exists2, qt.IsFalse)
@@ -415,11 +435,11 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		}
 
 		// Test with custom interval
-		wm := NewWorkerManager(rules, 50*time.Millisecond)
+		wm := NewWorkerManager(storageForTest(t), rules, 50*time.Millisecond)
 		c.Assert(wm.tickerInterval, qt.Equals, 50*time.Millisecond)
 
 		// Test with default interval
-		wmDefault := NewWorkerManager(rules)
+		wmDefault := NewWorkerManager(storageForTest(t), rules)
 		c.Assert(wmDefault.tickerInterval, qt.Equals, 10*time.Second)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -430,9 +450,11 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		defer wm.Stop()
 
 		// Add banned worker
-		wm.AddWorker("worker1")
-		wm.WorkerResult("worker1", false)
-		wm.WorkerResult("worker1", false) // Should be banned
+		wm.AddWorker(testWorkerAddr, testWorkerName)
+		err := wm.WorkerResult(testWorkerAddr, false)
+		c.Assert(err, qt.IsNil)                      // Should be nil
+		err = wm.WorkerResult(testWorkerAddr, false) // Should be banned
+		c.Assert(err, qt.IsNil)                      // Should be nil
 
 		// Verify banned
 		banned := wm.BannedWorkers()
@@ -442,7 +464,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// Verify ban duration was set by real ticker
-		worker, exists := wm.GetWorker("worker1")
+		worker, exists := wm.GetWorker(testWorkerAddr)
 		c.Assert(exists, qt.IsTrue)
 		c.Assert(worker.GetBannedUntil().IsZero(), qt.IsFalse)
 	})
@@ -453,7 +475,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 			BanTimeout:          200 * time.Millisecond,
 			FailuresToGetBanned: 5, // High threshold
 		}
-		wm := NewWorkerManager(rules, 50*time.Millisecond)
+		wm := NewWorkerManager(storageForTest(t), rules, 50*time.Millisecond)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 		defer cancel()
@@ -462,16 +484,18 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 		defer wm.Stop()
 
 		// Add workers with some failures but not enough to ban
-		wm.AddWorker("worker1")
-		wm.AddWorker("worker2")
-		wm.WorkerResult("worker1", false) // 1 failure
-		wm.WorkerResult("worker2", false) // 1 failure
+		wm.AddWorker(testWorkerAddr, testWorkerName)
+		wm.AddWorker("worker2", testWorkerName)
+		err := wm.WorkerResult(testWorkerAddr, false) // 1 failure
+		c.Assert(err, qt.IsNil)
+		err = wm.WorkerResult("worker2", false) // 1 failure
+		c.Assert(err, qt.IsNil)
 
 		// Wait for multiple ticker cycles
 		time.Sleep(200 * time.Millisecond)
 
 		// Verify workers are still active and not banned
-		worker1, exists1 := wm.GetWorker("worker1")
+		worker1, exists1 := wm.GetWorker(testWorkerAddr)
 		worker2, exists2 := wm.GetWorker("worker2")
 		c.Assert(exists1, qt.IsTrue)
 		c.Assert(exists2, qt.IsTrue)
@@ -489,7 +513,7 @@ func TestWorkerManagerRealStartMethodWithConfigurableTicker(t *testing.T) {
 func TestWorkerManagerConcurrency(t *testing.T) {
 	c := qt.New(t)
 
-	wm := NewWorkerManager(DefaultWorkerBanRules)
+	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -506,12 +530,14 @@ func TestWorkerManagerConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			workerID := fmt.Sprintf("worker-%d", id)
-			wm.AddWorker(workerID)
+			workerAddress := fmt.Sprintf("worker-%d", id)
+			workerName := fmt.Sprintf("Worker %d", id)
+			wm.AddWorker(workerAddress, workerName)
 
 			// Perform some operations on the worker
 			for j := range numOperations {
-				wm.WorkerResult(workerID, j%2 == 0) // Alternate success/failure
+				err := wm.WorkerResult(workerAddress, j%2 == 0) // Alternate success/failure
+				c.Assert(err, qt.IsNil)
 			}
 		}(i)
 	}
@@ -532,21 +558,21 @@ func TestWorkerManagerConcurrency(t *testing.T) {
 		workerID := fmt.Sprintf("worker-%d", i)
 		worker, exists := wm.GetWorker(workerID)
 		c.Assert(exists, qt.IsTrue)
-		c.Assert(worker.ID, qt.Equals, workerID)
+		c.Assert(worker.Address, qt.Equals, workerID)
 	}
 }
 
 func TestWorkerManagerContextCancellation(t *testing.T) {
 	c := qt.New(t)
 
-	wm := NewWorkerManager(DefaultWorkerBanRules)
+	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	wm.Start(ctx)
 	c.Assert(wm.innerCtx, qt.IsNotNil)
 
 	// Add a worker
-	wm.AddWorker("test-worker")
+	wm.AddWorker("test-worker", testWorkerName)
 	_, exists := wm.GetWorker("test-worker")
 	c.Assert(exists, qt.IsTrue)
 
@@ -569,12 +595,13 @@ func TestWorkerManagerEdgeCases(t *testing.T) {
 			BanTimeout:          1 * time.Minute,
 			FailuresToGetBanned: 0,
 		}
-		wm := NewWorkerManager(rules)
+		wm := NewWorkerManager(storageForTest(t), rules)
 
-		wm.AddWorker("worker1")
-		wm.WorkerResult("worker1", false) // 1 failure
+		wm.AddWorker(testWorkerAddr, testWorkerName)
+		err := wm.WorkerResult(testWorkerAddr, false) // 1 failure
+		c.Assert(err, qt.IsNil)
 
-		worker, _ := wm.GetWorker("worker1")
+		worker, _ := wm.GetWorker(testWorkerAddr)
 		c.Assert(worker.IsBanned(rules), qt.IsTrue) // Should be banned immediately
 	})
 
@@ -583,18 +610,18 @@ func TestWorkerManagerEdgeCases(t *testing.T) {
 			BanTimeout:          1 * time.Minute,
 			FailuresToGetBanned: -1,
 		}
-		wm := NewWorkerManager(rules)
+		wm := NewWorkerManager(storageForTest(t), rules)
 
-		wm.AddWorker("worker1")
-		worker, _ := wm.GetWorker("worker1")
+		wm.AddWorker(testWorkerAddr, testWorkerName)
+		worker, _ := wm.GetWorker(testWorkerAddr)
 		c.Assert(worker.IsBanned(rules), qt.IsTrue) // Should be banned immediately
 	})
 
 	t.Run("Empty worker ID", func(t *testing.T) {
-		wm := NewWorkerManager(DefaultWorkerBanRules)
+		wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
 
-		worker := wm.AddWorker("")
-		c.Assert(worker.ID, qt.Equals, "")
+		worker := wm.AddWorker("", testWorkerName)
+		c.Assert(worker.Address, qt.Equals, "")
 
 		retrievedWorker, exists := wm.GetWorker("")
 		c.Assert(exists, qt.IsTrue)
