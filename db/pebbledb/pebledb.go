@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
+	"strings"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/vocdoni/davinci-node/db"
@@ -19,6 +21,7 @@ type WriteTx struct {
 var _ db.WriteTx = (*WriteTx)(nil)
 
 func get(reader pebble.Reader, k []byte) ([]byte, error) {
+	defer handleClosedDBPanic()
 	v, closer, err := reader.Get(k)
 	if errors.Is(err, pebble.ErrNotFound) {
 		return nil, db.ErrKeyNotFound
@@ -39,6 +42,7 @@ func get(reader pebble.Reader, k []byte) ([]byte, error) {
 }
 
 func iterate(reader pebble.Reader, prefix []byte, callback func(k, v []byte) bool) (err error) {
+	defer handleClosedDBPanic()
 	iterOptions := &pebble.IterOptions{
 		LowerBound: prefix,
 		UpperBound: keyUpperBound(prefix),
@@ -75,22 +79,26 @@ func (tx *WriteTx) Iterate(prefix []byte, callback func(k, v []byte) bool) (err 
 
 // Set implements the db.WriteTx.Set interface method
 func (tx *WriteTx) Set(k, v []byte) error {
+	defer handleClosedDBPanic()
 	return tx.batch.Set(k, v, nil)
 }
 
 // Delete implements the db.WriteTx.Delete interface method
 func (tx *WriteTx) Delete(k []byte) error {
+	defer handleClosedDBPanic()
 	return tx.batch.Delete(k, nil)
 }
 
 // Apply implements the db.WriteTx.Apply interface method
 func (tx *WriteTx) Apply(other db.WriteTx) (err error) {
+	defer handleClosedDBPanic()
 	otherPebble := db.UnwrapWriteTx(other).(*WriteTx)
 	return tx.batch.Apply(otherPebble.batch, nil)
 }
 
 // Commit implements the db.WriteTx.Commit interface method
 func (tx *WriteTx) Commit() error {
+	defer handleClosedDBPanic()
 	if tx.batch == nil {
 		return fmt.Errorf("cannot commit pebble tx: already committed or discarded")
 	}
@@ -159,6 +167,7 @@ func (db *PebbleDB) WriteTx() db.WriteTx {
 
 // Close closes the PebbleDB
 func (db *PebbleDB) Close() error {
+	defer handleClosedDBPanic()
 	return db.db.Close()
 }
 
@@ -181,6 +190,7 @@ func (db *PebbleDB) Iterate(prefix []byte, callback func(k, v []byte) bool) (err
 
 // Compact implements the db.Database.Compact interface method
 func (db *PebbleDB) Compact() error {
+	defer handleClosedDBPanic()
 	// from https://github.com/cockroachdb/pebble/issues/1474#issuecomment-1022313365
 	iter, err := db.db.NewIter(nil)
 	if err != nil {
@@ -197,4 +207,34 @@ func (db *PebbleDB) Compact() error {
 		return err
 	}
 	return db.db.Compact(first, last, true)
+}
+
+// handleClosedDBPanic wraps the commit operation to handle panic scenarios
+// about already closed database. It should be deferred in any storage
+// operation that might read, write or commit to the database that can be
+// closed during the operation.
+func handleClosedDBPanic() {
+	if r := recover(); r != nil {
+		// Collect stack trace
+		stack := []string{}
+		for i := range 32 {
+			pc, file, line, ok := runtime.Caller(i)
+			if !ok {
+				break
+			}
+			fn := runtime.FuncForPC(pc)
+			funcName := ""
+			if fn != nil {
+				funcName = fn.Name()
+			}
+			stack = append(stack, fmt.Sprintf("%s\n\t%s:%d", funcName, file, line))
+		}
+
+		// Check if the panic is due to a closed database
+		if strings.Contains(fmt.Sprintf("%v", r), "closed") {
+			return
+		}
+		// If it's not a closed database panic, re-panic with the stack trace
+		panic(fmt.Sprintf("panic during storage operation: %v: %s", r, strings.Join(stack, "\n")))
+	}
 }
