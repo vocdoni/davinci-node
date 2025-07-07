@@ -118,7 +118,7 @@ func (tx *WriteTx) Discard() {
 		return
 	}
 	// Close returns an error, but here in the Discard context is omitted
-	tx.batch.Close()
+	_ = tx.batch.Close()
 	tx.batch = nil
 }
 

@@ -60,13 +60,21 @@ func BenchmarkWriteTx(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer database.Close()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	defer func() {
+		if err := database.Close(); err != nil {
+			b.Error(err)
+		}
+	}()
+
+	for b.Loop() {
 		tx := database.WriteTx()
-		tx.Set([]byte("key"), []byte("value"))
-		tx.Commit()
+		if err := tx.Set([]byte("key"), []byte("value")); err != nil {
+			b.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -75,19 +83,29 @@ func BenchmarkIterate(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			b.Error(err)
+		}
+	}()
 
 	tx := database.WriteTx()
-	for i := 0; i < 100000; i++ {
-		tx.Set([]byte(fmt.Sprintf("key%d", i)), []byte("value"))
+	for i := range 100000 {
+		if err := tx.Set(fmt.Appendf(nil, "key%d", i), []byte("value")); err != nil {
+			b.Fatal(err)
+		}
 	}
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		b.Fatal(err)
+	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		database.Iterate([]byte("key"), func(k, v []byte) bool {
+	for b.Loop() {
+		err = database.Iterate([]byte("key"), func(k, v []byte) bool {
 			return true
 		})
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -96,17 +114,28 @@ func BenchmarkWriteTxApply(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			b.Error(err)
+		}
+	}()
 
 	tx1 := database.WriteTx()
-	tx1.Set([]byte("key1"), []byte("value1"))
+	if err := tx1.Set([]byte("key1"), []byte("value1")); err != nil {
+		b.Fatal(err)
+	}
 
 	tx2 := database.WriteTx()
-	tx2.Set([]byte("key2"), []byte("value2"))
+	if err := tx2.Set([]byte("key2"), []byte("value2")); err != nil {
+		b.Fatal(err)
+	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		tx1.Apply(tx2)
-		tx1.Commit()
+	for b.Loop() {
+		if err := tx1.Apply(tx2); err != nil {
+			b.Fatal(err)
+		}
+		if err := tx1.Commit(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

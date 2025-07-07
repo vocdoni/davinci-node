@@ -48,6 +48,10 @@ func NewTest(tb testing.TB) db.Database {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	tb.Cleanup(func() { database.Close() })
+	tb.Cleanup(func() {
+		if err := database.Close(); err != nil {
+			tb.Error(err)
+		}
+	})
 	return database
 }
