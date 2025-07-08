@@ -189,6 +189,7 @@ Worker nodes are lightweight components that handle zkSNARK proof generation for
    ```bash
    DAVINCI_WORKER_MASTERURL="http://master-host:9090/workers/<UUID>"
    DAVINCI_WORKER_ADDRESS="0x1111122222333334444455555666667777788888"
+   DAVINCI_WORKER_NAME="my-awesome-davinci-worker"
    ```
 
 4. **Start the worker container:**

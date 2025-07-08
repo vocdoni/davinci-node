@@ -596,12 +596,12 @@ Gets a list of all worker nodes with their statistics.
 {
   "workers": [
     {
-      "address": "0x742d35Cc6C82C3e76E8B8c9b4aE3F4F7E5A8c6D2",
+      "name": "worker-name-1",
       "successCount": 150,
       "failedCount": 5
     },
     {
-      "address": "0x8F4A7B2C1D6E9F3A5B8C2E7F1A4D6C9E2B5A8F7C",
+      "name": "********************************2B5A8F7C",
       "successCount": 200,
       "failedCount": 2
     }
