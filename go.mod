@@ -31,7 +31,7 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20250707135934-84e8a1884497
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
 	github.com/vocdoni/davinci-contracts v0.0.0-20250628222741-0b311ee2329f
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250707141547-b4741e53913a
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250707215605-5c183bc58746
 	go.mongodb.org/mongo-driver v1.12.1
 	golang.org/x/sync v0.14.0
 )
