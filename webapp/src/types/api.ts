@@ -31,7 +31,7 @@ export interface SequencerStatsResponse {
 }
 
 export interface Worker {
-  address: string
+  name: string
   successCount: number
   failedCount: number
 }
