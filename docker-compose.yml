@@ -52,6 +52,7 @@ services:
       - sequencer
     profiles:
       - prod
+      - prod-test
 
   watchtower:
     image: containrrr/watchtower

@@ -49,7 +49,7 @@ func TestWorkerIntegration(t *testing.T) {
 	workerAddr := fmt.Sprintf("0x%s", util.RandomHex(20))
 	c.Run("launch a worker with no jobs pending", func(c *qt.C) {
 		getJobEndpoint := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, mainAPIUUID.String())
-		getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerNameParam, workerName)
+		getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerNameQueryParam, workerName)
 		getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, workerAddr)
 		body, status, err := cli.Request(http.MethodGet, nil, nil, getJobEndpoint)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
@@ -149,7 +149,7 @@ func TestWorkerIntegration(t *testing.T) {
 			default:
 				// make a request to the api to get a job until get banned
 				getJobEndpoint := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, mainAPIUUID.String())
-				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerNameParam, workerName)
+				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerNameQueryParam, workerName)
 				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, workerAddr)
 				body, status, err := cli.Request(http.MethodGet, nil, nil, getJobEndpoint)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
@@ -178,7 +178,7 @@ func TestWorkerIntegration(t *testing.T) {
 			default:
 				// make a request to the api to get a job until get unbanned
 				getJobEndpoint := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, mainAPIUUID.String())
-				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerNameParam, workerName)
+				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerNameQueryParam, workerName)
 				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, workerAddr)
 				body, status, err := cli.Request(http.MethodGet, nil, nil, getJobEndpoint)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))

@@ -1,6 +1,9 @@
 package api
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Route constants for the API endpoints
 
@@ -44,13 +47,13 @@ const (
 	GetCensusProofEndpoint        = "/censuses/{" + CensusURLParam + "}/proof"        // GET: Get census proof
 
 	// Worker endpoints
-	WorkerUUIDParam         = "uuid"                                                                                                // URL parameter for worker UUID
-	WorkerAddressParam      = "address"                                                                                             // URL parameter for worker address
-	WorkerNameParam         = "name"                                                                                                // URL parameter for worker name
-	WorkersEndpoint         = "/workers"                                                                                            // Base worker endpoint
-	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerNameParam + "}/{" + WorkerAddressParam + "}" // GET: Worker get job
-	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"                                                        // POST: Worker submit job
-	WorkersListEndpoint     = WorkersEndpoint                                                                                       // GET: List workers
+	WorkerUUIDParam         = "uuid"                                                                      // URL parameter for worker UUID
+	WorkerAddressParam      = "address"                                                                   // URL parameter for worker address
+	WorkerNameQueryParam    = "name"                                                                      // URL query param for worker name
+	WorkersEndpoint         = "/workers"                                                                  // Base worker endpoint
+	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}" // GET: Worker get job
+	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"                              // POST: Worker submit job
+	WorkersListEndpoint     = WorkersEndpoint                                                             // GET: List workers
 
 	// Sequencer endpoints
 	SequencerWorkersEndpoint = "/sequencer/workers" // GET: List worker statistics
@@ -61,10 +64,21 @@ const (
 	MetadataGetEndpoint = MetadataSetEndpoint + "/{" + MetadataHashParam + "}" // GET: Get metadata
 )
 
-// EndpointWithParam creates an endpoint URL by replacing the parameter placeholder
-// with the actual value. Used to build fully qualified endpoint URLs.
+// EndpointWithParam creates an endpoint URL by replacing the parameter
+// placeholder with the actual value. Used to build fully qualified
+// endpoint URLs.
 func EndpointWithParam(path, key, param string) string {
-	return strings.Replace(path, "{"+key+"}", param, 1)
+	// Check if the path contains the key as a URL parameter
+	if rawKey := fmt.Sprintf("{%s}", key); strings.Contains(path, rawKey) {
+		return strings.Replace(path, "{"+key+"}", param, 1)
+	}
+	// If the key is not found, set it as a query parameter. Check if the path
+	// already has a query string and append the parameter if it does
+	if strings.Contains(path, "?") {
+		return fmt.Sprintf("%s&%s=%s", path, key, param)
+	}
+	// If the path does not have a query string, add it as the first parameter
+	return fmt.Sprintf("%s?%s=%s", path, key, param)
 }
 
 // LogExcludedPrefixes defines URL prefixes to exclude from request logging

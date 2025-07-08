@@ -54,6 +54,12 @@ API errors are returned with appropriate HTTP status codes and a JSON body with 
 | 40014 | 403         | Unauthorized                               |
 | 40015 | 400         | Malformed parameter                        |
 | 40017 | 400         | Malformed address                          |
+| 40018 | 400         | Ballot already submitted                   |
+| 40019 | 409         | Ballot is already processing               |
+| 40020 | 400         | Process is not accepting votes             |
+| 40021 | 400         | Not supported chain Id                     |
+| 40022 | 400         | Worker not available                       |
+| 40023 | 400         | Malformed worker info                      |
 | 50001 | 500         | Marshaling (server-side) JSON failed       |
 | 50002 | 500         | Internal server error                      |
 

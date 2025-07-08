@@ -46,11 +46,10 @@ func (a *API) startWorkerTimeoutMonitor() {
 	}()
 }
 
-// workerGetJob handles GET /workers/{uuid}/{workerName}/{workerAddress}
+// workerGetJob handles GET /workers/{uuid}/{workerAddress}?name={workerName}
 func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 	// Extract UUID and address from URL params
 	uuid := chi.URLParam(r, WorkerUUIDParam)
-	workerName := chi.URLParam(r, WorkerNameParam)
 	workerAddress := chi.URLParam(r, WorkerAddressParam)
 
 	// Validate UUID
@@ -58,9 +57,27 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 		ErrUnauthorized.Write(w)
 		return
 	}
+	// Validate worker address
+	if _, err := workers.ValidWorkerAddress(workerAddress); err != nil {
+		ErrMalformedWorkerInfo.Withf("invalid worker address").Write(w)
+		return
+	}
 
 	// If the worker is not registered, add it
 	if _, ok := a.jobsManager.WorkerManager.GetWorker(workerAddress); !ok {
+		// Extract worker name from query parameter
+		workerName := r.URL.Query().Get("name")
+		// Validate worker name, if not provided, try to derive it from the
+		// address
+		if workerName == "" {
+			var err error
+			workerName, err = workers.WorkerNameFromAddress(workerAddress)
+			if err != nil {
+				ErrMalformedWorkerInfo.WithErr(err).Write(w)
+				return
+			}
+		}
+		// Add worker to the manager with its name
 		a.jobsManager.WorkerManager.AddWorker(workerAddress, workerName)
 	}
 

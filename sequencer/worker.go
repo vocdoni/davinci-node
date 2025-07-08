@@ -84,6 +84,30 @@ func NewWorker(stg *storage.Storage, masterURL, rawWorkerAddr, workerName string
 	return s, nil
 }
 
+// masterInfo extracts the base URL and UUID from the masterURL of the worker.
+// It returns an error if the masterURL is not set or if it does not contain
+// the expected format with "/workers/" path.
+func (s *Sequencer) masterInfo() (string, string, error) {
+	if s.masterURL == "" {
+		return "", "", fmt.Errorf("master URL is not set for worker mode")
+	}
+
+	// Extract base URL and UUID from masterURL
+	baseURL := s.masterURL
+	var masterUUID string
+	if strings.Contains(baseURL, "/workers/") {
+		parts := strings.Split(baseURL, "/workers/")
+		if len(parts) < 2 {
+			return "", "", fmt.Errorf("invalid master URL format: %s", baseURL)
+		}
+		baseURL = parts[0]
+		masterUUID = parts[1]
+	} else {
+		return "", "", fmt.Errorf("master URL does not contain workers path: %s", baseURL)
+	}
+	return baseURL, masterUUID, nil
+}
+
 // startWorkerProcessor starts the worker goroutine that fetches and processes jobs
 func (s *Sequencer) startWorkerProcessor() error {
 	go func() {
@@ -169,13 +193,10 @@ func (s *Sequencer) processWorkerJob() error {
 
 // fetchProcessFromMaster fetches process information from the master and stores it locally
 func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
-	// Extract base URL from masterURL (remove the workers path)
-	baseURL := s.masterURL
-	if strings.Contains(baseURL, "/workers/") {
-		parts := strings.Split(baseURL, "/workers/")
-		if len(parts) > 0 {
-			baseURL = parts[0]
-		}
+	// Get the base URL from master information
+	baseURL, _, err := s.masterInfo()
+	if err != nil {
+		return fmt.Errorf("failed to get master info: %w", err)
 	}
 
 	// Construct process endpoint URL using the defined API routes
@@ -214,7 +235,14 @@ func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
 
 // fetchJobFromMaster performs GET request to master
 func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
-	url := fmt.Sprintf("%s/%s/%s", s.masterURL, s.workerName, s.workerAddress.String())
+	baseURL, masterUUID, err := s.masterInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get master info: %w", err)
+	}
+	uri := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, masterUUID)
+	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
+	uri = api.EndpointWithParam(uri, api.WorkerAddressParam, s.workerAddress.String())
+	url := baseURL + uri
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Get(url)

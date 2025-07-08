@@ -263,9 +263,20 @@ func (wm *WorkerManager) WorkerStats(address string) (*WorkerInfo, error) {
 		return nil, fmt.Errorf("worker %s not found", address)
 	}
 	stats := wm.stg.WorkerStats(address)
+	name := stats.Name
+	if name == "" {
+		// TODO: This is a fallback, ideally we should always have a name
+		// or been able to derive it from the address. But for now this is
+		// a safe fallback to ensure backward compatibility.
+		name = address // Default to address if name is not set
+		if hiddenAddr, err := WorkerNameFromAddress(address); err == nil {
+			name = hiddenAddr
+		}
+	}
+
 	return &WorkerInfo{
 		Address:      address,
-		Name:         stats.Name,
+		Name:         name,
 		SuccessCount: stats.SuccessCount,
 		FailedCount:  stats.FailedCount,
 	}, nil
@@ -276,18 +287,28 @@ func (wm *WorkerManager) WorkerStats(address string) (*WorkerInfo, error) {
 // name, success count, and failed count for each worker. If there is an error
 // retrieving the statistics, it returns an error.
 func (wm *WorkerManager) ListWorkerStats() ([]*WorkerInfo, error) {
-	stats, err := wm.stg.ListWorkerJobCount()
+	workerStats, err := wm.stg.ListWorkerJobCount()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list worker stats: %w", err)
 	}
 
 	result := []*WorkerInfo{}
-	for address, counts := range stats {
+	for address, stats := range workerStats {
+		name := stats.Name
+		if name == "" {
+			// TODO: This is a fallback, ideally we should always have a name
+			// or been able to derive it from the address. But for now this is
+			// a safe fallback to ensure backward compatibility.
+			name = address // Default to address if name is not set
+			if hiddenAddr, err := WorkerNameFromAddress(address); err == nil {
+				name = hiddenAddr
+			}
+		}
 		result = append(result, &WorkerInfo{
 			Address:      address,
-			Name:         counts.Name,
-			SuccessCount: counts.SuccessCount,
-			FailedCount:  counts.FailedCount,
+			Name:         name,
+			SuccessCount: stats.SuccessCount,
+			FailedCount:  stats.FailedCount,
 		})
 	}
 	return result, nil
