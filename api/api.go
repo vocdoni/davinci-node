@@ -72,7 +72,7 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	// Initialize worker UUID if enabled
 	if conf.WorkerUrlSeed != "" {
 		var err error
-		a.workerUUID, err = WorkerSeedToUUID(conf.WorkerUrlSeed)
+		a.workerUUID, err = workers.WorkerSeedToUUID(conf.WorkerUrlSeed)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create worker UUID: %w", err)
 		}

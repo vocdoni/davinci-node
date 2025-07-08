@@ -30,7 +30,7 @@ func TestWorkerIntegration(t *testing.T) {
 		FailuresToGetBanned: failedJobsToGetBanned,
 	})
 	_, port := services.API.HostPort()
-	mainAPIUUID, err := api.WorkerSeedToUUID(testSeed)
+	mainAPIUUID, err := workers.WorkerSeedToUUID(testSeed)
 	c.Assert(err, qt.IsNil)
 
 	cli, err := NewTestClient(port)

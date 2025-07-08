@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -46,9 +47,9 @@ type Sequencer struct {
 	batchTimeWindow time.Duration
 
 	// Worker mode fields
-	masterURL     string // URL of master node (empty for master mode)
-	workerAddress string // Ethereum address identifying this worker
-	workerName    string // Name of the worker for identification
+	masterURL     string         // URL of master node (empty for master mode)
+	workerAddress common.Address // Ethereum address identifying this worker
+	workerName    string         // Name of the worker for identification
 }
 
 // New creates a new Sequencer instance that processes ballots and aggregates them into batches.

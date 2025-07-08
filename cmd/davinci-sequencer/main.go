@@ -82,12 +82,9 @@ func main() {
 func runWorkerMode(cfg *Config) {
 	log.Infow("starting in worker mode", "master", cfg.Worker.MasterURL)
 
-	// Generate worker address if not provided
+	// Check if a worker address is provided
 	if cfg.Worker.Address == "" {
-		log.Fatalf("worker address is required (use --worker.address flag)")
-	}
-	if cfg.Worker.Name == "" {
-		log.Fatalf("worker name is required (use --worker.name flag)")
+		log.Fatalf("valid worker address is required (use --worker.address flag)")
 	}
 
 	// Initialize storage database (only for local process tracking)

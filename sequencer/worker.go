@@ -17,6 +17,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/workers"
 )
 
 // ErrNoJobAvailable is returned when there are no jobs available for the worker to process.
@@ -32,22 +33,28 @@ var ErrNoJobAvailable = errors.New("no job available")
 //   - workerAddress: Ethereum address identifying this worker
 //
 // Returns a configured Sequencer instance for worker mode or an error if initialization fails.
-func NewWorker(stg *storage.Storage, masterURL, workerAddress, workerName string) (*Sequencer, error) {
+func NewWorker(stg *storage.Storage, masterURL, rawWorkerAddr, workerName string) (*Sequencer, error) {
 	if stg == nil {
 		return nil, fmt.Errorf("storage cannot be nil")
 	}
+	// check if master URL is provided
 	if masterURL == "" {
 		return nil, fmt.Errorf("masterURL cannot be empty for worker mode")
 	}
-	if workerAddress == "" {
-		return nil, fmt.Errorf("workerAddress must be provided")
+	// check if a valid worker address is provided
+	workerAddr, err := workers.ValidWorkerAddress(rawWorkerAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid worker address: %w", err)
 	}
+	// if no worker name is provided, generate it from the address
 	if workerName == "" {
-		return nil, fmt.Errorf("workerName must be provided")
+		workerName, err = workers.WorkerNameFromAddress(workerAddr.String())
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate worker name from address: %w", err)
+		}
 	}
 
 	startTime := time.Now()
-
 	s := &Sequencer{
 		stg:             stg,
 		contracts:       nil,               // Workers don't need web3 contracts
@@ -55,14 +62,14 @@ func NewWorker(stg *storage.Storage, masterURL, workerAddress, workerName string
 		pids:            NewProcessIDMap(), // Still needed for ExistsProcessID check
 		prover:          DefaultProver,
 		masterURL:       masterURL,
-		workerAddress:   workerAddress,
+		workerAddress:   workerAddr,
+		workerName:      workerName,
 	}
 
 	s.internalCircuits = new(internalCircuits)
 	s.bVkCircom = ballotprooftest.TestCircomVerificationKey
 
 	log.Debugw("reading ccs and pk cicuit artifact", "circuit", "voteVerifier")
-	var err error
 	s.vvCcs, s.vvPk, err = loadCircuitArtifacts(voteverifier.Artifacts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
@@ -70,7 +77,7 @@ func NewWorker(stg *storage.Storage, masterURL, workerAddress, workerName string
 
 	log.Debugw("worker sequencer initialized",
 		"masterURL", masterURL,
-		"workerAddress", workerAddress,
+		"workerAddress", rawWorkerAddr,
 		"took", time.Since(startTime).String(),
 	)
 
@@ -207,7 +214,7 @@ func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
 
 // fetchJobFromMaster performs GET request to master
 func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
-	url := fmt.Sprintf("%s/%s/%s", s.masterURL, s.workerName, s.workerAddress)
+	url := fmt.Sprintf("%s/%s/%s", s.masterURL, s.workerName, s.workerAddress.String())
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Get(url)
