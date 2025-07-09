@@ -16,6 +16,7 @@ Davinci-Node is the main implementation of the [davinci.vote](https://davinci.vo
   - [Dashboard Web UI](#dashboard-web-ui)
   - [Command Line Options](#command-line-options)
 - [⚡ Run a Worker Node](#-run-a-worker-node)
+  - [Update your worker](#update-your-worker)
 - [📚 Additional Resources](#-additional-resources)
 
 ## 🚀 Quick Start
@@ -195,6 +196,26 @@ Worker nodes are lightweight components that handle zkSNARK proof generation for
 4. **Start the worker container:**
    ```bash
    docker compose up -d sequencer
+   ```
+
+#### Update your worker
+
+> ℹ️ If you have a `watchtower` instance running, it your worker should update itself automatically.
+
+1. **Pull the latest version from the repository:**
+   ```bashde
+   cd davinci-node
+   git pull origin main
+   ```
+
+2. **Rebuild docker images:**
+   ```bash
+   docker compose build
+   ```
+
+3. **Start the worker again:**
+   ```bash
+   docker compose up -d --force-recreate sequencer
    ```
 
 ### Configuration Notes

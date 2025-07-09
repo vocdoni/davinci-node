@@ -205,7 +205,6 @@ func (wm *WorkerManager) BannedWorkers() []*Worker {
 		}
 		return true // continue iteration
 	})
-	log.Debugf("Banned workers: %d", len(banned))
 	return banned
 }
 
