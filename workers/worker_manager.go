@@ -259,21 +259,17 @@ func (wm *WorkerManager) WorkerResult(address string, success bool) error {
 // the worker does not exist, it returns an error indicating that the worker
 // was not found.
 func (wm *WorkerManager) WorkerStats(address string) (*WorkerInfo, error) {
-	if _, ok := wm.GetWorker(address); !ok {
+	w, ok := wm.GetWorker(address)
+	if !ok {
 		return nil, fmt.Errorf("worker %s not found", address)
 	}
-	stats := wm.stg.WorkerStats(address)
-	name := stats.Name
+	name := w.Name
 	if name == "" {
-		// TODO: This is a fallback, ideally we should always have a name
-		// or been able to derive it from the address. But for now this is
-		// a safe fallback to ensure backward compatibility.
-		name = address // Default to address if name is not set
 		if hiddenAddr, err := WorkerNameFromAddress(address); err == nil {
 			name = hiddenAddr
 		}
 	}
-
+	stats := wm.stg.WorkerStats(address)
 	return &WorkerInfo{
 		Address:      address,
 		Name:         name,
@@ -294,12 +290,12 @@ func (wm *WorkerManager) ListWorkerStats() ([]*WorkerInfo, error) {
 
 	result := []*WorkerInfo{}
 	for address, stats := range workerStats {
-		name := stats.Name
+		w, ok := wm.GetWorker(address)
+		if !ok {
+			return nil, fmt.Errorf("worker %s not found", address)
+		}
+		name := w.Name
 		if name == "" {
-			// TODO: This is a fallback, ideally we should always have a name
-			// or been able to derive it from the address. But for now this is
-			// a safe fallback to ensure backward compatibility.
-			name = address // Default to address if name is not set
 			if hiddenAddr, err := WorkerNameFromAddress(address); err == nil {
 				name = hiddenAddr
 			}

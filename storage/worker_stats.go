@@ -10,9 +10,8 @@ var workerStatsPrefix = []byte("ws/")
 
 // WorkerStats represents the statistics for a worker node
 type WorkerStats struct {
-	Name         string `json:"name"`
-	SuccessCount int64  `json:"successCount"`
-	FailedCount  int64  `json:"failedCount"`
+	SuccessCount int64 `json:"successCount"`
+	FailedCount  int64 `json:"failedCount"`
 }
 
 // IncreaseWorkerJobCount increases the success job count for a worker
@@ -91,7 +90,6 @@ func (s *Storage) getWorkerStatsUnsafe(address string) *WorkerStats {
 	if err := s.getArtifact(workerStatsPrefix, key, &stats); err != nil {
 		// Return empty stats if not found
 		return &WorkerStats{
-			Name:         "",
 			SuccessCount: 0,
 			FailedCount:  0,
 		}
