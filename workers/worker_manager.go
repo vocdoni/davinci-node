@@ -28,8 +28,8 @@ type WorkerBanRules struct {
 
 // DefaultWorkerBanRules provides the default ban rules for workers
 var DefaultWorkerBanRules = &WorkerBanRules{
-	BanTimeout:          3 * time.Minute, // Ban for 3 minutes
-	FailuresToGetBanned: 5,               // 3 consecutive failed jobs
+	BanTimeout:          30 * time.Minute, // Ban for 30 minutes
+	FailuresToGetBanned: 3,                // 3 consecutive failed jobs
 }
 
 // Worker represents a Worker that processes jobs

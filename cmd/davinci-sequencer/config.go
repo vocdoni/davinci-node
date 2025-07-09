@@ -14,16 +14,18 @@ import (
 )
 
 const (
-	defaultNetwork       = "sep"
-	defaultAPIHost       = "0.0.0.0"
-	defaultAPIPort       = 9090
-	defaultBatchTime     = 300 * time.Second
-	defaultLogLevel      = "info"
-	defaultLogOutput     = "stdout"
-	defaultLogDisableAPI = false
-	defaultDatadir       = ".davinci" // Will be prefixed with user's home directory
-	artifactsTimeout     = 20 * time.Minute
-	monitorInterval      = 10 * time.Second
+	defaultNetwork           = "sep"
+	defaultAPIHost           = "0.0.0.0"
+	defaultAPIPort           = 9090
+	defaultBatchTime         = 300 * time.Second
+	defaultLogLevel          = "info"
+	defaultLogOutput         = "stdout"
+	defaultLogDisableAPI     = false
+	defaultDatadir           = ".davinci" // Will be prefixed with user's home directory
+	artifactsTimeout         = 20 * time.Minute
+	monitorInterval          = 10 * time.Second
+	defaultWorkerBanTimeout  = 30 * time.Minute
+	defaultWorkerBanFailures = 3
 )
 
 // Version is the build version, set at build time with -ldflags
@@ -119,8 +121,8 @@ func loadConfig() (*Config, error) {
 	flag.StringP("worker.address", "a", "", "worker Ethereum address")
 	flag.String("worker.name", "", "worker name for identification")
 	flag.StringP("worker.masterURL", "w", "", "master worker URL (required for running in worker mode)")
-	flag.Duration("api.workerBanTimeout", 5*time.Minute, "timeout for worker ban in seconds")
-	flag.Int("api.workerFailuresToGetBanned", 5, "number of failed jobs to get banned")
+	flag.Duration("api.workerBanTimeout", defaultWorkerBanTimeout, "timeout for worker ban in seconds")
+	flag.Int("api.workerFailuresToGetBanned", defaultWorkerBanFailures, "number of failed jobs to get banned")
 
 	// Configure usage information
 	flag.Usage = func() {
