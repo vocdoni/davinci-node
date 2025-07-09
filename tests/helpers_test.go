@@ -34,6 +34,7 @@ import (
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/workers"
+	"golang.org/x/mod/modfile"
 )
 
 const (
@@ -42,6 +43,7 @@ const (
 	// envarionment variable names
 	deployerServerPortEnvVarName      = "DEPLOYER_SERVER"                        // environment variable name for deployer server port
 	contractsBranchNameEnvVarName     = "SEQUENCER_CONTRACTS_BRANCH"             // environment variable name for z-contracts branch
+	contractsCommitHashEnvVarName     = "SEQUENCER_CONTRACTS_COMMIT"             // environment variable name for z-contracts commit hash
 	privKeyEnvVarName                 = "SEQUENCER_PRIV_KEY"                     // environment variable name for private key
 	rpcUrlEnvVarName                  = "SEQUENCER_RPC_URL"                      // environment variable name for RPC URL
 	anvilPortEnvVarName               = "ANVIL_PORT_RPC_HTTP"                    // environment variable name for Anvil port
@@ -110,6 +112,30 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
+
+		// get branch and commit from the environment variables
+		if branchName := os.Getenv(contractsBranchNameEnvVarName); branchName != "" {
+			composeEnv[contractsBranchNameEnvVarName] = branchName
+		}
+		if commitHash := os.Getenv(contractsCommitHashEnvVarName); commitHash != "" {
+			composeEnv[contractsCommitHashEnvVarName] = commitHash
+		} else {
+			// get it from the go mod file
+			modData, err := os.ReadFile("../go.mod")
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to read go.mod file: %v", err))
+			modFile, err := modfile.Parse("go.mod", modData, nil)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse go.mod file: %v", err))
+			// get the commit hash from the replace directive
+			for _, r := range modFile.Require {
+				if r.Mod.Path != "github.com/vocdoni/davinci-contracts" {
+					continue
+				}
+				versionParts := strings.Split(r.Mod.Version, "-")
+				c.Assert(len(versionParts), qt.Equals, 3)
+				composeEnv[contractsCommitHashEnvVarName] = versionParts[2]
+				break
+			}
+		}
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")

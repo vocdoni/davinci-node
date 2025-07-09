@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -68,17 +69,23 @@ const (
 // placeholder with the actual value. Used to build fully qualified
 // endpoint URLs.
 func EndpointWithParam(path, key, param string) string {
-	// Check if the path contains the key as a URL parameter
-	if rawKey := fmt.Sprintf("{%s}", key); strings.Contains(path, rawKey) {
-		return strings.Replace(path, "{"+key+"}", param, 1)
+	rawKey := fmt.Sprintf("{%s}", key)
+
+	// Always try to replace the placeholder, even if it's after the '?'
+	if strings.Contains(path, rawKey) {
+		return strings.Replace(path, rawKey, url.PathEscape(param), 1)
 	}
-	// If the key is not found, set it as a query parameter. Check if the path
-	// already has a query string and append the parameter if it does
+
+	// Fallback: add as query param
+	escapedKey := url.QueryEscape(key)
+	escapedVal := url.QueryEscape(param)
+
+	sep := "?"
 	if strings.Contains(path, "?") {
-		return fmt.Sprintf("%s&%s=%s", path, key, param)
+		sep = "&"
 	}
-	// If the path does not have a query string, add it as the first parameter
-	return fmt.Sprintf("%s?%s=%s", path, key, param)
+
+	return fmt.Sprintf("%s%s%s=%s", path, sep, escapedKey, escapedVal)
 }
 
 // LogExcludedPrefixes defines URL prefixes to exclude from request logging
