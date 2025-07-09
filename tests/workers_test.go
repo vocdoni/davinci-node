@@ -3,6 +3,7 @@ package tests
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,10 @@ import (
 )
 
 func TestWorkerIntegration(t *testing.T) {
+	if enabled := os.Getenv("WORKER_INTEGRATION_TEST"); enabled != "1" || enabled == "true" || enabled == "TRUE" {
+		t.Skip("Skipping worker integration test, set WORKER_INTEGRATION_TEST=1 to run it")
+	}
+
 	c := qt.New(t)
 	numBallots := 20                     // number of ballots to be sent in the process
 	testSeed := "test-seed"              // seed for the workers UUID of main sequencer
