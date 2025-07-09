@@ -607,7 +607,7 @@ Gets a list of all worker nodes with their statistics.
       "failedCount": 5
     },
     {
-      "name": "********************************2B5A8F7C",
+      "name": "**************************************7C",
       "successCount": 200,
       "failedCount": 2
     }

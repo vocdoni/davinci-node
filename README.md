@@ -210,7 +210,7 @@ Worker nodes are lightweight components that handle zkSNARK proof generation for
 
 2. **Rebuild docker images:**
    ```bash
-   docker compose build
+   docker compose pull
    ```
 
 3. **Start the worker again:**

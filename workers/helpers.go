@@ -37,5 +37,5 @@ func WorkerNameFromAddress(address string) (string, error) {
 		return "", fmt.Errorf("invalid address length: %d, expected at least 40 characters", len(address))
 	}
 	// Obfuscate the first 16 characters of the address
-	return strings.Repeat("*", 32) + address[32:], nil
+	return strings.Repeat("*", 38) + address[38:], nil
 }
