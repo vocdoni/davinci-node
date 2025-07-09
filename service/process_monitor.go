@@ -96,7 +96,10 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context,
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
-			log.Debugw("new process found", "pid", process.ID.String())
+			log.Debugw("new process found",
+				"pid", process.ID.String(),
+				"stateRoot", process.StateRoot.String(),
+				"censusRoot", process.Census.CensusRoot.String())
 			if err := pm.storage.NewProcess(process); err != nil {
 				log.Warnw("failed to store new process", "pid", process.ID.String(), "err", err.Error())
 			}

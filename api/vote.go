@@ -145,6 +145,11 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	// check that the census root is the same as the one in the process
 	if !bytes.Equal(process.Census.CensusRoot, vote.CensusProof.Root) {
+		log.Warnw("census root mismatch",
+			"processID", pid.String(),
+			"censusRoot", hex.EncodeToString(process.Census.CensusRoot),
+			"voteCensusRoot", hex.EncodeToString(vote.CensusProof.Root),
+		)
 		ErrInvalidCensusProof.Withf("census root mismatch").Write(w)
 		return
 	}

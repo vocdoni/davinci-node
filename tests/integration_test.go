@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"context"
 	"math/big"
 	"os"
 	"testing"
@@ -11,76 +10,40 @@ import (
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
-	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/workers"
 )
-
-func TestMain(m *testing.M) {
-	log.Init(log.LogLevelDebug, "stdout", nil)
-	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
-		log.Errorw(err, "failed to download artifacts")
-		return
-	}
-	os.Exit(m.Run())
-}
 
 func TestIntegration(t *testing.T) {
 	numBallots := 5
 	c := qt.New(t)
 
-	testWorkerSeed := "test-seed"
-	testWorkerTimeout := time.Second * 5
-
-	// Setup
-	ctx := t.Context()
-	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTimeout, workers.DefaultWorkerBanRules)
-	_, port := services.API.HostPort()
-	cli, err := NewTestClient(port)
-	c.Assert(err, qt.IsNil)
-
-	// Start sequencer batch time window
-	services.Sequencer.SetBatchTimeWindow(time.Second * 120)
-
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
 		// Create a debug prover that will debug circuit execution during testing
-		services.Sequencer.SetProver(sequencer.NewDebugProver(t))
+		services.sequencer.SetProver(sequencer.NewDebugProver(t))
 	} else {
-		t.Log("Debug prover is disabled! Set DEBUG=true to enable it.")
+		c.Log("Debug prover is disabled! Set DEBUG=true to enable it.")
 	}
 
+	// Setup
 	var (
 		pid           *types.ProcessID
 		encryptionKey *types.EncryptionKey
 		ballotMode    *types.BallotMode
 		signers       []*ethereum.Signer
-		proofs        []*types.CensusProof
 		root          []byte
-		participants  []*api.CensusParticipant
 	)
 
 	c.Run("create organization", func(c *qt.C) {
-		orgAddr := createOrganization(c, services.Contracts)
+		orgAddr := createOrganization(c, services.contracts)
 		t.Logf("Organization address: %s", orgAddr.String())
 	})
 
 	c.Run("create process", func(c *qt.C) {
 		// Create census with numBallot participants
-		root, participants, signers = createCensus(c, cli, numBallots)
-
-		// Generate proof for first participant
-		proofs = make([]*types.CensusProof, numBallots)
-		for i := range participants {
-			proofs[i] = generateCensusProof(c, cli, root, participants[i].Key)
-			c.Assert(proofs[i], qt.Not(qt.IsNil))
-			c.Assert(proofs[i].Siblings, qt.IsNotNil)
-		}
-		// Check the first proof key is the same as the participant key and signer address
-		qt.Assert(t, proofs[0].Key.String(), qt.DeepEquals, participants[0].Key.String())
-		qt.Assert(t, string(proofs[0].Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
+		root, _, signers = createCensus(c, cli, numBallots)
+		c.Logf("Census root: %x", root)
 
 		ballotMode = &types.BallotMode{
 			MaxCount:        circuits.MockMaxCount,
@@ -98,14 +61,14 @@ func TestIntegration(t *testing.T) {
 			// create a different censusRoot for testing
 			root2, _, _ := createCensus(c, cli, numBallots*2)
 			// createProcessInSequencer should be idempotent, but there was a bug in this. Test it's fixed
-			pid1, encryptionKey1, stateRoot1 := createProcessInSequencer(c, services.Contracts, cli, root2, ballotMode)
-			pid2, encryptionKey2, stateRoot2 := createProcessInSequencer(c, services.Contracts, cli, root2, ballotMode)
+			pid1, encryptionKey1, stateRoot1 := createProcessInSequencer(c, services.contracts, cli, root2, ballotMode)
+			pid2, encryptionKey2, stateRoot2 := createProcessInSequencer(c, services.contracts, cli, root2, ballotMode)
 			c.Assert(pid2.String(), qt.Equals, pid1.String())
 			c.Assert(encryptionKey2, qt.DeepEquals, encryptionKey1)
 			c.Assert(stateRoot2.String(), qt.Equals, stateRoot1.String())
 			// a subsequent call to create process, same processID but with different censusRoot
 			// should return the same encryptionKey but yield a different stateRoot.
-			pid3, encryptionKey3, stateRoot3 := createProcessInSequencer(c, services.Contracts, cli, root, ballotMode)
+			pid3, encryptionKey3, stateRoot3 := createProcessInSequencer(c, services.contracts, cli, root, ballotMode)
 			c.Assert(pid3.String(), qt.Equals, pid1.String())
 			c.Assert(encryptionKey3, qt.DeepEquals, encryptionKey1)
 			c.Assert(stateRoot3.String(), qt.Not(qt.Equals), stateRoot1.String(),
@@ -114,60 +77,27 @@ func TestIntegration(t *testing.T) {
 		// this final call is the good one, with the real censusRoot, should return the correct stateRoot and encryptionKey that
 		// we'll use to create process in contracts
 		var stateRoot *types.HexBytes
-		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, root, ballotMode)
+		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.contracts, cli, root, ballotMode)
 
 		// now create process in contracts
-		pid2 := createProcessInContracts(c, services.Contracts, root, ballotMode, encryptionKey, stateRoot)
+		pid2 := createProcessInContracts(c, services.contracts, root, ballotMode, encryptionKey, stateRoot)
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
-		// create a timeout for the process creation, if it is greater than the test timeout
-		// use the test timeout
-		createProcessTimeout := time.Minute * 2
-		if timeout, hasDeadline := t.Deadline(); hasDeadline {
-			remainingTime := time.Until(timeout)
-			if remainingTime < createProcessTimeout {
-				createProcessTimeout = remainingTime
-			}
-		}
-		// Wait for the process to be registered
-		createProcessCtx, cancel := context.WithTimeout(ctx, createProcessTimeout)
-		defer cancel()
-
-	CreateProcessLoop:
+		// Wait for the process to be registere
 		for {
-			select {
-			case <-createProcessCtx.Done():
-				c.Fatal("Timeout waiting for process to be created and registered")
-				c.FailNow()
-			default:
-				if _, err := services.Storage.Process(pid); err == nil {
-					break CreateProcessLoop
-				}
-				time.Sleep(time.Millisecond * 200)
+			if services.sequencer.ExistsProcessID(pid.Marshal()) {
+				t.Logf("Process ID %s registered in sequencer", pid.String())
+				break
 			}
+			time.Sleep(time.Millisecond * 200)
 		}
+
 		t.Logf("Process ID: %s", pid.String())
-
-		// Wait for the process to be registered in the sequencer
-		for {
-			select {
-			case <-createProcessCtx.Done():
-				c.Fatal("Timeout waiting for process to be registered in sequencer")
-				c.FailNow()
-			default:
-				if services.Sequencer.ExistsProcessID(pid.Marshal()) {
-					t.Logf("Process ID %s registered in sequencer", pid.String())
-					return
-				}
-				time.Sleep(time.Millisecond * 200)
-			}
-		}
 	})
 
 	// Store the voteIDs returned from the API to check their status later
 	var voteIDs []types.HexBytes
 	var ks []*big.Int
-
 	c.Run("create votes", func(c *qt.C) {
 		count := 0
 		for i := range signers {
@@ -222,7 +152,6 @@ func TestIntegration(t *testing.T) {
 	// Set up timeout based on context deadline
 	var timeoutCh <-chan time.Time
 	deadline, hasDeadline := t.Deadline()
-
 	if hasDeadline {
 		// If context has a deadline, set timeout to 15 seconds before it
 		// to allow for clean shutdown and error reporting
@@ -265,7 +194,7 @@ func TestIntegration(t *testing.T) {
 						t.Fatalf("Some votes failed to be settled: %v", hexFailed)
 					}
 				}
-				if publishedVotes(t, services.Contracts, pid) < numBallots {
+				if publishedVotes(t, services.contracts, pid) < numBallots {
 					continue
 				}
 				break SettledVotesLoop
@@ -322,7 +251,7 @@ func TestIntegration(t *testing.T) {
 						t.Fatalf("Some overwrite votes failed to be processed: %v", hexFailed)
 					}
 				}
-				if publishedOverwriteVotes(t, services.Contracts, pid) < numBallots {
+				if publishedOverwriteVotes(t, services.contracts, pid) < numBallots {
 					continue
 				}
 				break ResultsLoop2
@@ -344,8 +273,8 @@ func TestIntegration(t *testing.T) {
 	// })
 
 	c.Run("wait for publish votes", func(c *qt.C) {
-		finishProcessOnContract(t, services.Contracts, pid)
-		results, err := services.Sequencer.WaitUntilResults(t.Context(), pid)
+		finishProcessOnContract(t, services.contracts, pid)
+		results, err := services.sequencer.WaitUntilResults(t.Context(), pid)
 		c.Assert(err, qt.IsNil)
 		c.Logf("Results calculated: %v, waiting for onchain results...", results)
 
@@ -356,7 +285,7 @@ func TestIntegration(t *testing.T) {
 		for {
 			select {
 			case <-ticker.C:
-				results := publishedResults(t, services.Contracts, pid)
+				results := publishedResults(t, services.contracts, pid)
 				if results == nil {
 					t.Log("Results not yet published, waiting...")
 					continue

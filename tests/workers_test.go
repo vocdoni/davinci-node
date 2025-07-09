@@ -18,35 +18,20 @@ import (
 
 func TestWorkerIntegration(t *testing.T) {
 	c := qt.New(t)
-	numBallots := 20                     // number of ballots to be sent in the process
-	testSeed := "test-seed"              // seed for the workers UUID of main sequencer
-	workerTimeout := 5 * time.Second     // timeout for worker jobs
-	failedJobsToGetBanned := 3           // number of failed jobs to get banned
-	workerBanTimeout := 30 * time.Second // timeout for worker ban
-	// Setup
-	ctx := t.Context()
-	services := NewTestService(t, ctx, testSeed, workerTimeout, &workers.WorkerBanRules{
-		BanTimeout:          workerBanTimeout,
-		FailuresToGetBanned: failedJobsToGetBanned,
-	})
-	_, port := services.API.HostPort()
-	mainAPIUUID, err := workers.WorkerSeedToUUID(testSeed)
-	c.Assert(err, qt.IsNil)
-
-	cli, err := NewTestClient(port)
-	c.Assert(err, qt.IsNil)
-	// Start sequencer batch time window
-	services.Sequencer.SetBatchTimeWindow(time.Second * 120)
 	var (
+		numBallots    = 20 // number of ballots to be sent in the process
 		pid           *types.ProcessID
 		encryptionKey *types.EncryptionKey
 		stateRoot     *types.HexBytes
 		ballotMode    *types.BallotMode
 		censusRoot    []byte
+		workerName    = "test-worker"
+		workerAddr    = fmt.Sprintf("0x%s", util.RandomHex(20))
 	)
 
-	workerName := "test-worker"
-	workerAddr := fmt.Sprintf("0x%s", util.RandomHex(20))
+	mainAPIUUID, err := workers.WorkerSeedToUUID(testWorkerSeed)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to create worker UUID: %v", err))
+
 	c.Run("launch a worker with no jobs pending", func(c *qt.C) {
 		getJobEndpoint := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, mainAPIUUID.String())
 		getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerAddressParam, workerAddr)
@@ -83,8 +68,8 @@ func TestWorkerIntegration(t *testing.T) {
 			CostFromWeight:  circuits.MockCostFromWeight == 1,
 			CostExponent:    circuits.MockCostExp,
 		}
-		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, censusRoot, ballotMode)
-		pid2 := createProcessInContracts(c, services.Contracts, censusRoot, ballotMode, encryptionKey, stateRoot)
+		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.contracts, cli, censusRoot, ballotMode)
+		pid2 := createProcessInContracts(c, services.contracts, censusRoot, ballotMode, encryptionKey, stateRoot)
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
 		// Wait for the process to be registered
@@ -95,7 +80,7 @@ func TestWorkerIntegration(t *testing.T) {
 				c.Fatal("Timeout waiting for process to be created and registered")
 				c.FailNow()
 			default:
-				if _, err := services.Storage.Process(pid); err == nil {
+				if _, err := services.storage.Process(pid); err == nil {
 					break CreateProcessLoop
 				}
 				time.Sleep(time.Millisecond * 200)
@@ -110,7 +95,7 @@ func TestWorkerIntegration(t *testing.T) {
 				c.Fatal("Timeout waiting for process to be registered in sequencer")
 				c.FailNow()
 			default:
-				if services.Sequencer.ExistsProcessID(pid.Marshal()) {
+				if services.sequencer.ExistsProcessID(pid.Marshal()) {
 					t.Logf("Process ID %s registered in sequencer", pid.String())
 					return
 				}

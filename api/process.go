@@ -94,6 +94,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		"pubKeyY", pr.EncryptionPubKey[1].String(),
 		"stateRoot", pr.StateRoot.String(),
 		"ballotMode", pr.BallotMode.String(),
+		"censusRoot", hex.EncodeToString(p.CensusRoot),
 	)
 	httpWriteJSON(w, pr)
 }
