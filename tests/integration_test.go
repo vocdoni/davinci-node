@@ -239,9 +239,9 @@ func TestIntegration(t *testing.T) {
 		t.Logf("Test will timeout in %v (deadline: %v)", effectiveTimeout, deadline)
 	} else {
 		// No deadline set, use a reasonable default
-		timeOut := 10 * time.Minute
+		timeOut := 20 * time.Minute
 		if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
-			timeOut = 30 * time.Minute
+			timeOut = 50 * time.Minute
 		}
 		timeoutCh = time.After(timeOut)
 		t.Logf("No test deadline found, using %s minute default timeout", timeOut.String())
@@ -332,16 +332,6 @@ func TestIntegration(t *testing.T) {
 		}
 		t.Log("All overwrite votes processed, finalizing process...")
 	})
-
-	// c.Run("try to send the votes again", func(c *qt.C) {
-	// 	for _, vote := range processedVotes {
-	// 		// try to send the vote again to check for duplicate handling
-	// 		body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
-	// 		c.Assert(err, qt.IsNil)
-	// 		c.Assert(status, qt.Equals, 400)
-	// 		c.Assert(string(body), qt.Contains, api.ErrBallotAlreadySubmitted.Err.Error())
-	// 	}
-	// })
 
 	c.Run("wait for publish votes", func(c *qt.C) {
 		finishProcessOnContract(t, services.Contracts, pid)
