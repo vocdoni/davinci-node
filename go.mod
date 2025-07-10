@@ -33,6 +33,7 @@ require (
 	github.com/vocdoni/davinci-contracts v0.0.0-20250628222741-0b311ee2329f
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250707141547-b4741e53913a
 	go.mongodb.org/mongo-driver v1.12.1
+	golang.org/x/mod v0.20.0
 	golang.org/x/sync v0.14.0
 )
 

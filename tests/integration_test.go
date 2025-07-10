@@ -16,6 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/workers"
 )
 
 func TestMain(m *testing.M) {
@@ -31,9 +32,12 @@ func TestIntegration(t *testing.T) {
 	numBallots := 5
 	c := qt.New(t)
 
+	testWorkerSeed := "test-seed"
+	testWorkerTimeout := time.Second * 5
+
 	// Setup
 	ctx := t.Context()
-	services := NewTestService(t, ctx)
+	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTimeout, workers.DefaultWorkerBanRules)
 	_, port := services.API.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)

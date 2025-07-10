@@ -33,6 +33,8 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/web3"
+	"github.com/vocdoni/davinci-node/workers"
+	"golang.org/x/mod/modfile"
 )
 
 const (
@@ -41,6 +43,7 @@ const (
 	// envarionment variable names
 	deployerServerPortEnvVarName      = "DEPLOYER_SERVER"                        // environment variable name for deployer server port
 	contractsBranchNameEnvVarName     = "SEQUENCER_CONTRACTS_BRANCH"             // environment variable name for z-contracts branch
+	contractsCommitHashEnvVarName     = "SEQUENCER_CONTRACTS_COMMIT"             // environment variable name for z-contracts commit hash
 	privKeyEnvVarName                 = "SEQUENCER_PRIV_KEY"                     // environment variable name for private key
 	rpcUrlEnvVarName                  = "SEQUENCER_RPC_URL"                      // environment variable name for RPC URL
 	anvilPortEnvVarName               = "ANVIL_PORT_RPC_HTTP"                    // environment variable name for Anvil port
@@ -61,10 +64,17 @@ type Services struct {
 
 // setupAPI creates and starts a new API server for testing.
 // It returns the server port.
-func setupAPI(ctx context.Context, db *storage.Storage) (*service.APIService, error) {
+func setupAPI(
+	ctx context.Context,
+	db *storage.Storage,
+	workerSeed string,
+	workerTimeout time.Duration,
+	banRules *workers.WorkerBanRules,
+) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
 	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", false)
+	api.SetWorkerConfig(workerSeed, workerTimeout, banRules)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
 	}
@@ -102,6 +112,30 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		composeEnv[anvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[deployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[privKeyEnvVarName] = testLocalAccountPrivKey
+
+		// get branch and commit from the environment variables
+		if branchName := os.Getenv(contractsBranchNameEnvVarName); branchName != "" {
+			composeEnv[contractsBranchNameEnvVarName] = branchName
+		}
+		if commitHash := os.Getenv(contractsCommitHashEnvVarName); commitHash != "" {
+			composeEnv[contractsCommitHashEnvVarName] = commitHash
+		} else {
+			// get it from the go mod file
+			modData, err := os.ReadFile("../go.mod")
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to read go.mod file: %v", err))
+			modFile, err := modfile.Parse("go.mod", modData, nil)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse go.mod file: %v", err))
+			// get the commit hash from the replace directive
+			for _, r := range modFile.Require {
+				if r.Mod.Path != "github.com/vocdoni/davinci-contracts" {
+					continue
+				}
+				versionParts := strings.Split(r.Mod.Version, "-")
+				c.Assert(len(versionParts), qt.Equals, 3)
+				composeEnv[contractsCommitHashEnvVarName] = versionParts[2]
+				break
+			}
+		}
 
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
@@ -234,14 +268,13 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
-func NewTestService(t *testing.T, ctx context.Context) *Services {
+func NewTestService(t *testing.T, ctx context.Context, workerSecret string, workerTimeout time.Duration, banRules *workers.WorkerBanRules) *Services {
 	// Initialize the web3 contracts
 	contracts := setupWeb3(t, ctx)
 
 	kv, err := metadb.New(db.TypePebble, t.TempDir())
 	qt.Assert(t, err, qt.IsNil)
 	stg := storage.New(kv)
-	t.Cleanup(stg.Close)
 
 	services := &Services{
 		Storage:   stg,
@@ -255,7 +288,6 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	if err := vp.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
-	t.Cleanup(vp.Stop)
 	services.Sequencer = vp.Sequencer
 
 	// Start process monitor
@@ -263,14 +295,18 @@ func NewTestService(t *testing.T, ctx context.Context) *Services {
 	if err := pm.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
-	t.Cleanup(pm.Stop)
 
 	// Start API service
-	api, err := setupAPI(ctx, stg)
+	api, err := setupAPI(ctx, stg, workerSecret, workerTimeout, banRules)
 	qt.Assert(t, err, qt.IsNil)
-	t.Cleanup(api.Stop)
 	services.API = api
 
+	t.Cleanup(func() {
+		api.Stop()
+		pm.Stop()
+		vp.Stop()
+		stg.Close()
+	})
 	return services
 }
 
@@ -338,10 +374,10 @@ func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
 		Name:        fmt.Sprintf("Vocdoni test %x", orgAddr[:4]),
 		MetadataURI: "https://vocdoni.io",
 	})
-	c.Assert(err, qt.IsNil)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to create organization: %v", err))
 
 	err = contracts.WaitTx(txHash, time.Second*30)
-	c.Assert(err, qt.IsNil)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to wait for organization creation transaction: %v", err))
 	return orgAddr
 }
 

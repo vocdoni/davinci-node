@@ -1,6 +1,10 @@
 package api
 
-import "strings"
+import (
+	"fmt"
+	"net/url"
+	"strings"
+)
 
 // Route constants for the API endpoints
 
@@ -46,6 +50,7 @@ const (
 	// Worker endpoints
 	WorkerUUIDParam         = "uuid"                                                                      // URL parameter for worker UUID
 	WorkerAddressParam      = "address"                                                                   // URL parameter for worker address
+	WorkerNameQueryParam    = "name"                                                                      // URL query param for worker name
 	WorkersEndpoint         = "/workers"                                                                  // Base worker endpoint
 	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}" // GET: Worker get job
 	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"                              // POST: Worker submit job
@@ -60,10 +65,27 @@ const (
 	MetadataGetEndpoint = MetadataSetEndpoint + "/{" + MetadataHashParam + "}" // GET: Get metadata
 )
 
-// EndpointWithParam creates an endpoint URL by replacing the parameter placeholder
-// with the actual value. Used to build fully qualified endpoint URLs.
+// EndpointWithParam creates an endpoint URL by replacing the parameter
+// placeholder with the actual value. Used to build fully qualified
+// endpoint URLs.
 func EndpointWithParam(path, key, param string) string {
-	return strings.Replace(path, "{"+key+"}", param, 1)
+	rawKey := fmt.Sprintf("{%s}", key)
+
+	// Always try to replace the placeholder, even if it's after the '?'
+	if strings.Contains(path, rawKey) {
+		return strings.Replace(path, rawKey, url.PathEscape(param), 1)
+	}
+
+	// Fallback: add as query param
+	escapedKey := url.QueryEscape(key)
+	escapedVal := url.QueryEscape(param)
+
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+
+	return fmt.Sprintf("%s%s%s=%s", path, sep, escapedKey, escapedVal)
 }
 
 // LogExcludedPrefixes defines URL prefixes to exclude from request logging

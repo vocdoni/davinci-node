@@ -37,7 +37,7 @@ func AggregatorInputsForTest(processID *types.ProcessID, nValidVotes int) (
 	*AggregatorTestResults, *aggregator.AggregatorCircuit, *aggregator.AggregatorCircuit, error,
 ) {
 	now := time.Now()
-	log.Println("Aggregator inputs generation starts")
+	log.Println("aggregator inputs generation starts")
 	// generate users accounts and census
 	vvData := []voteverifiertest.VoterTestData{}
 	for range nValidVotes {
@@ -134,7 +134,7 @@ func AggregatorInputsForTest(processID *types.ProcessID, nValidVotes int) (
 			Ballot:  vvInputs.Ballots[i].FromTEtoRTE(),
 		})
 	}
-	log.Printf("Aggregator inputs generation ends, it tooks %s", time.Since(now))
+	log.Printf("aggregator inputs generation ends, it tooks %s", time.Since(now))
 	return &AggregatorTestResults{
 		InputsHash: inputsHash,
 		Process: circuits.Process[*big.Int]{

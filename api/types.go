@@ -86,7 +86,7 @@ type WorkerJobResponse struct {
 
 // WorkerInfo contains information about a worker node.
 type WorkerInfo struct {
-	Address      string `json:"address"`
+	Name         string `json:"name"`
 	SuccessCount int64  `json:"successCount"`
 	FailedCount  int64  `json:"failedCount"`
 }

@@ -37,21 +37,31 @@ func (s *Storage) IncreaseWorkerFailedJobCount(address string, delta int64) erro
 }
 
 // WorkerJobCount returns the success and failed job counts for a worker
-func (s *Storage) WorkerJobCount(address string) (success, failed int64, err error) {
+func (s *Storage) WorkerJobCount(address string) (int64, int64) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	stats := s.getWorkerStatsUnsafe(address)
-	return stats.SuccessCount, stats.FailedCount, nil
+	return stats.SuccessCount, stats.FailedCount
+}
+
+// WorkerStats retrieves the statistics for a worker node including its name,
+// success count, and failed count. If the worker does not exist, it returns
+// empty stats with zero counts.
+func (s *Storage) WorkerStats(address string) *WorkerStats {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	return s.getWorkerStatsUnsafe(address)
 }
 
 // ListWorkerJobCount returns a map of all workers and their job counts
 // The returned map has the format: address -> [successCount, failedCount]
-func (s *Storage) ListWorkerJobCount() (map[string][2]int64, error) {
+func (s *Storage) ListWorkerJobCount() (map[string]*WorkerStats, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	result := make(map[string][2]int64)
+	result := make(map[string]*WorkerStats)
 
 	pr := prefixeddb.NewPrefixedReader(s.db, workerStatsPrefix)
 	err := pr.Iterate(nil, func(k, v []byte) bool {
@@ -62,7 +72,7 @@ func (s *Storage) ListWorkerJobCount() (map[string][2]int64, error) {
 		}
 
 		address := string(k)
-		result[address] = [2]int64{stats.SuccessCount, stats.FailedCount}
+		result[address] = &stats
 		return true
 	})
 	if err != nil {

@@ -54,6 +54,12 @@ API errors are returned with appropriate HTTP status codes and a JSON body with 
 | 40014 | 403         | Unauthorized                               |
 | 40015 | 400         | Malformed parameter                        |
 | 40017 | 400         | Malformed address                          |
+| 40018 | 400         | Ballot already submitted                   |
+| 40019 | 409         | Ballot is already processing               |
+| 40020 | 400         | Process is not accepting votes             |
+| 40021 | 400         | Not supported chain Id                     |
+| 40022 | 400         | Worker not available                       |
+| 40023 | 400         | Malformed worker info                      |
 | 50001 | 500         | Marshaling (server-side) JSON failed       |
 | 50002 | 500         | Internal server error                      |
 
@@ -596,12 +602,12 @@ Gets a list of all worker nodes with their statistics.
 {
   "workers": [
     {
-      "address": "0x742d35Cc6C82C3e76E8B8c9b4aE3F4F7E5A8c6D2",
+      "name": "worker-name-1",
       "successCount": 150,
       "failedCount": 5
     },
     {
-      "address": "0x8F4A7B2C1D6E9F3A5B8C2E7F1A4D6C9E2B5A8F7C",
+      "name": "**************************************7C",
       "successCount": 200,
       "failedCount": 2
     }

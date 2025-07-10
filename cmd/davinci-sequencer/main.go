@@ -18,6 +18,7 @@ import (
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
+	"github.com/vocdoni/davinci-node/workers"
 )
 
 // Services holds all the running services
@@ -81,9 +82,9 @@ func main() {
 func runWorkerMode(cfg *Config) {
 	log.Infow("starting in worker mode", "master", cfg.Worker.MasterURL)
 
-	// Generate worker address if not provided
+	// Check if a worker address is provided
 	if cfg.Worker.Address == "" {
-		log.Fatalf("worker address is required (use --worker.address flag)")
+		log.Fatalf("valid worker address is required (use --worker.address flag)")
 	}
 
 	// Initialize storage database (only for local process tracking)
@@ -105,6 +106,7 @@ func runWorkerMode(cfg *Config) {
 		storage,
 		cfg.Worker.MasterURL,
 		cfg.Worker.Address,
+		cfg.Worker.Name,
 	)
 	if err != nil {
 		log.Fatalf("failed to create worker: %v", err)
@@ -237,7 +239,10 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 
 	// Configure worker API if enabled
 	if cfg.API.WorkerUrlSeed != "" {
-		services.API.SetWorkerConfig(cfg.API.WorkerUrlSeed, cfg.Worker.Timeout)
+		services.API.SetWorkerConfig(cfg.API.WorkerUrlSeed, cfg.Worker.Timeout, &workers.WorkerBanRules{
+			BanTimeout:          cfg.API.WorkerBanTimeout,
+			FailuresToGetBanned: cfg.API.WorkerFailuresToGetBanned,
+		})
 	}
 
 	// Start API service

@@ -14,16 +14,18 @@ import (
 )
 
 const (
-	defaultNetwork       = "sep"
-	defaultAPIHost       = "0.0.0.0"
-	defaultAPIPort       = 9090
-	defaultBatchTime     = 300 * time.Second
-	defaultLogLevel      = "info"
-	defaultLogOutput     = "stdout"
-	defaultLogDisableAPI = false
-	defaultDatadir       = ".davinci" // Will be prefixed with user's home directory
-	artifactsTimeout     = 20 * time.Minute
-	monitorInterval      = 10 * time.Second
+	defaultNetwork           = "sep"
+	defaultAPIHost           = "0.0.0.0"
+	defaultAPIPort           = 9090
+	defaultBatchTime         = 300 * time.Second
+	defaultLogLevel          = "info"
+	defaultLogOutput         = "stdout"
+	defaultLogDisableAPI     = false
+	defaultDatadir           = ".davinci" // Will be prefixed with user's home directory
+	artifactsTimeout         = 20 * time.Minute
+	monitorInterval          = 10 * time.Second
+	defaultWorkerBanTimeout  = 30 * time.Minute
+	defaultWorkerBanFailures = 3
 )
 
 // Version is the build version, set at build time with -ldflags
@@ -50,9 +52,11 @@ type Web3Config struct {
 
 // APIConfig holds the API-specific configuration
 type APIConfig struct {
-	Host          string `mapstructure:"host"`       // API host address
-	Port          int    `mapstructure:"port"`       // API port number
-	WorkerUrlSeed string `mapstructure:"workerSeed"` // URL seed for worker authentication
+	Host                      string        `mapstructure:"host"`                      // API host address
+	Port                      int           `mapstructure:"port"`                      // API port number
+	WorkerUrlSeed             string        `mapstructure:"workerSeed"`                // URL seed for worker authentication
+	WorkerBanTimeout          time.Duration `mapstructure:"workerBanTimeout"`          // Timeout for worker ban
+	WorkerFailuresToGetBanned int           `mapstructure:"workerFailuresToGetBanned"` // Number of failed jobs to get banned
 }
 
 // BatchConfig holds batch processing configuration
@@ -72,6 +76,7 @@ type WorkerConfig struct {
 	MasterURL string        `mapstructure:"masterURL"` // URL seed for master worker endpoint
 	Timeout   time.Duration `mapstructure:"timeout"`   // Timeout for worker jobs
 	Address   string        `mapstructure:"address"`   // Ethereum address for the worker (auto-generated if empty)
+	Name      string        `mapstructure:"name"`      // Name of the worker for identification
 }
 
 // loadConfig loads configuration from flags, environment variables, and defaults
@@ -113,8 +118,11 @@ func loadConfig() (*Config, error) {
 	flag.Bool("log.disableAPI", defaultLogDisableAPI, "disable API logging middleware")
 	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
 	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
-	flag.StringP("worker.address", "a", "", "worker Ethereum address (auto-generated if empty)")
+	flag.StringP("worker.address", "a", "", "worker Ethereum address")
+	flag.String("worker.name", "", "worker name for identification")
 	flag.StringP("worker.masterURL", "w", "", "master worker URL (required for running in worker mode)")
+	flag.Duration("api.workerBanTimeout", defaultWorkerBanTimeout, "timeout for worker ban in seconds")
+	flag.Int("api.workerFailuresToGetBanned", defaultWorkerBanFailures, "number of failed jobs to get banned")
 
 	// Configure usage information
 	flag.Usage = func() {

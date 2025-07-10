@@ -86,7 +86,7 @@ export const Workers = () => {
             <Table variant="simple" size="sm">
               <Thead>
                 <Tr>
-                  <Th>Worker Address</Th>
+                  <Th>Worker Name</Th>
                   <Th isNumeric>Successful Jobs</Th>
                   <Th isNumeric>Failed Jobs</Th>
                   <Th isNumeric>Success Rate</Th>
@@ -100,10 +100,10 @@ export const Workers = () => {
                     : '0'
                   
                   return (
-                    <Tr key={worker.address}>
+                    <Tr key={worker.name}>
                       <Td>
                         <Badge colorScheme="purple" fontFamily="mono" fontSize="xs">
-                          {worker.address}
+                          {worker.name}
                         </Badge>
                       </Td>
                       <Td isNumeric>
