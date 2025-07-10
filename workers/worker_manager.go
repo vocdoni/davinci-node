@@ -116,12 +116,7 @@ func NewWorkerManager(stg *storage.Storage, rules *WorkerBanRules, tickerInterva
 // workers. It starts a goroutine that periodically checks for banned workers,
 // bans them if necessary, and resets their status after the ban period.
 func (wm *WorkerManager) Start(ctx context.Context) {
-	log.Infow("starting worker manager",
-		"banTimeout", wm.rules.BanTimeout.String(),
-		"failuresToGetBanned", wm.rules.FailuresToGetBanned,
-		"tickerInterval", wm.tickerInterval.String())
 	wm.innerCtx, wm.cancelFunc = context.WithCancel(ctx)
-
 	go func() {
 		ticker := time.NewTicker(wm.tickerInterval)
 		for {
@@ -147,7 +142,10 @@ func (wm *WorkerManager) Start(ctx context.Context) {
 			}
 		}
 	}()
-	log.Info("worker manager started")
+	log.Infow("worker manager started",
+		"banTimeout", wm.rules.BanTimeout.String(),
+		"failuresToGetBanned", wm.rules.FailuresToGetBanned,
+		"tickerInterval", wm.tickerInterval.String())
 }
 
 // Stop stops the worker manager, cancels the context, and clears all workers.
@@ -170,9 +168,8 @@ func (wm *WorkerManager) Stop() {
 // worker, it initializes a new worker instance, stores it in the worker map,
 // and returns the worker instance.
 func (wm *WorkerManager) AddWorker(address, name string) *Worker {
+	// Worker already exists, no need to add again
 	if w, exists := wm.GetWorker(address); exists {
-		log.Warnf("Worker %s already exists, not adding again", address)
-		// Worker already exists, no need to add again
 		return w
 	}
 	w := &Worker{
@@ -180,7 +177,7 @@ func (wm *WorkerManager) AddWorker(address, name string) *Worker {
 		Name:    name, // Set the worker's name for identification
 	}
 	wm.workers.Store(address, w)
-	log.Debugf("Worker added: %s", address)
+	log.Debugw("worker added", "address", address, "name", name)
 	return w
 }
 
@@ -217,7 +214,7 @@ func (wm *WorkerManager) BannedWorkers() []*Worker {
 func (wm *WorkerManager) ResetWorker(address string) {
 	if _, ok := wm.GetWorker(address); ok {
 		wm.workers.Store(address, &Worker{Address: address})
-		log.Debugf("Worker %s reset", address)
+		log.Debugw("worker reset", "address", address)
 	}
 }
 
@@ -229,7 +226,7 @@ func (wm *WorkerManager) SetBanDuration(address string) {
 	if w, ok := wm.GetWorker(address); ok {
 		banTime := time.Now().Add(wm.rules.BanTimeout)
 		w.SetBannedUntil(banTime)
-		log.Warnf("Worker %s banned until %s", address, banTime)
+		log.Warnw("worker banned", "address", address, "until", banTime.String())
 	}
 }
 

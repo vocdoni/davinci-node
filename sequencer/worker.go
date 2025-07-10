@@ -78,6 +78,7 @@ func NewWorker(stg *storage.Storage, masterURL, rawWorkerAddr, workerName string
 	log.Debugw("worker sequencer initialized",
 		"masterURL", masterURL,
 		"workerAddress", rawWorkerAddr,
+		"workerName", workerName,
 		"took", time.Since(startTime).String(),
 	)
 

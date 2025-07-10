@@ -14,6 +14,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 const (
@@ -21,7 +22,7 @@ const (
 	testWorkerName = "TestWorker1"
 )
 
-var testVoteID = []byte("vote123")
+var testVoteID = types.HexBytes([]byte("vote123"))
 
 func storageForTest(t *testing.T) *storage.Storage {
 	c := qt.New(t)
@@ -106,7 +107,7 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 
 		c.Assert(err, qt.IsNil)
 		c.Assert(job, qt.IsNotNil)
-		c.Assert(job.VoteID, qt.DeepEquals, testVoteID)
+		c.Assert(job.VoteID.String(), qt.DeepEquals, testVoteID.String())
 		c.Assert(job.Address, qt.Equals, testWorkerAddr)
 		c.Assert(job.Timestamp.IsZero(), qt.IsFalse)
 		c.Assert(job.Expiration.After(job.Timestamp), qt.IsTrue)

@@ -63,23 +63,21 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If the worker is not registered, add it
-	if _, ok := a.jobsManager.WorkerManager.GetWorker(workerAddress); !ok {
-		// Extract worker name from query parameter
-		workerName := r.URL.Query().Get("name")
-		// Validate worker name, if not provided, try to derive it from the
-		// address
-		if workerName == "" {
-			var err error
-			workerName, err = workers.WorkerNameFromAddress(workerAddress)
-			if err != nil {
-				ErrMalformedWorkerInfo.WithErr(err).Write(w)
-				return
-			}
+	// Extract and validate worker name, if not provided, try to derive it
+	// from the address
+	workerName := r.URL.Query().Get("name")
+	if workerName == "" {
+		var err error
+		workerName, err = workers.WorkerNameFromAddress(workerAddress)
+		if err != nil {
+			ErrMalformedWorkerInfo.WithErr(err).Write(w)
+			return
 		}
-		// Add worker to the manager with its name
-		a.jobsManager.WorkerManager.AddWorker(workerAddress, workerName)
 	}
+
+	// Try to add the worker to the manager, if it already exists, it will not
+	// be added again
+	a.jobsManager.WorkerManager.AddWorker(workerAddress, workerName)
 
 	// Check if worker is available
 	if available, err := a.jobsManager.IsWorkerAvailable(workerAddress); !available {
