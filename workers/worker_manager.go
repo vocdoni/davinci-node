@@ -288,23 +288,32 @@ func (wm *WorkerManager) ListWorkerStats() ([]*WorkerInfo, error) {
 	}
 
 	result := []*WorkerInfo{}
-	for address, stats := range workerStats {
-		w, ok := wm.GetWorker(address)
+	wm.workers.Range(func(key, value any) bool {
+		worker, ok := value.(*Worker)
 		if !ok {
-			return nil, fmt.Errorf("worker %s not found", address)
+			return true // continue iteration
 		}
-		name := w.Name
+		// By default use the worker's name, if not set, obfuscate the address
+		name := worker.Name
 		if name == "" {
-			if hiddenAddr, err := WorkerNameFromAddress(address); err == nil {
+			if hiddenAddr, err := WorkerNameFromAddress(worker.Address); err == nil {
 				name = hiddenAddr
 			}
 		}
+		// By default, success and failed counts are 0, if the worker exists in
+		// the stats map, use those values
+		var success, failed int64
+		if stats, ok := workerStats[worker.Address]; ok {
+			success = stats.SuccessCount
+			failed = stats.FailedCount
+		}
 		result = append(result, &WorkerInfo{
-			Address:      address,
+			Address:      worker.Address,
 			Name:         name,
-			SuccessCount: stats.SuccessCount,
-			FailedCount:  stats.FailedCount,
+			SuccessCount: success,
+			FailedCount:  failed,
 		})
-	}
+		return true
+	})
 	return result, nil
 }
