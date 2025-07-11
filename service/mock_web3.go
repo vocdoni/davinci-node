@@ -52,6 +52,10 @@ func (m *MockContracts) MonitorProcessStatusChanges(ctx context.Context, interva
 	return make(chan *types.ProcessWithStatusChange), nil
 }
 
+func (m *MockContracts) MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error) {
+	return make(chan *types.ProcessWithStateRootChange), nil
+}
+
 func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
