@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/arbo/memdb"
+	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -100,6 +103,24 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context,
 			if err := pm.storage.NewProcess(process); err != nil {
 				log.Warnw("failed to store new process", "pid", process.ID.String(), "err", err.Error())
 			}
+			newState, err := state.New(pm.storage.StateDB(), process.ID.BigInt().MathBigInt())
+			if err != nil {
+				log.Warnw("failed to create state for new process", "pid", process.ID.String(), "err", err.Error())
+			}
+			pid := new(types.ProcessID).SetBytes(process.ID)
+			publicKey, _, err := pm.storage.FetchOrGenerateEncryptionKeys(pid)
+			if err != nil {
+				log.Warnw("failed to fetch or generate encryption keys for process",
+					"pid", pid.String(), "err", err.Error())
+			}
+			if err := newState.Initialize(
+				arbo.BytesToBigInt(process.Census.CensusRoot),
+				circuits.BallotModeToCircuit(process.BallotMode),
+				circuits.EncryptionKeyFromECCPoint(publicKey),
+			); err != nil {
+				log.Warnw("failed to set state root for new process", "pid", process.ID.String(), "err", err.Error())
+			}
+			log.Debugw("process state created", "pid", process.ID.String())
 		case process := <-changedStatusProcChan:
 			log.Debugw("process changed status", "pid", process.ID.String(),
 				"old", process.OldStatus.String(), "new", process.NewStatus.String())
