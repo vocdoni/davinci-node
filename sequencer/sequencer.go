@@ -216,7 +216,10 @@ func (s *Sequencer) AddProcessID(pid []byte) {
 	if s.pids.Add(pid) {
 		log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
 	}
-	if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackAcceptingVotes(true)); err != nil {
+	if err := s.stg.UpdateProcess(pid,
+		storage.ProcessUpdateCallbackAcceptingVotes(true),
+		storage.ProcessUpdateCallbackActiveLocally(true),
+	); err != nil {
 		log.Warnw("failed to set process accepting votes", "processID", fmt.Sprintf("%x", pid), "error", err)
 	}
 }

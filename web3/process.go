@@ -265,6 +265,58 @@ func (c *Contracts) MonitorProcessStatusChanges(ctx context.Context, interval ti
 	return updatedProcChan, nil
 }
 
+// MonitorProcessStateRootChange monitors the state root changes in processes
+// by polling the ProcessRegistry contract every interval. It returns a channel
+// that emits processes with the new state root, vote count, and vote
+// overwritten count.
+func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error) {
+	updatedProcChan := make(chan *types.ProcessWithStateRootChange)
+	go func() {
+		defer close(updatedProcChan)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Infow("exiting monitor process updates")
+				return
+			case <-ticker.C:
+				end := c.CurrentBlock()
+				if end <= c.lastWatchProcessBlock {
+					continue
+				}
+				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
+				iter, err := c.processes.FilterProcessStateRootUpdated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, End: &end, Context: ctxQuery}, nil, nil)
+				cancel()
+				if err != nil || iter == nil {
+					log.Debugw("failed to filter process finalized, retrying", "err", err)
+					continue
+				}
+				c.lastWatchProcessBlock = end
+				for iter.Next() {
+					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
+					if _, exists := c.knownProcesses[processID]; !exists {
+						continue
+					}
+					process, err := c.Process(iter.Event.ProcessId[:])
+					if err != nil {
+						log.Errorw(err, "failed to get process while monitoring process status changes")
+						continue
+					}
+
+					updatedProcChan <- &types.ProcessWithStateRootChange{
+						Process:                 process,
+						NewStateRoot:            new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
+						NewVoteCount:            process.VoteCount,
+						NewVoteOverwrittenCount: process.VoteOverwrittenCount,
+					}
+				}
+			}
+		}
+	}()
+	return updatedProcChan, nil
+}
+
 // MonitorProcessCreationBySubscription monitors the creation of new processes by subscribing to the ProcessRegistry contract.
 // Requires the web3 rpc endpoint to support subscriptions on websockets.
 func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<-chan *types.Process, error) {
