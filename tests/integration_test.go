@@ -12,11 +12,16 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/workers"
+)
+
+const (
+	testWorkerSeed    = "test-seed"
+	testWorkerTimeout = time.Second * 5
 )
 
 func TestMain(m *testing.M) {
@@ -32,25 +37,12 @@ func TestIntegration(t *testing.T) {
 	numBallots := 5
 	c := qt.New(t)
 
-	testWorkerSeed := "test-seed"
-	testWorkerTimeout := time.Second * 5
-
 	// Setup
 	ctx := t.Context()
 	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTimeout, workers.DefaultWorkerBanRules)
 	_, port := services.API.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
-
-	// Start sequencer batch time window
-	services.Sequencer.SetBatchTimeWindow(time.Second * 120)
-
-	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
-		// Create a debug prover that will debug circuit execution during testing
-		services.Sequencer.SetProver(sequencer.NewDebugProver(t))
-	} else {
-		t.Log("Debug prover is disabled! Set DEBUG=true to enable it.")
-	}
 
 	var (
 		pid           *types.ProcessID
@@ -172,7 +164,8 @@ func TestIntegration(t *testing.T) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote, k := createVote(c, pid, ballotMode, encryptionKey, signers[i], nil)
+			k := util.RandomBigInt(big.NewInt(100000000), big.NewInt(9999999999999999))
+			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], k)
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
@@ -205,7 +198,7 @@ func TestIntegration(t *testing.T) {
 	c.Run("try to overwrite valid votes", func(c *qt.C) {
 		for i := range signers {
 			// generate a vote for the first participant
-			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
+			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
@@ -282,7 +275,7 @@ func TestIntegration(t *testing.T) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
+			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
@@ -362,7 +355,7 @@ func TestIntegration(t *testing.T) {
 	c.Run("try to send votes to ended process", func(c *qt.C) {
 		for i := range signers {
 			// generate a vote for the first participant
-			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
+			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
