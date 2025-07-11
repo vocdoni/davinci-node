@@ -290,6 +290,16 @@ func NewTestService(t *testing.T, ctx context.Context, workerSecret string, work
 	}
 	services.Sequencer = vp.Sequencer
 
+	// Start sequencer batch time window
+	services.Sequencer.SetBatchTimeWindow(time.Second * 120)
+
+	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
+		// Create a debug prover that will debug circuit execution during testing
+		services.Sequencer.SetProver(sequencer.NewDebugProver(t))
+	} else {
+		t.Log("Debug prover is disabled! Set DEBUG=true to enable it.")
+	}
+
 	// Start process monitor
 	pm := service.NewProcessMonitor(contracts, stg, time.Second*2)
 	if err := pm.Start(ctx); err != nil {
@@ -417,16 +427,23 @@ func createProcessInSequencer(c *qt.C, contracts *web3.Contracts, cli *client.HT
 	return processID, encryptionKeys, &resp.StateRoot
 }
 
-func createProcessInContracts(c *qt.C, contracts *web3.Contracts,
-	censusRoot []byte, ballotMode *types.BallotMode, encryptionKey *types.EncryptionKey, stateRoot *types.HexBytes,
+func createProcessInContracts(c *qt.C,
+	contracts *web3.Contracts, censusRoot []byte,
+	ballotMode *types.BallotMode, encryptionKey *types.EncryptionKey,
+	stateRoot *types.HexBytes, duration ...time.Duration,
 ) *types.ProcessID {
+	finalDuration := time.Hour
+	if len(duration) > 0 {
+		finalDuration = duration[0]
+	}
+
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
 		Status:         0,
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKey,
 		StateRoot:      stateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
-		Duration:       time.Hour,
+		Duration:       finalDuration,
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode:     ballotMode,
 		Census: &types.Census{
@@ -444,24 +461,13 @@ func createProcessInContracts(c *qt.C, contracts *web3.Contracts,
 	return pid
 }
 
-func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, *big.Int) {
+func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) api.Vote {
 	var err error
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	if k == nil {
 		k, err = elgamal.RandK()
 		c.Assert(err, qt.IsNil)
-	}
-	// generate random ballot fields
-	randFields := ballotprooftest.GenBallotFieldsForTest(
-		int(bm.MaxCount),
-		int(bm.MaxValue.MathBigInt().Int64()),
-		int(bm.MinValue.MathBigInt().Int64()),
-		bm.ForceUniqueness)
-	// cast fields to types.BigInt
-	fields := []*types.BigInt{}
-	for _, f := range randFields {
-		fields = append(fields, (*types.BigInt)(f))
 	}
 	c.Logf("creating vote for address %s with fields %v", address.Hex(), fields)
 	// compose wasm inputs
@@ -501,7 +507,22 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
-	}, k
+	}
+}
+
+func createVoteWithRandomFields(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) api.Vote {
+	// generate random ballot fields
+	randFields := ballotprooftest.GenBallotFieldsForTest(
+		int(bm.MaxCount),
+		int(bm.MaxValue.MathBigInt().Int64()),
+		int(bm.MinValue.MathBigInt().Int64()),
+		bm.ForceUniqueness)
+	// cast fields to types.BigInt
+	fields := []*types.BigInt{}
+	for _, f := range randFields {
+		fields = append(fields, (*types.BigInt)(f))
+	}
+	return createVote(c, pid, bm, encKey, privKey, k, fields)
 }
 
 func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) api.Vote {
