@@ -24,24 +24,21 @@ func TestWorkerIntegration(t *testing.T) {
 
 	c := qt.New(t)
 	numBallots := 20                     // number of ballots to be sent in the process
-	testSeed := "test-seed"              // seed for the workers UUID of main sequencer
-	workerTimeout := 5 * time.Second     // timeout for worker jobs
 	failedJobsToGetBanned := 3           // number of failed jobs to get banned
 	workerBanTimeout := 30 * time.Second // timeout for worker ban
 	// Setup
 	ctx := t.Context()
-	services := NewTestService(t, ctx, testSeed, workerTimeout, &workers.WorkerBanRules{
+	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTimeout, &workers.WorkerBanRules{
 		BanTimeout:          workerBanTimeout,
 		FailuresToGetBanned: failedJobsToGetBanned,
 	})
 	_, port := services.API.HostPort()
-	mainAPIUUID, err := workers.WorkerSeedToUUID(testSeed)
+	mainAPIUUID, err := workers.WorkerSeedToUUID(testWorkerSeed)
 	c.Assert(err, qt.IsNil)
 
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
-	// Start sequencer batch time window
-	services.Sequencer.SetBatchTimeWindow(time.Second * 120)
+
 	var (
 		pid           *types.ProcessID
 		encryptionKey *types.EncryptionKey
@@ -128,7 +125,7 @@ func TestWorkerIntegration(t *testing.T) {
 	c.Run("send votes", func(c *qt.C) {
 		for _, signer := range signers {
 			// generate a vote for the first participant
-			vote, _ := createVote(c, pid, ballotMode, encryptionKey, signer, nil)
+			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signer, nil)
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, censusRoot, signer.Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
@@ -160,7 +157,7 @@ func TestWorkerIntegration(t *testing.T) {
 					continue
 				} else if status == http.StatusBadRequest && strings.Contains(string(body), "worker busy") {
 					// wait for the requested job timeout to request again
-					time.Sleep(workerTimeout)
+					time.Sleep(testWorkerTimeout)
 					continue
 				}
 				c.Assert(status, qt.Equals, http.StatusBadRequest, qt.Commentf("Expected 400 Bad Request, got %d", status))

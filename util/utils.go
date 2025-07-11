@@ -33,6 +33,15 @@ func RandomHex(n int) string {
 	return fmt.Sprintf("%x", RandomBytes(n))
 }
 
+// RandomBigInt generates a random big integer between min and max.
+func RandomBigInt(min, max *big.Int) *big.Int {
+	num, err := rand.Int(rand.Reader, new(big.Int).Sub(max, min))
+	if err != nil {
+		panic(err)
+	}
+	return new(big.Int).Add(num, min)
+}
+
 // RandomInt generates a random integer between min and max.
 func RandomInt(min, max int) int {
 	num, err := rand.Int(rand.Reader, big.NewInt(int64(max-min)))
