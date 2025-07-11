@@ -44,7 +44,7 @@ func (s ProcessStatus) String() string {
 }
 
 type (
-	GenericMetadata    map[string]string
+	GenericMetadata    map[string]any
 	MultilingualString map[string]string
 )
 
@@ -55,7 +55,7 @@ func (g GenericMetadata) MarshalJSON() ([]byte, error) {
 		return []byte("{}"), nil
 	}
 	// Use the default map marshaling behavior
-	return json.Marshal(map[string]string(g))
+	return json.Marshal(g)
 }
 
 // MarshalJSON implements json.Marshaler interface for MultilingualString
@@ -65,7 +65,7 @@ func (m MultilingualString) MarshalJSON() ([]byte, error) {
 		return []byte("{}"), nil
 	}
 	// Use the default map marshaling behavior
-	return json.Marshal(map[string]string(m))
+	return json.Marshal(m)
 }
 
 type MediaMetadata struct {
@@ -125,7 +125,7 @@ type Process struct {
 	VoteCount            *BigInt               `json:"voteCount"                cbor:"12,keyasint,omitempty"`
 	VoteOverwrittenCount *BigInt               `json:"voteOverwrittenCount"     cbor:"13,keyasint,omitempty"`
 	IsAcceptingVotes     bool                  `json:"isAcceptingVotes"         cbor:"15,keyasint,omitempty"`
-	SequencerStats       SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint"`
+	SequencerStats       SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
 // ProcessWithStatusChange extends types.Process to add OldStatus and NewStatus fields
