@@ -56,6 +56,9 @@ func (s *Sequencer) processPendingTransitions() {
 		// if the batch is nil, skip it
 		if batch == nil || len(batch.Ballots) == 0 {
 			log.Debugw("no ballots in batch", "batchID", batchID)
+			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
 			return true // Continue to next process ID
 		}
 		// decode process ID and load metadata
@@ -70,6 +73,9 @@ func (s *Sequencer) processPendingTransitions() {
 		processState, err := s.latestProcessState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
+			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
 			return true // Continue to next process ID
 		}
 
@@ -77,6 +83,9 @@ func (s *Sequencer) processPendingTransitions() {
 		root, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root")
+			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
 			return true // Continue to next process ID
 		}
 
@@ -178,6 +187,10 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
+	if !process.IsLocallyActive {
+		return nil, fmt.Errorf("process %s is not locally active", pid.String())
+	}
+
 	st, err := state.New(s.stg.StateDB(), pid.BigInt())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state: %w", err)
