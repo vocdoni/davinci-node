@@ -43,6 +43,9 @@ func TestProcess(t *testing.T) {
 			Header: "header.jpg",
 			Logo:   "logo.jpg",
 		},
+		Meta: types.GenericMetadata{
+			"testKey": 12,
+		},
 		Questions: []types.Question{
 			{
 				Title:       map[string]string{"default": "Question 1"},

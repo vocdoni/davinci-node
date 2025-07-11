@@ -55,7 +55,7 @@ func (g GenericMetadata) MarshalJSON() ([]byte, error) {
 		return []byte("{}"), nil
 	}
 	// Use the default map marshaling behavior
-	return json.Marshal(g)
+	return json.Marshal(map[string]any(g))
 }
 
 // MarshalJSON implements json.Marshaler interface for MultilingualString
@@ -65,7 +65,7 @@ func (m MultilingualString) MarshalJSON() ([]byte, error) {
 		return []byte("{}"), nil
 	}
 	// Use the default map marshaling behavior
-	return json.Marshal(m)
+	return json.Marshal(map[string]string(m))
 }
 
 type MediaMetadata struct {
