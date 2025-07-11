@@ -484,7 +484,7 @@ func createProcess(
 				if err := json.Unmarshal(pBytes, proc); err != nil {
 					return nil, nil, fmt.Errorf("failed to unmarshal process response: %v", err)
 				}
-				processReady = proc.IsAcceptingVotes
+				processReady = proc.IsAcceptingVotes && proc.IsLocallyActive
 			}
 		case <-processCtx.Done():
 			return nil, nil, fmt.Errorf("process creation timeout: %v", processCtx.Err())

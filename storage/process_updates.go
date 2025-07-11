@@ -9,7 +9,8 @@ import (
 
 // Common update functions for use with UpdateProcess
 
-// ProcessUpdateCallbackStateRoot returns a function that updates the state root and vote counts
+// ProcessUpdateCallbackStateRoot returns a function that updates the state
+// root and vote counts
 func ProcessUpdateCallbackStateRoot(root *types.BigInt, numNewVotes, numOverwritten *big.Int) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.StateRoot = root
@@ -23,7 +24,8 @@ func ProcessUpdateCallbackStateRoot(root *types.BigInt, numNewVotes, numOverwrit
 	}
 }
 
-// ProcessUpdateCallbackFinalization returns a function that marks a process as finalized with results
+// ProcessUpdateCallbackFinalization returns a function that marks a process
+// as finalized with results
 func ProcessUpdateCallbackFinalization(results []*types.BigInt) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.Status = types.ProcessStatusResults
@@ -32,8 +34,9 @@ func ProcessUpdateCallbackFinalization(results []*types.BigInt) func(*types.Proc
 	}
 }
 
-// ProcessUpdateCallbackSetStatus returns a function that updates the process status
-// This function is used to set the status of a process, such as ready, ended, canceled, etc.
+// ProcessUpdateCallbackSetStatus returns a function that updates the process
+// status. This function is used to set the status of a process, such as ready,
+// ended, canceled, etc.
 func ProcessUpdateCallbackSetStatus(status types.ProcessStatus) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.Status = status
@@ -73,7 +76,8 @@ func ProcessUpdateCallbackSetStateRoot(newRoot *types.BigInt, newCount, newOverw
 	}
 }
 
-// ProcessUpdateCallbackAcceptingVotes returns a function that updates the accepting votes flag
+// ProcessUpdateCallbackAcceptingVotes returns a function that updates the
+// accepting votes flag
 func ProcessUpdateCallbackAcceptingVotes(accepting bool) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.IsAcceptingVotes = accepting
@@ -81,7 +85,17 @@ func ProcessUpdateCallbackAcceptingVotes(accepting bool) func(*types.Process) er
 	}
 }
 
-// ProcessUpdateCallbackLastTransitionDate returns a function that updates the last state transition date
+// ProcessUpdateCallbackActiveLocally returns a function that updates the local
+// activity status of the process
+func ProcessUpdateCallbackActiveLocally(active bool) func(*types.Process) error {
+	return func(p *types.Process) error {
+		p.IsLocallyActive = active
+		return nil
+	}
+}
+
+// ProcessUpdateCallbackLastTransitionDate returns a function that updates the
+// last state transition date
 func ProcessUpdateCallbackLastTransitionDate() func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.SequencerStats.LastStateTransitionDate = time.Now()

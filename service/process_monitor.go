@@ -123,9 +123,9 @@ func (pm *ProcessMonitor) monitorProcesses(
 			}
 		case process := <-stateTransitionChan:
 			log.Debugw("process state root changed", "pid", process.ID.String(),
-				"newStateRoot", process.NewStateRoot.String(),
-				"newVoteCount", process.NewVoteCount.String(),
-				"newVoteOverwrittenCount", process.NewVoteOverwrittenCount.String())
+				"stateRoot", process.NewStateRoot.String(),
+				"voteCount", process.NewVoteCount.String(),
+				"voteOverwrittenCount", process.NewVoteOverwrittenCount.String())
 			if err := pm.storage.UpdateProcess(process.ID,
 				storage.ProcessUpdateCallbackSetStateRoot(process.NewStateRoot,
 					process.NewVoteCount, process.NewVoteOverwrittenCount)); err != nil {
