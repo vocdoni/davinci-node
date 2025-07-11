@@ -51,9 +51,6 @@ func ProcessUpdateCallbackSetStatus(status types.ProcessStatus) func(*types.Proc
 // root and vote counts of a process. This function is used when a update over
 // the state root is received from the process monitor.
 func ProcessUpdateCallbackSetStateRoot(newRoot *types.BigInt, newCount, newOverwrittenCount *types.BigInt) func(*types.Process) error {
-	// By the moment, do not update the state root, just the vote counts.
-	// If the state root is updated, the sequencer should request the updated
-	// state tree from other sequencers.
 	return func(p *types.Process) error {
 		// Update the process only if the new vote count are greater than the
 		// current ones and the state root is different.
