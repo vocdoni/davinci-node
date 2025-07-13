@@ -350,7 +350,6 @@ func (o *State) OverwrittenBallots() []*elgamal.Ballot {
 // values.
 func (o *State) PaddedVotes() []*Vote {
 	v := slices.Clone(o.votes)
-	log.Infof("current batch has %d votes", len(v))
 	for len(v) < types.VotesPerBatch {
 		v = append(v, &Vote{
 			Address: big.NewInt(0),
