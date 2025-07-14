@@ -8,6 +8,8 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+var VoteIDKeyValue = big.NewInt(0)
+
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
 	Address *big.Int
@@ -50,7 +52,7 @@ func (o *State) AddVote(v *Vote) error {
 	o.ballotCount++
 
 	o.votes = append(o.votes, v)
-	return nil
+	return o.tree.AddBigInt(v.VoteID.BigInt().MathBigInt(), VoteIDKeyValue)
 }
 
 // EncryptedBallot returns the ballot associated with a address
