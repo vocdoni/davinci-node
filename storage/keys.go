@@ -13,6 +13,29 @@ import (
 
 // SetEncryptionKeys stores the encryption keys for a process.
 func (s *Storage) SetEncryptionKeys(pid *types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.setEncryptionKeysUnsafe(pid, publicKey, privateKey)
+}
+
+// EncryptionKeys loads the encryption keys for a process. Returns ErrNotFound if the keys do not exist
+func (s *Storage) EncryptionKeys(pid *types.ProcessID) (ecc.Point, *big.Int, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.encryptionKeysUnsafe(pid)
+}
+
+// FetchOrGenerateEncryptionKeys loads the encryption keys for a process.
+// If the keys do not exist, new ones are generated and persisted to storage.
+func (s *Storage) FetchOrGenerateEncryptionKeys(pid *types.ProcessID) (ecc.Point, *big.Int, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.fetchOrGenerateEncryptionKeysUnsafe(pid)
+}
+
+// setEncryptionKeysUnsafe stores the encryption keys for a process without
+// locking.
+func (s *Storage) setEncryptionKeysUnsafe(pid *types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
 	x, y := publicKey.Point()
 	eks := &EncryptionKeys{
 		X:          x,
@@ -22,11 +45,10 @@ func (s *Storage) SetEncryptionKeys(pid *types.ProcessID, publicKey ecc.Point, p
 	return s.setArtifact(encryptionKeyPrefix, pid.Marshal(), eks)
 }
 
-// EncryptionKeys loads the encryption keys for a process. Returns ErrNotFound if the keys do not exist
-func (s *Storage) EncryptionKeys(pid *types.ProcessID) (ecc.Point, *big.Int, error) {
+// encryptionKeysUnsafe loads the encryption keys for a process without locking.
+func (s *Storage) encryptionKeysUnsafe(pid *types.ProcessID) (ecc.Point, *big.Int, error) {
 	eks := new(EncryptionKeys)
-	err := s.getArtifact(encryptionKeyPrefix, pid.Marshal(), eks)
-	if err != nil {
+	if err := s.getArtifact(encryptionKeyPrefix, pid.Marshal(), eks); err != nil {
 		return nil, nil, err
 	}
 	if eks.X == nil || eks.Y == nil {
@@ -37,16 +59,17 @@ func (s *Storage) EncryptionKeys(pid *types.ProcessID) (ecc.Point, *big.Int, err
 	return pubKey, eks.PrivateKey, nil
 }
 
-// FetchOrGenerateEncryptionKeys loads the encryption keys for a process.
+// fetchOrGenerateEncryptionKeysUnsafe loads the encryption keys for a process.
 // If the keys do not exist, new ones are generated and persisted to storage.
-func (s *Storage) FetchOrGenerateEncryptionKeys(pid *types.ProcessID) (ecc.Point, *big.Int, error) {
-	publicKey, privateKey, err := s.EncryptionKeys(pid)
+// It does not lock the storage, so it should be used with caution.
+func (s *Storage) fetchOrGenerateEncryptionKeysUnsafe(pid *types.ProcessID) (ecc.Point, *big.Int, error) {
+	publicKey, privateKey, err := s.encryptionKeysUnsafe(pid)
 	if err != nil {
 		publicKey, privateKey, err = elgamal.GenerateKey(curves.New(bjj.CurveType))
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not generate elgamal key: %v", err)
 		}
-		if err := s.SetEncryptionKeys(pid, publicKey, privateKey); err != nil {
+		if err := s.setEncryptionKeysUnsafe(pid, publicKey, privateKey); err != nil {
 			return nil, nil, fmt.Errorf("could not store encryption keys: %v", err)
 		}
 	}

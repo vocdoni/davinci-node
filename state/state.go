@@ -108,10 +108,10 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 func LoadOnRoot(db db.Database, processId, root *big.Int) (*State, error) {
 	state, err := New(db, processId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not create state: %v", err)
 	}
 	if err := state.SetRootAsBigInt(root); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not set state root: %v", err)
 	}
 	return state, nil
 }

@@ -93,13 +93,17 @@ func (pm *ProcessMonitor) monitorProcesses(ctx context.Context,
 		case <-ctx.Done():
 			return
 		case process := <-newProcChan:
+			// try to update the process if it already exists
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
+			// if it does not exist, create a new one
 			log.Debugw("new process found", "pid", process.ID.String())
 			if err := pm.storage.NewProcess(process); err != nil {
 				log.Warnw("failed to store new process", "pid", process.ID.String(), "err", err.Error())
 			}
+			// initialize the state for the process
+			log.Debugw("process state created", "pid", process.ID.String())
 		case process := <-changedStatusProcChan:
 			log.Debugw("process changed status", "pid", process.ID.String(),
 				"old", process.OldStatus.String(), "new", process.NewStatus.String())
