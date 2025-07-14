@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/results"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -140,8 +139,13 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 		t.Fatalf("failed to store process: %v", err)
 	}
 
+	process, err = stg.Process(pid)
+	if err != nil {
+		t.Fatalf("failed to get process: %v", err)
+	}
+
 	// Setup state with test data
-	process.StateRoot = setupTestState(t, stateDB, pid, pubKey, addValue, subValue)
+	process.StateRoot = setupTestState(t, stateDB, pid, pubKey, process.StateRoot.MathBigInt(), addValue, subValue)
 	err = stg.UpdateProcess(pid.Marshal(), func(p *types.Process) error {
 		p.StateRoot = process.StateRoot
 		return nil
@@ -164,36 +168,13 @@ func setupTestState(
 	stateDB db.Database,
 	pid *types.ProcessID,
 	pubKey ecc.Point,
+	stateRoot *big.Int,
 	addValue, subValue int64,
 ) *types.BigInt {
-	// Create a new state
-	st, err := state.New(stateDB, pid.BigInt())
+	// Load the initial state
+	st, err := state.LoadOnRoot(stateDB, pid.BigInt(), stateRoot)
 	if err != nil {
-		t.Fatalf("failed to create state: %v", err)
-	}
-
-	// Initialize the state with proper circuit types
-	censusRoot := big.NewInt(123)
-
-	// Create a proper BallotMode for circuits using the utility function
-	// BoolToBigInt is needed to convert boolean values to *big.Int
-	ballotMode := circuits.BallotMode[*big.Int]{
-		MaxCount:        big.NewInt(8),
-		MaxValue:        big.NewInt(100),
-		MinValue:        big.NewInt(0),
-		MaxTotalCost:    big.NewInt(0),
-		MinTotalCost:    big.NewInt(0),
-		ForceUniqueness: circuits.BoolToBigInt(false),
-		CostFromWeight:  circuits.BoolToBigInt(false),
-		CostExp:         big.NewInt(0), // Missing field in original
-	}
-
-	// Create a proper EncryptionKey for circuits
-	encryptionKey := circuits.EncryptionKeyFromECCPoint(pubKey)
-
-	err = st.Initialize(censusRoot, ballotMode, encryptionKey)
-	if err != nil {
-		t.Fatalf("failed to initialize state: %v", err)
+		t.Fatalf("failed to load state: %v", err)
 	}
 
 	// Create encrypted accumulators with known values
@@ -231,7 +212,7 @@ func setupTestState(
 	st.SetResultsAdd(encryptedAdd)
 	st.SetResultsSub(encryptedSub)
 
-	stateRoot, err := st.RootAsBigInt()
+	stateRoot, err = st.RootAsBigInt()
 	if err != nil {
 		t.Fatalf("failed to get state root: %v", err)
 	}

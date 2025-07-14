@@ -51,8 +51,9 @@ const (
 	processRegistryEnvVarName         = "SEQUENCER_PROCESS_REGISTRY"             // environment variable name for process registry
 	resultsVerifierEnvVarName         = "SEQUENCER_RESULTS_ZK_VERIFIER"          // environment variable name for results zk verifier
 	stateTransitionVerifierEnvVarName = "SEQUENCER_STATE_TRANSITION_ZK_VERIFIER" // environment variable name for state transition zk verifier
-
 )
+
+var defaultBatchTimeWindow = 120 * time.Second // default batch time window for sequencer
 
 // Services struct holds all test services
 type Services struct {
@@ -268,7 +269,13 @@ func NewTestClient(port int) (*client.HTTPclient, error) {
 	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
-func NewTestService(t *testing.T, ctx context.Context, workerSecret string, workerTimeout time.Duration, banRules *workers.WorkerBanRules) *Services {
+func NewTestService(
+	t *testing.T,
+	ctx context.Context,
+	workerSecret string,
+	workerTimeout time.Duration,
+	banRules *workers.WorkerBanRules,
+) *Services {
 	// Initialize the web3 contracts
 	contracts := setupWeb3(t, ctx)
 
@@ -291,7 +298,7 @@ func NewTestService(t *testing.T, ctx context.Context, workerSecret string, work
 	services.Sequencer = vp.Sequencer
 
 	// Start sequencer batch time window
-	services.Sequencer.SetBatchTimeWindow(time.Second * 120)
+	services.Sequencer.SetBatchTimeWindow(defaultBatchTimeWindow)
 
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
 		// Create a debug prover that will debug circuit execution during testing

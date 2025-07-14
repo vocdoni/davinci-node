@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -25,23 +28,54 @@ func (s *Storage) Process(pid *types.ProcessID) (*types.Process, error) {
 // NewProcess stores a new process and its metadata into the storage.
 // It checks that the process doesn't already exist to prevent accidental overwrites.
 // For updating existing processes, use UpdateProcess instead to avoid race conditions.
-func (s *Storage) NewProcess(data *types.Process) error {
+func (s *Storage) NewProcess(process *types.Process) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	if data == nil {
+	if process == nil {
 		return fmt.Errorf("nil process data")
 	}
 
 	// Check if process already exists
 	existing := &types.Process{}
-	if err := s.getArtifact(processPrefix, data.ID, existing); err == nil {
-		return fmt.Errorf("process already exists: %x", data.ID)
+	if err := s.getArtifact(processPrefix, process.ID, existing); err == nil {
+		return fmt.Errorf("process already exists: %x", process.ID)
 	} else if err != ErrNotFound {
 		return fmt.Errorf("failed to check process existence: %w", err)
 	}
 
-	return s.setArtifact(processPrefix, data.ID, data)
+	// Create the process state
+	pState, err := state.New(s.StateDB(), process.ID.BigInt().MathBigInt())
+	if err != nil {
+		return fmt.Errorf("failed to create process state: %w", err)
+	}
+
+	// Parse the process ID from the byte slice
+	pid := new(types.ProcessID).SetBytes(process.ID)
+
+	// Fetch or generate encryption keys for the process
+	publicKey, _, err := s.fetchOrGenerateEncryptionKeysUnsafe(pid)
+	if err != nil {
+		log.Warnw("failed to fetch or generate encryption keys for process",
+			"pid", pid.String(), "err", err.Error())
+	}
+
+	// Initialize the process state to store the process data
+	if err := pState.Initialize(
+		arbo.BytesToBigInt(process.Census.CensusRoot),
+		circuits.BallotModeToCircuit(process.BallotMode),
+		circuits.EncryptionKeyFromECCPoint(publicKey),
+	); err != nil {
+		return fmt.Errorf("failed to initialize process state: %w", err)
+	}
+	// Get the initial state root as big int to store in the process
+	stateRoot, err := pState.RootAsBigInt()
+	if err != nil {
+		return fmt.Errorf("failed to get process state root: %w", err)
+	}
+	process.StateRoot = new(types.BigInt).SetBigInt(stateRoot)
+
+	return s.setArtifact(processPrefix, process.ID, process)
 }
 
 // UpdateProcess performs an atomic read-modify-write operation on a process.
