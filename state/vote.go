@@ -52,7 +52,7 @@ func (o *State) AddVote(v *Vote) error {
 	o.ballotCount++
 
 	o.votes = append(o.votes, v)
-	return o.tree.AddBigInt(v.VoteID.BigInt().MathBigInt(), VoteIDKeyValue)
+	return nil
 }
 
 // EncryptedBallot returns the ballot associated with a address
