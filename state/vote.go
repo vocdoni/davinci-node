@@ -67,3 +67,9 @@ func (o *State) EncryptedBallot(address *big.Int) (*elgamal.Ballot, error) {
 	}
 	return ballot, nil
 }
+
+// ContainsVoteID checks if the state contains a vote ID
+func (o *State) ContainsVoteID(voteID types.HexBytes) bool {
+	_, _, err := o.tree.GetBigInt(voteID.BigInt().MathBigInt())
+	return err == nil
+}
