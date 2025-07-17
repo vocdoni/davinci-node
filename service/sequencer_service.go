@@ -111,7 +111,8 @@ func (ss *SequencerService) logActiveProcessStats() {
 		}
 
 		// Only log if the process is accepting votes
-		if !process.IsAcceptingVotes {
+		isAcceptingVotes, err := ss.storage.ProcessIsAcceptingVotes(pid)
+		if err != nil || !isAcceptingVotes {
 			continue
 		}
 

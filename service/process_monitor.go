@@ -13,8 +13,8 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// ProcessMonitor is a service that monitors new voting processes
-// and stores them in the local storage.
+// ProcessMonitor is a service that monitors new voting processes or process
+// updates and update them in the local storage.
 type ProcessMonitor struct {
 	contracts ContractsService
 	storage   *storage.Storage
