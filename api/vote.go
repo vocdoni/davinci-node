@@ -140,8 +140,9 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// the vote will be accepted, but it is a precondition to accept the vote,
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
-	if !process.IsAcceptingVotes {
-		ErrProcessNotAcceptingVotes.Withf("status: %s", process.Status).Write(w)
+	if ok, err := a.storage.ProcessIsAcceptingVotes(pid.Marshal()); !ok {
+		ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
+		return
 	}
 	// check that the census root is the same as the one in the process
 	if !bytes.Equal(process.Census.CensusRoot, vote.CensusProof.Root) {

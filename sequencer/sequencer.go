@@ -216,12 +216,6 @@ func (s *Sequencer) AddProcessID(pid []byte) {
 	if s.pids.Add(pid) {
 		log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
 	}
-	if err := s.stg.UpdateProcess(pid,
-		storage.ProcessUpdateCallbackAcceptingVotes(true),
-		storage.ProcessUpdateCallbackActiveLocally(true),
-	); err != nil {
-		log.Warnw("failed to set process accepting votes", "processID", fmt.Sprintf("%x", pid), "error", err)
-	}
 }
 
 // DelProcessID unregisters a process ID from the sequencer.
@@ -232,9 +226,6 @@ func (s *Sequencer) AddProcessID(pid []byte) {
 func (s *Sequencer) DelProcessID(pid []byte) {
 	if s.pids.Remove(pid) {
 		log.Infow("process ID unregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
-	}
-	if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackAcceptingVotes(false)); err != nil {
-		log.Warnw("failed to set process not accepting votes", "processID", fmt.Sprintf("%x", pid), "error", err)
 	}
 }
 

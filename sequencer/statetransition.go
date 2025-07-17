@@ -187,8 +187,12 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
-	if !process.IsLocallyActive {
-		return nil, fmt.Errorf("process %s is not locally active", pid.String())
+	isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(pid.Marshal())
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
+	}
+	if !isAcceptingVotes {
+		return nil, fmt.Errorf("process %x is not accepting votes", pid)
 	}
 
 	st, err := state.New(s.stg.StateDB(), pid.BigInt())
