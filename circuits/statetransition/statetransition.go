@@ -60,7 +60,8 @@ type ProcessProofs struct {
 // commitments.
 type VotesProofs struct {
 	// Key is Address, LeafHash is smt.Hash1(encoded(Ballot.Serialize()))
-	Ballot [types.VotesPerBatch]merkleproof.MerkleTransition
+	Ballot  [types.VotesPerBatch]merkleproof.MerkleTransition
+	VoteIDs [types.VotesPerBatch]merkleproof.MerkleTransition
 }
 
 // ResultsProofs struct contains the Merkle transition proofs for the addition
@@ -213,6 +214,7 @@ func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, 
 	root := circuit.RootHashBefore
 	for i := range circuit.VotesProofs.Ballot {
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
+		root = circuit.VotesProofs.VoteIDs[i].Verify(api, hFn, root)
 	}
 	root = circuit.ResultsProofs.ResultsAdd.Verify(api, hFn, root)
 	root = circuit.ResultsProofs.ResultsSub.Verify(api, hFn, root)
