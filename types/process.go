@@ -124,15 +124,24 @@ type Process struct {
 	Metadata             *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
 	VoteCount            *BigInt               `json:"voteCount"                cbor:"12,keyasint,omitempty"`
 	VoteOverwrittenCount *BigInt               `json:"voteOverwrittenCount"     cbor:"13,keyasint,omitempty"`
-	IsAcceptingVotes     bool                  `json:"isAcceptingVotes"         cbor:"15,keyasint,omitempty"`
 	SequencerStats       SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
-// ProcessWithStatusChange extends types.Process to add OldStatus and NewStatus fields
+// ProcessWithStatusChange extends types.Process to add OldStatus and NewStatus
+// fields
 type ProcessWithStatusChange struct {
 	*Process
 	OldStatus ProcessStatus
 	NewStatus ProcessStatus
+}
+
+// ProcessWithStateRootChange extends types.Process to add NewStateRoot,
+// NewVoteCount, and NewVoteOverwrittenCount fields
+type ProcessWithStateRootChange struct {
+	*Process
+	NewStateRoot            *BigInt
+	NewVoteCount            *BigInt
+	NewVoteOverwrittenCount *BigInt
 }
 
 type SequencerProcessStats struct {

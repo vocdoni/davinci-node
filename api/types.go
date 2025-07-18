@@ -106,6 +106,11 @@ type ProcessList struct {
 	Processes []types.HexBytes `json:"processes"`
 }
 
+type ProcessResponse struct {
+	types.Process
+	IsAcceptingVotes bool `json:"isAcceptingVotes"`
+}
+
 // HostLoadResponse is the exact shape we return to the client.
 type HostLoadResponse struct {
 	MemStats            any                `json:"memStats,omitempty"`

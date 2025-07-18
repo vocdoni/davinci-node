@@ -186,6 +186,9 @@ func TestIntegration(t *testing.T) {
 		t.Logf("Waiting for %d votes to be registered and aggregated", count)
 	})
 
+	c.Assert(ks, qt.HasLen, numBallots)
+	c.Assert(voteIDs, qt.HasLen, numBallots)
+
 	c.Run("create invalid votes", func(c *qt.C) {
 		vote := createVoteFromInvalidVoter(c, pid, ballotMode, encryptionKey)
 		// Make the request to try cast the vote
@@ -285,7 +288,7 @@ func TestIntegration(t *testing.T) {
 			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
 			c.Assert(status, qt.Equals, 200)
-			c.Logf("Vote %d (addr: %s - k: %s) created with ID: %s", i, vote.Address.String(), ks[i].String(), vote.VoteID)
+			c.Logf("Vote %d (addr: %s - k: %s) created with ID: %x", i, vote.Address.String(), ks[i].String(), vote.VoteID)
 
 			// Save the voteID for status checks
 			voteIDs = append(voteIDs, vote.VoteID)

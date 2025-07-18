@@ -18,14 +18,13 @@ import (
 // createTestProcess creates a standard test process with the given process ID
 func createTestProcess(pid *types.ProcessID) *types.Process {
 	return &types.Process{
-		ID:               pid.Marshal(),
-		Status:           0,
-		StartTime:        time.Now(),
-		Duration:         time.Hour,
-		MetadataURI:      "http://example.com/metadata",
-		StateRoot:        new(types.BigInt).SetUint64(100),
-		SequencerStats:   types.SequencerProcessStats{},
-		IsAcceptingVotes: true,
+		ID:             pid.Marshal(),
+		Status:         0,
+		StartTime:      time.Now(),
+		Duration:       time.Hour,
+		MetadataURI:    "http://example.com/metadata",
+		StateRoot:      new(types.BigInt).SetUint64(100),
+		SequencerStats: types.SequencerProcessStats{},
 		BallotMode: &types.BallotMode{
 			MaxCount:     8,
 			MaxValue:     new(types.BigInt).SetUint64(100),

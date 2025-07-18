@@ -120,8 +120,12 @@ func (a *API) process(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isAcceptingVotes, _ := a.storage.ProcessIsAcceptingVotes(pid.Marshal())
 	// Write the response
-	httpWriteJSON(w, proc)
+	httpWriteJSON(w, &ProcessResponse{
+		Process:          *proc,
+		IsAcceptingVotes: isAcceptingVotes,
+	})
 }
 
 // processList retrieves the list of voting processes
