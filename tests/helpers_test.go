@@ -138,6 +138,10 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 			}
 		}
 
+		log.Infow("deploying contracts in local environment",
+			"commit", composeEnv[contractsCommitHashEnvVarName],
+			"branch", composeEnv[contractsBranchNameEnvVarName])
+
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
 		c.Assert(err, qt.IsNil)

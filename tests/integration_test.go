@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"math/big"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -207,7 +208,7 @@ func TestIntegration(t *testing.T) {
 			// Make the request to cast the vote
 			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
-			c.Assert(status, qt.Equals, 409)
+			c.Assert(status, qt.Equals, http.StatusConflict)
 			c.Assert(string(body), qt.Contains, api.ErrBallotAlreadyProcessing.Error())
 		}
 	})
@@ -275,7 +276,7 @@ func TestIntegration(t *testing.T) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
+			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], nil)
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
@@ -285,7 +286,7 @@ func TestIntegration(t *testing.T) {
 			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
 			c.Assert(status, qt.Equals, 200)
-			c.Logf("Vote %d (addr: %s - k: %s) created with ID: %s", i, vote.Address.String(), ks[i].String(), vote.VoteID)
+			c.Logf("Vote %d (addr: %s) created with ID: %s", i, vote.Address.String(), vote.VoteID)
 
 			// Save the voteID for status checks
 			voteIDs = append(voteIDs, vote.VoteID)
@@ -355,7 +356,7 @@ func TestIntegration(t *testing.T) {
 	c.Run("try to send votes to ended process", func(c *qt.C) {
 		for i := range signers {
 			// generate a vote for the first participant
-			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
+			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], nil)
 			// generate census proof for first participant
 			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))

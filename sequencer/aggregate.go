@@ -138,27 +138,48 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	aggBallots := make([]*storage.AggregatorBallot, 0, len(ballots))
 	proofsInputsHashInputs := []*big.Int{}
 
+	// Get the current process state to check if the vote ID already exists
+	processState, err := s.latestProcessState(new(types.ProcessID).SetBytes(pid))
+	if err != nil {
+		return fmt.Errorf("failed to get latest process state: %w", err)
+	}
 	// Transform each ballot's proof for the aggregator circuit
 	var transformErr error
-	for i := range ballots {
-		proofs[i], transformErr = stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](groth16.Proof(ballots[i].Proof))
-		if transformErr != nil {
-			return fmt.Errorf("failed to transform proof for recursion (ballot %d): %w", i, transformErr)
+	for i, b := range ballots {
+		// if the vote ID already exists in the state, skip it
+		if processState.ContainsVoteID(b.VoteID) {
+			log.Debugw("skipping ballot with existing vote ID",
+				"voteID", b.VoteID.String(),
+				"processID", fmt.Sprintf("%x", pid),
+			)
+			continue
 		}
-		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](ballots[i].InputsHash)
-		proofsInputsHashInputs = append(proofsInputsHashInputs, ballots[i].InputsHash)
+
+		proofs[i], transformErr = stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](groth16.Proof(b.Proof))
+		if transformErr != nil {
+			return fmt.Errorf("failed to transform proof for recursion (ballot %s): %w", b.VoteID.String(), transformErr)
+		}
+		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](b.InputsHash)
+		proofsInputsHashInputs = append(proofsInputsHashInputs, b.InputsHash)
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
-			VoteID:          ballots[i].VoteID,
-			Address:         ballots[i].Address,
-			EncryptedBallot: ballots[i].EncryptedBallot,
+			VoteID:          b.VoteID,
+			Address:         b.Address,
+			EncryptedBallot: b.EncryptedBallot,
 		})
 	}
 
-	// padding the proofsInputsHashInputs with 1s to fill the array
+	// Check if we have some ballots to process
+	if len(aggBallots) == 0 {
+		log.Debugw("no ballots to process", "processID", fmt.Sprintf("%x", pid))
+		return nil
+	}
+
+	// Padding the proofsInputsHashInputs with 1s to fill the array
 	for i := len(ballots); i < types.VotesPerBatch; i++ {
 		proofsInputsHashInputs = append(proofsInputsHashInputs, new(big.Int).SetInt64(1))
 	}
-	// compute the hash of the ballot input hashes using MiMC hash function
+
+	// Compute the hash of the ballot input hashes using MiMC hash function
 	inputsHash, err := mimc7.Hash(proofsInputsHashInputs, nil)
 	if err != nil {
 		return fmt.Errorf("failed to calculate inputs hash: %w", err)
@@ -195,6 +216,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		circuits.AggregatorCurve.ScalarField(),
 	)
 
+	// Generate the proof for the aggregator circuit
 	proof, err := s.prover(
 		circuits.AggregatorCurve,
 		s.aggCcs,

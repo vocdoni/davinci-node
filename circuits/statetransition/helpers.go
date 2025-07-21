@@ -63,11 +63,17 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 	if err != nil {
 		return nil, err
 	}
-	// add Ballots
+	// add Ballots and VoteIDs proofs
 	for i := range witness.VotesProofs.Ballot {
+		// ballots
 		witness.VotesProofs.Ballot[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Ballot[i])
 		if err != nil {
 			return nil, err
+		}
+		// vote IDs
+		witness.VotesProofs.VoteIDs[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().VoteID[i])
+		if err != nil {
+			return nil, fmt.Errorf("could not get VoteID proof for index %d: %w", i, err)
 		}
 	}
 	// update ResultsAdd
