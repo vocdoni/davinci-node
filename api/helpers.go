@@ -10,7 +10,7 @@ import (
 )
 
 // httpWriteJSON helper function allows to write a JSON response.
-func httpWriteJSON(w http.ResponseWriter, data interface{}) {
+func httpWriteJSON(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	jdata, err := json.Marshal(data)
