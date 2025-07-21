@@ -366,23 +366,10 @@ func (f *finalizer) setProcessResults(pid *types.ProcessID, res *storage.Verifie
 // WaitUntilResults waits until the process is finalized. Returns the result of the process.
 // It ensures proper timeout handling and provides detailed logging for troubleshooting.
 func (f *finalizer) WaitUntilResults(ctx context.Context, pid *types.ProcessID) ([]*types.BigInt, error) {
-	// Create a timeout context if one wasn't already provided
-	var cancel context.CancelFunc
-	var timeoutCtx context.Context
-
-	_, hasDeadline := ctx.Deadline()
-	if !hasDeadline {
-		// Default timeout of 60 seconds if no deadline is set
-		timeoutCtx, cancel = context.WithTimeout(ctx, 60*time.Second)
-		defer cancel()
-	} else {
-		timeoutCtx = ctx
-	}
-
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	log.Debugw("waiting for process to be finalized", "pid", pid.String())
+	log.Debugw("waiting for results", "pid", pid.String())
 
 	for {
 		select {
@@ -397,10 +384,9 @@ func (f *finalizer) WaitUntilResults(ctx context.Context, pid *types.ProcessID) 
 				return process.Result, nil
 			}
 
-		case <-timeoutCtx.Done():
-			log.Warnw("timeout waiting for process to be finalized", "pid", pid.String())
-			return nil, fmt.Errorf("timeout waiting for process %s to be finalized: %w",
-				pid.String(), timeoutCtx.Err())
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context done, waiting for process %s to be finalized: %w",
+				pid.String(), ctx.Err())
 
 		case <-f.ctx.Done():
 			return nil, fmt.Errorf("finalizer is shutting down while waiting for process %s",
