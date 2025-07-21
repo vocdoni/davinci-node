@@ -3,6 +3,7 @@ package sequencer
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/consensys/gnark/backend"
@@ -14,6 +15,7 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
@@ -43,9 +45,9 @@ func (s *Sequencer) startStateTransitionProcessor() error {
 }
 
 func (s *Sequencer) processPendingTransitions() {
-	// process each registered process ID
+	// Process each registered process ID
 	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
-		// check if there is a batch ready for processing
+		// Check if there is a batch ready for processing
 		batch, batchID, err := s.stg.NextBallotBatch(pid)
 		if err != nil {
 			if err != storage.ErrNoMoreElements {
@@ -53,7 +55,7 @@ func (s *Sequencer) processPendingTransitions() {
 			}
 			return true // Continue to next process ID
 		}
-		// if the batch is nil, skip it
+		// If the batch is nil, skip it
 		if batch == nil || len(batch.Ballots) == 0 {
 			log.Debugw("no ballots in batch", "batchID", batchID)
 			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
@@ -61,15 +63,15 @@ func (s *Sequencer) processPendingTransitions() {
 			}
 			return true // Continue to next process ID
 		}
-		// decode process ID and load metadata
+		// Decode process ID and load metadata
 		processID := new(types.ProcessID).SetBytes(batch.ProcessID)
 
-		// lock the processor to avoid concurrent workloads
+		// Lock the processor to avoid concurrent workloads
 		s.workInProgressLock.Lock()
 		defer s.workInProgressLock.Unlock()
 		startTime := time.Now()
 
-		// initialize the process state
+		// Initialize the process state
 		processState, err := s.latestProcessState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
@@ -79,7 +81,7 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 
-		// get the root hash, this is the state before the batch
+		// Get the root hash, this is the state before the batch
 		root, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root")
@@ -95,8 +97,19 @@ func (s *Sequencer) processPendingTransitions() {
 			"rootHashBefore", root.String(),
 		)
 
-		// process the batch to get the proof
-		proof, err := s.processStateTransitionBatch(processState, batch)
+		// Reencrypt the votes with a new k
+		reencryptedVotes, kSeed, err := s.reencryptVotes(processID, batch.Ballots)
+		if err != nil {
+			log.Errorw(err, "failed to reencrypt votes")
+			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
+			return true // Continue to next process ID
+		}
+
+		// Process the batch inner proof and votes to get the proof of the
+		// state transition
+		proof, err := s.processStateTransitionBatch(processState, reencryptedVotes, kSeed, batch.Proof)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
 			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
@@ -154,11 +167,13 @@ func (s *Sequencer) processPendingTransitions() {
 
 func (s *Sequencer) processStateTransitionBatch(
 	processState *state.State,
-	batch *storage.AggregatorBallotBatch,
+	votes []*state.Vote,
+	kSeed *types.BigInt,
+	innerProof groth16.Proof,
 ) (groth16.Proof, error) {
 	startTime := time.Now()
 	// generate the state transition assignments from the batch
-	assignments, err := s.stateBatchToWitness(processState, batch)
+	assignments, err := s.stateBatchToWitness(processState, votes, kSeed, innerProof)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate assignments: %w", err)
 	}
@@ -216,21 +231,52 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	return processState, nil
 }
 
+func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
+	// generate a initial k to reencrypt the ballots
+	kSeed, err := elgamal.RandK()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate random k: %w", err)
+	}
+	// get encryption key from the storage
+	encryptionKey, _, err := s.stg.EncryptionKeys(pid)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get encryption key: %w", err)
+	}
+	// iterate over the votes, reencrypting each time the zero ballot with the
+	// current k, adding it to the encrypted ballot
+	reencryptedVotes := make([]*state.Vote, len(votes))
+	lastK := new(big.Int).Set(kSeed)
+	for i, v := range votes {
+		var reencryptedBallot *elgamal.Ballot
+		reencryptedBallot, lastK, err = v.EncryptedBallot.Reencrypt(encryptionKey, lastK)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to reencrypt ballot: %w", err)
+		}
+		// sum the encrypted zero ballot with the original ballot
+		reencryptedVotes[i] = &state.Vote{
+			Address:           v.Address,
+			VoteID:            v.VoteID,
+			Ballot:            v.EncryptedBallot,
+			ReencryptedBallot: reencryptedBallot,
+		}
+	}
+	log.Infow("votes reencrypted", "processID", pid.String(), "voteCount", len(reencryptedVotes))
+	return reencryptedVotes, new(types.BigInt).SetBigInt(kSeed), nil
+}
+
 func (s *Sequencer) stateBatchToWitness(
 	processState *state.State,
-	batch *storage.AggregatorBallotBatch,
+	votes []*state.Vote,
+	kSeed *types.BigInt,
+	innerProof groth16.Proof,
 ) (*statetransition.StateTransitionCircuit, error) {
 	// start a new batch
 	if err := processState.StartBatch(); err != nil {
 		return nil, fmt.Errorf("failed to start batch: %w", err)
 	}
 	// add the new ballots to the state
-	for _, v := range batch.Ballots {
-		if err := processState.AddVote(&state.Vote{
-			Ballot:  v.EncryptedBallot,
-			VoteID:  v.VoteID,
-			Address: v.Address,
-		}); err != nil {
+	for _, v := range votes {
+		if err := processState.AddVote(v); err != nil {
 			return nil, fmt.Errorf("failed to add vote: %w", err)
 		}
 	}
@@ -239,11 +285,11 @@ func (s *Sequencer) stateBatchToWitness(
 		return nil, fmt.Errorf("failed to end batch: %w", err)
 	}
 	// generate the state transition witness
-	proofWitness, err := statetransition.GenerateWitness(processState)
+	proofWitness, err := statetransition.GenerateWitness(processState, kSeed)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate witness: %w", err)
 	}
-	proofWitness.AggregatorProof, err = stdgroth16.ValueOfProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](batch.Proof)
+	proofWitness.AggregatorProof, err = stdgroth16.ValueOfProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](innerProof)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform recursive proof: %w", err)
 	}

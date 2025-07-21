@@ -1,15 +1,13 @@
 package statetransition_test
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"testing"
 
 	"github.com/consensys/gnark/backend"
-	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
@@ -20,6 +18,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	statetransitiontest "github.com/vocdoni/davinci-node/circuits/test/statetransition"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -52,99 +51,6 @@ func testCircuitProve(t *testing.T, circuit, witness frontend.Circuit) {
 		witness,
 		test.WithCurves(circuits.StateTransitionCurve),
 		test.WithBackends(backend.GROTH16))
-}
-
-func testCircuitExportSolidity(t *testing.T, c, w frontend.Circuit) {
-	if os.Getenv("RELEASE_SOLIDITY") == "" || os.Getenv("RELEASE_SOLIDITY") == falseStr {
-		t.Skip("skipping circuit tests...")
-	}
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
-	assert := test.NewAssert(t)
-	// generate witness
-	fmt.Println("NewWitness") // debug
-	witness, err := frontend.NewWitness(w, circuits.StateTransitionCurve.ScalarField())
-	assert.NoError(err)
-	// get public witness
-	pubWitness, err := witness.Public()
-	assert.NoError(err)
-	// compile the circuit
-	fmt.Println("Compile") // debug
-	ccs, err := frontend.Compile(circuits.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, c)
-	assert.NoError(err)
-	// generate proving and verifying keys
-	fmt.Println("Setup") // debug
-	pk, vk, err := groth16.Setup(ccs)
-	assert.NoError(err)
-	// generate proof
-	fmt.Println("Prove") // debug
-	proof, err := groth16.Prove(ccs, pk, witness)
-	assert.NoError(err)
-	// write proof into a buffer
-	var buf bytes.Buffer
-	_, err = proof.WriteRawTo(&buf)
-	assert.NoError(err)
-	proofBytes := buf.Bytes()
-	// compose the proof for solidity
-	type SolidityProof struct {
-		Ar  [2]*big.Int    `json:"Ar"`
-		Bs  [2][2]*big.Int `json:"Bs"`
-		Krs [2]*big.Int    `json:"Krs"`
-	}
-	p := SolidityProof{}
-	// proof.Ar, proof.Bs, proof.Krs
-	const fpSize = 4 * 8
-	p.Ar[0] = new(big.Int).SetBytes(proofBytes[fpSize*0 : fpSize*1])
-	p.Ar[1] = new(big.Int).SetBytes(proofBytes[fpSize*1 : fpSize*2])
-	p.Bs[0][0] = new(big.Int).SetBytes(proofBytes[fpSize*2 : fpSize*3])
-	p.Bs[0][1] = new(big.Int).SetBytes(proofBytes[fpSize*3 : fpSize*4])
-	p.Bs[1][0] = new(big.Int).SetBytes(proofBytes[fpSize*4 : fpSize*5])
-	p.Bs[1][1] = new(big.Int).SetBytes(proofBytes[fpSize*5 : fpSize*6])
-	p.Krs[0] = new(big.Int).SetBytes(proofBytes[fpSize*6 : fpSize*7])
-	p.Krs[1] = new(big.Int).SetBytes(proofBytes[fpSize*7 : fpSize*8])
-	// write proof into a file
-	prooffd, err := os.Create("statetransition_proof.json")
-	assert.NoError(err)
-	defer func() {
-		if err := prooffd.Close(); err != nil {
-			t.Errorf("error closing proof file: %v", err)
-		}
-	}()
-	bProof, err := json.Marshal(p)
-	assert.NoError(err)
-	_, err = prooffd.Write(bProof)
-	assert.NoError(err)
-	// generate solidity verifier
-	solfd, err := os.Create("statetransition_verifier.sol")
-	assert.NoError(err)
-	defer func() {
-		if err := solfd.Close(); err != nil {
-			t.Errorf("error closing solidity file: %v", err)
-		}
-	}()
-	// write verifier
-	err = vk.ExportSolidity(solfd)
-	assert.NoError(err)
-	// generate also the json of the public witness
-	schema, err := frontend.NewSchema(circuits.StateTransitionCurve.ScalarField(), w)
-	assert.NoError(err)
-	jsonWitness, err := pubWitness.ToJSON(schema)
-	assert.NoError(err)
-	pubWitnessJSONfd, err := os.Create("statetransition_public_witness.json")
-	assert.NoError(err)
-	defer func() {
-		if err := pubWitnessJSONfd.Close(); err != nil {
-			t.Errorf("error closing public witness JSON file: %v", err)
-		}
-	}()
-	_, err = pubWitnessJSONfd.Write(jsonWitness)
-	assert.NoError(err)
-}
-
-func TestCircuitExportSolidity(t *testing.T) {
-	witness := newMockWitness(t)
-	testCircuitExportSolidity(t,
-		statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-		witness)
 }
 
 func TestCircuitCompile(t *testing.T) {
@@ -301,12 +207,50 @@ func TestCircuitLeafHashesProve(t *testing.T) {
 	debugLog(t, witness)
 }
 
+type CircuitReencryptBallots struct {
+	statetransition.StateTransitionCircuit
+}
+
+func (circuit CircuitReencryptBallots) Define(api frontend.API) error {
+	circuit.VerifyReencryptedVotes(api)
+	return nil
+}
+
+func TestCircuitReencryptBallotsCompile(t *testing.T) {
+	testCircuitCompile(t, &CircuitReencryptBallots{
+		*statetransitiontest.CircuitPlaceholder(),
+	})
+}
+
+func TestCircuitReencryptBallotsProve(t *testing.T) {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	s := newMockState(t)
+	witness := newMockTransitionWithVotes(t, s,
+		newMockVote(0, 10, s.EncryptionKey()),
+		newMockVote(1, 10, s.EncryptionKey()),
+	)
+	testCircuitProve(t, &CircuitReencryptBallots{
+		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
+	}, witness)
+}
+
 func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) *statetransition.StateTransitionCircuit {
+	reencryptK, err := elgamal.RandK()
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalEncKey := s.EncryptionKey()
+	encryptionKey := state.Curve.New().SetPoint(originalEncKey.PubKey[0], originalEncKey.PubKey[1])
 	if err := s.StartBatch(); err != nil {
 		t.Fatal(err)
 	}
-
+	lastK := new(big.Int).Set(reencryptK)
 	for _, v := range votes {
+		v.ReencryptedBallot, lastK, err = v.Ballot.Reencrypt(encryptionKey, lastK)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := s.AddVote(v); err != nil {
 			t.Fatal(err)
 		}
@@ -316,7 +260,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 		t.Fatal(err)
 	}
 
-	witness, err := statetransition.GenerateWitness(s)
+	witness, err := statetransition.GenerateWitness(s, new(types.BigInt).SetBigInt(reencryptK))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,11 +318,18 @@ func newMockState(t *testing.T) *state.State {
 const mockAddressesOffset = 200
 
 // newMockVote creates a new vote
-func newMockVote(index, amount int64) *state.Vote {
+func newMockVote(index, amount int64, pubKey ...circuits.EncryptionKey[*big.Int]) *state.Vote {
 	// generate a public mocked key
-	publicKey, _, err := elgamal.GenerateKey(state.Curve)
-	if err != nil {
-		panic(fmt.Errorf("error generating public key: %v", err))
+	var publicKey ecc.Point
+	if len(pubKey) == 0 {
+		var err error
+		publicKey, _, err = elgamal.GenerateKey(state.Curve)
+		if err != nil {
+			panic(fmt.Errorf("error generating public key: %v", err))
+		}
+	} else {
+		log.Println("using provided public key:", pubKey[0].PubKey[0], pubKey[0].PubKey[1])
+		publicKey = state.Curve.New().SetPoint(pubKey[0].PubKey[0], pubKey[0].PubKey[1])
 	}
 
 	fields := [types.FieldsPerBallot]*big.Int{}

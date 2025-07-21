@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/consensys/gnark v0.13.1-0.20250721185528-7ea36db9cfca
+	github.com/consensys/gnark v0.13.0
 	github.com/consensys/gnark-crypto v0.18.0
 	github.com/ethereum/go-ethereum v1.16.1
 	github.com/frankban/quicktest v1.14.6
