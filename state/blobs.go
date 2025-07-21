@@ -1,10 +1,13 @@
 package state
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"math/big"
-	"os"
-	"path/filepath"
+	"strconv"
+	"strings"
 	"unsafe"
 
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
@@ -25,26 +28,10 @@ func init() {
 	// Initialize the BN254 scalar field modulus
 	pBN = bn254.ID.ScalarField()
 
-	// Create temporary file with embedded KZG trusted setup data
-	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, "kzg_trusted_setup.txt")
-
-	// Write embedded data to temporary file
-	if err := os.WriteFile(tmpFile, config.KZGTrustedSetup, 0o644); err != nil {
-		log.Fatalf("failed to write KZG trusted setup to temp file: %v", err)
+	// Load the embedded trusted setup from the config
+	if err := LoadEmbeddedTrustedSetup(config.KZGTrustedSetup, 0); err != nil {
+		panic(fmt.Errorf("failed to load KZG trusted setup: %w", err))
 	}
-
-	// Load the trusted setup from the temporary file
-	if err := ckzg4844.LoadTrustedSetupFile(tmpFile, 0); err != nil {
-		log.Fatalf("failed to load KZG trusted setup: %v", err)
-	}
-
-	// Clean up temporary file
-	if err := os.Remove(tmpFile); err != nil {
-		// Log warning but don't panic, as this is not critical
-		log.Warnw("failed to remove temporary KZG setup file", "error", err)
-	}
-
 	log.Infow("KZG trusted setup loaded, ready to process Ethereum blobs", "maxVotesPerBlob", CalculateMaxVotesPerBlob())
 }
 
@@ -329,4 +316,95 @@ func bytes32LEtoBigInt(b ckzg4844.Bytes32) *big.Int {
 		be[i] = b[31-i]
 	}
 	return new(big.Int).SetBytes(be)
+}
+
+// LoadEmbeddedTrustedSetup converts the textual trusted-setup
+// and initialises the C KZG library.
+//
+//	data: the raw file content (newline / space separated tokens)
+//	precompute: 0-15, same meaning as the C API
+//
+// reference implementation => https://github.com/ethereum/c-kzg-4844/blob/main/src/setup/setup.c
+func LoadEmbeddedTrustedSetup(data []byte, precompute uint) error {
+	const (
+		bytesPerG1 = 48
+		bytesPerG2 = 96
+	)
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Split(bufio.ScanWords)
+
+	next := func() (string, error) {
+		if !scanner.Scan() {
+			return "", fmt.Errorf("unexpected end-of-file while reading trusted setup")
+		}
+		return scanner.Text(), nil
+	}
+
+	// Read point counts (first two decimal numbers)
+	raw, err := next()
+	if err != nil {
+		return err
+	}
+	nG1, err := strconv.Atoi(raw)
+	if err != nil {
+		return fmt.Errorf("parsing G1 count: %w", err)
+	}
+
+	raw, err = next()
+	if err != nil {
+		return err
+	}
+	nG2, err := strconv.Atoi(raw)
+	if err != nil {
+		return fmt.Errorf("parsing G2 count: %w", err)
+	}
+
+	// Allocate destination slices
+	g1Lagrange := make([]byte, nG1*bytesPerG1)
+	g2Monomial := make([]byte, nG2*bytesPerG2)
+	g1Monomial := make([]byte, nG1*bytesPerG1)
+
+	readPoint := func(dst []byte) error {
+		token, err := next()
+		if err != nil {
+			return err
+		}
+		token = strings.TrimPrefix(token, "0x") // tolerate an optional 0x
+		if len(token) != len(dst)*2 {
+			return fmt.Errorf("hex string has %d chars, want %d",
+				len(token), len(dst)*2)
+		}
+		b, err := hex.DecodeString(token)
+		if err != nil {
+			return err
+		}
+		copy(dst, b)
+		return nil
+	}
+
+	// Copy G1(Lagrange) - G2(Monomial) - G1(Monomial) in that order
+	for i := 0; i < nG1; i++ {
+		if err := readPoint(g1Lagrange[i*bytesPerG1 : (i+1)*bytesPerG1]); err != nil {
+			return fmt.Errorf("G1-Lagrange #%d: %w", i, err)
+		}
+	}
+	for i := 0; i < nG2; i++ {
+		if err := readPoint(g2Monomial[i*bytesPerG2 : (i+1)*bytesPerG2]); err != nil {
+			return fmt.Errorf("G2-Monomial #%d: %w", i, err)
+		}
+	}
+	for i := 0; i < nG1; i++ {
+		if err := readPoint(g1Monomial[i*bytesPerG1 : (i+1)*bytesPerG1]); err != nil {
+			return fmt.Errorf("G1-Monomial #%d: %w", i, err)
+		}
+	}
+
+	// Hand everything to C
+	if err := ckzg4844.LoadTrustedSetup(
+		g1Monomial, g1Lagrange, g2Monomial, precompute,
+	); err != nil {
+		return fmt.Errorf("ckzg4844.LoadTrustedSetup: %w", err)
+	}
+	return nil
 }
