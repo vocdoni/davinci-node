@@ -81,9 +81,12 @@ func (s *Storage) NewProcess(process *types.Process) error {
 // UpdateProcess performs an atomic read-modify-write operation on a process.
 // The updateFunc is called with the current process state and can modify it.
 // This ensures no race conditions between concurrent process updates.
-func (s *Storage) UpdateProcess(pid []byte, updateFunc func(*types.Process) error) error {
+func (s *Storage) UpdateProcess(pid []byte, updateFunc ...func(*types.Process) error) error {
 	if pid == nil {
 		return fmt.Errorf("nil process ID")
+	}
+	if len(updateFunc) == 0 {
+		return fmt.Errorf("no update function provided")
 	}
 
 	s.globalLock.Lock()
@@ -95,9 +98,11 @@ func (s *Storage) UpdateProcess(pid []byte, updateFunc func(*types.Process) erro
 		return fmt.Errorf("failed to get process for update: %w", err)
 	}
 
-	// Apply the update
-	if err := updateFunc(p); err != nil {
-		return fmt.Errorf("update function failed: %w", err)
+	// Apply the update functions, each of which can modify the process state
+	for _, f := range updateFunc {
+		if err := f(p); err != nil {
+			return fmt.Errorf("update function failed: %w", err)
+		}
 	}
 
 	// Write back atomically
@@ -164,6 +169,43 @@ func (s *Storage) Metadata(hash []byte) (*types.Metadata, error) {
 	s.cache.Add(string(metadataPrefix)+string(hash), metadata)
 
 	return metadata, nil
+}
+
+// ProcessIsAcceptingVotes checks if the process is ready to accept votes,
+// which means that the process is in the "Ready" state and the state root
+// in the storage matches the state root in the state database. If
+// the process is not ready, it returns false and an error explaining why.
+func (s *Storage) ProcessIsAcceptingVotes(pid []byte) (bool, error) {
+	// Check if the stateRoot from the storage matches with the root of the state
+	processID := new(types.ProcessID).SetBytes(pid)
+	// Get the process from storage
+	stgProcess, err := s.Process(processID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get process %x: %w", pid, err)
+	}
+	// Get the state root from the process
+	if stgProcess.StateRoot == nil {
+		return false, fmt.Errorf("process %x has no state root", pid)
+	}
+	stgRoot := stgProcess.StateRoot.MathBigInt()
+	// Get the state from the stateDB
+	stateProcess, err := state.New(s.StateDB(), processID.BigInt())
+	if err != nil {
+		return false, fmt.Errorf("failed to get state for process %x: %w", pid, err)
+	}
+	// Get the state root from the state
+	stateRoot, err := stateProcess.RootAsBigInt()
+	if err != nil {
+		return false, fmt.Errorf("failed to get state root for process %x: %w", pid, err)
+	}
+	// Compare the state root from storage with the one from the state
+	if stgRoot.Cmp(stateRoot) != 0 {
+		return false, fmt.Errorf("process %x state root mismatch: storage %s, state %s", pid, stgRoot.String(), stateRoot.String())
+	}
+	if stgProcess.Status != types.ProcessStatusReady {
+		return false, fmt.Errorf("process %x status: %s", pid, stgProcess.Status)
+	}
+	return true, nil
 }
 
 // ListProcessWithEncryptionKeys returns a list of process IDs that have

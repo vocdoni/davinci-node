@@ -534,7 +534,6 @@ func (s *Storage) MarkBallotBatchFailed(key []byte) error {
 		if err := s.setVoteIDStatus(agg.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 			log.Warnw("failed to set vote ID status to error", "error", err.Error())
 		}
-
 	}
 
 	// Only update process stats for ballots that were actually aggregated

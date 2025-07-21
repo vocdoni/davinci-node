@@ -480,7 +480,7 @@ func createProcess(
 		case <-time.After(time.Second * 5):
 			pBytes, status, err := cli.Request(http.MethodGet, nil, nil, api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String()))
 			if err == nil && status == http.StatusOK {
-				proc := &types.Process{}
+				proc := &api.ProcessResponse{}
 				if err := json.Unmarshal(pBytes, proc); err != nil {
 					return nil, nil, fmt.Errorf("failed to unmarshal process response: %v", err)
 				}
