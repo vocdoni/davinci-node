@@ -1,39 +1,26 @@
 package state
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/hex"
+	"crypto/sha256"
 	"fmt"
 	"math/big"
-	"strconv"
-	"strings"
 	"unsafe"
 
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
-	ckzg4844 "github.com/ethereum/c-kzg-4844/v2/bindings/go"
-	"github.com/vocdoni/davinci-node/config"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
-	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
+// FieldElementsPerBlob defines the number of field elements per blob
+const FieldElementsPerBlob = 4096
+
+// BytesPerFieldElement defines the number of bytes per field element
+const BytesPerFieldElement = 32
+
 // BN254 scalar-field modulus
-var pBN *big.Int
-
-// init initializes the KZG trusted setup from embedded data
-func init() {
-	// Initialize the BN254 scalar field modulus
-	pBN = bn254.ID.ScalarField()
-
-	// Load the embedded trusted setup from the config
-	if err := LoadEmbeddedTrustedSetup(config.KZGTrustedSetup, 0); err != nil {
-		panic(fmt.Errorf("failed to load KZG trusted setup: %w", err))
-	}
-	log.Infow("KZG trusted setup loaded, ready to process Ethereum blobs", "maxVotesPerBlob", CalculateMaxVotesPerBlob())
-}
+var pBN = bn254.ID.ScalarField()
 
 // BlobData represents the structured data extracted from a blob
 type BlobData struct {
@@ -42,39 +29,24 @@ type BlobData struct {
 	ResultsSub []*big.Int
 }
 
-// findValidZ finds a valid evaluation point z using Poseidon hash over BabyJubJub.
-// z = PoseidonHash(processId, rootHashBefore, batchNum, nonce)
-// Returns the valid z and the nonce used to find it.
-// It continues until it finds a z such that the KZG proof y < pBN. This way we can use
-// native bn254 arithmetic (kzg commitments on ethereum are bls12-381).
-func findValidZ(processID, rootHashBefore *big.Int, batchNum uint64, blob ckzg4844.Blob) (z *big.Int, nonce uint64, err error) {
-	for nonce = 0; ; nonce++ {
-		// Calculate z = PoseidonHash(processId, rootHashBefore, batchNum, nonce)
-		z, err = poseidon.MultiPoseidon(processID, rootHashBefore, big.NewInt(int64(batchNum)), big.NewInt(int64(nonce)))
-		if err != nil {
-			return nil, 0, err
-		}
-
-		// Mask z to 250 bits as required
-		z.And(z, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1)))
-		zBytes := bigIntToBytes32LE(z)
-
-		// Test if this z produces a valid y < pBN
-		_, yBytes, err := ckzg4844.ComputeKZGProof(&blob, zBytes)
-		if err != nil {
-			continue // Try next nonce
-		}
-
-		y := bytes32LEtoBigInt(yBytes)
-		if y.Cmp(pBN) < 0 {
-			// Found valid z
-			return z, nonce, nil
-		}
+// ComputeEvaluationPoint computes evaluation point z using Poseidon hash.
+// z = PoseidonHash(processId, rootHashBefore, batchNum)
+// The result is reduced modulo the BLS12-381 scalar field order.
+func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, batchNum uint64) (z *big.Int, err error) {
+	// Calculate z = PoseidonHash(processId, rootHashBefore, batchNum)
+	z, err = poseidon.MultiPoseidon(processID, rootHashBefore, big.NewInt(int64(batchNum)))
+	if err != nil {
+		return nil, err
 	}
+
+	// Mask z to 250 bits
+	z.And(z, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1)))
+
+	return z, nil
 }
 
 // BuildKZGCommitment collects the raw batch-data, packs it into one blob and
-// produces (blob, commitment, proof, z, y, versionedHash, nonce).
+// produces (blob, commitment, proof, z, y, versionedHash).
 //
 // blob layout:
 //  1. ResultsAdd (types.FieldsPerBallot * 4 coordinates)
@@ -82,21 +54,21 @@ func findValidZ(processID, rootHashBefore *big.Int, batchNum uint64, blob ckzg48
 //  3. Votes sequentially until voteID = 0x0 (sentinel)
 //     Each vote: voteID + address + encryptedBallot coordinates
 func (st *State) BuildKZGCommitment(batchNum uint64) (
-	blob ckzg4844.Blob,
-	commit ckzg4844.KZGCommitment,
-	proof ckzg4844.KZGProof,
+	blob *kzg4844.Blob,
+	commit kzg4844.Commitment,
+	proof kzg4844.Proof,
 	z, y *big.Int,
 	versionedHash [32]byte,
-	nonce uint64,
 	err error,
 ) {
-	var cells [ckzg4844.FieldElementsPerBlob][ckzg4844.BytesPerFieldElement]byte
+	blob = &kzg4844.Blob{}
+	var cells [FieldElementsPerBlob][BytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) {
-		if cell >= ckzg4844.FieldElementsPerBlob {
+		if cell >= FieldElementsPerBlob {
 			panic("blob overflow")
 		}
-		// Store blob cells in big-endian as expected by c-kzg-4844
+		// Store blob cells in big-endian as expected by go-ethereum
 		bi.FillBytes(cells[cell][:])
 		cell++
 	}
@@ -122,47 +94,46 @@ func (st *State) BuildKZGCommitment(batchNum uint64) (
 	// remaining cells are zero-initialised already
 	push(big.NewInt(0))
 
-	// Convert 2D cell array to flat blob format required by c-kzg-4844
+	// Convert 2D cell array to flat blob format
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement)
-	for i := 0; i < ckzg4844.FieldElementsPerBlob; i++ {
-		start := i * ckzg4844.BytesPerFieldElement
-		end := start + ckzg4844.BytesPerFieldElement
+	for i := range FieldElementsPerBlob {
+		start := i * BytesPerFieldElement
+		end := start + BytesPerFieldElement
 		copy(blob[start:end], cells[i][:])
 	}
 
-	// Generate KZG commitment first
-	commit, err = ckzg4844.BlobToKZGCommitment(&blob)
+	// Generate KZG commitment
+	commit, err = kzg4844.BlobToCommitment(blob)
 	if err != nil {
-		err = fmt.Errorf("blob_to_kzg_commitment failed: %w", err)
+		err = fmt.Errorf("blob_to_commitment failed: %w", err)
 		return
 	}
 
-	// Find valid evaluation point z using Poseidon hash over BabyJubJub
-	// z = PoseidonHash(processId, rootHashBefore, batchNum, nonce)
-	z, nonce, err = findValidZ(st.processID, st.rootHashBefore, batchNum, blob)
+	// Find valid evaluation point z
+	z, err = ComputeEvaluationPoint(st.processID, st.rootHashBefore, batchNum)
 	if err != nil {
 		return
 	}
 
 	// Generate KZG proof with the valid z
-	zBytes := bigIntToBytes32LE(z)
-	var yBytes ckzg4844.Bytes32
-	proof, yBytes, err = ckzg4844.ComputeKZGProof(&blob, zBytes)
+	var claim kzg4844.Claim
+	proof, claim, err = kzg4844.ComputeProof(blob, BigIntToKZGPoint(z))
 	if err != nil {
-		err = fmt.Errorf("compute_kzg_proof failed: %w", err)
+		err = fmt.Errorf("compute kzg4844 proof failed: %w", err)
 		return
 	}
-	y = bytes32LEtoBigInt(yBytes)
+	// Claim is already in big-endian format
+	y = new(big.Int).SetBytes(claim[:])
 
-	// Create versioned hash: H = 0x01 || keccak256(commit)
-	hash := ethereum.HashRaw(commit[:])
-	versionedHash[0] = 0x01
-	copy(versionedHash[1:], hash[:])
+	// Create versioned hash using SHA256 (as per kzg4844.CalcBlobHashV1)
+	hasher := sha256.New()
+	versionedHash = kzg4844.CalcBlobHashV1(hasher, &commit)
+
 	return
 }
 
 // ParseBlobData extracts vote and results data from a blob
-func ParseBlobData(blob ckzg4844.Blob) (*BlobData, error) {
+func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
 	coordsPerBallot := types.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
 
 	data := &BlobData{
@@ -172,13 +143,13 @@ func ParseBlobData(blob ckzg4844.Blob) (*BlobData, error) {
 	}
 
 	// extract big.Int from blob cell
-	blobBytes := (*(*[ckzg4844.BytesPerBlob]byte)(unsafe.Pointer(&blob)))[:]
+	blobBytes := (*(*[131072]byte)(unsafe.Pointer(blob)))[:]
 	getCell := func(cellIndex int) *big.Int {
-		if cellIndex >= ckzg4844.FieldElementsPerBlob {
+		if cellIndex >= FieldElementsPerBlob {
 			return big.NewInt(0)
 		}
-		start := cellIndex * ckzg4844.BytesPerFieldElement
-		cellBytes := blobBytes[start : start+ckzg4844.BytesPerFieldElement]
+		start := cellIndex * BytesPerFieldElement
+		cellBytes := blobBytes[start : start+BytesPerFieldElement]
 		// Read blob cells as big-endian (canonical form)
 		return new(big.Int).SetBytes(cellBytes)
 	}
@@ -208,7 +179,7 @@ func ParseBlobData(blob ckzg4844.Blob) (*BlobData, error) {
 		}
 
 		// Check if we have enough cells for a complete vote
-		if cellIndex+1+coordsPerBallot > ckzg4844.FieldElementsPerBlob {
+		if cellIndex+1+coordsPerBallot > FieldElementsPerBlob {
 			return nil, fmt.Errorf("incomplete vote data in blob")
 		}
 
@@ -256,7 +227,7 @@ func CalculateMaxVotesPerBlob() int {
 	cellsPerVote := 1 + 1 + coordsPerBallot // voteID + address + ballot
 	sentinelCells := 1                      // voteID = 0x0 sentinel
 
-	availableCells := ckzg4844.FieldElementsPerBlob - resultsCells - sentinelCells
+	availableCells := FieldElementsPerBlob - resultsCells - sentinelCells
 	return availableCells / cellsPerVote
 }
 
@@ -294,117 +265,12 @@ func (st *State) ApplyBlobToState(blobData *BlobData) error {
 	return nil
 }
 
-// bigIntToBytes32LE converts a big.Int to little-endian ckzg4844.Bytes32.
-func bigIntToBytes32LE(x *big.Int) ckzg4844.Bytes32 {
-	var out ckzg4844.Bytes32
-	// First get big-endian representation, padded to 32 bytes
+// BigIntToKZGPoint converts a big.Int to a kzg4844.Point.
+func BigIntToKZGPoint(x *big.Int) kzg4844.Point {
+	var point kzg4844.Point
+	// Convert big.Int to big-endian byte array
 	be := make([]byte, 32)
-	x.FillBytes(be) // This fills with big-endian, left-padded
-
-	// Convert to little-endian by reversing the entire 32-byte array
-	for i := 0; i < 32; i++ {
-		out[i] = be[31-i]
-	}
-	return out
-}
-
-// bytes32LEtoBigInt converts little-endian ckzg4844.Bytes32 back to *big.Int.
-func bytes32LEtoBigInt(b ckzg4844.Bytes32) *big.Int {
-	// Convert from little-endian to big-endian for big.Int.SetBytes()
-	be := make([]byte, 32)
-	for i := 0; i < 32; i++ {
-		be[i] = b[31-i]
-	}
-	return new(big.Int).SetBytes(be)
-}
-
-// LoadEmbeddedTrustedSetup converts the textual trusted-setup
-// and initialises the C KZG library.
-//
-//	data: the raw file content (newline / space separated tokens)
-//	precompute: 0-15, same meaning as the C API
-//
-// reference implementation => https://github.com/ethereum/c-kzg-4844/blob/main/src/setup/setup.c
-func LoadEmbeddedTrustedSetup(data []byte, precompute uint) error {
-	const (
-		bytesPerG1 = 48
-		bytesPerG2 = 96
-	)
-
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Split(bufio.ScanWords)
-
-	next := func() (string, error) {
-		if !scanner.Scan() {
-			return "", fmt.Errorf("unexpected end-of-file while reading trusted setup")
-		}
-		return scanner.Text(), nil
-	}
-
-	// Read point counts (first two decimal numbers)
-	raw, err := next()
-	if err != nil {
-		return err
-	}
-	nG1, err := strconv.Atoi(raw)
-	if err != nil {
-		return fmt.Errorf("parsing G1 count: %w", err)
-	}
-
-	raw, err = next()
-	if err != nil {
-		return err
-	}
-	nG2, err := strconv.Atoi(raw)
-	if err != nil {
-		return fmt.Errorf("parsing G2 count: %w", err)
-	}
-
-	// Allocate destination slices
-	g1Lagrange := make([]byte, nG1*bytesPerG1)
-	g2Monomial := make([]byte, nG2*bytesPerG2)
-	g1Monomial := make([]byte, nG1*bytesPerG1)
-
-	readPoint := func(dst []byte) error {
-		token, err := next()
-		if err != nil {
-			return err
-		}
-		token = strings.TrimPrefix(token, "0x") // tolerate an optional 0x
-		if len(token) != len(dst)*2 {
-			return fmt.Errorf("hex string has %d chars, want %d",
-				len(token), len(dst)*2)
-		}
-		b, err := hex.DecodeString(token)
-		if err != nil {
-			return err
-		}
-		copy(dst, b)
-		return nil
-	}
-
-	// Copy G1(Lagrange) - G2(Monomial) - G1(Monomial) in that order
-	for i := 0; i < nG1; i++ {
-		if err := readPoint(g1Lagrange[i*bytesPerG1 : (i+1)*bytesPerG1]); err != nil {
-			return fmt.Errorf("G1-Lagrange #%d: %w", i, err)
-		}
-	}
-	for i := 0; i < nG2; i++ {
-		if err := readPoint(g2Monomial[i*bytesPerG2 : (i+1)*bytesPerG2]); err != nil {
-			return fmt.Errorf("G2-Monomial #%d: %w", i, err)
-		}
-	}
-	for i := 0; i < nG1; i++ {
-		if err := readPoint(g1Monomial[i*bytesPerG1 : (i+1)*bytesPerG1]); err != nil {
-			return fmt.Errorf("G1-Monomial #%d: %w", i, err)
-		}
-	}
-
-	// Hand everything to C
-	if err := ckzg4844.LoadTrustedSetup(
-		g1Monomial, g1Lagrange, g2Monomial, precompute,
-	); err != nil {
-		return fmt.Errorf("ckzg4844.LoadTrustedSetup: %w", err)
-	}
-	return nil
+	x.FillBytes(be)
+	copy(point[:], be[:])
+	return point
 }

@@ -1,18 +1,17 @@
 package state
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"math/big"
 	"testing"
 
-	ckzg4844 "github.com/ethereum/c-kzg-4844/v2/bindings/go"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
-	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
-	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -209,11 +208,8 @@ func TestBlobStateTransition(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to get original root"))
 
 	// Generate blob with KZG commitment
-	blob, commit, proof, z, y, versionedHash, nonce, err := originalState.BuildKZGCommitment(batchNum)
+	blob, commit, proof, z, y, versionedHash, err := originalState.BuildKZGCommitment(batchNum)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to build KZG commitment"))
-
-	// Log the nonce used for debugging
-	t.Logf("Used nonce: %d", nonce)
 
 	// Verify blob structure
 	t.Run("VerifyBlobStructure", func(t *testing.T) {
@@ -227,7 +223,7 @@ func TestBlobStateTransition(t *testing.T) {
 
 	// Create new state and apply blob
 	t.Run("RestoreStateFromBlob", func(t *testing.T) {
-		restoreStateFromBlob(t, blob, len(votes), processID, censusRoot, *ballotMode, publicKey, originalRoot)
+		restoreStateFromBlob(t, blob, processID, censusRoot, *ballotMode, publicKey, originalRoot)
 	})
 }
 
@@ -264,7 +260,7 @@ func createTestVotes(t *testing.T, publicKey ecc.Point, numVotes int) []*Vote {
 	return votes
 }
 
-func verifyBlobStructure(t *testing.T, blob ckzg4844.Blob, votes []*Vote, state *State) {
+func verifyBlobStructure(t *testing.T, blob *kzg4844.Blob, votes []*Vote, state *State) {
 	c := qt.New(t)
 	// Parse blob data
 	blobData, err := ParseBlobData(blob)
@@ -320,43 +316,40 @@ func verifyBlobStructure(t *testing.T, blob ckzg4844.Blob, votes []*Vote, state 
 	}
 }
 
-func verifyKZGCommitment(t *testing.T, blob ckzg4844.Blob, commit ckzg4844.KZGCommitment, proof ckzg4844.KZGProof, z, y *big.Int, versionedHash [32]byte) {
+func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit kzg4844.Commitment, proof kzg4844.Proof, z, y *big.Int, versionedHash [32]byte) {
 	c := qt.New(t)
 	// Verify commitment can be regenerated from blob
-	recomputedCommit, err := ckzg4844.BlobToKZGCommitment(&blob)
+	recomputedCommit, err := kzg4844.BlobToCommitment(blob)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute commitment"))
 
 	c.Assert(commit, qt.Equals, recomputedCommit, qt.Commentf("Commitment mismatch"))
 
-	// Verify versioned hash format: H = 0x01 || keccak256(commit)
-	// Use the same method as in the implementation
-	expectedHash := ethereum.HashRaw(commit[:])
-	expectedVersionedHash := [32]byte{}
-	expectedVersionedHash[0] = 0x01
-	copy(expectedVersionedHash[1:], expectedHash[:])
+	// Verify versioned hash format using the same method as the implementation
+	hasher := sha256.New()
+	expectedVersionedHash := kzg4844.CalcBlobHashV1(hasher, &commit)
 
 	c.Assert(versionedHash, qt.Equals, expectedVersionedHash, qt.Commentf("Versioned hash mismatch"))
 
-	// Verify y is within BN254 field
-	c.Assert(y.Cmp(pBN) < 0, qt.IsTrue, qt.Commentf("y value is not within BN254 field"))
+	// Note: y is now within BLS12-381 field, not BN254 field since we're using go-ethereum's kzg4844
+	// The check for y < pBN is no longer valid
 
 	// Verify z is within 250-bit range
 	maxZ := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1))
 	c.Assert(z.Cmp(maxZ) <= 0, qt.IsTrue, qt.Commentf("z value exceeds 250-bit range"))
 
 	// Verify KZG proof
-	zBytes := bigIntToBytes32LE(z)
-	yBytes := bigIntToBytes32LE(y)
-
-	recomputedProof, recomputedY, err := ckzg4844.ComputeKZGProof(&blob, zBytes)
+	var claim kzg4844.Claim
+	recomputedProof, claim, err := kzg4844.ComputeProof(blob, BigIntToKZGPoint(z))
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute KZG proof"))
 
 	c.Assert(proof, qt.Equals, recomputedProof, qt.Commentf("KZG proof mismatch"))
 
-	c.Assert(yBytes, qt.Equals, recomputedY, qt.Commentf("KZG evaluation mismatch"))
+	// Claim is already in big-endian format
+	recomputedY := new(big.Int).SetBytes(claim[:])
+	c.Assert(y.Cmp(recomputedY), qt.Equals, 0, qt.Commentf("KZG evaluation mismatch"))
 }
 
-func restoreStateFromBlob(t *testing.T, blob ckzg4844.Blob, numVotes int, processID, censusRoot *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
+func restoreStateFromBlob(t *testing.T, blob *kzg4844.Blob, processID, censusRoot *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
 	c := qt.New(t)
 	// Parse blob data
 	blobData, err := ParseBlobData(blob)
@@ -427,73 +420,6 @@ func restoreStateFromBlob(t *testing.T, blob ckzg4844.Blob, numVotes int, proces
 	}
 }
 
-func TestPoseidonZValidation(t *testing.T) {
-	c := qt.New(t)
-	// Test to validate how many nonces produce valid z values
-	// where the resulting y < pBN (BN254 field modulus)
-
-	const defaultTestNonces = 100
-	testNonces := defaultTestNonces
-
-	// Test parameters
-	processID := big.NewInt(12345)
-	rootHashBefore := big.NewInt(67890)
-	batchNum := uint64(1)
-
-	// Create a dummy blob for testing
-	var blob ckzg4844.Blob
-
-	validCount := 0
-	invalidCount := 0
-
-	t.Logf("Testing %d nonces for Poseidon z validation...", testNonces)
-
-	for nonce := uint64(0); nonce < uint64(testNonces); nonce++ {
-		// Calculate z = PoseidonHash(processId, rootHashBefore, batchNum, nonce)
-		z, err := poseidon.MultiPoseidon(processID, rootHashBefore, big.NewInt(int64(batchNum)), big.NewInt(int64(nonce)))
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to compute Poseidon hash for nonce %d", nonce))
-
-		// Mask z to 250 bits as required
-		z.And(z, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1)))
-		zBytes := bigIntToBytes32LE(z)
-
-		// Test if this z produces a valid y < pBN
-		_, yBytes, err := ckzg4844.ComputeKZGProof(&blob, zBytes)
-		if err != nil {
-			invalidCount++
-			continue
-		}
-
-		y := bytes32LEtoBigInt(yBytes)
-		if y.Cmp(pBN) < 0 {
-			validCount++
-		} else {
-			invalidCount++
-		}
-	}
-
-	// Calculate percentages
-	validPercent := float64(validCount) / float64(testNonces) * 100
-	invalidPercent := float64(invalidCount) / float64(testNonces) * 100
-
-	// Log results
-	t.Logf("Poseidon Z Validation Results:")
-	t.Logf("  Total nonces tested: %d", testNonces)
-	t.Logf("  Valid nonces (y < pBN): %d (%.2f%%)", validCount, validPercent)
-	t.Logf("  Invalid nonces (y >= pBN): %d (%.2f%%)", invalidCount, invalidPercent)
-
-	// Verify we have some valid nonces (should be around 50% statistically)
-	c.Assert(validCount > 0, qt.IsTrue, qt.Commentf("No valid nonces found, this is unexpected"))
-
-	// Log some statistics for analysis
-	if validPercent < 10 {
-		t.Logf("Warning: Low valid percentage (%.2f%%), this might indicate an issue", validPercent)
-	}
-	if validPercent > 90 {
-		t.Logf("Warning: Very high valid percentage (%.2f%%), this might indicate an issue", validPercent)
-	}
-}
-
 func TestBlobDataParsing(t *testing.T) {
 	// Test parsing with various vote counts
 	testCases := []int{0, 1, 5, 50, 115}
@@ -502,7 +428,7 @@ func TestBlobDataParsing(t *testing.T) {
 		t.Run(fmt.Sprintf("ParseVotes_%d", numVotes), func(t *testing.T) {
 			c := qt.New(t)
 			// Create a test blob with known data
-			var blob ckzg4844.Blob
+			blob := &kzg4844.Blob{}
 
 			// This would normally populate the blob with test data
 			// For now, we'll test the parsing logic with empty data
