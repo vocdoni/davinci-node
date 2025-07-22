@@ -84,7 +84,7 @@ func (st *State) BuildKZGCommitment(batchNum uint64) (
 	}
 
 	// Find valid evaluation point z
-	z, err = blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, batchNum)
+	z, err = blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, batchNum, blob)
 	if err != nil {
 		return
 	}
