@@ -202,9 +202,7 @@ func (circuit StateTransitionCircuit) VerifyAggregatorProof(api frontend.API) {
 // ballot. The encrypted zero uses the reencryptK as the randomness.
 func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
 	lastK := frontend.Variable(circuit.ReencryptK)
-	api.Println("encryption key", circuit.Process.EncryptionKey.PubKey[0], circuit.Process.EncryptionKey.PubKey[1])
 	for i, v := range circuit.Votes {
-		api.Println("Verifying reencrypted vote", i)
 		isValid := cmp.IsLess(api, i, circuit.NumNewVotes)
 		var err error
 		var reencryptedBallot *circuits.Ballot
