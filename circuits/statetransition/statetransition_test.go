@@ -18,7 +18,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	statetransitiontest "github.com/vocdoni/davinci-node/circuits/test/statetransition"
-	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -61,8 +60,8 @@ func TestCircuitProve(t *testing.T) {
 	s := newMockState(t)
 	{
 		witness := newMockTransitionWithVotes(t, s,
-			newMockVote(1, 10), // add vote 1
-			newMockVote(2, 20), // add vote 2
+			newMockVote(s, 1, 10), // add vote 1
+			newMockVote(s, 2, 20), // add vote 2
 		)
 		testCircuitProve(t, statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK), witness)
 
@@ -70,9 +69,9 @@ func TestCircuitProve(t *testing.T) {
 	}
 	{
 		witness := newMockTransitionWithVotes(t, s,
-			newMockVote(1, 100), // overwrite vote 1
-			newMockVote(3, 30),  // add vote 3
-			newMockVote(4, 40),  // add vote 4
+			newMockVote(s, 1, 100), // overwrite vote 1
+			newMockVote(s, 3, 30),  // add vote 3
+			newMockVote(s, 4, 40),  // add vote 4
 		)
 		testCircuitProve(t, statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK), witness)
 
@@ -225,11 +224,7 @@ func TestCircuitReencryptBallotsCompile(t *testing.T) {
 func TestCircuitReencryptBallotsProve(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	s := newMockState(t)
-	witness := newMockTransitionWithVotes(t, s,
-		newMockVote(0, 10, s.EncryptionKey()),
-		newMockVote(1, 10, s.EncryptionKey()),
-	)
+	witness := newMockWitness(t)
 	testCircuitProve(t, &CircuitReencryptBallots{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -284,16 +279,16 @@ func newMockWitness(t *testing.T) *statetransition.StateTransitionCircuit {
 	// First initialize a state with a transition of 2 new votes,
 	s := newMockState(t)
 	_ = newMockTransitionWithVotes(t, s,
-		newMockVote(0, 10),
-		newMockVote(1, 10),
+		newMockVote(s, 0, 10),
+		newMockVote(s, 1, 10),
 	)
 	// so now we can return a transition where vote 1 is overwritten
 	// and add 3 more votes
 	return newMockTransitionWithVotes(t, s,
-		newMockVote(1, 20),
-		newMockVote(2, 20),
-		newMockVote(3, 20),
-		newMockVote(4, 20),
+		newMockVote(s, 1, 20),
+		newMockVote(s, 2, 20),
+		newMockVote(s, 3, 20),
+		newMockVote(s, 4, 20),
 	)
 }
 
@@ -318,19 +313,8 @@ func newMockState(t *testing.T) *state.State {
 const mockAddressesOffset = 200
 
 // newMockVote creates a new vote
-func newMockVote(index, amount int64, pubKey ...circuits.EncryptionKey[*big.Int]) *state.Vote {
-	// generate a public mocked key
-	var publicKey ecc.Point
-	if len(pubKey) == 0 {
-		var err error
-		publicKey, _, err = elgamal.GenerateKey(state.Curve)
-		if err != nil {
-			panic(fmt.Errorf("error generating public key: %v", err))
-		}
-	} else {
-		log.Println("using provided public key:", pubKey[0].PubKey[0], pubKey[0].PubKey[1])
-		publicKey = state.Curve.New().SetPoint(pubKey[0].PubKey[0], pubKey[0].PubKey[1])
-	}
+func newMockVote(s *state.State, index, amount int64) *state.Vote {
+	publicKey := state.Curve.New().SetPoint(s.EncryptionKey().PubKey[0], s.EncryptionKey().PubKey[1])
 
 	fields := [types.FieldsPerBallot]*big.Int{}
 	for i := range fields {

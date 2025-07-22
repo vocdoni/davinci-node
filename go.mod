@@ -30,7 +30,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250707215550-6dee1243bb29
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
-	github.com/vocdoni/davinci-contracts v0.0.0-20250721142900-79c943fbd4b4
+	github.com/vocdoni/davinci-contracts v0.0.0-20250722063836-219dcd1ee401
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
 	go.mongodb.org/mongo-driver v1.12.1
 	golang.org/x/mod v0.26.0
