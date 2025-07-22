@@ -2,7 +2,7 @@ module github.com/vocdoni/davinci-node
 
 go 1.24
 
-replace github.com/consensys/gnark => github.com/vocdoni/gnark-no-assert v0.0.0-20250718145420-31e5d0d732b4
+// replace github.com/consensys/gnark => github.com/lucasmenendez/gnark e7b7d8efad32f1ea20af074f68503c9a8ff0b884
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.3
@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
 	github.com/cockroachdb/pebble v1.1.2
-	github.com/consensys/gnark v0.12.1-0.20250417131611-fdeeb39f3a62
+	github.com/consensys/gnark v0.13.1-0.20250721185528-7ea36db9cfca
 	github.com/consensys/gnark-crypto v0.18.0
 	github.com/ethereum/c-kzg-4844/v2 v2.1.1
 	github.com/ethereum/go-ethereum v1.14.12

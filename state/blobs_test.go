@@ -10,6 +10,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
@@ -319,7 +320,7 @@ func verifyBlobStructure(t *testing.T, blob *kzg4844.Blob, votes []*Vote, state 
 func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit kzg4844.Commitment, proof kzg4844.Proof, z, y *big.Int, versionedHash [32]byte) {
 	c := qt.New(t)
 	// Verify commitment can be regenerated from blob
-	recomputedCommit, err := kzg4844.BlobToCommitment(blob)
+	recomputedCommit, err := blobs.BlobToCommitment(blob)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute commitment"))
 
 	c.Assert(commit, qt.Equals, recomputedCommit, qt.Commentf("Commitment mismatch"))
@@ -330,16 +331,13 @@ func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit kzg4844.Commit
 
 	c.Assert(versionedHash, qt.Equals, expectedVersionedHash, qt.Commentf("Versioned hash mismatch"))
 
-	// Note: y is now within BLS12-381 field, not BN254 field since we're using go-ethereum's kzg4844
-	// The check for y < pBN is no longer valid
-
 	// Verify z is within 250-bit range
 	maxZ := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1))
 	c.Assert(z.Cmp(maxZ) <= 0, qt.IsTrue, qt.Commentf("z value exceeds 250-bit range"))
 
 	// Verify KZG proof
 	var claim kzg4844.Claim
-	recomputedProof, claim, err := kzg4844.ComputeProof(blob, BigIntToKZGPoint(z))
+	recomputedProof, claim, err := blobs.ComputeProof(blob, z)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute KZG proof"))
 
 	c.Assert(proof, qt.Equals, recomputedProof, qt.Commentf("KZG proof mismatch"))

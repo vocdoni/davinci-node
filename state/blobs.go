@@ -6,43 +6,17 @@ import (
 	"math/big"
 	"unsafe"
 
-	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
-	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 )
-
-// FieldElementsPerBlob defines the number of field elements per blob
-const FieldElementsPerBlob = 4096
-
-// BytesPerFieldElement defines the number of bytes per field element
-const BytesPerFieldElement = 32
-
-// BN254 scalar-field modulus
-var pBN = bn254.ID.ScalarField()
 
 // BlobData represents the structured data extracted from a blob
 type BlobData struct {
 	Votes      []*Vote
 	ResultsAdd []*big.Int
 	ResultsSub []*big.Int
-}
-
-// ComputeEvaluationPoint computes evaluation point z using Poseidon hash.
-// z = PoseidonHash(processId, rootHashBefore, batchNum)
-// The result is reduced modulo the BLS12-381 scalar field order.
-func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, batchNum uint64) (z *big.Int, err error) {
-	// Calculate z = PoseidonHash(processId, rootHashBefore, batchNum)
-	z, err = poseidon.MultiPoseidon(processID, rootHashBefore, big.NewInt(int64(batchNum)))
-	if err != nil {
-		return nil, err
-	}
-
-	// Mask z to 250 bits
-	z.And(z, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1)))
-
-	return z, nil
 }
 
 // BuildKZGCommitment collects the raw batch-data, packs it into one blob and
@@ -62,10 +36,10 @@ func (st *State) BuildKZGCommitment(batchNum uint64) (
 	err error,
 ) {
 	blob = &kzg4844.Blob{}
-	var cells [FieldElementsPerBlob][BytesPerFieldElement]byte
+	var cells [blobs.FieldElementsPerBlob][blobs.BytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) {
-		if cell >= FieldElementsPerBlob {
+		if cell >= blobs.FieldElementsPerBlob {
 			panic("blob overflow")
 		}
 		// Store blob cells in big-endian as expected by go-ethereum
@@ -96,28 +70,28 @@ func (st *State) BuildKZGCommitment(batchNum uint64) (
 
 	// Convert 2D cell array to flat blob format
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement)
-	for i := range FieldElementsPerBlob {
-		start := i * BytesPerFieldElement
-		end := start + BytesPerFieldElement
+	for i := range blobs.FieldElementsPerBlob {
+		start := i * blobs.BytesPerFieldElement
+		end := start + blobs.BytesPerFieldElement
 		copy(blob[start:end], cells[i][:])
 	}
 
 	// Generate KZG commitment
-	commit, err = kzg4844.BlobToCommitment(blob)
+	commit, err = blobs.BlobToCommitment(blob)
 	if err != nil {
 		err = fmt.Errorf("blob_to_commitment failed: %w", err)
 		return
 	}
 
 	// Find valid evaluation point z
-	z, err = ComputeEvaluationPoint(st.processID, st.rootHashBefore, batchNum)
+	z, err = blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, batchNum)
 	if err != nil {
 		return
 	}
 
 	// Generate KZG proof with the valid z
 	var claim kzg4844.Claim
-	proof, claim, err = kzg4844.ComputeProof(blob, BigIntToKZGPoint(z))
+	proof, claim, err = blobs.ComputeProof(blob, z)
 	if err != nil {
 		err = fmt.Errorf("compute kzg4844 proof failed: %w", err)
 		return
@@ -145,11 +119,11 @@ func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
 	// extract big.Int from blob cell
 	blobBytes := (*(*[131072]byte)(unsafe.Pointer(blob)))[:]
 	getCell := func(cellIndex int) *big.Int {
-		if cellIndex >= FieldElementsPerBlob {
+		if cellIndex >= blobs.FieldElementsPerBlob {
 			return big.NewInt(0)
 		}
-		start := cellIndex * BytesPerFieldElement
-		cellBytes := blobBytes[start : start+BytesPerFieldElement]
+		start := cellIndex * blobs.BytesPerFieldElement
+		cellBytes := blobBytes[start : start+blobs.BytesPerFieldElement]
 		// Read blob cells as big-endian (canonical form)
 		return new(big.Int).SetBytes(cellBytes)
 	}
@@ -179,7 +153,7 @@ func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
 		}
 
 		// Check if we have enough cells for a complete vote
-		if cellIndex+1+coordsPerBallot > FieldElementsPerBlob {
+		if cellIndex+1+coordsPerBallot > blobs.FieldElementsPerBlob {
 			return nil, fmt.Errorf("incomplete vote data in blob")
 		}
 
@@ -220,17 +194,6 @@ func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
 	return data, nil
 }
 
-// CalculateMaxVotesPerBlob calculates the maximum number of votes that can fit in a blob
-func CalculateMaxVotesPerBlob() int {
-	coordsPerBallot := types.FieldsPerBallot * 4
-	resultsCells := 2 * coordsPerBallot     // resultsAdd + resultsSub
-	cellsPerVote := 1 + 1 + coordsPerBallot // voteID + address + ballot
-	sentinelCells := 1                      // voteID = 0x0 sentinel
-
-	availableCells := FieldElementsPerBlob - resultsCells - sentinelCells
-	return availableCells / cellsPerVote
-}
-
 // ApplyBlobToState applies the data from a blob to restore state
 func (st *State) ApplyBlobToState(blobData *BlobData) error {
 	if err := st.StartBatch(); err != nil {
@@ -263,14 +226,4 @@ func (st *State) ApplyBlobToState(blobData *BlobData) error {
 	st.SetResultsSub(resultsSub)
 
 	return nil
-}
-
-// BigIntToKZGPoint converts a big.Int to a kzg4844.Point.
-func BigIntToKZGPoint(x *big.Int) kzg4844.Point {
-	var point kzg4844.Point
-	// Convert big.Int to big-endian byte array
-	be := make([]byte, 32)
-	x.FillBytes(be)
-	copy(point[:], be[:])
-	return point
 }
