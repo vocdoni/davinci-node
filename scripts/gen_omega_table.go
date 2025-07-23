@@ -40,12 +40,19 @@ func main() {
 		panic("root is not primitive, it's a 2048-th root")
 	}
 
-	// Generate all 4096 roots
-	omega := make([]*big.Int, 4096)
-	omega[0] = big.NewInt(1)
+	// Generate all 4096 roots in natural order
+	omegaNatural := make([]*big.Int, 4096)
+	omegaNatural[0] = big.NewInt(1)
 	for i := 1; i < 4096; i++ {
-		omega[i] = new(big.Int).Mul(omega[i-1], root4096)
-		omega[i].Mod(omega[i], mod)
+		omegaNatural[i] = new(big.Int).Mul(omegaNatural[i-1], root4096)
+		omegaNatural[i].Mod(omegaNatural[i], mod)
+	}
+
+	// Apply bit-reversal permutation to match c-kzg-4844's brp_roots_of_unity
+	omega := make([]*big.Int, 4096)
+	for i := 0; i < 4096; i++ {
+		brpIdx := bitReverse(i, 12) // log2(4096) = 12
+		omega[i] = omegaNatural[brpIdx]
 	}
 
 	// Calculate nInverse = 4096^(-1) mod p
@@ -64,6 +71,7 @@ func main() {
 
 	// Output omega array
 	fmt.Println("// omega contains the 4096 roots of unity for BLS12-381 scalar field")
+	fmt.Println("// in bit-reversed order to match c-kzg-4844's brp_roots_of_unity")
 	fmt.Println("var omega = [4096]emulated.Element[sw_bls12381.ScalarField]{")
 	for i := 0; i < 4096; i++ {
 		hexValue := fmt.Sprintf("0x%s", omega[i].Text(16))

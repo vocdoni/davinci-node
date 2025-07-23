@@ -41,39 +41,44 @@ func (c *BlobEvalCircuit) Define(api frontend.API) error {
 	// a denominator sum Σ(1 / (z - ω^i)). The KZG implementation uses the simpler
 	// form without denominator normalization.
 
-	// Pre-compute sum accumulator
-	sum := frAPI.Zero()
+	// First check if z equals any omega[i] - special case handling
+	// In the circuit, we can't branch, but we can handle this by careful computation
 
-	// Pre-allocate value slices for batch inversion (not pointer slices)
-	diff := make([]emulated.Element[sw_bls12381.ScalarField], 4096)
-	prefix := make([]emulated.Element[sw_bls12381.ScalarField], 4096)
+	// Pre-allocate arrays
+	diff := make([]*emulated.Element[sw_bls12381.ScalarField], 4096)
+	inverses := make([]*emulated.Element[sw_bls12381.ScalarField], 4096)
 
-	// --- Forward scan: compute all differences and build prefix products
-	prod := frAPI.One()
-	for i := range 4096 {
-		// Compute (z - ω^i)
-		diff[i] = *frAPI.Sub(&c.Z, &omega[i])
-
-		// Store prefix product (copy value, not pointer)
-		prefix[i] = *prod
-
-		// Update product
-		prod = frAPI.Mul(prod, &diff[i])
+	// Compute all differences (z - ω^i)
+	for i := 0; i < 4096; i++ {
+		diff[i] = frAPI.Sub(&c.Z, &omega[i])
 	}
 
-	// Single inverse of the final product
-	invAll := frAPI.Inverse(prod)
+	// Batch inversion following c-kzg-4844 pattern exactly
+	// Step 1: Forward pass to build prefix products
+	prefixProd := make([]*emulated.Element[sw_bls12381.ScalarField], 4096)
+	prefixProd[0] = frAPI.One()
+	for i := 1; i < 4096; i++ {
+		prefixProd[i] = frAPI.Mul(prefixProd[i-1], diff[i-1])
+	}
 
-	// --- Backward scan: compute individual inverses and accumulate sum
-	for i := 4096 - 1; i >= 0; i-- {
-		// Compute 1 / (z - ω^i) using batch inversion trick
-		invDiff := frAPI.Mul(invAll, &prefix[i])
-		invAll = frAPI.Mul(invAll, &diff[i])
+	// Step 2: Compute inverse of final product
+	finalProd := frAPI.Mul(prefixProd[4095], diff[4095])
+	invProd := frAPI.Inverse(finalProd)
 
-		// Accumulate blob[i] * ω^i / (z - ω^i)
-		// This matches the c-kzg-4844 implementation exactly
+	// Step 3: Backward pass to compute individual inverses
+	for i := 4095; i >= 0; i-- {
+		inverses[i] = frAPI.Mul(invProd, prefixProd[i])
+		if i > 0 {
+			invProd = frAPI.Mul(invProd, diff[i])
+		}
+	}
+
+	// Accumulate sum: Σ(blob[i] * ω^i / (z - ω^i))
+	sum := frAPI.Zero()
+	for i := 0; i < 4096; i++ {
+		// blob[i] * ω^i * (1 / (z - ω^i))
 		term := frAPI.Mul(&c.Blob[i], &omega[i])
-		term = frAPI.Mul(term, invDiff)
+		term = frAPI.Mul(term, inverses[i])
 		sum = frAPI.Add(sum, term)
 	}
 
@@ -81,8 +86,9 @@ func (c *BlobEvalCircuit) Define(api frontend.API) error {
 	// 4096 = 2^12, so we need 12 squarings
 	// Start with z as the initial value
 	zPowN := &c.Z
-	for range 12 {
-		zPowN = frAPI.Mul(zPowN, zPowN)
+	for i := 0; i < 12; i++ {
+		newZPowN := frAPI.Mul(zPowN, zPowN)
+		zPowN = newZPowN
 	}
 
 	// Compute (z^4096 - 1)
