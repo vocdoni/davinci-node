@@ -375,24 +375,14 @@ func (z *Ballot) Encrypt(
 	encKey EncryptionKey[frontend.Variable],
 	k frontend.Variable,
 ) *Ballot {
-	kHasher, err := mimc7.NewMiMC(api)
-	if err != nil {
-		FrontendError(api, "failed to create MiMC hasher", err)
-		return nil
-	}
 	// get the twisted edwards point from the encryption key
 	pubKey := tweds.Point{
 		X: encKey.PubKey[0],
 		Y: encKey.PubKey[1],
 	}
 	for i := range z {
-		// reset hasher and hash the last k to get a new one for the next ciphertext
-		kHasher.Reset()
-		if err := kHasher.Write(k); err != nil {
-			FrontendError(api, "failed to write k to MiMC hasher", err)
-			return nil
-		}
-		k = kHasher.Sum()
+		// hash the last k to get a new one for the next ciphertext
+		k = NextK(api, k)
 		enc, err := z[i].Encrypt(api, pubKey, k, messages[i])
 		if err != nil {
 			FrontendError(api, "failed to encrypt ballot", err)
@@ -409,14 +399,7 @@ func (z *Ballot) Encrypt(
 // MiMC hasher to generate a new k for each ciphertext starting from the
 // provided k.
 func (z *Ballot) Reencrypt(api frontend.API, encKey EncryptionKey[frontend.Variable], k frontend.Variable) (*Ballot, frontend.Variable, error) {
-	hasher, err := mimc7.NewMiMC(api)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create MiMC hasher: %w", err)
-	}
-	if err := hasher.Write(k); err != nil {
-		return nil, nil, fmt.Errorf("failed to write k to MiMC hasher: %w", err)
-	}
-	reencryptK := hasher.Sum()
+	reencryptK := NextK(api, k)
 	encZero := NewBallot().EncryptedZero(api, encKey, reencryptK)
 	return NewBallot().Add(api, z, encZero), reencryptK, nil
 }
@@ -618,6 +601,24 @@ func (zt *EmulatedBallot[F]) SerializeAsTE(api frontend.API) []emulated.Element[
 		)
 	}
 	return list
+}
+
+// NextK uses the MiMC hasher to generate a new k starting from the provided k.
+//
+// TODO: this should really be renamed MiMC7Hash, a generic func that
+// uses native or emulated mimc7.NewMiMC depending on the args passed,
+// and thus can be reused in all circuits
+func NextK(api frontend.API, k frontend.Variable) frontend.Variable {
+	kHasher, err := mimc7.NewMiMC(api)
+	if err != nil {
+		FrontendError(api, "failed to create MiMC hasher", err)
+		return nil
+	}
+	if err := kHasher.Write(k); err != nil {
+		FrontendError(api, "failed to write k to MiMC hasher", err)
+		return nil
+	}
+	return kHasher.Sum()
 }
 
 func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.Element[sw_bn254.ScalarField] {

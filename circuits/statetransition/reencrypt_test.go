@@ -15,7 +15,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 )
 
 type ReencryptedBallotCircuit struct {
@@ -28,12 +27,7 @@ type ReencryptedBallotCircuit struct {
 }
 
 func (c *ReencryptedBallotCircuit) Define(api frontend.API) error {
-	hasher, _ := mimc7.NewMiMC(api)
-	_ = hasher.Write(c.ReencryptK)
-	k := hasher.Sum()
-
-	encZero := circuits.NewBallot().EncryptedZero(api, c.EncryptionKey, k)
-	reencryptedBallot := circuits.NewBallot().Add(api, &c.EncryptedBallot, encZero)
+	reencryptedBallot, _, _ := c.EncryptedBallot.Reencrypt(api, c.EncryptionKey, c.ReencryptK)
 	c.ReencryptedBallot.AssertIsEqual(api, reencryptedBallot)
 	reencryptedBallot.AssertDecrypt(api, c.DecryptionKey, c.Originals)
 	return nil
