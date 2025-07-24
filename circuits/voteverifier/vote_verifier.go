@@ -198,7 +198,7 @@ func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 		circuits.FrontendError(api, "failed to convert hash to emulated element", err)
 	}
 	// check the signature of the circom inputs hash provided as Secp256k1 emulated element
-	validSign := c.PublicKey.SignIsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
+	validSign := c.PublicKey.IsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
 	// if the inputs are valid, ensure that thre result of the verification
 	// is 1, otherwise, the result does not matter so force it to be 1
 	api.AssertIsEqual(api.Select(c.IsValid, validSign, 1), 1)
@@ -236,6 +236,14 @@ func (c VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
 	if err != nil {
 		circuits.FrontendError(api, "failed to create BN254 verifier", err)
 	}
+	api.Println(c.CircomProof.Ar.X.Limbs...)
+	api.Println(c.CircomProof.Ar.Y.Limbs...)
+	api.Println(c.CircomProof.Krs.X.Limbs...)
+	api.Println(c.CircomProof.Krs.Y.Limbs...)
+	api.Println(c.CircomProof.Bs.P.X.A0.Limbs...)
+	api.Println(c.CircomProof.Bs.P.X.A1.Limbs...)
+	api.Println(c.CircomProof.Bs.P.Y.A0.Limbs...)
+	api.Println(c.CircomProof.Bs.P.Y.A1.Limbs...)
 	validProof, err := verifier.ProofIsValid(c.CircomVerificationKey, c.CircomProof,
 		witness, groth16.WithCompleteArithmetic())
 	if err != nil {

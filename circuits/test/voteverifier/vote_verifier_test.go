@@ -9,8 +9,10 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
+	"github.com/consensys/gnark/logger"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
+	"github.com/rs/zerolog"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -18,6 +20,7 @@ import (
 
 func TestVerifySingleVoteCircuit(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
 	// generate voter account
 	s, err := ballottest.GenECDSAaccountForTest()
@@ -54,6 +57,7 @@ func TestVerifyNoValidVoteCircuit(t *testing.T) {
 
 func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
 		t.Skip("skipping circuit tests...")
 	}
@@ -70,8 +74,9 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	assert := test.NewAssert(t)
 	now := time.Now()
 	for _, assignment := range assignments {
-		err := test.IsSolved(&placeholder, &assignment, ecc.BLS12_377.ScalarField())
-		assert.NoError(err)
+		assert.SolvingSucceeded(&placeholder, &assignment,
+			test.WithCurves(ecc.BLS12_377),
+			test.WithBackends(backend.GROTH16))
 	}
 	fmt.Println("proving tooks", time.Since(now))
 }

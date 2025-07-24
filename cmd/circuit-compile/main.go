@@ -29,6 +29,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/internal/recursion"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -84,7 +85,7 @@ func main() {
 	startTime := time.Now()
 	log.Infow("compiling vote verifier circuit...")
 	// generate the placeholders for the recursion
-	circomPlaceholder, err := circuits.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
+	circomPlaceholder, err := recursion.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
 	if err != nil {
 		log.Fatalf("error generating circom2gnark placeholder: %v", err)
 	}

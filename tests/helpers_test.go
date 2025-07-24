@@ -26,6 +26,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/recursion"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
@@ -504,7 +505,7 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
 	c.Assert(err, qt.IsNil)
 	// convert the proof to gnark format
-	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
+	circomProof, _, err := recursion.Circom2GnarkProof(rawProof, pubInputs)
 	c.Assert(err, qt.IsNil)
 	// sign the hash of the circuit inputs
 	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
@@ -571,7 +572,7 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
 	c.Assert(err, qt.IsNil)
 	// convert the proof to gnark format
-	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
+	circomProof, _, err := recursion.Circom2GnarkProof(rawProof, pubInputs)
 	c.Assert(err, qt.IsNil)
 	// sign the hash of the circuit inputs
 	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)

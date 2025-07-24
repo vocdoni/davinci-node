@@ -125,7 +125,7 @@ func testCircuitExportSolidity(t *testing.T, c, w frontend.Circuit) {
 	err = vk.ExportSolidity(solfd)
 	assert.NoError(err)
 	// generate also the json of the public witness
-	schema, err := frontend.NewSchema(w)
+	schema, err := frontend.NewSchema(circuits.StateTransitionCurve.ScalarField(), w)
 	assert.NoError(err)
 	jsonWitness, err := pubWitness.ToJSON(schema)
 	assert.NoError(err)

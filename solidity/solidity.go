@@ -15,8 +15,8 @@ import (
 )
 
 // ExportWitnessToSolidityInputs exports the public witness to a JSON file for Solidity.
-func ExportWitnessToSolidityInputs(w witness.Witness, circuitAssignments frontend.Circuit, jsonOutputFilePath string) error {
-	schema, err := frontend.NewSchema(circuitAssignments)
+func ExportWitnessToSolidityInputs(w witness.Witness, circuitAssignments frontend.Circuit, field *big.Int, jsonOutputFilePath string) error {
+	schema, err := frontend.NewSchema(field, circuitAssignments)
 	if err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
