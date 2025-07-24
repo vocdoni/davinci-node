@@ -56,6 +56,17 @@ func EvaluateBlobBarycentric(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.
 	modBig := func(x *big.Int) *big.Int { return new(big.Int).Mod(x, mod) }
 	toBig := func(e fr.Element) *big.Int { return e.BigInt(new(big.Int)) }
 
+	if debug {
+		fmt.Println("=== GO DEBUG START ===")
+		fmt.Printf("Z: %s\n", z.Text(16))
+		fmt.Printf("First 5 blob values: %s %s %s %s %s\n",
+			blobCell(blob, 0).Text(16),
+			blobCell(blob, 1).Text(16),
+			blobCell(blob, 2).Text(16),
+			blobCell(blob, 3).Text(16),
+			blobCell(blob, 4).Text(16))
+	}
+
 	// Generate evaluation domain using go-eth-kzg's approach
 	omega := make([]*big.Int, n)
 
@@ -85,21 +96,48 @@ func EvaluateBlobBarycentric(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.
 	}
 
 	if debug {
-		fmt.Println("Domain roots (omega values):")
+		fmt.Println("=== BLOCK 1: DIFFERENCES AND ZERO DETECTION ===")
+		fmt.Printf("First 5 omega values: %s %s %s %s %s\n",
+			omega[0].Text(16), omega[1].Text(16), omega[2].Text(16), omega[3].Text(16), omega[4].Text(16))
+
+		// Show first few differences
+		fmt.Printf("First 5 differences (z - omega[i]): ")
 		for i := 0; i < 5; i++ {
-			fmt.Printf("  ω[%d] = %s\n", i, omega[i].Text(16))
+			diff := new(big.Int).Sub(z, omega[i])
+			diff.Mod(diff, mod)
+			fmt.Printf("%s ", diff.Text(16))
 		}
+		fmt.Println()
+
+		// Show isZero flags
+		fmt.Printf("First 5 isZero flags: ")
+		for i := 0; i < 5; i++ {
+			isZero := omega[i].Cmp(z) == 0
+			fmt.Printf("%t ", isZero)
+		}
+		fmt.Println()
 	}
 
 	// Early exit optimization: if z equals any omega value, return the corresponding blob value
 	for k, w := range omega {
 		if w.Cmp(z) == 0 {
+			if debug {
+				fmt.Printf("=== EARLY EXIT: z equals omega[%d], returning blob[%d] = %s ===\n",
+					k, k, modBig(blobCell(blob, k)).Text(16))
+			}
 			return modBig(blobCell(blob, k)), nil
 		}
 	}
 
 	// Compute the barycentric sum: Σᵢ (dᵢ * ωᵢ / (z - ωᵢ))
 	sum := big.NewInt(0)
+	var firstTerms [5]*big.Int
+	var firstInvs [5]*big.Int
+
+	if debug {
+		fmt.Println("=== BLOCK 2: INDIVIDUAL INVERSIONS (Go uses individual, not batch) ===")
+	}
+
 	for i := 0; i < n; i++ {
 		// Extract blob data value at position i
 		d := modBig(blobCell(blob, i))
@@ -112,17 +150,32 @@ func EvaluateBlobBarycentric(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.
 		diff.Mod(diff, mod)
 		inv := new(big.Int).ModInverse(diff, mod)
 
+		// Store first few inverses for debug
+		if debug && i < 5 {
+			firstInvs[i] = new(big.Int).Set(inv)
+		}
+
 		// Compute term: dᵢ * ωᵢ / (z - ωᵢ)
 		term := new(big.Int).Mul(d, omega[i])
 		term.Mul(term, inv)
 		term.Mod(term, mod)
 
+		// Store first few terms for debug
+		if debug && i < 5 {
+			firstTerms[i] = new(big.Int).Set(term)
+		}
+
 		// Accumulate the sum
 		sum.Add(sum, term).Mod(sum, mod)
+	}
 
-		if debug && i < 4 {
-			fmt.Printf("term[%d]: %s\n", i, term.Text(16))
-		}
+	if debug {
+		fmt.Printf("First 5 inv values: %s %s %s %s %s\n",
+			firstInvs[0].Text(16), firstInvs[1].Text(16), firstInvs[2].Text(16), firstInvs[3].Text(16), firstInvs[4].Text(16))
+		fmt.Println("=== BLOCK 3: SUMMATION ===")
+		fmt.Printf("First 5 terms: %s %s %s %s %s\n",
+			firstTerms[0].Text(16), firstTerms[1].Text(16), firstTerms[2].Text(16), firstTerms[3].Text(16), firstTerms[4].Text(16))
+		fmt.Printf("Sum: %s\n", sum.Text(16))
 	}
 
 	// Compute the scaling factor: (z^4096 - 1) / 4096
@@ -131,14 +184,20 @@ func EvaluateBlobBarycentric(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.
 	factor := new(big.Int).Mul(zPowN, nInv)
 	factor.Mod(factor, mod)
 
-	if debug {
-		fmt.Printf("Sum: %s\n", sum.Text(16))
-		fmt.Printf("Factor: %s\n", factor.Text(16))
-	}
-
 	// Compute final result: y = factor * sum
 	result := new(big.Int).Mul(sum, factor)
 	result.Mod(result, mod)
+
+	if debug {
+		fmt.Println("=== BLOCK 4: FACTOR COMPUTATION ===")
+		fmt.Printf("z^4096: %s\n", zPowN.Text(16))
+		fmt.Printf("nInverse: %s\n", nInv.Text(16))
+		fmt.Printf("factor: %s\n", factor.Text(16))
+		fmt.Printf("yBary (factor * sum): %s\n", result.Text(16))
+		fmt.Println("=== BLOCK 5: FINAL SELECTION (Go doesn't need selection logic) ===")
+		fmt.Printf("final: %s\n", result.Text(16))
+	}
+
 	return result, nil
 }
 

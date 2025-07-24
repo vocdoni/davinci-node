@@ -13,7 +13,6 @@ require (
 	github.com/consensys/gnark v0.13.1-0.20250721185528-7ea36db9cfca
 	github.com/consensys/gnark-crypto v0.18.0
 	github.com/crate-crypto/go-eth-kzg v1.3.0
-	github.com/ethereum/c-kzg-4844/v2 v2.1.1
 	github.com/ethereum/go-ethereum v1.14.12
 	github.com/frankban/quicktest v1.14.6
 	github.com/fxamacker/cbor/v2 v2.8.0
