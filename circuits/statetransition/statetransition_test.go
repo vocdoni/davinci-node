@@ -298,11 +298,11 @@ func newMockState(t *testing.T) *state.State {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	_, encryptionKey := circuits.MockEncryptionKey()
 	if err := s.Initialize(
 		new(big.Int).SetBytes(util.RandomBytes(16)),
 		circuits.MockBallotMode(),
-		circuits.MockEncryptionKey(),
+		encryptionKey,
 	); err != nil {
 		t.Fatal(err)
 	}
