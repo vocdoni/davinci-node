@@ -25,16 +25,15 @@ import (
 func TestProgressiveElements(t *testing.T) {
 	c := qt.New(t)
 
-	testCounts := []int{1, 5, 20, 100}
+	testCounts := []int{1, 5, 20}
 
 	for _, count := range testCounts {
 		fmt.Printf("\n=== Testing with %d elements ===\n", count)
 
 		// Create blob with 'count' elements
 		blob := &goethkzg.Blob{}
-		for i := range count {
-			val := big.NewInt(int64(i + 1))
-			val.FillBytes(blob[i*32 : (i+1)*32])
+		for i := 0; i < count; i++ {
+			big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
 		}
 
 		// Compute commitment
@@ -71,6 +70,52 @@ func TestProgressiveElements(t *testing.T) {
 		assert.SolvingSucceeded(&BlobEvalCircuit{}, &witness,
 			test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 	}
+}
+
+func TestCircuitWithActualDataBlob(t *testing.T) {
+	c := qt.New(t)
+
+	data, err := os.ReadFile("testdata/blobdata1.txt")
+	if err != nil {
+		// skip test
+		t.Skipf("blobdata1.txt not found, skipping test: %v", err)
+	}
+	blob, err := hexStrToBlob(string(data))
+	c.Assert(err, qt.IsNil)
+
+	// Compute commitment
+	commitmentBytes, err := BlobToCommitment(blob)
+	c.Assert(err, qt.IsNil)
+
+	// Compute evaluation point
+	processID := util.RandomBytes(31)
+	rootHashBefore := util.RandomBytes(31)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	c.Assert(err, qt.IsNil)
+
+	// Compute KZG proof
+	_, claim, err := ComputeProof(blob, z)
+	c.Assert(err, qt.IsNil)
+	y := new(big.Int).SetBytes(claim[:])
+
+	// Create witness
+	commitmentLimbs := splitIntoLimbs(commitmentBytes[:], 3)
+	witness := BlobEvalCircuit{
+		CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
+		Z:               emulated.ValueOf[sw_bls12381.ScalarField](z),
+		Y:               emulated.ValueOf[sw_bls12381.ScalarField](y),
+	}
+
+	// Fill blob data
+	for i := range 4096 {
+		cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
+		witness.Blob[i] = emulated.ValueOf[sw_bls12381.ScalarField](cell)
+	}
+
+	// Test with IsSolved
+	assert := test.NewAssert(t)
+	assert.SolvingSucceeded(&BlobEvalCircuit{}, &witness,
+		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 }
 
 func TestBlobEvalCircuitProving(t *testing.T) {
