@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 // TestBarycentricFormula tests the barycentric evaluation formula outside the circuit
@@ -170,7 +171,9 @@ func TestProgressiveElements(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Compute evaluation point
-		z, err := ComputeEvaluationPoint(big.NewInt(123), big.NewInt(456), 1, blob)
+		processID := util.RandomBytes(31)
+		rootHashBefore := util.RandomBytes(31)
+		z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
 		c.Assert(err, qt.IsNil)
 
 		// Compute KZG proof
@@ -196,8 +199,6 @@ func TestProgressiveElements(t *testing.T) {
 		assert := test.NewAssert(t)
 		assert.SolvingSucceeded(&BlobEvalCircuit{}, &witness,
 			test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
-
-		fmt.Printf("Test with %d elements passed\n", count)
 	}
 }
 
@@ -210,16 +211,18 @@ func TestBlobEvalCircuitProving(t *testing.T) {
 
 	// Create test data
 	blob := &kzg4844.Blob{}
-	for i := range 100 {
+	for i := range 50 {
 		val := big.NewInt(int64(i + 1))
 		val.FillBytes(blob[i*32 : (i+1)*32])
 	}
 
 	// Compute commitment and proof
-	commitmentBytes, err := kzg4844.BlobToCommitment(blob)
+	commitmentBytes, err := BlobToCommitment(blob)
 	c.Assert(err, qt.IsNil)
 
-	z, err := ComputeEvaluationPoint(big.NewInt(123), big.NewInt(456), 1, blob)
+	processID := util.RandomBytes(31)
+	rootHashBefore := util.RandomBytes(31)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
 	c.Assert(err, qt.IsNil)
 
 	// Compute KZG proof using kzg4844

@@ -3,19 +3,13 @@ package main
 import (
 	"fmt"
 	"math/big"
+	"math/bits"
 
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 )
 
-// bitReverse reverses the bits of n considering log2n bits
-func bitReverse(n, log2n int) int {
-	reversed := 0
-	for i := 0; i < log2n; i++ {
-		if (n>>i)&1 == 1 {
-			reversed |= 1 << (log2n - 1 - i)
-		}
-	}
-	return reversed
+func bitReverse12(x uint32) uint32 {
+	return bits.Reverse32(x) >> 20 // keep the low-12 reversed bits
 }
 
 func main() {
@@ -51,7 +45,7 @@ func main() {
 	// Apply bit-reversal permutation to match c-kzg-4844's brp_roots_of_unity
 	omega := make([]*big.Int, 4096)
 	for i := 0; i < 4096; i++ {
-		brpIdx := bitReverse(i, 12) // log2(4096) = 12
+		brpIdx := bitReverse12(uint32(i)) // log2(4096) = 12
 		omega[i] = omegaNatural[brpIdx]
 	}
 

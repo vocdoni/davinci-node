@@ -26,12 +26,13 @@ func splitIntoLimbs(data []byte, numLimbs int) []frontend.Variable {
 }
 
 // bitReverse reverses the bits of n considering log2n bits
+// Bit‑reverses the low log2n bits of n.
 func bitReverse(n, log2n int) int {
-	reversed := 0
+	rev := 0
 	for i := 0; i < log2n; i++ {
 		if (n>>i)&1 == 1 {
-			reversed |= 1 << (log2n - 1 - i)
+			rev |= 1 << (log2n - 1 - i)
 		}
 	}
-	return reversed
+	return rev
 }
