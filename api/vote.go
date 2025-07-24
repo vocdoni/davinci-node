@@ -10,10 +10,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/internal/recursion"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
@@ -179,7 +179,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// convert the circom proof to gnark proof and verify it
-	proof, err := circuits.VerifyAndConvertToRecursion(
+	proof, err := recursion.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
 		[]string{vote.BallotInputsHash.String()},

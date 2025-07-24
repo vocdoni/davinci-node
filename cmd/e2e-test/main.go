@@ -22,6 +22,7 @@ import (
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/internal/recursion"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
@@ -552,7 +553,7 @@ func createVote(
 	}
 
 	// Convert the proof to gnark format
-	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
+	circomProof, _, err := recursion.Circom2GnarkProof(rawProof, pubInputs)
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to convert proof to gnark format: %v", err)
 	}
