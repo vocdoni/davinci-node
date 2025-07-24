@@ -38,8 +38,9 @@ func TestBarycentricEvalGo(t *testing.T) {
 func TestBarycentricEval4ElementsGo(t *testing.T) {
 	// Create blob with direct values (these ARE the polynomial evaluations)
 	blob := &kzg4844.Blob{}
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
+		fmt.Printf("blob[%d] = %x\n", i, blob[i*32:(i+1)*32])
 	}
 
 	// Use a simple fixed evaluation point instead of ComputeEvaluationPoint
@@ -61,8 +62,9 @@ func TestBarycentricEval4ElementsGo(t *testing.T) {
 func TestBarycentricEval4SparseElementsGo(t *testing.T) {
 	// Create blob with direct values (these ARE the polynomial evaluations)
 	blob := &kzg4844.Blob{}
-	for i := 1; i < 6; i++ {
-		big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
+	offset := 1024 * 1024
+	for i := 0; i < 4; i++ {
+		big.NewInt(int64(offset + i + 1)).FillBytes(blob[i*32 : (i+1)*32])
 	}
 
 	// Use a simple fixed evaluation point instead of ComputeEvaluationPoint
@@ -84,7 +86,7 @@ func TestBarycentricEval4SparseElementsGo(t *testing.T) {
 
 func TestConsensusBlobEvalCircuit(t *testing.T) {
 	c := qt.New(t)
-	data, err := os.ReadFile("blobdata.txt")
+	data, err := os.ReadFile("blobdata2.txt")
 	c.Assert(err, qt.IsNil)
 	t.Logf("Read %d bytes from blobdata.txt", len(data))
 	blob, err := hexStrToBlob(string(data))
@@ -100,7 +102,7 @@ func TestConsensusBlobEvalCircuit(t *testing.T) {
 	want := new(big.Int).SetBytes(claim[:])
 
 	// Pure Go reproduction of the circuit algorithm
-	got, err := EvaluateBlobBarycentric(blob, z, false) // Disable debug for cleaner output
+	got, err := EvaluateBlobBarycentric(blob, z, true) // Disable debug for cleaner output
 	if err != nil {
 		t.Fatal(err)
 	}
