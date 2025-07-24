@@ -44,7 +44,7 @@ func TestBarycentricEvalGo(t *testing.T) {
 
 func TestBarycentricEvalGoBlobData1(t *testing.T) {
 	c := qt.New(t)
-	data, err := os.ReadFile("blobdata1.txt")
+	data, err := os.ReadFile("testdata/blobdata1.txt")
 	if err != nil {
 		// skip test
 		t.Skipf("blobdata1.txt not found, skipping test: %v", err)
@@ -71,7 +71,7 @@ func TestBarycentricEvalGoBlobData1(t *testing.T) {
 
 func TestBarycentricEvalGoBlobData2(t *testing.T) {
 	c := qt.New(t)
-	data, err := os.ReadFile("blobdata2.txt")
+	data, err := os.ReadFile("testdata/blobdata2.txt")
 	if err != nil {
 		// skip test
 		t.Skipf("blobdata2.txt not found, skipping test: %v", err)
