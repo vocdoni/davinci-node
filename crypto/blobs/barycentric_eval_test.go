@@ -7,112 +7,97 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 func TestBarycentricEvalGo(t *testing.T) {
 	// Create blob with direct values (these ARE the polynomial evaluations)
-	blob := &kzg4844.Blob{}
+	blob := &goethkzg.Blob{}
 	for i := 0; i < 20; i++ {
 		big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
 	}
 
-	// Use a simple fixed evaluation point instead of ComputeEvaluationPoint
-	z := big.NewInt(12345)
+	// Evaluation point z
+	processID := util.RandomBytes(31)
+	rootHashBefore := util.RandomBytes(31)
+
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
-	_, claim, _ := ComputeProof(blob, z)
+	proof, claim, _ := ComputeProof(blob, z)
 	want := new(big.Int).SetBytes(claim[:])
 
-	// Pure Go reproduction of the circuit algorithm
-	got, err := EvaluateBlobBarycentric(blob, z, false) // Disable debug for cleaner output
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want.Cmp(got) != 0 {
-		t.Fatalf("mismatch:\nexpected %s\ngot      %s", want, got)
-	}
+	t.Logf("Using evaluation point z: %s", z.String())
+	t.Logf("Expected value from KZG proof: %s", want.String())
+	t.Logf("Proof: %s", hex.EncodeToString(proof[:]))
+
+	// Evaluate using the barycentric formula
+	got, err := EvaluateBlobBarycentric(blob, z, true) // Disable debug for cleaner output
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("EvaluateBlobBarycentric should not return an error"))
+
+	// Compare results
+	qt.Assert(t, want.Cmp(got), qt.Equals, 0, qt.Commentf("Expected and got values should match"))
 }
 
-func TestBarycentricEval4ElementsGo(t *testing.T) {
-	// Create blob with direct values (these ARE the polynomial evaluations)
-	blob := &kzg4844.Blob{}
-	for i := 0; i < 3; i++ {
-		big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
-		fmt.Printf("blob[%d] = %x\n", i, blob[i*32:(i+1)*32])
-	}
-
-	// Use a simple fixed evaluation point instead of ComputeEvaluationPoint
-	z := big.NewInt(12345)
-
-	// Ground truth from the KZG precompile
-	_, claim, _ := ComputeProof(blob, z)
-	want := new(big.Int).SetBytes(claim[:])
-
-	// Pure Go reproduction of the circuit algorithm
-	got, err := EvaluateBlobBarycentric(blob, z, false) // Disable debug for cleaner output
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want.Cmp(got) != 0 {
-		t.Fatalf("mismatch:\nexpected %s\ngot      %s", want, got)
-	}
-}
-func TestBarycentricEval4SparseElementsGo(t *testing.T) {
-	// Create blob with direct values (these ARE the polynomial evaluations)
-	blob := &kzg4844.Blob{}
-	offset := 1024 * 1024
-	for i := 0; i < 4; i++ {
-		big.NewInt(int64(offset + i + 1)).FillBytes(blob[i*32 : (i+1)*32])
-	}
-
-	// Use a simple fixed evaluation point instead of ComputeEvaluationPoint
-	z := big.NewInt(12345)
-
-	// Ground truth from the KZG precompile
-	_, claim, _ := ComputeProof(blob, z)
-	want := new(big.Int).SetBytes(claim[:])
-
-	// Pure Go reproduction of the circuit algorithm
-	got, err := EvaluateBlobBarycentric(blob, z, false) // Disable debug for cleaner output
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want.Cmp(got) != 0 {
-		t.Fatalf("mismatch:\nexpected %s\ngot      %s", want, got)
-	}
-}
-
-func TestConsensusBlobEvalCircuit(t *testing.T) {
+func TestBarycentricEvalGoBlobData1(t *testing.T) {
 	c := qt.New(t)
-	data, err := os.ReadFile("blobdata2.txt")
-	c.Assert(err, qt.IsNil)
-	t.Logf("Read %d bytes from blobdata.txt", len(data))
+	data, err := os.ReadFile("blobdata1.txt")
+	if err != nil {
+		// skip test
+		t.Skipf("blobdata1.txt not found, skipping test: %v", err)
+	}
 	blob, err := hexStrToBlob(string(data))
 	c.Assert(err, qt.IsNil)
-	// Check blob length
-	c.Assert(len(blob), qt.Equals, 4096*32)
 
-	// Use a simple fixed evaluation point instead of ComputeEvaluationPoint
-	z := big.NewInt(12345)
+	// Evaluation point z
+	processID := util.RandomBytes(31)
+	rootHashBefore := util.RandomBytes(31)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
 	_, claim, _ := ComputeProof(blob, z)
 	want := new(big.Int).SetBytes(claim[:])
 
-	// Pure Go reproduction of the circuit algorithm
-	got, err := EvaluateBlobBarycentric(blob, z, true) // Disable debug for cleaner output
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want.Cmp(got) != 0 {
-		t.Fatalf("mismatch:\nexpected %s\ngot      %s", want, got)
-	}
+	// Evaluate
+	got, err := EvaluateBlobBarycentric(blob, z, true) // Enable debug for better output
+	c.Assert(err, qt.IsNil, qt.Commentf("EvaluateBlobBarycentric should not return an error"))
+	qt.Assert(c, want.Cmp(got), qt.Equals, 0, qt.Commentf("Expected and got values should match"))
+
 }
 
-func hexStrToBlob(hexStr string) (*kzg4844.Blob, error) {
-	var blob kzg4844.Blob
+func TestBarycentricEvalGoBlobData2(t *testing.T) {
+	c := qt.New(t)
+	data, err := os.ReadFile("blobdata2.txt")
+	if err != nil {
+		// skip test
+		t.Skipf("blobdata2.txt not found, skipping test: %v", err)
+	}
+	blob, err := hexStrToBlob(string(data))
+	c.Assert(err, qt.IsNil)
+
+	// Evaluation point z
+	processID := util.RandomBytes(31)
+	rootHashBefore := util.RandomBytes(31)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
+
+	// Ground truth from the KZG precompile
+	_, claim, _ := ComputeProof(blob, z)
+	want := new(big.Int).SetBytes(claim[:])
+
+	// Evaluate
+	got, err := EvaluateBlobBarycentric(blob, z, true) // Enable debug for better output
+	c.Assert(err, qt.IsNil, qt.Commentf("EvaluateBlobBarycentric should not return an error"))
+	qt.Assert(c, want.Cmp(got), qt.Equals, 0, qt.Commentf("Expected and got values should match"))
+
+}
+
+func hexStrToBlob(hexStr string) (*goethkzg.Blob, error) {
+	var blob goethkzg.Blob
 	byts, err := hexStrToBytes(hexStr)
 	if err != nil {
 		return nil, err

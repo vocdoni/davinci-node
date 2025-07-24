@@ -1,4 +1,3 @@
-// File: barycentric_eval.go
 package blobs
 
 import (
@@ -6,166 +5,146 @@ import (
 	"math/big"
 
 	fr "github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	goethkzg "github.com/crate-crypto/go-eth-kzg"
 )
 
-// EvaluateBlobBarycentric computes, for a 4 096‑element blob, the value
+// EvaluateBlobBarycentric evaluates a polynomial in evaluation form using the barycentric formula.
+// This function computes the barycentric evaluation of a KZG blob at a given evaluation point z.
 //
-//	y = (z⁴⁰⁹⁶ – 1) / 4096 · Σᵢ  dᵢ · ωᵢ / (z – ωᵢ)
+// The function implements the barycentric evaluation formula:
 //
-// exactly as in `c‑kzg‑4844/eip4844.c:evaluate_polynomial_in_evaluation_form`.
+//	y = (z^4096 - 1) / 4096 * Σᵢ (dᵢ * ωᵢ / (z - ωᵢ))
 //
-//   - `blob` must be exactly 4096·32 bytes (type supplied by `go‑ethereum`).
-//   - `z` must already be reduced modulo the BLS12‑381 scalar‑field modulus
-//     (the 250‑bit masking done by your ComputeEvaluationPoint is fine).
-//   - When `debug` is true the function prints an execution trace.
-func EvaluateBlobBarycentric(blob *kzg4844.Blob, z *big.Int, debug bool) (*big.Int, error) {
+// Where:
+//   - dᵢ are the blob data values (polynomial evaluations at domain points)
+//   - ωᵢ are the roots of unity forming the evaluation domain
+//   - z is the evaluation point
+//
+// Domain Generation and Omega Values:
+// The evaluation domain consists of 4096 roots of unity generated using go-eth-kzg's
+// approach. The domain is created from a primitive root of unity and then bit-reversed
+// to match the expected ordering. The roots of unity (omega values) can be regenerated
+// using the scripts/gen_omega_table.go generator, which produces the omega_table.go file.
+//
+// To regenerate the omega table:
+//
+//	cd scripts && go run gen_omega_table.go > ../crypto/blobs/omega_table.go
+//
+// The generator uses go-eth-kzg's exact domain construction:
+//   - Root of unity: 10238227357739495823651030575849232062558860180284477541189508159991286009131
+//   - Generator: rootOfUnity^(2^20) for domain size 4096
+//   - Bit-reversal applied to match go-eth-kzg ordering
+//
+// Parameters:
+//   - blob: A 4096-element blob (131,072 bytes total, 32 bytes per element)
+//   - z: Evaluation point, should be reduced modulo BLS12-381 scalar field modulus
+//   - debug: When true, prints execution trace for debugging
+//
+// Returns:
+//   - The evaluated polynomial value at point z
+//   - Error if blob size is invalid or computation fails
+func EvaluateBlobBarycentric(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.Int, error) {
 	if len(blob) != 32*4096 {
 		return nil, fmt.Errorf("blob length is %d, want 131072", len(blob))
 	}
 
-	// ---------------------------------------------------------------------
-	// 0.  Helpers
-	// ---------------------------------------------------------------------
-	mod := fr.Modulus() // *big.Int
+	// Initialize field arithmetic helpers
+	mod := fr.Modulus()
 	n := 4096
 	nBig := big.NewInt(int64(n))
-	nInv := new(big.Int).ModInverse(nBig, mod) // 4096⁻¹ (mod p)
+	nInv := new(big.Int).ModInverse(nBig, mod) // 4096⁻¹ mod p
 	modBig := func(x *big.Int) *big.Int { return new(big.Int).Mod(x, mod) }
-
-	// Convert fr.Element → *big.Int (regular form, NOT Montgomery)
 	toBig := func(e fr.Element) *big.Int { return e.BigInt(new(big.Int)) }
 
-	// ---------------------------------------------------------------------
-	// 1.  Build ω table **in bit‑reversed order**
-	// ---------------------------------------------------------------------
+	// Generate evaluation domain using go-eth-kzg's approach
 	omega := make([]*big.Int, n)
 
-	// primitive 4096‑th root: 5^((p‑1)/4096)  (same as reference impl.)
-	var five fr.Element
-	five.SetUint64(5)
-
-	exp := new(big.Int).Sub(mod, big.NewInt(1)) // p‑1
-	exp.Div(exp, nBig)                          // (p‑1)/4096
-
-	var ω fr.Element
-	ω.Exp(five, exp) // ω ← 5^exp
-
-	omegaNat := make([]fr.Element, n)
-	omegaNat[0].SetOne()
-	for i := 1; i < n; i++ {
-		omegaNat[i].Mul(&omegaNat[i-1], &ω)
+	// Initialize the primitive root of unity used by go-eth-kzg
+	var rootOfUnity fr.Element
+	_, err := rootOfUnity.SetString("10238227357739495823651030575849232062558860180284477541189508159991286009131")
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize root of unity: %v", err)
 	}
 
-	for i := 0; i < n; i++ { // apply BRP permutation
-		omega[i] = toBig(omegaNat[bitReverse(i, 12)])
+	// Compute the generator for our 4096-element domain
+	expo := new(big.Int).SetInt64(1 << 20) // 2^20 for 4096 domain size
+	var generator fr.Element
+	generator.Exp(rootOfUnity, expo)
+
+	// Generate all domain roots in natural order
+	domainRoots := make([]fr.Element, n)
+	domainRoots[0].SetOne()
+	for i := 1; i < n; i++ {
+		domainRoots[i].Mul(&domainRoots[i-1], &generator)
+	}
+
+	// Apply bit-reversal permutation to match go-eth-kzg's expected ordering
+	for i := 0; i < n; i++ {
+		bitRevIndex := bitReverse(i, 12)
+		omega[i] = toBig(domainRoots[bitRevIndex])
 	}
 
 	if debug {
-		fmt.Println("first 5 ω (c-kzg-4844 brp_roots_of_unity[0:4096]):")
+		fmt.Println("Domain roots (omega values):")
 		for i := 0; i < 5; i++ {
 			fmt.Printf("  ω[%d] = %s\n", i, omega[i].Text(16))
 		}
 	}
 
-	// ---------------------------------------------------------------------
-	// 2.  Early‑exit when  z == ωᵏ
-	// ---------------------------------------------------------------------
+	// Early exit optimization: if z equals any omega value, return the corresponding blob value
 	for k, w := range omega {
 		if w.Cmp(z) == 0 {
-			// c-kzg-4844 uses a specific index mapping for early-exit
-			blobIndex := mapOmegaIndexToBlobIndex(k)
-			return modBig(blobCell(blob, blobIndex)), nil
+			return modBig(blobCell(blob, k)), nil
 		}
 	}
 
-	// ---------------------------------------------------------------------
-	// 3.  Σ  dᵢ · ωᵢ / (z‑ωᵢ)
-	// ---------------------------------------------------------------------
+	// Compute the barycentric sum: Σᵢ (dᵢ * ωᵢ / (z - ωᵢ))
 	sum := big.NewInt(0)
-
 	for i := 0; i < n; i++ {
-		// Use the complete lookup table to map omega[i] to blob[j]
-		blobIdx := GetBlobIndexForOmega(i)
-		d := modBig(blobCell(blob, blobIdx))
+		// Extract blob data value at position i
+		d := modBig(blobCell(blob, i))
 		if d.Sign() == 0 {
-			continue
+			continue // Skip zero terms for efficiency
 		}
 
-		diff := new(big.Int).Sub(z, omega[i]) // z‑ωᵢ
+		// Compute the denominator (z - ωᵢ) and its inverse
+		diff := new(big.Int).Sub(z, omega[i])
 		diff.Mod(diff, mod)
 		inv := new(big.Int).ModInverse(diff, mod)
 
-		term := new(big.Int).Mul(d, omega[i]) // dᵢ·ωᵢ
-		term.Mul(term, inv)                   // /(z‑ωᵢ)
+		// Compute term: dᵢ * ωᵢ / (z - ωᵢ)
+		term := new(big.Int).Mul(d, omega[i])
+		term.Mul(term, inv)
 		term.Mod(term, mod)
 
+		// Accumulate the sum
 		sum.Add(sum, term).Mod(sum, mod)
 
 		if debug && i < 4 {
-			fmt.Printf("term i=%d, blobIdx=%d : %s\n", i, blobIdx, term.Text(16))
+			fmt.Printf("term[%d]: %s\n", i, term.Text(16))
 		}
 	}
 
-	// ---------------------------------------------------------------------
-	// 4.  factor = (z⁴⁰⁹⁶ – 1) / 4096
-	// ---------------------------------------------------------------------
+	// Compute the scaling factor: (z^4096 - 1) / 4096
 	zPowN := new(big.Int).Exp(z, nBig, mod)
 	zPowN.Sub(zPowN, big.NewInt(1)).Mod(zPowN, mod)
-
 	factor := new(big.Int).Mul(zPowN, nInv)
 	factor.Mod(factor, mod)
 
 	if debug {
-		fmt.Printf("Σ = %s\n", sum.Text(16))
-		fmt.Printf("factor = %s\n", factor.Text(16))
+		fmt.Printf("Sum: %s\n", sum.Text(16))
+		fmt.Printf("Factor: %s\n", factor.Text(16))
 	}
 
-	// ---------------------------------------------------------------------
-	// 5.  Final result
-	// ---------------------------------------------------------------------
-	y := new(big.Int).Mul(sum, factor)
-	y.Mod(y, mod)
-	return y, nil
+	// Compute final result: y = factor * sum
+	result := new(big.Int).Mul(sum, factor)
+	result.Mod(result, mod)
+	return result, nil
 }
 
-// ---------------------------------------------------------------------
-// Small helpers
-// ---------------------------------------------------------------------
-
-// mapOmegaIndexToBlobIndex maps omega indices to blob indices for early-exit
-// Based on empirical discovery of c-kzg-4844's exact behavior
-func mapOmegaIndexToBlobIndex(omegaIndex int) int {
-	// Pattern discovered from testing:
-	// omega[0,1,2,3] -> blob[0,1,2,3] (identity)
-	// omega[4,5] -> blob[5,4] (swap)
-	// omega[6,7] -> blob[7,6] (swap)
-	// omega[8,9] -> blob[10,11] (offset +2)
-
-	switch omegaIndex {
-	case 0, 1, 2, 3:
-		return omegaIndex
-	case 4:
-		return 5
-	case 5:
-		return 4
-	case 6:
-		return 7
-	case 7:
-		return 6
-	case 8:
-		return 10
-	case 9:
-		return 11
-	default:
-		// For unknown indices, fall back to identity mapping
-		// This needs more investigation for complete coverage
-		return omegaIndex
-	}
-}
-
-// blobCell returns blob[i] as *big.Int (big‑endian field element).
-func blobCell(blob *kzg4844.Blob, i int) *big.Int {
+// blobCell extracts the i-th 32-byte element from the blob and converts it to a big integer.
+// The blob stores field elements in big-endian format.
+func blobCell(blob *goethkzg.Blob, i int) *big.Int {
 	start := i * 32
 	return new(big.Int).SetBytes(blob[start : start+32])
 }
