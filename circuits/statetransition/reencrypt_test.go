@@ -9,10 +9,8 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
-	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/vocdoni/davinci-node/circuits"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
-	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -36,11 +34,7 @@ func (c *ReencryptedBallotCircuit) Define(api frontend.API) error {
 func TestReencryptedBallotCircuit(t *testing.T) {
 	c := qt.New(t)
 
-	privkey := babyjub.NewRandPrivKey()
-
-	x, y := format.FromTEtoRTE(privkey.Public().X, privkey.Public().Y)
-	ek := new(bjj.BJJ).SetPoint(x, y)
-	encKey := circuits.EncryptionKeyFromECCPoint(ek)
+	privkey, encKey := circuits.MockEncryptionKey()
 	encryptionKey := new(bjj.BJJ).SetPoint(encKey.PubKey[0], encKey.PubKey[1])
 
 	k, err := elgamal.RandK()
@@ -54,7 +48,7 @@ func TestReencryptedBallotCircuit(t *testing.T) {
 		originals[i] = frontend.Variable(fields[i])
 	}
 
-	ballot, err := elgamal.NewBallot(ek).Encrypt(fields, encryptionKey, k)
+	ballot, err := elgamal.NewBallot(encryptionKey).Encrypt(fields, encryptionKey, k)
 	c.Assert(err, qt.IsNil)
 	// ballot = elgamal.NewBallot(ek)
 
