@@ -62,7 +62,6 @@ func TestBarycentricEvalGoBlobData1(t *testing.T) {
 	got, err := EvaluateBlobBarycentricNativeGo(blob, z, false)
 	c.Assert(err, qt.IsNil, qt.Commentf("EvaluateBlobBarycentric should not return an error"))
 	qt.Assert(c, want.Cmp(got), qt.Equals, 0, qt.Commentf("Expected and got values should match"))
-
 }
 
 func TestBarycentricEvalGoBlobData2(t *testing.T) {
@@ -89,7 +88,6 @@ func TestBarycentricEvalGoBlobData2(t *testing.T) {
 	got, err := EvaluateBlobBarycentricNativeGo(blob, z, false) // Enable debug for better output
 	c.Assert(err, qt.IsNil, qt.Commentf("EvaluateBlobBarycentric should not return an error"))
 	qt.Assert(c, want.Cmp(got), qt.Equals, 0, qt.Commentf("Expected and got values should match"))
-
 }
 
 func hexStrToBlob(hexStr string) (*goethkzg.Blob, error) {
