@@ -18,6 +18,7 @@ import (
 	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -74,7 +75,9 @@ func TestProgressiveElements(t *testing.T) {
 }
 
 func TestCircuitWithActualDataBlob(t *testing.T) {
+	log.Init("debug", "stdout", nil)
 	c := qt.New(t)
+	os.Setenv("GNARK_LOG", "debug") // or use zerolog.SetGlobalLevel
 
 	data, err := os.ReadFile("testdata/blobdata1.txt")
 	if err != nil {
@@ -114,7 +117,10 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 	}
 
 	// Test with IsSolved
+
 	assert := test.NewAssert(t)
+	//assert.CheckCircuit(&BlobEvalCircuit{}, test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
+
 	assert.SolvingSucceeded(&BlobEvalCircuit{}, &witness,
 		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 }

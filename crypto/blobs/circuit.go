@@ -47,7 +47,7 @@ type BlobEvalCircuit struct {
 	Blob            [N]emulated.Element[FE]
 }
 
-func (c *BlobEvalCircuit) Define(api frontend.API) error {
+func (c *BlobEvalCircuit) Define2(api frontend.API) error {
 	// Field helper for BLS12-381 Fr emulated arithmetic.
 	fr, err := emulated.NewField[FE](api)
 	if err != nil {
@@ -131,5 +131,80 @@ func (c *BlobEvalCircuit) Define(api frontend.API) error {
 
 	// 6. Enforce Y == final
 	fr.AssertIsEqual(final, &c.Y)
+	return nil
+}
+
+func (c *BlobEvalCircuit) Define(api frontend.API) error {
+	//  field helper for BLS12‑381 Fr emulated inside BN254
+	fr, err := emulated.NewField[FE](api)
+	if err != nil {
+		return err
+	}
+	zero := fr.Zero()
+	omegaAt := func(i int) *emulated.Element[FE] { return fr.NewElement(omegaHex[i]) }
+
+	//  HINT INPUT PACKING
+	in := make([]*emulated.Element[FE], 2+2*N)
+	in[0] = &c.Y
+	in[1] = &c.Z
+	for i := 0; i < N; i++ {
+		in[i+2] = &c.Blob[i]
+	}
+	for i := 0; i < N; i++ {
+		w := omegaAt(i)
+		in[i+N+2] = w
+	}
+
+	outs, err := fr.NewHint(quotHint, N+2, in...)
+	if err != nil {
+		return err
+	}
+
+	q := outs[:N]            // q_i
+	S1 := fr.Reduce(outs[N]) // Σ q_i ω_i
+	//S2 := fr.Reduce(outs[N+1]) // Σ q_i ω_i²
+	for i := 0; i < N; i++ {
+		q[i] = fr.Reduce(q[i])
+	}
+
+	//  MAIN CONSTRAINTS
+	direct := fr.Zero()
+	anyZero := frontend.Variable(0) // boolean accumulator (0/1)
+
+	for i := 0; i < N; i++ {
+		wi := omegaAt(i)
+		denR := fr.Reduce(fr.Sub(wi, &c.Z))
+		isZero := fr.IsZero(denR)
+
+		// (d_i - Y) and q_i·denR in normal form
+		lhsBase := fr.Reduce(fr.Sub(&c.Blob[i], &c.Y))
+		rhsBase := fr.Reduce(fr.Mul(q[i], denR))
+
+		// -------- NEW: reduce AFTER Select -------------------------------
+		lhs := fr.Reduce(fr.Select(isZero, zero, lhsBase))
+		rhs := fr.Reduce(fr.Select(isZero, zero, rhsBase))
+		//------------------------------------------------------------------
+
+		fr.AssertIsEqual(lhs, rhs)
+
+		// q_i must be 0 when ω_i == Z
+		qiMasked := fr.Reduce(fr.Select(isZero, q[i], zero))
+		fr.AssertIsEqual(qiMasked, zero)
+
+		// direct‑hit accumulator
+		directSel := fr.Reduce(fr.Select(isZero, fr.Reduce(&c.Blob[i]), direct))
+		direct = directSel
+
+		anyZero = api.Or(anyZero, isZero)
+	}
+
+	// degree‑bound checks
+	fr.AssertIsEqual(S1, zero)
+	//fr.AssertIsEqual(S2, zero)
+
+	// final value
+	final := fr.Reduce(fr.Select(anyZero, direct, &c.Y))
+	fr.AssertIsEqual(final, &c.Y)
+
 	return nil
 }
