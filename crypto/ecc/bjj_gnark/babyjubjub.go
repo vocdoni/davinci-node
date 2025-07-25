@@ -62,6 +62,10 @@ func (g *BJJ) SafeAdd(a, b curve.Point) {
 
 // ScalarMult performs scalar multiplication of a point by a scalar.
 func (g *BJJ) ScalarMult(a curve.Point, scalar *big.Int) {
+	if scalar.Sign() == 0 {
+		g.SetZero()
+		return
+	}
 	g.inner.ScalarMultiplication(a.(*BJJ).inner, scalar)
 }
 

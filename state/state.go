@@ -237,7 +237,7 @@ func (o *State) EndBatch() error {
 		var errBallot, errVoteID error
 		if i < len(o.Votes()) {
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].Address, o.Votes()[i].Ballot.BigInts()...)
+				o.Votes()[i].Address, o.Votes()[i].ReencryptedBallot.BigInts()...)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
 				o.Votes()[i].VoteID.BigInt().MathBigInt(), VoteIDKeyValue)
 		} else {
@@ -361,8 +361,9 @@ func (o *State) PaddedVotes() []*Vote {
 	log.Infof("current batch has %d votes", len(v))
 	for len(v) < types.VotesPerBatch {
 		v = append(v, &Vote{
-			Address: big.NewInt(0),
-			Ballot:  elgamal.NewBallot(Curve),
+			Address:           big.NewInt(0),
+			Ballot:            elgamal.NewBallot(Curve),
+			ReencryptedBallot: elgamal.NewBallot(Curve),
 		})
 	}
 	return v

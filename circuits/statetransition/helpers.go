@@ -7,16 +7,19 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/state"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // GenerateWitness generates the witness for the state transition circuit
 // from the given state object. It populates the witness structure with
 // the necessary data, including the root hash before and after the
 // transition, the process information, the votes, and the results.
-func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
+func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircuit, error) {
 	var err error
 	witness := &StateTransitionCircuit{}
 
+	// Include the k used for re-encryption
+	witness.ReencryptK = kSeed.MathBigInt()
 	// RootHashBefore
 	witness.RootHashBefore = o.RootHashBefore()
 
@@ -41,6 +44,7 @@ func GenerateWitness(o *state.State) (*StateTransitionCircuit, error) {
 
 	for i, v := range o.PaddedVotes() {
 		witness.Votes[i].Ballot = *v.Ballot.ToGnark()
+		witness.Votes[i].ReencryptedBallot = *v.ReencryptedBallot.ToGnark()
 		witness.Votes[i].Address = v.Address
 		witness.Votes[i].VoteID = v.VoteID.BigInt().MathBigInt()
 		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
