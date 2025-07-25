@@ -12,7 +12,7 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
+	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/test"
 	goethkzg "github.com/crate-crypto/go-eth-kzg"
@@ -23,9 +23,10 @@ import (
 
 // TestProgressiveElements tests the circuit with increasing number of elements
 func TestProgressiveElements(t *testing.T) {
+	std.RegisterHints()
 	c := qt.New(t)
 
-	testCounts := []int{1, 5, 20}
+	testCounts := []int{5, 50, 100}
 
 	for _, count := range testCounts {
 		fmt.Printf("\n=== Testing with %d elements ===\n", count)
@@ -55,14 +56,14 @@ func TestProgressiveElements(t *testing.T) {
 		commitmentLimbs := splitIntoLimbs(commitmentBytes[:], 3)
 		witness := BlobEvalCircuit{
 			CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
-			Z:               emulated.ValueOf[sw_bls12381.ScalarField](z),
-			Y:               emulated.ValueOf[sw_bls12381.ScalarField](y),
+			Z:               emulated.ValueOf[FE](z),
+			Y:               emulated.ValueOf[FE](y),
 		}
 
 		// Fill blob data
 		for i := range 4096 {
 			cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
-			witness.Blob[i] = emulated.ValueOf[sw_bls12381.ScalarField](cell)
+			witness.Blob[i] = emulated.ValueOf[FE](cell)
 		}
 
 		// Test with IsSolved
@@ -102,14 +103,14 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 	commitmentLimbs := splitIntoLimbs(commitmentBytes[:], 3)
 	witness := BlobEvalCircuit{
 		CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
-		Z:               emulated.ValueOf[sw_bls12381.ScalarField](z),
-		Y:               emulated.ValueOf[sw_bls12381.ScalarField](y),
+		Z:               emulated.ValueOf[FE](z),
+		Y:               emulated.ValueOf[FE](y),
 	}
 
 	// Fill blob data
 	for i := range 4096 {
 		cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
-		witness.Blob[i] = emulated.ValueOf[sw_bls12381.ScalarField](cell)
+		witness.Blob[i] = emulated.ValueOf[FE](cell)
 	}
 
 	// Test with IsSolved
@@ -118,7 +119,7 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 }
 
-func TestBlobEvalCircuitProving(t *testing.T) {
+func TestCircuitFullProving(t *testing.T) {
 	c := qt.New(t)
 
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
@@ -152,14 +153,14 @@ func TestBlobEvalCircuitProving(t *testing.T) {
 	// Create witness
 	witness := BlobEvalCircuit{
 		CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
-		Z:               emulated.ValueOf[sw_bls12381.ScalarField](z),
-		Y:               emulated.ValueOf[sw_bls12381.ScalarField](y),
+		Z:               emulated.ValueOf[FE](z),
+		Y:               emulated.ValueOf[FE](y),
 	}
 
 	// Fill blob data from kzg4844.Blob
 	for i := 0; i < 4096; i++ {
 		cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
-		witness.Blob[i] = emulated.ValueOf[sw_bls12381.ScalarField](cell)
+		witness.Blob[i] = emulated.ValueOf[FE](cell)
 	}
 
 	// Compile circuit

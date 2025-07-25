@@ -35,7 +35,7 @@ func TestBarycentricEvalGo(t *testing.T) {
 	t.Logf("Proof: %s", hex.EncodeToString(proof[:]))
 
 	// Evaluate using the barycentric formula
-	got, err := EvaluateBlobBarycentric(blob, z, true) // Disable debug for cleaner output
+	got, err := EvaluateBlobBarycentricNativeGo(blob, z, true)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("EvaluateBlobBarycentric should not return an error"))
 
 	// Compare results
@@ -63,7 +63,7 @@ func TestBarycentricEvalGoBlobData1(t *testing.T) {
 	want := new(big.Int).SetBytes(claim[:])
 
 	// Evaluate
-	got, err := EvaluateBlobBarycentric(blob, z, true) // Enable debug for better output
+	got, err := EvaluateBlobBarycentricNativeGo(blob, z, true)
 	c.Assert(err, qt.IsNil, qt.Commentf("EvaluateBlobBarycentric should not return an error"))
 	qt.Assert(c, want.Cmp(got), qt.Equals, 0, qt.Commentf("Expected and got values should match"))
 
@@ -90,7 +90,7 @@ func TestBarycentricEvalGoBlobData2(t *testing.T) {
 	want := new(big.Int).SetBytes(claim[:])
 
 	// Evaluate
-	got, err := EvaluateBlobBarycentric(blob, z, true) // Enable debug for better output
+	got, err := EvaluateBlobBarycentricNativeGo(blob, z, true) // Enable debug for better output
 	c.Assert(err, qt.IsNil, qt.Commentf("EvaluateBlobBarycentric should not return an error"))
 	qt.Assert(c, want.Cmp(got), qt.Equals, 0, qt.Commentf("Expected and got values should match"))
 

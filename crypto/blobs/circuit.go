@@ -1,15 +1,33 @@
-// Package blobs implements a gnark circuit that proves
+// Package blobs implements a Gnark circuit that proves
 //
 //	y = P(z)
 //
-// where P is the polynomial encoded in a Proto‑Danksharding blob.
+// where P is the polynomial encoded in a Proto-Danksharding blob (4096 evaluations).
+//
+// The circuit uses the exact barycentric evaluation formula implemented by go-eth-kzg / c-kzg-4844:
+//
+//	y = (z^4096 - 1) / 4096 * Σᵢ dᵢ * ωᵢ / (z - ωᵢ)
+//
+// with the standard early-exit rule: if z equals one of the domain points ωᵏ,
+// then y = dᵏ (no barycentric sum needed).
+//
+// Implementation details:
+//   - All non‑native arithmetic is done in BLS12-381 Fr emulated over the native curve.
+//   - Constants (ωᵢ, 4096⁻¹) are injected with fr.NewElement(...). This ensures Gnark marks them
+//     as internal constants with correct limb widths for the current native curve.
+//   - We never mutate (overwrite) an Element that has been used as an operand to a Mul/Inverse.
+//   - Overflow control: after long addition chains or any Select, call fr.Reduce to keep
+//     limbs within expected bounds before the next Mul.
+//   - Batch inversion uses the standard prefix-product trick.
+//
+// Regenerating the omega table:
+//
+//	See scripts/gen_omega_hex.go. It outputs omegaHex[4096]string and nInvHex.
+//	Commit the generated file to the repo (e.g. blobs/omega_hex.go).
 package blobs
 
 import (
-	"fmt"
-
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
 )
 
@@ -18,154 +36,100 @@ const (
 	N    = 1 << logN // 4096
 )
 
-// BlobEvalCircuit – public inputs: commitment, z, y; private: the 4 096 cells.
+// FE aliases the emulated BLS12-381 scalar field parameters.
+type FE = emulated.BLS12381Fr
+
+// BlobEvalCircuit – public inputs: commitment limbs (3x uint384), z, y; private: the 4096 blob cells.
 type BlobEvalCircuit struct {
-	CommitmentLimbs [3]frontend.Variable                      `gnark:",public"`
-	Z               emulated.Element[sw_bls12381.ScalarField] `gnark:",public"`
-	Y               emulated.Element[emulated.BLS12381Fr]     `gnark:",public"`
-	Blob            [4096]emulated.Element[sw_bls12381.ScalarField]
+	CommitmentLimbs [3]frontend.Variable `gnark:",public"`
+	Z               emulated.Element[FE] `gnark:",public"`
+	Y               emulated.Element[FE] `gnark:",public"`
+	Blob            [N]emulated.Element[FE]
 }
 
 func (c *BlobEvalCircuit) Define(api frontend.API) error {
-	fr, err := emulated.NewField[emulated.BLS12381Fr](api)
+	// Field helper for BLS12-381 Fr emulated arithmetic.
+	fr, err := emulated.NewField[FE](api)
 	if err != nil {
-		return fmt.Errorf("field init: %w", err)
+		return err
 	}
-	one := fr.One()
-	zero := fr.Zero()
+	one, zero := fr.One(), fr.Zero()
 
-	omegaAt := func(i int) *emulated.Element[emulated.BLS12381Fr] {
-		return fr.NewElement(omegaLimbs[i]) // limbs slice
+	// Helpers to load constants as proper field elements.
+	omegaAt := func(i int) *emulated.Element[FE] { return fr.NewElement(omegaHex[i]) }
+	nInv := fr.NewElement(nInvHex)
 
-	}
-	nInverse := fr.NewElement(nInverseLimbs) // or fr.NewElement(nInvHex)
-
-	api.Println("=== CIRCUIT DEBUG START ===")
-	api.Println("Z:", c.Z.Limbs)
-	api.Println("First 5 blob values:", c.Blob[0].Limbs, c.Blob[1].Limbs, c.Blob[2].Limbs, c.Blob[3].Limbs, c.Blob[4].Limbs)
-
-	// Use pre-computed omega values from omega_table.go (now correctly generated)
-	// These match the Go implementation exactly after regeneration
-
-	//--------------------------------------------------------------------
-	// 1. diffSafe[i] = z - ωᵢ  (but replaced by 1 if the diff is 0)
-	//    isZero[i]   = (z == ωᵢ) flag
-	//--------------------------------------------------------------------
-	diffSafe := make([]*emulated.Element[sw_bls12381.ScalarField], N)
+	// 1. diffSafe[i] = z - ωᵢ   (replace 0 by 1)   and isZero[i] flag
+	diffSafe := make([]*emulated.Element[FE], N)
 	isZero := make([]frontend.Variable, N)
 
 	for i := 0; i < N; i++ {
 		wi := omegaAt(i)
-		d := fr.Sub(&c.Z, wi)                      // z − ωᵢ
-		isZero[i] = fr.IsZero(d)                   // boolean: z == ωᵢ
-		diffSafe[i] = fr.Select(isZero[i], one, d) // if 0, use 1 so invert works
+		d := fr.Sub(&c.Z, wi)
+		isZero[i] = fr.IsZero(d)
+		diffSafe[i] = fr.Reduce(fr.Select(isZero[i], one, d))
 	}
 
-	api.Println("=== BLOCK 1: DIFFERENCES AND ZERO DETECTION ===")
-	api.Println("First 5 omega values:", omegaAt(0).Limbs)
-	api.Println("First 5 differences:", diffSafe[0].Limbs, diffSafe[1].Limbs, diffSafe[2].Limbs, diffSafe[3].Limbs, diffSafe[4].Limbs)
-	api.Println("First 5 isZero flags:", isZero[0], isZero[1], isZero[2], isZero[3], isZero[4])
-
-	//--------------------------------------------------------------------
-	// 2. Batch invert all diffSafe[i]
-	//    Standard prefix-product trick:
-	//    prefix[i] = Π_{j < i} diffSafe[j]
-	//    invAll    = (Π diffSafe[j])⁻¹
-	//    inv[i]    = invAll * prefix[i]
-	//--------------------------------------------------------------------
-	prefix := make([]*emulated.Element[sw_bls12381.ScalarField], N)
+	// 2. Batch invert all diffSafe[i] with the prefix-product trick
+	prefix := make([]*emulated.Element[FE], N)
 	prefix[0] = one
 	for i := 1; i < N; i++ {
-		prefix[i] = fr.Mul(prefix[i-1], diffSafe[i-1])
+		prefix[i] = fr.Reduce(fr.Mul(prefix[i-1], diffSafe[i-1]))
 	}
-	// product of all diffs
-	prodAll := fr.Mul(prefix[N-1], diffSafe[N-1])
-	invAll := fr.Inverse(prodAll)
+	prodAll := fr.Reduce(fr.Mul(prefix[N-1], diffSafe[N-1]))
+	invAll := fr.Inverse(prodAll) // result is reduced
 
-	inv := make([]*emulated.Element[sw_bls12381.ScalarField], N)
+	inv := make([]*emulated.Element[FE], N)
+	cur := invAll
 	for i := N - 1; i >= 0; i-- {
-		inv[i] = fr.Mul(invAll, prefix[i])
+		inv[i] = fr.Reduce(fr.Mul(cur, prefix[i]))
 		if i > 0 {
-			invAll = fr.Mul(invAll, diffSafe[i])
+			cur = fr.Reduce(fr.Mul(cur, diffSafe[i]))
 		}
+		// Optional: sanity relation (inv[i] * diffSafe[i] == 1) skipped to save constraints.
 	}
 
-	api.Println("=== BLOCK 2: BATCH INVERSION ===")
-	api.Println("prodAll:", prodAll.Limbs)
-	api.Println("invAll (after inversion):", invAll.Limbs)
-	api.Println("First 5 prefix values:", prefix[0].Limbs, prefix[1].Limbs, prefix[2].Limbs, prefix[3].Limbs, prefix[4].Limbs)
-	api.Println("First 5 inv values:", inv[0].Limbs, inv[1].Limbs, inv[2].Limbs, inv[3].Limbs, inv[4].Limbs)
-
-	//--------------------------------------------------------------------
 	// 3. sum = Σ dᵢ·ωᵢ / (z−ωᵢ)
-	//    Skip the term if denominator was zero (handled via isZero flag).
-	//--------------------------------------------------------------------
 	sum := fr.Zero()
-	var firstTerms [5]*emulated.Element[sw_bls12381.ScalarField]
+	const chunk = 64 // periodic reduction to keep overflow small
 	for i := 0; i < N; i++ {
-		w := omegaAt(i)
-		term := fr.Mul(fr.Mul(&c.Blob[i], w), inv[i])
-		term = fr.Select(isZero[i], zero, term) // zero-out if z==ωᵢ
-		if i < 5 {
-			firstTerms[i] = term
-		}
+		wi := omegaAt(i)
+		term1 := fr.Reduce(fr.Mul(&c.Blob[i], wi))
+		term2 := fr.Reduce(fr.Mul(term1, inv[i]))
+		term := fr.Reduce(fr.Select(isZero[i], zero, term2))
 		sum = fr.Add(sum, term)
+		if (i+1)%chunk == 0 {
+			sum = fr.Reduce(sum)
+		}
 	}
+	sum = fr.Reduce(sum)
 
-	api.Println("=== BLOCK 3: SUMMATION ===")
-	api.Println("First 5 terms:", firstTerms[0].Limbs, firstTerms[1].Limbs, firstTerms[2].Limbs, firstTerms[3].Limbs, firstTerms[4].Limbs)
-	api.Println("Sum:", sum.Limbs)
-
-	//--------------------------------------------------------------------
 	// 4. factor = (z^4096 − 1) · 4096⁻¹
-	//--------------------------------------------------------------------
-	zPow := c.Z
-	for k := 0; k < logN; k++ { // 12 squarings → z^(2^12) = z^4096
-		zPow = *fr.Mul(&zPow, &zPow)
+	zPowPtr := &c.Z
+	for k := 0; k < logN; k++ {
+		next := fr.Reduce(fr.Mul(zPowPtr, zPowPtr))
+		zPowPtr = next
 	}
-
-	// Use pre-computed nInverse from omega_table.go (matches Go implementation)
-	factor := fr.Mul(fr.Sub(&zPow, one), nInverse)
+	zPow := zPowPtr
+	factor := fr.Reduce(fr.Mul(fr.Sub(zPow, one), nInv))
 
 	// barycentric value
-	yBary := fr.Mul(factor, sum)
+	yBary := fr.Reduce(fr.Mul(factor, sum))
 
-	api.Println("=== BLOCK 4: FACTOR COMPUTATION ===")
-	api.Println("z^4096:", zPow.Limbs)
-	api.Println("nInverse:", nInverse.Limbs)
-	api.Println("factor:", factor.Limbs)
-	api.Println("yBary (factor * sum):", yBary.Limbs)
-
-	//--------------------------------------------------------------------
-	// 5. If z == ωᵏ for some k, return blob[k] instead of barycentric value
-	//--------------------------------------------------------------------
+	// 5. Direct hit: if z == ωᵏ for some k, return dᵏ instead
 	direct := fr.Zero()
 	for i := 0; i < N; i++ {
 		direct = fr.Select(isZero[i], &c.Blob[i], direct)
 	}
+	direct = fr.Reduce(direct)
 
-	// anyZero = OR over all isZero[i]
 	anyZero := isZero[0]
 	for i := 1; i < N; i++ {
 		anyZero = api.Or(anyZero, isZero[i])
 	}
+	final := fr.Reduce(fr.Select(anyZero, direct, yBary))
 
-	final := fr.Select(anyZero, direct, yBary)
-
-	api.Println("=== BLOCK 5: FINAL SELECTION ===")
-	api.Println("direct:", direct.Limbs)
-	api.Println("anyZero:", anyZero)
-	api.Println("final:", final.Limbs)
-	api.Println("Expected Y:", c.Y.Limbs)
-
-	//--------------------------------------------------------------------
-	// 6. Enforce Y == final (compare limbs directly to avoid field assertion issues)
-	//--------------------------------------------------------------------
-	// Compare each limb individually
-	for i := range c.Y.Limbs {
-		api.Println("Comparing Y limb", i, ":", c.Y.Limbs[i], "==", final.Limbs[i])
-		api.AssertIsEqual(final.Limbs[i], c.Y.Limbs[i])
-	}
-
+	// 6. Enforce Y == final
+	fr.AssertIsEqual(final, &c.Y)
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 )
 
 // EvaluateBlobBarycentric evaluates a polynomial in evaluation form using the barycentric formula.
+// It has been implemented in Go to match the circuit logic and to debug potential issues.
 // This function computes the barycentric evaluation of a KZG blob at a given evaluation point z.
 //
 // The function implements the barycentric evaluation formula:
@@ -19,31 +20,7 @@ import (
 //   - dᵢ are the blob data values (polynomial evaluations at domain points)
 //   - ωᵢ are the roots of unity forming the evaluation domain
 //   - z is the evaluation point
-//
-// Domain Generation and Omega Values:
-// The evaluation domain consists of 4096 roots of unity generated using go-eth-kzg's
-// approach. The domain is created from a primitive root of unity and then bit-reversed
-// to match the expected ordering. The roots of unity (omega values) can be regenerated
-// using the scripts/gen_omega_table.go generator, which produces the omega_table.go file.
-//
-// To regenerate the omega table:
-//
-//	cd scripts && go run gen_omega_table.go > ../crypto/blobs/omega_table.go
-//
-// The generator uses go-eth-kzg's exact domain construction:
-//   - Root of unity: 10238227357739495823651030575849232062558860180284477541189508159991286009131
-//   - Generator: rootOfUnity^(2^20) for domain size 4096
-//   - Bit-reversal applied to match go-eth-kzg ordering
-//
-// Parameters:
-//   - blob: A 4096-element blob (131,072 bytes total, 32 bytes per element)
-//   - z: Evaluation point, should be reduced modulo BLS12-381 scalar field modulus
-//   - debug: When true, prints execution trace for debugging
-//
-// Returns:
-//   - The evaluated polynomial value at point z
-//   - Error if blob size is invalid or computation fails
-func EvaluateBlobBarycentric(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.Int, error) {
+func EvaluateBlobBarycentricNativeGo(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.Int, error) {
 	if len(blob) != 32*4096 {
 		return nil, fmt.Errorf("blob length is %d, want 131072", len(blob))
 	}
