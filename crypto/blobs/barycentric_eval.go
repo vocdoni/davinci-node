@@ -112,7 +112,7 @@ func EvaluateBlobBarycentricNativeGo(blob *goethkzg.Blob, z *big.Int, debug bool
 	var firstInvs [5]*big.Int
 
 	if debug {
-		fmt.Println("=== BLOCK 2: INDIVIDUAL INVERSIONS (Go uses individual, not batch) ===")
+		fmt.Println("=== BLOCK 2: INDIVIDUAL INVERSIONS ===")
 	}
 
 	for i := 0; i < n; i++ {
@@ -171,7 +171,7 @@ func EvaluateBlobBarycentricNativeGo(blob *goethkzg.Blob, z *big.Int, debug bool
 		fmt.Printf("nInverse: %s\n", nInv.Text(16))
 		fmt.Printf("factor: %s\n", factor.Text(16))
 		fmt.Printf("yBary (factor * sum): %s\n", result.Text(16))
-		fmt.Println("=== BLOCK 5: FINAL SELECTION (Go doesn't need selection logic) ===")
+		fmt.Println("=== BLOCK 5: FINAL SELECTION ===")
 		fmt.Printf("final: %s\n", result.Text(16))
 	}
 

@@ -2,7 +2,7 @@ module github.com/vocdoni/davinci-node
 
 go 1.24
 
-replace github.com/consensys/gnark => /home/p4u/repos/vocdoni/gnark-no-assert
+replace github.com/consensys/gnark => github.com/vocdoni/gnark-no-assert v0.0.0-20250723072250-450d563bbc0b
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.3

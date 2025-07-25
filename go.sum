@@ -697,6 +697,8 @@ github.com/vocdoni/davinci-contracts v0.0.0-20250709172536-328a506c66c4 h1:HNF2/
 github.com/vocdoni/davinci-contracts v0.0.0-20250709172536-328a506c66c4/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250707215605-5c183bc58746 h1:4UszQfFEj7kfQi5x+CADJxifhj3QID8F8k5w+/Z68K0=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250707215605-5c183bc58746/go.mod h1:hSUWkRr5rfB67T4hwUgVaMCijalLybTJyTHTG1ze9J8=
+github.com/vocdoni/gnark-no-assert v0.0.0-20250723072250-450d563bbc0b h1:+8/aThXhyk5fxcIKgG5DP9g8NGHvwcEaSlXM1BNk/DA=
+github.com/vocdoni/gnark-no-assert v0.0.0-20250723072250-450d563bbc0b/go.mod h1:F6k35ZIi9GC//wW2i9Fz9mURBcLF8qJLQQ/BETnQ9Z4=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=

@@ -1,45 +1,46 @@
-// Package blobs implements a Gnark circuit that proves
+//	Blob‑evaluation proof  (EIP‑4844 / Proto‑Danksharding)
 //
-//	y = P(z)
+//	Proves in‑circuit that Y = P(Z)
+//	where P is the polynomial that commits to the 4096‑cell “blob” and
+//	(Z,Y) is a claimed evaluation point.
 //
-// where P is the polynomial encoded in a Proto-Danksharding blob (4096 evaluations).
+//	All arithmetic over BLS12‑381 Fr is emulated on top of the native BN254 scalar field
 //
-// The circuit uses the exact barycentric evaluation formula implemented by go-eth-kzg / c-kzg-4844:
+//	The heavy division              dᵢ−Y
+//	                     qᵢ  =  ───────────────
+//	                               ωᵢ−Z
+//	is carried out as a hint and then verified inside the circuit.
 //
-//	y = (z^4096 - 1) / 4096 * Σᵢ dᵢ * ωᵢ / (z - ωᵢ)
+//	Rationale:
+//	• For every index i either:
+//	     (dᵢ−Y)  =  qᵢ·(ωᵢ−Z)         if ωᵢ ≠ Z
+//	      qᵢ     =  0                 if ωᵢ  = Z
+//	  holds, so the circuit forces the quotient values produced by the hint.
+//	• We additionally enforce
+//	      Σ qᵢ·ωᵢ ≡ 0  (mod r)
+//	  which is satisfied if Y = P(Z) for a poly of degree < N.
+//	  With the per‑index equations this single sum rule is already sufficient;
 //
-// with the standard early-exit rule: if z equals one of the domain points ωᵏ,
-// then y = dᵏ (no barycentric sum needed).
-//
-// Implementation details:
-//   - All non‑native arithmetic is done in BLS12-381 Fr emulated over the native curve.
-//   - Constants (ωᵢ, 4096⁻¹) are injected with fr.NewElement(...). This ensures Gnark marks them
-//     as internal constants with correct limb widths for the current native curve.
-//   - We never mutate (overwrite) an Element that has been used as an operand to a Mul/Inverse.
-//   - Overflow control: after long addition chains or any Select, call fr.Reduce to keep
-//     limbs within expected bounds before the next Mul.
-//   - Batch inversion uses the standard prefix-product trick.
-//
-// Regenerating the omega table:
-//
-//	See scripts/gen_omega_hex.go. It outputs omegaHex[4096]string and nInvHex.
-//	Commit the generated file to the repo (e.g. blobs/omega_hex.go).
+// References:
+//   - https://docs.sotazk.org/docs/zk_rollups_after_eip4844/#point-evaluation-precompile
+//   - https://github.com/Consensys/gnark/blob/master/std/evmprecompiles/10-kzg_point_evaluation.go
 package blobs
 
 import (
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/math/emulated"
 )
 
 const (
+	N    = 1 << 12 // 4096 evaluation points
 	logN = 12
-	N    = 1 << logN // 4096
 )
 
-// FE aliases the emulated BLS12-381 scalar field parameters.
+// FE is type modulus for BLS12‑381 Fr.
 type FE = emulated.BLS12381Fr
 
-// BlobEvalCircuit – public inputs: commitment limbs (3x uint384), z, y; private: the 4096 blob cells.
+// BlobEvalCircuit defines the required fields to validate a Blob construction.
 type BlobEvalCircuit struct {
 	CommitmentLimbs [3]frontend.Variable `gnark:",public"`
 	Z               emulated.Element[FE] `gnark:",public"`
@@ -47,95 +48,10 @@ type BlobEvalCircuit struct {
 	Blob            [N]emulated.Element[FE]
 }
 
-func (c *BlobEvalCircuit) Define2(api frontend.API) error {
-	// Field helper for BLS12-381 Fr emulated arithmetic.
-	fr, err := emulated.NewField[FE](api)
-	if err != nil {
-		return err
-	}
-	one, zero := fr.One(), fr.Zero()
-
-	// Helpers to load constants as proper field elements.
-	omegaAt := func(i int) *emulated.Element[FE] { return fr.NewElement(omegaHex[i]) }
-	nInv := fr.NewElement(nInvHex)
-
-	// 1. diffSafe[i] = z - ωᵢ   (replace 0 by 1)   and isZero[i] flag
-	diffSafe := make([]*emulated.Element[FE], N)
-	isZero := make([]frontend.Variable, N)
-
-	for i := 0; i < N; i++ {
-		wi := omegaAt(i)
-		d := fr.Sub(&c.Z, wi)
-		isZero[i] = fr.IsZero(d)
-		diffSafe[i] = fr.Reduce(fr.Select(isZero[i], one, d))
-	}
-
-	// 2. Batch invert all diffSafe[i] with the prefix-product trick
-	prefix := make([]*emulated.Element[FE], N)
-	prefix[0] = one
-	for i := 1; i < N; i++ {
-		prefix[i] = fr.Reduce(fr.Mul(prefix[i-1], diffSafe[i-1]))
-	}
-	prodAll := fr.Reduce(fr.Mul(prefix[N-1], diffSafe[N-1]))
-	invAll := fr.Inverse(prodAll) // result is reduced
-
-	inv := make([]*emulated.Element[FE], N)
-	cur := invAll
-	for i := N - 1; i >= 0; i-- {
-		inv[i] = fr.Reduce(fr.Mul(cur, prefix[i]))
-		if i > 0 {
-			cur = fr.Reduce(fr.Mul(cur, diffSafe[i]))
-		}
-		// Optional: sanity relation (inv[i] * diffSafe[i] == 1) skipped to save constraints.
-	}
-
-	// 3. sum = Σ dᵢ·ωᵢ / (z−ωᵢ)
-	sum := fr.Zero()
-	const chunk = 64 // periodic reduction to keep overflow small
-	for i := 0; i < N; i++ {
-		wi := omegaAt(i)
-		term1 := fr.Reduce(fr.Mul(&c.Blob[i], wi))
-		term2 := fr.Reduce(fr.Mul(term1, inv[i]))
-		term := fr.Reduce(fr.Select(isZero[i], zero, term2))
-		sum = fr.Add(sum, term)
-		if (i+1)%chunk == 0 {
-			sum = fr.Reduce(sum)
-		}
-	}
-	sum = fr.Reduce(sum)
-
-	// 4. factor = (z^4096 − 1) · 4096⁻¹
-	zPowPtr := &c.Z
-	for k := 0; k < logN; k++ {
-		next := fr.Reduce(fr.Mul(zPowPtr, zPowPtr))
-		zPowPtr = next
-	}
-	zPow := zPowPtr
-	factor := fr.Reduce(fr.Mul(fr.Sub(zPow, one), nInv))
-
-	// barycentric value
-	yBary := fr.Reduce(fr.Mul(factor, sum))
-
-	// 5. Direct hit: if z == ωᵏ for some k, return dᵏ instead
-	direct := fr.Zero()
-	for i := 0; i < N; i++ {
-		direct = fr.Select(isZero[i], &c.Blob[i], direct)
-	}
-	direct = fr.Reduce(direct)
-
-	anyZero := isZero[0]
-	for i := 1; i < N; i++ {
-		anyZero = api.Or(anyZero, isZero[i])
-	}
-	final := fr.Reduce(fr.Select(anyZero, direct, yBary))
-
-	// 6. Enforce Y == final
-	fr.AssertIsEqual(final, &c.Y)
-	return nil
-}
-
 func (c *BlobEvalCircuit) Define(api frontend.API) error {
-	//  field helper for BLS12‑381 Fr emulated inside BN254
+	std.RegisterHints()
+
+	// Field helpers
 	fr, err := emulated.NewField[FE](api)
 	if err != nil {
 		return err
@@ -143,68 +59,58 @@ func (c *BlobEvalCircuit) Define(api frontend.API) error {
 	zero := fr.Zero()
 	omegaAt := func(i int) *emulated.Element[FE] { return fr.NewElement(omegaHex[i]) }
 
-	//  HINT INPUT PACKING
-	in := make([]*emulated.Element[FE], 2+2*N)
-	in[0] = &c.Y
-	in[1] = &c.Z
+	// Hint input packing
+	in := make([]*emulated.Element[FE], 2+2*N) // [Y | Z | blob | ω]
+	in[0], in[1] = &c.Y, &c.Z
 	for i := 0; i < N; i++ {
-		in[i+2] = &c.Blob[i]
-	}
-	for i := 0; i < N; i++ {
-		w := omegaAt(i)
-		in[i+N+2] = w
+		in[2+i] = &c.Blob[i]
+		in[2+N+i] = omegaAt(i)
 	}
 
-	outs, err := fr.NewHint(quotHint, N+2, in...)
+	// Produce q₀,…,q_{N−1}, Σ qᵢ·ωᵢ
+	outs, err := fr.NewHint(quotHint, N+1, in...)
 	if err != nil {
 		return err
 	}
-
-	q := outs[:N]            // q_i
-	S1 := fr.Reduce(outs[N]) // Σ q_i ω_i
-	//S2 := fr.Reduce(outs[N+1]) // Σ q_i ω_i²
+	q := outs[:N]
+	S1 := fr.Reduce(outs[N]) // Σ qᵢ·ωᵢ
 	for i := 0; i < N; i++ {
 		q[i] = fr.Reduce(q[i])
 	}
 
-	//  MAIN CONSTRAINTS
-	direct := fr.Zero()
-	anyZero := frontend.Variable(0) // boolean accumulator (0/1)
+	// Per‑index constraints
+	direct := fr.Zero() // value to take when Z hits a grid‑point
+	anyZero := frontend.Variable(0)
 
 	for i := 0; i < N; i++ {
-		wi := omegaAt(i)
-		denR := fr.Reduce(fr.Sub(wi, &c.Z))
-		isZero := fr.IsZero(denR)
+		ωi := omegaAt(i)
+		denR := fr.Reduce(fr.Sub(ωi, &c.Z)) // ωᵢ − Z
+		isZero := fr.IsZero(denR)           // boolean
 
-		// (d_i - Y) and q_i·denR in normal form
-		lhsBase := fr.Reduce(fr.Sub(&c.Blob[i], &c.Y))
-		rhsBase := fr.Reduce(fr.Mul(q[i], denR))
-
-		// -------- NEW: reduce AFTER Select -------------------------------
-		lhs := fr.Reduce(fr.Select(isZero, zero, lhsBase))
-		rhs := fr.Reduce(fr.Select(isZero, zero, rhsBase))
-		//------------------------------------------------------------------
-
+		// (dᵢ − Y) = qᵢ·(ωᵢ − Z)
+		lhs := fr.Reduce(fr.Select(isZero, zero,
+			fr.Reduce(fr.Sub(&c.Blob[i], &c.Y))))
+		rhs := fr.Reduce(fr.Select(isZero, zero,
+			fr.Reduce(fr.Mul(q[i], denR))))
 		fr.AssertIsEqual(lhs, rhs)
 
-		// q_i must be 0 when ω_i == Z
-		qiMasked := fr.Reduce(fr.Select(isZero, q[i], zero))
-		fr.AssertIsEqual(qiMasked, zero)
+		// qᵢ must be 0 on the collision branch
+		fr.AssertIsEqual(fr.Select(isZero, q[i], zero), zero)
 
-		// direct‑hit accumulator
-		directSel := fr.Reduce(fr.Select(isZero, fr.Reduce(&c.Blob[i]), direct))
-		direct = directSel
-
+		// Track the direct‑hit value safely
+		direct = fr.Reduce(fr.Select(isZero, fr.Reduce(&c.Blob[i]), direct))
 		anyZero = api.Or(anyZero, isZero)
 	}
 
-	// degree‑bound checks
+	// Degree‑bound check  Σ qᵢ·ωᵢ = 0
 	fr.AssertIsEqual(S1, zero)
-	//fr.AssertIsEqual(S2, zero)
 
-	// final value
+	// Collision vs barycentric branch select
+	//
+	//  • if Z = ωᵏ   result must equal blob[k]
+	//  • else        result is already constrained to Y above
+	//
 	final := fr.Reduce(fr.Select(anyZero, direct, &c.Y))
 	fr.AssertIsEqual(final, &c.Y)
-
 	return nil
 }

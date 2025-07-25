@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -18,7 +17,6 @@ import (
 	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -75,9 +73,7 @@ func TestProgressiveElements(t *testing.T) {
 }
 
 func TestCircuitWithActualDataBlob(t *testing.T) {
-	log.Init("debug", "stdout", nil)
 	c := qt.New(t)
-	os.Setenv("GNARK_LOG", "debug") // or use zerolog.SetGlobalLevel
 
 	data, err := os.ReadFile("testdata/blobdata1.txt")
 	if err != nil {
@@ -116,11 +112,7 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 		witness.Blob[i] = emulated.ValueOf[FE](cell)
 	}
 
-	// Test with IsSolved
-
 	assert := test.NewAssert(t)
-	//assert.CheckCircuit(&BlobEvalCircuit{}, test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
-
 	assert.SolvingSucceeded(&BlobEvalCircuit{}, &witness,
 		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 }
@@ -180,12 +172,10 @@ func TestCircuitFullProving(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Create proof
-	now := time.Now()
 	fullWitness, err := frontend.NewWitness(&witness, ecc.BN254.ScalarField())
 	c.Assert(err, qt.IsNil)
 	proof16, err := groth16.Prove(ccs, pk, fullWitness)
 	c.Assert(err, qt.IsNil)
-	fmt.Printf("Proving took %v\n", time.Since(now))
 
 	// Verify proof
 	publicWitness := BlobEvalCircuit{
