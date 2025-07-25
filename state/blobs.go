@@ -1,12 +1,11 @@
 package state
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"math/big"
 	"unsafe"
 
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	kzg4844 "github.com/crate-crypto/go-eth-kzg"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
@@ -28,14 +27,11 @@ type BlobData struct {
 //  3. Votes sequentially until voteID = 0x0 (sentinel)
 //     Each vote: voteID + address + encryptedBallot coordinates
 func (st *State) BuildKZGCommitment(batchNum uint64) (
-	blob *kzg4844.Blob,
-	commit kzg4844.Commitment,
-	proof kzg4844.Proof,
-	z, y *big.Int,
-	versionedHash [32]byte,
+	blobData *blobs.BlobEvalData,
+	proof kzg4844.KZGProof,
 	err error,
 ) {
-	blob = &kzg4844.Blob{}
+	blob := &kzg4844.Blob{}
 	var cells [blobs.FieldElementsPerBlob][blobs.BytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) {
@@ -76,32 +72,25 @@ func (st *State) BuildKZGCommitment(batchNum uint64) (
 		copy(blob[start:end], cells[i][:])
 	}
 
-	// Generate KZG commitment
-	commit, err = blobs.BlobToCommitment(blob)
-	if err != nil {
-		err = fmt.Errorf("blob_to_commitment failed: %w", err)
-		return
-	}
-
 	// Find valid evaluation point z
-	z, err = blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, batchNum, blob)
+	z, err := blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, batchNum, blob)
 	if err != nil {
 		return
 	}
 
 	// Generate KZG proof with the valid z
-	var claim kzg4844.Claim
+	var claim kzg4844.Scalar
 	proof, claim, err = blobs.ComputeProof(blob, z)
 	if err != nil {
 		err = fmt.Errorf("compute kzg4844 proof failed: %w", err)
 		return
 	}
-	// Claim is already in big-endian format
-	y = new(big.Int).SetBytes(claim[:])
 
-	// Create versioned hash using SHA256 (as per kzg4844.CalcBlobHashV1)
-	hasher := sha256.New()
-	versionedHash = kzg4844.CalcBlobHashV1(hasher, &commit)
+	blobData, err = new(blobs.BlobEvalData).Set(blob, &claim, z)
+	if err != nil {
+		err = fmt.Errorf("set blob eval data failed: %w", err)
+		return
+	}
 
 	return
 }

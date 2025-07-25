@@ -1,12 +1,11 @@
 package state
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	kzg4844 "github.com/crate-crypto/go-eth-kzg"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
@@ -209,22 +208,22 @@ func TestBlobStateTransition(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to get original root"))
 
 	// Generate blob with KZG commitment
-	blob, commit, proof, z, y, versionedHash, err := originalState.BuildKZGCommitment(batchNum)
+	blob, proof, err := originalState.BuildKZGCommitment(batchNum)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to build KZG commitment"))
 
 	// Verify blob structure
 	t.Run("VerifyBlobStructure", func(t *testing.T) {
-		verifyBlobStructure(t, blob, votes, originalState)
+		verifyBlobStructure(t, &blob.Blob, votes, originalState)
 	})
 
 	// Verify KZG commitment
 	t.Run("VerifyKZGCommitment", func(t *testing.T) {
-		verifyKZGCommitment(t, blob, commit, proof, z, y, versionedHash)
+		verifyKZGCommitment(t, &blob.Blob, blob.Commitment, proof, blob.Z, blob.Y, blob.VersionedHash)
 	})
 
 	// Create new state and apply blob
 	t.Run("RestoreStateFromBlob", func(t *testing.T) {
-		restoreStateFromBlob(t, blob, processID, censusRoot, *ballotMode, publicKey, originalRoot)
+		restoreStateFromBlob(t, &blob.Blob, processID, censusRoot, *ballotMode, publicKey, originalRoot)
 	})
 }
 
@@ -317,17 +316,16 @@ func verifyBlobStructure(t *testing.T, blob *kzg4844.Blob, votes []*Vote, state 
 	}
 }
 
-func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit kzg4844.Commitment, proof kzg4844.Proof, z, y *big.Int, versionedHash [32]byte) {
+func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit *big.Int, proof kzg4844.KZGProof, z, y *big.Int, versionedHash [32]byte) {
 	c := qt.New(t)
 	// Verify commitment can be regenerated from blob
 	recomputedCommit, err := blobs.BlobToCommitment(blob)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute commitment"))
 
-	c.Assert(commit, qt.Equals, recomputedCommit, qt.Commentf("Commitment mismatch"))
+	c.Assert(string(commit.Bytes()), qt.Equals, string(recomputedCommit[:]), qt.Commentf("Commitment mismatch"))
 
 	// Verify versioned hash format using the same method as the implementation
-	hasher := sha256.New()
-	expectedVersionedHash := kzg4844.CalcBlobHashV1(hasher, &commit)
+	expectedVersionedHash := blobs.CalcBlobHashV1(commit)
 
 	c.Assert(versionedHash, qt.Equals, expectedVersionedHash, qt.Commentf("Versioned hash mismatch"))
 
@@ -336,7 +334,6 @@ func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit kzg4844.Commit
 	c.Assert(z.Cmp(maxZ) <= 0, qt.IsTrue, qt.Commentf("z value exceeds 250-bit range"))
 
 	// Verify KZG proof
-	var claim kzg4844.Claim
 	recomputedProof, claim, err := blobs.ComputeProof(blob, z)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute KZG proof"))
 

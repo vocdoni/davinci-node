@@ -1,11 +1,14 @@
 package blobs
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"math/big"
 
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
+	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/math/emulated"
 	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
@@ -33,6 +36,55 @@ var pBN = bn254.ID.ScalarField()
 
 // BLS12-381 scalar-field modulus (used for KZG)
 var pBLS = bls12381.ID.ScalarField()
+
+// BlobEvalData holds the evaluation data for a blob.
+// It is useful for preparing data for zk-SNARK proving and Ethereum transactions.
+type BlobEvalData struct {
+	ForGnark struct {
+		CommitmentLimbs [3]frontend.Variable
+		Z               emulated.Element[FE]
+		Y               emulated.Element[FE]
+		Blob            [N]emulated.Element[FE]
+	}
+	Commitment    *big.Int
+	Z             *big.Int
+	Y             *big.Int
+	Blob          goethkzg.Blob
+	VersionedHash [32]byte
+}
+
+// Set initializes the BlobEvalData with the given blob, claim, and evaluation point z. It returns itself for chaining.
+func (b *BlobEvalData) Set(blob *goethkzg.Blob, claim *goethkzg.Scalar, z *big.Int) (*BlobEvalData, error) {
+	y := new(big.Int).SetBytes(claim[:])
+	b.ForGnark.Y = emulated.ValueOf[FE](y)
+	b.ForGnark.Z = emulated.ValueOf[FE](z)
+	b.Z = new(big.Int).Set(z)
+	b.Y = new(big.Int).Set(y)
+
+	commitment, err := BlobToCommitment(blob)
+	if err != nil {
+		return nil, err
+	}
+	b.Commitment = new(big.Int).SetBytes(commitment[:])
+	limbs := splitIntoLimbs(commitment[:], 3)
+	b.ForGnark.CommitmentLimbs = [3]frontend.Variable{
+		limbs[0], limbs[1], limbs[2],
+	}
+
+	// Convert blob to gnark circuit format
+	for i := range FieldElementsPerBlob {
+		cell := new(big.Int).SetBytes(blob[i*BytesPerFieldElement : (i+1)*BytesPerFieldElement])
+		b.ForGnark.Blob[i] = emulated.ValueOf[FE](cell)
+	}
+
+	// copy for safety
+	copy(b.Blob[:], blob[:])
+
+	// Calculate versioned hash
+	b.VersionedHash = CalcBlobHashV1(b.Commitment)
+
+	return b, err
+}
 
 // ComputeProof computes the KZG proof for a given blob and evaluation point z.
 func ComputeProof(blob *goethkzg.Blob, z *big.Int) (goethkzg.KZGProof, goethkzg.Scalar, error) {
@@ -167,4 +219,16 @@ func BigIntToScalar(x *big.Int) goethkzg.Scalar {
 	x.FillBytes(be)
 	copy(scalar[:], be[:])
 	return scalar
+}
+
+// CalcBlobHashV1 calculates the 'versioned blob hash' of a commitment.
+func CalcBlobHashV1(commit *big.Int) (vh [32]byte) {
+	if commit == nil {
+		return vh
+	}
+	hasher := sha256.New()
+	hasher.Write(commit.Bytes())
+	hasher.Sum(vh[:0])
+	vh[0] = 0x01 // version
+	return vh
 }
