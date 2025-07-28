@@ -67,8 +67,8 @@ func TestIntegration(t *testing.T) {
 			c.Assert(proofs[i].Siblings, qt.IsNotNil)
 		}
 		// Check the first proof key is the same as the participant key and signer address
-		qt.Assert(t, proofs[0].Key.String(), qt.DeepEquals, participants[0].Key.String())
-		qt.Assert(t, string(proofs[0].Key), qt.DeepEquals, string(signers[0].Address().Bytes()))
+		qt.Assert(t, proofs[0].Address.String(), qt.DeepEquals, participants[0].Key.String())
+		qt.Assert(t, string(proofs[0].Address), qt.DeepEquals, string(signers[0].Address().Bytes()))
 
 		ballotMode = &types.BallotMode{
 			MaxCount:        circuits.MockMaxCount,
