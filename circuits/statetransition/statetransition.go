@@ -26,10 +26,10 @@ type StateTransitionCircuit struct {
 	NumNewVotes    frontend.Variable `gnark:",public"`
 	NumOverwritten frontend.Variable `gnark:",public"`
 	// Private data inputs
-	Process    circuits.Process[frontend.Variable]
-	Votes      [types.VotesPerBatch]Vote
-	Results    Results
-	ReencryptK frontend.Variable
+	Process       circuits.Process[frontend.Variable]
+	Votes         [types.VotesPerBatch]Vote
+	Results       Results
+	ReencryptionK frontend.Variable
 	// Private merkle proofs inputs
 	ProcessProofs ProcessProofs
 	VotesProofs   VotesProofs
@@ -196,12 +196,12 @@ func (circuit StateTransitionCircuit) VerifyAggregatorProof(api frontend.API) {
 	}
 }
 
-// VerifyReencryptedVotes reencrypts the votes using the reencryptK and checks
-// if the result is equal to the reencrypted ballot provided as input. To
-// reencrypt the votes, it adds the encrypted zero ballot to the original
-// ballot. The encrypted zero uses the reencryptK as the randomness.
+// VerifyReencryptedVotes reencrypts the votes using the reencryptionK and
+// checks if the result is equal to the reencrypted ballot provided as input.
+// To reencrypt the votes, it adds the encrypted zero ballot to the original
+// ballot. The encrypted zero uses the reencryptionK as the randomness.
 func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
-	lastK := frontend.Variable(circuit.ReencryptK)
+	lastK := frontend.Variable(circuit.ReencryptionK)
 	for i, v := range circuit.Votes {
 		isValid := cmp.IsLess(api, i, circuit.NumNewVotes)
 		var err error

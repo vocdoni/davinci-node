@@ -231,7 +231,7 @@ func TestCircuitReencryptBallotsProve(t *testing.T) {
 }
 
 func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) *statetransition.StateTransitionCircuit {
-	reencryptK, err := elgamal.RandK()
+	reencryptionK, err := elgamal.RandK()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 	if err := s.StartBatch(); err != nil {
 		t.Fatal(err)
 	}
-	lastK := new(big.Int).Set(reencryptK)
+	lastK := new(big.Int).Set(reencryptionK)
 	for _, v := range votes {
 		v.ReencryptedBallot, lastK, err = v.Ballot.Reencrypt(encryptionKey, lastK)
 		if err != nil {
@@ -255,7 +255,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 		t.Fatal(err)
 	}
 
-	witness, err := statetransition.GenerateWitness(s, new(types.BigInt).SetBigInt(reencryptK))
+	witness, err := statetransition.GenerateWitness(s, new(types.BigInt).SetBigInt(reencryptionK))
 	if err != nil {
 		t.Fatal(err)
 	}

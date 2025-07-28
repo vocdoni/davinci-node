@@ -132,7 +132,10 @@ func newMockVote(pubKey ecc.Point, index, amount int) *state.Vote {
 		panic(fmt.Errorf("error encrypting: %v", err))
 	}
 	return &state.Vote{
-		Ballot:            ballot,
+		// This circuit does not use the ballot, so we can create it empty,
+		// only to prevent nil pointer dereference. The value that matters is
+		// the ReencryptedBallot.
+		Ballot:            elgamal.NewBallot(state.Curve),
 		ReencryptedBallot: ballot,
 		VoteID:            util.RandomBytes(20),
 		Address:           big.NewInt(int64(index + 200)), // mock

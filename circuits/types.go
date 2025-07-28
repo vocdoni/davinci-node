@@ -399,9 +399,9 @@ func (z *Ballot) Encrypt(
 // MiMC hasher to generate a new k for each ciphertext starting from the
 // provided k.
 func (z *Ballot) Reencrypt(api frontend.API, encKey EncryptionKey[frontend.Variable], k frontend.Variable) (*Ballot, frontend.Variable, error) {
-	reencryptK := NextK(api, k)
-	encZero := NewBallot().EncryptedZero(api, encKey, reencryptK)
-	return NewBallot().Add(api, z, encZero), reencryptK, nil
+	reencryptionK := NextK(api, k)
+	encZero := NewBallot().EncryptedZero(api, encKey, reencryptionK)
+	return NewBallot().Add(api, z, encZero), reencryptionK, nil
 }
 
 // AssertDecrypt checks that the ballot can be decrypted with the provided

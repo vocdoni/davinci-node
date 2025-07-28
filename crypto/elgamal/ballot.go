@@ -88,18 +88,18 @@ func (z *Ballot) Encrypt(message [types.FieldsPerBallot]*big.Int, publicKey ecc.
 // if the re-encryption fails. The re-encryption is done by adding the
 // encrypted zero ballot to the original ballot.
 func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, error) {
-	reencryptK, err := mimc7.Hash([]*big.Int{k}, nil)
+	reencryptionK, err := mimc7.Hash([]*big.Int{k}, nil)
 	if err != nil {
 		return nil, nil, err
 	}
 	if z.IsZero() {
-		return z, reencryptK, nil
+		return z, reencryptionK, nil
 	}
-	encZero, err := NewBallot(publicKey).EncryptedZero(publicKey, reencryptK)
+	encZero, err := NewBallot(publicKey).EncryptedZero(publicKey, reencryptionK)
 	if err != nil {
 		return nil, nil, err
 	}
-	return NewBallot(publicKey).Add(z, encZero), reencryptK, nil
+	return NewBallot(publicKey).Add(z, encZero), reencryptionK, nil
 }
 
 // EncryptedZero returns a new ballot with all fields set to the encrypted

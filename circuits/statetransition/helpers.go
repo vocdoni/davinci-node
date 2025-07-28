@@ -19,7 +19,7 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 	witness := &StateTransitionCircuit{}
 
 	// Include the k used for re-encryption
-	witness.ReencryptK = kSeed.MathBigInt()
+	witness.ReencryptionK = kSeed.MathBigInt()
 	// RootHashBefore
 	witness.RootHashBefore = o.RootHashBefore()
 

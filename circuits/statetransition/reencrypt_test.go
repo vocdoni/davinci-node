@@ -19,13 +19,13 @@ type ReencryptedBallotCircuit struct {
 	Originals         [types.FieldsPerBallot]frontend.Variable
 	EncryptionKey     circuits.EncryptionKey[frontend.Variable]
 	DecryptionKey     frontend.Variable
-	ReencryptK        frontend.Variable
+	ReencryptionK     frontend.Variable
 	EncryptedBallot   circuits.Ballot
 	ReencryptedBallot circuits.Ballot
 }
 
 func (c *ReencryptedBallotCircuit) Define(api frontend.API) error {
-	reencryptedBallot, _, _ := c.EncryptedBallot.Reencrypt(api, c.EncryptionKey, c.ReencryptK)
+	reencryptedBallot, _, _ := c.EncryptedBallot.Reencrypt(api, c.EncryptionKey, c.ReencryptionK)
 	c.ReencryptedBallot.AssertIsEqual(api, reencryptedBallot)
 	reencryptedBallot.AssertDecrypt(api, c.DecryptionKey, c.Originals)
 	return nil
@@ -61,7 +61,7 @@ func TestReencryptedBallotCircuit(t *testing.T) {
 		Originals:         originals,
 		EncryptionKey:     encKey.AsVar(),
 		DecryptionKey:     privkey.Scalar().BigInt(),
-		ReencryptK:        reencryptionK,
+		ReencryptionK:     reencryptionK,
 		EncryptedBallot:   *ballot.ToGnark(),
 		ReencryptedBallot: *reencryptedBallot.ToGnark(),
 	}

@@ -75,7 +75,7 @@ func StateTransitionInputsForTest(processId *types.ProcessID, nValidVoters int) 
 		return nil, nil, nil, fmt.Errorf("aggregator verify: %w", err)
 	}
 	// reencrypt the votes
-	reencryptK, err := elgamal.RandK()
+	reencryptionK, err := elgamal.RandK()
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("generate random k: %w", err)
 	}
@@ -90,7 +90,7 @@ func StateTransitionInputsForTest(processId *types.ProcessID, nValidVoters int) 
 	}
 	// iterate over the votes, reencrypting each time the zero ballot with the
 	// correct k value and adding it to the state
-	lastK := new(big.Int).Set(reencryptK)
+	lastK := new(big.Int).Set(reencryptionK)
 	for _, v := range agInputs.Votes {
 		v.ReencryptedBallot, lastK, err = v.Ballot.Reencrypt(encryptionKey, lastK)
 		if err != nil {
@@ -103,7 +103,7 @@ func StateTransitionInputsForTest(processId *types.ProcessID, nValidVoters int) 
 	if err := s.EndBatch(); err != nil {
 		return nil, nil, nil, fmt.Errorf("end batch: %w", err)
 	}
-	witness, err := statetransition.GenerateWitness(s, new(types.BigInt).SetBigInt(reencryptK))
+	witness, err := statetransition.GenerateWitness(s, new(types.BigInt).SetBigInt(reencryptionK))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("generate witness: %w", err)
 	}
