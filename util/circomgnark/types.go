@@ -1,4 +1,4 @@
-package recursion
+package circomgnark
 
 import (
 	bn254fr "github.com/consensys/gnark-crypto/ecc/bn254/fr"

@@ -1,4 +1,4 @@
-package recursion
+package circomgnark
 
 import (
 	"encoding/hex"

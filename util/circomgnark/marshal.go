@@ -1,9 +1,25 @@
-package recursion
+package circomgnark
 
 import (
 	"encoding/json"
 	"fmt"
 )
+
+// UnmarshalCircom function unmarshals a circom proof and public signals from
+// their string representations. It returns the CircomProof and a slice of
+// public signals or an error if the unmarshalling fails.
+func UnmarshalCircom(circomProof, pubSignals string) (*CircomProof, []string, error) {
+	// transform to gnark format
+	proofData, err := UnmarshalCircomProofJSON([]byte(circomProof))
+	if err != nil {
+		return nil, nil, err
+	}
+	pubSignalsData, err := UnmarshalCircomPublicSignalsJSON([]byte(pubSignals))
+	if err != nil {
+		return nil, nil, err
+	}
+	return proofData, pubSignalsData, nil
+}
 
 // UnmarshalCircomProofJSON parses the JSON-encoded proof data into a SnarkJSProof struct.
 func UnmarshalCircomProofJSON(data []byte) (*CircomProof, error) {

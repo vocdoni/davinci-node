@@ -1,4 +1,4 @@
-package recursion
+package circomgnark
 
 import (
 	"fmt"
@@ -21,11 +21,11 @@ func ConvertCircomToGnark(circomVk *CircomVerificationKey,
 	}
 
 	// Convert the proof and verification key to gnark types
-	gnarkProof, err := ConvertProof(circomProof)
+	gnarkProof, err := circomProof.ToGnark()
 	if err != nil {
 		return nil, err
 	}
-	gnarkVk, err := ConvertVerificationKey(circomVk)
+	gnarkVk, err := circomVk.ToGnark()
 	if err != nil {
 		return nil, err
 	}
@@ -51,20 +51,20 @@ func ConvertPublicInputs(publicSignals []string) ([]bn254fr.Element, error) {
 	return publicInputs, nil
 }
 
-// ConvertProof converts a CircomProof into a Gnark-compatible Proof structure.
-func ConvertProof(snarkProof *CircomProof) (*groth16_bn254.Proof, error) {
+// ToGnark converts a CircomProof into a Gnark-compatible Proof structure.
+func (circomProof *CircomProof) ToGnark() (*groth16_bn254.Proof, error) {
 	// Parse PiA (G1 point)
-	arG1, err := stringToG1(snarkProof.PiA)
+	arG1, err := stringToG1(circomProof.PiA)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert PiA: %v", err)
 	}
 	// Parse PiC (G1 point)
-	krsG1, err := stringToG1(snarkProof.PiC)
+	krsG1, err := stringToG1(circomProof.PiC)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert PiC: %v", err)
 	}
 	// Parse PiB (G2 point)
-	bsG2, err := stringToG2(snarkProof.PiB)
+	bsG2, err := stringToG2(circomProof.PiB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert PiB: %v", err)
 	}
@@ -78,34 +78,34 @@ func ConvertProof(snarkProof *CircomProof) (*groth16_bn254.Proof, error) {
 	return gnarkProof, nil
 }
 
-// ConvertVerificationKey converts a CircomVerificationKey into a
-// Gnark-compatible VerifyingKey structure.
-func ConvertVerificationKey(snarkVk *CircomVerificationKey) (*groth16_bn254.VerifyingKey, error) {
+// ToGnark converts a CircomVerificationKey into a Gnark-compatible
+// VerifyingKey structure.
+func (circomVerificationKey *CircomVerificationKey) ToGnark() (*groth16_bn254.VerifyingKey, error) {
 	// Parse vk_alpha_1 (G1 point)
-	alphaG1, err := stringToG1(snarkVk.VkAlpha1)
+	alphaG1, err := stringToG1(circomVerificationKey.VkAlpha1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert VkAlpha1: %v", err)
 	}
 	// Parse vk_beta_2 (G2 point)
-	betaG2, err := stringToG2(snarkVk.VkBeta2)
+	betaG2, err := stringToG2(circomVerificationKey.VkBeta2)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert VkBeta2: %v", err)
 	}
 	// Parse vk_gamma_2 (G2 point)
-	gammaG2, err := stringToG2(snarkVk.VkGamma2)
+	gammaG2, err := stringToG2(circomVerificationKey.VkGamma2)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert VkGamma2: %v", err)
 	}
 	// Parse vk_delta_2 (G2 point)
-	deltaG2, err := stringToG2(snarkVk.VkDelta2)
+	deltaG2, err := stringToG2(circomVerificationKey.VkDelta2)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert VkDelta2: %v", err)
 	}
 
 	// Parse IC (G1 points for public inputs)
-	numIC := len(snarkVk.IC)
+	numIC := len(circomVerificationKey.IC)
 	G1K := make([]curve.G1Affine, numIC)
-	for i, icPoint := range snarkVk.IC {
+	for i, icPoint := range circomVerificationKey.IC {
 		icG1, err := stringToG1(icPoint)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert IC[%d]: %v", i, err)
@@ -133,9 +133,9 @@ func ConvertVerificationKey(snarkVk *CircomVerificationKey) (*groth16_bn254.Veri
 	return vk, nil
 }
 
-// VerifyProof verifies the Gnark proof using the provided verification key and
-// public inputs.
-func VerifyProof(proof *GnarkProof) (bool, error) {
+// Verify verifies the Gnark proof using the provided verification key and
+// public inputs over the BN254 curve.
+func (proof *GnarkProof) Verify() (bool, error) {
 	err := groth16_bn254.Verify(proof.Proof, proof.VerifyingKey, proof.PublicInputs)
 	if err != nil {
 		return false, fmt.Errorf("proof verification failed: %v", err)

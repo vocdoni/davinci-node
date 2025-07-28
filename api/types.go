@@ -3,9 +3,9 @@ package api
 import (
 	"github.com/google/uuid"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
-	"github.com/vocdoni/davinci-node/internal/recursion"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // NewCensus is the response to a new census creation request.
@@ -32,14 +32,14 @@ type CensusParticipants struct {
 // Vote is the struct to represent a vote in the system. It will be provided by
 // the user to cast a vote in a process.
 type Vote struct {
-	ProcessID        types.HexBytes         `json:"processId"`
-	CensusProof      types.CensusProof      `json:"censusProof"`
-	Ballot           *elgamal.Ballot        `json:"ballot"`
-	BallotProof      *recursion.CircomProof `json:"ballotProof"`
-	BallotInputsHash *types.BigInt          `json:"ballotInputsHash"`
-	Address          types.HexBytes         `json:"address"`
-	Signature        types.HexBytes         `json:"signature"`
-	VoteID           types.HexBytes         `json:"voteId"`
+	ProcessID        types.HexBytes           `json:"processId"`
+	CensusProof      types.CensusProof        `json:"censusProof"`
+	Ballot           *elgamal.Ballot          `json:"ballot"`
+	BallotProof      *circomgnark.CircomProof `json:"ballotProof"`
+	BallotInputsHash *types.BigInt            `json:"ballotInputsHash"`
+	Address          types.HexBytes           `json:"address"`
+	Signature        types.HexBytes           `json:"signature"`
+	VoteID           types.HexBytes           `json:"voteId"`
 }
 
 // ContractAddresses holds the smart contract addresses needed by the client

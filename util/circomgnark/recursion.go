@@ -1,4 +1,4 @@
-package recursion
+package circomgnark
 
 import (
 	"fmt"
@@ -12,11 +12,12 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 )
 
-// ConvertCircomToGnarkRecursion converts a Circom proof, verification key, and
-// public signals to the Gnark recursion proof format. If fixedVk is true, the
-// verification key is fixed and must be defined as 'gnark:"-"' in the Circuit.
-func ConvertCircomToGnarkRecursion(circomVk *CircomVerificationKey,
-	circomProof *CircomProof, circomPublicSignals []string, fixedVk bool,
+// ToGnarkRecursion converts a Circom proof, verification key, and public
+// signals to the Gnark recursion proof format. If fixedVk is true, the
+// verification key is fixed and must be defined as 'gnark:"-"' in the
+// Circuit.
+func (circomProof *CircomProof) ToGnarkRecursion(circomVk *CircomVerificationKey,
+	circomPublicSignals []string, fixedVk bool,
 ) (*GnarkRecursionProof, error) {
 	// Convert public signals to field elements
 	publicInputs, err := ConvertPublicInputs(circomPublicSignals)
@@ -24,7 +25,7 @@ func ConvertCircomToGnarkRecursion(circomVk *CircomVerificationKey,
 		return nil, err
 	}
 	// Convert the proof and verification key to gnark types
-	gnarkProof, err := ConvertProof(circomProof)
+	gnarkProof, err := circomProof.ToGnark()
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +44,7 @@ func ConvertCircomToGnarkRecursion(circomVk *CircomVerificationKey,
 	recursionProof.Krs.X.Initialize(ecc.BN254.BaseField())
 	recursionProof.Krs.Y.Initialize(ecc.BN254.BaseField())
 	// Convert the verification key to recursion verification key
-	gnarkVk, err := ConvertVerificationKey(circomVk)
+	gnarkVk, err := circomVk.ToGnark()
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +81,7 @@ func PlaceholdersForRecursion(circomVk *CircomVerificationKey,
 	nPublicInputs int, fixedVk bool,
 ) (*GnarkRecursionPlaceholders, error) {
 	// convert the verification key to recursion verification key
-	gnarkVk, err := ConvertVerificationKey(circomVk)
+	gnarkVk, err := circomVk.ToGnark()
 	if err != nil {
 		return nil, err
 	}

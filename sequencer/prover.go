@@ -14,13 +14,14 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/test"
+	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	teststatetransition "github.com/vocdoni/davinci-node/circuits/test/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
-	"github.com/vocdoni/davinci-node/internal/recursion"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // ProverFunc defines a function type that matches the signature needed for zkSNARK proving
@@ -72,7 +73,8 @@ func NewDebugProver(t *testing.T) ProverFunc {
 		switch assignment.(type) {
 		case *voteverifier.VerifyVoteCircuit:
 			t.Logf("running debug prover for voteverifier")
-			circomPlaceholder, err := recursion.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
+			circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
+				ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
 			if err != nil {
 				t.Fatal(err)
 			}

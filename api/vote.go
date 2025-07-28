@@ -13,12 +13,12 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/internal/recursion"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // voteStatus returns the status of a vote for a given processID and voteID
@@ -179,7 +179,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// convert the circom proof to gnark proof and verify it
-	proof, err := recursion.VerifyAndConvertToRecursion(
+	proof, err := circomgnark.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
 		[]string{vote.BallotInputsHash.String()},
