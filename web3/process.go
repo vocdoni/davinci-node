@@ -394,7 +394,7 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		CensusRoot:   p.Census.CensusRoot[:],
 		MaxVotes:     (*types.BigInt)(p.Census.MaxVotes),
 		CensusURI:    p.Census.CensusURI,
-		CensusOrigin: p.Census.CensusOrigin,
+		CensusOrigin: types.CensusOrigin(p.Census.CensusOrigin),
 	}
 
 	results := make([]*types.BigInt, len(p.Result))
@@ -464,7 +464,7 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	}
 
 	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
-	prp.Census.CensusOrigin = p.Census.CensusOrigin
+	prp.Census.CensusOrigin = uint8(p.Census.CensusOrigin)
 	prp.Census.MaxVotes = p.Census.MaxVotes.MathBigInt()
 	prp.Census.CensusURI = p.Census.CensusURI
 	prp.VoteCount = p.VoteCount.MathBigInt()
