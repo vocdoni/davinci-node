@@ -7,13 +7,15 @@ import (
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
+	tweds "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
-	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
+	emu_tweds "github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 )
 
@@ -180,7 +182,7 @@ func (kt EncryptionKey[T]) SerializeAsTE(api frontend.API) []emulated.Element[sw
 	if !ok {
 		panic("EncryptionKey type assertion failed")
 	}
-	kTE0, kTE1, err := twistededwards.FromEmulatedRTEtoTE(api, k.PubKey[0], k.PubKey[1])
+	kTE0, kTE1, err := emu_tweds.FromEmulatedRTEtoTE(api, k.PubKey[0], k.PubKey[1])
 	if err != nil {
 		FrontendError(api, "failed to convert encryption key to RTE", err)
 	}
@@ -364,6 +366,68 @@ func NewBallot() *Ballot {
 	return z
 }
 
+// Encrypt encrypts the ballot using the provided encryption key and messages.
+// It uses the MiMC hasher to generate a new k for each ciphertext starting
+// from the provided k.
+func (z *Ballot) Encrypt(
+	api frontend.API,
+	messages [types.FieldsPerBallot]frontend.Variable,
+	encKey EncryptionKey[frontend.Variable],
+	k frontend.Variable,
+) *Ballot {
+	// get the twisted edwards point from the encryption key
+	pubKey := tweds.Point{
+		X: encKey.PubKey[0],
+		Y: encKey.PubKey[1],
+	}
+	for i := range z {
+		// hash the last k to get a new one for the next ciphertext
+		k = NextK(api, k)
+		enc, err := z[i].Encrypt(api, pubKey, k, messages[i])
+		if err != nil {
+			FrontendError(api, "failed to encrypt ballot", err)
+			return nil
+		}
+		z[i] = *enc
+	}
+	return z
+}
+
+// Reencrypt re-encrypts the ballot using the provided encryption key and the
+// provided k. To re-encrypt the ballot, it uses the encrypted zero point with
+// the inputs provided and them adds it to the original ballot. It uses the
+// MiMC hasher to generate a new k for each ciphertext starting from the
+// provided k.
+func (z *Ballot) Reencrypt(api frontend.API, encKey EncryptionKey[frontend.Variable], k frontend.Variable) (*Ballot, frontend.Variable, error) {
+	reencryptionK := NextK(api, k)
+	encZero := NewBallot().EncryptedZero(api, encKey, reencryptionK)
+	return NewBallot().Add(api, z, encZero), reencryptionK, nil
+}
+
+// AssertDecrypt checks that the ballot can be decrypted with the provided
+// private key and the original values. It uses the elgamal.Ciphertext's
+// AssertDecrypt method for each ciphertext in the ballot.
+func (z *Ballot) AssertDecrypt(api frontend.API, privKey frontend.Variable, originals [types.FieldsPerBallot]frontend.Variable) {
+	for i := range z {
+		if err := z[i].AssertDecrypt(api, privKey, originals[i]); err != nil {
+			FrontendError(api, "failed to assert decrypt", err)
+		}
+	}
+}
+
+// EncryptedZero returns a new ballot with all fields set to the encrypted
+// zero point using the provided encryption key and k.
+func (b *Ballot) EncryptedZero(api frontend.API, encKey EncryptionKey[frontend.Variable], k frontend.Variable) *Ballot {
+	pubKey := tweds.Point{
+		X: encKey.PubKey[0],
+		Y: encKey.PubKey[1],
+	}
+	for i := range b {
+		b[i] = elgamal.EncryptedZero(api, pubKey, k)
+	}
+	return b
+}
+
 // Add sets z to the sum x+y and returns z.
 //
 // Panics if twistededwards curve init fails.
@@ -376,9 +440,15 @@ func (z *Ballot) Add(api frontend.API, x, y *Ballot) *Ballot {
 
 // AssertIsEqual fails if any of the fields differ between z and x
 func (z *Ballot) AssertIsEqual(api frontend.API, x *Ballot) {
+	api.AssertIsEqual(z.IsEqual(api, x), 1)
+}
+
+func (z *Ballot) IsEqual(api frontend.API, x *Ballot) frontend.Variable {
+	res := frontend.Variable(1)
 	for i := range z {
-		z[i].AssertIsEqual(api, &x[i])
+		res = api.And(res, z[i].IsEqual(api, &x[i]))
 	}
+	return res
 }
 
 // Select if b is true, sets z = i1, else z = i2, and returns z
@@ -515,11 +585,11 @@ func (zt *EmulatedBallot[F]) SerializeAsTE(api frontend.API) []emulated.Element[
 	}
 	list := []emulated.Element[sw_bn254.ScalarField]{}
 	for _, zi := range z {
-		c1xTE, c1yTE, err := twistededwards.FromEmulatedRTEtoTE(api, zi.C1.X, zi.C1.Y)
+		c1xTE, c1yTE, err := emu_tweds.FromEmulatedRTEtoTE(api, zi.C1.X, zi.C1.Y)
 		if err != nil {
 			FrontendError(api, "failed to convert coords to RTE", err)
 		}
-		c2xTE, c2yTE, err := twistededwards.FromEmulatedRTEtoTE(api, zi.C2.X, zi.C2.Y)
+		c2xTE, c2yTE, err := emu_tweds.FromEmulatedRTEtoTE(api, zi.C2.X, zi.C2.Y)
 		if err != nil {
 			FrontendError(api, "failed to convert coords to RTE", err)
 		}
@@ -531,6 +601,24 @@ func (zt *EmulatedBallot[F]) SerializeAsTE(api frontend.API) []emulated.Element[
 		)
 	}
 	return list
+}
+
+// NextK uses the MiMC hasher to generate a new k starting from the provided k.
+//
+// TODO: this should really be renamed MiMC7Hash, a generic func that
+// uses native or emulated mimc7.NewMiMC depending on the args passed,
+// and thus can be reused in all circuits
+func NextK(api frontend.API, k frontend.Variable) frontend.Variable {
+	kHasher, err := mimc7.NewMiMC(api)
+	if err != nil {
+		FrontendError(api, "failed to create MiMC hasher", err)
+		return nil
+	}
+	if err := kHasher.Write(k); err != nil {
+		FrontendError(api, "failed to write k to MiMC hasher", err)
+		return nil
+	}
+	return kHasher.Sum()
 }
 
 func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.Element[sw_bn254.ScalarField] {
