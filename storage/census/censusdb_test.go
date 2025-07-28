@@ -342,7 +342,7 @@ func TestProofByRootValid(t *testing.T) {
 	proof, err := censusDB.ProofByRoot(newRoot, leafKey)
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, proof, qt.Not(qt.IsNil))
-	qt.Assert(t, string(proof.Key), qt.DeepEquals, string(leafKey))
+	qt.Assert(t, string(proof.Address), qt.DeepEquals, string(leafKey))
 	qt.Assert(t, string(proof.Value), qt.DeepEquals, string(value))
 }
 
