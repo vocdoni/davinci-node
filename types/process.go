@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -227,27 +228,77 @@ type EncryptionKey struct {
 	Y *BigInt `json:"y" cbor:"1,keyasint,omitempty"`
 }
 
+// CensusOrigin represents the origin of the census used in a voting process.
+type CensusOrigin uint8
+
+const (
+	CensusOriginUnknown CensusOrigin = iota
+	CensusOriginMerkleTree
+	CensusOriginCSPEdDSABLS12377
+
+	CensusOriginNameUnknown          = "unknown"
+	CensusOriginNameMerkleTree       = "merkle_tree"
+	CensusOriginNameCSPEdDSABLS12377 = "csp_eddsa_bls12377"
+)
+
+// Valid checks if the CensusOrigin is a valid value.
+func (co CensusOrigin) Valid() bool {
+	switch co {
+	case CensusOriginMerkleTree, CensusOriginCSPEdDSABLS12377:
+		return true
+	default:
+		return false
+	}
+}
+
+// String returns a string representation of the CensusOrigin.
+func (co CensusOrigin) String() string {
+	switch co {
+	case CensusOriginMerkleTree:
+		return CensusOriginNameMerkleTree
+	case CensusOriginCSPEdDSABLS12377:
+		return CensusOriginNameCSPEdDSABLS12377
+	default:
+		return CensusOriginNameUnknown
+	}
+}
+
+// BigInt converts the CensusOrigin to a *types.BigInt representation.
+func (co CensusOrigin) BigInt() *BigInt {
+	if !co.Valid() {
+		return nil
+	}
+	return (*BigInt)(new(big.Int).SetUint64(uint64(co)))
+}
+
 type Census struct {
-	CensusOrigin uint8    `json:"censusOrigin" cbor:"0,keyasint,omitempty"`
-	MaxVotes     *BigInt  `json:"maxVotes"     cbor:"1,keyasint,omitempty"`
-	CensusRoot   HexBytes `json:"censusRoot"   cbor:"2,keyasint,omitempty"`
-	CensusURI    string   `json:"censusURI"    cbor:"3,keyasint,omitempty"`
+	CensusOrigin CensusOrigin `json:"censusOrigin" cbor:"0,keyasint,omitempty"`
+	MaxVotes     *BigInt      `json:"maxVotes"     cbor:"1,keyasint,omitempty"`
+	CensusRoot   HexBytes     `json:"censusRoot"   cbor:"2,keyasint,omitempty"`
+	CensusURI    string       `json:"censusURI"    cbor:"3,keyasint,omitempty"`
 }
 
 // CensusProof is the struct to represent a proof of inclusion in the census
 // merkle tree. For example, it will be provided by the user to verify that he
 // or she can vote in the process.
 type CensusProof struct {
-	Root     HexBytes `json:"root"`
-	Key      HexBytes `json:"key"`
-	Value    HexBytes `json:"value"`
-	Siblings HexBytes `json:"siblings"`
-	Weight   *BigInt  `json:"weight"`
+	// Generic fields
+	CensusOrigin CensusOrigin `json:"censusOrigin"`
+	Root         HexBytes     `json:"root"`
+	Address      HexBytes     `json:"address"`
+	Weight       *BigInt      `json:"weight,omitempty"`
+	// Merkletree related fields
+	Siblings HexBytes `json:"siblings,omitempty"`
+	Value    HexBytes `json:"value,omitempty"`
+	// CSP related fields
+	ProcessID HexBytes `json:"processId,omitempty"`
+	PublicKey HexBytes `json:"publicKey,omitempty"`
+	Signature HexBytes `json:"signature,omitempty"`
 }
 
 // Valid checks that the CensusProof is well-formed
 func (cp *CensusProof) Valid() bool {
-	return cp != nil && cp.Root != nil && cp.Key != nil && cp.Value != nil &&
+	return cp != nil && cp.Root != nil && cp.Address != nil && cp.Value != nil &&
 		cp.Siblings != nil && cp.Weight != nil
 }
 
@@ -277,10 +328,11 @@ func (o *OrganizationInfo) String() string {
 
 // ProcessSetup is the struct to create a new voting process
 type ProcessSetup struct {
-	ProcessID  HexBytes    `json:"processId"`
-	CensusRoot HexBytes    `json:"censusRoot"`
-	BallotMode *BallotMode `json:"ballotMode"`
-	Signature  HexBytes    `json:"signature"`
+	ProcessID    HexBytes     `json:"processId"`
+	CensusOrigin CensusOrigin `json:"censusOrigin"`
+	CensusRoot   HexBytes     `json:"censusRoot"`
+	BallotMode   *BallotMode  `json:"ballotMode"`
+	Signature    HexBytes     `json:"signature"`
 }
 
 // ProcessSetupResponse represents the response of a voting process
