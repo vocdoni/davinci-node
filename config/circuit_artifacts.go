@@ -28,41 +28,41 @@ var (
 	// VoteVerifierCircuitURL is the URL for the vote verifier circuit
 	VoteVerifierCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, VoteVerifierCircuitHash)
 	// VoteVerifierCircuitHash is the hash of the vote verifier circuit
-	VoteVerifierCircuitHash = "9b8ea770bf95048aa21309b6685470aec5185f01b59d078ac262a138ca79de86"
+	VoteVerifierCircuitHash = "362c302d1469141a5f652b6fc53927a39a8f995e5c852ddc2b1cfe4c6f9b0943"
 	// VoteVerifierProvingKeyURL is the URL for the vote verifier proving key
 	VoteVerifierProvingKeyURL = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, VoteVerifierProvingKeyHash)
 	// VoteVerifierProvingKeyHash is the hash of the vote verifier proving key
-	VoteVerifierProvingKeyHash = "1ab68fbd35f32ffca010d342ccedabd52112bc09af8776d80cf6c8e4a25e51ed"
+	VoteVerifierProvingKeyHash = "79407fc1436bcbe125a9b8b755817ae0f12c61745faf1e9ac608ba442af0c8a8"
 	// VoteVerifierVerificationKeyURL is the URL for the vote verifier verification key
 	VoteVerifierVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, VoteVerifierVerificationKeyHash)
 	// VoteVerifierVerificationKeyHash is the hash of the vote verifier verification key
-	VoteVerifierVerificationKeyHash = "c4966dc078c07310f57ec55a9d7aedeea0a7b7e25a0160e1b72852163b678e2a"
+	VoteVerifierVerificationKeyHash = "31349a5d88b0973a37007bfda04e677d3e9e3c0053dac33d15b38f4b8d5dd14a"
 
 	// AggregatorCircuitURL is the URL for the aggregator circuit
 	AggregatorCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorCircuitHash)
 	// AggregatorCircuitHash is the hash of the aggregator circuit
-	AggregatorCircuitHash = "8b4b58dc59a301b12e6dcd29d59d870b401bf014176d882b7e90331015193b98"
+	AggregatorCircuitHash = "a39e36a58058be21616a023a29d51b8e3528b1ae1950317e0dcbb4ce75235990"
 	// AggregatorProvingKeyURL is the URL for the aggregator proving key
 	AggregatorProvingKeyURL = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorProvingKeyHash)
 	// AggregatorProvingKeyHash is the hash of the aggregator proving key
-	AggregatorProvingKeyHash = "1a7d83d93cae4b910aa7c0b1d23d4b75022500dcd85e57c4c31dd6b7b27a70c3"
+	AggregatorProvingKeyHash = "c21b81859d92f0ce720419a5ddfb955f5899f708ea19f546263716790fd03c93"
 	// AggregatorVerificationKeyURL is the URL for the aggregator verification key
 	AggregatorVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, AggregatorVerificationKeyHash)
 	// AggregatorVerificationKeyHash is the hash of the aggregator verification key
-	AggregatorVerificationKeyHash = "6fb74566fc2000be74747f87726bc0b1d6f250c5c4d3357ba486055c69433de2"
+	AggregatorVerificationKeyHash = "4bb7a8e166c172a513e5a80feb3d45d19a3a1ac274292458764989259b1f1fd4"
 
 	// StateTransitionCircuitURL is the URL for the statetransition circuit
 	StateTransitionCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, StateTransitionCircuitHash)
 	// StateTransitionCircuitHash is the hash of the statetransition circuit
-	StateTransitionCircuitHash = "cd47301a8ec04d49c96b90827ebdb55177d5b52ec614c45b2807567da6748fed"
+	StateTransitionCircuitHash = "f6674da04ac531a3afd17382245ba37e36824fd553eba33ea45397f539163ac9"
 	// StateTransitionProvingKeyURL is the URL for the statetransition proving key
 	StateTransitionProvingKeyURL = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, StateTransitionProvingKeyHash)
 	// StateTransitionProvingKeyHash is the hash of the statetransition proving key
-	StateTransitionProvingKeyHash = "ad95b77d9edc9c33b07f15c87297c81d2f18eccdbe2c73cd0f091685ef708c00"
+	StateTransitionProvingKeyHash = "f758bb66af633cf1a109c6ba72cf00979ff7d3a7171afeba15f06d3533c13823"
 	// StateTransitionVerificationKeyURL is the URL for the statetransition verification key
 	StateTransitionVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, StateTransitionVerificationKeyHash)
 	// StateTransitionVerificationKeyHash is the hash of the statetransition verification key
-	StateTransitionVerificationKeyHash = "2ab7d6da380873e6a237c3972a2eea06617c3ff6b7c34142a1a945460164806b"
+	StateTransitionVerificationKeyHash = "cc0e7bf965af0cb999e0c35535039997353815dc8522ff0e0a14d71ce90d83a4"
 
 	// ResultsVerifierCircuitURL is the URL for the statetransition circuit
 	ResultsVerifierCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, ResultsVerifierCircuitHash)
@@ -71,11 +71,11 @@ var (
 	// ResultsVerifierProvingKeyURL is the URL for the resultsverifier proving key
 	ResultsVerifierProvingKeyURL = fmt.Sprintf("%s/%s/%s.pk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, ResultsVerifierProvingKeyHash)
 	// ResultsVerifierProvingKeyHash is the hash of the resultsverifier proving key
-	ResultsVerifierProvingKeyHash = "2fc336dfc759340ec6e493bc83736b5996560a6d8a99b0b73c01ff02680df44a"
+	ResultsVerifierProvingKeyHash = "2db338c37d84dc28f83749d506b6d618b4d7865de158725346bfe2970d40c28b"
 	// ResultsVerifierVerificationKeyURL is the URL for the resultsverifier verification key
 	ResultsVerifierVerificationKeyURL = fmt.Sprintf("%s/%s/%s.vk", DefaultArtifactsBaseURL, DefaultArtifactsRelease, ResultsVerifierVerificationKeyHash)
 	// ResultsVerifierVerificationKeyHash is the hash of the resultsverifier verification key
-	ResultsVerifierVerificationKeyHash = "1717db6701e83292b4e371115a26d8d381cdfd302baee676b0bc645b763edcd7"
+	ResultsVerifierVerificationKeyHash = "8575116877df30d6890db04b73a27a40ecec2d533333442858346b6e6165e489"
 
 	// BallotProofWasmHelperURL is the default URL for the WASM helper
 	BallotProofWasmHelperURL = fmt.Sprintf("%s/%s/ballot_proof_inputs.wasm", DefaultArtifactsBaseURL, DefaultArtifactsRelease)
