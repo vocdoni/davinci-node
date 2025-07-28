@@ -32,6 +32,7 @@ import (
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/workers"
 	"golang.org/x/mod/modfile"
@@ -504,7 +505,7 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
 	c.Assert(err, qt.IsNil)
 	// convert the proof to gnark format
-	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
+	circomProof, _, err := circomgnark.UnmarshalCircom(rawProof, pubInputs)
 	c.Assert(err, qt.IsNil)
 	// sign the hash of the circuit inputs
 	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
@@ -571,7 +572,7 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
 	c.Assert(err, qt.IsNil)
 	// convert the proof to gnark format
-	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
+	circomProof, _, err := circomgnark.UnmarshalCircom(rawProof, pubInputs)
 	c.Assert(err, qt.IsNil)
 	// sign the hash of the circuit inputs
 	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)

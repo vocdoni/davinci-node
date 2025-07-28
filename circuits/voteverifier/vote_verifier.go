@@ -198,7 +198,7 @@ func (c VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 		circuits.FrontendError(api, "failed to convert hash to emulated element", err)
 	}
 	// check the signature of the circom inputs hash provided as Secp256k1 emulated element
-	validSign := c.PublicKey.SignIsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
+	validSign := c.PublicKey.IsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
 	// if the inputs are valid, ensure that thre result of the verification
 	// is 1, otherwise, the result does not matter so force it to be 1
 	api.AssertIsEqual(api.Select(c.IsValid, validSign, 1), 1)

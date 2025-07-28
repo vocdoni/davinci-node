@@ -7,6 +7,10 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+// BallotProofNPubInputs is the number of public inputs for the ballot proof
+// circom circuit.
+const BallotProofNPubInputs = 1
+
 // CircomInputs returns all values that are hashed to produce the public input
 // needed to verify CircomProof, in a predefined order:
 //

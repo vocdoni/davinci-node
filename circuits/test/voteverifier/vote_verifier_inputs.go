@@ -20,6 +20,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 	primitivestest "github.com/vocdoni/gnark-crypto-primitives/testutil"
 )
 
@@ -53,7 +54,8 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 ) {
 	now := time.Now()
 	log.Println("voteVerifier inputs generation start")
-	circomPlaceholder, err := circuits.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
+	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
+		ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
 	if err != nil {
 		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 	}
@@ -125,7 +127,7 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 		}
 		inputsHashes = append(inputsHashes, inputsHash)
 		// compose circuit placeholders
-		recursiveProof, err := circuits.Circom2GnarkProofForRecursion(ballottest.TestCircomVerificationKey, voterProof.Proof, voterProof.PubInputs)
+		recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballottest.TestCircomVerificationKey, voterProof.Proof, voterProof.PubInputs)
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 		}
