@@ -392,9 +392,10 @@ func TestGetTotalPendingBallots(t *testing.T) {
 				MinTotalCost: new(types.BigInt).SetUint64(0),
 			},
 			Census: &types.Census{
-				CensusRoot: make([]byte, 32),
-				MaxVotes:   new(types.BigInt).SetUint64(1000),
-				CensusURI:  "http://example.com/census",
+				CensusOrigin: types.CensusOriginMerkleTree,
+				CensusRoot:   make([]byte, 32),
+				MaxVotes:     new(types.BigInt).SetUint64(1000),
+				CensusURI:    "http://example.com/census",
 			},
 		},
 		{
@@ -413,9 +414,10 @@ func TestGetTotalPendingBallots(t *testing.T) {
 				MinTotalCost: new(types.BigInt).SetUint64(0),
 			},
 			Census: &types.Census{
-				CensusRoot: make([]byte, 32),
-				MaxVotes:   new(types.BigInt).SetUint64(1000),
-				CensusURI:  "http://example.com/census",
+				CensusOrigin: types.CensusOriginMerkleTree,
+				CensusRoot:   make([]byte, 32),
+				MaxVotes:     new(types.BigInt).SetUint64(1000),
+				CensusURI:    "http://example.com/census",
 			},
 		},
 		{
@@ -434,9 +436,10 @@ func TestGetTotalPendingBallots(t *testing.T) {
 				MinTotalCost: new(types.BigInt).SetUint64(0),
 			},
 			Census: &types.Census{
-				CensusRoot: make([]byte, 32),
-				MaxVotes:   new(types.BigInt).SetUint64(1000),
-				CensusURI:  "http://example.com/census",
+				CensusOrigin: types.CensusOriginMerkleTree,
+				CensusRoot:   make([]byte, 32),
+				MaxVotes:     new(types.BigInt).SetUint64(1000),
+				CensusURI:    "http://example.com/census",
 			},
 		},
 	}
