@@ -27,8 +27,9 @@
 package blobs
 
 import (
+	"math/big"
+
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/math/emulated"
 )
 
@@ -40,17 +41,23 @@ const (
 // FE is type modulus for BLS12‑381 Fr.
 type FE = emulated.BLS12381Fr
 
-// BlobEvalCircuit defines the required fields to validate a Blob construction.
-type BlobEvalCircuit struct {
-	CommitmentLimbs [3]frontend.Variable `gnark:",public"`
-	Z               emulated.Element[FE] `gnark:",public"`
-	Y               emulated.Element[FE] `gnark:",public"`
-	Blob            [N]emulated.Element[FE]
-}
-
-func (c *BlobEvalCircuit) Define(api frontend.API) error {
-	std.RegisterHints()
-
+// VerifyBlobEvaluation performs the blob evaluation verification logic.
+// This function can be imported and used by any other circuit that needs
+// to verify blob evaluations.
+//
+// Parameters:
+//   - api: The frontend API for circuit operations
+//   - z: The evaluation point Z
+//   - y: The claimed evaluation result Y
+//   - blob: The blob data (4096 elements)
+//
+// Returns an error if the verification constraints cannot be satisfied.
+func VerifyBlobEvaluation(
+	api frontend.API,
+	z *emulated.Element[FE],
+	y *emulated.Element[FE],
+	blob [N]emulated.Element[FE],
+) error {
 	// Field helpers
 	fr, err := emulated.NewField[FE](api)
 	if err != nil {
@@ -61,9 +68,9 @@ func (c *BlobEvalCircuit) Define(api frontend.API) error {
 
 	// Hint input packing
 	in := make([]*emulated.Element[FE], 2+2*N) // [Y | Z | blob | ω]
-	in[0], in[1] = &c.Y, &c.Z
+	in[0], in[1] = y, z
 	for i := 0; i < N; i++ {
-		in[2+i] = &c.Blob[i]
+		in[2+i] = &blob[i]
 		in[2+N+i] = omegaAt(i)
 	}
 
@@ -84,12 +91,12 @@ func (c *BlobEvalCircuit) Define(api frontend.API) error {
 
 	for i := 0; i < N; i++ {
 		ωi := omegaAt(i)
-		denR := fr.Reduce(fr.Sub(ωi, &c.Z)) // ωᵢ − Z
-		isZero := fr.IsZero(denR)           // boolean
+		denR := fr.Reduce(fr.Sub(ωi, z)) // ωᵢ − Z
+		isZero := fr.IsZero(denR)        // boolean
 
-		// (dᵢ − Y) = qᵢ·(ωᵢ − Z)
+		// (dᵢ − Y) = qᵢ·(ωᵢ − Z)
 		lhs := fr.Reduce(fr.Select(isZero, zero,
-			fr.Reduce(fr.Sub(&c.Blob[i], &c.Y))))
+			fr.Reduce(fr.Sub(&blob[i], y))))
 		rhs := fr.Reduce(fr.Select(isZero, zero,
 			fr.Reduce(fr.Mul(q[i], denR))))
 		fr.AssertIsEqual(lhs, rhs)
@@ -98,7 +105,7 @@ func (c *BlobEvalCircuit) Define(api frontend.API) error {
 		fr.AssertIsEqual(fr.Select(isZero, q[i], zero), zero)
 
 		// Track the direct‑hit value safely
-		direct = fr.Reduce(fr.Select(isZero, fr.Reduce(&c.Blob[i]), direct))
+		direct = fr.Reduce(fr.Select(isZero, fr.Reduce(&blob[i]), direct))
 		anyZero = api.Or(anyZero, isZero)
 	}
 
@@ -110,7 +117,41 @@ func (c *BlobEvalCircuit) Define(api frontend.API) error {
 	//  • if Z = ωᵏ   result must equal blob[k]
 	//  • else        result is already constrained to Y above
 	//
-	final := fr.Reduce(fr.Select(anyZero, direct, &c.Y))
-	fr.AssertIsEqual(final, &c.Y)
+	final := fr.Reduce(fr.Select(anyZero, direct, y))
+	fr.AssertIsEqual(final, y)
 	return nil
+}
+
+// VerifyBlobEvaluationNative is a  native‑input wrapper,
+// cheap equality check, then delegate.
+func VerifyBlobEvaluationNative(
+	api frontend.API,
+	z frontend.Variable, // native BN254 evaluation point
+	zEmu *emulated.Element[FE], // emulated BLS12-381 evaluation point
+	y *emulated.Element[FE], // emulated BLS12-381 evaluation result
+	blob [N]frontend.Variable, // BN254 native variables
+	blobEmu [N]emulated.Element[FE], // emulated BLS12-381 variables
+) error {
+	// native‑vs‑emulated equality checks
+	for i := 0; i < N; i++ {
+		api.AssertIsEqual(emulatedToNative(api, &blobEmu[i]), blob[i])
+	}
+	api.AssertIsEqual(emulatedToNative(api, zEmu), z)
+
+	// call original emulated verifier
+	return VerifyBlobEvaluation(api, zEmu, y, blobEmu)
+}
+
+func emulatedToNative(api frontend.API, e *emulated.Element[FE]) frontend.Variable {
+	nbBits := FE{}.BitsPerLimb() // 32 in gnark params
+	acc := frontend.Variable(0)
+	pow := big.NewInt(1)
+
+	for i, limb := range e.Limbs {
+		if i != 0 {
+			pow = new(big.Int).Lsh(big.NewInt(1), nbBits*uint(i))
+		}
+		acc = api.Add(acc, api.Mul(limb, pow))
+	}
+	return acc
 }

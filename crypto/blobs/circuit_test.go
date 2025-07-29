@@ -17,8 +17,37 @@ import (
 	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/util"
 )
+
+// blobEvalCircuit defines the required fields to validate a Blob construction.
+// This circuit is for test purposes.
+type blobEvalCircuit struct {
+	Z    emulated.Element[FE] `gnark:",public"`
+	Y    emulated.Element[FE] `gnark:",public"`
+	Blob [N]emulated.Element[FE]
+}
+
+func (c *blobEvalCircuit) Define(api frontend.API) error {
+	std.RegisterHints()
+	return VerifyBlobEvaluation(api, &c.Z, &c.Y, c.Blob)
+}
+
+// blobEvalCircuitNative defines the required fields to validate a Blob construction.
+// This circuit is for test purposes.
+type blobEvalCircuitNative struct {
+	Z       frontend.Variable       `gnark:",public"`
+	ZEmu    emulated.Element[FE]    `gnark:",public"` // Emulated version for consistency
+	Y       emulated.Element[FE]    `gnark:",public"`
+	Blob    [N]frontend.Variable    // native BN254 variables
+	BlobEmu [N]emulated.Element[FE] // emulated (witness)
+}
+
+func (c *blobEvalCircuitNative) Define(api frontend.API) error {
+	std.RegisterHints()
+	return VerifyBlobEvaluationNative(api, c.Z, &c.ZEmu, &c.Y, c.Blob, c.BlobEmu)
+}
 
 // TestProgressiveElements tests the circuit with increasing number of elements
 func TestProgressiveElements(t *testing.T) {
@@ -36,10 +65,6 @@ func TestProgressiveElements(t *testing.T) {
 			big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
 		}
 
-		// Compute commitment
-		commitmentBytes, err := BlobToCommitment(blob)
-		c.Assert(err, qt.IsNil)
-
 		// Compute evaluation point
 		processID := util.RandomBytes(31)
 		rootHashBefore := util.RandomBytes(31)
@@ -52,11 +77,9 @@ func TestProgressiveElements(t *testing.T) {
 		y := new(big.Int).SetBytes(claim[:])
 
 		// Create witness
-		commitmentLimbs := splitIntoLimbs(commitmentBytes[:], 3)
-		witness := BlobEvalCircuit{
-			CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
-			Z:               emulated.ValueOf[FE](z),
-			Y:               emulated.ValueOf[FE](y),
+		witness := blobEvalCircuit{
+			Z: emulated.ValueOf[FE](z),
+			Y: emulated.ValueOf[FE](y),
 		}
 
 		// Fill blob data
@@ -67,7 +90,7 @@ func TestProgressiveElements(t *testing.T) {
 
 		// Test with IsSolved
 		assert := test.NewAssert(t)
-		assert.SolvingSucceeded(&BlobEvalCircuit{}, &witness,
+		assert.SolvingSucceeded(&blobEvalCircuit{}, &witness,
 			test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 	}
 }
@@ -83,10 +106,6 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 	blob, err := hexStrToBlob(string(data))
 	c.Assert(err, qt.IsNil)
 
-	// Compute commitment
-	commitmentBytes, err := BlobToCommitment(blob)
-	c.Assert(err, qt.IsNil)
-
 	// Compute evaluation point
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
@@ -99,11 +118,9 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 	y := new(big.Int).SetBytes(claim[:])
 
 	// Create witness
-	commitmentLimbs := splitIntoLimbs(commitmentBytes[:], 3)
-	witness := BlobEvalCircuit{
-		CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
-		Z:               emulated.ValueOf[FE](z),
-		Y:               emulated.ValueOf[FE](y),
+	witness := blobEvalCircuit{
+		Z: emulated.ValueOf[FE](z),
+		Y: emulated.ValueOf[FE](y),
 	}
 
 	// Fill blob data
@@ -113,8 +130,59 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 	}
 
 	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(&BlobEvalCircuit{}, &witness,
+	assert.SolvingSucceeded(&blobEvalCircuit{}, &witness,
 		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
+}
+
+// TestProgressiveElementsNative tests the circuit with increasing number of elements
+func TestProgressiveElementsNative(t *testing.T) {
+	std.RegisterHints()
+	c := qt.New(t)
+
+	testCounts := []int{10}
+
+	for _, count := range testCounts {
+		fmt.Printf("\n=== Testing with %d elements ===\n", count)
+
+		// Create blob with 'count' elements
+		blob := &goethkzg.Blob{}
+		for i := 0; i < count; i++ {
+			val := big.NewInt(int64(i + 1))
+			valHash, err := poseidon.MultiPoseidon(val) // Ensure the cell is processed by Poseidon
+			c.Assert(err, qt.IsNil)
+			valHash.FillBytes(blob[i*32 : (i+1)*32])
+		}
+
+		// Compute evaluation point
+		processID := util.RandomBytes(31)
+		rootHashBefore := util.RandomBytes(31)
+		z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+		c.Assert(err, qt.IsNil)
+
+		// Compute KZG proof
+		_, claim, err := ComputeProof(blob, z)
+		c.Assert(err, qt.IsNil)
+		y := new(big.Int).SetBytes(claim[:])
+
+		// Create witness
+		witness := blobEvalCircuitNative{
+			Z:    z,
+			ZEmu: emulated.ValueOf[FE](z),
+			Y:    emulated.ValueOf[FE](y),
+		}
+
+		// Fill blob data
+		for i := range 4096 {
+			cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
+			witness.Blob[i] = cell
+			witness.BlobEmu[i] = emulated.ValueOf[FE](cell)
+		}
+
+		// Test with IsSolved
+		assert := test.NewAssert(t)
+		assert.SolvingSucceeded(&blobEvalCircuitNative{}, &witness,
+			test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
+	}
 }
 
 func TestCircuitFullProving(t *testing.T) {
@@ -128,12 +196,10 @@ func TestCircuitFullProving(t *testing.T) {
 	blob := &goethkzg.Blob{}
 	for i := range 50 {
 		val := big.NewInt(int64(i + 1))
-		val.FillBytes(blob[i*32 : (i+1)*32])
+		valHash, err := poseidon.MultiPoseidon(val) // Ensure the cell is processed by Poseidon
+		c.Assert(err, qt.IsNil)
+		valHash.FillBytes(blob[i*32 : (i+1)*32])
 	}
-
-	// Compute commitment and proof
-	commitmentBytes, err := BlobToCommitment(blob)
-	c.Assert(err, qt.IsNil)
 
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
@@ -145,24 +211,22 @@ func TestCircuitFullProving(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	y := new(big.Int).SetBytes(claim[:])
 
-	// Prepare witness with commitment limbs
-	commitmentLimbs := splitIntoLimbs(commitmentBytes[:], 3)
-
 	// Create witness
-	witness := BlobEvalCircuit{
-		CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
-		Z:               emulated.ValueOf[FE](z),
-		Y:               emulated.ValueOf[FE](y),
+	witness := blobEvalCircuitNative{
+		Z:    z,
+		ZEmu: emulated.ValueOf[FE](z),
+		Y:    emulated.ValueOf[FE](y),
 	}
 
 	// Fill blob data from kzg4844.Blob
 	for i := 0; i < 4096; i++ {
 		cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
-		witness.Blob[i] = emulated.ValueOf[FE](cell)
+		witness.Blob[i] = cell
+		witness.BlobEmu[i] = emulated.ValueOf[FE](cell)
 	}
 
 	// Compile circuit
-	var circuit BlobEvalCircuit
+	var circuit blobEvalCircuitNative
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	c.Assert(err, qt.IsNil)
 	fmt.Printf("Circuit compiled with %d constraints\n", ccs.GetNbConstraints())
@@ -178,10 +242,10 @@ func TestCircuitFullProving(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Verify proof
-	publicWitness := BlobEvalCircuit{
-		CommitmentLimbs: witness.CommitmentLimbs,
-		Z:               witness.Z,
-		Y:               witness.Y,
+	publicWitness := blobEvalCircuitNative{
+		ZEmu: witness.ZEmu,
+		Z:    witness.Z,
+		Y:    witness.Y,
 	}
 	publicW, err := frontend.NewWitness(&publicWitness, ecc.BN254.ScalarField(), frontend.PublicOnly())
 	c.Assert(err, qt.IsNil)
