@@ -82,10 +82,10 @@ func TestProcess(t *testing.T) {
 			CostFromWeight:  false,
 		},
 		Census: &types.Census{
+			CensusOrigin: types.CensusOriginMerkleTree,
 			CensusRoot:   make([]byte, 32),
 			MaxVotes:     new(types.BigInt).SetUint64(100),
 			CensusURI:    "https://example.com/census",
-			CensusOrigin: 0,
 		},
 	}
 

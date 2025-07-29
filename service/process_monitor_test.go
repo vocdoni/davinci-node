@@ -60,7 +60,7 @@ func TestProcessMonitor(t *testing.T) {
 			CensusRoot:   make([]byte, 32),
 			MaxVotes:     new(types.BigInt).SetUint64(100),
 			CensusURI:    "https://example.com/census",
-			CensusOrigin: 0,
+			CensusOrigin: types.CensusOriginMerkleTree,
 		},
 	})
 	c.Assert(err, qt.IsNil)

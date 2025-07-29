@@ -454,10 +454,13 @@ Gets a Merkle proof for a participant in a census.
 ```json
 {
   "root": "hexBytes",
-  "key": "hexBytes",
-  "value": "hexBytes",
-  "siblings": "hexBytes",
-  "weight": "bigintStr" // the value transformed to bigInt
+  "address": "hexBytes",
+  "weight": "bigintStr",
+  "value": "hexBytes",      // merkle proof: the weight encoded to hexBytes
+  "siblings": "hexBytes",   // merkle proof: encoded siblings path to find the leaf
+  "processId": "hexBytes",  // csp proof: the process id signed with the address
+  "publicKey": "hexBytes",  // csp proof: the public key of the csp
+  "signature": "hexBytes",  // csp proof: the signature that proofs that the voter is in the census
 }
 ```
 

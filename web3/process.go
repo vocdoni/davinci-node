@@ -390,6 +390,12 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		return nil, fmt.Errorf("invalid ballot mode: %w", err)
 	}
 
+	// Validate the census origin
+	censusOrigin := types.CensusOrigin(p.Census.CensusOrigin)
+	if !censusOrigin.Valid() {
+		return nil, fmt.Errorf("invalid census origin: %d", p.Census.CensusOrigin)
+	}
+
 	census := types.Census{
 		CensusRoot:   p.Census.CensusRoot[:],
 		MaxVotes:     (*types.BigInt)(p.Census.MaxVotes),
