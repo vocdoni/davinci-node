@@ -29,9 +29,14 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 
 	// Unmarshal de process ID
 	pid := new(types.ProcessID).SetBytes(p.ProcessID)
-
 	if !pid.IsValid() {
 		ErrMalformedProcessID.With("invalid process ID").Write(w)
+		return
+	}
+
+	// Validate the census origin
+	if !p.CensusOrigin.Valid() {
+		ErrMalformedBody.Withf("invalid census origin: %d", p.CensusOrigin).Write(w)
 		return
 	}
 
@@ -89,6 +94,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// Write the response
 	log.Infow("new process setup query",
 		"address", address.String(),
+		"censusOrigin", p.CensusOrigin.String(),
 		"processId", pid.String(),
 		"pubKeyX", pr.EncryptionPubKey[0].String(),
 		"pubKeyY", pr.EncryptionPubKey[1].String(),
