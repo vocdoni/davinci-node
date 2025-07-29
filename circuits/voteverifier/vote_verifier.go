@@ -61,6 +61,7 @@ import (
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
@@ -82,6 +83,7 @@ type VerifyVoteCircuit struct {
 	Process        circuits.Process[emulated.Element[sw_bn254.ScalarField]]
 	UserWeight     emulated.Element[sw_bn254.ScalarField]
 	CensusSiblings [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
+	CSPProof       csp.CSPProof
 	// The following variables are private inputs and they are used to verify
 	// the user identity ownership
 	PublicKey ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]
@@ -91,30 +93,24 @@ type VerifyVoteCircuit struct {
 	CircomVerificationKey groth16.VerifyingKey[sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl] `gnark:"-"`
 }
 
-// censusKeyValue function converts the user address and weight to the current
+// censusKey function converts the user address and weight to the current
 // compiler field as variables to be used in the census proof. The address is
 // converted to bytes and then to a variable to truncate it to 20 bytes. The
 // weight is directly converted to a variable.
-func censusKeyValue(api frontend.API, address, weight emulated.Element[sw_bn254.ScalarField]) (
-	frontend.Variable, frontend.Variable, error,
+func (c *VerifyVoteCircuit) censusKey(api frontend.API) (
+	frontend.Variable, error,
 ) {
 	// convert user address to bytes to swap the endianness
-	bAddress, err := utils.ElemToU8(api, address)
+	bAddress, err := utils.ElemToU8(api, c.Vote.Address)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to convert address emulated element to bytes: %w", err)
+		return 0, fmt.Errorf("failed to convert address emulated element to bytes: %w", err)
 	}
 	// swap the endianness of the address to le to be used in the census proof
 	key, err := utils.U8ToVar(api, bAddress[:types.CensusKeyMaxLen])
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to convert address bytes to var: %w", err)
+		return 0, fmt.Errorf("failed to convert address bytes to var: %w", err)
 	}
-	// convert the user weight from the scalar field of the bn254 curve to the
-	// current compiler field as a variable to be used in the census proof
-	value, err := utils.PackScalarToVar(api, weight)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to convert weight emulated element to var: %w", err)
-	}
-	return key, value, nil
+	return key, nil
 }
 
 // circomHash circuit method calculates the hash of the public-private inputs
@@ -253,10 +249,16 @@ func (c *VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
 // value, but it asserts that the proof is valid for the address and user weight
 // provided by the user. The census key and value comes from the address and
 // user weight provided by the user.
-func (c *VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
-	key, value, err := censusKeyValue(api, c.Vote.Address, c.UserWeight)
+func (c *VerifyVoteCircuit) verifyCensusProof(api frontend.API, censusOrigin frontend.Variable) {
+	key, err := c.censusKey(api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to get census key-value", err)
+	}
+	// convert the user weight from the scalar field of the bn254 curve to the
+	// current compiler field as a variable to be used in the census proof
+	value, err := utils.PackScalarToVar(api, c.UserWeight)
+	if err != nil {
+		circuits.FrontendError(api, "failed to convert weight emulated element to var: %w", err)
 	}
 	// convert emulated census root and siblings to native variables
 	root, err := utils.PackScalarToVar(api, c.Process.CensusRoot)
@@ -272,11 +274,35 @@ func (c *VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
 	}
 	// verify the census proof using the derived address and the user weight
 	// provided as leaf key-value, adn the root and siblings provided
-	flag := smt.InclusionVerifier(api, utils.MiMCHasher, root, siblings, key, value)
-
+	isValid := smt.InclusionVerifier(api, utils.MiMCHasher, root, siblings, key, value)
+	// check if the proof is valid only if the census origin is MerkleTree
+	// and the current vote inputs are from a valid vote.
+	isMerkleTreeCensus := api.IsZero(api.Sub(censusOrigin, uint8(types.CensusOriginMerkleTree)))
+	shouldBeValid := api.And(c.IsValid, isMerkleTreeCensus)
 	// if the inputs are valid, ensure that the result of the verification is 1,
 	// otherwise, the result does not matter so force it to be 1
-	api.AssertIsEqual(api.Select(c.IsValid, flag, 1), 1)
+	api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
+}
+
+// verifyCSPProof circuit method verifies the census service provider proof
+// provided by the user. It uses proof provided by the user to verify if the
+// voter is an authorized voter. It converts first the census root to a
+// variable and then verifies the proof using the root, the process ID and
+// the address of the voter. It only asserts that the proof is valid if the
+// census origin is CSP and the current vote inputs are from a valid vote.
+func (c *VerifyVoteCircuit) verifyCSPProof(api frontend.API, censusOrigin frontend.Variable) {
+	root, err := utils.PackScalarToVar(api, c.Process.CensusRoot)
+	if err != nil {
+		circuits.FrontendError(api, "failed to convert census root emulated element to var", err)
+	}
+	isValid := c.CSPProof.IsValid(api, root, c.Process.ID, c.Vote.Address)
+	// check if the proof is valid only if the census origin is MerkleTree
+	// and the current vote inputs are from a valid vote.
+	isCSPCensus := api.IsZero(api.Sub(censusOrigin, uint8(types.CensusOriginCSPEdDSABLS12377)))
+	shouldBeValid := api.And(c.IsValid, isCSPCensus)
+	// if the inputs are valid, ensure that the result of the verification is 1,
+	// otherwise, the result does not matter so force it to be 1
+	api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
 }
 
 func (c *VerifyVoteCircuit) Define(api frontend.API) error {
@@ -285,7 +311,12 @@ func (c *VerifyVoteCircuit) Define(api frontend.API) error {
 	// verify the signature of the public inputs
 	c.verifySigForAddress(api)
 	// verify the census proof
-	c.verifyCensusProof(api)
+	censusOrigin, err := utils.PackScalarToVar(api, c.Process.CensusOrigin)
+	if err != nil {
+		circuits.FrontendError(api, "failed to convert census origin to var", err)
+	}
+	c.verifyCensusProof(api, censusOrigin)
+	c.verifyCSPProof(api, censusOrigin)
 	// verify the ballot proof
 	c.verifyCircomProof(api)
 	return nil
