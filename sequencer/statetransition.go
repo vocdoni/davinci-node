@@ -183,13 +183,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 
 	// Generate the proof
-	proof, err := s.prover(
-		circuits.StateTransitionCurve,
-		s.stCcs,
-		s.stPk,
-		assignments,
-		opts,
-	)
+	proof, err := s.prover(circuits.StateTransitionCurve, s.stCcs, s.stPk, assignments, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}

@@ -126,7 +126,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 			CensusRoot:   make([]byte, 32),
 			MaxVotes:     &types.BigInt{},
 			CensusURI:    "http://example.com/census",
-			CensusOrigin: 0,
+			CensusOrigin: types.CensusOriginMerkleTree,
 		},
 	}
 
