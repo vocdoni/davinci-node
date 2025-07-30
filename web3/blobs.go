@@ -1,6 +1,7 @@
 package web3
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
@@ -36,6 +37,9 @@ func (c *Contracts) SendBlobTx(
 	if len(blobs) == 0 {
 		return nil, nil, fmt.Errorf("no blobs provided")
 	}
+	if bytes.Equal(to[:], common.Address{}.Bytes()) {
+		return nil, nil, fmt.Errorf("invalid recipient address")
+	}
 
 	// get nonce and chainID
 	auth, err := c.authTransactOpts()
@@ -46,7 +50,6 @@ func (c *Contracts) SendBlobTx(
 	nonce := auth.Nonce.Uint64()
 
 	// Fee caps (exec gas)
-
 	tipCap, err := c.cli.SuggestGasTipCap(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tip cap: %w", err)

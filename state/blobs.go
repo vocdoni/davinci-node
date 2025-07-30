@@ -185,26 +185,43 @@ func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
 
 // ApplyBlobToState applies the data from a blob to restore state
 func (st *State) ApplyBlobToState(blobData *BlobData) error {
-	if err := st.StartBatch(); err != nil {
-		return err
-	}
-
-	// Add votes from blob
+	// Add votes directly to the state tree without batch processing
 	for _, vote := range blobData.Votes {
 		// For votes parsed from blob, we need to set ReencryptedBallot to the same as Ballot
 		// since we don't store the reencrypted version separately in the blob
 		vote.ReencryptedBallot = vote.Ballot
-		if err := st.AddVote(vote); err != nil {
-			return err
+
+		// Add or update the vote ballot in the tree
+		_, _, err := st.tree.GetBigInt(vote.Address)
+		if err != nil {
+			// Key doesn't exist, add it
+			if err := st.tree.AddBigInt(vote.Address, vote.ReencryptedBallot.BigInts()...); err != nil {
+				return fmt.Errorf("failed to add vote to tree: %w", err)
+			}
+		} else {
+			// Key exists, update it
+			if err := st.tree.UpdateBigInt(vote.Address, vote.ReencryptedBallot.BigInts()...); err != nil {
+				return fmt.Errorf("failed to update vote in tree: %w", err)
+			}
+		}
+
+		// Add or update the vote ID in the tree
+		voteIDKey := vote.VoteID.BigInt().MathBigInt()
+		_, _, err = st.tree.GetBigInt(voteIDKey)
+		if err != nil {
+			// Key doesn't exist, add it
+			if err := st.tree.AddBigInt(voteIDKey, VoteIDKeyValue); err != nil {
+				return fmt.Errorf("failed to add vote ID to tree: %w", err)
+			}
+		} else {
+			// Key exists, update it
+			if err := st.tree.UpdateBigInt(voteIDKey, VoteIDKeyValue); err != nil {
+				return fmt.Errorf("failed to update vote ID in tree: %w", err)
+			}
 		}
 	}
 
-	// End the batch to calculate the results properly
-	if err := st.EndBatch(); err != nil {
-		return err
-	}
-
-	// Now set the final results from the blob data
+	// Set the results from the blob data directly
 	resultsAdd, err := elgamal.NewBallot(Curve).SetBigInts(blobData.ResultsAdd)
 	if err != nil {
 		return err
