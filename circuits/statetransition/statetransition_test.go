@@ -300,6 +300,7 @@ func newMockState(t *testing.T) *state.State {
 	}
 	_, encryptionKey := circuits.MockEncryptionKey()
 	if err := s.Initialize(
+		types.CensusOriginMerkleTree.BigInt().MathBigInt(),
 		new(big.Int).SetBytes(util.RandomBytes(16)),
 		circuits.MockBallotMode(),
 		encryptionKey,

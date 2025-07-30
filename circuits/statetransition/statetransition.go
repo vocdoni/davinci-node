@@ -52,6 +52,7 @@ type Results struct {
 // CensusRoot, BallotMode and EncryptionKey.
 type ProcessProofs struct {
 	ID            merkleproof.MerkleProof
+	CensusOrigin  merkleproof.MerkleProof
 	CensusRoot    merkleproof.MerkleProof
 	BallotMode    merkleproof.MerkleProof
 	EncryptionKey merkleproof.MerkleProof
@@ -222,6 +223,7 @@ func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
 // function of the MerkleProof structure.
 func (circuit StateTransitionCircuit) VerifyMerkleProofs(api frontend.API, hFn utils.Hasher) {
 	circuit.ProcessProofs.ID.Verify(api, hFn, circuit.RootHashBefore)
+	circuit.ProcessProofs.CensusOrigin.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.CensusRoot.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.BallotMode.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.EncryptionKey.Verify(api, hFn, circuit.RootHashBefore)
@@ -253,6 +255,10 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Process
 	if err := circuit.ProcessProofs.ID.VerifyLeafHash(api, hFn, circuit.Process.ID); err != nil {
 		circuits.FrontendError(api, "failed to verify process id process proof leaf hash: ", err)
+		return
+	}
+	if err := circuit.ProcessProofs.CensusOrigin.VerifyLeafHash(api, hFn, circuit.Process.CensusOrigin); err != nil {
+		circuits.FrontendError(api, "failed to verify census origin process proof leaf hash: ", err)
 		return
 	}
 	if err := circuit.ProcessProofs.CensusRoot.VerifyLeafHash(api, hFn, circuit.Process.CensusRoot); err != nil {

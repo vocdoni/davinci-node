@@ -62,6 +62,7 @@ func (s *Storage) NewProcess(process *types.Process) error {
 
 	// Initialize the process state to store the process data
 	if err := pState.Initialize(
+		process.Census.CensusOrigin.BigInt().MathBigInt(),
 		arbo.BytesToBigInt(process.Census.CensusRoot),
 		circuits.BallotModeToCircuit(process.BallotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey),
