@@ -1,0 +1,255 @@
+package web3
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math/big"
+	"net/http"
+	"strconv"
+	"strings"
+
+	kzg4844 "github.com/crate-crypto/go-eth-kzg"
+
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844" // for the struct types
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
+)
+
+// SendBlobTx builds, signs and broadcasts an EIP-4844 (type-3) tx.
+//   - `to` MUST be non-nil per EIP-4844.
+//   - `blobs` are raw 131072-byte blobs (4096 * 32).
+func (c *Contracts) SendBlobTx(
+	ctx context.Context,
+	to common.Address,
+	blobs [][]byte,
+) (*types.Transaction, [][]byte, error) {
+	if c.signer == nil {
+		return nil, nil, fmt.Errorf("no private key set")
+	}
+	if len(blobs) == 0 {
+		return nil, nil, fmt.Errorf("no blobs provided")
+	}
+
+	// get nonce and chainID
+	auth, err := c.authTransactOpts()
+	if err != nil {
+		return nil, nil, err
+	}
+	from := c.signer.Address()
+	nonce := auth.Nonce.Uint64()
+
+	// Fee caps (exec gas)
+
+	tipCap, err := c.cli.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("tip cap: %w", err)
+	}
+	baseFee, err := c.cli.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("base gas fee: %w", err)
+	}
+	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
+
+	// Blob gas cap
+	blobBaseFee, err := c.cli.BlobBaseFee(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("blob base fee: %w", err)
+	}
+	blobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
+
+	// Estimate execution gas
+	gasLimit, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
+		From: from,
+		To:   &to,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("estimate gas for blobs tx: %w", err)
+	}
+
+	// Build sidecar
+	sidecar, blobHashes, err := buildSidecar(blobs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Create & sign blob tx
+	txData := &types.BlobTx{
+		ChainID:    uint256.NewInt(c.ChainID),
+		Nonce:      nonce,
+		GasTipCap:  uint256.MustFromBig(tipCap),
+		GasFeeCap:  uint256.MustFromBig(gasFeeCap),
+		Gas:        gasLimit,
+		To:         to,
+		BlobFeeCap: uint256.MustFromBig(blobFeeCap),
+		BlobHashes: blobHashes,
+		Sidecar:    sidecar,
+	}
+
+	unsigned := types.NewTx(txData)
+	signer := types.NewCancunSigner(new(big.Int).SetUint64(c.ChainID))
+	signed, err := types.SignTx(unsigned, signer, (*ecdsa.PrivateKey)(c.signer))
+	if err != nil {
+		return nil, nil, fmt.Errorf("sign blobs tx: %w", err)
+	}
+
+	// Broadcast
+	if err := c.cli.SendTransaction(ctx, signed); err != nil {
+		return nil, nil, fmt.Errorf("send blobs tx: %w", err)
+	}
+	commitments := [][]byte{}
+	for _, c := range sidecar.Commitments {
+		commitments = append(commitments, c[:])
+	}
+	return signed, commitments, nil
+}
+
+// buildSidecar converts raw blobs -> commitments/proofs using crate-crypto.
+// Returns a geth Sidecar (types.BlobTxSidecar) and versioned blob hashes.
+func buildSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error) {
+	if len(raw) == 0 {
+		return nil, nil, fmt.Errorf("no blobs")
+	}
+	ctx, err := kzg4844.NewContext4096Secure()
+	if err != nil {
+		return nil, nil, fmt.Errorf("kzg ctx: %w", err)
+	}
+
+	blobs := make([]gethkzg.Blob, len(raw))
+	comms := make([]gethkzg.Commitment, len(raw))
+	proofs := make([]gethkzg.Proof, len(raw))
+
+	for i, b := range raw {
+		if len(b) != params.BlobTxFieldElementsPerBlob*params.BlobTxBytesPerFieldElement {
+			return nil, nil, fmt.Errorf("blob %d wrong size: got %d", i, len(b))
+		}
+		// cast []byte -> crate blob then to geth blob bytes
+		var crateBlob kzg4844.Blob
+		copy(crateBlob[:], b)
+
+		commit, err := ctx.BlobToKZGCommitment(&crateBlob, 0)
+		if err != nil {
+			return nil, nil, fmt.Errorf("commitment %d: %w", i, err)
+		}
+		proof, err := ctx.ComputeBlobKZGProof(&crateBlob, commit, 0)
+		if err != nil {
+			return nil, nil, fmt.Errorf("proof %d: %w", i, err)
+		}
+
+		// convert to geth types
+		copy(blobs[i][:], b)
+		copy(comms[i][:], commit[:])
+		copy(proofs[i][:], proof[:])
+	}
+
+	sc := &types.BlobTxSidecar{
+		Blobs:       blobs,
+		Commitments: comms,
+		Proofs:      proofs,
+	}
+	return sc, sc.BlobHashes(), nil
+}
+
+// BlobByCommitment gets the blob bytes matching `commitmentHex` (0x...) for tx `txHash`
+// using the provided Consensus (beacon) API base URL.
+func (c *Contracts) BlobByCommitment(
+	ctx context.Context,
+	consensusAPI string,
+	txHash common.Hash,
+	commitmentHex string,
+) ([]byte, error) {
+
+	ethcli, err := c.cli.EthClient()
+	if err != nil {
+		return nil, fmt.Errorf("eth client: %w", err)
+	}
+	receipt, err := ethcli.TransactionReceipt(ctx, txHash)
+	if err != nil {
+		return nil, fmt.Errorf("tx receipt: %w", err)
+	}
+	if receipt.BlockHash == (common.Hash{}) {
+		return nil, fmt.Errorf("tx not mined yet")
+	}
+
+	// EL header -> parent beacon root (EIP-4788)
+	hdr, err := ethcli.HeaderByHash(ctx, receipt.BlockHash)
+	if err != nil {
+		return nil, fmt.Errorf("header by hash: %w", err)
+	}
+	parentRoot := hdr.ParentBeaconRoot
+	if parentRoot == nil {
+		return nil, fmt.Errorf("parent beacon root missing (client too old?)")
+	}
+
+	// Ask CL for the header of that parent root => get its slot
+	type beaconHeaderResp struct {
+		Data struct {
+			Header struct {
+				Message struct {
+					Slot string `json:"slot"`
+				} `json:"message"`
+				Root string `json:"root"`
+			} `json:"header"`
+		} `json:"data"`
+	}
+	var bh beaconHeaderResp
+	urlHdr := fmt.Sprintf("%s/eth/v1/beacon/headers/%s", strings.TrimRight(consensusAPI, "/"), parentRoot.Hex())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlHdr, nil)
+	if err != nil {
+		return nil, fmt.Errorf("new header req: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("beacon header GET: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("beacon header error %d: %s", resp.StatusCode, string(body))
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&bh); err != nil {
+		return nil, fmt.Errorf("decode header: %w", err)
+	}
+	parentSlot, err := strconv.ParseUint(bh.Data.Header.Message.Slot, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("slot parse: %w", err)
+	}
+	targetSlot := parentSlot + 1 // slot of our execution block’s beacon root
+
+	// Fetch blob sidecars for that slot
+	urlSide := fmt.Sprintf("%s/eth/v1/beacon/blob_sidecars/%d", strings.TrimRight(consensusAPI, "/"), targetSlot)
+	req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, urlSide, nil)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		return nil, fmt.Errorf("beacon sidecars GET: %w", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp2.Body)
+		return nil, fmt.Errorf("beacon sidecars error %d: %s", resp2.StatusCode, string(body))
+	}
+
+	var sidecars struct {
+		Data []struct {
+			Blob          string `json:"blob"`
+			KZGCommitment string `json:"kzg_commitment"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&sidecars); err != nil {
+		return nil, fmt.Errorf("decode sidecars: %w", err)
+	}
+
+	needle := strings.ToLower(strings.TrimPrefix(commitmentHex, "0x"))
+	for _, sc := range sidecars.Data {
+		if strings.ToLower(strings.TrimPrefix(sc.KZGCommitment, "0x")) == needle {
+			return hexutil.Decode(sc.Blob)
+		}
+	}
+	return nil, fmt.Errorf("commitment %s not found in slot %d sidecars", commitmentHex, targetSlot)
+}
