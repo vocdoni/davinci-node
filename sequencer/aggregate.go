@@ -217,13 +217,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	)
 
 	// Generate the proof for the aggregator circuit
-	proof, err := s.prover(
-		circuits.AggregatorCurve,
-		s.aggCcs,
-		s.aggPk,
-		assignment,
-		opts,
-	)
+	proof, err := s.prover(circuits.AggregatorCurve, s.aggCcs, s.aggPk, assignment, opts)
 	if err != nil {
 		if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
 			log.Warnw("failed to mark ballot batch as failed",
