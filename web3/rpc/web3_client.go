@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -334,6 +335,29 @@ func (c *Client) BlockNumber(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 	return res.(uint64), err
+}
+
+// BlobBaseFee retrieves the base fee for blob transactions on the blockchain.
+func (c *Client) BlobBaseFee(ctx context.Context) (*big.Int, error) {
+	endpoint, err := c.w3p.Endpoint(c.chainID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
+	}
+	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+		var hexFee string
+		if err := endpoint.rpcClient.CallContext(ctx, &hexFee, "eth_blobBaseFee"); err != nil {
+			return nil, err
+		}
+		f, ok := new(big.Int).SetString(strings.TrimPrefix(hexFee, "0x"), 16)
+		if !ok {
+			return nil, fmt.Errorf("invalid hex fee %q", hexFee)
+		}
+		return f, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*big.Int), nil
 }
 
 // retryAndCheckErr method retries a function call in case of error and checks
