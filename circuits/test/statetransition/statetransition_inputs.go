@@ -13,6 +13,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	aggregatortest "github.com/vocdoni/davinci-node/circuits/test/aggregator"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -73,7 +74,13 @@ func StateTransitionInputsForTest(processId *types.ProcessID, nValidVoters int) 
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("aggregator verify: %w", err)
 	}
-
+	// reencrypt the votes
+	reencryptionK, err := elgamal.RandK()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("generate random k: %w", err)
+	}
+	// get the encryption key from the aggregator inputs
+	encryptionKey := state.Curve.New().SetPoint(agInputs.Process.EncryptionKey.PubKey[0], agInputs.Process.EncryptionKey.PubKey[1])
 	// init final assignments stuff
 	s := newState(agInputs.Process.ID, agInputs.Process.CensusRoot,
 		circuits.MockBallotMode(), agInputs.Process.EncryptionKey)
@@ -81,7 +88,14 @@ func StateTransitionInputsForTest(processId *types.ProcessID, nValidVoters int) 
 	if err := s.StartBatch(); err != nil {
 		return nil, nil, nil, fmt.Errorf("start batch: %w", err)
 	}
+	// iterate over the votes, reencrypting each time the zero ballot with the
+	// correct k value and adding it to the state
+	lastK := new(big.Int).Set(reencryptionK)
 	for _, v := range agInputs.Votes {
+		v.ReencryptedBallot, lastK, err = v.Ballot.Reencrypt(encryptionKey, lastK)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to reencrypt ballot: %w", err)
+		}
 		if err := s.AddVote(&v); err != nil {
 			return nil, nil, nil, fmt.Errorf("add vote: %w", err)
 		}
@@ -89,7 +103,7 @@ func StateTransitionInputsForTest(processId *types.ProcessID, nValidVoters int) 
 	if err := s.EndBatch(); err != nil {
 		return nil, nil, nil, fmt.Errorf("end batch: %w", err)
 	}
-	witness, err := statetransition.GenerateWitness(s)
+	witness, err := statetransition.GenerateWitness(s, new(types.BigInt).SetBigInt(reencryptionK))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("generate witness: %w", err)
 	}

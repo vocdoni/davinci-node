@@ -9,7 +9,8 @@ import (
 
 // Common update functions for use with UpdateProcess
 
-// ProcessUpdateCallbackStateRoot returns a function that updates the state root and vote counts
+// ProcessUpdateCallbackStateRoot returns a function that updates the state
+// root and vote counts
 func ProcessUpdateCallbackStateRoot(root *types.BigInt, numNewVotes, numOverwritten *big.Int) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.StateRoot = root
@@ -23,7 +24,8 @@ func ProcessUpdateCallbackStateRoot(root *types.BigInt, numNewVotes, numOverwrit
 	}
 }
 
-// ProcessUpdateCallbackFinalization returns a function that marks a process as finalized with results
+// ProcessUpdateCallbackFinalization returns a function that marks a process
+// as finalized with results
 func ProcessUpdateCallbackFinalization(results []*types.BigInt) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.Status = types.ProcessStatusResults
@@ -32,27 +34,37 @@ func ProcessUpdateCallbackFinalization(results []*types.BigInt) func(*types.Proc
 	}
 }
 
-// ProcessUpdateCallbackSetStatus returns a function that updates the process status
-// This function is used to set the status of a process, such as ready, ended, canceled, etc.
+// ProcessUpdateCallbackSetStatus returns a function that updates the process
+// status. This function is used to set the status of a process, such as ready,
+// ended, canceled, etc.
 func ProcessUpdateCallbackSetStatus(status types.ProcessStatus) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.Status = status
-		if status != types.ProcessStatusReady {
-			p.IsAcceptingVotes = false // If the process is not ready, it should not accept votes
+		return nil
+	}
+}
+
+// ProcessUpdateCallbackSetStateRoot returns a function that updates the state
+// root and vote counts of a process. This function is used when a update over
+// the state root is received from the process monitor.
+func ProcessUpdateCallbackSetStateRoot(newRoot *types.BigInt, newCount, newOverwrittenCount *types.BigInt) func(*types.Process) error {
+	return func(p *types.Process) error {
+		// Update the process only if the state root is different.
+		if !p.StateRoot.Equal(newRoot) {
+			p.VoteCount = newCount
+			p.StateRoot = newRoot
+			// If the overwritten count is greater than the current one,
+			// update it as well.
+			if p.VoteOverwrittenCount.LessThan(newOverwrittenCount) {
+				p.VoteOverwrittenCount = newOverwrittenCount
+			}
 		}
 		return nil
 	}
 }
 
-// ProcessUpdateCallbackAcceptingVotes returns a function that updates the accepting votes flag
-func ProcessUpdateCallbackAcceptingVotes(accepting bool) func(*types.Process) error {
-	return func(p *types.Process) error {
-		p.IsAcceptingVotes = accepting
-		return nil
-	}
-}
-
-// ProcessUpdateCallbackLastTransitionDate returns a function that updates the last state transition date
+// ProcessUpdateCallbackLastTransitionDate returns a function that updates the
+// last state transition date
 func ProcessUpdateCallbackLastTransitionDate() func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.SequencerStats.LastStateTransitionDate = time.Now()

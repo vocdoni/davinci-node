@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 const (
@@ -23,7 +24,7 @@ const (
 // dummy proofs to fill a chunk of votes that does not reach the required number
 // of votes to be valid.
 func DummyPlaceholder(ballotProofVKey []byte) (*VerifyVoteCircuit, error) {
-	circomPlaceholder, err := circuits.Circom2GnarkPlaceholder(ballotProofVKey)
+	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(ballotProofVKey, circuits.BallotProofNPubInputs)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +40,7 @@ func DummyPlaceholder(ballotProofVKey []byte) (*VerifyVoteCircuit, error) {
 // This function can be used to generate dummy proofs to fill a chunk of votes
 // that does not reach the required number of votes to be valid.
 func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircuit, error) {
-	recursiveProof, err := circuits.Circom2GnarkProofForRecursion(ballotProofVKey, dummyBallotProof, dummyBallotPubInputs)
+	recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballotProofVKey, dummyBallotProof, dummyBallotPubInputs)
 	if err != nil {
 		return nil, err
 	}

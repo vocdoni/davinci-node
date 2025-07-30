@@ -44,6 +44,17 @@ func (z *Ballot) Valid() bool {
 	return curves.IsValid(z.CurveType)
 }
 
+// IsZero checks if the Ballot is zero, meaning all Ciphertexts are zero.
+func (z *Ballot) IsZero() bool {
+	curve := curves.New(z.CurveType)
+	for _, c := range z.Ciphertexts {
+		if !c.IsZero(curve) {
+			return false
+		}
+	}
+	return true
+}
+
 // Encrypt encrypts a message using the public key provided as elliptic curve
 // point. The randomness k can be provided or nil to generate a new one. Each
 // ciphertext uses a different k derived from the previous one using mimc7 hash
@@ -70,6 +81,61 @@ func (z *Ballot) Encrypt(message [types.FieldsPerBallot]*big.Int, publicKey ecc.
 		}
 	}
 	return z, nil
+}
+
+// Reencrypt reencrypts the ballot using the provided public key and k. It
+// returns the reencrypted ballot, the k used for re-encryption, or an error
+// if the re-encryption fails. The re-encryption is done by adding the
+// encrypted zero ballot to the original ballot.
+func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, error) {
+	reencryptionK, err := mimc7.Hash([]*big.Int{k}, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if z.IsZero() {
+		return z, reencryptionK, nil
+	}
+	encZero, err := NewBallot(publicKey).EncryptedZero(publicKey, reencryptionK)
+	if err != nil {
+		return nil, nil, err
+	}
+	return NewBallot(publicKey).Add(z, encZero), reencryptionK, nil
+}
+
+// EncryptedZero returns a new ballot with all fields set to the encrypted
+// zero point using the provided encryption key and k.
+func (z *Ballot) EncryptedZero(publicKey ecc.Point, k *big.Int) (*Ballot, error) {
+	encZero := NewBallot(publicKey)
+	for i := range encZero.Ciphertexts {
+		c1, c2 := EncryptedZero(publicKey, k)
+		encZero.Ciphertexts[i].C1 = c1
+		encZero.Ciphertexts[i].C2 = c2
+	}
+	return encZero, nil
+}
+
+// EncryptedZero computes the encrypted zero point for the given public key
+// and k. It returns the ciphertexts C1 and C2, which represent the encrypted
+// zero point in the ElGamal encryption scheme. The points (c1, c2) is
+// constructed as follows:
+//   - C1 = [k] * G
+//   - S = [k] * publicKey
+//   - M = zero * G (which is the identity point)
+//   - C2 = M + S
+func EncryptedZero(publicKey ecc.Point, k *big.Int) (ecc.Point, ecc.Point) {
+	// compute C1 = k * G
+	c1 := publicKey.New()
+	c1.ScalarBaseMult(k)
+	// compute s = k * publicKey
+	s := publicKey.New()
+	s.ScalarMult(publicKey, k)
+	// encode message as point M = zero * G
+	m := publicKey.New()
+	m.ScalarBaseMult(big.NewInt(0))
+	// compute C2 = M + s
+	c2 := publicKey.New()
+	c2.Add(m, s)
+	return c1, c2
 }
 
 // Add adds two Ballots and stores the result in the receiver, which is also returned.

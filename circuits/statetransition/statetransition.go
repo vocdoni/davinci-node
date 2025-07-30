@@ -26,9 +26,10 @@ type StateTransitionCircuit struct {
 	NumNewVotes    frontend.Variable `gnark:",public"`
 	NumOverwritten frontend.Variable `gnark:",public"`
 	// Private data inputs
-	Process circuits.Process[frontend.Variable]
-	Votes   [types.VotesPerBatch]Vote
-	Results Results
+	Process       circuits.Process[frontend.Variable]
+	Votes         [types.VotesPerBatch]Vote
+	Results       Results
+	ReencryptionK frontend.Variable
 	// Private merkle proofs inputs
 	ProcessProofs ProcessProofs
 	VotesProofs   VotesProofs
@@ -60,7 +61,8 @@ type ProcessProofs struct {
 // commitments.
 type VotesProofs struct {
 	// Key is Address, LeafHash is smt.Hash1(encoded(Ballot.Serialize()))
-	Ballot [types.VotesPerBatch]merkleproof.MerkleTransition
+	Ballot  [types.VotesPerBatch]merkleproof.MerkleTransition
+	VoteIDs [types.VotesPerBatch]merkleproof.MerkleTransition
 }
 
 // ResultsProofs struct contains the Merkle transition proofs for the addition
@@ -73,12 +75,14 @@ type ResultsProofs struct {
 // Vote struct contains the circuits.Vote struct and the overwritten ballot.
 type Vote struct {
 	circuits.Vote[frontend.Variable]
+	ReencryptedBallot circuits.Ballot
 	OverwrittenBallot circuits.Ballot
 }
 
 // Define declares the circuit's constraints
 func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	circuit.VerifyAggregatorProof(api)
+	circuit.VerifyReencryptedVotes(api)
 	circuit.VerifyMerkleProofs(api, HashFn)
 	circuit.VerifyMerkleTransitions(api, HashFn)
 	circuit.VerifyLeafHashes(api, HashFn)
@@ -192,6 +196,26 @@ func (circuit StateTransitionCircuit) VerifyAggregatorProof(api frontend.API) {
 	}
 }
 
+// VerifyReencryptedVotes reencrypts the votes using the reencryptionK and
+// checks if the result is equal to the reencrypted ballot provided as input.
+// To reencrypt the votes, it adds the encrypted zero ballot to the original
+// ballot. The encrypted zero uses the reencryptionK as the randomness.
+func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
+	lastK := frontend.Variable(circuit.ReencryptionK)
+	for i, v := range circuit.Votes {
+		isValid := cmp.IsLess(api, i, circuit.NumNewVotes)
+		var err error
+		var reencryptedBallot *circuits.Ballot
+		reencryptedBallot, lastK, err = v.Ballot.Reencrypt(api, circuit.Process.EncryptionKey, lastK)
+		if err != nil {
+			circuits.FrontendError(api, "failed to reencrypt ballot: ", err)
+			return
+		}
+		isEqual := v.ReencryptedBallot.IsEqual(api, reencryptedBallot)
+		api.AssertIsEqual(api.Select(isValid, isEqual, 1), 1)
+	}
+}
+
 // VerifyMerkleProofs verifies that the ProcessID, CensusRoot, BallotMode
 // and EncryptionKey belong to the RootHashBefore. It uses the MerkleProof
 // structure to verify the proofs. The proofs are verified using the Verify
@@ -213,6 +237,7 @@ func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, 
 	root := circuit.RootHashBefore
 	for i := range circuit.VotesProofs.Ballot {
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
+		root = circuit.VotesProofs.VoteIDs[i].Verify(api, hFn, root)
 	}
 	root = circuit.ResultsProofs.ResultsAdd.Verify(api, hFn, root)
 	root = circuit.ResultsProofs.ResultsSub.Verify(api, hFn, root)
@@ -252,7 +277,7 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 		}
 		api.AssertIsEqual(addressKey, circuit.VotesProofs.Ballot[i].NewKey)
 		// Ballot
-		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.Ballot.SerializeVars()...); err != nil {
+		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.ReencryptedBallot.SerializeVars()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
 			return
 		}
@@ -289,7 +314,7 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0
 
 	for i, b := range circuit.VotesProofs.Ballot {
-		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].Ballot, zero))
+		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].ReencryptedBallot, zero))
 		overwrittenSum.Add(api, overwrittenSum, circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
 		ballotCount = api.Add(ballotCount, b.IsInsertOrUpdate(api))
 		overwrittenCount = api.Add(overwrittenCount, b.IsUpdate(api))

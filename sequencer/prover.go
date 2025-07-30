@@ -21,6 +21,7 @@ import (
 	teststatetransition "github.com/vocdoni/davinci-node/circuits/test/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // ProverFunc defines a function type that matches the signature needed for zkSNARK proving
@@ -72,7 +73,8 @@ func NewDebugProver(t *testing.T) ProverFunc {
 		switch assignment.(type) {
 		case *voteverifier.VerifyVoteCircuit:
 			t.Logf("running debug prover for voteverifier")
-			circomPlaceholder, err := circuits.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
+			circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
+				ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -27,6 +27,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/storage/census"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 func TestDebugVoteVerifier(t *testing.T) {
@@ -61,7 +62,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	// convert the circom proof to gnark proof and verify it
 	err = ballotproof.Artifacts.LoadAll()
 	c.Assert(err, qt.IsNil)
-	ballotProof, err := circuits.VerifyAndConvertToRecursion(
+	ballotProof, err := circomgnark.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
 		[]string{vote.BallotInputsHash.String()},
@@ -135,7 +136,8 @@ func TestDebugVoteVerifier(t *testing.T) {
 		CircomProof: ballotProof.Proof,
 	}
 
-	circomPlaceholder, err := circuits.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
+	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
+		ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
 	c.Assert(err, qt.IsNil)
 
 	placeholder := voteverifier.VerifyVoteCircuit{

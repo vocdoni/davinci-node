@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/iden3/go-iden3-crypto/babyjub"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -25,11 +26,14 @@ const (
 	MockWeight          = 10
 )
 
-func MockEncryptionKey() EncryptionKey[*big.Int] {
+func MockEncryptionKey() (babyjub.PrivateKey, EncryptionKey[*big.Int]) {
 	privkey := babyjub.NewRandPrivKey()
 
-	x, y := privkey.Public().X, privkey.Public().Y
-	return EncryptionKeyFromECCPoint(new(bjj.BJJ).SetPoint(x, y))
+	x, y := format.FromTEtoRTE(privkey.Public().X, privkey.Public().Y)
+	ek := new(bjj.BJJ).SetPoint(x, y)
+	encKey := EncryptionKeyFromECCPoint(ek)
+
+	return privkey, encKey
 }
 
 func MockBallotMode() BallotMode[*big.Int] {

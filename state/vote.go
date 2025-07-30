@@ -8,11 +8,14 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+var VoteIDKeyValue = big.NewInt(0)
+
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
-	Address *big.Int
-	VoteID  types.HexBytes
-	Ballot  *elgamal.Ballot
+	Address           *big.Int
+	VoteID            types.HexBytes
+	Ballot            *elgamal.Ballot
+	ReencryptedBallot *elgamal.Ballot // Reencrypted ballot for the state transition circuit
 }
 
 // SerializeBigInts returns
@@ -46,7 +49,7 @@ func (o *State) AddVote(v *Vote) error {
 		o.overwrittenBallots = append(o.overwrittenBallots, oldVote)
 		o.overwrittenCount++
 	}
-	o.ballotSum.Add(o.ballotSum, v.Ballot)
+	o.ballotSum.Add(o.ballotSum, v.ReencryptedBallot)
 	o.ballotCount++
 
 	o.votes = append(o.votes, v)
@@ -64,4 +67,10 @@ func (o *State) EncryptedBallot(address *big.Int) (*elgamal.Ballot, error) {
 		return nil, err
 	}
 	return ballot, nil
+}
+
+// ContainsVoteID checks if the state contains a vote ID
+func (o *State) ContainsVoteID(voteID types.HexBytes) bool {
+	_, _, err := o.tree.GetBigInt(voteID.BigInt().MathBigInt())
+	return err == nil
 }

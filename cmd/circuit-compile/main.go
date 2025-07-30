@@ -31,6 +31,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // Keeps track of files created during program execution
@@ -84,7 +85,8 @@ func main() {
 	startTime := time.Now()
 	log.Infow("compiling vote verifier circuit...")
 	// generate the placeholders for the recursion
-	circomPlaceholder, err := circuits.Circom2GnarkPlaceholder(ballottest.TestCircomVerificationKey)
+	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
+		ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
 	if err != nil {
 		log.Fatalf("error generating circom2gnark placeholder: %v", err)
 	}

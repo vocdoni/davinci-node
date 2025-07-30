@@ -39,6 +39,13 @@ func NewCiphertext(curve ecc.Point) *Ciphertext {
 	return &Ciphertext{C1: curve.New(), C2: curve.New()}
 }
 
+// IsZero checks if the Ciphertext is zero, meaning both C1 and C2 are the zero
+// point of the curve.
+func (z *Ciphertext) IsZero(curve ecc.Point) bool {
+	zero := curve.New()
+	return z.C1.Equal(zero) && z.C2.Equal(zero)
+}
+
 // Encrypt encrypts a message using the public key provided as elliptic curve
 // point. If k is nil, returns an error.
 func (z *Ciphertext) Encrypt(message *big.Int, publicKey ecc.Point, k *big.Int) (*Ciphertext, error) {

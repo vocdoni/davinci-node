@@ -76,6 +76,7 @@ type VotesProofs struct {
 	ResultsAdd *ArboTransition
 	ResultsSub *ArboTransition
 	Ballot     [types.VotesPerBatch]*ArboTransition
+	VoteID     [types.VotesPerBatch]*ArboTransition
 }
 
 // New creates or opens a State stored in the passed database.
@@ -233,14 +234,21 @@ func (o *State) EndBatch() error {
 
 	// add Ballots
 	for i := range o.votesProofs.Ballot {
+		var errBallot, errVoteID error
 		if i < len(o.Votes()) {
-			o.votesProofs.Ballot[i], err = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].Address, o.Votes()[i].Ballot.BigInts()...)
+			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
+				o.Votes()[i].Address, o.Votes()[i].ReencryptedBallot.BigInts()...)
+			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
+				o.Votes()[i].VoteID.BigInt().MathBigInt(), VoteIDKeyValue)
 		} else {
-			o.votesProofs.Ballot[i], err = ArboTransitionFromNoop(o)
+			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromNoop(o)
+			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromNoop(o)
 		}
-		if err != nil {
-			return err
+		if errBallot != nil {
+			return fmt.Errorf("could not get Ballot proof for index %d: %w", i, errBallot)
+		}
+		if errVoteID != nil {
+			return fmt.Errorf("could not get VoteID proof for index %d: %w", i, errVoteID)
 		}
 	}
 	// update ResultsAdd
@@ -352,8 +360,9 @@ func (o *State) PaddedVotes() []*Vote {
 	v := slices.Clone(o.votes)
 	for len(v) < types.VotesPerBatch {
 		v = append(v, &Vote{
-			Address: big.NewInt(0),
-			Ballot:  elgamal.NewBallot(Curve),
+			Address:           big.NewInt(0),
+			Ballot:            elgamal.NewBallot(Curve),
+			ReencryptedBallot: elgamal.NewBallot(Curve),
 		})
 	}
 	return v

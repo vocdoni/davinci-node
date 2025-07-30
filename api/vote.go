@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
@@ -19,6 +18,7 @@ import (
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // voteStatus returns the status of a vote for a given processID and voteID
@@ -140,8 +140,9 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// the vote will be accepted, but it is a precondition to accept the vote,
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
-	if process.Status != types.ProcessStatusReady {
-		ErrProcessNotAcceptingVotes.Withf("status: %s", process.Status).Write(w)
+	if ok, err := a.storage.ProcessIsAcceptingVotes(pid.Marshal()); !ok {
+		ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
+		return
 	}
 	// check that the census root is the same as the one in the process
 	if !bytes.Equal(process.Census.CensusRoot, vote.CensusProof.Root) {
@@ -178,7 +179,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// convert the circom proof to gnark proof and verify it
-	proof, err := circuits.VerifyAndConvertToRecursion(
+	proof, err := circomgnark.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
 		[]string{vote.BallotInputsHash.String()},

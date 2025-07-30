@@ -28,6 +28,7 @@ import (
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
 )
@@ -480,7 +481,7 @@ func createProcess(
 		case <-time.After(time.Second * 5):
 			pBytes, status, err := cli.Request(http.MethodGet, nil, nil, api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String()))
 			if err == nil && status == http.StatusOK {
-				proc := &types.Process{}
+				proc := &api.ProcessResponse{}
 				if err := json.Unmarshal(pBytes, proc); err != nil {
 					return nil, nil, fmt.Errorf("failed to unmarshal process response: %v", err)
 				}
@@ -552,7 +553,7 @@ func createVote(
 	}
 
 	// Convert the proof to gnark format
-	circomProof, _, err := circuits.Circom2GnarkProof(rawProof, pubInputs)
+	circomProof, _, err := circomgnark.UnmarshalCircom(rawProof, pubInputs)
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to convert proof to gnark format: %v", err)
 	}

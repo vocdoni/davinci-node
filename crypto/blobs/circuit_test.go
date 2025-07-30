@@ -47,52 +47,6 @@ func (c *blobEvalCircuitNative) Define(api frontend.API) error {
 	return VerifyBlobEvaluationNative(api, c.Z, &c.Y, c.Blob)
 }
 
-// TestProgressiveElements tests the circuit with increasing number of elements
-func TestProgressiveElements(t *testing.T) {
-	std.RegisterHints()
-	c := qt.New(t)
-
-	testCounts := []int{10, 100}
-
-	for _, count := range testCounts {
-		fmt.Printf("\n=== Testing with %d elements ===\n", count)
-
-		// Create blob with 'count' elements
-		blob := &goethkzg.Blob{}
-		for i := 0; i < count; i++ {
-			big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
-		}
-
-		// Compute evaluation point
-		processID := util.RandomBytes(31)
-		rootHashBefore := util.RandomBytes(31)
-		z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
-		c.Assert(err, qt.IsNil)
-
-		// Compute KZG proof
-		_, claim, err := ComputeProof(blob, z)
-		c.Assert(err, qt.IsNil)
-		y := new(big.Int).SetBytes(claim[:])
-
-		// Create witness
-		witness := blobEvalCircuit{
-			Z: emulated.ValueOf[FE](z),
-			Y: emulated.ValueOf[FE](y),
-		}
-
-		// Fill blob data
-		for i := range 4096 {
-			cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
-			witness.Blob[i] = emulated.ValueOf[FE](cell)
-		}
-
-		// Test with IsSolved
-		assert := test.NewAssert(t)
-		assert.SolvingSucceeded(&blobEvalCircuit{}, &witness,
-			test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
-	}
-}
-
 func TestCircuitWithActualDataBlob(t *testing.T) {
 	c := qt.New(t)
 

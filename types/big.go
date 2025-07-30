@@ -137,6 +137,20 @@ func (i *BigInt) Equal(j *BigInt) bool {
 	return i.MathBigInt().Cmp(j.MathBigInt()) == 0
 }
 
+func (i *BigInt) LessThan(j *BigInt) bool {
+	if i == nil || j == nil {
+		return (i != nil) && (j == nil)
+	}
+	return i.MathBigInt().Cmp(j.MathBigInt()) < 0
+}
+
+func (i *BigInt) LessThanOrEqual(j *BigInt) bool {
+	if i == nil || j == nil {
+		return (i == nil) || (j != nil)
+	}
+	return i.MathBigInt().Cmp(j.MathBigInt()) <= 0
+}
+
 func (i *BigInt) ToFF(baseField *big.Int) *BigInt {
 	iv := i.MathBigInt()
 	z := big.NewInt(0)
