@@ -24,6 +24,7 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 	witness.RootHashBefore = o.RootHashBefore()
 
 	witness.Process.ID = o.Process().ID
+	witness.Process.CensusOrigin = o.Process().CensusOrigin
 	witness.Process.CensusRoot = o.Process().CensusRoot
 	witness.Process.BallotMode = circuits.BallotMode[frontend.Variable]{
 		MaxCount:        o.Process().BallotMode.MaxCount,
@@ -53,26 +54,30 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 	witness.ProcessProofs = ProcessProofs{}
 	witness.ProcessProofs.ID, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not get ID proof: %w", err)
+	}
+	witness.ProcessProofs.CensusOrigin, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().CensusOrigin)
+	if err != nil {
+		return nil, fmt.Errorf("could not get CensusOrigin proof: %w", err)
 	}
 	witness.ProcessProofs.CensusRoot, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().CensusRoot)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not get CensusRoot proof: %w", err)
 	}
 	witness.ProcessProofs.BallotMode, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().BallotMode)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not get BallotMode proof: %w", err)
 	}
 	witness.ProcessProofs.EncryptionKey, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().EncryptionKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not get EncryptionKey proof: %w", err)
 	}
 	// add Ballots and VoteIDs proofs
 	for i := range witness.VotesProofs.Ballot {
 		// ballots
 		witness.VotesProofs.Ballot[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Ballot[i])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not get Ballot proof for index %d: %w", i, err)
 		}
 		// vote IDs
 		witness.VotesProofs.VoteIDs[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().VoteID[i])
@@ -83,12 +88,12 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 	// update ResultsAdd
 	witness.ResultsProofs.ResultsAdd, err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().ResultsAdd)
 	if err != nil {
-		return nil, fmt.Errorf("ResultsAdd: %w", err)
+		return nil, fmt.Errorf("could not get ResultsAdd proof: %w", err)
 	}
 	// update ResultsSub
 	witness.ResultsProofs.ResultsSub, err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().ResultsSub)
 	if err != nil {
-		return nil, fmt.Errorf("ResultsSub: %w", err)
+		return nil, fmt.Errorf("could not get ResultsSub proof: %w", err)
 	}
 	witness.Results = Results{
 		OldResultsAdd: *o.OldResultsAdd().ToGnark(),
