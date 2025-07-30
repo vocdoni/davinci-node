@@ -69,7 +69,7 @@ func VerifyBlobEvaluation(
 	// Hint input packing
 	in := make([]*emulated.Element[FE], 2+2*N) // [Y | Z | blob | ω]
 	in[0], in[1] = y, z
-	for i := 0; i < N; i++ {
+	for i := range N {
 		in[2+i] = &blob[i]
 		in[2+N+i] = omegaAt(i)
 	}
@@ -81,7 +81,7 @@ func VerifyBlobEvaluation(
 	}
 	q := outs[:N]
 	S1 := fr.Reduce(outs[N]) // Σ qᵢ·ωᵢ
-	for i := 0; i < N; i++ {
+	for i := range N {
 		q[i] = fr.Reduce(q[i])
 	}
 
@@ -89,7 +89,7 @@ func VerifyBlobEvaluation(
 	direct := fr.Zero() // value to take when Z hits a grid‑point
 	anyZero := frontend.Variable(0)
 
-	for i := 0; i < N; i++ {
+	for i := range N {
 		ωi := omegaAt(i)
 		denR := fr.Reduce(fr.Sub(ωi, z)) // ωᵢ − Z
 		isZero := fr.IsZero(denR)        // boolean
@@ -122,26 +122,46 @@ func VerifyBlobEvaluation(
 	return nil
 }
 
-// VerifyBlobEvaluationNative is a  native‑input wrapper,
+// VerifyBlobEvaluationNative is a bn254 native‑input wrapper,
 // cheap equality check, then delegate.
 func VerifyBlobEvaluationNative(
 	api frontend.API,
-	z frontend.Variable, // native BN254 evaluation point
-	zEmu *emulated.Element[FE], // emulated BLS12-381 evaluation point
-	y *emulated.Element[FE], // emulated BLS12-381 evaluation result
-	blob [N]frontend.Variable, // BN254 native variables
-	blobEmu [N]emulated.Element[FE], // emulated BLS12-381 variables
+	zNat frontend.Variable, // BN254
+	y *emulated.Element[FE], // emulated
+	blobNat [N]frontend.Variable, // BN254
 ) error {
-	// native‑vs‑emulated equality checks
-	for i := 0; i < N; i++ {
-		api.AssertIsEqual(emulatedToNative(api, &blobEmu[i]), blob[i])
+	fr, err := emulated.NewField[FE](api)
+	if err != nil {
+		return err
 	}
-	api.AssertIsEqual(emulatedToNative(api, zEmu), z)
 
-	// call original emulated verifier
+	// convert all native scalars => emulated via the hint
+	var blobEmu [N]emulated.Element[FE]
+	for i := range N {
+		e, err := hintNativeToEmu(api, fr, blobNat[i])
+		if err != nil {
+			return err
+		}
+		blobEmu[i] = *e
+		// soundness: verify that the native input matches the emulated one created by the hint
+		api.AssertIsEqual(emulatedToNative(api, &blobEmu[i]), blobNat[i])
+	}
+
+	// convert the native evaluation point Z => emulated
+	zEmu, err := hintNativeToEmu(api, fr, zNat)
+	if err != nil {
+		return err
+	}
+	// soundness: verify that the native input matches the emulated one created by the hint
+	api.AssertIsEqual(emulatedToNative(api, zEmu), zNat)
+
+	// delegate to the original emulated verifier
 	return VerifyBlobEvaluation(api, zEmu, y, blobEmu)
 }
 
+// emulatedToNative converts an emulated element to a native BN254 variable.
+// This is used to ensure that the native input matches the emulated output
+// in the circuit, ensuring soundness.
 func emulatedToNative(api frontend.API, e *emulated.Element[FE]) frontend.Variable {
 	nbBits := FE{}.BitsPerLimb() // 32 in gnark params
 	acc := frontend.Variable(0)

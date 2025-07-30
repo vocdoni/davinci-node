@@ -37,16 +37,14 @@ func (c *blobEvalCircuit) Define(api frontend.API) error {
 // blobEvalCircuitNative defines the required fields to validate a Blob construction.
 // This circuit is for test purposes.
 type blobEvalCircuitNative struct {
-	Z       frontend.Variable       `gnark:",public"`
-	ZEmu    emulated.Element[FE]    `gnark:",public"` // Emulated version for consistency
-	Y       emulated.Element[FE]    `gnark:",public"`
-	Blob    [N]frontend.Variable    // native BN254 variables
-	BlobEmu [N]emulated.Element[FE] // emulated (witness)
+	Z    frontend.Variable    `gnark:",public"`
+	Y    emulated.Element[FE] `gnark:",public"`
+	Blob [N]frontend.Variable // native BN254 variables
 }
 
 func (c *blobEvalCircuitNative) Define(api frontend.API) error {
 	std.RegisterHints()
-	return VerifyBlobEvaluationNative(api, c.Z, &c.ZEmu, &c.Y, c.Blob, c.BlobEmu)
+	return VerifyBlobEvaluationNative(api, c.Z, &c.Y, c.Blob)
 }
 
 // TestProgressiveElements tests the circuit with increasing number of elements
@@ -54,7 +52,7 @@ func TestProgressiveElements(t *testing.T) {
 	std.RegisterHints()
 	c := qt.New(t)
 
-	testCounts := []int{5, 50, 100}
+	testCounts := []int{10, 100}
 
 	for _, count := range testCounts {
 		fmt.Printf("\n=== Testing with %d elements ===\n", count)
@@ -139,7 +137,7 @@ func TestProgressiveElementsNative(t *testing.T) {
 	std.RegisterHints()
 	c := qt.New(t)
 
-	testCounts := []int{10}
+	testCounts := []int{10, 100}
 
 	for _, count := range testCounts {
 		fmt.Printf("\n=== Testing with %d elements ===\n", count)
@@ -166,16 +164,14 @@ func TestProgressiveElementsNative(t *testing.T) {
 
 		// Create witness
 		witness := blobEvalCircuitNative{
-			Z:    z,
-			ZEmu: emulated.ValueOf[FE](z),
-			Y:    emulated.ValueOf[FE](y),
+			Z: z,
+			Y: emulated.ValueOf[FE](y),
 		}
 
 		// Fill blob data
 		for i := range 4096 {
 			cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
 			witness.Blob[i] = cell
-			witness.BlobEmu[i] = emulated.ValueOf[FE](cell)
 		}
 
 		// Test with IsSolved
@@ -213,16 +209,14 @@ func TestCircuitFullProving(t *testing.T) {
 
 	// Create witness
 	witness := blobEvalCircuitNative{
-		Z:    z,
-		ZEmu: emulated.ValueOf[FE](z),
-		Y:    emulated.ValueOf[FE](y),
+		Z: z,
+		Y: emulated.ValueOf[FE](y),
 	}
 
 	// Fill blob data from kzg4844.Blob
 	for i := 0; i < 4096; i++ {
 		cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
 		witness.Blob[i] = cell
-		witness.BlobEmu[i] = emulated.ValueOf[FE](cell)
 	}
 
 	// Compile circuit
@@ -243,9 +237,8 @@ func TestCircuitFullProving(t *testing.T) {
 
 	// Verify proof
 	publicWitness := blobEvalCircuitNative{
-		ZEmu: witness.ZEmu,
-		Z:    witness.Z,
-		Y:    witness.Y,
+		Z: witness.Z,
+		Y: witness.Y,
 	}
 	publicW, err := frontend.NewWitness(&publicWitness, ecc.BN254.ScalarField(), frontend.PublicOnly())
 	c.Assert(err, qt.IsNil)
