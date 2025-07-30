@@ -8,7 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	npbindings "github.com/vocdoni/davinci-contracts/golang-types/non-proxy"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
