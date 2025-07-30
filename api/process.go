@@ -76,7 +76,12 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 
 	// prepare inputs for the state ready for the state transition circuit:
 	// - the census root must be encoded according to the arbo format
-	root, err := state.CalculateInitialRoot(pid.BigInt(), arbo.BytesToBigInt(p.CensusRoot), p.BallotMode, publicKey)
+	root, err := state.CalculateInitialRoot(
+		pid.BigInt(),
+		p.CensusOrigin.BigInt().MathBigInt(),
+		arbo.BytesToBigInt(p.CensusRoot),
+		p.BallotMode,
+		publicKey)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not calculate state root: %v", err).Write(w)
 		return

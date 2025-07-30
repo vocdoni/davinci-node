@@ -90,7 +90,7 @@ func TestWorkerIntegration(t *testing.T) {
 			CostFromWeight:  circuits.MockCostFromWeight == 1,
 			CostExponent:    circuits.MockCostExp,
 		}
-		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, censusRoot, ballotMode)
+		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, censusRoot, ballotMode)
 		pid2 := createProcessInContracts(c, services.Contracts, censusRoot, ballotMode, encryptionKey, stateRoot)
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
