@@ -25,7 +25,7 @@ type BlobData struct {
 //  1. ResultsAdd (types.FieldsPerBallot * 4 coordinates)
 //  2. ResultsSub (types.FieldsPerBallot * 4 coordinates)
 //  3. Votes sequentially until voteID = 0x0 (sentinel)
-//     Each vote: voteID + address + encryptedBallot coordinates
+//     Each vote: voteID + address + reencryptedBallot coordinates
 func (st *State) BuildKZGCommitment(batchNum uint64) (
 	blobData *blobs.BlobEvalData,
 	proof kzg4844.KZGProof,
@@ -53,9 +53,9 @@ func (st *State) BuildKZGCommitment(batchNum uint64) (
 
 	// Then add votes sequentially (no padding)
 	for _, v := range st.Votes() {
-		push(new(big.Int).SetBytes(v.VoteID))  // voteId hash
-		push(v.Address)                        // address
-		for _, p := range v.Ballot.BigInts() { // ballot coordinates
+		push(new(big.Int).SetBytes(v.VoteID))             // voteId hash
+		push(v.Address)                                   // address
+		for _, p := range v.ReencryptedBallot.BigInts() { // reencrypted ballot coordinates
 			push(p)
 		}
 	}
@@ -191,6 +191,9 @@ func (st *State) ApplyBlobToState(blobData *BlobData) error {
 
 	// Add votes from blob
 	for _, vote := range blobData.Votes {
+		// For votes parsed from blob, we need to set ReencryptedBallot to the same as Ballot
+		// since we don't store the reencrypted version separately in the blob
+		vote.ReencryptedBallot = vote.Ballot
 		if err := st.AddVote(vote); err != nil {
 			return err
 		}

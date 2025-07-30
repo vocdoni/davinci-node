@@ -255,7 +255,8 @@ func (o *State) EndBatch() error {
 	var ok bool
 	o.oldResultsAdd, ok = o.ResultsAdd()
 	if !ok {
-		return fmt.Errorf("could not get old results add ballot")
+		// If ResultsAdd doesn't exist, initialize it with a zero ballot
+		o.oldResultsAdd = elgamal.NewBallot(Curve)
 	}
 	o.newResultsAdd = o.newResultsAdd.Add(o.oldResultsAdd, o.ballotSum)
 	o.votesProofs.ResultsAdd, err = ArboTransitionFromAddOrUpdate(o,
@@ -266,7 +267,8 @@ func (o *State) EndBatch() error {
 	// update ResultsSub
 	o.oldResultsSub, ok = o.ResultsSub()
 	if !ok {
-		return fmt.Errorf("could not get old results sub ballot")
+		// If ResultsSub doesn't exist, initialize it with a zero ballot
+		o.oldResultsSub = elgamal.NewBallot(Curve)
 	}
 	o.newResultsSub = o.newResultsSub.Add(o.oldResultsSub, o.overwrittenSum)
 	o.votesProofs.ResultsSub, err = ArboTransitionFromAddOrUpdate(o,

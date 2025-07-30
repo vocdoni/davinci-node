@@ -250,10 +250,18 @@ func createTestVotes(t *testing.T, publicKey ecc.Point, numVotes int) []*Vote {
 		_, err := ballot.Encrypt(messages, publicKey, nil)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to encrypt ballot %d", i))
 
+		// Create reencrypted ballot (for state transition circuit)
+		// Generate a random k for reencryption
+		k, err := elgamal.RandK()
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate random k for ballot %d", i))
+		reencryptedBallot, _, err := ballot.Reencrypt(publicKey, k)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to reencrypt ballot %d", i))
+
 		votes[i] = &Vote{
-			Address: address,
-			VoteID:  voteID,
-			Ballot:  ballot,
+			Address:           address,
+			VoteID:            voteID,
+			Ballot:            ballot,
+			ReencryptedBallot: reencryptedBallot,
 		}
 	}
 
@@ -284,8 +292,8 @@ func verifyBlobStructure(t *testing.T, blob *kzg4844.Blob, votes []*Vote, state 
 		// Verify vote ID
 		c.Assert(string(originalVote.VoteID), qt.Equals, string(parsedVote.VoteID), qt.Commentf("Vote %d ID mismatch", i))
 
-		// Verify ballot coordinates match
-		originalCoords := originalVote.Ballot.BigInts()
+		// Verify ballot coordinates match (comparing reencrypted ballot since that's what's stored in blob)
+		originalCoords := originalVote.ReencryptedBallot.BigInts()
 		parsedCoords := parsedVote.Ballot.BigInts()
 
 		c.Assert(len(originalCoords), qt.Equals, len(parsedCoords), qt.Commentf("Vote %d ballot coordinate count mismatch", i))
