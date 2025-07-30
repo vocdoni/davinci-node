@@ -216,6 +216,7 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	}
 
 	if err := st.Initialize(
+		process.Census.CensusOrigin.BigInt().MathBigInt(),
 		arbo.BytesToBigInt(process.Census.CensusRoot),
 		circuits.BallotModeToCircuit(process.BallotMode),
 		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),

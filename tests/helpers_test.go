@@ -407,7 +407,9 @@ func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
 }
 
 func createProcessInSequencer(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient,
-	censusRoot []byte, ballotMode *types.BallotMode,
+	censusOrigin types.CensusOrigin,
+	censusRoot []byte,
+	ballotMode *types.BallotMode,
 ) (*types.ProcessID, *types.EncryptionKey, *types.HexBytes) {
 	// Geth the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
@@ -418,10 +420,11 @@ func createProcessInSequencer(c *qt.C, contracts *web3.Contracts, cli *client.HT
 	c.Assert(err, qt.IsNil)
 
 	process := &types.ProcessSetup{
-		ProcessID:  processID.Marshal(),
-		CensusRoot: censusRoot,
-		BallotMode: ballotMode,
-		Signature:  signature,
+		ProcessID:    processID.Marshal(),
+		CensusOrigin: censusOrigin,
+		CensusRoot:   censusRoot,
+		BallotMode:   ballotMode,
+		Signature:    signature,
 	}
 
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)

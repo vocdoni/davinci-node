@@ -86,14 +86,14 @@ func TestIntegration(t *testing.T) {
 			// create a different censusRoot for testing
 			root2, _, _ := createCensus(c, cli, numBallots*2)
 			// createProcessInSequencer should be idempotent, but there was a bug in this. Test it's fixed
-			pid1, encryptionKey1, stateRoot1 := createProcessInSequencer(c, services.Contracts, cli, root2, ballotMode)
-			pid2, encryptionKey2, stateRoot2 := createProcessInSequencer(c, services.Contracts, cli, root2, ballotMode)
+			pid1, encryptionKey1, stateRoot1 := createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root2, ballotMode)
+			pid2, encryptionKey2, stateRoot2 := createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root2, ballotMode)
 			c.Assert(pid2.String(), qt.Equals, pid1.String())
 			c.Assert(encryptionKey2, qt.DeepEquals, encryptionKey1)
 			c.Assert(stateRoot2.String(), qt.Equals, stateRoot1.String())
 			// a subsequent call to create process, same processID but with different censusRoot
 			// should return the same encryptionKey but yield a different stateRoot.
-			pid3, encryptionKey3, stateRoot3 := createProcessInSequencer(c, services.Contracts, cli, root, ballotMode)
+			pid3, encryptionKey3, stateRoot3 := createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root, ballotMode)
 			c.Assert(pid3.String(), qt.Equals, pid1.String())
 			c.Assert(encryptionKey3, qt.DeepEquals, encryptionKey1)
 			c.Assert(stateRoot3.String(), qt.Not(qt.Equals), stateRoot1.String(),
@@ -102,7 +102,7 @@ func TestIntegration(t *testing.T) {
 		// this final call is the good one, with the real censusRoot, should return the correct stateRoot and encryptionKey that
 		// we'll use to create process in contracts
 		var stateRoot *types.HexBytes
-		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, root, ballotMode)
+		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root, ballotMode)
 
 		// now create process in contracts
 		pid2 := createProcessInContracts(c, services.Contracts, root, ballotMode, encryptionKey, stateRoot)

@@ -33,6 +33,7 @@ var (
 	KeyEncryptionKey = new(big.Int).SetBytes([]byte{0x03})
 	KeyResultsAdd    = new(big.Int).SetBytes([]byte{0x04})
 	KeyResultsSub    = new(big.Int).SetBytes([]byte{0x05})
+	KeyCensusOrigin  = new(big.Int).SetBytes([]byte{0x06})
 
 	ErrStateAlreadyInitialized = fmt.Errorf("state already initialized")
 )
@@ -65,6 +66,7 @@ type State struct {
 // census root, ballot mode, and encryption key proofs.
 type ProcessProofs struct {
 	ID            *ArboProof
+	CensusOrigin  *ArboProof
 	CensusRoot    *ArboProof
 	BallotMode    *ArboProof
 	EncryptionKey *ArboProof
@@ -117,9 +119,16 @@ func LoadOnRoot(db db.Database, processId, root *big.Int) (*State, error) {
 	return state, nil
 }
 
-// CalculateInitialRoot returns the root of the tree that would result from initializing
-// a state with the passed parameters. It uses an ephemereal tree, nothing is written down to storage.
-func CalculateInitialRoot(processID, censusRoot *big.Int, ballotMode *types.BallotMode, publicKey ecc.Point) (*big.Int, error) {
+// CalculateInitialRoot returns the root of the tree that would result from
+// initializing a state with the passed parameters. It uses an ephemereal
+// tree, nothing is written down to storage.
+func CalculateInitialRoot(
+	processID *big.Int,
+	censusOrigin *big.Int,
+	censusRoot *big.Int,
+	ballotMode *types.BallotMode,
+	publicKey ecc.Point,
+) (*big.Int, error) {
 	// Initialize the state in a memDB, just to calculate stateRoot
 	st, err := New(memdb.New(), processID)
 	if err != nil {
@@ -134,6 +143,7 @@ func CalculateInitialRoot(processID, censusRoot *big.Int, ballotMode *types.Ball
 
 	// Initialize the state with the census root, ballot mode and the encryption key
 	if err := st.Initialize(
+		censusOrigin,
 		censusRoot,
 		circuits.BallotModeToCircuit(ballotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
@@ -147,6 +157,7 @@ func CalculateInitialRoot(processID, censusRoot *big.Int, ballotMode *types.Ball
 // After Initialize, caller is expected to StartBatch, AddVote, EndBatch,
 // StartBatch...
 func (o *State) Initialize(
+	censusOrigin *big.Int,
 	censusRoot *big.Int,
 	ballotMode circuits.BallotMode[*big.Int],
 	encryptionKey circuits.EncryptionKey[*big.Int],
@@ -172,6 +183,9 @@ func (o *State) Initialize(
 	}
 	if err := o.tree.AddBigInt(KeyResultsSub, elgamal.NewBallot(Curve).BigInts()...); err != nil {
 		return fmt.Errorf("could not set results sub: %w", err)
+	}
+	if err := o.tree.AddBigInt(KeyCensusOrigin, censusOrigin); err != nil {
+		return err
 	}
 	return nil
 }
@@ -217,6 +231,9 @@ func (o *State) EndBatch() error {
 	// before MerkleTransitions
 	if o.processProofs.ID, err = o.GenArboProof(KeyProcessID); err != nil {
 		return fmt.Errorf("could not get ID proof: %w", err)
+	}
+	if o.processProofs.CensusOrigin, err = o.GenArboProof(KeyCensusOrigin); err != nil {
+		return fmt.Errorf("could not get CensusOrigin proof: %w", err)
 	}
 	if o.processProofs.CensusRoot, err = o.GenArboProof(KeyCensusRoot); err != nil {
 		return fmt.Errorf("could not get CensusRoot proof: %w", err)
@@ -372,6 +389,7 @@ func (o *State) PaddedVotes() []*Vote {
 func (o *State) Process() circuits.Process[*big.Int] {
 	return circuits.Process[*big.Int]{
 		ID:            o.ProcessID(),
+		CensusOrigin:  o.CensusOrigin(),
 		CensusRoot:    o.CensusRoot(),
 		BallotMode:    o.BallotMode(),
 		EncryptionKey: o.EncryptionKey(),
@@ -381,12 +399,14 @@ func (o *State) Process() circuits.Process[*big.Int] {
 // ProcessSerializeBigInts returns
 //
 //	process.ID
+//	process.CensusOrigin
 //	process.CensusRoot
 //	process.BallotMode
 //	process.EncryptionKey
 func (o *State) ProcessSerializeBigInts() []*big.Int {
 	list := []*big.Int{}
 	list = append(list, o.ProcessID())
+	list = append(list, o.CensusOrigin())
 	list = append(list, o.CensusRoot())
 	list = append(list, o.BallotMode().Serialize()...)
 	list = append(list, o.EncryptionKey().Serialize()...)
@@ -399,6 +419,21 @@ func (o *State) ProcessID() *big.Int {
 	if err != nil {
 		log.Errorw(err, "failed to get process ID from state")
 	}
+	if len(v) == 0 {
+		return big.NewInt(0) // default value if not set
+	}
+	return v[0]
+}
+
+// CensusOrigin returns the census origin of the state as a *big.Int.
+func (o *State) CensusOrigin() *big.Int {
+	_, v, err := o.tree.GetBigInt(KeyCensusOrigin)
+	if err != nil {
+		panic(err)
+	}
+	if len(v) == 0 {
+		return big.NewInt(0) // default value if not set
+	}
 	return v[0]
 }
 
@@ -407,6 +442,9 @@ func (o *State) CensusRoot() *big.Int {
 	_, v, err := o.tree.GetBigInt(KeyCensusRoot)
 	if err != nil {
 		log.Errorw(err, "failed to get census root from state")
+	}
+	if len(v) == 0 {
+		return big.NewInt(0) // default value if not set
 	}
 	return v[0]
 }
