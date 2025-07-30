@@ -105,7 +105,7 @@ func TestIntegration(t *testing.T) {
 		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root, ballotMode)
 
 		// now create process in contracts
-		pid2 := createProcessInContracts(c, services.Contracts, root, ballotMode, encryptionKey, stateRoot)
+		pid2 := createProcessInContracts(c, services.Contracts, types.CensusOriginMerkleTree, root, ballotMode, encryptionKey, stateRoot)
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
 		// create a timeout for the process creation, if it is greater than the test timeout
