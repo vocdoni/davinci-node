@@ -13,9 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/consensys/gnark/logger"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	qt "github.com/frankban/quicktest"
+	"github.com/rs/zerolog"
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
@@ -306,6 +308,7 @@ func NewTestService(
 	services.Sequencer.SetBatchTimeWindow(defaultBatchTimeWindow)
 
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
+		logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 		// Create a debug prover that will debug circuit execution during testing
 		services.Sequencer.SetProver(sequencer.NewDebugProver(t))
 	} else {

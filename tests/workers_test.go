@@ -17,6 +17,11 @@ import (
 	"github.com/vocdoni/davinci-node/workers"
 )
 
+const (
+	testWorkerSeed    = "test-seed"
+	testWorkerTimeout = time.Second * 5
+)
+
 func TestWorkerIntegration(t *testing.T) {
 	if enabled := os.Getenv("WORKER_INTEGRATION_TEST"); enabled != "1" || enabled == "true" || enabled == "TRUE" {
 		t.Skip("Skipping worker integration test, set WORKER_INTEGRATION_TEST=1 to run it")

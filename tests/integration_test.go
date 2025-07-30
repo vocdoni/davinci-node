@@ -20,11 +20,6 @@ import (
 	"github.com/vocdoni/davinci-node/workers"
 )
 
-const (
-	testWorkerSeed    = "test-seed"
-	testWorkerTimeout = time.Second * 5
-)
-
 func TestMain(m *testing.M) {
 	log.Init(log.LogLevelDebug, "stdout", nil)
 	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
