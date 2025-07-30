@@ -164,7 +164,6 @@ func (c *Contracts) BlobByCommitment(
 	txHash common.Hash,
 	commitmentHex string,
 ) ([]byte, error) {
-
 	ethcli, err := c.cli.EthClient()
 	if err != nil {
 		return nil, fmt.Errorf("eth client: %w", err)
@@ -208,7 +207,9 @@ func (c *Contracts) BlobByCommitment(
 	if err != nil {
 		return nil, fmt.Errorf("beacon header GET: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close() // ignore error on close
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("beacon header error %d: %s", resp.StatusCode, string(body))
@@ -229,7 +230,9 @@ func (c *Contracts) BlobByCommitment(
 	if err != nil {
 		return nil, fmt.Errorf("beacon sidecars GET: %w", err)
 	}
-	defer resp2.Body.Close()
+	defer func() {
+		_ = resp2.Body.Close() // ignore error on close
+	}()
 	if resp2.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp2.Body)
 		return nil, fmt.Errorf("beacon sidecars error %d: %s", resp2.StatusCode, string(body))

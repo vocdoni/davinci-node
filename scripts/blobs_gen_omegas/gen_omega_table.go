@@ -15,7 +15,10 @@ const (
 
 func main() {
 	var root fr.Element
-	root.SetString("10238227357739495823651030575849232062558860180284477541189508159991286009131")
+	_, err := root.SetString("10238227357739495823651030575849232062558860180284477541189508159991286009131")
+	if err != nil {
+		panic(fmt.Sprintf("failed to set root string: %v", err))
+	}
 	exp := new(big.Int).Lsh(big.NewInt(1), 20) // 2^20
 	var gen fr.Element
 	gen.Exp(root, exp)
