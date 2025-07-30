@@ -43,7 +43,7 @@ forge clean && forge build
 
 forge script \
   --chain-id 1337 \
-  script/non-proxy/DeployAll.s.sol:DeployAllScript \
+  script/DeployAll.s.sol:DeployAllScript \
   --rpc-url http://anvil:8545 \
   --broadcast \
   --slow \

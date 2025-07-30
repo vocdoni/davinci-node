@@ -445,10 +445,13 @@ func createProcessInSequencer(c *qt.C, contracts *web3.Contracts, cli *client.HT
 	return processID, encryptionKeys, &resp.StateRoot
 }
 
-func createProcessInContracts(c *qt.C,
-	contracts *web3.Contracts, censusRoot []byte,
-	ballotMode *types.BallotMode, encryptionKey *types.EncryptionKey,
-	stateRoot *types.HexBytes, duration ...time.Duration,
+func createProcessInContracts(c *qt.C, contracts *web3.Contracts,
+	censusOrigin types.CensusOrigin,
+	censusRoot []byte,
+	ballotMode *types.BallotMode,
+	encryptionKey *types.EncryptionKey,
+	stateRoot *types.HexBytes,
+	duration ...time.Duration,
 ) *types.ProcessID {
 	finalDuration := time.Hour
 	if len(duration) > 0 {
@@ -468,7 +471,7 @@ func createProcessInContracts(c *qt.C,
 			CensusRoot:   censusRoot,
 			MaxVotes:     new(types.BigInt).SetUint64(1000),
 			CensusURI:    "https://example.com/census",
-			CensusOrigin: 0,
+			CensusOrigin: censusOrigin,
 		},
 	})
 	c.Assert(err, qt.IsNil)
