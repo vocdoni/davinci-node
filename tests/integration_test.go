@@ -58,18 +58,6 @@ func TestIntegration(t *testing.T) {
 	c.Run("create process", func(c *qt.C) {
 		// Create census with numBallot participants
 		root, participants, signers = createCensus(c, cli, numBallots)
-
-		// Generate proof for first participant
-		proofs = make([]*types.CensusProof, numBallots)
-		for i := range participants {
-			proofs[i] = generateCensusProof(c, cli, root, participants[i].Key)
-			c.Assert(proofs[i], qt.Not(qt.IsNil))
-			c.Assert(proofs[i].Siblings, qt.IsNotNil)
-		}
-		// Check the first proof key is the same as the participant key and signer address
-		qt.Assert(t, proofs[0].Address.String(), qt.DeepEquals, participants[0].Key.String())
-		qt.Assert(t, string(proofs[0].Address), qt.DeepEquals, string(signers[0].Address().Bytes()))
-
 		ballotMode = &types.BallotMode{
 			MaxCount:        circuits.MockMaxCount,
 			ForceUniqueness: circuits.MockForceUniqueness == 1,
@@ -86,14 +74,14 @@ func TestIntegration(t *testing.T) {
 			// create a different censusRoot for testing
 			root2, _, _ := createCensus(c, cli, numBallots*2)
 			// createProcessInSequencer should be idempotent, but there was a bug in this. Test it's fixed
-			pid1, encryptionKey1, stateRoot1 := createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root2, ballotMode)
-			pid2, encryptionKey2, stateRoot2 := createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root2, ballotMode)
+			pid1, encryptionKey1, stateRoot1 := createProcessInSequencer(c, services.Contracts, cli, testCensusOrigin(), root2, ballotMode)
+			pid2, encryptionKey2, stateRoot2 := createProcessInSequencer(c, services.Contracts, cli, testCensusOrigin(), root2, ballotMode)
 			c.Assert(pid2.String(), qt.Equals, pid1.String())
 			c.Assert(encryptionKey2, qt.DeepEquals, encryptionKey1)
 			c.Assert(stateRoot2.String(), qt.Equals, stateRoot1.String())
 			// a subsequent call to create process, same processID but with different censusRoot
 			// should return the same encryptionKey but yield a different stateRoot.
-			pid3, encryptionKey3, stateRoot3 := createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root, ballotMode)
+			pid3, encryptionKey3, stateRoot3 := createProcessInSequencer(c, services.Contracts, cli, testCensusOrigin(), root, ballotMode)
 			c.Assert(pid3.String(), qt.Equals, pid1.String())
 			c.Assert(encryptionKey3, qt.DeepEquals, encryptionKey1)
 			c.Assert(stateRoot3.String(), qt.Not(qt.Equals), stateRoot1.String(),
@@ -102,10 +90,10 @@ func TestIntegration(t *testing.T) {
 		// this final call is the good one, with the real censusRoot, should return the correct stateRoot and encryptionKey that
 		// we'll use to create process in contracts
 		var stateRoot *types.HexBytes
-		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, root, ballotMode)
+		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, testCensusOrigin(), root, ballotMode)
 
 		// now create process in contracts
-		pid2 := createProcessInContracts(c, services.Contracts, types.CensusOriginMerkleTree, root, ballotMode, encryptionKey, stateRoot)
+		pid2 := createProcessInContracts(c, services.Contracts, testCensusOrigin(), root, ballotMode, encryptionKey, stateRoot)
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
 		// create a timeout for the process creation, if it is greater than the test timeout
@@ -152,6 +140,19 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 
+	c.Run("create census proofs", func(c *qt.C) {
+		// Generate proof for first participant
+		proofs = make([]*types.CensusProof, numBallots)
+		for i := range participants {
+			proofs[i] = generateCensusProof(c, cli, root, pid.Marshal(), participants[i].Key)
+			c.Assert(proofs[i], qt.Not(qt.IsNil))
+			c.Assert(proofs[i].Siblings, qt.IsNotNil)
+		}
+		// Check the first proof key is the same as the participant key and signer address
+		qt.Assert(t, proofs[0].Address.String(), qt.DeepEquals, participants[0].Key.String())
+		qt.Assert(t, string(proofs[0].Address), qt.DeepEquals, string(signers[0].Address().Bytes()))
+	})
+
 	// Store the voteIDs returned from the API to check their status later
 	var voteIDs []types.HexBytes
 	var ks []*big.Int
@@ -163,7 +164,7 @@ func TestIntegration(t *testing.T) {
 			k := util.RandomBigInt(big.NewInt(100000000), big.NewInt(9999999999999999))
 			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], k)
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
+			censusProof := generateCensusProof(c, cli, root, pid.Marshal(), signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
@@ -199,7 +200,7 @@ func TestIntegration(t *testing.T) {
 			// generate a vote for the first participant
 			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
+			censusProof := generateCensusProof(c, cli, root, pid.Marshal(), signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
@@ -276,7 +277,7 @@ func TestIntegration(t *testing.T) {
 			// generate a vote for the first participant
 			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], nil)
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
+			censusProof := generateCensusProof(c, cli, root, pid.Marshal(), signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
@@ -356,7 +357,7 @@ func TestIntegration(t *testing.T) {
 			// generate a vote for the first participant
 			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], nil)
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, root, signers[i].Address().Bytes())
+			censusProof := generateCensusProof(c, cli, root, pid.Marshal(), signers[i].Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof

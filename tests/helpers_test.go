@@ -24,6 +24,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/db"
@@ -43,6 +44,7 @@ import (
 const (
 	// first account private key created by anvil with default mnemonic
 	testLocalAccountPrivKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+	testLocalCSPSeed        = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
 	// envarionment variable names
 	deployerServerPortEnvVarName      = "DEPLOYER_SERVER"                        // environment variable name for deployer server port
 	contractsBranchNameEnvVarName     = "SEQUENCER_CONTRACTS_BRANCH"             // environment variable name for z-contracts branch
@@ -54,6 +56,7 @@ const (
 	processRegistryEnvVarName         = "SEQUENCER_PROCESS_REGISTRY"             // environment variable name for process registry
 	resultsVerifierEnvVarName         = "SEQUENCER_RESULTS_ZK_VERIFIER"          // environment variable name for results zk verifier
 	stateTransitionVerifierEnvVarName = "SEQUENCER_STATE_TRANSITION_ZK_VERIFIER" // environment variable name for state transition zk verifier
+	cspCensusEnvVarName               = "CSP_CENSUS"                             // environment variable name to select between csp or merkle tree census (by default merkle tree)
 )
 
 var defaultBatchTimeWindow = 120 * time.Second // default batch time window for sequencer
@@ -64,6 +67,19 @@ type Services struct {
 	Sequencer *sequencer.Sequencer
 	Storage   *storage.Storage
 	Contracts *web3.Contracts
+}
+
+func isCSPCensus() bool {
+	cspCensusEnvVar := os.Getenv(cspCensusEnvVarName)
+	return strings.ToLower(cspCensusEnvVar) == "true" || cspCensusEnvVar == "1"
+}
+
+func testCensusOrigin() types.CensusOrigin {
+	if isCSPCensus() {
+		return types.CensusOriginCSPEdDSABLS12377
+	} else {
+		return types.CensusOriginMerkleTree
+	}
 }
 
 // setupAPI creates and starts a new API server for testing.
@@ -336,15 +352,6 @@ func NewTestService(
 }
 
 func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.Signer) {
-	// Create a new census
-	body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewCensusEndpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK)
-
-	var resp api.NewCensus
-	err = json.NewDecoder(bytes.NewReader(body)).Decode(&resp)
-	c.Assert(err, qt.IsNil)
-
 	// Generate random participants
 	signers := []*ethereum.Signer{}
 	censusParticipants := api.CensusParticipants{Participants: []*api.CensusParticipant{}}
@@ -360,37 +367,61 @@ func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.Cen
 		signers = append(signers, signer)
 	}
 
-	// Add participants to census
-	addEnpoint := api.EndpointWithParam(api.AddCensusParticipantsEndpoint, api.CensusURLParam, resp.Census.String())
-	_, code, err = cli.Request(http.MethodPost, censusParticipants, nil, addEnpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK)
+	if isCSPCensus() {
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABLS12377, []byte(testLocalCSPSeed))
+		c.Assert(err, qt.IsNil)
+		root := eddsaCSP.CensusRoot()
+		c.Assert(root, qt.IsNotNil)
+		return root, censusParticipants.Participants, signers
+	} else {
+		// Create a new census in the sequencer
+		body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewCensusEndpoint)
+		c.Assert(err, qt.IsNil)
+		c.Assert(code, qt.Equals, http.StatusOK)
 
-	// Get census root
-	getRootEnpoint := api.EndpointWithParam(api.GetCensusRootEndpoint, api.CensusURLParam, resp.Census.String())
-	body, code, err = cli.Request(http.MethodGet, nil, nil, getRootEnpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK)
+		var resp api.NewCensus
+		err = json.NewDecoder(bytes.NewReader(body)).Decode(&resp)
+		c.Assert(err, qt.IsNil)
+		// Add participants to census
+		addEnpoint := api.EndpointWithParam(api.AddCensusParticipantsEndpoint, api.CensusURLParam, resp.Census.String())
+		_, code, err = cli.Request(http.MethodPost, censusParticipants, nil, addEnpoint)
+		c.Assert(err, qt.IsNil)
+		c.Assert(code, qt.Equals, http.StatusOK)
 
-	var rootResp api.CensusRoot
-	err = json.NewDecoder(bytes.NewReader(body)).Decode(&rootResp)
-	c.Assert(err, qt.IsNil)
+		// Get census root
+		getRootEnpoint := api.EndpointWithParam(api.GetCensusRootEndpoint, api.CensusURLParam, resp.Census.String())
+		body, code, err = cli.Request(http.MethodGet, nil, nil, getRootEnpoint)
+		c.Assert(err, qt.IsNil)
+		c.Assert(code, qt.Equals, http.StatusOK)
 
-	return rootResp.Root, censusParticipants.Participants, signers
+		var rootResp api.CensusRoot
+		err = json.NewDecoder(bytes.NewReader(body)).Decode(&rootResp)
+		c.Assert(err, qt.IsNil)
+		return rootResp.Root, censusParticipants.Participants, signers
+	}
 }
 
-func generateCensusProof(c *qt.C, cli *client.HTTPclient, root []byte, key []byte) *types.CensusProof {
-	// Get proof for the key
-	getProofEnpoint := api.EndpointWithParam(api.GetCensusProofEndpoint, api.CensusURLParam, hex.EncodeToString(root))
-	body, code, err := cli.Request(http.MethodGet, nil, []string{"key", hex.EncodeToString(key)}, getProofEnpoint)
-	c.Assert(err, qt.IsNil)
-	c.Assert(code, qt.Equals, http.StatusOK)
+func generateCensusProof(c *qt.C, cli *client.HTTPclient, root, pid, key []byte) *types.CensusProof {
+	if isCSPCensus() {
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABLS12377, []byte(testLocalCSPSeed))
+		c.Assert(err, qt.IsNil)
+		processID := new(types.ProcessID).SetBytes(pid)
+		cspProof, err := eddsaCSP.GenerateProof(processID, common.BytesToAddress(key))
+		c.Assert(err, qt.IsNotNil)
+		return cspProof
+	} else {
+		// Get proof for the key
+		getProofEnpoint := api.EndpointWithParam(api.GetCensusProofEndpoint, api.CensusURLParam, hex.EncodeToString(root))
+		body, code, err := cli.Request(http.MethodGet, nil, []string{"key", hex.EncodeToString(key)}, getProofEnpoint)
+		c.Assert(err, qt.IsNil)
+		c.Assert(code, qt.Equals, http.StatusOK)
 
-	var proof types.CensusProof
-	err = json.NewDecoder(bytes.NewReader(body)).Decode(&proof)
-	c.Assert(err, qt.IsNil)
+		var proof types.CensusProof
+		err = json.NewDecoder(bytes.NewReader(body)).Decode(&proof)
+		c.Assert(err, qt.IsNil)
 
-	return &proof
+		return &proof
+	}
 }
 
 func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
