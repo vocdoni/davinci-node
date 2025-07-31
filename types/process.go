@@ -298,8 +298,19 @@ type CensusProof struct {
 
 // Valid checks that the CensusProof is well-formed
 func (cp *CensusProof) Valid() bool {
-	return cp != nil && cp.Root != nil && cp.Address != nil && cp.Value != nil &&
-		cp.Siblings != nil && cp.Weight != nil
+	if cp == nil {
+		return false
+	}
+	switch cp.CensusOrigin {
+	case CensusOriginMerkleTree:
+		return cp.Root != nil && cp.Address != nil && cp.Value != nil &&
+			cp.Siblings != nil && cp.Weight != nil
+	case CensusOriginCSPEdDSABLS12377:
+		return cp.Root != nil && cp.Address != nil && cp.ProcessID != nil &&
+			cp.PublicKey != nil && cp.Signature != nil
+	default:
+		return false
+	}
 }
 
 // String returns a string representation of the CensusProof
