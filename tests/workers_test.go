@@ -132,7 +132,7 @@ func TestWorkerIntegration(t *testing.T) {
 			// generate a vote for the first participant
 			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signer, nil)
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, censusRoot, signer.Address().Bytes())
+			censusProof := generateCensusProof(c, cli, censusRoot, pid.Marshal(), signer.Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
