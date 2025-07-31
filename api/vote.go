@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
+	"github.com/vocdoni/davinci-node/crypto/csp"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -149,10 +150,19 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidCensusProof.Withf("census root mismatch").Write(w)
 		return
 	}
-	// verify the census proof
-	if !a.storage.CensusDB().VerifyProof(&vote.CensusProof) {
-		ErrInvalidCensusProof.Withf("census proof verification failed").Write(w)
-		return
+	// verify the census proof accordingly to the census origin
+	switch process.Census.CensusOrigin {
+	case types.CensusOriginMerkleTree:
+		if !a.storage.CensusDB().VerifyProof(&vote.CensusProof) {
+			ErrInvalidCensusProof.Withf("census proof verification failed").Write(w)
+			return
+		}
+	case types.CensusOriginCSPEdDSABLS12377:
+		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {
+			ErrInvalidCensusProof.Withf("census proof verification failed").WithErr(err).Write(w)
+			return
+		}
+	default:
 	}
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := ballotproof.BallotInputsHash(
