@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -54,8 +55,52 @@ func (g GenericMetadata) MarshalJSON() ([]byte, error) {
 	if g == nil {
 		return []byte("{}"), nil
 	}
-	// Use the default map marshaling behavior
-	return json.Marshal(map[string]any(g))
+	// Normalize nested maps to plain map[string]any
+	normalized := normalizeMaps(map[string]any(g))
+	return json.Marshal(normalized)
+}
+
+func normalizeMaps(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		switch val := v.(type) {
+		case GenericMetadata:
+			out[k] = normalizeMaps(map[string]any(val))
+		case map[string]any:
+			out[k] = normalizeMaps(val)
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func (g *GenericMetadata) UnmarshalJSON(data []byte) error {
+	if g == nil {
+		return fmt.Errorf("GenericMetadata: nil receiver")
+	}
+
+	// First unmarshal into a plain map
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*g = convertToGenericMetadata(raw)
+	return nil
+}
+
+func convertToGenericMetadata(m map[string]interface{}) GenericMetadata {
+	out := make(GenericMetadata, len(m))
+	for k, v := range m {
+		switch vv := v.(type) {
+		case map[string]any:
+			out[k] = convertToGenericMetadata(vv)
+		default:
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // MarshalJSON implements json.Marshaler interface for MultilingualString
