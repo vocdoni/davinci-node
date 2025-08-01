@@ -183,13 +183,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 
 	// Generate the proof
-	proof, err := s.prover(
-		circuits.StateTransitionCurve,
-		s.stCcs,
-		s.stPk,
-		assignments,
-		opts,
-	)
+	proof, err := s.prover(circuits.StateTransitionCurve, s.stCcs, s.stPk, assignments, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
@@ -216,6 +210,7 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	}
 
 	if err := st.Initialize(
+		process.Census.CensusOrigin.BigInt().MathBigInt(),
 		arbo.BytesToBigInt(process.Census.CensusRoot),
 		circuits.BallotModeToCircuit(process.BallotMode),
 		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),

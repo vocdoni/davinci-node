@@ -114,7 +114,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Key.BigInt().MathBigInt()),
+			Address: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Address.BigInt().MathBigInt()),
 			Ballot:  *rteBallot.ToGnarkEmulatedBN254(),
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Weight.MathBigInt()),

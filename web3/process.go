@@ -8,7 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	npbindings "github.com/vocdoni/davinci-contracts/golang-types/non-proxy"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -390,11 +390,17 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		return nil, fmt.Errorf("invalid ballot mode: %w", err)
 	}
 
+	// Validate the census origin
+	censusOrigin := types.CensusOrigin(p.Census.CensusOrigin)
+	if !censusOrigin.Valid() {
+		return nil, fmt.Errorf("invalid census origin: %d", p.Census.CensusOrigin)
+	}
+
 	census := types.Census{
 		CensusRoot:   p.Census.CensusRoot[:],
 		MaxVotes:     (*types.BigInt)(p.Census.MaxVotes),
 		CensusURI:    p.Census.CensusURI,
-		CensusOrigin: p.Census.CensusOrigin,
+		CensusOrigin: types.CensusOrigin(p.Census.CensusOrigin),
 	}
 
 	results := make([]*types.BigInt, len(p.Result))
@@ -464,7 +470,7 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	}
 
 	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
-	prp.Census.CensusOrigin = p.Census.CensusOrigin
+	prp.Census.CensusOrigin = uint8(p.Census.CensusOrigin)
 	prp.Census.MaxVotes = p.Census.MaxVotes.MathBigInt()
 	prp.Census.CensusURI = p.Census.CensusURI
 	prp.VoteCount = p.VoteCount.MathBigInt()

@@ -140,6 +140,7 @@ func newState(processId, censusRoot *big.Int, ballotMode circuits.BallotMode[*bi
 	}
 
 	if err := s.Initialize(
+		types.CensusOriginMerkleTree.BigInt().MathBigInt(),
 		censusRoot,
 		ballotMode,
 		encryptionKey,
