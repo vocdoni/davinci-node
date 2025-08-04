@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -146,7 +145,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// check that the census root is the same as the one in the process
-	if !bytes.Equal(process.Census.CensusRoot, vote.CensusProof.Root) {
+	if !vote.CensusProof.HasRoot(process.Census.CensusRoot) {
 		ErrInvalidCensusProof.Withf("census root mismatch").Write(w)
 		return
 	}
