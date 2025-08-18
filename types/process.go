@@ -1,12 +1,14 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/arbo"
 )
 
 type ProcessStatus uint8
@@ -173,6 +175,16 @@ type Process struct {
 	SequencerStats       SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
+// BigCensusRoot returns the BigInt representation of the census root of the
+// process. It converts the census root from its original format to a BigInt
+// according to the census origin.
+func (p *Process) BigCensusRoot() (*BigInt, error) {
+	if p.Census == nil {
+		return nil, fmt.Errorf("census is nil")
+	}
+	return processCensusRootToBigInt(p.Census.CensusOrigin, p.Census.CensusRoot)
+}
+
 // ProcessWithStatusChange extends types.Process to add OldStatus and NewStatus
 // fields
 type ProcessWithStatusChange struct {
@@ -271,6 +283,28 @@ func (co CensusOrigin) BigInt() *BigInt {
 	return (*BigInt)(new(big.Int).SetUint64(uint64(co)))
 }
 
+// Number of bytes in the census root
+const CensusRootLength = 32
+
+// NormalizedCensusRoot function ensures that the census root is always of a
+// fixed length. If its length is not CensusRootLength, it truncates or pads
+// it accordingly.
+func NormalizedCensusRoot(original HexBytes) HexBytes {
+	if len(original) > CensusRootLength {
+		// If the original is longer than the allowed length, truncate it
+		return original[:CensusRootLength]
+	}
+	if diff := CensusRootLength - len(original); diff > 0 {
+		// If the original is shorter than the allowed length, pad it with
+		// zeros at the end
+		padded := make(HexBytes, CensusRootLength)
+		copy(padded, original)
+		return padded
+	}
+	// If the original is already the correct length, return it as is
+	return original
+}
+
 type Census struct {
 	CensusOrigin CensusOrigin `json:"censusOrigin" cbor:"0,keyasint,omitempty"`
 	MaxVotes     *BigInt      `json:"maxVotes"     cbor:"1,keyasint,omitempty"`
@@ -313,6 +347,11 @@ func (cp *CensusProof) Valid() bool {
 	}
 }
 
+// HasRoot method checks if the CensusProof has the given census root.
+func (cp *CensusProof) HasRoot(censusRoot HexBytes) bool {
+	return bytes.Equal(NormalizedCensusRoot(cp.Root), NormalizedCensusRoot(censusRoot))
+}
+
 // String returns a string representation of the CensusProof
 // in JSON format. It returns an empty string if the JSON marshaling fails.
 func (cp *CensusProof) String() string {
@@ -346,10 +385,30 @@ type ProcessSetup struct {
 	Signature    HexBytes     `json:"signature"`
 }
 
+// BigCensusRoot returns the BigInt representation of the census root of the
+// process. It converts the census root from its original format to a BigInt
+// according to the census origin.
+func (p *ProcessSetup) BigCensusRoot() (*BigInt, error) {
+	return processCensusRootToBigInt(p.CensusOrigin, p.CensusRoot)
+}
+
 // ProcessSetupResponse represents the response of a voting process
 type ProcessSetupResponse struct {
 	ProcessID        HexBytes    `json:"processId,omitempty"`
 	EncryptionPubKey [2]*BigInt  `json:"encryptionPubKey,omitempty"`
 	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
 	BallotMode       *BallotMode `json:"ballotMode,omitempty"`
+}
+
+// processCensusRootToBigInt helper converts the census root from its original
+// format to a BigInt according to the census origin.
+func processCensusRootToBigInt(origin CensusOrigin, root HexBytes) (*BigInt, error) {
+	switch origin {
+	case CensusOriginMerkleTree:
+		return new(BigInt).SetBigInt(arbo.BytesToBigInt(root)), nil
+	case CensusOriginCSPEdDSABLS12377:
+		return root.BigInt(), nil
+	default:
+		return nil, fmt.Errorf("unsupported census origin: %s", origin)
+	}
 }
