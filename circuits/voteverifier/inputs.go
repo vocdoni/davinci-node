@@ -7,7 +7,6 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/iden3/go-iden3-crypto/mimc7"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/csp"
@@ -40,12 +39,16 @@ func (vi *VoteVerifierInputs) FromProcessBallot(process *types.Process, b *stora
 
 	vi.ProcessID = crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), b.ProcessID.BigInt().MathBigInt())
 	vi.CensusOrigin = process.Census.CensusOrigin
-	vi.CensusRoot = arbo.BytesToBigInt(process.Census.CensusRoot)
 	vi.BallotMode = circuits.BallotModeToCircuit(process.BallotMode)
 	vi.EncryptionKey = circuits.EncryptionKeyToCircuit(*process.EncryptionKey)
 	vi.Address = b.Address
 	vi.VoteID = b.VoteID
 	vi.EncryptedBallot = b.EncryptedBallot
+	censusRoot, err := process.BigCensusRoot()
+	if err != nil {
+		return fmt.Errorf("failed to get census root: %w", err)
+	}
+	vi.CensusRoot = censusRoot.MathBigInt()
 
 	switch vi.CensusOrigin {
 	case types.CensusOriginMerkleTree:

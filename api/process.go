@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -74,12 +73,18 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	censusRoot, err := p.BigCensusRoot()
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not get census root: %v", err).Write(w)
+		return
+	}
+
 	// prepare inputs for the state ready for the state transition circuit:
 	// - the census root must be encoded according to the arbo format
 	root, err := state.CalculateInitialRoot(
 		pid.BigInt(),
 		p.CensusOrigin.BigInt().MathBigInt(),
-		arbo.BytesToBigInt(p.CensusRoot),
+		censusRoot.MathBigInt(),
 		p.BallotMode,
 		publicKey)
 	if err != nil {

@@ -25,35 +25,20 @@ type CSPProof struct {
 	PublicKey eddsa.PublicKey
 }
 
-// SerializedPubKey returns the public key as a slice of frontend variables.
-func (proof *CSPProof) SerializedPubKey() []frontend.Variable {
-	return []frontend.Variable{
-		proof.PublicKey.A.X,
-		proof.PublicKey.A.Y,
-	}
-}
-
 // IsValid checks if the signature is valid or not. It returns 1 as a frontend
 // variable if the signature is valid, and 0 if it is not.
 // It recomputes the message hash with the process ID and address and verifies
 // the signature against the public key and the message hash.
 func (proof *CSPProof) IsValid(
 	api frontend.API,
-	censusRoot frontend.Variable,
-	processID, address emulated.Element[sw_bn254.ScalarField],
+	censusRoot, processID, address emulated.Element[sw_bn254.ScalarField],
 ) frontend.Variable {
-	// initialize the mimc hash function
-	hashFn, err := mimc.NewMiMC(api)
+	// check if the census root matches the expected one
+	validPubKey, err := proof.isPubKeyValid(api, censusRoot)
 	if err != nil {
-		circuits.FrontendError(api, "failed to create mimc hash function", err)
+		circuits.FrontendError(api, "failed to verify census root", err)
 		return 0
 	}
-	// recompute the census root with the public key
-	hashFn.Write(proof.SerializedPubKey()...)
-	calculatedCensusRoot := hashFn.Sum()
-	// check if the census root matches the expected one
-	validPubKey := api.IsZero(api.Sub(censusRoot, calculatedCensusRoot))
-	hashFn.Reset()
 	// recompute the message hash with the process ID and address
 	msg := emulatedSignatureMessage(api, processID, address)
 	// inititialize the twistededwards curve
@@ -62,14 +47,42 @@ func (proof *CSPProof) IsValid(
 		circuits.FrontendError(api, "failed to create twistededwards curve", err)
 		return 0
 	}
+	// initialize the mimc hash function
+	hashFn, err := mimc.NewMiMC(api)
+	if err != nil {
+		circuits.FrontendError(api, "failed to create mimc hash function", err)
+		return 0
+	}
 	// check if the signature is valid
-	hashFn.Reset()
 	validSignature, err := eddsa.IsValid(curve, proof.Signature, msg, proof.PublicKey, &hashFn)
 	if err != nil {
 		circuits.FrontendError(api, "failed to verify signature", err)
 		return 0
 	}
 	return api.And(validPubKey, validSignature)
+}
+
+func (proof *CSPProof) isPubKeyValid(
+	api frontend.API,
+	censusRoot emulated.Element[sw_bn254.ScalarField],
+) (frontend.Variable, error) {
+	emulatedPubKeyX, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, proof.PublicKey.A.X)
+	if err != nil {
+		return 0, err
+	}
+	emulatedPubKeyY, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, proof.PublicKey.A.Y)
+	if err != nil {
+		return 0, err
+	}
+
+	pubKeyHasher, err := mimc7.NewMiMC(api)
+	if err != nil {
+		return 0, err
+	}
+	if err := pubKeyHasher.Write(*emulatedPubKeyX, *emulatedPubKeyY); err != nil {
+		return 0, err
+	}
+	return pubKeyHasher.AssertSumIsEqualFlag(censusRoot), nil
 }
 
 // emulatedSignatureMessage computes the message hash for the signature. It

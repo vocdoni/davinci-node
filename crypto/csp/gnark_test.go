@@ -21,7 +21,7 @@ import (
 
 type cspProofCircuit struct {
 	Proof      CSPProof
-	CensusRoot frontend.Variable
+	CensusRoot emulated.Element[sw_bn254.ScalarField]
 	ProcessID  emulated.Element[sw_bn254.ScalarField]
 	Address    emulated.Element[sw_bn254.ScalarField]
 }
@@ -59,7 +59,7 @@ func TestCSPProofCircuit(t *testing.T) {
 	ffAddress := hexAddress.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
 	assignments := &cspProofCircuit{
 		Proof:      *gnarkProof,
-		CensusRoot: proof.Root.BigInt().MathBigInt(),
+		CensusRoot: emulated.ValueOf[sw_bn254.ScalarField](proof.Root.BigInt().MathBigInt()),
 		ProcessID:  emulated.ValueOf[sw_bn254.ScalarField](ffPID),
 		Address:    emulated.ValueOf[sw_bn254.ScalarField](ffAddress),
 	}
