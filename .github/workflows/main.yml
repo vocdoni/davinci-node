@@ -33,7 +33,7 @@ jobs:
       - name: Set up Go environment
         uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version: '1.24'
 
       - name: Tidy go module
         run: |
@@ -59,9 +59,9 @@ jobs:
           fi
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.0
+          version: v2.1
 
   job_go_test:
     runs-on: [self-hosted]
