@@ -407,7 +407,8 @@ func generateCensusProof(c *qt.C, cli *client.HTTPclient, root, pid, key []byte)
 		c.Assert(err, qt.IsNil)
 		processID := new(types.ProcessID).SetBytes(pid)
 		cspProof, err := eddsaCSP.GenerateProof(processID, common.BytesToAddress(key))
-		c.Assert(err, qt.IsNotNil)
+		c.Assert(err, qt.IsNil)
+		cspProof.Weight = new(types.BigInt).SetUint64(circuits.MockWeight)
 		return cspProof
 	} else {
 		// Get proof for the key

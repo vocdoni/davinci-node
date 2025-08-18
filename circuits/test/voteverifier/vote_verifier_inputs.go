@@ -25,6 +25,8 @@ import (
 	primitivestest "github.com/vocdoni/gnark-crypto-primitives/testutil"
 )
 
+const testCSPSeed = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
+
 // VoteVerifierTestResults struct includes relevant data after VerifyVoteCircuit
 // inputs generation
 type VoteVerifierTestResults struct {
@@ -87,7 +89,7 @@ func VoteVerifierInputsForTest(
 		}
 	case types.CensusOriginCSPEdDSABLS12377:
 		// generate a test census with CSP proofs
-		censusRoot, censusSiblings, cspProofs, err = CensusProofCSP(votersData, processID)
+		censusRoot, censusSiblings, cspProofs, err = CensusProofCSP(votersData, processID, censusOrigin)
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 		}
@@ -223,13 +225,13 @@ func CensusProofMerkleTree(votersData []VoterTestData, processID *types.ProcessI
 	return testCensus.Root, emulatedSiblings, cspProofs, nil
 }
 
-func CensusProofCSP(votersData []VoterTestData, processID *types.ProcessID) (
+func CensusProofCSP(votersData []VoterTestData, processID *types.ProcessID, censusOrigin types.CensusOrigin) (
 	*big.Int,
 	[][types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField],
 	[]csp.CSPProof,
 	error,
 ) {
-	eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABLS12377, nil)
+	eddsaCSP, err := csp.New(censusOrigin, []byte(testCSPSeed))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to create csp: %w", err)
 	}

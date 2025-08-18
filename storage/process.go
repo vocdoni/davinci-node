@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -60,10 +59,15 @@ func (s *Storage) NewProcess(process *types.Process) error {
 			"pid", pid.String(), "err", err.Error())
 	}
 
+	censusRoot, err := process.BigCensusRoot()
+	if err != nil {
+		return fmt.Errorf("failed to get census root: %w", err)
+	}
+
 	// Initialize the process state to store the process data
 	if err := pState.Initialize(
 		process.Census.CensusOrigin.BigInt().MathBigInt(),
-		arbo.BytesToBigInt(process.Census.CensusRoot),
+		censusRoot.MathBigInt(),
 		circuits.BallotModeToCircuit(process.BallotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey),
 	); err != nil {
