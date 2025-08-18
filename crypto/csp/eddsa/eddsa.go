@@ -189,20 +189,24 @@ func pubKeyFromCensusProof(proof *types.CensusProof) (signature.PublicKey, error
 // mimc hash function for that curve to calculate the hash of the public key
 // coords. It returns an error if the public key provided is invalid for the
 // desired curve or if the curve is not supported.
-func pubKeyPointToCensusRoot(curve twistededwards.ID, pubKey signature.PublicKey) (types.HexBytes, error) {
+func pubKeyPointToCensusRoot(
+	curve twistededwards.ID,
+	pubKey signature.PublicKey,
+) (types.HexBytes, error) {
 	switch curve {
 	case twistededwards.BLS12_377:
 		pk, ok := pubKey.(*bls12377_eddsa.PublicKey)
 		if !ok {
 			return nil, fmt.Errorf("invalid public key type: %T", pubKey)
 		}
-		xBytes := pk.A.X.Bytes()
-		yBytes := pk.A.Y.Bytes()
-
-		hashFn := bls12377_mimc.NewMiMC()
-		hashFn.Write(xBytes[:])
-		hashFn.Write(yBytes[:])
-		return types.HexBytes(hashFn.Sum(nil)), nil
+		hashedPubKey, err := mimc7.Hash([]*big.Int{
+			pk.A.X.BigInt(new(big.Int)),
+			pk.A.Y.BigInt(new(big.Int)),
+		}, nil)
+		if err != nil {
+			return nil, fmt.Errorf("error hashing public key: %w", err)
+		}
+		return hashedPubKey.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unsupported curve: %d", curve)
 	}
