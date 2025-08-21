@@ -240,9 +240,9 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get master info: %w", err)
 	}
-	uri := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, masterUUID)
+	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, masterUUID)
 	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
-	uri = api.EndpointWithParam(uri, api.WorkerAddressParam, s.workerAddress.String())
+	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
 	url := baseURL + uri
 
 	client := &http.Client{Timeout: 20 * time.Second}

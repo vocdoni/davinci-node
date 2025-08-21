@@ -44,8 +44,12 @@ var (
 	ErrBallotAlreadyProcessing  = Error{Code: 40019, HTTPstatus: http.StatusConflict, Err: fmt.Errorf("ballot is already processing")}
 	ErrProcessNotAcceptingVotes = Error{Code: 40020, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("process is not accepting votes")}
 	ErrInvalidChainID           = Error{Code: 40021, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("not supported chain Id")}
-	ErrWorkerNotAvailable       = Error{Code: 40022, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("worker not available")}
-	ErrMalformedWorkerInfo      = Error{Code: 40023, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed worker info")}
+	// Worker errors
+	ErrWorkerNotAvailable     = Error{Code: 40022, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("worker not available")}
+	ErrMalformedWorkerInfo    = Error{Code: 40023, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed worker info")}
+	ErrInvalidWorkerAuthtoken = Error{Code: 40024, HTTPstatus: http.StatusForbidden, Err: fmt.Errorf("invalid worker authentication token")}
+	ErrExpiredWorkerAuthtoken = Error{Code: 40025, HTTPstatus: http.StatusForbidden, Err: fmt.Errorf("expired worker authentication token")}
+	ErrWorkerNotFound         = Error{Code: 40026, HTTPstatus: http.StatusNotFound, Err: fmt.Errorf("worker not found")}
 
 	ErrMarshalingServerJSONFailed = Error{Code: 50001, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("marshaling (server-side) JSON failed")}
 	ErrGenericInternalServerError = Error{Code: 50002, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("internal server error")}

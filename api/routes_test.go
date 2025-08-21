@@ -18,9 +18,9 @@ func TestEncodeWithParams(t *testing.T) {
 	mainAPIUUID, err := workers.WorkerSeedToUUID(testSeed)
 	c.Assert(err, qt.IsNil)
 
-	getJobEndpoint := EndpointWithParam(WorkerGetJobEndpoint, WorkerUUIDParam, mainAPIUUID.String())
+	getJobEndpoint := EndpointWithParam(WorkersEndpoint, SequencerUUIDParam, mainAPIUUID.String())
 	getJobEndpoint = EndpointWithParam(getJobEndpoint, WorkerNameQueryParam, workerName)
-	getJobEndpoint = EndpointWithParam(getJobEndpoint, WorkerAddressParam, workerAddr)
+	getJobEndpoint = EndpointWithParam(getJobEndpoint, WorkerAddressQueryParam, workerAddr)
 
 	t.Log(getJobEndpoint)
 }

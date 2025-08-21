@@ -166,8 +166,9 @@ go run ./cmd/davinci-sequencer -h
 | `--log.level` | `-l` | `info` | Log level (debug, info, warn, error) |
 | `--log.output` | `-o` | `stdout` | Log output destination |
 | `--datadir` | `-d` | `~/.davinci` | Data directory path |
-| `--worker.masterURL` | `-w` | | Master URL for worker mode |
+| `--worker.sequencerURL` | `-w` | | Sequencer URL for worker mode |
 | `--worker.address` | `-a` | | Worker Ethereum address |
+| `--worker.authtoken` | none | | Worker authtoken for worker mode |
 | `--worker.timeout` | none | `1m` | Worker job timeout duration |
 
 ## ⚡ Run a Worker Node
@@ -175,6 +176,9 @@ go run ./cmd/davinci-sequencer -h
 Worker nodes are lightweight components that handle zkSNARK proof generation for ballots assigned by a master sequencer node. This enables distributed proving and helps scale the network.
 
 ### Setup Steps
+
+0. **Create a Worker Authtoken**
+   Go to [Davinci Worker Registry](https://vocdoni.github.io/davinci-workers-registry/) webapp to get your token. Ensures that the account used to create it matches with the worker address.
 
 1. **Clone the repository:**
    ```bash
@@ -189,7 +193,8 @@ Worker nodes are lightweight components that handle zkSNARK proof generation for
 
 3. **Configure worker-specific variables** in the `.env` file:
    ```bash
-   DAVINCI_WORKER_MASTERURL="http://master-host:9090/workers/<UUID>"
+   DAVINCI_WORKER_SEQUENCERURL="http://sequencer-host:9090/workers/<UUID>"
+   DAVINCI_WORKER_AUTHTOKEN="<generated_worker_authtoken"
    DAVINCI_WORKER_ADDRESS="0x1111122222333334444455555666667777788888"
    DAVINCI_WORKER_NAME="my-awesome-davinci-worker"
    ```

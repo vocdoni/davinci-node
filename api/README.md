@@ -60,6 +60,9 @@ API errors are returned with appropriate HTTP status codes and a JSON body with 
 | 40021 | 400         | Not supported chain Id                     |
 | 40022 | 400         | Worker not available                       |
 | 40023 | 400         | Malformed worker info                      |
+| 40024 | 403         | invalid worker authentication token        |
+| 40025 | 403         | expired worker authentication token        |
+| 40026 | 404         | worker not found                           |
 | 50001 | 500         | Marshaling (server-side) JSON failed       |
 | 50002 | 500         | Internal server error                      |
 

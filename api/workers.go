@@ -3,19 +3,63 @@ package api
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
-// startWorkerTimeoutMonitor starts the timeout monitor for worker jobs
-func (a *API) startWorkerTimeoutMonitor() {
-	a.jobsManager = workers.NewJobsManager(a.storage, a.workerTimeout, a.banRules)
+// startWorkersAPI method checks if the workers API should be started. If so,
+// it generates the sequencer signer and uuid using the seed defined in the
+// provided configuration. It also starts the workers monitor and register
+// the required handlers in the API router. If something fails return the
+// error. If no seed is defined in the provided configuration, the workers
+// API will not be started.
+func (a *API) startWorkersAPI(conf APIConfig) error {
+	// Initialize sequencer signer if sequencerWorkerSeed is provided
+	if conf.SequencerWorkersSeed != "" {
+		var err error
+		// prepare the seed to be the ethereum signer private key
+		// initialize the ethereum signer
+		a.sequencerSigner, err = ethereum.NewSignerFromSeed([]byte(conf.SequencerWorkersSeed))
+		if err != nil {
+			return fmt.Errorf("failed to create worker signer: %w", err)
+		}
+		// calculate the sequencer UUID using the seed
+		a.sequencerUUID, err = workers.WorkerSeedToUUID(conf.SequencerWorkersSeed)
+		if err != nil {
+			return fmt.Errorf("failed to create worker UUID: %w", err)
+		}
+		// Start workers monitor
+		a.startWorkersMonitor()
+
+		// Add worker endpoints
+		log.Infow("register handler", "endpoint", WorkerTokenDataEndpoint, "method", "GET")
+		a.router.Get(WorkerTokenDataEndpoint, a.workersTokenData)
+		log.Infow("register handler", "endpoint", WorkerJobEndpoint, "method", "GET")
+		a.router.Get(WorkerJobEndpoint, a.workersNewJob)
+		log.Infow("register handler", "endpoint", WorkerJobEndpoint, "method", "POST")
+		a.router.Post(WorkerJobEndpoint, a.workersSubmitJob)
+
+		log.Infow("worker API enabled",
+			"sequencerUUID", a.sequencerUUID.String(),
+			"sequencerAddr", a.sequencerSigner.Address().Hex(),
+			"workersEndpoint", EndpointWithParam(WorkersEndpoint, SequencerUUIDParam, a.sequencerUUID.String()))
+	}
+	return nil
+}
+
+// startWorkersMonitor starts the timeout monitor for worker jobs
+func (a *API) startWorkersMonitor() {
+	// Start the jobs manager with the worker job timeout and the ban rules
+	a.jobsManager = workers.NewJobsManager(a.storage, a.workersJobTimeout, a.workersBanRules)
 	a.jobsManager.Start(a.parentCtx)
 
 	go func() {
@@ -46,50 +90,128 @@ func (a *API) startWorkerTimeoutMonitor() {
 	}()
 }
 
-// workerGetJob handles GET /workers/{uuid}/{workerAddress}?name={workerName}
-func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
-	// Extract UUID and address from URL params
-	uuid := chi.URLParam(r, WorkerUUIDParam)
-	workerAddress := chi.URLParam(r, WorkerAddressParam)
-
-	// Validate UUID
-	if uuid != a.workerUUID.String() {
-		ErrUnauthorized.Write(w)
-		return
-	}
-	// Validate worker address
-	if _, err := workers.ValidWorkerAddress(workerAddress); err != nil {
-		ErrMalformedWorkerInfo.Withf("invalid worker address").Write(w)
-		return
+// authWorkerFromRequest method checks that the request provided contains the
+// required auth parameters for a worker and they are valid.
+func (a *API) authWorkerFromRequest(r *http.Request) (common.Address, *Error) {
+	// Extract the sequencer UUID from the url and compare with UUID of the
+	// current sequencer API.
+	sequencerUUID := chi.URLParam(r, "uuid")
+	if a.sequencerUUID.String() != sequencerUUID {
+		return common.Address{}, &ErrResourceNotFound
 	}
 
-	// Extract and validate worker name, if not provided, try to derive it
-	// from the address
-	workerName := r.URL.Query().Get("name")
+	// Extract the address from query params
+	strWorkerAddress := r.URL.Query().Get(WorkerAddressQueryParam)
+	if strWorkerAddress == "" {
+		err := ErrMalformedWorkerInfo.Withf("missing address")
+		return common.Address{}, &err
+	}
+
+	// Extract the signature from query params
+	strToken := r.URL.Query().Get(WorkerTokenQueryParam)
+	if strToken == "" {
+		err := ErrMalformedWorkerInfo.Withf("missing signature")
+		return common.Address{}, &err
+	}
+
+	// Check if the signature is valid and the token is not expired
+	valid, timestamp, err := workers.VerifyWorkerHexToken(strToken, strWorkerAddress, a.sequencerSigner.Address())
+	if err != nil {
+		err := ErrMalformedWorkerInfo.WithErr(err)
+		return common.Address{}, &err
+	} else if !valid {
+		err := ErrInvalidWorkerAuthtoken.Withf("invalid signature")
+		return common.Address{}, &err
+	} else if time.Since(timestamp) > a.workersAuthtokenExpiration {
+		err := ErrExpiredWorkerAuthtoken.Withf("generate a new one to continue")
+		return common.Address{}, &err
+	}
+
+	// Extract name from query params
+	workerName := r.URL.Query().Get(WorkerNameQueryParam)
 	if workerName == "" {
 		var err error
-		workerName, err = workers.WorkerNameFromAddress(workerAddress)
+		workerName, err = workers.WorkerNameFromAddress(strWorkerAddress)
 		if err != nil {
-			ErrMalformedWorkerInfo.WithErr(err).Write(w)
-			return
+			err := ErrMalformedWorkerInfo.WithErr(err)
+			return common.Address{}, &err
 		}
 	}
+	// Add the worker to the WorkerManager, if it already exists it will be
+	// updated
+	a.jobsManager.WorkerManager.AddWorker(strWorkerAddress, workerName)
+	return common.HexToAddress(strWorkerAddress), nil
+}
 
-	// Try to add the worker to the manager, if it already exists, it will not
-	// be added again
-	a.jobsManager.WorkerManager.AddWorker(workerAddress, workerName)
+// workersList handles GET /workers
+func (a *API) workersList(w http.ResponseWriter, r *http.Request) {
+	// Get all worker statistics
+	workerStats, err := a.jobsManager.WorkerManager.ListWorkerStats()
+	if err != nil {
+		log.Warnw("failed to get worker statistics",
+			"error", err.Error())
+		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+	apiWorkers := make([]WorkerInfo, len(workerStats))
+	for i, worker := range workerStats {
+		apiWorkers[i] = WorkerInfo{
+			// omit the address to prevent exposing it
+			Name:         worker.Name,
+			SuccessCount: worker.SuccessCount,
+			FailedCount:  worker.FailedCount,
+		}
+	}
+	httpWriteJSON(w, WorkersListResponse{
+		Workers: apiWorkers,
+	})
+}
+
+// workersTokenData handles GET /workers/authTokenData that response with a
+// text that contains the signature of the master message. This message is
+// used to setup new workers. The text follows this format:
+//
+//	Authorizing worker in sequencer '<sequencerAddress>' at <timestamp>
+func (a *API) workersTokenData(w http.ResponseWriter, r *http.Request) {
+	// sign message with api.workerSigner
+	timestamp := time.Now()
+	msg, createdAt, authTokenSuffix := workers.WorkerAuthTokenData(a.sequencerSigner.Address(), timestamp)
+	signature, err := a.sequencerSigner.Sign([]byte(msg))
+	if err != nil {
+		log.Warnw("failed to sign worker message",
+			"error", err.Error())
+		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+	// return the response
+	httpWriteJSON(w, WorkerAuthDataResponse{
+		Message:         msg,
+		Signature:       signature.Bytes(),
+		CreatedAt:       createdAt,
+		AuthTokenSuffix: authTokenSuffix,
+	})
+}
+
+// workersNewJob handles GET /workers/{uuid}/job
+func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
+	workerAddr, apiErr := a.authWorkerFromRequest(r)
+	if apiErr != nil {
+		log.Warnw("failed to verify worker signature", "error", apiErr.Error())
+		apiErr.Write(w)
+		return
+	}
+
+	log.Debugw("new job requested from a worker", "worker", workerAddr.Hex())
 
 	// Check if worker is available
-	if available, err := a.jobsManager.IsWorkerAvailable(workerAddress); !available {
-		log.Warnw("worker not available",
-			"worker", workerAddress,
-			"uuid", uuid)
+	if available, err := a.jobsManager.IsWorkerAvailable(workerAddr.Hex()); !available {
+		log.Warnw("worker not available", "worker", workerAddr.Hex())
 		ErrWorkerNotAvailable.WithErr(err).Write(w)
 		return
 	}
 
 	// Get next ballot
-	ballot, key, err := a.storage.NextBallot()
+	ballot, voteID, err := a.storage.NextBallot()
 	if err != nil {
 		if errors.Is(err, storage.ErrNoMoreElements) {
 			w.WriteHeader(http.StatusNoContent)
@@ -97,17 +219,17 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Warnw("failed to get next ballot for worker",
 			"error", err.Error(),
-			"worker", workerAddress)
+			"worker", workerAddr.Hex())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
 	}
 
 	// Track the job
-	voteIDStr := hex.EncodeToString(key)
-	if _, err := a.jobsManager.RegisterJob(workerAddress, key); err != nil {
+	voteIDStr := hex.EncodeToString(voteID)
+	if _, err := a.jobsManager.RegisterJob(workerAddr.Hex(), voteID); err != nil {
 		log.Warnw("no available workers for job",
 			"voteID", voteIDStr,
-			"worker", workerAddress,
+			"worker", workerAddr.Hex(),
 			"error", err.Error())
 		ErrGenericInternalServerError.Withf("no available workers for job").Write(w)
 		return
@@ -115,7 +237,7 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 
 	log.Infow("assigned job to worker",
 		"voteID", voteIDStr,
-		"worker", workerAddress,
+		"worker", workerAddr.Hex(),
 		"processID", hex.EncodeToString(ballot.ProcessID))
 
 	// Check if worker is registered for this process
@@ -133,16 +255,17 @@ func (a *API) workerGetJob(w http.ResponseWriter, r *http.Request) {
 	httpWriteBinary(w, data)
 }
 
-// workerSubmitJob handles POST /workers/{uuid}
-func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
-	// Extract UUID from URL param
-	uuid := chi.URLParam(r, WorkerUUIDParam)
-
-	// Validate UUID
-	if uuid != a.workerUUID.String() {
-		ErrUnauthorized.Write(w)
+// workersSubmitJob handles POST /workers/{uuid}/job
+func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
+	// Check worker signature
+	workerAddr, apiErr := a.authWorkerFromRequest(r)
+	if apiErr != nil {
+		log.Warnw("failed to verify worker signature", "error", apiErr.Error())
+		apiErr.Write(w)
 		return
 	}
+
+	log.Debugw("worker job submission received", "worker", workerAddr.Hex())
 
 	// Decode verified ballot
 	var vb storage.VerifiedBallot
@@ -205,33 +328,6 @@ func (a *API) workerSubmitJob(w http.ResponseWriter, r *http.Request) {
 		Address:      job.Address,
 		SuccessCount: stats.SuccessCount,
 		FailedCount:  stats.FailedCount,
-	}
-
-	httpWriteJSON(w, response)
-}
-
-// workersList handles GET /workers
-func (a *API) workersList(w http.ResponseWriter, r *http.Request) {
-	// Get all worker statistics
-	workerStats, err := a.jobsManager.WorkerManager.ListWorkerStats()
-	if err != nil {
-		log.Warnw("failed to get worker statistics",
-			"error", err.Error())
-		ErrGenericInternalServerError.WithErr(err).Write(w)
-		return
-	}
-	apiWorkers := make([]WorkerInfo, len(workerStats))
-	for i, worker := range workerStats {
-		apiWorkers[i] = WorkerInfo{
-			// omit the address to prevent exposing it
-			Name:         worker.Name,
-			SuccessCount: worker.SuccessCount,
-			FailedCount:  worker.FailedCount,
-		}
-	}
-
-	response := WorkersListResponse{
-		Workers: apiWorkers,
 	}
 
 	httpWriteJSON(w, response)

@@ -88,13 +88,14 @@ func setupAPI(
 	ctx context.Context,
 	db *storage.Storage,
 	workerSeed string,
+	workerTokenExpiration time.Duration,
 	workerTimeout time.Duration,
 	banRules *workers.WorkerBanRules,
 ) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
 	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", false)
-	api.SetWorkerConfig(workerSeed, workerTimeout, banRules)
+	api.SetWorkerConfig(workerSeed, workerTokenExpiration, workerTimeout, banRules)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
 	}
@@ -204,7 +205,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 
 		// Wait until contracts are deployed and get their addresses from
 		// deployer
-		contractsCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+		contractsCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
 		var contractsAddresses *web3.Addresses
 		for contractsAddresses == nil {
@@ -296,6 +297,7 @@ func NewTestService(
 	t *testing.T,
 	ctx context.Context,
 	workerSecret string,
+	workerTokenExpiration time.Duration,
 	workerTimeout time.Duration,
 	banRules *workers.WorkerBanRules,
 ) *Services {
@@ -338,7 +340,7 @@ func NewTestService(
 	}
 
 	// Start API service
-	api, err := setupAPI(ctx, stg, workerSecret, workerTimeout, banRules)
+	api, err := setupAPI(ctx, stg, workerSecret, workerTokenExpiration, workerTimeout, banRules)
 	qt.Assert(t, err, qt.IsNil)
 	services.API = api
 

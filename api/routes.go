@@ -47,14 +47,15 @@ const (
 	DeleteCensusEndpoint          = "/censuses/{" + CensusURLParam + "}"              // DELETE: Delete census
 	GetCensusProofEndpoint        = "/censuses/{" + CensusURLParam + "}/proof"        // GET: Get census proof
 
-	// Worker endpoints
-	WorkerUUIDParam         = "uuid"                                                                      // URL parameter for worker UUID
-	WorkerAddressParam      = "address"                                                                   // URL parameter for worker address
-	WorkerNameQueryParam    = "name"                                                                      // URL query param for worker name
-	WorkersEndpoint         = "/workers"                                                                  // Base worker endpoint
-	WorkerGetJobEndpoint    = WorkersEndpoint + "/{" + WorkerUUIDParam + "}/{" + WorkerAddressParam + "}" // GET: Worker get job
-	WorkerSubmitJobEndpoint = WorkersEndpoint + "/{" + WorkerUUIDParam + "}"                              // POST: Worker submit job
-	WorkersListEndpoint     = WorkersEndpoint                                                             // GET: List workers
+	// Worker URL params and endpoints
+	SequencerUUIDParam      = "uuid"    // Param for worker UUID
+	WorkerAddressQueryParam = "address" // URL query param for worker address
+	WorkerNameQueryParam    = "name"    // URL query param for worker name
+	WorkerTokenQueryParam   = "token"   // URL query param for worker token
+
+	WorkersEndpoint         = "/workers/{" + SequencerUUIDParam + "}" // Base workers endpoint
+	WorkerTokenDataEndpoint = WorkersEndpoint + "/authData"           // GET: Message to be signed by workers
+	WorkerJobEndpoint       = WorkersEndpoint + "/job"                // GET: New job for worker POST: Submit job from worker
 
 	// Sequencer endpoints
 	SequencerWorkersEndpoint = "/sequencer/workers" // GET: List worker statistics
