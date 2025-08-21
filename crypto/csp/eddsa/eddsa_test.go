@@ -23,7 +23,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 		ChainID: rand.Uint32(),
 	}
 
-	csp, err := New(twistededwards.BLS12_377)
+	csp, err := CSP(twistededwards.BLS12_377)
 	c.Assert(err, qt.IsNil)
 
 	t.Run("invalid inputs", func(t *testing.T) {

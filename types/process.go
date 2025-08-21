@@ -385,10 +385,10 @@ type ProcessSetup struct {
 	Signature    HexBytes     `json:"signature"`
 }
 
-// BigCensusRoot returns the BigInt representation of the census root of the
+// CensusRootBigInt returns the BigInt representation of the census root of the
 // process. It converts the census root from its original format to a BigInt
 // according to the census origin.
-func (p *ProcessSetup) BigCensusRoot() (*BigInt, error) {
+func (p *ProcessSetup) CensusRootBigInt() (*BigInt, error) {
 	return processCensusRootToBigInt(p.CensusOrigin, p.CensusRoot)
 }
 
