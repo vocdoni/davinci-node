@@ -11,12 +11,14 @@ while ! (echo >/dev/tcp/anvil/8545) &>/dev/null; do
 done
 echo " ✅"
 
-# clone if necessary
-if [ ! -d /workspace/davinci-contracts ]; then
-  BRANCH=${BRANCH:-main}
-  echo "📥 Cloning davinci-contracts branch: $BRANCH"
-  git clone https://github.com/vocdoni/davinci-contracts.git
+# remove any existing davinci-contracts directory
+if [ -d davinci-contracts ]; then
+  rm -rf davinci-contracts
 fi
+
+BRANCH=${BRANCH:-main}
+echo "📥 Cloning davinci-contracts branch: $BRANCH"
+git clone https://github.com/vocdoni/davinci-contracts.git
 cd davinci-contracts
 
 echo "🔍 Using commit: ${COMMIT:-latest}"
@@ -43,7 +45,7 @@ forge clean && forge build
 
 forge script \
   --chain-id 1337 \
-  script/non-proxy/DeployAll.s.sol:DeployAllScript \
+  script/DeployAll.s.sol:DeployAllScript \
   --rpc-url http://anvil:8545 \
   --broadcast \
   --slow \
