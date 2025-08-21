@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 func TestNewSigner(t *testing.T) {
@@ -79,4 +80,21 @@ func TestSign(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	expectedAddr := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	c.Assert(recoveredAddr, qt.Equals, expectedAddr)
+}
+
+func TestNewSignerFromSeed(t *testing.T) {
+	c := qt.New(t)
+
+	seed := util.RandomBytes(64)
+	signer, err := NewSignerFromSeed(seed)
+	c.Assert(err, qt.IsNil)
+
+	msg := util.RandomBytes(32)
+	signature, err := signer.Sign(msg)
+	c.Assert(err, qt.IsNil)
+	c.Assert(signature, qt.Not(qt.IsNil))
+
+	// Verify the signature
+	ok, _ := signature.Verify(msg, signer.Address())
+	c.Assert(ok, qt.IsTrue)
 }

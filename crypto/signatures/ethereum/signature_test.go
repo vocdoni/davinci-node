@@ -37,7 +37,7 @@ func TestNew(t *testing.T) {
 	t.Logf("Message hash: %x", HashMessage(msg))
 
 	// Test creating new signature from valid data
-	sig, err := New(ethSig)
+	sig, err := BytesToSignature(ethSig)
 	c.Assert(err, qt.IsNil)
 	c.Assert(sig, qt.Not(qt.IsNil))
 	c.Assert(sig.R, qt.Not(qt.IsNil))
@@ -46,7 +46,7 @@ func TestNew(t *testing.T) {
 
 	// Test invalid signature (too short)
 	shortSig := ethSig[:SignatureLength-2]
-	_, err = New(shortSig)
+	_, err = BytesToSignature(shortSig)
 	c.Assert(err, qt.Not(qt.IsNil))
 }
 
@@ -104,7 +104,7 @@ func TestECDSASignature_Bytes(t *testing.T) {
 	c.Assert(new(big.Int).SetBytes(s).Cmp(sig.S), qt.Equals, 0)
 
 	// Create a new signature from these bytes
-	recoveredSig, err := New(bytes)
+	recoveredSig, err := BytesToSignature(bytes)
 	c.Assert(err, qt.IsNil)
 	c.Assert(recoveredSig.R.Cmp(sig.R), qt.Equals, 0)
 	c.Assert(recoveredSig.S.Cmp(sig.S), qt.Equals, 0)
@@ -126,7 +126,7 @@ func TestECDSASignature_Verify(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Create signature
-	sig, err := New(ethSig)
+	sig, err := BytesToSignature(ethSig)
 	c.Assert(err, qt.IsNil)
 
 	// Manual verification using ethereum's native functions

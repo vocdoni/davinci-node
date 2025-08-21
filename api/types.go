@@ -50,8 +50,8 @@ type ContractAddresses struct {
 	ResultsZKVerifier         string `json:"resultsVerifier"`
 }
 
-// BallotProofInfo contains all the information needed by a client to generate a ballot zkSNARK proof.
-type BallotProofInfo struct {
+// SequencerInfo contains any relevant information about the current sequencer for a client.
+type SequencerInfo struct {
 	CircuitURL           string            `json:"circuitUrl"`
 	CircuitHash          string            `json:"circuitHash"`
 	WASMhelperURL        string            `json:"ballotProofWasmHelperUrl"`
@@ -64,6 +64,7 @@ type BallotProofInfo struct {
 	VerificationKeyHash  string            `json:"verificationKeyHash"`
 	Contracts            ContractAddresses `json:"contracts"`
 	Network              map[string]uint32 `json:"network,omitempty"`
+	SequencerAddress     types.HexBytes    `json:"sequencerAddress"`
 }
 
 // VoteResponse is the response returned by the vote submission endpoint.
@@ -74,6 +75,15 @@ type VoteResponse struct {
 // VoteStatusResponse is the response returned by the vote status endpoint.
 type VoteStatusResponse struct {
 	Status string `json:"status"`
+}
+
+// WorkerAuthDataResponse is the response returned by the worker sign
+// message endpoint.
+type WorkerAuthDataResponse struct {
+	Message         string         `json:"message"`
+	Signature       types.HexBytes `json:"signature"`
+	CreatedAt       string         `json:"createdAt"`
+	AuthTokenSuffix types.HexBytes `json:"authTokenSuffix"`
 }
 
 // WorkerJobResponse is the response returned by the worker job submission endpoint.

@@ -46,6 +46,18 @@ func NewSignerFromHex(hexKey string) (*Signer, error) {
 	return (*Signer)(s), nil
 }
 
+// NewSignerFromSeed creates a new ECDSA private key from a seed, no matters
+// the legth of the seed. It calculate the hash of the seed to use the right
+// length.
+func NewSignerFromSeed(seed []byte) (*Signer, error) {
+	h := ethcrypto.Keccak256(seed)
+	s, err := ethcrypto.ToECDSA(h)
+	if err != nil {
+		return nil, fmt.Errorf("could not generate key: %w", err)
+	}
+	return (*Signer)(s), nil
+}
+
 // Sign signs an Ethereum message (adding the corresponding prefix) using the given private key.
 func Sign(msg []byte, privKey *ecdsa.PrivateKey) (*ECDSASignature, error) {
 	ethSignature, err := ethcrypto.Sign(HashMessage(msg), privKey)
