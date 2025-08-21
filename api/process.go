@@ -73,7 +73,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	censusRoot, err := p.BigCensusRoot()
+	censusRoot, err := p.CensusRootBigInt()
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not get census root: %v", err).Write(w)
 		return

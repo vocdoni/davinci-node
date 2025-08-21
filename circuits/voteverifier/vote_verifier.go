@@ -292,10 +292,10 @@ func (c *VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
 	api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
 }
 
-// verifyCSPProof circuit method verifies the census service provider proof
-// provided by the user. It uses proof provided by the user to verify if the
-// voter is an authorized voter. It converts first the census root to a
-// variable and then verifies the proof using the root, the process ID and
+// verifyCSPProof circuit method verifies the credential service providers
+// proof provided by the user. It uses proof provided by the user to verify
+// if the voter is an authorized voter. It converts first the census root to
+// a variable and then verifies the proof using the root, the process ID and
 // the address of the voter. It only asserts that the proof is valid if the
 // census origin is CSP and the current vote inputs are from a valid vote.
 func (c *VerifyVoteCircuit) verifyCSPProof(api frontend.API) {

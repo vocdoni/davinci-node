@@ -17,7 +17,7 @@ Davinci-Node is the main implementation of the [davinci.vote](https://davinci.vo
   - [Command Line Options](#command-line-options)
 - [⚡ Run a Worker Node](#-run-a-worker-node)
   - [Update your worker](#update-your-worker)
-- [🧑‍🧑‍🧒‍🧒 Run a CSP: Census Service Provider](#-run-a-csp-census-service-provider)
+- [🧑‍🧑‍🧒‍🧒 Run a CSP: Credential Service Providers](#-run-a-csp-census-service-provider)
 - [📚 Additional Resources](#-additional-resources)
 
 ## 🚀 Quick Start
@@ -225,12 +225,15 @@ Worker nodes are lightweight components that handle zkSNARK proof generation for
 
 > 💡 **Note:** The Ethereum address can be any valid address. It's used for accounting purposes and tracking success/failed jobs, but does not need to own any funds.
 
-## 🧑‍🧑‍🧒‍🧒 Run a CSP: Census Service Provider
+## 🧑‍🧑‍🧒‍🧒 Run a CSP: Credentials Service Provider
 
-A **Census Service Provider (CSP)** is responsible for creating and verifying cryptographic proofs that validate the inclusion of voters (or participants) in a census.  
-It abstracts away the underlying cryptographic details and provides a unified interface for different census proof mechanisms.
+A **Credential Service Provider (CSP)** allows organizations to validate users manually and based off of any arbitrary criteria. Rather than a static census published before-hand, CSP census allows each user to be evaluated for voting eligibility individually, throughout the duration of the voting process.
+
+In order to prove they are a member of the census, a voter needs to retrieve a certificate of eligibility from the CSP for that process. The CSP first verifies the user's validity and then provides this certificate (proof) by signing the voter address and the process ID.
 
 ### Supported Census Origins
+
+The sequencers only supports the following census origin, that may be used by the CSP's to generate valid proofs for the voters.
 
 | Census Origin Variable | Value | Description |
 |:---|:---:|:---|

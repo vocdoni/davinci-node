@@ -124,7 +124,7 @@ where `processId` is the hexadecimal string (without `0x` prefix) of the process
 The `censusOrigin` specifies the origin type of the census used in the request. This attribute allows the API to determine how the census data should be processed or verified.
 It can be:
  - `1` –> CensusOriginMerkleTree: Indicates that the census is derived from a Merkle Tree structure. This is typically used when the census data is represented as cryptographic proofs for membership verification.
- - `2` -> CensusOriginCSP: Indicates that the census is provided by a Census Service Provider (CSP). This origin is commonly used when the census data is managed by an external trusted provider.
+ - `2` -> CensusOriginCSP: Indicates that the census is provided by a Credential Service Providers (CSP). This origin is commonly used when the census data is managed by an external trusted provider.
 
 
 

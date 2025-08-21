@@ -79,7 +79,8 @@ func cspSign(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("Invalid address: %v", err))
 	}
 	address := common.Address(bAddress)
-	// initialize the census service provider with the private key seed decoded
+	// initialize the credential service providers with the private key seed
+	// decoded
 	csp, err := csp.New(censusOrigin, privKeySeed)
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("CSP cannot be initialized with the provided seed: %w", err))

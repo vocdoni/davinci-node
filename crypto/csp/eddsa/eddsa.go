@@ -18,18 +18,20 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// EdDSA struct implements the CSP interface for the EdDSA over multiple curves.
+// EdDSA struct implements the CSP interface for the EdDSA over multiple
+// curves.
 type EdDSA struct {
 	curve  twistededwards.ID
 	hashFn hash.Hash
 	signer signature.Signer
 }
 
-// New creates a new EdDSA instance for the specified curve. It initializes
-// the hash function and generates a new private key for the curve with a
-// random seed. If something goes wrong during the key generation, it returns
-// an error.
-func New(curve twistededwards.ID) (*EdDSA, error) {
+// CSP creates a new EdDSA CSP for the specified curve. It implements the CSP
+// interface and can be used to generate and verify proofs for voters. It
+// initializes the hash function and generates a new private key for the curve
+// with a random seed. If something goes wrong during the key generation, it
+// returns an error.
+func CSP(curve twistededwards.ID) (*EdDSA, error) {
 	csp := new(EdDSA)
 	switch curve {
 	case twistededwards.BLS12_377:
@@ -49,28 +51,28 @@ func New(curve twistededwards.ID) (*EdDSA, error) {
 // key using the provided seed. The seed must not be empty, and it is used
 // to derive the private key for the curve of the EdDSA instance. If the seed
 // is empty or if there is an error during key generation, it returns an error.
-func (csp *EdDSA) SetSeed(seed []byte) error {
+func (c *EdDSA) SetSeed(seed []byte) error {
 	if len(seed) == 0 {
 		return fmt.Errorf("seed cannot be empty")
 	}
-	switch csp.curve {
+	switch c.curve {
 	case twistededwards.BLS12_377:
 		// set the hash function and the signer for the BLS12-377 curve
 		var err error
 		hashSeed := bytes.NewReader(mimc7.HashBytes(seed).Bytes())
-		if csp.signer, err = bls12377_eddsa.GenerateKey(hashSeed); err != nil {
+		if c.signer, err = bls12377_eddsa.GenerateKey(hashSeed); err != nil {
 			return fmt.Errorf("error generating private key: %w", err)
 		}
 	default:
-		return fmt.Errorf("unsupported curve: %d", csp.curve)
+		return fmt.Errorf("unsupported curve: %d", c.curve)
 	}
 	return nil
 }
 
-// CensusOrigin returns the origin of the census service provider.
-// It returns the type of the CSP, which is EdDSA in this case.
-func (csp *EdDSA) CensusOrigin() types.CensusOrigin {
-	switch csp.curve {
+// CensusOrigin returns the origin of the credential service providers. It
+// returns the type of the CSP, which is EdDSA in this case.
+func (c *EdDSA) CensusOrigin() types.CensusOrigin {
+	switch c.curve {
 	case twistededwards.BLS12_377:
 		return types.CensusOriginCSPEdDSABLS12377
 	default:
@@ -83,11 +85,11 @@ func (csp *EdDSA) CensusOrigin() types.CensusOrigin {
 // to compute the hash. If the EdDSA signer is not initialized or the public
 // key can not be converted to censusRoot for the instance curve, it returns
 // nil.
-func (csp *EdDSA) CensusRoot() types.HexBytes {
-	if csp.signer == nil {
+func (c *EdDSA) CensusRoot() types.HexBytes {
+	if c.signer == nil {
 		return nil
 	}
-	censusRoot, err := pubKeyPointToCensusRoot(csp.curve, csp.signer.Public())
+	censusRoot, err := pubKeyPointToCensusRoot(c.curve, c.signer.Public())
 	if err != nil {
 		return nil
 	}
@@ -96,16 +98,16 @@ func (csp *EdDSA) CensusRoot() types.HexBytes {
 
 // GenerateProof generates a census proof for the given process ID and
 // address. It signs the message composed by the process ID and address using
-// the private key of the CensusServiceProvider. It returns a CensusProof
+// the private key of the CredentialServiceProviders. It returns a CensusProof
 // struct that includes the hash of the public key as the root, the public
 // key, the signature and the signed address and process ID. It returns an
 // error if the EdDSA signer is not initialized, the process ID or address
 // provided are not valid, or something fails during signature process.
-func (csp *EdDSA) GenerateProof(
+func (c *EdDSA) GenerateProof(
 	processID *types.ProcessID,
 	address common.Address,
 ) (*types.CensusProof, error) {
-	if csp.signer == nil {
+	if c.signer == nil {
 		return nil, fmt.Errorf("csp is not initialized")
 	}
 	if processID == nil || !processID.IsValid() {
@@ -116,24 +118,24 @@ func (csp *EdDSA) GenerateProof(
 	}
 	// sign the message composed by the process ID and address using the hash
 	// function and the private key of the CSP
-	message, err := signatureMessage(csp.curve, processID.Marshal(), address.Bytes())
+	message, err := signatureMessage(c.curve, processID.Marshal(), address.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("error composing signature message: %w", err)
 	}
-	signature, err := csp.signer.Sign(message, csp.hashFn)
+	signature, err := c.signer.Sign(message, c.hashFn)
 	if err != nil {
 		return nil, fmt.Errorf("error signing message: %w", err)
 	}
-	censusRoot, err := pubKeyPointToCensusRoot(csp.curve, csp.signer.Public())
+	censusRoot, err := pubKeyPointToCensusRoot(c.curve, c.signer.Public())
 	if err != nil {
 		return nil, fmt.Errorf("error computing census root: %w", err)
 	}
 	return &types.CensusProof{
-		CensusOrigin: csp.CensusOrigin(),
+		CensusOrigin: c.CensusOrigin(),
 		Root:         censusRoot,
 		Address:      address.Bytes(),
 		ProcessID:    processID.Marshal(),
-		PublicKey:    csp.signer.Public().Bytes(),
+		PublicKey:    c.signer.Public().Bytes(),
 		Signature:    signature,
 	}, nil
 }
@@ -143,12 +145,12 @@ func (csp *EdDSA) GenerateProof(
 // instance one. It returns an error if the proof provided is nil, the census
 // origins do not match or something fails during signature verification
 // process.
-func (csp *EdDSA) VerifyProof(proof *types.CensusProof) error {
+func (c *EdDSA) VerifyProof(proof *types.CensusProof) error {
 	if proof == nil {
 		return fmt.Errorf("proof is nil")
 	}
-	if proof.CensusOrigin != csp.CensusOrigin() {
-		return fmt.Errorf("proof origin mismatch: expected %s, got %s", csp.CensusOrigin(), proof.CensusOrigin)
+	if proof.CensusOrigin != c.CensusOrigin() {
+		return fmt.Errorf("proof origin mismatch: expected %s, got %s", c.CensusOrigin(), proof.CensusOrigin)
 	}
 	// get the public key from the proof
 	pubKey, err := pubKeyFromCensusProof(proof)
@@ -156,12 +158,12 @@ func (csp *EdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("error getting public key from census proof: %w", err)
 	}
 	// recompute the signature message
-	message, err := signatureMessage(csp.curve, proof.ProcessID, proof.Address)
+	message, err := signatureMessage(c.curve, proof.ProcessID, proof.Address)
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
 	// verify the signature using the public key and the message
-	if verified, err := pubKey.Verify(proof.Signature, message, csp.hashFn); err != nil {
+	if verified, err := pubKey.Verify(proof.Signature, message, c.hashFn); err != nil {
 		return fmt.Errorf("error verifying signature: %w", err)
 	} else if !verified {
 		return fmt.Errorf("signature verification failed for address %s", proof.Address.String())
