@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,8 +21,9 @@ import (
 	"github.com/vocdoni/davinci-node/workers"
 )
 
-// ErrNoJobAvailable is returned when there are no jobs available for the worker to process.
-// This can happen if the master node has no ballots assigned to this worker or if all ballots have been processed.
+// ErrNoJobAvailable is returned when there are no jobs available for the
+// worker to process. This can happen if the sequencer node has no ballots
+// assigned to this worker or if all ballots have been processed.
 var ErrNoJobAvailable = errors.New("no job available")
 
 // NewWorker creates a Sequencer instance configured for worker mode.
@@ -29,29 +31,46 @@ var ErrNoJobAvailable = errors.New("no job available")
 //
 // Parameters:
 //   - stg: Storage instance for accessing ballots and other data
-//   - masterURL: URL of the master node to connect to
-//   - workerAddress: Ethereum address identifying this worker
+//   - sequencerURL: URL of the sequencer node to connect to
+//   - sequencerUUID: UUID of the sequencer node to connect to
+//   - workerAddr: Ethereum address identifying this worker
+//   - workerToken: Hex-encoded authentication token for the worker
+//   - workerName: Name of the worker (optional)
 //
-// Returns a configured Sequencer instance for worker mode or an error if initialization fails.
-func NewWorker(stg *storage.Storage, masterURL, rawWorkerAddr, workerName string) (*Sequencer, error) {
+// Returns a configured Sequencer instance for worker mode or an error if
+// initialization fails.
+func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, workerName string) (*Sequencer, error) {
 	if stg == nil {
 		return nil, fmt.Errorf("storage cannot be nil")
 	}
-	// check if master URL is provided
-	if masterURL == "" {
-		return nil, fmt.Errorf("masterURL cannot be empty for worker mode")
+	// parse sequencer URL and UUID from the raw URL provided
+	sequencerURL, sequencerUUID, err := parseSequencerURL(rawSequencerURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse sequencer URL: %w", err)
+	}
+	// check if sequencer URL is provided
+	if sequencerURL == "" {
+		return nil, fmt.Errorf("sequencerURL cannot be empty for worker mode")
+	}
+	// check if sequencer UUID is provided
+	if sequencerUUID == "" {
+		return nil, fmt.Errorf("sequencerUUID cannot be empty for worker mode")
 	}
 	// check if a valid worker address is provided
-	workerAddr, err := workers.ValidWorkerAddress(rawWorkerAddr)
+	wAddr, err := workers.ValidWorkerAddress(workerAddr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid worker address: %w", err)
 	}
 	// if no worker name is provided, generate it from the address
 	if workerName == "" {
-		workerName, err = workers.WorkerNameFromAddress(workerAddr.String())
+		workerName, err = workers.WorkerNameFromAddress(wAddr.String())
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate worker name from address: %w", err)
 		}
+	}
+	// check if a valid hex signature is provided
+	if workerToken == "" {
+		return nil, fmt.Errorf("hexSignature cannot be empty for worker mode")
 	}
 
 	startTime := time.Now()
@@ -61,9 +80,11 @@ func NewWorker(stg *storage.Storage, masterURL, rawWorkerAddr, workerName string
 		batchTimeWindow: 0,                 // Workers don't use batch processing
 		pids:            NewProcessIDMap(), // Still needed for ExistsProcessID check
 		prover:          DefaultProver,
-		masterURL:       masterURL,
-		workerAddress:   workerAddr,
+		sequencerURL:    sequencerURL,
+		sequencerUUID:   sequencerUUID,
+		workerAddress:   wAddr,
 		workerName:      workerName,
+		workerAuthtoken: workerToken,
 	}
 
 	s.internalCircuits = new(internalCircuits)
@@ -76,8 +97,8 @@ func NewWorker(stg *storage.Storage, masterURL, rawWorkerAddr, workerName string
 	}
 
 	log.Debugw("worker sequencer initialized",
-		"masterURL", masterURL,
-		"workerAddress", rawWorkerAddr,
+		"sequencerURL", sequencerURL,
+		"workerAddress", workerAddr,
 		"workerName", workerName,
 		"took", time.Since(startTime).String(),
 	)
@@ -85,32 +106,32 @@ func NewWorker(stg *storage.Storage, masterURL, rawWorkerAddr, workerName string
 	return s, nil
 }
 
-// masterInfo extracts the base URL and UUID from the masterURL of the worker.
-// It returns an error if the masterURL is not set or if it does not contain
-// the expected format with "/workers/" path.
-func (s *Sequencer) masterInfo() (string, string, error) {
-	if s.masterURL == "" {
-		return "", "", fmt.Errorf("master URL is not set for worker mode")
+// parseSequencerURL extracts the base URL and UUID from the sequencerURL of
+// the worker. It returns an error if the sequencerURL is not set or if it
+// does not contain the expected format with "/workers/" path.
+func parseSequencerURL(rawURL string) (string, string, error) {
+	if rawURL == "" {
+		return "", "", fmt.Errorf("sequencer URL is not set for worker mode")
 	}
-
-	// Extract base URL and UUID from masterURL
-	baseURL := s.masterURL
-	var masterUUID string
-	if strings.Contains(baseURL, "/workers/") {
-		parts := strings.Split(baseURL, "/workers/")
-		if len(parts) < 2 {
-			return "", "", fmt.Errorf("invalid master URL format: %s", baseURL)
-		}
-		baseURL = parts[0]
-		masterUUID = parts[1]
-	} else {
-		return "", "", fmt.Errorf("master URL does not contain workers path: %s", baseURL)
+	// check if raw url matches and the UUID is captured
+	// it should capture only the uuid
+	uuidPattern := `([^/?#]+)(?:/[^?#]*)?(?:\?[^#]*)?$`
+	uriNeedle := fmt.Sprintf("{%s}", api.SequencerUUIDParam)
+	uuidTemplate := strings.ReplaceAll(api.WorkersEndpoint, uriNeedle, uuidPattern)
+	sequencerUUIDRgx := regexp.MustCompile(uuidTemplate)
+	matches := sequencerUUIDRgx.FindStringSubmatch(rawURL)
+	if len(matches) != 2 {
+		return "", "", fmt.Errorf("the url has not UUID: %s", rawURL)
 	}
-	return baseURL, masterUUID, nil
+	uuid := matches[1]
+	// split the raw URL by the needle and take the first part as the base path
+	splitter := api.EndpointWithParam(api.WorkersEndpoint, api.SequencerUUIDParam, uuid)
+	basePath := strings.Split(rawURL, splitter)[0]
+	return basePath, uuid, nil
 }
 
-// startWorkerProcessor starts the worker goroutine that fetches and processes jobs
-func (s *Sequencer) startWorkerProcessor() error {
+// startWorkerModeServices starts the worker goroutine that fetches and processes jobs
+func (s *Sequencer) startWorkerModeServices() error {
 	go func() {
 		ticker := time.NewTicker(time.Second * 5)
 		defer ticker.Stop()
@@ -194,18 +215,13 @@ func (s *Sequencer) processWorkerJob() error {
 
 // fetchProcessFromMaster fetches process information from the master and stores it locally
 func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
-	// Get the base URL from master information
-	baseURL, _, err := s.masterInfo()
-	if err != nil {
-		return fmt.Errorf("failed to get master info: %w", err)
-	}
-
 	// Construct process endpoint URL using the defined API routes
 	processIDHex := hex.EncodeToString(pid.Marshal())
-	url := baseURL + api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, processIDHex)
+	uri := api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, processIDHex)
+	seqUrl := fmt.Sprintf("%s%s", s.sequencerURL, uri)
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Get(seqUrl)
 	if err != nil {
 		return fmt.Errorf("failed to fetch process: %w", err)
 	}
@@ -236,17 +252,13 @@ func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
 
 // fetchJobFromMaster performs GET request to master
 func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
-	baseURL, masterUUID, err := s.masterInfo()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get master info: %w", err)
-	}
-	uri := api.EndpointWithParam(api.WorkerGetJobEndpoint, api.WorkerUUIDParam, masterUUID)
-	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
-	uri = api.EndpointWithParam(uri, api.WorkerAddressParam, s.workerAddress.String())
-	url := baseURL + uri
+	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, s.sequencerUUID)
+	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
+	uri = api.EndpointWithParam(uri, api.WorkerTokenQueryParam, s.workerAuthtoken)
+	seqUrl := fmt.Sprintf("%s%s", s.sequencerURL, uri)
 
 	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Get(seqUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch job: %w", err)
 	}
@@ -283,7 +295,10 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 
 // submitJobToMaster performs POST request to master with verified ballot
 func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
-	url := s.masterURL // POST doesn't need address in URL
+	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, s.sequencerUUID)
+	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
+	uri = api.EndpointWithParam(uri, api.WorkerTokenQueryParam, s.workerAuthtoken)
+	seqUrl := fmt.Sprintf("%s%s", s.sequencerURL, uri)
 
 	body, err := storage.EncodeArtifact(vb)
 	if err != nil {
@@ -291,7 +306,7 @@ func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
 	}
 
 	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Post(url, "application/octet-stream", bytes.NewReader(body))
+	resp, err := client.Post(seqUrl, "application/octet-stream", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to submit job: %w", err)
 	}
