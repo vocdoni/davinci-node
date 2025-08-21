@@ -75,10 +75,11 @@ type LogConfig struct {
 
 // WorkerConfig holds worker-related configuration
 type WorkerConfig struct {
-	MasterURL string        `mapstructure:"masterURL"` // URL seed for master worker endpoint
-	Timeout   time.Duration `mapstructure:"timeout"`   // Timeout for worker jobs
-	Address   string        `mapstructure:"address"`   // Ethereum address for the worker (auto-generated if empty)
-	Name      string        `mapstructure:"name"`      // Name of the worker for identification
+	Timeout      time.Duration `mapstructure:"timeout"`      // Timeout for worker jobs
+	Address      string        `mapstructure:"address"`      // Ethereum address for the worker (auto-generated if empty)
+	Name         string        `mapstructure:"name"`         // Name of the worker for identification
+	Authtoken    string        `mapstructure:"authtoken"`    // Worker authentication token
+	SequencerURL string        `mapstructure:"sequencerURL"` // URL seed for master worker endpoint
 }
 
 // loadConfig loads configuration from flags, environment variables, and defaults
@@ -109,7 +110,6 @@ func loadConfig() (*Config, error) {
 	flag.StringSliceP("web3.rpc", "r", []string{}, "web3 rpc endpoint(s), comma-separated")
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
-	flag.String("api.workerSeed", "", "enable master worker endpoint with URL seed for authentication")
 	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")
 	flag.String("web3.process", "", "custom process registry contract address (overrides network default)")
 	flag.String("web3.orgs", "", "custom organization registry contract address (overrides network default)")
@@ -118,10 +118,12 @@ func loadConfig() (*Config, error) {
 	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
 	flag.Bool("log.disableAPI", defaultLogDisableAPI, "disable API logging middleware")
 	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
+	// worker mode flags
 	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
 	flag.StringP("worker.address", "a", "", "worker Ethereum address")
 	flag.String("worker.name", "", "worker name for identification")
-	flag.StringP("worker.masterURL", "w", "", "master worker URL (required for running in worker mode)")
+	flag.StringP("worker.authtoken", "t", "", "worker authentication token (required for running in worker mode)")
+	flag.StringP("worker.sequencerURL", "w", "", "sequencer URL (required for running in worker mode)")
 	// sequencer workers api flags
 	flag.String("api.workersSeed", "", "enable master worker endpoint with URL seed for authentication")
 	flag.Duration("api.workersBanTimeout", defaultWorkersBanTimeout, "timeout for worker ban in seconds")
