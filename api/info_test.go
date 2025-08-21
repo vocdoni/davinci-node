@@ -39,7 +39,7 @@ func TestInfo(t *testing.T) {
 		c.Assert(rr.Code, qt.Equals, http.StatusOK)
 
 		// Parse the response
-		var response BallotProofInfo
+		var response SequencerInfo
 		err = json.Unmarshal(rr.Body.Bytes(), &response)
 		c.Assert(err, qt.IsNil)
 

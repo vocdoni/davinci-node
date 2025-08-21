@@ -14,18 +14,19 @@ import (
 )
 
 const (
-	defaultNetwork           = "sep"
-	defaultAPIHost           = "0.0.0.0"
-	defaultAPIPort           = 9090
-	defaultBatchTime         = 300 * time.Second
-	defaultLogLevel          = "info"
-	defaultLogOutput         = "stdout"
-	defaultLogDisableAPI     = false
-	defaultDatadir           = ".davinci" // Will be prefixed with user's home directory
-	artifactsTimeout         = 20 * time.Minute
-	monitorInterval          = 10 * time.Second
-	defaultWorkerBanTimeout  = 30 * time.Minute
-	defaultWorkerBanFailures = 3
+	defaultNetwork                    = "sep"
+	defaultAPIHost                    = "0.0.0.0"
+	defaultAPIPort                    = 9090
+	defaultBatchTime                  = 300 * time.Second
+	defaultLogLevel                   = "info"
+	defaultLogOutput                  = "stdout"
+	defaultLogDisableAPI              = false
+	defaultDatadir                    = ".davinci" // Will be prefixed with user's home directory
+	artifactsTimeout                  = 20 * time.Minute
+	monitorInterval                   = 10 * time.Second
+	defaultWorkersBanTimeout          = 30 * time.Minute
+	defaultWorkersAuthtokenExpiration = 90 * 24 * time.Hour // 90 days
+	defaultWorkerBanFailures          = 3
 )
 
 // Version is the build version, set at build time with -ldflags
@@ -52,11 +53,12 @@ type Web3Config struct {
 
 // APIConfig holds the API-specific configuration
 type APIConfig struct {
-	Host                      string        `mapstructure:"host"`                      // API host address
-	Port                      int           `mapstructure:"port"`                      // API port number
-	WorkerUrlSeed             string        `mapstructure:"workerSeed"`                // URL seed for worker authentication
-	WorkerBanTimeout          time.Duration `mapstructure:"workerBanTimeout"`          // Timeout for worker ban
-	WorkerFailuresToGetBanned int           `mapstructure:"workerFailuresToGetBanned"` // Number of failed jobs to get banned
+	Host                       string        `mapstructure:"host"`                       // API host address
+	Port                       int           `mapstructure:"port"`                       // API port number
+	SequencerWorkersSeed       string        `mapstructure:"workersSeed"`                // URL seed for worker authentication
+	WorkersAuthtokenExpiration time.Duration `mapstructure:"workersAuthtokenExpiration"` // Expiration time for worker authentication tokens
+	WorkersBanTimeout          time.Duration `mapstructure:"workersBanTimeout"`          // Timeout for worker ban
+	WorkersFailuresToGetBanned int           `mapstructure:"workersFailuresToGetBanned"` // Number of failed jobs to get banned
 }
 
 // BatchConfig holds batch processing configuration
@@ -100,7 +102,6 @@ func loadConfig() (*Config, error) {
 	v.SetDefault("log.output", defaultLogOutput)
 	v.SetDefault("log.disableAPI", defaultLogDisableAPI)
 	v.SetDefault("datadir", defaultDatadirPath)
-	v.SetDefault("worker.timeout", 1*time.Minute)
 
 	// Configure flags
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
@@ -121,8 +122,11 @@ func loadConfig() (*Config, error) {
 	flag.StringP("worker.address", "a", "", "worker Ethereum address")
 	flag.String("worker.name", "", "worker name for identification")
 	flag.StringP("worker.masterURL", "w", "", "master worker URL (required for running in worker mode)")
-	flag.Duration("api.workerBanTimeout", defaultWorkerBanTimeout, "timeout for worker ban in seconds")
-	flag.Int("api.workerFailuresToGetBanned", defaultWorkerBanFailures, "number of failed jobs to get banned")
+	// sequencer workers api flags
+	flag.String("api.workersSeed", "", "enable master worker endpoint with URL seed for authentication")
+	flag.Duration("api.workersBanTimeout", defaultWorkersBanTimeout, "timeout for worker ban in seconds")
+	flag.Duration("api.workersAuthtokenExpiration", defaultWorkersAuthtokenExpiration, "timeout for worker authentication token expiration")
+	flag.Int("api.workersFailuresToGetBanned", defaultWorkerBanFailures, "number of failed jobs to get banned")
 
 	// Configure usage information
 	flag.Usage = func() {
