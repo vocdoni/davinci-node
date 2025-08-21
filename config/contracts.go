@@ -22,6 +22,12 @@ var DefaultConfig = map[string]DavinciWeb3Config{
 		ResultsZKVerifier:                 "0x00c7F87731346F592197E49A90Ad6EC236Ad9985",
 		StateTransitionZKVerifier:         "0x5e4673CD378F05cc3Ae25804539c91E711548741",
 	},
+	"test": {
+		ProcessRegistrySmartContract:      "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+		OrganizationRegistrySmartContract: "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+		ResultsZKVerifier:                 "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+		StateTransitionZKVerifier:         "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+	},
 }
 
 // AvailableNetworks contains the list of networks where Davinci is deployed.
