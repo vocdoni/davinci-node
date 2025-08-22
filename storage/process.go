@@ -139,7 +139,7 @@ func (s *Storage) SetMetadata(metadata *types.Metadata) ([]byte, error) {
 	hash := MetadataHash(metadata)
 
 	// Store the metadata with its hash as the key
-	return hash, s.setArtifact(metadataPrefix, hash, metadata)
+	return hash, s.setArtifact(metadataPrefix, hash, metadata, ArtifactEncodingJSON)
 }
 
 // GetMetadata retrieves the metadata from the storage using its hash.
@@ -161,7 +161,7 @@ func (s *Storage) Metadata(hash []byte) (*types.Metadata, error) {
 
 	// Retrieve the metadata from the storage
 	metadata := &types.Metadata{}
-	if err := s.getArtifact(metadataPrefix, hash, metadata); err != nil {
+	if err := s.getArtifact(metadataPrefix, hash, metadata, ArtifactEncodingJSON); err != nil {
 		return nil, err
 	}
 
