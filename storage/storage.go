@@ -300,9 +300,11 @@ func (s *Storage) deleteArtifact(prefix, key []byte) error {
 // setArtifact helper function stores any kind of artifact in the storage. It
 // receives the prefix of the key, the key itself and the artifact to store. If
 // the key is not provided, it generates it by hashing the artifact itself.
-func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
+// It also can receive the an ArtifactEncoding format to be used for encoding,
+// by default ArtifactEncodingCBOR.
+func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any, encoding ...ArtifactEncoding) error {
 	// encode the artifact
-	data, err := EncodeArtifact(artifact)
+	data, err := EncodeArtifact(artifact, encoding...)
 	if err != nil {
 		return err
 	}
@@ -325,10 +327,12 @@ func (s *Storage) setArtifact(prefix []byte, key []byte, artifact any) error {
 }
 
 // getArtifact helper function retrieves any kind of artifact from the storage.
-// It receives the prefix of the key and a pointer to the artifact to decode into.
-// If the key is not provided, it retrieves the first artifact found for the
-// prefix, and returns ErrNoMoreElements if there are no more elements.
-func (s *Storage) getArtifact(prefix []byte, key []byte, out any) error {
+// It receives the prefix of the key and a pointer to the artifact to decode
+// into. If the key is not provided, it retrieves the first artifact found for
+// the prefix, and returns ErrNoMoreElements if there are no more elements.
+// It also can receive the an ArtifactEncoding format to be used for decoding,
+// by default ArtifactEncodingCBOR.
+func (s *Storage) getArtifact(prefix []byte, key []byte, out any, encoding ...ArtifactEncoding) error {
 	var data []byte
 	var err error
 	db := prefixeddb.NewPrefixedDatabase(s.db, prefix)
@@ -349,7 +353,7 @@ func (s *Storage) getArtifact(prefix []byte, key []byte, out any) error {
 		}
 	}
 
-	if err := DecodeArtifact(data, out); err != nil {
+	if err := DecodeArtifact(data, out, encoding...); err != nil {
 		return fmt.Errorf("could not decode artifact: %w", err)
 	}
 
