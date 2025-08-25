@@ -16,6 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
@@ -24,6 +25,8 @@ import (
 	primitivestest "github.com/vocdoni/gnark-crypto-primitives/testutil"
 )
 
+const testCSPSeed = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
+
 // VoteVerifierTestResults struct includes relevant data after VerifyVoteCircuit
 // inputs generation
 type VoteVerifierTestResults struct {
@@ -31,6 +34,7 @@ type VoteVerifierTestResults struct {
 	EncryptionPubKey circuits.EncryptionKey[*big.Int]
 	Addresses        []*big.Int
 	ProcessID        *big.Int
+	CensusOrigin     types.CensusOrigin
 	CensusRoot       *big.Int
 	Ballots          []elgamal.Ballot
 	VoteIDs          []types.HexBytes
@@ -48,9 +52,15 @@ type VoterTestData struct {
 // and the assignments for a VerifyVoteCircuit including the provided voters. If
 // processId is nil, it will be randomly generated. If something fails it
 // returns an error.
-func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.ProcessID) (
-	VoteVerifierTestResults, voteverifier.VerifyVoteCircuit,
-	[]voteverifier.VerifyVoteCircuit, error,
+func VoteVerifierInputsForTest(
+	votersData []VoterTestData,
+	processID *types.ProcessID,
+	censusOrigin types.CensusOrigin,
+) (
+	VoteVerifierTestResults,
+	voteverifier.VerifyVoteCircuit,
+	[]voteverifier.VerifyVoteCircuit,
+	error,
 ) {
 	now := time.Now()
 	log.Println("voteVerifier inputs generation start")
@@ -59,30 +69,32 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 	if err != nil {
 		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 	}
-	bAddresses, bWeights := [][]byte{}, [][]byte{}
-	for _, voter := range votersData {
-		bAddresses = append(bAddresses, voter.Address.Bytes())
-		bWeights = append(bWeights, new(big.Int).SetInt64(int64(circuits.MockWeight)).Bytes())
-	}
-	// generate a test census
-	testCensus, err := primitivestest.GenerateCensusProofLE(primitivestest.CensusTestConfig{
-		Dir:           fmt.Sprintf("../assets/census%d", util.RandomInt(0, 1000)),
-		ValidSiblings: 10,
-		TotalSiblings: types.CensusTreeMaxLevels,
-		KeyLen:        types.CensusKeyMaxLen,
-		Hash:          arbo.HashFunctionMiMC_BLS12_377,
-		BaseField:     arbo.BLS12377BaseField,
-	}, bAddresses, bWeights)
-	if err != nil {
-		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
-	}
-	// common data
+	// if no process ID is provided, generate a random one
 	if processID == nil {
 		processID = &types.ProcessID{
 			Address: common.BytesToAddress(util.RandomBytes(20)),
 			Nonce:   rand.Uint64(),
 			ChainID: rand.Uint32(),
 		}
+	}
+	var censusRoot *big.Int
+	var censusSiblings [][types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
+	var cspProofs []csp.CSPProof
+	switch censusOrigin {
+	case types.CensusOriginMerkleTree:
+		// generate a test census
+		censusRoot, censusSiblings, cspProofs, err = CensusProofMerkleTree(votersData, processID)
+		if err != nil {
+			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
+		}
+	case types.CensusOriginCSPEdDSABLS12377:
+		// generate a test census with CSP proofs
+		censusRoot, censusSiblings, cspProofs, err = CensusProofCSP(votersData, processID, censusOrigin)
+		if err != nil {
+			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
+		}
+	default:
+		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, fmt.Errorf("invalid census origin: %s", censusOrigin)
 	}
 	ek := ballottest.GenEncryptionKeyForTest()
 	encryptionKey := circuits.EncryptionKeyFromECCPoint(ek)
@@ -107,11 +119,6 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
 		}
-		// transform siblings to gnark frontend.Variable
-		emulatedSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
-		for j, s := range testCensus.Proofs[i].Siblings {
-			emulatedSiblings[j] = emulated.ValueOf[sw_bn254.ScalarField](s)
-		}
 		// hash the inputs of gnark circuit (except weight and including census root)
 		inputsHash, err := voteverifier.VoteVerifierInputHash(
 			voterProof.ProcessID,
@@ -120,7 +127,8 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 			voterProof.Address,
 			voterProof.VoteID,
 			voterProof.Ballot.FromTEtoRTE(),
-			testCensus.Root,
+			censusRoot,
+			censusOrigin,
 		)
 		if err != nil {
 			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
@@ -143,11 +151,13 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 			UserWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
 			Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 				ID:            emulated.ValueOf[sw_bn254.ScalarField](voterProof.ProcessID),
-				CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](testCensus.Root),
+				CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](censusOrigin.BigInt().MathBigInt()),
+				CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](censusRoot),
 				EncryptionKey: encryptionKey.BigIntsToEmulatedElementBN254(),
 				BallotMode:    circuits.MockBallotModeEmulated(),
 			},
-			CensusSiblings: emulatedSiblings,
+			CensusSiblings: censusSiblings[i],
+			CSPProof:       cspProofs[i],
 			// signature
 			PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 				X: emulated.ValueOf[emulated.Secp256k1Fp](voter.PubKey.X),
@@ -167,11 +177,79 @@ func VoteVerifierInputsForTest(votersData []VoterTestData, processID *types.Proc
 			EncryptionPubKey: encryptionKey,
 			Addresses:        addresses,
 			ProcessID:        finalProcessID,
-			CensusRoot:       testCensus.Root,
+			CensusOrigin:     censusOrigin,
+			CensusRoot:       censusRoot,
 			Ballots:          ballots,
 			VoteIDs:          voteIDs,
 		}, voteverifier.VerifyVoteCircuit{
 			CircomProof:           circomPlaceholder.Proof,
 			CircomVerificationKey: circomPlaceholder.Vk,
 		}, assignments, nil
+}
+
+func CensusProofMerkleTree(votersData []VoterTestData, processID *types.ProcessID) (
+	*big.Int,
+	[][types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField],
+	[]csp.CSPProof,
+	error,
+) {
+	bAddresses, bWeights := [][]byte{}, [][]byte{}
+	for _, voter := range votersData {
+		bAddresses = append(bAddresses, voter.Address.Bytes())
+		bWeights = append(bWeights, new(big.Int).SetInt64(int64(circuits.MockWeight)).Bytes())
+	}
+	// generate a test census
+	testCensus, err := primitivestest.GenerateCensusProofLE(primitivestest.CensusTestConfig{
+		Dir:           fmt.Sprintf("../assets/census%d", util.RandomInt(0, 1000)),
+		ValidSiblings: 10,
+		TotalSiblings: types.CensusTreeMaxLevels,
+		KeyLen:        types.CensusKeyMaxLen,
+		Hash:          arbo.HashFunctionMiMC_BLS12_377,
+		BaseField:     arbo.BLS12377BaseField,
+	}, bAddresses, bWeights)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to generate census proof: %w", err)
+	}
+
+	// transform siblings to gnark frontend.Variable
+	emulatedSiblings := [][types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+	cspProofs := []csp.CSPProof{}
+	for _, censusProof := range testCensus.Proofs {
+		proofSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+		for j, s := range censusProof.Siblings {
+			proofSiblings[j] = emulated.ValueOf[sw_bn254.ScalarField](s)
+		}
+		emulatedSiblings = append(emulatedSiblings, proofSiblings)
+		cspProofs = append(cspProofs, voteverifier.DummyCSPProof())
+	}
+	return testCensus.Root, emulatedSiblings, cspProofs, nil
+}
+
+func CensusProofCSP(votersData []VoterTestData, processID *types.ProcessID, censusOrigin types.CensusOrigin) (
+	*big.Int,
+	[][types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField],
+	[]csp.CSPProof,
+	error,
+) {
+	eddsaCSP, err := csp.New(censusOrigin, []byte(testCSPSeed))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create csp: %w", err)
+	}
+	emulatedSiblings := [][types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
+	cspProofs := []csp.CSPProof{}
+	for _, data := range votersData {
+		emulatedSiblings = append(emulatedSiblings, voteverifier.DummySiblings())
+
+		cspProof, err := eddsaCSP.GenerateProof(processID, data.Address)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to generate census proof: %w", err)
+		}
+		gnarkCSPProof, err := csp.CensusProofToCSPProof(cspProof)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to convert census proof to gnark proof: %w", err)
+		}
+		cspProofs = append(cspProofs, *gnarkCSPProof)
+	}
+	root := eddsaCSP.CensusRoot()
+	return root.BigInt().MathBigInt(), emulatedSiblings, cspProofs, nil
 }

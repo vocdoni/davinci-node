@@ -12,7 +12,6 @@ import (
 	"github.com/consensys/gnark/backend/solidity"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
@@ -183,13 +182,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 
 	// Generate the proof
-	proof, err := s.prover(
-		circuits.StateTransitionCurve,
-		s.stCcs,
-		s.stPk,
-		assignments,
-		opts,
-	)
+	proof, err := s.prover(circuits.StateTransitionCurve, s.stCcs, s.stPk, assignments, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
@@ -214,9 +207,14 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state: %w", err)
 	}
+	censusRoot, err := process.BigCensusRoot()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get census root: %w", err)
+	}
 
 	if err := st.Initialize(
-		arbo.BytesToBigInt(process.Census.CensusRoot),
+		process.Census.CensusOrigin.BigInt().MathBigInt(),
+		censusRoot.MathBigInt(),
 		circuits.BallotModeToCircuit(process.BallotMode),
 		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),
 	); err != nil && !errors.Is(err, state.ErrStateAlreadyInitialized) {
