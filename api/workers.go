@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/consensys/gnark/backend/groth16"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
@@ -280,6 +282,13 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		log.Warnw("failed to decode verified ballot",
 			"error", err.Error())
 		ErrMalformedBody.WithErr(err).Write(w)
+		return
+	}
+
+	// Verify the worker proof
+	if err := voteverifier.PublicInputs(vb.InputsHash).VerifyProof(groth16.Proof(vb.Proof)); err != nil {
+		log.Warnw("failed to verify public circuit inputs", "error", err.Error())
+		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
 	}
 
