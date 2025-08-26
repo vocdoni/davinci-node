@@ -121,10 +121,18 @@ Creates a new voting process setup and returns it.
 The signature is the byte representation of the string `I am creating a new voting process for the davinci.vote protocol identified with id {processId}`,
 where `processId` is the hexadecimal string (without `0x` prefix) of the process identifier fetch on the smart contract.
 
+The `censusOrigin` specifies the origin type of the census used in the request. This attribute allows the API to determine how the census data should be processed or verified.
+It can be:
+ - `1` –> CensusOriginMerkleTree: Indicates that the census is derived from a Merkle Tree structure. This is typically used when the census data is represented as cryptographic proofs for membership verification.
+ - `2` -> CensusOriginCSP: Indicates that the census is provided by a Credential Service Providers (CSP). This origin is commonly used when the census data is managed by an external trusted provider.
+
+
+
 **Request Body**:
 ```json
 {
   "processId": "hexBytes",
+  "censusOrigin": "number",
   "censusRoot": "hexBytes",
   "ballotMode": {
     "maxCount": "number",
@@ -454,10 +462,14 @@ Gets a Merkle proof for a participant in a census.
 ```json
 {
   "root": "hexBytes",
-  "key": "hexBytes",
-  "value": "hexBytes",
-  "siblings": "hexBytes",
-  "weight": "bigintStr" // the value transformed to bigInt
+  "address": "hexBytes",
+  "weight": "bigintStr",
+  "censusOrigin": 1,        // 1 for merkle proofs, 2 for csp proofs
+  "value": "hexBytes",      // merkle proof: the weight encoded to hexBytes
+  "siblings": "hexBytes",   // merkle proof: encoded siblings path to find the leaf
+  "processId": "hexBytes",  // csp proof: the process id signed with the address
+  "publicKey": "hexBytes",  // csp proof: the public key of the csp
+  "signature": "hexBytes",  // csp proof: the signature that proofs that the voter is in the census
 }
 ```
 
@@ -479,10 +491,14 @@ Register a new vote for a voting process.
   "processId": "hexBytes",
   "censusProof": {
     "root": "hexBytes",
-    "key": "hexBytes",
-    "value": "hexBytes",
-    "siblings": "hexBytes",
-    "weight": "bigintStr"
+    "address": "hexBytes",
+    "weight": "bigintStr",
+    "censusOrigin": 1,        // 1 for merkle proofs, 2 for csp proofs
+    "value": "hexBytes",      // merkle proof: the weight encoded to hexBytes
+    "siblings": "hexBytes",   // merkle proof: encoded siblings path to find the leaf
+    "processId": "hexBytes",  // csp proof: the process id signed with the address
+    "publicKey": "hexBytes",  // csp proof: the public key of the csp
+    "signature": "hexBytes",  // csp proof: the signature that proofs that the voter is in the census
   },
   "ballot": {
     "curveType": "string",
@@ -517,6 +533,10 @@ Register a new vote for a voting process.
 - 40005: Invalid signature
 - 40008: Invalid census proof
 - 40009: Invalid ballot proof
+- 40013: Invalid ballot inputs hash
+- 40018: Ballot already submitted
+- 40019: Ballot is already processing
+- 40020: Process is not accepting votes
 - 50002: Internal server error
 
 #### GET /votes/{processId}/address/{address}

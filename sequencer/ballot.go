@@ -133,7 +133,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	s.workInProgressLock.RLock()
 	defer s.workInProgressLock.RUnlock()
 	startTime := time.Now()
-
 	if b == nil {
 		return nil, fmt.Errorf("ballot cannot be nil")
 	}
@@ -164,12 +163,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		return nil, fmt.Errorf("failed to generate inputs hash: %w", err)
 	}
 
-	// Convert siblings to emulated elements
-	emulatedSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
-	for i, s := range circuits.BigIntArrayToN(inputs.CensusSiblings, types.CensusTreeMaxLevels) {
-		emulatedSiblings[i] = emulated.ValueOf[sw_bn254.ScalarField](s)
-	}
-
 	// Process public key
 	pubKey, err := ethcrypto.UnmarshalPubkey(b.PubKey)
 	if err != nil {
@@ -188,11 +181,13 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 			ID:            emulated.ValueOf[sw_bn254.ScalarField](inputs.ProcessID),
+			CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusOrigin.BigInt().MathBigInt()),
 			CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusRoot),
 			EncryptionKey: inputs.EncryptionKey.BigIntsToEmulatedElementBN254(),
 			BallotMode:    inputs.BallotMode.BigIntsToEmulatedElementBN254(),
 		},
-		CensusSiblings: emulatedSiblings,
+		CensusSiblings: inputs.CensusSiblings,
+		CSPProof:       inputs.CSPProof,
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),
@@ -210,13 +205,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		circuits.VoteVerifierCurve.ScalarField(),
 	)
 	log.Debugw("generating vote verification proof...", "pid", pid.String(), "voteID", hex.EncodeToString(b.VoteID))
-	proof, err := s.prover(
-		circuits.VoteVerifierCurve,
-		s.vvCcs,
-		s.vvPk,
-		&assignment,
-		opts,
-	)
+	proof, err := s.prover(circuits.VoteVerifierCurve, s.vvCcs, s.vvPk, &assignment, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}

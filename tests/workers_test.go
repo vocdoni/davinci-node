@@ -90,8 +90,8 @@ func TestWorkerIntegration(t *testing.T) {
 			CostFromWeight:  circuits.MockCostFromWeight == 1,
 			CostExponent:    circuits.MockCostExp,
 		}
-		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, censusRoot, ballotMode)
-		pid2 := createProcessInContracts(c, services.Contracts, censusRoot, ballotMode, encryptionKey, stateRoot)
+		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, censusRoot, ballotMode)
+		pid2 := createProcessInContracts(c, services.Contracts, types.CensusOriginMerkleTree, censusRoot, ballotMode, encryptionKey, stateRoot)
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
 		// Wait for the process to be registered
@@ -132,7 +132,7 @@ func TestWorkerIntegration(t *testing.T) {
 			// generate a vote for the first participant
 			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signer, nil)
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, censusRoot, signer.Address().Bytes())
+			censusProof := generateCensusProof(c, cli, censusRoot, pid.Marshal(), signer.Address().Bytes())
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof

@@ -52,7 +52,7 @@ func AggregatorInputsForTest(processID *types.ProcessID, nValidVotes int) (
 		})
 	}
 	// generate vote verifier circuit and inputs
-	vvInputs, vvPlaceholder, vvAssigments, err := voteverifiertest.VoteVerifierInputsForTest(vvData, processID)
+	vvInputs, vvPlaceholder, vvAssigments, err := voteverifiertest.VoteVerifierInputsForTest(vvData, processID, types.CensusOriginMerkleTree)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("voteverifier inputs: %w", err)
 	}

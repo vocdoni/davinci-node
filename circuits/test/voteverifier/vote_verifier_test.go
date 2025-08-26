@@ -16,9 +16,10 @@ import (
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/types"
 )
 
-func TestVerifySingleVoteCircuit(t *testing.T) {
+func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
@@ -31,7 +32,31 @@ func TestVerifySingleVoteCircuit(t *testing.T) {
 			PubKey:  s.PublicKey,
 			Address: s.Address(),
 		},
-	}, nil)
+	}, nil, types.CensusOriginMerkleTree)
+	c.Assert(err, qt.IsNil)
+	// generate proof
+	assert := test.NewAssert(t)
+	now := time.Now()
+	assert.SolvingSucceeded(&placeholder, &assignments[0],
+		test.WithCurves(ecc.BLS12_377),
+		test.WithBackends(backend.GROTH16))
+	fmt.Println("proving tooks", time.Since(now))
+}
+
+func TestVerifyCSPVoteCircuit(t *testing.T) {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	c := qt.New(t)
+	// generate voter account
+	s, err := ballottest.GenECDSAaccountForTest()
+	c.Assert(err, qt.IsNil)
+	_, placeholder, assignments, err := VoteVerifierInputsForTest([]VoterTestData{
+		{
+			PrivKey: s,
+			PubKey:  s.PublicKey,
+			Address: s.Address(),
+		},
+	}, nil, types.CensusOriginCSPEdDSABLS12377)
 	c.Assert(err, qt.IsNil)
 	// generate proof
 	assert := test.NewAssert(t)
@@ -69,7 +94,7 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 		data = append(data, VoterTestData{s, s.PublicKey, s.Address()})
 	}
-	_, placeholder, assignments, err := VoteVerifierInputsForTest(data, nil)
+	_, placeholder, assignments, err := VoteVerifierInputsForTest(data, nil, types.CensusOriginMerkleTree)
 	c.Assert(err, qt.IsNil)
 	assert := test.NewAssert(t)
 	now := time.Now()

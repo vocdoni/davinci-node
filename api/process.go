@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -29,9 +28,14 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 
 	// Unmarshal de process ID
 	pid := new(types.ProcessID).SetBytes(p.ProcessID)
-
 	if !pid.IsValid() {
 		ErrMalformedProcessID.With("invalid process ID").Write(w)
+		return
+	}
+
+	// Validate the census origin
+	if !p.CensusOrigin.Valid() {
+		ErrMalformedBody.Withf("invalid census origin: %d", p.CensusOrigin).Write(w)
 		return
 	}
 
@@ -69,9 +73,20 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	censusRoot, err := p.CensusRootBigInt()
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not get census root: %v", err).Write(w)
+		return
+	}
+
 	// prepare inputs for the state ready for the state transition circuit:
 	// - the census root must be encoded according to the arbo format
-	root, err := state.CalculateInitialRoot(pid.BigInt(), arbo.BytesToBigInt(p.CensusRoot), p.BallotMode, publicKey)
+	root, err := state.CalculateInitialRoot(
+		pid.BigInt(),
+		p.CensusOrigin.BigInt().MathBigInt(),
+		censusRoot.MathBigInt(),
+		p.BallotMode,
+		publicKey)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not calculate state root: %v", err).Write(w)
 		return
@@ -89,6 +104,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// Write the response
 	log.Infow("new process setup query",
 		"address", address.String(),
+		"censusOrigin", p.CensusOrigin.String(),
 		"processId", pid.String(),
 		"pubKeyX", pr.EncryptionPubKey[0].String(),
 		"pubKeyY", pr.EncryptionPubKey[1].String(),

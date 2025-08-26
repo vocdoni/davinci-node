@@ -17,6 +17,7 @@ Davinci-Node is the main implementation of the [davinci.vote](https://davinci.vo
   - [Command Line Options](#command-line-options)
 - [⚡ Run a Worker Node](#-run-a-worker-node)
   - [Update your worker](#update-your-worker)
+- [🧑‍🧑‍🧒‍🧒 Run a CSP: Credential Service Providers](#-run-a-csp-credentials-service-provider)
 - [📚 Additional Resources](#-additional-resources)
 
 ## 🚀 Quick Start
@@ -223,6 +224,121 @@ Worker nodes are lightweight components that handle zkSNARK proof generation for
 > ⚠️ **Important:** The Master URL (including the UUID) must be provided by the owner of the Master Sequencer node. See the [Workers API section](#enable-workers-api) for details on how to obtain this URL.
 
 > 💡 **Note:** The Ethereum address can be any valid address. It's used for accounting purposes and tracking success/failed jobs, but does not need to own any funds.
+
+## 🧑‍🧑‍🧒‍🧒 Run a CSP: Credentials Service Provider
+
+A **Credential Service Provider (CSP)** allows organizations to validate users manually and based off of any arbitrary criteria. Rather than a static census published before-hand, CSP census allows each user to be evaluated for voting eligibility individually, throughout the duration of the voting process.
+
+In order to prove they are a member of the census, a voter needs to retrieve a certificate of eligibility from the CSP for that process. The CSP first verifies the user's validity and then provides this certificate (proof) by signing the voter address and the process ID.
+
+### Supported Census Origins
+
+The sequencers only supports the following census origin, that may be used by the CSP's to generate valid proofs for the voters.
+
+| Census Origin Variable | Value | Description |
+|:---|:---:|:---|
+| `CensusOriginCSPEdDSABLS12377` | `2` | EdDSA signatures over the BLS12-377 curve |
+
+### What a CSP Does
+
+- **Create census proofs** for specific participants using a deterministic seed.
+- **Verify census proofs** to ensure their validity and integrity.
+- **Expose census origin and root** for external systems to validate the source and version of the census.
+
+### Available Methods
+
+The `crypto/csp` package provides two helpers functions:
+
+- `New(origin types.CensusOrigin, seed []byte) (CSP, error)` – Creates a new CSP instance for the specified origin.
+- `VerifyCensusProof(proof *types.CensusProof) error` – Verifies a proof by creating an appropriate CSP automatically.
+
+The `CSP` interface has the following methods:
+
+- `SetSeed(seed []byte) error` – Sets the cryptographic seed used by the CSP.
+- `CensusOrigin() types.CensusOrigin` – Returns the type of census origin (e.g., `CensusOriginCSPEdDSABLS12377`).
+- `CensusRoot() types.HexBytes` – Returns the census root hash.
+- `GenerateProof(processID *types.ProcessID, address common.Address) (*types.CensusProof, error)` – Generates a cryptographic proof for a given participant.
+- `VerifyProof(proof *types.CensusProof) error` – Verifies that a given proof is valid for the configured CSP.
+
+### Example Usage
+
+#### Go example
+
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/davinci-node/crypto/csp"
+	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
+)
+
+func main() {
+	// Select the CSP origin and provide a seed
+	origin := types.CensusOriginCSPEdDSABLS12377
+	seed := []byte("example_seed")
+
+	// Create a new CSP instance
+	c, err := csp.New(origin, seed)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create CSP: %v", err))
+	}
+
+	// Mock process identifier
+	processID := &types.ProcessID{
+		Address: common.BytesToAddress(util.RandomBytes(20)),
+		ChainID: 1,
+		Nonce:   rand.Uint64(),
+	}
+
+	// Voter address
+	voter := common.BytesToAddress(util.RandomBytes(20))
+
+	// Generate a census proof for the voter
+	proof, err := c.GenerateProof(processID, voter)
+	if err != nil {
+		panic(fmt.Sprintf("failed to generate proof: %v", err))
+	}
+
+	// Verify the generated proof
+	if err := c.VerifyProof(proof); err != nil {
+		panic(fmt.Sprintf("failed to verify proof: %v", err))
+	}
+
+	fmt.Println("Census proof verified successfully!")
+}
+```
+
+#### Node.js and JavaScript example
+
+Take a look to `davinci-crypto` WebAssembly [here](./cmd/davincicrypto-wasm/README.md).
+
+```html
+<script src="wasm_exec.js"></script>
+<script>
+   const go = new Go();
+   WebAssembly.instantiateStreaming(fetch('davinci_crypto.wasm'), go.importObject)
+   .then(result => go.run(result.instance))
+   .then(() => {
+      const censusOrigin = 2;
+      const privKey = '...'; // hex encoded private key seed
+      const processId = '...'; // hex encoded process ID
+      const address = '...'; // hex encoded Ethereum address
+
+      const proofResult = DavinciCrypto.cspSign(censusOrigin, privKey, processId, address);
+      const proof = JSON.parse(proofResult.data);
+      console.log('Generated CSP Proof:', proof);
+
+      const verifyResult = DavinciCrypto.cspVerify(JSON.stringify(proof));
+      console.log('Proof verified:', verifyResult);
+   });
+</script>
+```
+
 
 ## 📚 Additional Resources
 
