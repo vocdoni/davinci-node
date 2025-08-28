@@ -37,14 +37,14 @@ func TestBlobDataStructures(t *testing.T) {
 
 	// Initialize state with process parameters
 	ballotMode := &types.BallotMode{
-		MaxCount:        3,
-		MaxValue:        types.NewInt(100),
-		MinValue:        types.NewInt(0),
-		MaxTotalCost:    types.NewInt(1000),
-		MinTotalCost:    types.NewInt(0),
-		CostExponent:    1,
-		ForceUniqueness: false,
-		CostFromWeight:  false,
+		NumFields:      3,
+		MaxValue:       types.NewInt(100),
+		MinValue:       types.NewInt(0),
+		MaxValueSum:    types.NewInt(1000),
+		MinValueSum:    types.NewInt(0),
+		CostExponent:   1,
+		UniqueValues:   false,
+		CostFromWeight: false,
 	}
 	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
@@ -174,14 +174,14 @@ func TestBlobStateTransition(t *testing.T) {
 
 	// Initialize state with process parameters
 	ballotMode := &types.BallotMode{
-		MaxCount:        3,
-		MaxValue:        types.NewInt(100),
-		MinValue:        types.NewInt(0),
-		MaxTotalCost:    types.NewInt(1000),
-		MinTotalCost:    types.NewInt(0),
-		CostExponent:    1,
-		ForceUniqueness: false,
-		CostFromWeight:  false,
+		NumFields:      3,
+		MaxValue:       types.NewInt(100),
+		MinValue:       types.NewInt(0),
+		MaxValueSum:    types.NewInt(1000),
+		MinValueSum:    types.NewInt(0),
+		CostExponent:   1,
+		UniqueValues:   false,
+		CostFromWeight: false,
 	}
 	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)

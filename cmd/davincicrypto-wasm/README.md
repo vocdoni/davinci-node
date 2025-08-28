@@ -38,8 +38,8 @@ const input = JSON.stringify({
   encryptionKey: ["...", "..."], // Public key coordinates
   k: "...",                      // Random factor for encryption
   ballotMode: {                  // Voting constraints
-    maxCount: 5,
-    forceUniqueness: 0,
+    numFields: 5,
+    uniqueValues: 0,
     // other ballot mode parameters...
   },
   weight: "10",                  // Voter weight
@@ -63,13 +63,13 @@ if (result.error) {
 {
   "circuitInputs": {
     "fields": [...],            // Vote values as strings
-    "max_count": "5",           // Maximum selections allowed
-    "force_uniqueness": "0",    // Whether each option can only be selected once
+    "num_fields": "5",           // Maximum selections allowed
+    "unique_values": "0",    // Whether each option can only be selected once
     "max_value": "16",          // Maximum value for each field
     "min_value": "0",           // Minimum value for each field
-    "max_total_cost": "1280",   // Maximum total cost allowed
-    "min_total_cost": "5",      // Minimum total cost required
-    "cost_exp": "2",            // Cost exponent for quadratic voting
+    "max_value_sum": "1280",   // Maximum total cost allowed
+    "min_value_sum": "5",      // Minimum total cost required
+    "cost_exponent": "2",            // Cost exponent for quadratic voting
     "cost_from_weight": "0",    // Whether cost is derived from weight
     "address": "...",           // Voter address (in circuit format)
     "weight": "10",             // Voter weight

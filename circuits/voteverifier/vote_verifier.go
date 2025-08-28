@@ -18,15 +18,15 @@
 //   - InputsHash: The hash of all the inputs that could be public.
 //
 // Private inputs:
-//   - MaxCount: The maximum number of votes that can be included in the
+//   - NumFields: The maximum number of votes that can be included in the
 //     package.
-//   - ForceUniqueness: A flag that indicates if the votes in the package
+//   - UniqueValues: A flag that indicates if the votes in the package
 //     values should be unique.
 //   - MaxValue: The maximum value that a vote can have.
 //   - MinValue: The minimum value that a vote can have.
-//   - MaxTotalCost: The maximum total cost of the votes in the package.
-//   - MinTotalCost: The minimum total cost of the votes in the package.
-//   - CostExp: The exponent used to calculate the cost of a vote.
+//   - MaxValueSum: The maximum total cost of the votes in the package.
+//   - MinValueSum: The minimum total cost of the votes in the package.
+//   - CostExponent: The exponent used to calculate the cost of a vote.
 //   - CostFromWeight: A flag that indicates if the cost of a vote is
 //     calculated from the weight of the user or from the value of the vote.
 //   - Address: The address of the voter.

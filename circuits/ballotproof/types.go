@@ -86,23 +86,23 @@ func (b *BallotProofInputs) Serialize(ballot *elgamal.Ballot) ([]*big.Int, error
 // CircomInputs struct contains the data of the witness to generate a ballot
 // proof using the circom circuit.
 type CircomInputs struct {
-	Fields          []*types.BigInt `json:"fields"`
-	MaxCount        *types.BigInt   `json:"max_count"`
-	ForceUniqueness *types.BigInt   `json:"force_uniqueness"`
-	MaxValue        *types.BigInt   `json:"max_value"`
-	MinValue        *types.BigInt   `json:"min_value"`
-	MaxTotalCost    *types.BigInt   `json:"max_total_cost"`
-	MinTotalCost    *types.BigInt   `json:"min_total_cost"`
-	CostExp         *types.BigInt   `json:"cost_exp"`
-	CostFromWeight  *types.BigInt   `json:"cost_from_weight"`
-	Address         *types.BigInt   `json:"address"`
-	Weight          *types.BigInt   `json:"weight"`
-	ProcessID       *types.BigInt   `json:"process_id"`
-	VoteID          *types.BigInt   `json:"vote_id"`
-	PK              []*types.BigInt `json:"pk"`
-	K               *types.BigInt   `json:"k"`
-	Cipherfields    []*types.BigInt `json:"cipherfields"`
-	InputsHash      *types.BigInt   `json:"inputs_hash"`
+	Fields         []*types.BigInt `json:"fields"`
+	NumFields      *types.BigInt   `json:"num_fields"`
+	UniqueValues   *types.BigInt   `json:"unique_values"`
+	MaxValue       *types.BigInt   `json:"max_value"`
+	MinValue       *types.BigInt   `json:"min_value"`
+	MaxValueSum    *types.BigInt   `json:"max_value_sum"`
+	MinValueSum    *types.BigInt   `json:"min_value_sum"`
+	CostExponent   *types.BigInt   `json:"cost_exponent"`
+	CostFromWeight *types.BigInt   `json:"cost_from_weight"`
+	Address        *types.BigInt   `json:"address"`
+	Weight         *types.BigInt   `json:"weight"`
+	ProcessID      *types.BigInt   `json:"process_id"`
+	VoteID         *types.BigInt   `json:"vote_id"`
+	EncryptionKey  []*types.BigInt `json:"encryption_pubkey"`
+	K              *types.BigInt   `json:"k"`
+	Cipherfields   []*types.BigInt `json:"cipherfields"`
+	InputsHash     *types.BigInt   `json:"inputs_hash"`
 }
 
 // BallotProofInputsResult struct contains the result of composing the data to

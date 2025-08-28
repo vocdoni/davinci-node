@@ -56,13 +56,13 @@ export interface SequencerProcessStats {
 }
 
 export interface BallotMode {
-  maxCount: number
+  numFields: number
   maxValue: string
   minValue: string
-  forceUniqueness: boolean
+  uniqueValues: boolean
   costFromWeight: boolean
   costExponent: number
-  maxTotalCost: string
+  maxValueSum: string
   minTotalCost: string
 }
 

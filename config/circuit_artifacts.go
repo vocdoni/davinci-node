@@ -15,15 +15,15 @@ var (
 	// BallotProofCircuitURL is the URL for the ballot proof circuit WASM file
 	BallotProofCircuitURL = fmt.Sprintf("%s/%s/%s.wasm", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofCircuitHash)
 	// BallotProofCircuitHash is the hash of the ballot proof circuit
-	BallotProofCircuitHash = "97823742fe632dfb1f119eeddfcc327a58c8585ecf022184363e4bcfd05addf6"
+	BallotProofCircuitHash = "bf6577f5cdbde35312f512b028b0a63e89414ef637e4a83e9659530c737b5d7c"
 	// BallotProofProvingKeyURL is the URL for the ballot proof proving key
 	BallotProofProvingKeyURL = fmt.Sprintf("%s/%s/%s.zkey", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofProvingKeyHash)
 	// BallotProofProvingKeyHash is the hash of the ballot proof proving key
-	BallotProofProvingKeyHash = "c4e711f7355ab5dd01677031d0bab8750ee2f1fc0917a2c8d1cb957bb7192c03"
+	BallotProofProvingKeyHash = "e4e64a474dde6d5a14e4ab46c54ec87eee5b786a5e90d59a160a17ede6c39f92"
 	// BallotProofVerificationKeyURL is the URL for the ballot proof verification key
 	BallotProofVerificationKeyURL = fmt.Sprintf("%s/%s/%s.json", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofVerificationKeyHash)
 	// BallotProofVerificationKeyHash is the hash of the ballot proof verification key
-	BallotProofVerificationKeyHash = "80e69c9a7376758d7a9909b59a01c2cfa2a1daf1abce615a7fd62d1fbb3a43f5"
+	BallotProofVerificationKeyHash = "7633ab73ac0dbe7909ab524c8ad7b83cd90f0031e5ba117635475063ef4fba21"
 
 	// VoteVerifierCircuitURL is the URL for the vote verifier circuit
 	VoteVerifierCircuitURL = fmt.Sprintf("%s/%s/%s.ccs", DefaultArtifactsBaseURL, DefaultArtifactsRelease, VoteVerifierCircuitHash)

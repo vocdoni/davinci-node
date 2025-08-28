@@ -25,11 +25,11 @@ import {
   useColorModeValue,
   Link,
 } from '@chakra-ui/react'
-import { 
-  FaChevronDown, 
-  FaChevronUp, 
-  FaCopy, 
-  FaClock, 
+import {
+  FaChevronDown,
+  FaChevronUp,
+  FaCopy,
+  FaClock,
   FaCalendarAlt,
   FaUsers,
   FaVoteYea,
@@ -100,21 +100,21 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
     try {
       const ns = typeof durationNs === 'string' ? parseInt(durationNs) : durationNs
       if (isNaN(ns) || ns <= 0) return 'N/A'
-      
+
       // Go sends duration in nanoseconds, convert to milliseconds
       const ms = Math.floor(ns / 1e6)
-      
+
       // Sanity check - if still too large, it's probably invalid
       if (ms > 100 * 365 * 24 * 60 * 60 * 1000) { // 100 years
         console.warn('Duration too large:', ns)
         return 'N/A'
       }
-      
+
       const seconds = Math.floor(ms / 1000)
       const minutes = Math.floor(seconds / 60)
       const hours = Math.floor(minutes / 60)
       const days = Math.floor(hours / 24)
-      
+
       if (days > 0) return `${days}d ${hours % 24}h`
       if (hours > 0) return `${hours}h ${minutes % 60}m`
       if (minutes > 0) return `${minutes}m ${seconds % 60}s`
@@ -146,7 +146,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
           remainingFormatted: 'N/A',
         }
       }
-      
+
       // Parse duration - Go sends it in nanoseconds
       const durationNs = parseInt(process.duration)
       if (isNaN(durationNs) || durationNs <= 0) {
@@ -158,10 +158,10 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
           remainingFormatted: 'N/A',
         }
       }
-      
+
       // Convert nanoseconds to milliseconds
       const durationMs = Math.floor(durationNs / 1e6)
-      
+
       // Cap duration to a reasonable maximum (100 years in milliseconds)
       const maxDuration = 100 * 365 * 24 * 60 * 60 * 1000
       if (durationMs > maxDuration) {
@@ -173,7 +173,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
           remainingFormatted: 'N/A',
         }
       }
-      
+
       const endTimeMs = startTime.getTime() + durationMs
       // Check for overflow
       if (!isFinite(endTimeMs) || endTimeMs > 8640000000000000) { // Max date in JS
@@ -185,7 +185,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
           remainingFormatted: 'N/A',
         }
       }
-      
+
       const endTime = new Date(endTimeMs)
       // Validate end time
       if (isNaN(endTime.getTime())) {
@@ -197,11 +197,11 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
           remainingFormatted: 'N/A',
         }
       }
-      
+
       const now = new Date()
       const remainingMs = endTime.getTime() - now.getTime()
       const isActive = remainingMs > 0 && process.status === ProcessStatus.READY
-      
+
       console.log('Remaining time calculation:', {
         endTime: endTime.toISOString(),
         now: now.toISOString(),
@@ -209,7 +209,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
         isActive,
         status: process.status,
       })
-      
+
       return {
         endTime,
         remainingMs,
@@ -233,10 +233,10 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
 
   const HexField = ({ label, value, fieldName }: { label: string; value: string; fieldName: string }) => {
     // Show first 6 and last 4 characters for hex strings
-    const displayValue = value.length > 12 
-      ? `${value.slice(0, 6)}...${value.slice(-4)}` 
+    const displayValue = value.length > 12
+      ? `${value.slice(0, 6)}...${value.slice(-4)}`
       : value
-    
+
     return (
       <HStack spacing={1} align="center">
         <Text fontSize="sm" color="gray.600">{label}:</Text>
@@ -279,9 +279,9 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                 <Text fontSize="xs" fontWeight="medium">Choices</Text>
               </HStack>
               <Box pl={6}>
-                <Text fontSize="xs">Max options: {mode.maxCount}</Text>
+                <Text fontSize="xs">Max options: {mode.numFields}</Text>
                 <Text fontSize="xs">Value range: {mode.minValue} - {mode.maxValue}</Text>
-                {mode.forceUniqueness && (
+                {mode.uniqueValues && (
                   <Badge colorScheme="purple" size="xs" mt={1}>Unique choices required</Badge>
                 )}
               </Box>
@@ -303,7 +303,7 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                   </>
                 ) : (
                   <>
-                    <Text fontSize="xs">Total budget: {mode.maxTotalCost}</Text>
+                    <Text fontSize="xs">Total budget: {mode.maxValueSum}</Text>
                     {mode.minTotalCost !== '0' && (
                       <Text fontSize="xs">Min required: {mode.minTotalCost}</Text>
                     )}
@@ -399,8 +399,8 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
           <HStack spacing={4} p={2} bg={useColorModeValue('gray.50', 'gray.700')} borderRadius="md" fontSize="sm">
             <CompactField label="Duration" value={formatDuration(process.duration)} icon={FaClock} />
             <Divider orientation="vertical" h="20px" />
-            <CompactField 
-              label="End" 
+            <CompactField
+              label="End"
               value={(() => {
                 if (!processTimings.endTime) return 'N/A'
                 try {
@@ -410,8 +410,8 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                 } catch {
                   return 'N/A'
                 }
-              })()} 
-              icon={FaCalendarAlt} 
+              })()}
+              icon={FaCalendarAlt}
             />
           </HStack>
 
@@ -522,8 +522,8 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                   </GridItem>
                   <GridItem>
                     <VStack align="start" spacing={2}>
-                      <CompactField 
-                        label="Last Transition" 
+                      <CompactField
+                        label="Last Transition"
                         value={formatDate(process.sequencerStats.lastStateTransitionDate)}
                       />
                     </VStack>
@@ -541,21 +541,21 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                     </Text>
                     <VStack align="stretch" spacing={3}>
                       {(() => {
-                        // Use maxCount from ballotMode to determine how many options to show
-                        const maxCount = process.ballotMode.maxCount
-                        const resultsToShow = process.result.slice(0, maxCount)
-                        
+                        // Use numFields from ballotMode to determine how many options to show
+                        const numFields = process.ballotMode.numFields
+                        const resultsToShow = process.result.slice(0, numFields)
+
                         const totalVotes = resultsToShow.reduce((sum, votes) => {
                           return sum + BigInt(votes)
                         }, BigInt(0))
-                        
+
                         return resultsToShow
                           .map((result, index) => {
                             const votes = BigInt(result)
-                            const percentage = totalVotes > 0 
-                              ? Number((votes * BigInt(100)) / totalVotes) 
+                            const percentage = totalVotes > 0
+                              ? Number((votes * BigInt(100)) / totalVotes)
                               : 0
-                            
+
                             return (
                               <Box key={index}>
                                 <HStack justify="space-between" mb={1}>
@@ -571,9 +571,9 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                                     </Text>
                                   </HStack>
                                 </HStack>
-                                <Progress 
-                                  value={percentage} 
-                                  size="sm" 
+                                <Progress
+                                  value={percentage}
+                                  size="sm"
                                   colorScheme="purple"
                                   borderRadius="full"
                                   hasStripe

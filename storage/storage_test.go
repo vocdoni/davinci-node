@@ -26,11 +26,11 @@ func createTestProcess(pid *types.ProcessID) *types.Process {
 		StateRoot:      new(types.BigInt).SetUint64(100),
 		SequencerStats: types.SequencerProcessStats{},
 		BallotMode: &types.BallotMode{
-			MaxCount:     8,
-			MaxValue:     new(types.BigInt).SetUint64(100),
-			MinValue:     new(types.BigInt).SetUint64(0),
-			MaxTotalCost: new(types.BigInt).SetUint64(0),
-			MinTotalCost: new(types.BigInt).SetUint64(0),
+			NumFields:   8,
+			MaxValue:    new(types.BigInt).SetUint64(100),
+			MinValue:    new(types.BigInt).SetUint64(0),
+			MaxValueSum: new(types.BigInt).SetUint64(0),
+			MinValueSum: new(types.BigInt).SetUint64(0),
 		},
 		Census: &types.Census{
 			CensusOrigin: types.CensusOriginMerkleTree,
@@ -138,11 +138,11 @@ func TestBallotQueue(t *testing.T) {
 	)
 
 	// Now pull verified ballots for the process
-	// Test PullVerifiedBallots with different maxCount values
+	// Test PullVerifiedBallots with different numFields values
 
-	// Test maxCount = 1 should return only one ballot
+	// Test numFields = 1 should return only one ballot
 	vbs1, keys1, err := st.PullVerifiedBallots(processID.Marshal(), 1)
-	c.Assert(err, qt.IsNil, qt.Commentf("must pull verified ballots with maxCount=2"))
+	c.Assert(err, qt.IsNil, qt.Commentf("must pull verified ballots with numFields=2"))
 	c.Assert(len(vbs1), qt.Equals, 1, qt.Commentf("should return exactly 1 ballot"))
 	c.Assert(len(keys1), qt.Equals, 1, qt.Commentf("should return exactly 1 key"))
 
@@ -161,13 +161,13 @@ func TestBallotQueue(t *testing.T) {
 	// Verify the second ballot is now reserved
 	c.Assert(st.isReserved(verifiedBallotReservPrefix, keys3[0]), qt.IsTrue, qt.Commentf("second ballot should be reserved"))
 
-	// Test maxCount = 0 should return no ballots
+	// Test numFields = 0 should return no ballots
 	vbs0, keys0, err := st.PullVerifiedBallots(processID.Marshal(), 0)
-	c.Assert(err, qt.IsNil, qt.Commentf("must pull verified ballots with maxCount=0"))
+	c.Assert(err, qt.IsNil, qt.Commentf("must pull verified ballots with numFields=0"))
 	c.Assert(len(vbs0), qt.Equals, 0, qt.Commentf("should return no ballots"))
 	c.Assert(len(keys0), qt.Equals, 0, qt.Commentf("should return no keys"))
 
-	// Test maxCount > number of available ballots should return remaining unreserved ballots
+	// Test numFields > number of available ballots should return remaining unreserved ballots
 	vbs10, keys10, err := st.PullVerifiedBallots(processID.Marshal(), 10)
 	c.Assert(err, qt.Equals, ErrNotFound, qt.Commentf("should return ErrNotFound when no unreserved ballots"))
 	c.Assert(vbs10, qt.IsNil)
