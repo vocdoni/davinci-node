@@ -49,7 +49,7 @@ async function main() {
       maxValue: "16",
       minValue: "0",
       maxValueSum: "1280",
-      minTotalCost: "5",
+      minValueSum: "5",
       costExponent: 2,
       costFromWeight: false
     },

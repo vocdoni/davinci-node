@@ -14,7 +14,7 @@ type BallotMode struct {
 	MaxValue       *BigInt `json:"maxValue" cbor:"2,keyasint,omitempty"`
 	MinValue       *BigInt `json:"minValue" cbor:"3,keyasint,omitempty"`
 	MaxValueSum    *BigInt `json:"maxValueSum" cbor:"4,keyasint,omitempty"`
-	MinValueSum    *BigInt `json:"minTotalCost" cbor:"5,keyasint,omitempty"`
+	MinValueSum    *BigInt `json:"minValueSum" cbor:"5,keyasint,omitempty"`
 	CostExponent   uint8   `json:"costExponent" cbor:"6,keyasint,omitempty"`
 	CostFromWeight bool    `json:"costFromWeight" cbor:"7,keyasint,omitempty"`
 }
@@ -33,7 +33,7 @@ func (b *BallotMode) Validate() error {
 
 	// Validate MinValueSum
 	if b.MinValueSum == nil {
-		return fmt.Errorf("minTotalCost is nil")
+		return fmt.Errorf("minValueSum is nil")
 	}
 
 	// Ensure MinValue is not greater than MaxValue
@@ -43,7 +43,7 @@ func (b *BallotMode) Validate() error {
 
 	// Ensure MinValueSum is not greater than MaxValueSum
 	if b.MinValueSum.MathBigInt().Cmp(b.MaxValueSum.MathBigInt()) > 0 {
-		return fmt.Errorf("minTotalCost %s is greater than maxValueSum %s", b.MinValueSum.String(), b.MaxValueSum.String())
+		return fmt.Errorf("minValueSum %s is greater than maxValueSum %s", b.MinValueSum.String(), b.MaxValueSum.String())
 	}
 
 	return nil

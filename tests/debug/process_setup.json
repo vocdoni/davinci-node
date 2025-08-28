@@ -11,7 +11,7 @@
         "maxValue": "10",
         "minValue": "0",
         "maxValueSum": "10",
-        "minTotalCost": "0",
+        "minValueSum": "0",
         "costExponent": 0,
         "costFromWeight": false
     }

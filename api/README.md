@@ -142,7 +142,7 @@ It can be:
     "costFromWeight": "boolean",
     "costExponent": "number",
     "maxValueSum": "bigintStr",
-    "minTotalCost": "bigintStr"
+    "minValueSum": "bigintStr"
   },
   "signature": "hexBytes"
 }
@@ -162,7 +162,7 @@ It can be:
     "costFromWeight": "boolean",
     "costExponent": "number",
     "maxValueSum": "bigintStr",
-    "minTotalCost": "bigintStr"
+    "minValueSum": "bigintStr"
   }
 }
 ```
@@ -303,7 +303,7 @@ Gets information about an existing voting process. It must exist in the smart co
     "costFromWeight": "boolean",
     "costExponent": "number",
     "maxValueSum": "bigintStr",
-    "minTotalCost": "bigintStr"
+    "minValueSum": "bigintStr"
   },
   "census": {
     "censusOrigin": "number",

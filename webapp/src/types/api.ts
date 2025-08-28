@@ -63,7 +63,7 @@ export interface BallotMode {
   costFromWeight: boolean
   costExponent: number
   maxValueSum: string
-  minTotalCost: string
+  minValueSum: string
 }
 
 export interface Census {

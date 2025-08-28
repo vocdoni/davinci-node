@@ -377,14 +377,14 @@ func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<
 
 func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) {
 	mode := types.BallotMode{
-		UniqueValues:   p.BallotMode.ForceUniqueness,
+		UniqueValues:   p.BallotMode.UniqueValues,
 		CostFromWeight: p.BallotMode.CostFromWeight,
-		NumFields:      p.BallotMode.MaxCount,
+		NumFields:      p.BallotMode.NumFields,
 		CostExponent:   p.BallotMode.CostExponent,
 		MaxValue:       (*types.BigInt)(p.BallotMode.MaxValue),
 		MinValue:       (*types.BigInt)(p.BallotMode.MinValue),
-		MaxValueSum:    (*types.BigInt)(p.BallotMode.MaxTotalCost),
-		MinValueSum:    (*types.BigInt)(p.BallotMode.MinTotalCost),
+		MaxValueSum:    (*types.BigInt)(p.BallotMode.MaxValueSum),
+		MinValueSum:    (*types.BigInt)(p.BallotMode.MinValueSum),
 	}
 	if err := mode.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ballot mode: %w", err)
@@ -459,14 +459,14 @@ func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
 	prp.MetadataURI = p.MetadataURI
 
 	prp.BallotMode = npbindings.IProcessRegistryBallotMode{
-		CostFromWeight:  p.BallotMode.CostFromWeight,
-		ForceUniqueness: p.BallotMode.UniqueValues,
-		MaxCount:        p.BallotMode.NumFields,
-		CostExponent:    p.BallotMode.CostExponent,
-		MaxValue:        p.BallotMode.MaxValue.MathBigInt(),
-		MinValue:        p.BallotMode.MinValue.MathBigInt(),
-		MaxTotalCost:    p.BallotMode.MaxValueSum.MathBigInt(),
-		MinTotalCost:    p.BallotMode.MinValueSum.MathBigInt(),
+		CostFromWeight: p.BallotMode.CostFromWeight,
+		UniqueValues:   p.BallotMode.UniqueValues,
+		NumFields:      p.BallotMode.NumFields,
+		CostExponent:   p.BallotMode.CostExponent,
+		MaxValue:       p.BallotMode.MaxValue.MathBigInt(),
+		MinValue:       p.BallotMode.MinValue.MathBigInt(),
+		MaxValueSum:    p.BallotMode.MaxValueSum.MathBigInt(),
+		MinValueSum:    p.BallotMode.MinValueSum.MathBigInt(),
 	}
 
 	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)

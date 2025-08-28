@@ -304,8 +304,8 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                 ) : (
                   <>
                     <Text fontSize="xs">Total budget: {mode.maxValueSum}</Text>
-                    {mode.minTotalCost !== '0' && (
-                      <Text fontSize="xs">Min required: {mode.minTotalCost}</Text>
+                    {mode.minValueSum !== '0' && (
+                      <Text fontSize="xs">Min required: {mode.minValueSum}</Text>
                     )}
                   </>
                 )}
