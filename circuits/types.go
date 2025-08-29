@@ -28,25 +28,25 @@ const (
 // The values of this struct should be the same for all the voters in the same
 // process. Is a generic struct that can be used with any type of circuit input.
 type BallotMode[T any] struct {
-	MaxCount        T
-	ForceUniqueness T
-	MaxValue        T
-	MinValue        T
-	MaxTotalCost    T
-	MinTotalCost    T
-	CostExp         T
-	CostFromWeight  T
+	NumFields      T
+	UniqueValues   T
+	MaxValue       T
+	MinValue       T
+	MaxValueSum    T
+	MinValueSum    T
+	CostExponent   T
+	CostFromWeight T
 }
 
 func (bm BallotMode[T]) Serialize() []T {
 	return []T{
-		bm.MaxCount,
-		bm.ForceUniqueness,
+		bm.NumFields,
+		bm.UniqueValues,
 		bm.MaxValue,
 		bm.MinValue,
-		bm.MaxTotalCost,
-		bm.MinTotalCost,
-		bm.CostExp,
+		bm.MaxValueSum,
+		bm.MinValueSum,
+		bm.CostExponent,
 		bm.CostFromWeight,
 	}
 }
@@ -56,14 +56,14 @@ func (bm BallotMode[T]) Deserialize(values []T) (BallotMode[T], error) {
 		return BallotMode[T]{}, fmt.Errorf("invalid input length for BallotMode: expected 8 values")
 	}
 	return BallotMode[T]{
-		MaxCount:        values[0],
-		ForceUniqueness: values[1],
-		MaxValue:        values[2],
-		MinValue:        values[3],
-		MaxTotalCost:    values[4],
-		MinTotalCost:    values[5],
-		CostExp:         values[6],
-		CostFromWeight:  values[7],
+		NumFields:      values[0],
+		UniqueValues:   values[1],
+		MaxValue:       values[2],
+		MinValue:       values[3],
+		MaxValueSum:    values[4],
+		MinValueSum:    values[5],
+		CostExponent:   values[6],
+		CostFromWeight: values[7],
 	}, nil
 }
 
@@ -89,14 +89,14 @@ func (bm BallotMode[T]) BigIntsToEmulatedElementBN254() BallotMode[emulated.Elem
 		return BallotMode[emulated.Element[sw_bn254.ScalarField]]{}
 	}
 	return BallotMode[emulated.Element[sw_bn254.ScalarField]]{
-		MaxCount:        emulated.ValueOf[sw_bn254.ScalarField](bmbi.MaxCount),
-		ForceUniqueness: emulated.ValueOf[sw_bn254.ScalarField](bmbi.ForceUniqueness),
-		MaxValue:        emulated.ValueOf[sw_bn254.ScalarField](bmbi.MaxValue),
-		MinValue:        emulated.ValueOf[sw_bn254.ScalarField](bmbi.MinValue),
-		MaxTotalCost:    emulated.ValueOf[sw_bn254.ScalarField](bmbi.MaxTotalCost),
-		MinTotalCost:    emulated.ValueOf[sw_bn254.ScalarField](bmbi.MinTotalCost),
-		CostExp:         emulated.ValueOf[sw_bn254.ScalarField](bmbi.CostExp),
-		CostFromWeight:  emulated.ValueOf[sw_bn254.ScalarField](bmbi.CostFromWeight),
+		NumFields:      emulated.ValueOf[sw_bn254.ScalarField](bmbi.NumFields),
+		UniqueValues:   emulated.ValueOf[sw_bn254.ScalarField](bmbi.UniqueValues),
+		MaxValue:       emulated.ValueOf[sw_bn254.ScalarField](bmbi.MaxValue),
+		MinValue:       emulated.ValueOf[sw_bn254.ScalarField](bmbi.MinValue),
+		MaxValueSum:    emulated.ValueOf[sw_bn254.ScalarField](bmbi.MaxValueSum),
+		MinValueSum:    emulated.ValueOf[sw_bn254.ScalarField](bmbi.MinValueSum),
+		CostExponent:   emulated.ValueOf[sw_bn254.ScalarField](bmbi.CostExponent),
+		CostFromWeight: emulated.ValueOf[sw_bn254.ScalarField](bmbi.CostFromWeight),
 	}
 }
 
@@ -107,14 +107,14 @@ func (bm BallotMode[T]) VarsToEmulatedElementBN254(api frontend.API) BallotMode[
 		return BallotMode[emulated.Element[sw_bn254.ScalarField]]{}
 	}
 	return BallotMode[emulated.Element[sw_bn254.ScalarField]]{
-		MaxCount:        *varToEmulatedElementBN254(api, bmv.MaxCount),
-		ForceUniqueness: *varToEmulatedElementBN254(api, bmv.ForceUniqueness),
-		MaxValue:        *varToEmulatedElementBN254(api, bmv.MaxValue),
-		MinValue:        *varToEmulatedElementBN254(api, bmv.MinValue),
-		MaxTotalCost:    *varToEmulatedElementBN254(api, bmv.MaxTotalCost),
-		MinTotalCost:    *varToEmulatedElementBN254(api, bmv.MinTotalCost),
-		CostExp:         *varToEmulatedElementBN254(api, bmv.CostExp),
-		CostFromWeight:  *varToEmulatedElementBN254(api, bmv.CostFromWeight),
+		NumFields:      *varToEmulatedElementBN254(api, bmv.NumFields),
+		UniqueValues:   *varToEmulatedElementBN254(api, bmv.UniqueValues),
+		MaxValue:       *varToEmulatedElementBN254(api, bmv.MaxValue),
+		MinValue:       *varToEmulatedElementBN254(api, bmv.MinValue),
+		MaxValueSum:    *varToEmulatedElementBN254(api, bmv.MaxValueSum),
+		MinValueSum:    *varToEmulatedElementBN254(api, bmv.MinValueSum),
+		CostExponent:   *varToEmulatedElementBN254(api, bmv.CostExponent),
+		CostFromWeight: *varToEmulatedElementBN254(api, bmv.CostFromWeight),
 	}
 }
 
@@ -132,14 +132,14 @@ func DeserializeBallotMode(data []byte) (BallotMode[*big.Int], error) {
 		return arbo.BytesToBigInt(data[offset : offset+crypto.SignatureCircuitVariableLen])
 	}
 	return BallotMode[*big.Int]{
-		MaxCount:        readBigInt(0 * crypto.SignatureCircuitVariableLen),
-		ForceUniqueness: readBigInt(1 * crypto.SignatureCircuitVariableLen),
-		MaxValue:        readBigInt(2 * crypto.SignatureCircuitVariableLen),
-		MinValue:        readBigInt(3 * crypto.SignatureCircuitVariableLen),
-		MaxTotalCost:    readBigInt(4 * crypto.SignatureCircuitVariableLen),
-		MinTotalCost:    readBigInt(5 * crypto.SignatureCircuitVariableLen),
-		CostExp:         readBigInt(6 * crypto.SignatureCircuitVariableLen),
-		CostFromWeight:  readBigInt(7 * crypto.SignatureCircuitVariableLen),
+		NumFields:      readBigInt(0 * crypto.SignatureCircuitVariableLen),
+		UniqueValues:   readBigInt(1 * crypto.SignatureCircuitVariableLen),
+		MaxValue:       readBigInt(2 * crypto.SignatureCircuitVariableLen),
+		MinValue:       readBigInt(3 * crypto.SignatureCircuitVariableLen),
+		MaxValueSum:    readBigInt(4 * crypto.SignatureCircuitVariableLen),
+		MinValueSum:    readBigInt(5 * crypto.SignatureCircuitVariableLen),
+		CostExponent:   readBigInt(6 * crypto.SignatureCircuitVariableLen),
+		CostFromWeight: readBigInt(7 * crypto.SignatureCircuitVariableLen),
 	}, nil
 }
 
@@ -148,14 +148,14 @@ func DeserializeBallotMode(data []byte) (BallotMode[*big.Int], error) {
 // Before calling this function, the BallotMode must be validated.
 func BallotModeToCircuit(b *types.BallotMode) BallotMode[*big.Int] {
 	return BallotMode[*big.Int]{
-		MaxCount:        big.NewInt(int64(b.MaxCount)),
-		ForceUniqueness: BoolToBigInt(b.ForceUniqueness),
-		MaxValue:        b.MaxValue.MathBigInt(),
-		MinValue:        b.MinValue.MathBigInt(),
-		MaxTotalCost:    b.MaxTotalCost.MathBigInt(),
-		MinTotalCost:    b.MinTotalCost.MathBigInt(),
-		CostExp:         big.NewInt(int64(b.CostExponent)),
-		CostFromWeight:  BoolToBigInt(b.CostFromWeight),
+		NumFields:      big.NewInt(int64(b.NumFields)),
+		UniqueValues:   BoolToBigInt(b.UniqueValues),
+		MaxValue:       b.MaxValue.MathBigInt(),
+		MinValue:       b.MinValue.MathBigInt(),
+		MaxValueSum:    b.MaxValueSum.MathBigInt(),
+		MinValueSum:    b.MinValueSum.MathBigInt(),
+		CostExponent:   big.NewInt(int64(b.CostExponent)),
+		CostFromWeight: BoolToBigInt(b.CostFromWeight),
 	}
 }
 

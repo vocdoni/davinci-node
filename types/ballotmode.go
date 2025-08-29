@@ -9,31 +9,31 @@ import (
 
 // BallotMode is the struct to define the rules of a ballot
 type BallotMode struct {
-	MaxCount        uint8   `json:"maxCount" cbor:"0,keyasint,omitempty"`
-	ForceUniqueness bool    `json:"forceUniqueness" cbor:"1,keyasint,omitempty"`
-	MaxValue        *BigInt `json:"maxValue" cbor:"2,keyasint,omitempty"`
-	MinValue        *BigInt `json:"minValue" cbor:"3,keyasint,omitempty"`
-	MaxTotalCost    *BigInt `json:"maxTotalCost" cbor:"4,keyasint,omitempty"`
-	MinTotalCost    *BigInt `json:"minTotalCost" cbor:"5,keyasint,omitempty"`
-	CostExponent    uint8   `json:"costExponent" cbor:"6,keyasint,omitempty"`
-	CostFromWeight  bool    `json:"costFromWeight" cbor:"7,keyasint,omitempty"`
+	NumFields      uint8   `json:"numFields" cbor:"0,keyasint,omitempty"`
+	UniqueValues   bool    `json:"uniqueValues" cbor:"1,keyasint,omitempty"`
+	MaxValue       *BigInt `json:"maxValue" cbor:"2,keyasint,omitempty"`
+	MinValue       *BigInt `json:"minValue" cbor:"3,keyasint,omitempty"`
+	MaxValueSum    *BigInt `json:"maxValueSum" cbor:"4,keyasint,omitempty"`
+	MinValueSum    *BigInt `json:"minValueSum" cbor:"5,keyasint,omitempty"`
+	CostExponent   uint8   `json:"costExponent" cbor:"6,keyasint,omitempty"`
+	CostFromWeight bool    `json:"costFromWeight" cbor:"7,keyasint,omitempty"`
 }
 
 func (b *BallotMode) Validate() error {
-	// Validate MaxCount
-	maxCountMax := 8
-	if int(b.MaxCount) > maxCountMax {
-		return fmt.Errorf("maxCount %d is greater than max size %d", b.MaxCount, maxCountMax)
+	// Validate NumFields
+	numFieldsMax := 8
+	if int(b.NumFields) > numFieldsMax {
+		return fmt.Errorf("numFields %d is greater than max size %d", b.NumFields, numFieldsMax)
 	}
 
-	// Validate MaxTotalCost
-	if b.MaxTotalCost == nil {
-		return fmt.Errorf("maxTotalCost is nil")
+	// Validate MaxValueSum
+	if b.MaxValueSum == nil {
+		return fmt.Errorf("maxValueSum is nil")
 	}
 
-	// Validate MinTotalCost
-	if b.MinTotalCost == nil {
-		return fmt.Errorf("minTotalCost is nil")
+	// Validate MinValueSum
+	if b.MinValueSum == nil {
+		return fmt.Errorf("minValueSum is nil")
 	}
 
 	// Ensure MinValue is not greater than MaxValue
@@ -41,9 +41,9 @@ func (b *BallotMode) Validate() error {
 		return fmt.Errorf("minValue %s is greater than maxValue %s", b.MinValue.String(), b.MaxValue.String())
 	}
 
-	// Ensure MinTotalCost is not greater than MaxTotalCost
-	if b.MinTotalCost.MathBigInt().Cmp(b.MaxTotalCost.MathBigInt()) > 0 {
-		return fmt.Errorf("minTotalCost %s is greater than maxTotalCost %s", b.MinTotalCost.String(), b.MaxTotalCost.String())
+	// Ensure MinValueSum is not greater than MaxValueSum
+	if b.MinValueSum.MathBigInt().Cmp(b.MaxValueSum.MathBigInt()) > 0 {
+		return fmt.Errorf("minValueSum %s is greater than maxValueSum %s", b.MinValueSum.String(), b.MaxValueSum.String())
 	}
 
 	return nil
@@ -91,20 +91,20 @@ func readBigInt(buf *bytes.Reader, bi *BigInt) error {
 func (b *BallotMode) Marshal() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
-	// MaxCount (1 byte)
-	err := buf.WriteByte(b.MaxCount)
+	// NumFields (1 byte)
+	err := buf.WriteByte(b.NumFields)
 	if err != nil {
-		return nil, fmt.Errorf("failed to write MaxCount: %v", err)
+		return nil, fmt.Errorf("failed to write NumFields: %v", err)
 	}
 
-	// ForceUniqueness (1 byte: 0 or 1)
+	// UniqueValues (1 byte: 0 or 1)
 	force := byte(0)
-	if b.ForceUniqueness {
+	if b.UniqueValues {
 		force = 1
 	}
 	err = buf.WriteByte(force)
 	if err != nil {
-		return nil, fmt.Errorf("failed to write ForceUniqueness: %v", err)
+		return nil, fmt.Errorf("failed to write UniqueValues: %v", err)
 	}
 
 	// MaxValue
@@ -117,13 +117,13 @@ func (b *BallotMode) Marshal() ([]byte, error) {
 		return nil, err
 	}
 
-	// MaxTotalCost
-	if err := writeBigInt(buf, b.MaxTotalCost); err != nil {
+	// MaxValueSum
+	if err := writeBigInt(buf, b.MaxValueSum); err != nil {
 		return nil, err
 	}
 
-	// MinTotalCost
-	if err := writeBigInt(buf, b.MinTotalCost); err != nil {
+	// MinValueSum
+	if err := writeBigInt(buf, b.MinValueSum); err != nil {
 		return nil, err
 	}
 
@@ -150,19 +150,19 @@ func (b *BallotMode) Marshal() ([]byte, error) {
 func (b *BallotMode) Unmarshal(data []byte) error {
 	buf := bytes.NewReader(data)
 
-	// MaxCount
-	maxCount, err := buf.ReadByte()
+	// NumFields
+	numFields, err := buf.ReadByte()
 	if err != nil {
-		return fmt.Errorf("failed to read MaxCount: %v", err)
+		return fmt.Errorf("failed to read NumFields: %v", err)
 	}
-	b.MaxCount = maxCount
+	b.NumFields = numFields
 
-	// ForceUniqueness
+	// UniqueValues
 	force, err := buf.ReadByte()
 	if err != nil {
-		return fmt.Errorf("failed to read ForceUniqueness: %v", err)
+		return fmt.Errorf("failed to read UniqueValues: %v", err)
 	}
-	b.ForceUniqueness = (force == 1)
+	b.UniqueValues = (force == 1)
 
 	// MaxValue
 	if err := readBigInt(buf, b.MaxValue); err != nil {
@@ -174,22 +174,22 @@ func (b *BallotMode) Unmarshal(data []byte) error {
 		return err
 	}
 
-	// MaxTotalCost
-	if err := readBigInt(buf, b.MaxTotalCost); err != nil {
+	// MaxValueSum
+	if err := readBigInt(buf, b.MaxValueSum); err != nil {
 		return err
 	}
 
-	// MinTotalCost
-	if err := readBigInt(buf, b.MinTotalCost); err != nil {
+	// MinValueSum
+	if err := readBigInt(buf, b.MinValueSum); err != nil {
 		return err
 	}
 
 	// CostExponent
-	costExp, err := buf.ReadByte()
+	costExponent, err := buf.ReadByte()
 	if err != nil {
 		return fmt.Errorf("failed to read CostExponent: %v", err)
 	}
-	b.CostExponent = costExp
+	b.CostExponent = costExponent
 
 	// CostFromWeight
 	costW, err := buf.ReadByte()

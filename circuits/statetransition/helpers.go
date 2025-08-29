@@ -27,14 +27,14 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 	witness.Process.CensusOrigin = o.Process().CensusOrigin
 	witness.Process.CensusRoot = o.Process().CensusRoot
 	witness.Process.BallotMode = circuits.BallotMode[frontend.Variable]{
-		MaxCount:        o.Process().BallotMode.MaxCount,
-		ForceUniqueness: o.Process().BallotMode.ForceUniqueness,
-		MaxValue:        o.Process().BallotMode.MaxValue,
-		MinValue:        o.Process().BallotMode.MinValue,
-		MaxTotalCost:    o.Process().BallotMode.MaxTotalCost,
-		MinTotalCost:    o.Process().BallotMode.MinTotalCost,
-		CostExp:         o.Process().BallotMode.CostExp,
-		CostFromWeight:  o.Process().BallotMode.CostFromWeight,
+		NumFields:      o.Process().BallotMode.NumFields,
+		UniqueValues:   o.Process().BallotMode.UniqueValues,
+		MaxValue:       o.Process().BallotMode.MaxValue,
+		MinValue:       o.Process().BallotMode.MinValue,
+		MaxValueSum:    o.Process().BallotMode.MaxValueSum,
+		MinValueSum:    o.Process().BallotMode.MinValueSum,
+		CostExponent:   o.Process().BallotMode.CostExponent,
+		CostFromWeight: o.Process().BallotMode.CostFromWeight,
 	}
 	witness.Process.EncryptionKey.PubKey[0] = o.Process().EncryptionKey.PubKey[0]
 	witness.Process.EncryptionKey.PubKey[1] = o.Process().EncryptionKey.PubKey[1]

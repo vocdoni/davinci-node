@@ -224,14 +224,14 @@ func (s *Storage) MarkBallotDone(voteID []byte, vb *VerifiedBallot) error {
 }
 
 // PullVerifiedBallots returns a list of non-reserved verified ballots for a
-// given processID and creates reservations for them. The maxCount parameter is
+// given processID and creates reservations for them. The numFields parameter is
 // used to limit the number of results. If no ballots are available, returns
 // ErrNotFound.
-func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*VerifiedBallot, [][]byte, error) {
+func (s *Storage) PullVerifiedBallots(processID []byte, numFields int) ([]*VerifiedBallot, [][]byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	if maxCount == 0 {
+	if numFields == 0 {
 		return []*VerifiedBallot{}, nil, nil
 	}
 
@@ -240,7 +240,7 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 	var keys [][]byte
 	if err := rd.Iterate(processID, func(k, v []byte) bool {
 		// Check if we've already reached the maximum count
-		if len(res) >= maxCount {
+		if len(res) >= numFields {
 			return false
 		}
 
@@ -264,7 +264,7 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 		copy(keyCopy, k)
 		res = append(res, &vb)
 		keys = append(keys, keyCopy)
-		// Continue iteration if we haven't reached maxCount
+		// Continue iteration if we haven't reached numFields
 		return true
 	}); err != nil {
 		return nil, nil, fmt.Errorf("iterate ballots: %w", err)

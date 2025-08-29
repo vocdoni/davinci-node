@@ -130,7 +130,7 @@ type VoterProofResult struct {
 func BallotProofForTest(address []byte, processID *types.ProcessID, encryptionKey ecc.Point) (*VoterProofResult, error) {
 	now := time.Now()
 	// generate random fields
-	fields := GenBallotFieldsForTest(circuits.MockMaxCount, circuits.MockMaxValue, circuits.MockMinValue, circuits.MockForceUniqueness > 0)
+	fields := GenBallotFieldsForTest(circuits.MockNumFields, circuits.MockMaxValue, circuits.MockMinValue, circuits.MockUniqueValues > 0)
 	// generate voter k
 	k, err := elgamal.RandK()
 	if err != nil {

@@ -44,12 +44,12 @@ async function main() {
     ],
     k: "964256131946492867709099996647243890828558919187",
     ballotMode: {
-      maxCount: 5,
-      forceUniqueness: false,
+      numFields: 5,
+      uniqueValues: false,
       maxValue: "16",
       minValue: "0",
-      maxTotalCost: "1280",
-      minTotalCost: "5",
+      maxValueSum: "1280",
+      minValueSum: "5",
       costExponent: 2,
       costFromWeight: false
     },

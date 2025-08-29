@@ -566,10 +566,10 @@ func createVote(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *typ
 func createVoteWithRandomFields(c *qt.C, pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) api.Vote {
 	// generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
-		int(bm.MaxCount),
+		int(bm.NumFields),
 		int(bm.MaxValue.MathBigInt().Int64()),
 		int(bm.MinValue.MathBigInt().Int64()),
-		bm.ForceUniqueness)
+		bm.UniqueValues)
 	// cast fields to types.BigInt
 	fields := []*types.BigInt{}
 	for _, f := range randFields {
@@ -589,10 +589,10 @@ func createVoteFromInvalidVoter(c *qt.C, pid *types.ProcessID, bm *types.BallotM
 	c.Assert(err, qt.IsNil)
 	// generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
-		int(bm.MaxCount),
+		int(bm.NumFields),
 		int(bm.MaxValue.MathBigInt().Int64()),
 		int(bm.MinValue.MathBigInt().Int64()),
-		bm.ForceUniqueness)
+		bm.UniqueValues)
 	// compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:       address.Bytes(),

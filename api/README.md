@@ -135,14 +135,14 @@ It can be:
   "censusOrigin": "number",
   "censusRoot": "hexBytes",
   "ballotMode": {
-    "maxCount": "number",
+    "numFields": "number",
     "maxValue": "bigintStr",
     "minValue": "bigintStr",
-    "forceUniqueness": "boolean",
+    "uniqueValues": "boolean",
     "costFromWeight": "boolean",
     "costExponent": "number",
-    "maxTotalCost": "bigintStr",
-    "minTotalCost": "bigintStr"
+    "maxValueSum": "bigintStr",
+    "minValueSum": "bigintStr"
   },
   "signature": "hexBytes"
 }
@@ -155,14 +155,14 @@ It can be:
   "encryptionPubKey": ["bigintStr", "bigintStr"],
   "stateRoot": "hexBytes",
   "ballotMode": {
-    "maxCount": "number",
+    "numFields": "number",
     "maxValue": "bigintStr",
     "minValue": "bigintStr",
-    "forceUniqueness": "boolean",
+    "uniqueValues": "boolean",
     "costFromWeight": "boolean",
     "costExponent": "number",
-    "maxTotalCost": "bigintStr",
-    "minTotalCost": "bigintStr"
+    "maxValueSum": "bigintStr",
+    "minValueSum": "bigintStr"
   }
 }
 ```
@@ -296,14 +296,14 @@ Gets information about an existing voting process. It must exist in the smart co
   "duration": "duration",
   "metadataURI": "string", // URI/URL to fetch the process metadata
   "ballotMode": {
-    "maxCount": "number",
+    "numFields": "number",
     "maxValue": "bigintStr",
     "minValue": "bigintStr",
-    "forceUniqueness": "boolean",
+    "uniqueValues": "boolean",
     "costFromWeight": "boolean",
     "costExponent": "number",
-    "maxTotalCost": "bigintStr",
-    "minTotalCost": "bigintStr"
+    "maxValueSum": "bigintStr",
+    "minValueSum": "bigintStr"
   },
   "census": {
     "censusOrigin": "number",

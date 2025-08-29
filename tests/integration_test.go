@@ -59,14 +59,14 @@ func TestIntegration(t *testing.T) {
 		// Create census with numBallot participants
 		censusRoot, participants, signers = createCensus(c, cli, numBallots)
 		ballotMode = &types.BallotMode{
-			MaxCount:        circuits.MockMaxCount,
-			ForceUniqueness: circuits.MockForceUniqueness == 1,
-			MaxValue:        new(types.BigInt).SetUint64(circuits.MockMaxValue),
-			MinValue:        new(types.BigInt).SetUint64(circuits.MockMinValue),
-			MaxTotalCost:    new(types.BigInt).SetUint64(circuits.MockMaxTotalCost),
-			MinTotalCost:    new(types.BigInt).SetUint64(circuits.MockMinTotalCost),
-			CostFromWeight:  circuits.MockCostFromWeight == 1,
-			CostExponent:    circuits.MockCostExp,
+			NumFields:      circuits.MockNumFields,
+			UniqueValues:   circuits.MockUniqueValues == 1,
+			MaxValue:       new(types.BigInt).SetUint64(circuits.MockMaxValue),
+			MinValue:       new(types.BigInt).SetUint64(circuits.MockMinValue),
+			MaxValueSum:    new(types.BigInt).SetUint64(circuits.MockMaxValueSum),
+			MinValueSum:    new(types.BigInt).SetUint64(circuits.MockMinValueSum),
+			CostFromWeight: circuits.MockCostFromWeight == 1,
+			CostExponent:   circuits.MockCostExponent,
 		}
 
 		if !isCSPCensus() {
