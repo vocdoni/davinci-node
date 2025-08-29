@@ -35,7 +35,7 @@ func TestIntegration(t *testing.T) {
 
 	// Setup
 	ctx := t.Context()
-	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTimeout, workers.DefaultWorkerBanRules)
+	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTokenExpiration, testWorkerTimeout, workers.DefaultWorkerBanRules)
 	_, port := services.API.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)

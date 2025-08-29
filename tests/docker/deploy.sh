@@ -11,26 +11,39 @@ while ! (echo >/dev/tcp/anvil/8545) &>/dev/null; do
 done
 echo " ✅"
 
-# clone if necessary
-if [ ! -d /workspace/davinci-contracts ]; then
-  BRANCH=${BRANCH:-main}
-  echo "📥 Cloning davinci-contracts branch: $BRANCH"
-  git clone https://github.com/vocdoni/davinci-contracts.git
+# remove any existing davinci-contracts directory
+if [ -d davinci-contracts ]; then
+  rm -rf davinci-contracts
 fi
+
+BRANCH=${BRANCH:-main}
+echo "📥 Cloning davinci-contracts branch: $BRANCH"
+git clone https://github.com/vocdoni/davinci-contracts.git
 cd davinci-contracts
 
 echo "🔍 Using commit: ${COMMIT:-latest}"
 
 # fetch and checkout
 if [ -n "${COMMIT:-}" ]; then
-  echo "🔀 Checking out specific commit: $COMMIT"
-  git fetch origin "$COMMIT" || echo "⚠️  Could not fetch commit directly (may already be present)"
-  git checkout "$COMMIT"
+  echo "🔀 Resolving revision: $COMMIT"
+  # Make sure we have up-to-date refs (branches + tags)
+  git fetch --all --tags --prune --quiet
+
+  # Try to resolve the input to a full commit id. This works for branch, tag, SHA, or abbrev SHA.
+  if ! FULL_SHA=$(git rev-parse --verify --quiet "$COMMIT^{commit}"); then
+    echo "❌ Could not resolve '$COMMIT' to a commit (branch/tag/SHA)."
+    echo "   Tip: use a branch, tag, or a full 40-char commit hash."
+    exit 1
+  fi
+
+  echo "🔐 Detaching at $FULL_SHA"
+  git -c advice.detachedHead=false checkout --quiet --detach "$FULL_SHA"
 else
   BRANCH=${BRANCH:-main}
   echo "🔀 No COMMIT set, checking out latest from branch: $BRANCH"
-  git checkout "$BRANCH"
-  git pull origin "$BRANCH"
+  git fetch origin "$BRANCH" --quiet
+  git checkout --quiet "$BRANCH"
+  git pull --quiet origin "$BRANCH"
 fi
 
 head -n -5 foundry.toml > foundry.tmp && mv foundry.tmp foundry.toml

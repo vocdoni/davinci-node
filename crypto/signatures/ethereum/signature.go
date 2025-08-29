@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/davinci-node/crypto"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 const (
@@ -31,8 +32,9 @@ type ECDSASignature struct {
 	recovery byte     `json:"-"`
 }
 
-// New creates a new ECDSASignature from raw signature byte payload.
-func New(signature []byte) (*ECDSASignature, error) {
+// BytesToSignature function creates a new ECDSASignature from raw signature
+// byte payload.
+func BytesToSignature(signature []byte) (*ECDSASignature, error) {
 	if len(signature) < SignatureLength-1 {
 		return nil, fmt.Errorf("signature length is less than %d", SignatureLength-1)
 	}
@@ -41,6 +43,16 @@ func New(signature []byte) (*ECDSASignature, error) {
 		return nil, fmt.Errorf("wrong signature bytes")
 	}
 	return sig, nil
+}
+
+// HexToSignature function decodes the provided hex string to a bytes and the
+// decodes the bytes to an ECDSASignature using the BytesToSignature function.
+func HexToSignature(hexSignature string) (*ECDSASignature, error) {
+	bSignature, err := types.HexStringToHexBytes(hexSignature)
+	if err != nil {
+		return nil, err
+	}
+	return BytesToSignature(bSignature)
 }
 
 // Valid method checks if the ECDSASignature is valid. A signature is valid if

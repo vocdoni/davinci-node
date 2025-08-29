@@ -47,9 +47,11 @@ type Sequencer struct {
 	batchTimeWindow time.Duration
 
 	// Worker mode fields
-	masterURL     string         // URL of master node (empty for master mode)
-	workerAddress common.Address // Ethereum address identifying this worker
-	workerName    string         // Name of the worker for identification
+	sequencerURL    string         // URL of sequencer node (empty for sequencer mode)
+	sequencerUUID   string         // UUID of sequencer node (empty for sequencer mode)
+	workerAddress   common.Address // Ethereum address identifying this worker
+	workerName      string         // Name of the worker for identification
+	workerAuthtoken string         // Worker auth token
 }
 
 // New creates a new Sequencer instance that processes ballots and aggregates them into batches.
@@ -107,15 +109,19 @@ func (s *Sequencer) Start(ctx context.Context) error {
 	}
 
 	s.ctx, s.cancel = context.WithCancel(ctx)
-
-	if s.masterURL != "" {
+	// check if is in worker mode
+	if inWorkerMode, validWorkerConf := s.workerMode(); inWorkerMode {
+		// check if worker conf is valid
+		if !validWorkerConf {
+			return fmt.Errorf("invalid worker mode configuration")
+		}
 		// Worker mode: start worker processor
-		if err := s.startWorkerProcessor(); err != nil {
+		if err := s.startWorkerModeServices(); err != nil {
 			s.cancel()
 			return fmt.Errorf("failed to start worker processor: %w", err)
 		}
 		log.Infow("sequencer started in worker mode",
-			"master", s.masterURL,
+			"master", s.sequencerURL,
 			"address", s.workerAddress)
 		return nil
 	}
@@ -159,6 +165,17 @@ func (s *Sequencer) Stop() error {
 		log.Infow("sequencer stopped")
 	}
 	return nil
+}
+
+// workerMode checks if the sequencer is in worker mode and also if the worker
+// mode config is valid.
+func (s *Sequencer) workerMode() (bool, bool) {
+	workerMode := s.sequencerURL != ""
+	validConf := s.sequencerURL != "" && // valid sequencer URL
+		s.sequencerUUID != "" && // valid sequencer UUID
+		s.workerAuthtoken != "" && // valid worker signature
+		common.IsHexAddress(s.workerAddress.Hex()) // valid worker address
+	return workerMode, validConf
 }
 
 // monitorNewProcesses checks for new processes immediately and then periodically registers them with the sequencer.

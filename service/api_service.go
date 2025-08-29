@@ -14,16 +14,17 @@ import (
 
 // APIService represents a service that manages the HTTP API server.
 type APIService struct {
-	storage       *storage.Storage
-	API           *api.API
-	mu            sync.Mutex
-	cancel        context.CancelFunc
-	host          string
-	port          int
-	network       string
-	workerUrlSeed string
-	workerTimeout time.Duration
-	banRules      *workers.WorkerBanRules // Custom ban rules for workers
+	storage                    *storage.Storage
+	API                        *api.API
+	mu                         sync.Mutex
+	cancel                     context.CancelFunc
+	host                       string
+	port                       int
+	network                    string
+	sequencerWorkersSeed       string
+	workersAuthtokenExpiration time.Duration
+	workersJobTimeout          time.Duration
+	workersBanRules            *workers.WorkerBanRules // Custom ban rules for workers
 }
 
 // NewAPI creates a new APIService instance.
@@ -41,15 +42,14 @@ func NewAPI(storage *storage.Storage, host string, port int, network string, dis
 }
 
 // SetWorkerConfig configures the worker settings for the API service.
-func (as *APIService) SetWorkerConfig(urlSeed string, timeout time.Duration, banRules *workers.WorkerBanRules) {
-	log.Debugw("setting worker configuration",
-		"urlSeed", urlSeed,
-		"timeout", timeout)
+func (as *APIService) SetWorkerConfig(seed string, tokenExpiration, timeout time.Duration, banRules *workers.WorkerBanRules) {
+	log.Debugw("setting worker configuration", "seed", seed, "timeout", timeout)
 	as.mu.Lock()
 	defer as.mu.Unlock()
-	as.workerUrlSeed = urlSeed
-	as.workerTimeout = timeout
-	as.banRules = banRules
+	as.sequencerWorkersSeed = seed
+	as.workersAuthtokenExpiration = tokenExpiration
+	as.workersJobTimeout = timeout
+	as.workersBanRules = banRules
 }
 
 // Start begins the API server. It returns an error if the service
@@ -67,13 +67,14 @@ func (as *APIService) Start(ctx context.Context) error {
 	// Create API instance with existing storage
 	var err error
 	as.API, err = api.New(ctx, &api.APIConfig{
-		Host:          as.host,
-		Port:          as.port,
-		Storage:       as.storage,
-		Network:       as.network,
-		WorkerUrlSeed: as.workerUrlSeed,
-		WorkerTimeout: as.workerTimeout,
-		BanRules:      as.banRules,
+		Host:                       as.host,
+		Port:                       as.port,
+		Storage:                    as.storage,
+		Network:                    as.network,
+		SequencerWorkersSeed:       as.sequencerWorkersSeed,
+		WorkersAuthtokenExpiration: as.workersAuthtokenExpiration,
+		WorkerJobTimeout:           as.workersJobTimeout,
+		WorkerBanRules:             as.workersBanRules,
 	})
 	if err != nil {
 		as.cancel = nil

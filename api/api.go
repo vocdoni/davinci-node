@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
+	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	stg "github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/workers"
@@ -30,10 +31,10 @@ type APIConfig struct {
 	Storage *stg.Storage // Optional: use existing storage instance
 	Network string       // Optional: web3 network shortname
 	// Worker configuration
-	WorkerEnabled bool                    // Enable worker API endpoints
-	WorkerUrlSeed string                  // URL seed for worker authentication
-	WorkerTimeout time.Duration           // Worker job timeout
-	BanRules      *workers.WorkerBanRules // Custom ban rules for workers
+	SequencerWorkersSeed       string                  // Seed for workers authentication over current sequencer
+	WorkersAuthtokenExpiration time.Duration           // Expiration time for worker authentication tokens
+	WorkerJobTimeout           time.Duration           // Worker job timeout
+	WorkerBanRules             *workers.WorkerBanRules // Custom ban rules for workers
 }
 
 // API type represents the API HTTP server with JWT authentication capabilities.
@@ -41,12 +42,14 @@ type API struct {
 	router  *chi.Mux
 	storage *stg.Storage
 	network string
-	// Worker fields
-	workerUUID    *uuid.UUID
-	workerTimeout time.Duration
-	jobsManager   *workers.JobsManager    // Manages worker jobs and timeouts
-	parentCtx     context.Context         // Context to stop the API server
-	banRules      *workers.WorkerBanRules // Rules for banning workers based on job failures
+	// Workers API stuff
+	sequencerSigner            *ethereum.Signer        // Signer for workers authentication
+	sequencerUUID              *uuid.UUID              // UUID to keep the workers endpoints hidden
+	workersAuthtokenExpiration time.Duration           // Expiration time for worker authentication tokens
+	workersJobTimeout          time.Duration           // The time that the sequencer waits for a worker job
+	workersBanRules            *workers.WorkerBanRules // Rules for banning workers based on job failures
+	jobsManager                *workers.JobsManager    // Manages worker jobs and timeouts
+	parentCtx                  context.Context         // Context to stop the API server
 }
 
 // New creates a new API instance with the given configuration.
@@ -59,31 +62,29 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 		return nil, fmt.Errorf("missing storage instance")
 	}
 
+	// Initialize the API
 	a := &API{
-		storage:       conf.Storage,
-		network:       conf.Network,
-		workerTimeout: conf.WorkerTimeout,
-		parentCtx:     ctx,
-	}
-	if conf.BanRules != nil {
-		a.banRules = conf.BanRules
+		storage:                    conf.Storage,
+		network:                    conf.Network,
+		workersJobTimeout:          conf.WorkerJobTimeout,
+		workersAuthtokenExpiration: conf.WorkersAuthtokenExpiration,
+		parentCtx:                  ctx,
 	}
 
-	// Initialize worker UUID if enabled
-	if conf.WorkerUrlSeed != "" {
-		var err error
-		a.workerUUID, err = workers.WorkerSeedToUUID(conf.WorkerUrlSeed)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create worker UUID: %w", err)
-		}
-		log.Infow("worker API enabled", "url", fmt.Sprintf("%s/%s", WorkersEndpoint, a.workerUUID))
-
-		// Start timeout monitor
-		a.startWorkerTimeoutMonitor()
+	// If no ban rules for workers are provided, use default rules
+	if conf.WorkerBanRules != nil {
+		a.workersBanRules = conf.WorkerBanRules
 	}
 
 	// Initialize router
 	a.initRouter()
+
+	// Try to start workers API
+	if err := a.startWorkersAPI(*conf); err != nil {
+		return nil, fmt.Errorf("failed to start workers API: %w", err)
+	}
+
+	// Initialize the server in background
 	go func() {
 		log.Infow("starting API server", "host", conf.Host, "port", conf.Port)
 		if err := http.ListenAndServe(fmt.Sprintf("%s:%d", conf.Host, conf.Port), a.router); err != nil {
@@ -155,14 +156,6 @@ func (a *API) registerHandlers() {
 	a.router.Delete(DeleteCensusEndpoint, a.deleteCensus)
 	log.Infow("register handler", "endpoint", GetCensusProofEndpoint, "method", "GET", "parameters", "key")
 	a.router.Get(GetCensusProofEndpoint, a.getCensusProof)
-
-	// worker endpoints (if enabled)
-	if a.workerUUID != nil {
-		log.Infow("register handler", "endpoint", WorkerGetJobEndpoint, "method", "GET")
-		a.router.Get(WorkerGetJobEndpoint, a.workerGetJob)
-		log.Infow("register handler", "endpoint", WorkerSubmitJobEndpoint, "method", "POST")
-		a.router.Post(WorkerSubmitJobEndpoint, a.workerSubmitJob)
-	}
 
 	// sequencer workers stats endpoint - available even without worker mode
 	log.Infow("register handler", "endpoint", SequencerWorkersEndpoint, "method", "GET")

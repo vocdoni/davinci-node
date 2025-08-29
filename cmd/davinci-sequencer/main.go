@@ -43,7 +43,7 @@ func main() {
 	log.Infow("starting davinci-sequencer", "version", Version)
 
 	// Check for worker mode from --worker flag
-	if cfg.Worker.MasterURL != "" {
+	if cfg.Worker.SequencerURL != "" {
 		runWorkerMode(cfg)
 		return
 	}
@@ -80,11 +80,19 @@ func main() {
 
 // runWorkerMode runs the sequencer in worker mode
 func runWorkerMode(cfg *Config) {
-	log.Infow("starting in worker mode", "master", cfg.Worker.MasterURL)
+	log.Infow("starting in worker mode", "master", cfg.Worker.SequencerURL)
 
 	// Check if a worker address is provided
 	if cfg.Worker.Address == "" {
 		log.Fatalf("valid worker address is required (use --worker.address flag)")
+	}
+	// Check if a worker signature is provided
+	if cfg.Worker.Authtoken == "" {
+		log.Fatalf("valid worker authtoken is required (use --worker.authtoken flag)")
+	}
+	// Check if a worker sequencer URL is provided
+	if cfg.Worker.SequencerURL == "" {
+		log.Fatalf("valid worker sequencer URL is required (use --worker.sequencerURL flag)")
 	}
 
 	// Initialize storage database (only for local process tracking)
@@ -104,8 +112,9 @@ func runWorkerMode(cfg *Config) {
 	// Create worker sequencer
 	workerSeq, err := sequencer.NewWorker(
 		storage,
-		cfg.Worker.MasterURL,
+		cfg.Worker.SequencerURL,
 		cfg.Worker.Address,
+		cfg.Worker.Authtoken,
 		cfg.Worker.Name,
 	)
 	if err != nil {
@@ -238,11 +247,16 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network, cfg.Log.DisableAPI)
 
 	// Configure worker API if enabled
-	if cfg.API.WorkerUrlSeed != "" {
-		services.API.SetWorkerConfig(cfg.API.WorkerUrlSeed, cfg.Worker.Timeout, &workers.WorkerBanRules{
-			BanTimeout:          cfg.API.WorkerBanTimeout,
-			FailuresToGetBanned: cfg.API.WorkerFailuresToGetBanned,
-		})
+	if cfg.API.SequencerWorkersSeed != "" {
+		services.API.SetWorkerConfig(
+			cfg.API.SequencerWorkersSeed,
+			cfg.API.WorkersAuthtokenExpiration,
+			cfg.Worker.Timeout,
+			&workers.WorkerBanRules{
+				BanTimeout:          cfg.API.WorkersBanTimeout,
+				FailuresToGetBanned: cfg.API.WorkersFailuresToGetBanned,
+			},
+		)
 	}
 
 	// Start API service

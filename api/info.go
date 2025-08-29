@@ -20,7 +20,7 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build the response with the necessary circuit information
-	response := &BallotProofInfo{
+	response := &SequencerInfo{
 		CircuitURL:           config.BallotProofCircuitURL,
 		CircuitHash:          config.BallotProofCircuitHash,
 		ProvingKeyURL:        config.BallotProofProvingKeyURL,
@@ -40,6 +40,10 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 		Network: map[string]uint32{
 			a.network: config.AvailableNetworks[a.network],
 		},
+	}
+	// if the sequencer has a signer, include the sequencer address
+	if a.sequencerSigner != nil {
+		response.SequencerAddress = a.sequencerSigner.Address().Bytes()
 	}
 
 	// Write the response
