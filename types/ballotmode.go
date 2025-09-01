@@ -21,7 +21,7 @@ type BallotMode struct {
 
 func (b *BallotMode) Validate() error {
 	// Validate NumFields
-	numFieldsMax := 8
+	numFieldsMax := FieldsPerBallot
 	if int(b.NumFields) > numFieldsMax {
 		return fmt.Errorf("numFields %d is greater than max size %d", b.NumFields, numFieldsMax)
 	}

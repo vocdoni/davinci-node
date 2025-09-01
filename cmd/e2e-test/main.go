@@ -66,7 +66,6 @@ func main() {
 		resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", defaultContracts.ResultsZKVerifier, "state transition zk verifier smart contract address")
 		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
-		createOrg                        = flag.Bool("createOrganization", true, "create a new organization")
 		voteCount                        = flag.Int("voteCount", 10, "number of votes to cast")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", config.AvailableNetworks))
@@ -181,17 +180,13 @@ func main() {
 	log.Info("connected to sequencer")
 
 	// Create a new organization
-	if *createOrg {
-		organizationAddr, err := createOrganization(contracts)
-		if err != nil {
-			log.Errorw(err, "failed to create organization")
-			log.Warn("check if the organization is already created or the account has enough funds")
-			return
-		}
-		log.Infow("organization created", "address", organizationAddr.Hex())
-	} else {
-		log.Infow("skipping organization creation")
+	organizationAddr, err := createOrganization(contracts)
+	if err != nil {
+		log.Errorw(err, "failed to create organization")
+		log.Warn("check if the organization is already created or the account has enough funds")
+		return
 	}
+	log.Infow("organization ready", "address", organizationAddr.Hex())
 
 	// Create a new census with numBallot participants
 	censusRoot, signers, err := createCensus(cli, *voteCount)
@@ -328,6 +323,9 @@ func (s *localService) Stop() {
 
 func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	orgAddr := contracts.AccountAddress()
+	if _, err := contracts.Organization(orgAddr); err == nil {
+		return orgAddr, nil // Organization already exists
+	}
 	// Create a new organization in the contracts
 	txHash, err := contracts.CreateOrganization(orgAddr, &types.OrganizationInfo{
 		Name:        fmt.Sprintf("Vocdoni test %x", orgAddr[:4]),
@@ -424,10 +422,11 @@ func createProcess(
 
 	// Make the request to create the process
 	process := &types.ProcessSetup{
-		ProcessID:  processId.Marshal(),
-		CensusRoot: censusRoot,
-		BallotMode: &ballotMode,
-		Signature:  signature,
+		ProcessID:    processId.Marshal(),
+		CensusRoot:   censusRoot,
+		BallotMode:   &ballotMode,
+		Signature:    signature,
+		CensusOrigin: types.CensusOriginMerkleTree,
 	}
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
 	if err != nil {
@@ -459,7 +458,7 @@ func createProcess(
 			CensusRoot:   censusRoot,
 			MaxVotes:     new(types.BigInt).SetUint64(1000),
 			CensusURI:    "https://example.com/census",
-			CensusOrigin: 0,
+			CensusOrigin: types.CensusOriginMerkleTree,
 		},
 	}
 	// Create process in the contracts

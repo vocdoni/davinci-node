@@ -32,6 +32,13 @@ func BallotInputsHash(
 	ballot *elgamal.Ballot,
 	weight *types.BigInt,
 ) (*types.BigInt, error) {
+	// check if unconverted parameters are in the field
+	if !voteID.IsInField(circuits.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("voteID is not in the scalar field")
+	}
+	if !weight.IsInField(circuits.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("weight is not in the scalar field")
+	}
 	// safe address and processID
 	ffAddress := address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
 	ffProcessID := processID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
