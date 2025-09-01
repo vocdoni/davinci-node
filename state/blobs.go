@@ -26,7 +26,7 @@ type BlobData struct {
 //  2. ResultsSub (types.FieldsPerBallot * 4 coordinates)
 //  3. Votes sequentially until voteID = 0x0 (sentinel)
 //     Each vote: voteID + address + reencryptedBallot coordinates
-func (st *State) BuildKZGCommitment(batchNum uint64) (
+func (st *State) BuildKZGCommitment() (
 	blobData *blobs.BlobEvalData,
 	proof kzg4844.KZGProof,
 	err error,
@@ -73,7 +73,7 @@ func (st *State) BuildKZGCommitment(batchNum uint64) (
 	}
 
 	// Find valid evaluation point z
-	z, err := blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, batchNum, blob)
+	z, err := blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, blob)
 	if err != nil {
 		return
 	}

@@ -147,6 +147,14 @@ func (a *API) authWorkerFromRequest(r *http.Request) (common.Address, *Error) {
 
 // workersList handles GET /workers
 func (a *API) workersList(w http.ResponseWriter, r *http.Request) {
+	// Check if workers are configured
+	if a.jobsManager == nil {
+		httpWriteJSON(w, WorkersListResponse{
+			Workers: []WorkerInfo{},
+		})
+		return
+	}
+
 	// Get all worker statistics
 	workerStats, err := a.jobsManager.WorkerManager.ListWorkerStats()
 	if err != nil {
