@@ -161,3 +161,10 @@ func (i *BigInt) ToFF(baseField *big.Int) *BigInt {
 	}
 	return (*BigInt)(z.Mod(iv, baseField))
 }
+
+func (i *BigInt) IsInField(baseField *big.Int) bool {
+	if i == nil {
+		return false
+	}
+	return i.MathBigInt().Cmp(baseField) < 0
+}
