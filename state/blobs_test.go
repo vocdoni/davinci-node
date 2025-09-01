@@ -222,7 +222,7 @@ func TestBlobStateTransition(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get root for batch %d", i+1))
 
 		// Generate blob with KZG commitment
-		blob, proof, err := originalState.BuildKZGCommitment(batchNum)
+		blob, proof, err := originalState.BuildKZGCommitment()
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to build KZG commitment for batch %d", i+1))
 
 		// Store transition data

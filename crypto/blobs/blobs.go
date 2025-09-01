@@ -42,9 +42,9 @@ var pBLS = bls12381.ID.ScalarField()
 type BlobEvalData struct {
 	ForGnark struct {
 		CommitmentLimbs [3]frontend.Variable
-		Z               emulated.Element[FE]
+		Z               frontend.Variable // value within bn254 field
 		Y               emulated.Element[FE]
-		Blob            [N]emulated.Element[FE]
+		Blob            [N]frontend.Variable // values within bn254 field
 	}
 	Commitment    *big.Int
 	Z             *big.Int
@@ -57,7 +57,7 @@ type BlobEvalData struct {
 func (b *BlobEvalData) Set(blob *goethkzg.Blob, claim *goethkzg.Scalar, z *big.Int) (*BlobEvalData, error) {
 	y := new(big.Int).SetBytes(claim[:])
 	b.ForGnark.Y = emulated.ValueOf[FE](y)
-	b.ForGnark.Z = emulated.ValueOf[FE](z)
+	b.ForGnark.Z = z
 	b.Z = new(big.Int).Set(z)
 	b.Y = new(big.Int).Set(y)
 
@@ -73,8 +73,9 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, claim *goethkzg.Scalar, z *big.I
 
 	// Convert blob to gnark circuit format
 	for i := range FieldElementsPerBlob {
-		cell := new(big.Int).SetBytes(blob[i*BytesPerFieldElement : (i+1)*BytesPerFieldElement])
-		b.ForGnark.Blob[i] = emulated.ValueOf[FE](cell)
+		b.ForGnark.Blob[i] = new(big.Int).SetBytes(
+			blob[i*BytesPerFieldElement : (i+1)*BytesPerFieldElement],
+		)
 	}
 
 	// copy for safety
@@ -115,7 +116,7 @@ func BlobToCommitment(blob *goethkzg.Blob) (goethkzg.KZGCommitment, error) {
 // z = PoseidonHash(processId, rootHashBefore, batchNum, blob_hash)
 // We hash the entire blob first to avoid exceeding MultiPoseidon's 256 input limit
 // This function ensures z never equals any of the 4096 omega roots of unity to avoid division by zero
-func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, batchNum uint64, blob *goethkzg.Blob) (z *big.Int, err error) {
+func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, blob *goethkzg.Blob) (z *big.Int, err error) {
 	// First, compute a hash of the entire blob by processing it in chunks
 	// MultiPoseidon has a limit of 256 inputs, but we have 4096 blob elements
 	var blobHash *big.Int
@@ -123,10 +124,7 @@ func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, batchNum uint64,
 	chunkHashes := make([]*big.Int, 0)
 
 	for start := 0; start < FieldElementsPerBlob; start += chunkSize {
-		end := start + chunkSize
-		if end > FieldElementsPerBlob {
-			end = FieldElementsPerBlob
-		}
+		end := min(start+chunkSize, FieldElementsPerBlob)
 
 		// Extract this chunk of blob elements
 		chunk := make([]*big.Int, 0, end-start)
@@ -170,8 +168,8 @@ func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, batchNum uint64,
 	// Try different nonces until we get a z that doesn't equal any omega
 	nonce := big.NewInt(0)
 	for {
-		// Calculate z = PoseidonHash(processId, rootHashBefore, batchNum, blobHash, nonce)
-		z, err = poseidon.MultiPoseidon(processID, rootHashBefore, big.NewInt(int64(batchNum)), blobHash, nonce)
+		// Calculate z = PoseidonHash(processId, rootHashBefore, blobHash, nonce)
+		z, err = poseidon.MultiPoseidon(processID, rootHashBefore, blobHash, nonce)
 		if err != nil {
 			return nil, err
 		}

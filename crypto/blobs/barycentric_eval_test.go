@@ -23,7 +23,7 @@ func TestBarycentricEvalGo(t *testing.T) {
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
 
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
@@ -51,7 +51,7 @@ func TestBarycentricEvalGoBlobData1(t *testing.T) {
 	// Evaluation point z
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
@@ -77,7 +77,7 @@ func TestBarycentricEvalGoBlobData2(t *testing.T) {
 	// Evaluation point z
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile

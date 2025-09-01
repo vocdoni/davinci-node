@@ -61,7 +61,7 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 	// Compute evaluation point
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
 	c.Assert(err, qt.IsNil)
 
 	// Compute KZG proof
@@ -108,7 +108,7 @@ func TestProgressiveElementsNative(t *testing.T) {
 		// Compute evaluation point
 		processID := util.RandomBytes(31)
 		rootHashBefore := util.RandomBytes(31)
-		z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+		z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
 		c.Assert(err, qt.IsNil)
 
 		// Compute KZG proof
@@ -153,7 +153,7 @@ func TestCircuitFullProving(t *testing.T) {
 
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), 1, blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
 	c.Assert(err, qt.IsNil)
 
 	// Compute KZG proof using go-eth-kzg
