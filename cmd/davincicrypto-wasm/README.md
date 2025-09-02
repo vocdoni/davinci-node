@@ -119,3 +119,18 @@ try {
   "signature": "0x5375ec2ff428468933171394a7f96984b9970a07520c084f452e0d7443e1c80601f805d09ea1a8d94cb59ab239d2308be0156011b9f2635123f288f600fa0f76"
 }
 ```
+
+#### CSP Census Root Generation
+
+```javascript
+const censusOrigin = 2;
+const privKeySeed = "50df49d9d1175d49808602d12bf945ba3f55d90146882fbc5d54078f204f5005372143904f3fd452767581fd55b4c27aedacdd7b70d14f374b7c9f341c0f9a5300";
+
+try {
+  // Generate census root
+  const censusRootResult = DavinciCrypto.cspCensusRoot(censusOrigin, privKeySeed);
+  console.log('Census Root Hexadecimal:', censusRootResult);
+} catch (err) {
+  console.error('Execution error:', err)
+}
+```
