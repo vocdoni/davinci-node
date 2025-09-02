@@ -265,7 +265,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 		t.Fatal(err)
 	}
 
-	proof, vk, err := statetransitiontest.DummyAggProof(s.BallotCount(), aggregatorHash)
+	proof, vk, err := statetransitiontest.DummyAggProof(len(votes), aggregatorHash)
 	if err != nil {
 		t.Fatal(err)
 	}

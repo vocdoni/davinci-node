@@ -2,6 +2,7 @@ package statetransition
 
 import (
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/cmp"
@@ -9,6 +10,7 @@ import (
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
+	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
@@ -25,15 +27,22 @@ type StateTransitionCircuit struct {
 	RootHashAfter  frontend.Variable `gnark:",public"`
 	NumNewVotes    frontend.Variable `gnark:",public"`
 	NumOverwritten frontend.Variable `gnark:",public"`
+
+	// KZG commitment to the blob
+	BlobEvaluationPointZ  frontend.Variable                     `gnark:",public"`
+	BlobEvaluationResultY emulated.Element[emulated.BLS12381Fr] `gnark:",public"`
+
 	// Private data inputs
 	Process       circuits.Process[frontend.Variable]
 	Votes         [types.VotesPerBatch]Vote
 	Results       Results
 	ReencryptionK frontend.Variable
+
 	// Private merkle proofs inputs
 	ProcessProofs ProcessProofs
 	VotesProofs   VotesProofs
 	ResultsProofs ResultsProofs
+
 	// Private recursive proof inputs
 	AggregatorProof groth16.Proof[sw_bw6761.G1Affine, sw_bw6761.G2Affine]
 	AggregatorVK    groth16.VerifyingKey[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl] `gnark:"-"`
@@ -82,6 +91,7 @@ type Vote struct {
 
 // Define declares the circuit's constraints
 func (circuit StateTransitionCircuit) Define(api frontend.API) error {
+	std.RegisterHints()
 	circuit.VerifyAggregatorProof(api)
 	circuit.VerifyReencryptedVotes(api)
 	circuit.VerifyMerkleProofs(api, HashFn)
@@ -319,13 +329,57 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	ballotSum, overwrittenSum, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0
 
+	var blob [4096]frontend.Variable
+	// Initialize all blob elements to 0 to prevent nil pointer dereference
+	//for i := range blob {
+	//	blob[i] = 0
+	//}
+	blobIndex := 0
+
+	// Add new resultsAdd coordinates to blob
+	for _, resultsAddCoord := range circuit.Results.NewResultsAdd {
+		blob[blobIndex] = resultsAddCoord.C1.X
+		blob[blobIndex+1] = resultsAddCoord.C1.Y
+		blobIndex += 2
+	}
+
+	// Add new resultsSub coordinates to blob
+	for _, resultsSubCoord := range circuit.Results.NewResultsSub {
+		blob[blobIndex] = resultsSubCoord.C1.X
+		blob[blobIndex+1] = resultsSubCoord.C1.Y
+		blobIndex += 2
+	}
+
 	for i, b := range circuit.VotesProofs.Ballot {
 		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].ReencryptedBallot, zero))
 		overwrittenSum.Add(api, overwrittenSum, circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
 		ballotCount = api.Add(ballotCount, b.IsInsertOrUpdate(api))
 		overwrittenCount = api.Add(overwrittenCount, b.IsUpdate(api))
+
+		// Add reencrypted ballot coordinates to blob
+		blob[blobIndex] = circuit.Votes[i].VoteID
+		blob[blobIndex+1] = circuit.Votes[i].Address
+		blobIndex += 2
+
+		for _, coord := range circuit.Votes[i].ReencryptedBallot {
+			blob[blobIndex] = coord.C1.X
+			blob[blobIndex+1] = coord.C1.Y
+			blobIndex += 2
+		}
 	}
 
+	// Fill the rest of the blob with zeros
+	for i := blobIndex; i < len(blob); i++ {
+		blob[i] = 0
+	}
+
+	// Verify blob baricentric evaluation (z and y are public inputs)
+	if err := blobs.VerifyBlobEvaluationNative(api, circuit.BlobEvaluationPointZ, &circuit.BlobEvaluationResultY, blob); err != nil {
+		circuits.FrontendError(api, "failed to verify blob evaluation: ", err)
+		return
+	}
+
+	// Assert new results are equal to old results plus ballot sums
 	circuit.Results.NewResultsAdd.AssertIsEqual(api,
 		circuits.NewBallot().Add(api, &circuit.Results.OldResultsAdd, ballotSum))
 	circuit.Results.NewResultsSub.AssertIsEqual(api,
