@@ -222,13 +222,13 @@ func TestBlobStateTransition(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get root for batch %d", i+1))
 
 		// Generate blob with KZG commitment
-		blob, proof, err := originalState.BuildKZGCommitment()
+		blob, err := originalState.BuildKZGCommitment()
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to build KZG commitment for batch %d", i+1))
 
 		// Store transition data
 		transitions[i] = TransitionData{
 			Blob:     blob,
-			Proof:    proof,
+			Proof:    blob.Proof,
 			Root:     root,
 			Votes:    votes,
 			BatchNum: batchNum,
@@ -244,8 +244,10 @@ func TestBlobStateTransition(t *testing.T) {
 	// Verify KZG commitment for first transition
 	t.Run("VerifyKZGCommitment_First", func(t *testing.T) {
 		firstTransition := transitions[0]
-		verifyKZGCommitment(t, &firstTransition.Blob.Blob, firstTransition.Blob.Commitment,
-			firstTransition.Proof, firstTransition.Blob.Z, firstTransition.Blob.Y, firstTransition.Blob.VersionedHash)
+		_, hash, err := firstTransition.Blob.TxSidecar()
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get tx sidecar for first transition"))
+		verifyKZGCommitment(t, &firstTransition.Blob.Blob, new(big.Int).SetBytes(firstTransition.Blob.Commitment[:]),
+			firstTransition.Proof, firstTransition.Blob.Z, firstTransition.Blob.Y, hash[0])
 	})
 
 	// Verify blob structure for last transition
@@ -257,8 +259,10 @@ func TestBlobStateTransition(t *testing.T) {
 	// Verify KZG commitment for last transition
 	t.Run("VerifyKZGCommitment_Last", func(t *testing.T) {
 		lastTransition := transitions[numTransitions-1]
-		verifyKZGCommitment(t, &lastTransition.Blob.Blob, lastTransition.Blob.Commitment,
-			lastTransition.Proof, lastTransition.Blob.Z, lastTransition.Blob.Y, lastTransition.Blob.VersionedHash)
+		_, hash, err := lastTransition.Blob.TxSidecar()
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get tx sidecar for last transition"))
+		verifyKZGCommitment(t, &lastTransition.Blob.Blob, new(big.Int).SetBytes(lastTransition.Blob.Commitment[:]),
+			lastTransition.Proof, lastTransition.Blob.Z, lastTransition.Blob.Y, hash[0])
 	})
 
 	// Test state restoration for first transition

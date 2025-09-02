@@ -10,6 +10,9 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/emulated"
 	goethkzg "github.com/crate-crypto/go-eth-kzg"
+	"github.com/ethereum/go-ethereum/common"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -46,26 +49,39 @@ type BlobEvalData struct {
 		Y               emulated.Element[FE]
 		Blob            [N]frontend.Variable // values within bn254 field
 	}
-	Commitment    *big.Int
-	Z             *big.Int
-	Y             *big.Int
-	Blob          goethkzg.Blob
-	VersionedHash [32]byte
+	Commitment goethkzg.KZGCommitment
+	Z          *big.Int
+	Y          *big.Int
+	Blob       goethkzg.Blob
+	Proof      goethkzg.KZGProof
 }
 
-// Set initializes the BlobEvalData with the given blob, claim, and evaluation point z. It returns itself for chaining.
-func (b *BlobEvalData) Set(blob *goethkzg.Blob, claim *goethkzg.Scalar, z *big.Int) (*BlobEvalData, error) {
+// Set initializes the BlobEvalData with the given blob, claim, and evaluation point z.
+// Computes the KZG proof and sets the relevant fields.
+// It returns itself for chaining.
+func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, error) {
+	// Compute the proof
+	proof, claim, err := ComputeProof(blob, z)
+	if err != nil {
+		return nil, err
+	}
+	b.Proof = proof
+
+	// Set evaluation point (y)
 	y := new(big.Int).SetBytes(claim[:])
 	b.ForGnark.Y = emulated.ValueOf[FE](y)
-	b.ForGnark.Z = z
-	b.Z = new(big.Int).Set(z)
 	b.Y = new(big.Int).Set(y)
 
+	// Set evaluation point (z)
+	b.ForGnark.Z = z
+	b.Z = new(big.Int).Set(z)
+
+	// Set commitment
 	commitment, err := BlobToCommitment(blob)
 	if err != nil {
 		return nil, err
 	}
-	b.Commitment = new(big.Int).SetBytes(commitment[:])
+	b.Commitment = commitment
 	limbs := splitIntoLimbs(commitment[:], 3)
 	b.ForGnark.CommitmentLimbs = [3]frontend.Variable{
 		limbs[0], limbs[1], limbs[2],
@@ -78,13 +94,47 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, claim *goethkzg.Scalar, z *big.I
 		)
 	}
 
-	// copy for safety
+	// Copy for safety
 	copy(b.Blob[:], blob[:])
 
-	// Calculate versioned hash
-	b.VersionedHash = CalcBlobHashV1(b.Commitment)
-
 	return b, err
+}
+
+// TxSidecar converts the KZG blob, commitment, and proof into a geth Sidecar format.
+func (b *BlobEvalData) TxSidecar() (*gethtypes.BlobTxSidecar, []common.Hash, error) {
+	// convert to geth types - create slices with exactly 1 element each
+	blobs := make([]gethkzg.Blob, 1)
+	comms := make([]gethkzg.Commitment, 1)
+	proofs := make([]gethkzg.Proof, 1)
+
+	copy(blobs[0][:], b.Blob[:])
+	copy(comms[0][:], b.Commitment[:])
+	copy(proofs[0][:], b.Proof[:])
+
+	sc := &gethtypes.BlobTxSidecar{
+		Blobs:       blobs,
+		Commitments: comms,
+		Proofs:      proofs,
+	}
+
+	return sc, sc.BlobHashes(), nil
+}
+
+// HashV1 calculates the 'versioned blob hash' of a commitment.
+func (b *BlobEvalData) HashV1() (vh [32]byte) {
+	return CalcBlobHashV1(new(big.Int).SetBytes(b.Commitment[:]))
+}
+
+// CalcBlobHashV1 calculates the 'versioned blob hash' of a commitment.
+func CalcBlobHashV1(commitment *big.Int) (vh [32]byte) {
+	if commitment == nil {
+		return vh
+	}
+	hasher := sha256.New()
+	hasher.Write(commitment.Bytes())
+	hasher.Sum(vh[:0])
+	vh[0] = 0x01 // version
+	return vh
 }
 
 // ComputeProof computes the KZG proof for a given blob and evaluation point z.
@@ -217,16 +267,4 @@ func BigIntToScalar(x *big.Int) goethkzg.Scalar {
 	x.FillBytes(be)
 	copy(scalar[:], be[:])
 	return scalar
-}
-
-// CalcBlobHashV1 calculates the 'versioned blob hash' of a commitment.
-func CalcBlobHashV1(commit *big.Int) (vh [32]byte) {
-	if commit == nil {
-		return vh
-	}
-	hasher := sha256.New()
-	hasher.Write(commit.Bytes())
-	hasher.Sum(vh[:0])
-	vh[0] = 0x01 // version
-	return vh
 }
