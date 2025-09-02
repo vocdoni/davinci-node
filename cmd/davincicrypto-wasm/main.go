@@ -19,6 +19,7 @@ const (
 	jsBallotProofInputs    = "proofInputs"
 	jsCSPSign              = "cspSign"
 	jsCSPVerify            = "cspVerify"
+	jsCSPCensusRoot        = "cspCensusRoot"
 	ballotProofInputsNArgs = 1 // ballotproof.BallotProofInputs json encoded string
 	cspSignNArgs           = 4 // census origin as uint8 and hex strings with privKey seed, processID and address
 	cspVerifyNArgs         = 1 // types.CensusProof json encoded string
@@ -40,6 +41,38 @@ func generateProofInputs(args []js.Value) any {
 	}
 	// encode result to json to return it
 	bRes, err := json.Marshal(circomInputs)
+	if err != nil {
+		return JSResult(nil, fmt.Errorf("Error marshaling result: %v", err.Error()))
+	}
+	return JSResult(string(bRes))
+}
+
+func cspCensusRoot(args []js.Value) any {
+	if len(args) != 2 {
+		return JSResult(nil, fmt.Errorf("Invalid number of arguments, expected 2 got %d", len(args)))
+	}
+	// decode the census origin from the first argument
+	uCensusOrigin, err := FromUint8(args[0])
+	if err != nil {
+		return JSResult(nil, fmt.Errorf("Invalid census origin decoding: %v", err))
+	}
+	censusOrigin := types.CensusOrigin(uCensusOrigin)
+	if !censusOrigin.Valid() {
+		return JSResult(nil, fmt.Errorf("Invalid census origin: %v", err))
+	}
+	// decode the private key seed from the second argument
+	privKeySeed, err := FromHexBytes(args[1])
+	if err != nil {
+		return JSResult(nil, fmt.Errorf("Invalid private key seed: %v", err))
+	}
+	// initialize the credential service providers with the private key seed decoded
+	csp, err := csp.New(censusOrigin, privKeySeed)
+	if err != nil {
+		return JSResult(nil, fmt.Errorf("CSP cannot be initialized with the provided seed: %w", err))
+	}
+	censusRoot := csp.CensusRoot()
+	// encode the census root to json to return it
+	bRes, err := json.Marshal(censusRoot)
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error marshaling result: %v", err.Error()))
 	}
@@ -130,6 +163,10 @@ func main() {
 	// Register the cspVerify function
 	ballotProofClass.Set(jsCSPVerify, js.FuncOf(func(this js.Value, args []js.Value) any {
 		return cspVerify(args)
+	}))
+	// Register the cspCensusRoot function
+	ballotProofClass.Set(jsCSPCensusRoot, js.FuncOf(func(this js.Value, args []js.Value) any {
+		return cspCensusRoot(args)
 	}))
 	// Register the class in the global scope so it can be accessed from JavaScript
 	js.Global().Set(jsClassName, ballotProofClass)
