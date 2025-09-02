@@ -11,6 +11,8 @@ import (
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
@@ -164,6 +166,9 @@ type StateTransitionBatch struct {
 	Proof     *groth16_bn254.Proof            `json:"proof"`
 	Ballots   []*AggregatorBallot             `json:"ballots"`
 	Inputs    StateTransitionBatchProofInputs `json:"inputs"`
+
+	BlobVersionHash common.Hash              `json:"blobVersionHash"`
+	BlobSidecar     *gethtypes.BlobTxSidecar `json:"blobSidecar"`
 }
 
 // StateTransitionBatchProofInputs is the struct that contains the inputs

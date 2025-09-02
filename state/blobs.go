@@ -28,7 +28,6 @@ type BlobData struct {
 //     Each vote: voteID + address + reencryptedBallot coordinates
 func (st *State) BuildKZGCommitment() (
 	blobData *blobs.BlobEvalData,
-	proof kzg4844.KZGProof,
 	err error,
 ) {
 	blob := &kzg4844.Blob{}
@@ -78,15 +77,7 @@ func (st *State) BuildKZGCommitment() (
 		return
 	}
 
-	// Generate KZG proof with the valid z
-	var claim kzg4844.Scalar
-	proof, claim, err = blobs.ComputeProof(blob, z)
-	if err != nil {
-		err = fmt.Errorf("compute kzg4844 proof failed: %w", err)
-		return
-	}
-
-	blobData, err = new(blobs.BlobEvalData).Set(blob, &claim, z)
+	blobData, err = new(blobs.BlobEvalData).Set(blob, z)
 	if err != nil {
 		err = fmt.Errorf("set blob eval data failed: %w", err)
 		return
