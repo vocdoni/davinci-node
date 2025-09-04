@@ -111,12 +111,25 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 func LoadOnRoot(db db.Database, processId, root *big.Int) (*State, error) {
 	state, err := New(db, processId)
 	if err != nil {
-		return nil, fmt.Errorf("could not create state: %v", err)
+		return nil, fmt.Errorf("could not open state: %v", err)
 	}
 	if err := state.SetRootAsBigInt(root); err != nil {
 		return nil, fmt.Errorf("could not set state root: %v", err)
 	}
 	return state, nil
+}
+
+// RootExists checks if the provided root exists in the tree for the given
+// processId. Returns nil if the root exists, or an error if it does not.
+func RootExists(db db.Database, processId, root *big.Int) error {
+	state, err := New(db, processId)
+	if err != nil {
+		return fmt.Errorf("could not open state: %v", err)
+	}
+	if err := state.RootExists(root); err != nil {
+		return fmt.Errorf("could not find root in state: %v", err)
+	}
+	return nil
 }
 
 // CalculateInitialRoot returns the root of the tree that would result from
@@ -323,6 +336,12 @@ func (o *State) SetRootAsBigInt(newRoot *big.Int) error {
 		return err
 	}
 	return nil
+}
+
+// RootExists checks if the provided root exists in the tree.
+// Returns nil if the root exists, or an error if it does not.
+func (o *State) RootExists(root *big.Int) error {
+	return o.tree.RootExists(BigIntToBytes(root))
 }
 
 // BallotCount returns the number of ballots added in the current batch.
