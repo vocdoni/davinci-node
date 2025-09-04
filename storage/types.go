@@ -164,6 +164,7 @@ type StateTransitionBatch struct {
 	Proof     *groth16_bn254.Proof            `json:"proof"`
 	Ballots   []*AggregatorBallot             `json:"ballots"`
 	Inputs    StateTransitionBatchProofInputs `json:"inputs"`
+	BatchID   []byte                          `json:"batchId"`
 }
 
 // StateTransitionBatchProofInputs is the struct that contains the inputs

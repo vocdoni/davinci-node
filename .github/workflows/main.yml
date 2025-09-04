@@ -206,7 +206,7 @@ jobs:
           # Temporary disabled until we can fix the circuit tests
           #RUN_CIRCUIT_TESTS: ${{ env.RUN_CIRCUIT_TESTS }}
           RUN_CIRCUIT_TESTS:
-        run: go test -v ./... -timeout=1h -vet=off
+        run: go test -v ./... -timeout=1h -vet=off -failfast
 
   call-docker-release:
     name: Docker
