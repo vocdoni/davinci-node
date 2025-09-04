@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
@@ -715,6 +716,14 @@ func (s *Storage) MarkBallotBatchDone(k []byte) error {
 	return nil
 }
 
+// releaseBallotBatchReservation removes the reservation for an aggregated ballot batch.
+func (s *Storage) releaseBallotBatchReservation(k []byte) error {
+	if err := s.deleteArtifact(aggregBatchReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	return nil
+}
+
 // PushStateTransitionBatch pushes a state transition batch to the state transition queue.
 func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 	s.globalLock.Lock()
@@ -822,7 +831,7 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
 	val, err := pr.Get(k)
 	if err != nil {
-		if !errors.Is(err, ErrNotFound) {
+		if !errors.Is(err, db.ErrKeyNotFound) {
 			return fmt.Errorf("get state transition batch: %w", err)
 		}
 		// If batch not found, just continue with cleanup
@@ -904,6 +913,71 @@ func (s *Storage) RemoveStateTransitionBatchesByProcess(pid []byte) error {
 		}
 	}
 	// TODO: check if we need to update stats here
+	return nil
+}
+
+// MarkStateTransitionBatchOutdated marks a state transition batch as outdated,
+// removes the reservation, and deletes the batch from the state transition queue.
+// This is called when the Ethereum smart contract state root differs from the local one,
+// indicating that the state transition proof needs to be regenerated. The ballots and
+// vote IDs remain valid and keep their current status (processed), but the proof is outdated.
+func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Get the state transition batch before deleting it for logging purposes
+	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
+	val, err := pr.Get(key)
+	if err != nil {
+		if errors.Is(err, db.ErrKeyNotFound) {
+			log.Warnw("state transition batch not found during outdated marking", "key", fmt.Sprintf("%x", key))
+			// Still try to clean up reservation
+			if err := s.deleteArtifact(stateTransitionReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+				return fmt.Errorf("delete state transition reservation: %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("get state transition batch: %w", err)
+	}
+
+	// Decode the batch to get information for logging
+	var stb StateTransitionBatch
+	if err := DecodeArtifact(val, &stb); err != nil {
+		log.Warnw("failed to decode state transition batch for outdated marking",
+			"error", err.Error(),
+			"key", fmt.Sprintf("%x", key),
+		)
+		// Continue with cleanup even if we can't decode
+	} else {
+		log.Infow("marked state transition batch as outdated",
+			"processID", fmt.Sprintf("%x", stb.ProcessID),
+			"totalBallots", len(stb.Ballots),
+			"reason", "ethereum state root mismatch")
+
+		// Note: We don't change vote ID statuses or release nullifiers because:
+		// - The ballots are still valid and remain in "processed" status
+		// - The nullifiers should remain locked until the new state transition is completed
+		// - Only the proof is outdated, not the underlying data
+	}
+
+	// Remove the reservation
+	if err := s.deleteArtifact(stateTransitionReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete state transition reservation: %w", err)
+	}
+
+	// Remove the batch from the state transition queue
+	if err := s.deleteArtifact(stateTransitionPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete state transition batch: %w", err)
+	}
+
+	// Release the ballot batch reservation, so the batch can be processed again
+	if err := s.releaseBallotBatchReservation(stb.BatchID); err != nil {
+		log.Warnw("failed to release ballot batch reservation after marking state transition batch as outdated",
+			"error", err.Error(),
+			"batchID", fmt.Sprintf("%x", stb.BatchID),
+		)
+	}
+
 	return nil
 }
 

@@ -162,13 +162,13 @@ type AggregatorBallotBatch struct {
 // in the BN254 curve, which is the one used to verify the transition by the
 // smart contract.
 type StateTransitionBatch struct {
-	ProcessID types.HexBytes                  `json:"processId"`
-	Proof     *groth16_bn254.Proof            `json:"proof"`
-	Ballots   []*AggregatorBallot             `json:"ballots"`
-	Inputs    StateTransitionBatchProofInputs `json:"inputs"`
-
-	BlobVersionHash common.Hash              `json:"blobVersionHash"`
-	BlobSidecar     *gethtypes.BlobTxSidecar `json:"blobSidecar"`
+	ProcessID       types.HexBytes                  `json:"processId"`
+	Proof           *groth16_bn254.Proof            `json:"proof"`
+	Ballots         []*AggregatorBallot             `json:"ballots"`
+	Inputs          StateTransitionBatchProofInputs `json:"inputs"`
+	BlobVersionHash common.Hash                     `json:"blobVersionHash"`
+	BlobSidecar     *gethtypes.BlobTxSidecar        `json:"blobSidecar"`
+	BatchID         []byte                          `json:"batchId"`
 }
 
 // StateTransitionBatchProofInputs is the struct that contains the inputs
