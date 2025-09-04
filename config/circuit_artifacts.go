@@ -78,11 +78,11 @@ var (
 	ResultsVerifierVerificationKeyHash = "3ca9bba5870aceb7f8953aa62442e0888f41c4ac0258b3062588e1efde20ff01"
 
 	// BallotProofWasmHelperURL is the default URL for the WASM helper
-	BallotProofWasmHelperURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/davincicrypto-wasm/davinci_crypto.wasm"
+	BallotProofWasmHelperURL = fmt.Sprintf("%s/%s/davinci_crypto_%s.wasm", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofWasmHelperHash[len(BallotProofWasmHelperHash)-4:])
 	// BallotProofWasmHelperHash is the hash of the WASM helper
-	BallotProofWasmHelperHash = "02a0f87e77837521324fac97e06fabed65eb736eef46fb88ba625678fba1faee"
+	BallotProofWasmHelperHash = "8684b3c7a5ad3767cc2bd17d376f18be4d2e004fa41489bd9b0e9697f14786aa"
 	// BallotProofWasmExecJsURL is the default URL for the WASM exec JS
-	BallotProofWasmExecJsURL = "https://github.com/vocdoni/davinci-node/raw/refs/heads/main/cmd/davincicrypto-wasm/wasm_exec.js"
+	BallotProofWasmExecJsURL = fmt.Sprintf("%s/%s/wasm_exec_%s.js", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofWasmExecJsHash[len(BallotProofWasmExecJsHash)-4:])
 	// BallotProofWasmExecJsHash is the hash of the WASM exec JS
 	BallotProofWasmExecJsHash = "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
 )
