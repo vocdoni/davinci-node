@@ -61,6 +61,21 @@ func (s *Sequencer) processTransitionOnChain() {
 		log.Infow("state transition batch ready for on-chain upload",
 			"pid", hex.EncodeToString(pid),
 			"batchID", hex.EncodeToString(batchID))
+
+		// check the remote state root matches the local one
+		remoteStateRoot, err := s.contracts.StateRoot(pid)
+		if err != nil || remoteStateRoot == nil {
+			log.Errorw(err, "failed to get remote state root for: "+hex.EncodeToString(pid))
+			return true // Continue to next process ID
+		}
+		thisStateRoot := batch.Inputs.RootHashBefore
+		if remoteStateRoot.MathBigInt().Cmp(thisStateRoot) != 0 {
+			log.Errorw(fmt.Errorf("state root mismatch for processId %s: local %s != remote %s",
+				hex.EncodeToString(pid), thisStateRoot.String(), remoteStateRoot.String()), "could not push state transition to contract")
+			// TODO: we should probably mark the batch as failed and not retry forever
+			return true // Continue to next process ID
+		}
+
 		// convert the gnark proof to a solidity proof
 		solidityCommitmentProof := new(solidity.Groth16CommitmentProof)
 		if err := solidityCommitmentProof.FromGnarkProof(batch.Proof); err != nil {

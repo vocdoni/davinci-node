@@ -28,7 +28,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
-	github.com/vocdoni/arbo v0.0.0-20250707135934-84e8a1884497
+	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/circom2gnark v1.0.1-0.20241204100355-b93800bd88a4
 	github.com/vocdoni/davinci-contracts v0.0.0-20250709172536-328a506c66c4
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250707215605-5c183bc58746

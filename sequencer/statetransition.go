@@ -72,7 +72,6 @@ func (s *Sequencer) processPendingTransitions() {
 			log.Errorw(err, "failed to load process state")
 			return true // Continue to next process ID
 		}
-
 		// get the root hash, this is the state before the batch
 		root, err := processState.RootAsBigInt()
 		if err != nil {
