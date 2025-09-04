@@ -27,15 +27,16 @@ const (
 
 // finalizer is responsible for finalizing processes.
 type finalizer struct {
-	stg        *storage.Storage
-	stateDB    db.Database
-	circuits   *internalCircuits // Internal circuit artifacts for proof generation and verification
-	prover     ProverFunc        // Function for generating zero-knowledge proofs
-	OndemandCh chan *types.ProcessID
-	wg         sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
-	lock       sync.Mutex // Mutex to ensure that only one process results calculation is running at a time
+	stg              *storage.Storage
+	stateDB          db.Database
+	circuits         *internalCircuits // Internal circuit artifacts for proof generation and verification
+	prover           ProverFunc        // Function for generating zero-knowledge proofs
+	OndemandCh       chan *types.ProcessID
+	invalidProcesses map[string]struct{} // Cache of invalid processes to avoid re-processing
+	wg               sync.WaitGroup
+	ctx              context.Context
+	cancel           context.CancelFunc
+	lock             sync.Mutex // Mutex to ensure that only one process results calculation is running at a time
 }
 
 // New creates a new Finalizer instance.
@@ -46,11 +47,12 @@ func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuit
 	}
 	// We'll create the context in Start() now to avoid premature cancellation
 	return &finalizer{
-		stg:        stg,
-		stateDB:    stateDB,
-		circuits:   ca,
-		prover:     prover,
-		OndemandCh: make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
+		stg:              stg,
+		stateDB:          stateDB,
+		circuits:         ca,
+		prover:           prover,
+		OndemandCh:       make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
+		invalidProcesses: make(map[string]struct{}),
 	}
 }
 
@@ -68,8 +70,16 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 			select {
 			case pid := <-f.OndemandCh:
 				go func(pid *types.ProcessID) {
-					if err := f.finalize(pid); err != nil {
-						log.Errorw(err, fmt.Sprintf("finalizing process %s", pid.String()))
+					isInvalid := false
+					f.lock.Lock()
+					if _, invalid := f.invalidProcesses[pid.String()]; invalid {
+						isInvalid = true
+					}
+					f.lock.Unlock()
+					if !isInvalid {
+						if err := f.finalize(pid); err != nil {
+							log.Errorw(err, fmt.Sprintf("finalizing process %s", pid.String()))
+						}
 					}
 				}(pid) // Use a goroutine to avoid blocking the channel
 			case <-f.ctx.Done():
@@ -205,27 +215,42 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		return nil
 	}
 
+	// Helper to mark process as invalid in cache
+	setProcessInvalid := func() {
+		f.invalidProcesses[pid.String()] = struct{}{}
+	}
+
+	// Ensure the state root exists in the state DB. If not
+	if err := state.RootExists(f.stateDB, pid.BigInt(), process.StateRoot.MathBigInt()); err != nil {
+		setProcessInvalid()
+		return fmt.Errorf("state root does not exist in state DB %s: %w", process.StateRoot.String(), err)
+	}
+
 	log.Debugw("finalizing process", "pid", pid.String(), "stateRoot", process.StateRoot.String())
 
 	// Fetch the encryption key
 	encryptionPubKey, encryptionPrivKey, err := f.stg.EncryptionKeys(pid)
 	if err != nil || encryptionPubKey == nil || encryptionPrivKey == nil {
+		setProcessInvalid()
 		return fmt.Errorf("could not retrieve encryption keys for process %s: %w", pid.String(), err)
 	}
 
 	// Open the state for the process
 	st, err := state.LoadOnRoot(f.stateDB, pid.BigInt(), process.StateRoot.MathBigInt())
 	if err != nil {
+		setProcessInvalid()
 		return fmt.Errorf("could not open state for process %s: %w", pid.String(), err)
 	}
 
 	// Ensure the state root matches the process state root
 	stateRoot, err := st.Root()
 	if err != nil {
+		setProcessInvalid()
 		return fmt.Errorf("could not get state root for process %s: %w", pid.String(), err)
 	}
 	processStateRoot := state.BigIntToBytes(process.StateRoot.MathBigInt())
 	if !bytes.Equal(stateRoot, processStateRoot) {
+		setProcessInvalid()
 		return fmt.Errorf("state root is not synced or mismatch for process %s: expected %x, got %s",
 			pid.String(), processStateRoot, stateRoot)
 	}
@@ -233,11 +258,13 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	// Fetch the encrypted accumulators
 	encryptedAddAccumulator, ok := st.ResultsAdd()
 	if !ok {
-		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s", pid.String())
+		setProcessInvalid()
+		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s: %w", pid.String(), err)
 	}
 	encryptedSubAccumulator, ok := st.ResultsSub()
 	if !ok {
-		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s", pid.String())
+		setProcessInvalid()
+		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s: %w", pid.String(), err)
 	}
 
 	// Decrypt the accumulators
@@ -251,16 +278,19 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	addDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedAddAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
+			setProcessInvalid()
 			return fmt.Errorf("invalid ciphertext for process %s: %v", pid.String(), ct)
 		}
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
+			setProcessInvalid()
 			return fmt.Errorf("could not decrypt add accumulator for process %s: %w", pid.String(), err)
 		}
 		addAccumulator[i] = result
 		addAccumulatorsEncrypted[i] = *ct
 		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
 		if err != nil {
+			setProcessInvalid()
 			return fmt.Errorf("could not build decryption proof for add accumulator for process %s: %w", pid.String(), err)
 		}
 	}
@@ -273,16 +303,19 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	subDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedSubAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
+			setProcessInvalid()
 			return fmt.Errorf("invalid ciphertext for process %s: %v", pid.String(), ct)
 		}
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
+			setProcessInvalid()
 			return fmt.Errorf("could not decrypt sub accumulator for process %s: %w", pid.String(), err)
 		}
 		subAccumulator[i] = result
 		subAccumulatorsEncrypted[i] = *ct
 		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
 		if err != nil {
+			setProcessInvalid()
 			return fmt.Errorf("could not build decryption proof for sub accumulator for process %s: %w", pid.String(), err)
 		}
 		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
