@@ -299,7 +299,12 @@ func (s *Storage) PullVerifiedBallots(processID []byte, maxCount int) ([]*Verifi
 func (s *Storage) CountPendingBallots() int {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+	return s.countPendingBallots()
+}
 
+// countPendingBallots is the private version that doesn't acquire locks.
+// This method assumes the caller already holds the global lock.
+func (s *Storage) countPendingBallots() int {
 	rd := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	count := 0
 	if err := rd.Iterate(nil, func(k, _ []byte) bool {
@@ -619,6 +624,7 @@ func (s *Storage) MarkBallotBatchDone(k []byte) error {
 }
 
 // releaseBallotBatchReservation removes the reservation for an aggregated ballot batch.
+// This method assumes the caller already holds the global lock.
 func (s *Storage) releaseBallotBatchReservation(k []byte) error {
 	if err := s.deleteArtifact(aggregBatchReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 		return err

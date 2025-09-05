@@ -223,6 +223,13 @@ func (s *Storage) releaseStaleReservations(maxAge time.Duration) error {
 
 	now := time.Now().Unix()
 
+	log.Debugw("starting stale reservation cleanup",
+		"maxAge", maxAge.String(),
+		"currentTime", now)
+
+	// Log current queue status before cleanup
+	s.logQueueStatus()
+
 	// Release stale ballot reservations
 	if err := s.releaseStaleInPrefix(ballotReservationPrefix, now, maxAge); err != nil {
 		return err
@@ -243,45 +250,96 @@ func (s *Storage) releaseStaleReservations(maxAge time.Duration) error {
 		return err
 	}
 
+	log.Debugw("completed stale reservation cleanup")
 	return nil
 }
 
 func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Duration) error {
+	prefixStr := string(prefix)
+	log.Debugw("checking stale reservations", "prefix", prefixStr, "maxAge", maxAge.String())
+
 	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
 	defer wTx.Discard()
+
 	var staleKeys [][]byte
+	var corruptedKeys [][]byte
+	var currentKeys [][]byte
+	totalReservations := 0
+
 	if err := wTx.Iterate(nil, func(k, v []byte) bool {
+		totalReservations++
+		keyCopy := make([]byte, len(k))
+		copy(keyCopy, k)
+
 		r := &reservationRecord{}
 		if err := DecodeArtifact(v, r); err != nil {
-			staleKeys = append(staleKeys, append([]byte(nil), k...))
+			log.Debugw("found corrupted reservation",
+				"prefix", prefixStr,
+				"key", fmt.Sprintf("%x", k),
+				"error", err.Error())
+			corruptedKeys = append(corruptedKeys, keyCopy)
+			staleKeys = append(staleKeys, keyCopy)
 			return true
 		}
-		if now-r.Timestamp > int64(maxAge.Seconds()) {
-			staleKeys = append(staleKeys, append([]byte(nil), k...))
+
+		age := now - r.Timestamp
+		ageDuration := time.Duration(age) * time.Second
+
+		if age > int64(maxAge.Seconds()) {
+			log.Debugw("found stale reservation",
+				"prefix", prefixStr,
+				"key", fmt.Sprintf("%x", k),
+				"age", ageDuration.String(),
+				"timestamp", r.Timestamp)
+			staleKeys = append(staleKeys, keyCopy)
+		} else {
+			log.Debugw("found current reservation",
+				"prefix", prefixStr,
+				"key", fmt.Sprintf("%x", k),
+				"age", ageDuration.String(),
+				"timestamp", r.Timestamp)
+			currentKeys = append(currentKeys, keyCopy)
 		}
 		return true
 	}); err != nil {
 		return fmt.Errorf("iterate stale reservations: %w", err)
 	}
+
+	log.Debugw("reservation analysis complete",
+		"prefix", prefixStr,
+		"total", totalReservations,
+		"stale", len(staleKeys),
+		"corrupted", len(corruptedKeys),
+		"current", len(currentKeys))
+
 	if len(staleKeys) == 0 {
+		log.Debugw("no stale reservations to clean", "prefix", prefixStr)
 		return nil
 	}
 
 	// Delete all stale keys in a single transaction
+	deletedCount := 0
 	for _, sk := range staleKeys {
 		if err := wTx.Delete(sk); err != nil {
+			log.Errorw(err, fmt.Sprintf("failed to delete stale reservation for prefix %s key %x", prefixStr, sk))
 			return fmt.Errorf("delete stale reservation: %w", err)
 		}
+		deletedCount++
+		log.Debugw("deleted stale reservation",
+			"prefix", prefixStr,
+			"key", fmt.Sprintf("%x", sk))
 	}
 
 	// Commit once after all deletions
 	if err := wTx.Commit(); err != nil {
+		log.Errorw(err, "failed to commit stale reservation cleanup")
 		return fmt.Errorf("commit stale deletion: %w", err)
 	}
 
-	if len(staleKeys) > 0 {
-		log.Debugw("released stale reservations", "prefix", string(prefix), "count", len(staleKeys))
-	}
+	log.Debugw("successfully released stale reservations",
+		"prefix", prefixStr,
+		"deleted", deletedCount,
+		"remaining", len(currentKeys))
 
 	return nil
 }
@@ -487,4 +545,75 @@ func (s *Storage) IsNullifierProcessing(nullifier *big.Int) bool {
 // releaseNullifier releases a nullifier after processing is complete or failed.
 func (s *Storage) releaseNullifier(nullifier *big.Int) {
 	s.nullifiers.Delete(nullifier.String())
+}
+
+// logQueueStatus logs the current status of all storage queues for debugging
+// This method assumes the caller already holds the global lock and uses
+// private counting methods that don't acquire additional locks
+func (s *Storage) logQueueStatus() {
+	// Count items in each queue using private methods that don't acquire locks
+	pendingBallots := s.countPendingBallots()
+
+	// Count verified ballots across all processes
+	totalVerifiedBallots, availableVerifiedBallots := s.countVerifiedBallotsAll()
+
+	// Count aggregated batches
+	totalAggregatedBatches, availableAggregatedBatches := s.countAggregatedBatches()
+
+	// Count state transitions
+	totalStateTransitions, availableStateTransitions := s.countStateTransitions()
+
+	log.Debugw("current queue status during cleanup",
+		"pendingBallots", pendingBallots,
+		"verifiedBallots", totalVerifiedBallots,
+		"availableVerifiedBallots", availableVerifiedBallots,
+		"aggregatedBatches", totalAggregatedBatches,
+		"availableAggregatedBatches", availableAggregatedBatches,
+		"stateTransitions", totalStateTransitions,
+		"availableStateTransitions", availableStateTransitions)
+}
+
+// countVerifiedBallotsAll counts all verified ballots across all processes
+// This method assumes the caller already holds the global lock
+func (s *Storage) countVerifiedBallotsAll() (total, available int) {
+	if err := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix).Iterate(nil, func(k, _ []byte) bool {
+		total++
+		if !s.isReserved(verifiedBallotReservPrefix, k) {
+			available++
+		}
+		return true
+	}); err != nil {
+		log.Warnw("failed to count verified ballots", "error", err)
+	}
+	return total, available
+}
+
+// countAggregatedBatches counts all aggregated batches across all processes
+// This method assumes the caller already holds the global lock
+func (s *Storage) countAggregatedBatches() (total, available int) {
+	if err := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix).Iterate(nil, func(k, _ []byte) bool {
+		total++
+		if !s.isReserved(aggregBatchReservPrefix, k) {
+			available++
+		}
+		return true
+	}); err != nil {
+		log.Warnw("failed to count aggregated batches", "error", err)
+	}
+	return total, available
+}
+
+// countStateTransitions counts all state transitions across all processes
+// This method assumes the caller already holds the global lock
+func (s *Storage) countStateTransitions() (total, available int) {
+	if err := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix).Iterate(nil, func(k, _ []byte) bool {
+		total++
+		if !s.isReserved(stateTransitionReservPrefix, k) {
+			available++
+		}
+		return true
+	}); err != nil {
+		log.Warnw("failed to count state transitions", "error", err)
+	}
+	return total, available
 }
