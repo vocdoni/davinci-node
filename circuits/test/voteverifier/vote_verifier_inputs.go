@@ -5,40 +5,29 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"math/rand/v2"
+	"os"
+	"testing"
 	"time"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	gnarkecdsa "github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
+	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
+	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 	primitivestest "github.com/vocdoni/gnark-crypto-primitives/testutil"
 )
 
 const testCSPSeed = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
-
-// VoteVerifierTestResults struct includes relevant data after VerifyVoteCircuit
-// inputs generation
-type VoteVerifierTestResults struct {
-	InputsHashes     []*big.Int
-	EncryptionPubKey circuits.EncryptionKey[*big.Int]
-	Addresses        []*big.Int
-	ProcessID        *big.Int
-	CensusOrigin     types.CensusOrigin
-	CensusRoot       *big.Int
-	Ballots          []elgamal.Ballot
-	VoteIDs          []types.HexBytes
-}
 
 // VoterTestData struct includes the information required to generate the test
 // inputs for the VerifyVoteCircuit.
@@ -50,32 +39,29 @@ type VoterTestData struct {
 
 // VoteVerifierInputsForTest returns the VoteVerifierTestResults, the placeholder
 // and the assignments for a VerifyVoteCircuit including the provided voters. If
-// processId is nil, it will be randomly generated. If something fails it
-// returns an error.
+// processId is nil, it will be randomly generated. Uses quicktest assertions
+// instead of returning errors.
 func VoteVerifierInputsForTest(
+	t *testing.T,
 	votersData []VoterTestData,
 	processID *types.ProcessID,
 	censusOrigin types.CensusOrigin,
 ) (
-	VoteVerifierTestResults,
+	circuitstest.VoteVerifierTestResults,
 	voteverifier.VerifyVoteCircuit,
 	[]voteverifier.VerifyVoteCircuit,
-	error,
 ) {
+	c := qt.New(t)
+
 	now := time.Now()
 	log.Println("voteVerifier inputs generation start")
 	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
 		ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
-	if err != nil {
-		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
-	}
-	// if no process ID is provided, generate a random one
+	c.Assert(err, qt.IsNil, qt.Commentf("circom placeholder"))
+
+	// if no process ID is provided, use the centralized testing ProcessID
 	if processID == nil {
-		processID = &types.ProcessID{
-			Address: common.BytesToAddress(util.RandomBytes(20)),
-			Nonce:   rand.Uint64(),
-			ChainID: rand.Uint32(),
-		}
+		processID = types.TestProcessID
 	}
 	var censusRoot *big.Int
 	var censusSiblings [][types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
@@ -84,19 +70,16 @@ func VoteVerifierInputsForTest(
 	case types.CensusOriginMerkleTree:
 		// generate a test census
 		censusRoot, censusSiblings, cspProofs, err = CensusProofMerkleTree(votersData, processID)
-		if err != nil {
-			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
-		}
+		c.Assert(err, qt.IsNil, qt.Commentf("census proof merkle tree"))
 	case types.CensusOriginCSPEdDSABLS12377:
 		// generate a test census with CSP proofs
 		censusRoot, censusSiblings, cspProofs, err = CensusProofCSP(votersData, processID, censusOrigin)
-		if err != nil {
-			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
-		}
+		c.Assert(err, qt.IsNil, qt.Commentf("census proof CSP"))
 	default:
-		return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, fmt.Errorf("invalid census origin: %s", censusOrigin)
+		c.Assert(false, qt.IsTrue, qt.Commentf("invalid census origin: %s", censusOrigin))
 	}
-	ek := ballottest.GenEncryptionKeyForTest()
+	// Use deterministic encryption key for consistent caching
+	ek := ballottest.GenDeterministicEncryptionKeyForTest(circuitstest.GenerateDeterministicSeed(processID, 0))
 	encryptionKey := circuits.EncryptionKeyFromECCPoint(ek)
 	// circuits assignments, voters data and proofs
 	var assignments []voteverifier.VerifyVoteCircuit
@@ -104,10 +87,10 @@ func VoteVerifierInputsForTest(
 	ballots := []elgamal.Ballot{}
 	var finalProcessID *big.Int
 	for i, voter := range votersData {
-		voterProof, err := ballottest.BallotProofForTest(voter.Address.Bytes(), processID, ek)
-		if err != nil {
-			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, fmt.Errorf("ballotproof inputs: %w", err)
-		}
+		// Use deterministic ballot proof generation for consistent caching
+		voterProof, err := ballottest.BallotProofForTestDeterministic(voter.Address.Bytes(), processID, ek, circuitstest.GenerateDeterministicSeed(processID, i+100))
+		c.Assert(err, qt.IsNil, qt.Commentf("ballotproof inputs for voter %d", i))
+
 		if finalProcessID == nil {
 			finalProcessID = voterProof.ProcessID
 		}
@@ -116,9 +99,8 @@ func VoteVerifierInputsForTest(
 		ballots = append(ballots, *voterProof.Ballot)
 		// sign the inputs hash with the private key
 		signature, err := ballottest.SignECDSAForTest(voter.PrivKey, voterProof.VoteID)
-		if err != nil {
-			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
-		}
+		c.Assert(err, qt.IsNil, qt.Commentf("sign ECDSA for voter %d", i))
+
 		// hash the inputs of gnark circuit (except weight and including census root)
 		inputsHash, err := voteverifier.VoteVerifierInputHash(
 			voterProof.ProcessID,
@@ -130,15 +112,13 @@ func VoteVerifierInputsForTest(
 			censusRoot,
 			censusOrigin,
 		)
-		if err != nil {
-			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
-		}
+		c.Assert(err, qt.IsNil, qt.Commentf("vote verifier input hash for voter %d", i))
+
 		inputsHashes = append(inputsHashes, inputsHash)
 		// compose circuit placeholders
 		recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballottest.TestCircomVerificationKey, voterProof.Proof, voterProof.PubInputs)
-		if err != nil {
-			return VoteVerifierTestResults{}, voteverifier.VerifyVoteCircuit{}, nil, err
-		}
+		c.Assert(err, qt.IsNil, qt.Commentf("circom to gnark proof for voter %d", i))
+
 		assignments = append(assignments, voteverifier.VerifyVoteCircuit{
 			IsValid:    1,
 			InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
@@ -172,7 +152,7 @@ func VoteVerifierInputsForTest(
 		})
 	}
 	log.Printf("voteVerifier inputs generation ends, it tooks %s\n", time.Since(now))
-	return VoteVerifierTestResults{
+	return circuitstest.VoteVerifierTestResults{
 			InputsHashes:     inputsHashes,
 			EncryptionPubKey: encryptionKey,
 			Addresses:        addresses,
@@ -184,7 +164,7 @@ func VoteVerifierInputsForTest(
 		}, voteverifier.VerifyVoteCircuit{
 			CircomProof:           circomPlaceholder.Proof,
 			CircomVerificationKey: circomPlaceholder.Vk,
-		}, assignments, nil
+		}, assignments
 }
 
 func CensusProofMerkleTree(votersData []VoterTestData, processID *types.ProcessID) (
@@ -198,9 +178,27 @@ func CensusProofMerkleTree(votersData []VoterTestData, processID *types.ProcessI
 		bAddresses = append(bAddresses, voter.Address.Bytes())
 		bWeights = append(bWeights, new(big.Int).SetInt64(int64(circuits.MockWeight)).Bytes())
 	}
-	// generate a test census
+
+	// Create a unique directory name to avoid lock conflicts
+	// Include timestamp and process info for uniqueness
+	timestamp := time.Now().UnixNano()
+	seed := circuitstest.GenerateDeterministicSeed(processID, 999)
+	censusDir := fmt.Sprintf("../assets/census_%d_%d", seed%1000, timestamp)
+
+	// Ensure the assets directory exists
+	if err := os.MkdirAll("../assets", 0755); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create assets directory: %w", err)
+	}
+
+	// Clean up the census directory when done
+	defer func() {
+		if err := os.RemoveAll(censusDir); err != nil {
+			log.Printf("Warning: failed to cleanup census directory %s: %v", censusDir, err)
+		}
+	}()
+
 	testCensus, err := primitivestest.GenerateCensusProofLE(primitivestest.CensusTestConfig{
-		Dir:           fmt.Sprintf("../assets/census%d", util.RandomInt(0, 1000)),
+		Dir:           censusDir,
 		ValidSiblings: 10,
 		TotalSiblings: types.CensusTreeMaxLevels,
 		KeyLen:        types.CensusKeyMaxLen,

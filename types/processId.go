@@ -88,3 +88,12 @@ func (p *ProcessID) UnmarshalBinary(data []byte) error {
 func (p *ProcessID) String() string {
 	return hex.EncodeToString(p.Marshal())
 }
+
+// TestProcessID is a deterministic ProcessID used for testing purposes.
+// All circuit tests should use this ProcessID to ensure consistent caching
+// and proof reuse between tests.
+var TestProcessID = &ProcessID{
+	Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+	Nonce:   1,
+	ChainID: 1,
+}
