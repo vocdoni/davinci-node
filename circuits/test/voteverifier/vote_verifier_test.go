@@ -23,17 +23,18 @@ func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
-	// generate voter account
-	s, err := ballottest.GenECDSAaccountForTest()
+	// generate deterministic voter account for consistent caching
+	s, err := ballottest.GenDeterministicECDSAaccountForTest(0)
 	c.Assert(err, qt.IsNil)
-	_, placeholder, assignments, err := VoteVerifierInputsForTest([]VoterTestData{
+	// Use centralized testing ProcessID for consistent caching
+	processID := types.TestProcessID
+	_, placeholder, assignments := VoteVerifierInputsForTest(t, []VoterTestData{
 		{
 			PrivKey: s,
 			PubKey:  s.PublicKey,
 			Address: s.Address(),
 		},
-	}, nil, types.CensusOriginMerkleTree)
-	c.Assert(err, qt.IsNil)
+	}, processID, types.CensusOriginMerkleTree)
 	// generate proof
 	assert := test.NewAssert(t)
 	now := time.Now()
@@ -47,17 +48,18 @@ func TestVerifyCSPVoteCircuit(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
-	// generate voter account
-	s, err := ballottest.GenECDSAaccountForTest()
+	// generate deterministic voter account for consistent caching
+	s, err := ballottest.GenDeterministicECDSAaccountForTest(0)
 	c.Assert(err, qt.IsNil)
-	_, placeholder, assignments, err := VoteVerifierInputsForTest([]VoterTestData{
+	// Use centralized testing ProcessID for consistent caching
+	processID := types.TestProcessID
+	_, placeholder, assignments := VoteVerifierInputsForTest(t, []VoterTestData{
 		{
 			PrivKey: s,
 			PubKey:  s.PublicKey,
 			Address: s.Address(),
 		},
-	}, nil, types.CensusOriginCSPEdDSABLS12377)
-	c.Assert(err, qt.IsNil)
+	}, processID, types.CensusOriginCSPEdDSABLS12377)
 	// generate proof
 	assert := test.NewAssert(t)
 	now := time.Now()
@@ -88,14 +90,15 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	}
 	c := qt.New(t)
 	data := []VoterTestData{}
-	for range 10 {
-		// generate voter account
-		s, err := ballottest.GenECDSAaccountForTest()
+	for i := range 10 {
+		// generate deterministic voter account for consistent caching
+		s, err := ballottest.GenDeterministicECDSAaccountForTest(i)
 		c.Assert(err, qt.IsNil)
 		data = append(data, VoterTestData{s, s.PublicKey, s.Address()})
 	}
-	_, placeholder, assignments, err := VoteVerifierInputsForTest(data, nil, types.CensusOriginMerkleTree)
-	c.Assert(err, qt.IsNil)
+	// Use centralized testing ProcessID for consistent caching
+	processID := types.TestProcessID
+	_, placeholder, assignments := VoteVerifierInputsForTest(t, data, processID, types.CensusOriginMerkleTree)
 	assert := test.NewAssert(t)
 	now := time.Now()
 	for _, assignment := range assignments {

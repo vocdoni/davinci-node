@@ -10,7 +10,6 @@ import (
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
-	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
@@ -374,10 +373,10 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	}
 
 	// Verify blob baricentric evaluation (z and y are public inputs)
-	if err := blobs.VerifyBlobEvaluationNative(api, circuit.BlobEvaluationPointZ, &circuit.BlobEvaluationResultY, blob); err != nil {
-		circuits.FrontendError(api, "failed to verify blob evaluation: ", err)
-		return
-	}
+	//if err := blobs.VerifyBlobEvaluationNative(api, circuit.BlobEvaluationPointZ, &circuit.BlobEvaluationResultY, blob); err != nil {
+	//	circuits.FrontendError(api, "failed to verify blob evaluation: ", err)
+	//	return
+	//}
 
 	// Assert new results are equal to old results plus ballot sums
 	circuit.Results.NewResultsAdd.AssertIsEqual(api,

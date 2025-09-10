@@ -2,7 +2,6 @@ package aggregatortest
 
 import (
 	"log"
-	"math/rand/v2"
 	"os"
 	"testing"
 	"time"
@@ -10,11 +9,9 @@ import (
 	"github.com/consensys/gnark/backend"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/test"
-	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/util"
 )
 
 func TestAggregatorCircuit(t *testing.T) {
@@ -25,13 +22,9 @@ func TestAggregatorCircuit(t *testing.T) {
 	c := qt.New(t)
 	// inputs generation
 	now := time.Now()
-	processID := &types.ProcessID{
-		Address: common.BytesToAddress(util.RandomBytes(20)),
-		Nonce:   rand.Uint64(),
-		ChainID: rand.Uint32(),
-	}
-	_, placeholder, assignments, err := AggregatorInputsForTest(processID, 3)
-	c.Assert(err, qt.IsNil)
+	// Use centralized testing ProcessID for consistent caching
+	processID := types.TestProcessID
+	_, placeholder, assignments := AggregatorInputsForTest(t, processID, 3)
 	c.Logf("inputs generation tooks %s", time.Since(now).String())
 	// proving
 	now = time.Now()
