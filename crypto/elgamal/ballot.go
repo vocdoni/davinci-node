@@ -158,6 +158,10 @@ func (z *Ballot) BigInts() []*big.Int {
 	return list
 }
 
+// SetBigInts sets the Ballot from a slice of 8*4 BigInts, representing each
+// Ciphertext C1.X, C1.Y, C2.X, C2.Y as little-endian, in reduced twisted
+// edwards form. It returns an error if the input is invalid.
+
 func (z *Ballot) SetBigInts(list []*big.Int) (*Ballot, error) {
 	// check if the curve type is valid
 	if !curves.IsValid(z.CurveType) {

@@ -24,7 +24,7 @@ type BlobData struct {
 // blob layout:
 //  1. ResultsAdd (types.FieldsPerBallot * 4 coordinates)
 //  2. ResultsSub (types.FieldsPerBallot * 4 coordinates)
-//  3. Votes sequentially until voteID = 0x0 (sentinel)
+//  3. Votes sequentially until voteID = 0x0 (sentinel):
 //     Each vote: voteID + address + reencryptedBallot coordinates
 func (st *State) BuildKZGCommitment() (
 	blobData *blobs.BlobEvalData,
@@ -37,8 +37,15 @@ func (st *State) BuildKZGCommitment() (
 		if cell >= blobs.FieldElementsPerBlob {
 			panic("blob overflow")
 		}
-		// Store blob cells in big-endian as expected by go-ethereum
-		bi.FillBytes(cells[cell][:])
+		biBytes := bi.Bytes()
+		// Pad to 32 bytes if necessary (big-endian)
+		if len(biBytes) < blobs.BytesPerFieldElement {
+			padded := make([]byte, blobs.BytesPerFieldElement)
+			copy(padded[blobs.BytesPerFieldElement-len(biBytes):], biBytes)
+			biBytes = padded
+		}
+		// Copy as big-endian
+		copy(cells[cell][:], biBytes)
 		cell++
 	}
 
