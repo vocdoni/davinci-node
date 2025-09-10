@@ -186,7 +186,7 @@ func CensusProofMerkleTree(votersData []VoterTestData, processID *types.ProcessI
 	censusDir := fmt.Sprintf("../assets/census_%d_%d", seed%1000, timestamp)
 
 	// Ensure the assets directory exists
-	if err := os.MkdirAll("../assets", 0755); err != nil {
+	if err := os.MkdirAll("../assets", 0o755); err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to create assets directory: %w", err)
 	}
 

@@ -219,7 +219,7 @@ func NewCircuitCache() (*CircuitCache, error) {
 	}
 
 	cacheDir := filepath.Join(homeDir, ".cache", "davinci-node", "test-circuits")
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create cache directory: %w", err)
 	}
 
