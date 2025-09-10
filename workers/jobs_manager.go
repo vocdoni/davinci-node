@@ -167,12 +167,10 @@ func (jm *JobsManager) RegisterJob(workerAddr string, voteID types.HexBytes) (*W
 	// Check if worker exists in the worker manager
 	worker, ok := jm.WorkerManager.GetWorker(workerAddr)
 	if !ok {
-		log.Warnw("worker not found", "workerAddr", workerAddr, "voteID", voteID.String())
 		return nil, ErrWorkerNotFound
 	}
 	// Check if worker is available
 	if worker.IsBanned(jm.WorkerManager.rules) {
-		log.Warnw("worker is banned, cannot register job", "workerAddr", workerAddr, "voteID", voteID.String())
 		return nil, ErrWorkerBanned // Worker is banned
 	}
 	job := &WorkerJob{
@@ -182,10 +180,6 @@ func (jm *JobsManager) RegisterJob(workerAddr string, voteID types.HexBytes) (*W
 		Expiration: time.Now().Add(jm.JobTimeout), // Default expiration
 	}
 	jm.pending[hex.EncodeToString(voteID)] = job
-	log.Debugw("job registered",
-		"voteID", voteID.String(),
-		"workerAddr", workerAddr,
-		"expiration", job.Expiration.String())
 	return job, nil
 }
 
@@ -202,22 +196,15 @@ func (jm *JobsManager) CompleteJob(voteID types.HexBytes, success bool) *WorkerJ
 	// Look up the job by vote ID
 	job, exists := jm.pending[hex.EncodeToString(voteID)]
 	if !exists {
-		log.Warnw("job not found by voteID",
-			"voteID", voteID.String(),
-			"success", success)
-
 		return nil // Job not found
 	}
 	if !success {
 		jm.FailedJobs <- job // Send to failed jobs channel (blocking)
 	}
 	// Notify worker manager
-	if err := jm.WorkerManager.WorkerResult(job.Address, success); err != nil {
-		log.Warnw("failed to notify worker manager for job",
-			"voteID", voteID.String(),
-			"success", success)
+	if err := jm.WorkerManager.WorkerResult(job.Address, success); err == nil {
+		log.Debugw("job completed", "voteID", voteID.String(), "success", success)
 	}
 	delete(jm.pending, hex.EncodeToString(voteID)) // Remove the job from pending
-	log.Debugw("job completed", "voteID", voteID.String(), "success", success)
 	return job
 }
