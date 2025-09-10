@@ -720,8 +720,6 @@ github.com/vbatts/tar-split v0.11.5 h1:3bHCTIheBm1qFTcgh9oPu+nNBtX+XJIupG/vacinC
 github.com/vbatts/tar-split v0.11.5/go.mod h1:yZbwRsSeGjusneWgA781EKej9HF8vme8okylkAeNKLk=
 github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5 h1:wtUK5E131x07zdxnAGRIt2wl5BzwmfoXZ1V4s+kPQc8=
 github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5/go.mod h1:SUsNx5GJJunlEMBo6ETTmys88B4bkTgqNV5N1jN3iic=
-github.com/vocdoni/davinci-contracts v0.0.0-20250828142949-ebf7f19e9dea h1:72MylqtskTF9HJ2pogR7T35A8E+FYhm3N+z8syTC7m4=
-github.com/vocdoni/davinci-contracts v0.0.0-20250828142949-ebf7f19e9dea/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/davinci-contracts v0.0.0-20250910171719-e707af1a61be h1:S25JUDz76AIdsxOXG/dVNYWgC0W1ggByVSmRYjsWPNw=
 github.com/vocdoni/davinci-contracts v0.0.0-20250910171719-e707af1a61be/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97 h1:85N0hCD0MxBH7P76m7TJB+6JwxzT2ajxrn5qutemTGs=
