@@ -112,6 +112,7 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 	if err != nil {
 		return nil, fmt.Errorf("could not build KZG commitment: %w", err)
 	}
+
 	witness.BlobEvaluationPointZ = blobData.ForGnark.Z
 	witness.BlobEvaluationResultY = blobData.ForGnark.Y
 

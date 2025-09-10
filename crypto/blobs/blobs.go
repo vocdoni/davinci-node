@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"math/big"
+	"strings"
 
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
@@ -118,6 +119,18 @@ func (b *BlobEvalData) TxSidecar() (*gethtypes.BlobTxSidecar, []common.Hash, err
 	}
 
 	return sc, sc.BlobHashes(), nil
+}
+
+// String returns a string representation of the blob data.
+func (b *BlobEvalData) String() string {
+	str := strings.Builder{}
+	for i := range b.Blob {
+		str.WriteString(fmt.Sprintf("[%x]", b.Blob[i*BytesPerFieldElement:(i+1)*BytesPerFieldElement]))
+		if i == FieldElementsPerBlob-1 {
+			break
+		}
+	}
+	return str.String()
 }
 
 // HashV1 calculates the 'versioned blob hash' of a commitment.

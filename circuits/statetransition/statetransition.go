@@ -10,6 +10,7 @@ import (
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
+	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
@@ -324,59 +325,18 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 // VerifyBallots counts the ballots using homomorphic encryption and checks
 // that the number of ballots is equal to the number of new votes and
 // overwritten votes. It uses the Ballot structure to count the ballots.
+// It also builds the blob and verifies the KZG commitment to the blob.
 func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	ballotSum, overwrittenSum, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
 	var ballotCount, overwrittenCount frontend.Variable = 0, 0
 
-	var blob [4096]frontend.Variable
-	// Initialize all blob elements to 0 to prevent nil pointer dereference
-	//for i := range blob {
-	//	blob[i] = 0
-	//}
-	blobIndex := 0
-
-	// Add new resultsAdd coordinates to blob
-	for _, resultsAddCoord := range circuit.Results.NewResultsAdd {
-		blob[blobIndex] = resultsAddCoord.C1.X
-		blob[blobIndex+1] = resultsAddCoord.C1.Y
-		blobIndex += 2
-	}
-
-	// Add new resultsSub coordinates to blob
-	for _, resultsSubCoord := range circuit.Results.NewResultsSub {
-		blob[blobIndex] = resultsSubCoord.C1.X
-		blob[blobIndex+1] = resultsSubCoord.C1.Y
-		blobIndex += 2
-	}
-
+	// Sum ballots and count new and overwritten
 	for i, b := range circuit.VotesProofs.Ballot {
 		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].ReencryptedBallot, zero))
 		overwrittenSum.Add(api, overwrittenSum, circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
 		ballotCount = api.Add(ballotCount, b.IsInsertOrUpdate(api))
 		overwrittenCount = api.Add(overwrittenCount, b.IsUpdate(api))
-
-		// Add reencrypted ballot coordinates to blob
-		blob[blobIndex] = circuit.Votes[i].VoteID
-		blob[blobIndex+1] = circuit.Votes[i].Address
-		blobIndex += 2
-
-		for _, coord := range circuit.Votes[i].ReencryptedBallot {
-			blob[blobIndex] = coord.C1.X
-			blob[blobIndex+1] = coord.C1.Y
-			blobIndex += 2
-		}
 	}
-
-	// Fill the rest of the blob with zeros
-	for i := blobIndex; i < len(blob); i++ {
-		blob[i] = 0
-	}
-
-	// Verify blob baricentric evaluation (z and y are public inputs)
-	//if err := blobs.VerifyBlobEvaluationNative(api, circuit.BlobEvaluationPointZ, &circuit.BlobEvaluationResultY, blob); err != nil {
-	//	circuits.FrontendError(api, "failed to verify blob evaluation: ", err)
-	//	return
-	//}
 
 	// Assert new results are equal to old results plus ballot sums
 	circuit.Results.NewResultsAdd.AssertIsEqual(api,
@@ -385,4 +345,66 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, overwrittenSum))
 	api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
 	api.AssertIsEqual(circuit.NumOverwritten, overwrittenCount)
+
+	// Build blob and verify evaluation
+	//
+	// The blob is built as follows:
+	// - First, we add the new results (addition and subtraction) - always present
+	// - Then, we add the votes sequentially (no padding)
+	// - Finally, we add a sentinel (voteID = 0x0) to mark end of votes
+	// Each ballot coordinate is represented as a field element (32 bytes).
+	// Each field element is represented as a big-endian byte array.
+	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement).
+
+	var blob [4096]frontend.Variable
+	blobIndex := 0
+
+	// Append a ballot with a mask: every pushed var is multiplied by mask.
+	appendBallotMasked := func(b circuits.Ballot, mask frontend.Variable) {
+		for _, v := range b.SerializeVars() {
+			blob[blobIndex] = api.Mul(mask, v)
+			blobIndex++
+		}
+	}
+
+	// Always include results (no sentinel applies to them)
+	appendBallotMasked(circuit.Results.NewResultsAdd, 1)
+	appendBallotMasked(circuit.Results.NewResultsSub, 1)
+
+	// Votes section with sentinel handling.
+	// keep==1 means "we haven't seen sentinel yet". Once we see voteID==0,
+	// keep becomes 0 and stays 0, zeroing out everything afterwards.
+	keep := frontend.Variable(1)
+
+	for i := range types.VotesPerBatch {
+		voteID := circuit.Votes[i].VoteID
+		isZero := api.IsZero(voteID)  // 1 if voteID==0 else 0
+		notZero := api.Sub(1, isZero) // 1 if voteID!=0 else 0
+
+		// Only write this vote if keep==1 AND voteID!=0
+		writeMask := api.Mul(keep, notZero)
+
+		// voteID and address (masked)
+		blob[blobIndex] = api.Mul(writeMask, voteID)
+		blobIndex++
+		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].Address)
+		blobIndex++
+
+		// reencrypted ballot (masked)
+		appendBallotMasked(circuit.Votes[i].ReencryptedBallot, writeMask)
+
+		// Update keep for next iterations: once we saw 0, keep→0 forever
+		keep = api.Mul(keep, notZero)
+	}
+
+	// Fill the rest of the blob with zeros
+	for i := blobIndex; i < len(blob); i++ {
+		blob[i] = 0
+	}
+
+	// Verify blob baricentric evaluation (z and y are public inputs)
+	if err := blobs.VerifyBlobEvaluationNative(api, circuit.BlobEvaluationPointZ, &circuit.BlobEvaluationResultY, blob); err != nil {
+		circuits.FrontendError(api, "failed to verify blob evaluation: ", err)
+		return
+	}
 }
