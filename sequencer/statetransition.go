@@ -147,10 +147,14 @@ func (s *Sequencer) processPendingTransitions() {
 		)
 
 		p := proof.(*groth16_bn254.Proof)
-		fmt.Printf("=> Commitments PoK: %s\n", p.CommitmentPok.String())
+		commitments := make([]string, len(p.Commitments))
 		for i, c := range p.Commitments {
-			fmt.Printf("=> Commitment %d: %s\n", i, c.String())
+			commitments[i] = c.String()
 		}
+		log.Debugw("Commitments generated",
+			"CommitmentPoK", p.CommitmentPok.String(),
+			"Commitments", commitments,
+		)
 
 		// Store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
