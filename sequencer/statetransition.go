@@ -146,16 +146,24 @@ func (s *Sequencer) processPendingTransitions() {
 			"blobHash", blobHashes[0].String(),
 		)
 
+		p := proof.(*groth16_bn254.Proof)
+		fmt.Printf("=> Commitments PoK: %s\n", p.CommitmentPok.String())
+		for i, c := range p.Commitments {
+			fmt.Printf("=> Commitment %d: %s\n", i, c.String())
+		}
+
 		// Store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
 			ProcessID: batch.ProcessID,
 			Proof:     proof.(*groth16_bn254.Proof),
 			Ballots:   batch.Ballots,
 			Inputs: storage.StateTransitionBatchProofInputs{
-				RootHashBefore: processState.RootHashBefore(),
-				RootHashAfter:  rootHashAfter,
-				NumNewVotes:    processState.BallotCount(),
-				NumOverwritten: processState.OverwrittenCount(),
+				RootHashBefore:       processState.RootHashBefore(),
+				RootHashAfter:        rootHashAfter,
+				NumNewVotes:          processState.BallotCount(),
+				NumOverwritten:       processState.OverwrittenCount(),
+				BlobEvaluationPointZ: blobData.Z,
+				BlobEvaluationPointY: blobData.Ylimbs,
 			},
 			BlobVersionHash: blobHashes[0],
 			BlobSidecar:     blobSidecar,

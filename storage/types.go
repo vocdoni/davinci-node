@@ -176,23 +176,30 @@ type StateTransitionBatch struct {
 // before and after the transition, the number of new votes and the number
 // of overwrites.
 type StateTransitionBatchProofInputs struct {
-	RootHashBefore *big.Int `json:"rootHashBefore"`
-	RootHashAfter  *big.Int `json:"rootHashAfter"`
-	NumNewVotes    int      `json:"numNewVotes"`
-	NumOverwritten int      `json:"numOverwritten"`
+	RootHashBefore       *big.Int    `json:"rootHashBefore"`
+	RootHashAfter        *big.Int    `json:"rootHashAfter"`
+	NumNewVotes          int         `json:"numNewVotes"`
+	NumOverwritten       int         `json:"numOverwritten"`
+	BlobEvaluationPointZ *big.Int    `json:"blobEvaluationPointZ"`
+	BlobEvaluationPointY [4]*big.Int `json:"blobEvaluationPointY"`
 }
 
 // ABIEncode packs the four fields as a single static uint256[4] blob:
 //
 //	[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten ]
 func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
-	arr := [4]*big.Int{
+	arr := [9]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
 		big.NewInt(int64(s.NumNewVotes)),
 		big.NewInt(int64(s.NumOverwritten)),
+		s.BlobEvaluationPointZ,    // Z is on bn254, so we don't need limbs
+		s.BlobEvaluationPointY[0], // Y is on bls12-381, so we need all 4 limbs
+		s.BlobEvaluationPointY[1],
+		s.BlobEvaluationPointY[2],
+		s.BlobEvaluationPointY[3],
 	}
-	arrType, err := abi.NewType("uint256[4]", "", nil)
+	arrType, err := abi.NewType("uint256[9]", "", nil)
 	if err != nil {
 		return nil, err
 	}
