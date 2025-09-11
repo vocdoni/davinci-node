@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -45,14 +46,14 @@ var pBLS = bls12381.ID.ScalarField()
 // It is useful for preparing data for zk-SNARK proving and Ethereum transactions.
 type BlobEvalData struct {
 	ForGnark struct {
-		CommitmentLimbs [3]frontend.Variable
-		Z               frontend.Variable // value within bn254 field
-		Y               emulated.Element[FE]
-		Blob            [N]frontend.Variable // values within bn254 field
+		Z    frontend.Variable // value within bn254 field
+		Y    emulated.Element[FE]
+		Blob [N]frontend.Variable // values within bn254 field
 	}
 	Commitment goethkzg.KZGCommitment
 	Z          *big.Int
 	Y          *big.Int
+	Ylimbs     [4]*big.Int
 	Blob       goethkzg.Blob
 	Proof      goethkzg.KZGProof
 }
@@ -69,9 +70,22 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, erro
 	b.Proof = proof
 
 	// Set evaluation point (y)
-	y := new(big.Int).SetBytes(claim[:])
-	b.ForGnark.Y = emulated.ValueOf[FE](y)
-	b.Y = new(big.Int).Set(y)
+	b.Y = new(big.Int).SetBytes(claim[:])
+	b.ForGnark.Y = emulated.ValueOf[FE](b.Y)
+	// Extract limbs as big.Int
+	// Note that we cannot access b.ForGnark.Y.Limbs because the decomposicion is performed async while witness processing
+	Ylimbs, err := format.SplitYForBn254FromBLS12381(b.Y)
+	if err != nil {
+		return nil, fmt.Errorf("failed to split Y into limbs: %w", err)
+	}
+
+	// Assign limbs to the array
+	b.Ylimbs = [4]*big.Int{
+		Ylimbs[0],
+		Ylimbs[1],
+		Ylimbs[2],
+		Ylimbs[3],
+	}
 
 	// Set evaluation point (z)
 	b.ForGnark.Z = z
@@ -83,10 +97,6 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, erro
 		return nil, err
 	}
 	b.Commitment = commitment
-	limbs := splitIntoLimbs(commitment[:], 3)
-	b.ForGnark.CommitmentLimbs = [3]frontend.Variable{
-		limbs[0], limbs[1], limbs[2],
-	}
 
 	// Convert blob to gnark circuit format
 	for i := range FieldElementsPerBlob {
