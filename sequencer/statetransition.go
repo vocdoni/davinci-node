@@ -151,10 +151,6 @@ func (s *Sequencer) processPendingTransitions() {
 		for i, c := range p.Commitments {
 			commitments[i] = c.String()
 		}
-		log.Debugw("Commitments generated",
-			"CommitmentPoK", p.CommitmentPok.String(),
-			"Commitments", commitments,
-		)
 
 		// Store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{

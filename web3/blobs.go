@@ -29,12 +29,15 @@ import (
 func (c *Contracts) SendBlobTx(
 	ctx context.Context,
 	to common.Address,
-	blobs [][]byte,
+	sidecar *types.BlobTxSidecar,
 ) (*types.Transaction, [][]byte, error) {
 	if c.signer == nil {
 		return nil, nil, fmt.Errorf("no private key set")
 	}
-	if len(blobs) == 0 {
+	if sidecar == nil {
+		return nil, nil, fmt.Errorf("no blob sidecar provided")
+	}
+	if len(sidecar.Blobs) == 0 {
 		return nil, nil, fmt.Errorf("no blobs provided")
 	}
 	if bytes.Equal(to[:], common.Address{}.Bytes()) {
@@ -67,19 +70,19 @@ func (c *Contracts) SendBlobTx(
 	}
 	blobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
 
-	// Estimate execution gas
-	gasLimit, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
-		From: from,
-		To:   &to,
-	})
+	// Estimate execution gas (must include blob fields)
+	call := ethereum.CallMsg{
+		From:      from,
+		To:        &to,
+		GasFeeCap: gasFeeCap, // 1559
+		GasTipCap: tipCap,    // 1559
+		// Data:       calldata,            // ABI-encoded if calling a contract
+		BlobGasFeeCap: blobFeeCap,           // <= REQUIRED for 4844
+		BlobHashes:    sidecar.BlobHashes(), // <= REQUIRED for 4844
+	}
+	gasLimit, err := c.cli.EstimateGas(ctx, call)
 	if err != nil {
 		return nil, nil, fmt.Errorf("estimate gas for blobs tx: %w", err)
-	}
-
-	// Build sidecar
-	sidecar, blobHashes, err := buildSidecar(blobs)
-	if err != nil {
-		return nil, nil, err
 	}
 
 	// Create & sign blob tx
@@ -91,7 +94,7 @@ func (c *Contracts) SendBlobTx(
 		Gas:        gasLimit,
 		To:         to,
 		BlobFeeCap: uint256.MustFromBig(blobFeeCap),
-		BlobHashes: blobHashes,
+		BlobHashes: sidecar.BlobHashes(),
 		Sidecar:    sidecar,
 	}
 
@@ -113,9 +116,9 @@ func (c *Contracts) SendBlobTx(
 	return signed, commitments, nil
 }
 
-// buildSidecar converts raw blobs -> commitments/proofs using crate-crypto.
+// BuildBlobsSidecar converts raw blobs -> commitments/proofs using crate-crypto.
 // Returns a geth Sidecar (types.BlobTxSidecar) and versioned blob hashes.
-func buildSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error) {
+func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error) {
 	if len(raw) == 0 {
 		return nil, nil, fmt.Errorf("no blobs")
 	}
@@ -163,10 +166,12 @@ func buildSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error) {
 // using the provided Consensus (beacon) API base URL.
 func (c *Contracts) BlobByCommitment(
 	ctx context.Context,
-	consensusAPI string,
 	txHash common.Hash,
 	commitmentHex string,
 ) ([]byte, error) {
+	if c.Web3ConsensusAPIEndpoint == "" {
+		return nil, fmt.Errorf("no consensus API endpoint configured")
+	}
 	ethcli, err := c.cli.EthClient()
 	if err != nil {
 		return nil, fmt.Errorf("eth client: %w", err)
@@ -201,7 +206,7 @@ func (c *Contracts) BlobByCommitment(
 		} `json:"data"`
 	}
 	var bh beaconHeaderResp
-	urlHdr := fmt.Sprintf("%s/eth/v1/beacon/headers/%s", strings.TrimRight(consensusAPI, "/"), parentRoot.Hex())
+	urlHdr := fmt.Sprintf("%s/eth/v1/beacon/headers/%s", strings.TrimRight(c.Web3ConsensusAPIEndpoint, "/"), parentRoot.Hex())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlHdr, nil)
 	if err != nil {
 		return nil, fmt.Errorf("new header req: %w", err)
@@ -227,7 +232,7 @@ func (c *Contracts) BlobByCommitment(
 	targetSlot := parentSlot + 1 // slot of our execution block’s beacon root
 
 	// Fetch blob sidecars for that slot
-	urlSide := fmt.Sprintf("%s/eth/v1/beacon/blob_sidecars/%d", strings.TrimRight(consensusAPI, "/"), targetSlot)
+	urlSide := fmt.Sprintf("%s/eth/v1/beacon/blob_sidecars/%d", strings.TrimRight(c.Web3ConsensusAPIEndpoint, "/"), targetSlot)
 	req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, urlSide, nil)
 	resp2, err := http.DefaultClient.Do(req2)
 	if err != nil {

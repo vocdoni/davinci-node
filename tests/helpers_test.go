@@ -191,7 +191,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 	c.Assert(err, qt.IsNil)
 
 	// Initialize the contracts object
-	contracts, err := web3.New([]string{rpcUrl})
+	contracts, err := web3.New([]string{rpcUrl}, "")
 	c.Assert(err, qt.IsNil)
 
 	// Define contracts addresses or deploy them

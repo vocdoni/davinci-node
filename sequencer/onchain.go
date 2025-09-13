@@ -1,11 +1,13 @@
 package sequencer
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
 
+	ethereumtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/solidity"
 	"github.com/vocdoni/davinci-node/storage"
@@ -82,8 +84,9 @@ func (s *Sequencer) processTransitionOnChain() {
 			log.Errorw(err, "failed to convert gnark proof to solidity proof")
 			return true // Continue to next process ID
 		}
+
 		// send the proof to the contract with the public witness
-		if err := s.pushTransitionToContract([]byte(pid), solidityCommitmentProof, batch.Inputs); err != nil {
+		if err := s.pushTransitionToContract([]byte(pid), solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
 			log.Errorw(err, "failed to push to contract")
 			return true // Continue to next process ID
 		}
@@ -116,9 +119,31 @@ func (s *Sequencer) processTransitionOnChain() {
 func (s *Sequencer) pushTransitionToContract(processID []byte,
 	proof *solidity.Groth16CommitmentProof,
 	inputs storage.StateTransitionBatchProofInputs,
+	blobSidecar *ethereumtypes.BlobTxSidecar,
 ) error {
 	var pid32 [32]byte
 	copy(pid32[:], processID)
+	// First, send the blob on-chain
+	log.Infow("submitting kzg4844 blob to the contract", "pid", hex.EncodeToString(processID))
+	ctx, cancel := context.WithTimeout(s.ctx, time.Minute)
+	defer cancel()
+	tx, commitments, err := s.contracts.SendBlobTx(ctx, s.contracts.ContractsAddresses.StateTransitionZKVerifier, blobSidecar)
+	if err != nil {
+		return fmt.Errorf("failed to send blob tx: %w", err)
+	}
+	log.Infow("blob tx sent",
+		"hash", tx.Hash().Hex(),
+		"commitment", fmt.Sprintf("0x%x", commitments[0]),
+		"from", s.contracts.AccountAddress().Hex(),
+		"to", s.contracts.ContractsAddresses.StateTransitionZKVerifier.Hex())
+
+	// Wait for the blob tx to be mined
+	if err := s.contracts.WaitTx(tx.Hash(), time.Minute); err != nil {
+		return fmt.Errorf("failed to wait for blob tx: %w", err)
+	}
+	log.Infow("blob tx mined", "hash", tx.Hash().Hex())
+
+	// Now we can submit the state transition
 	// convert the proof to a solidity proof
 	abiProof, err := proof.ABIEncode()
 	if err != nil {
@@ -128,6 +153,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	if err != nil {
 		return fmt.Errorf("failed to encode inputs: %w", err)
 	}
+
 	log.Debugw("proof ready to submit to the contract",
 		"pid", hex.EncodeToString(processID),
 		"abiProof", hex.EncodeToString(abiProof),
@@ -146,12 +172,12 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 		abiProof,
 		abiInputs,
 	); err != nil {
-		log.Warnw("failed to simulate state transition",
+		log.Debugw("failed to simulate state transition",
 			"error", err,
 			"pid", hex.EncodeToString(processID))
 	}
 
-	// Submit the proof to the contract if simulation is successful
+	// Submit the proof to the contract
 	txHash, err := s.contracts.SetProcessTransition(processID,
 		abiProof,
 		abiInputs,
@@ -162,7 +188,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	}
 
 	// Wait for the transaction to be mined
-	return s.contracts.WaitTx(*txHash, time.Second*60)
+	return s.contracts.WaitTx(*txHash, time.Minute)
 }
 
 func (s *Sequencer) processResultsOnChain() {
@@ -222,7 +248,7 @@ func (s *Sequencer) processResultsOnChain() {
 			abiProof,
 			abiInputs,
 		); err != nil {
-			log.Warnw("failed to simulate verified results upload",
+			log.Debugw("failed to simulate verified results upload",
 				"error", err,
 				"pid", res.ProcessID.String())
 		}

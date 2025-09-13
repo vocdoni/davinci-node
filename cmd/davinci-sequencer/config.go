@@ -15,6 +15,8 @@ import (
 
 const (
 	defaultNetwork                    = "sep"
+	defaultCAPI                       = "https://ethereum-sepolia-beacon-api.publicnode.com"
+	defaultRPC                        = "https://ethereum-sepolia-rpc.publicnode.com"
 	defaultAPIHost                    = "0.0.0.0"
 	defaultAPIPort                    = 9090
 	defaultBatchTime                  = 300 * time.Second
@@ -47,6 +49,7 @@ type Web3Config struct {
 	PrivKey           string   `mapstructure:"privkey"` // Private key for the Ethereum account
 	Network           string   `mapstructure:"network"` // Network shortname
 	Rpc               []string `mapstructure:"rpc"`     // Web3 RPC endpoints, can be multiple
+	Capi              string   `mapstructure:"capi"`    // Consensus API URL
 	ProcessAddr       string   `mapstructure:"process"` // Custom contract addresses, overrides network defaults
 	OrganizationsAddr string   `mapstructure:"orgs"`    // Custom contract addresses, overrides network defaults
 }
@@ -95,7 +98,8 @@ func loadConfig() (*Config, error) {
 	defaultDatadirPath := filepath.Join(userHomeDir, defaultDatadir)
 
 	v.SetDefault("web3.network", defaultNetwork)
-	v.SetDefault("web3.rpc", []string{})
+	v.SetDefault("web3.rpc", defaultRPC)
+	v.SetDefault("web3.capi", defaultCAPI)
 	v.SetDefault("api.host", defaultAPIHost)
 	v.SetDefault("api.port", defaultAPIPort)
 	v.SetDefault("batch.time", defaultBatchTime)
@@ -107,7 +111,8 @@ func loadConfig() (*Config, error) {
 	// Configure flags
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
 	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", config.AvailableNetworks))
-	flag.StringSliceP("web3.rpc", "r", []string{}, "web3 rpc endpoint(s), comma-separated")
+	flag.StringSliceP("web3.rpc", "r", []string{defaultRPC}, "web3 rpc endpoint(s), comma-separated")
+	flag.StringP("web3.capi", "c", defaultCAPI, "consensus api url")
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
 	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")

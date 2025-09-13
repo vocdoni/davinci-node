@@ -41,7 +41,7 @@ func main() {
 	log.Infow("starting sendblob")
 
 	// 1) Init Contracts
-	contracts, err := web3.New([]string{*rpcURL})
+	contracts, err := web3.New([]string{*rpcURL}, *capi)
 	if err != nil {
 		log.Fatalf("init web3: %v", err)
 	}
@@ -65,11 +65,16 @@ func main() {
 		blobs[i] = b
 	}
 
+	sidecar, _, err := web3.BuildBlobsSidecar(blobs)
+	if err != nil {
+		log.Fatalf("build sidecar: %v", err)
+	}
+
 	// 3) Send tx
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	tx, commitments, err := contracts.SendBlobTx(ctx, to, blobs)
+	tx, commitments, err := contracts.SendBlobTx(ctx, to, sidecar)
 	if err != nil {
 		log.Fatalf("send blob tx: %v", err)
 	}
@@ -99,7 +104,7 @@ func main() {
 
 	// Get blob by commitment
 	for i, c := range commitments {
-		blob, err := contracts.BlobByCommitment(ctx2, *capi, tx.Hash(), fmt.Sprintf("0x%x", c))
+		blob, err := contracts.BlobByCommitment(ctx2, tx.Hash(), fmt.Sprintf("0x%x", c))
 		if err != nil {
 			log.Errorf("get blob %d by commitment 0x%x: %v", i, c, err)
 			continue

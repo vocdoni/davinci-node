@@ -216,7 +216,7 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	}
 
 	// Initialize web3 contracts
-	services.Contracts, err = web3.New(w3rpc)
+	services.Contracts, err = web3.New(w3rpc, cfg.Web3.Capi)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize web3 client: %w", err)
 	}

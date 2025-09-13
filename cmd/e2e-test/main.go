@@ -35,6 +35,7 @@ import (
 
 const (
 	defaultNetwork       = "sep"
+	defaultCAPI          = "https://ethereum-sepolia-beacon-api.publicnode.com"
 	defaultSequencerHost = "0.0.0.0"
 	defaultSequencerPort = 8080
 )
@@ -60,6 +61,7 @@ func main() {
 	var (
 		privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
 		web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
+		consensusAPI                     = flag.String("consensusAPI", defaultCAPI, "web3 consensus API http endpoint")
 		organizationRegistryAddress      = flag.String("organizationRegistryAddress", defaultContracts.OrganizationRegistrySmartContract, "organization registry smart contract address")
 		processRegistryAddress           = flag.String("processRegistryAddress", defaultContracts.ProcessRegistrySmartContract, "process registry smart contract address")
 		stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", defaultContracts.StateTransitionZKVerifier, "state transition zk verifier smart contract address")
@@ -119,7 +121,7 @@ func main() {
 	)
 
 	// Intance contracts with the provided web3rpcs
-	contracts, err := web3.New(*web3rpcs)
+	contracts, err := web3.New(*web3rpcs, *consensusAPI)
 	if err != nil {
 		log.Fatal(err)
 	}

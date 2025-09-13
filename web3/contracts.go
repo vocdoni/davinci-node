@@ -54,14 +54,15 @@ type ContractABIs struct {
 
 // Contracts contains the bindings to the deployed contracts.
 type Contracts struct {
-	ChainID            uint64
-	ContractsAddresses *Addresses
-	ContractABIs       *ContractABIs
-	organizations      *npbindings.OrganizationRegistry
-	processes          *npbindings.ProcessRegistry
-	web3pool           *rpc.Web3Pool
-	cli                *rpc.Client
-	signer             *ethereum.Signer
+	ChainID                  uint64
+	ContractsAddresses       *Addresses
+	ContractABIs             *ContractABIs
+	Web3ConsensusAPIEndpoint string
+	organizations            *npbindings.OrganizationRegistry
+	processes                *npbindings.ProcessRegistry
+	web3pool                 *rpc.Web3Pool
+	cli                      *rpc.Client
+	signer                   *ethereum.Signer
 
 	currentBlock           uint64
 	currentBlockLastUpdate time.Time
@@ -75,7 +76,7 @@ type Contracts struct {
 
 // New creates a new Contracts instance with the given web3 endpoints.
 // It initializes the web3 pool and the client, and sets up the known processes
-func New(web3rpcs []string) (*Contracts, error) {
+func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 	w3pool := rpc.NewWeb3Pool()
 	var chainID *uint64
 	for _, rpc := range web3rpcs {
@@ -109,24 +110,30 @@ func New(web3rpcs []string) (*Contracts, error) {
 
 	log.Infow("web3 client initialized",
 		"chainID", *chainID,
+		"consensusAPI", web3cApi,
 		"lastBlock", lastBlock,
 		"numEndpoints", len(web3rpcs),
 		"numBlocksToWatch", maxPastBlocksToWatch,
 	)
 
+	if web3cApi == "" {
+		log.Warn("no consensus API endpoint provided, sync remote state will be disabled!")
+	}
+
 	// calculate the start block to watch
 	startBlock := max(int64(lastBlock)-maxPastBlocksToWatch, 0)
 
 	return &Contracts{
-		ChainID:                *chainID,
-		web3pool:               w3pool,
-		cli:                    cli,
-		knownProcesses:         make(map[string]struct{}),
-		knownOrganizations:     make(map[string]struct{}),
-		lastWatchProcessBlock:  uint64(startBlock),
-		lastWatchOrgBlock:      uint64(startBlock),
-		currentBlock:           lastBlock,
-		currentBlockLastUpdate: time.Now(),
+		ChainID:                  *chainID,
+		web3pool:                 w3pool,
+		cli:                      cli,
+		Web3ConsensusAPIEndpoint: web3cApi,
+		knownProcesses:           make(map[string]struct{}),
+		knownOrganizations:       make(map[string]struct{}),
+		lastWatchProcessBlock:    uint64(startBlock),
+		lastWatchOrgBlock:        uint64(startBlock),
+		currentBlock:             lastBlock,
+		currentBlockLastUpdate:   time.Now(),
 	}, nil
 }
 
