@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-apt install 
+# Install git (required for cloning contracts repo)
+apt-get update && apt-get install -y git
 
 # wait for Anvil’s RPC
 echo -n "⏳ Waiting for Anvil at anvil:8545"
@@ -51,19 +52,19 @@ head -n -5 foundry.toml > foundry.tmp && mv foundry.tmp foundry.toml
 cp .env.example .env
 
 export CHAIN_ID=1337
+export PRIVATE_KEY=${SEPOLIA_PRIVATE_KEY}
 
 forge clean && forge build
 
 forge script \
-  --chain-id 1337 \
   script/DeployAll.s.sol:DeployAllScript \
   --rpc-url http://anvil:8545 \
+  --chain-id 1337 \
   --broadcast \
   --slow \
   --optimize \
   --optimizer-runs 200 \
-  -- \
-  --vvvv
+  -vvvv
 
 # 4) extract addresses into JSON
 OUTPUT=/addresses.json
