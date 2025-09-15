@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	gpugroth16 "github.com/consensys/gnark/backend/accelerated/icicle/groth16"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 	"github.com/vocdoni/davinci-node/log"
@@ -29,6 +30,8 @@ import (
 // set to a different path if needed from other packages. Defaults to the
 // env var DAVINCI_ARTIFACTS_DIR or the user home directory.
 var BaseDir string
+
+var UseGPUAcceleration = true
 
 func init() {
 	if BaseDir == "" {
@@ -161,7 +164,12 @@ func (ca *CircuitArtifacts) CircuitDefinition() (constraint.ConstraintSystem, er
 	if ca.circuitDefinition == nil {
 		return nil, fmt.Errorf("circuit definition not loaded")
 	}
-	ccs := groth16.NewCS(ca.curve)
+	var ccs constraint.ConstraintSystem
+	if UseGPUAcceleration {
+		ccs = gpugroth16.NewCS(ca.curve)
+	} else {
+		ccs = groth16.NewCS(ca.curve)
+	}
 	_, err := ccs.ReadFrom(bytes.NewReader(ca.circuitDefinition.Content))
 	if err != nil {
 		return nil, fmt.Errorf("error reading circuit definition: %w", err)
@@ -175,7 +183,12 @@ func (ca *CircuitArtifacts) ProvingKey() (groth16.ProvingKey, error) {
 	if ca.provingKey == nil {
 		return nil, fmt.Errorf("proving key not loaded")
 	}
-	pk := groth16.NewProvingKey(ca.curve)
+	var pk groth16.ProvingKey
+	if UseGPUAcceleration {
+		pk = gpugroth16.NewProvingKey(ca.curve)
+	} else {
+		pk = groth16.NewProvingKey(ca.curve)
+	}
 	_, err := pk.UnsafeReadFrom(bytes.NewReader(ca.provingKey.Content))
 	if err != nil {
 		return nil, fmt.Errorf("error reading proving key: %w", err)
@@ -189,7 +202,12 @@ func (ca *CircuitArtifacts) VerifyingKey() (groth16.VerifyingKey, error) {
 	if ca.verifyingKey == nil {
 		return nil, fmt.Errorf("verifying key not loaded")
 	}
-	vk := groth16.NewVerifyingKey(ca.curve)
+	var vk groth16.VerifyingKey
+	if UseGPUAcceleration {
+		vk = gpugroth16.NewVerifyingKey(ca.curve)
+	} else {
+		vk = groth16.NewVerifyingKey(ca.curve)
+	}
 	_, err := vk.UnsafeReadFrom(bytes.NewReader(ca.verifyingKey.Content))
 	if err != nil {
 		return nil, fmt.Errorf("error reading verifying key: %w", err)
