@@ -7,6 +7,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
+	gpugroth16 "github.com/consensys/gnark/backend/accelerated/icicle/groth16"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
@@ -20,6 +21,7 @@ import (
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	teststatetransition "github.com/vocdoni/davinci-node/circuits/test/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -51,6 +53,24 @@ func DefaultProver(
 
 	// Generate the proof
 	return groth16.Prove(ccs, pk, witness, opts...)
+}
+
+// GPUProver is an implementation that uses GPU acceleration for proving.
+func GPUProver(
+	curve ecc.ID,
+	ccs constraint.ConstraintSystem,
+	pk groth16.ProvingKey,
+	assignment frontend.Circuit,
+	opts ...backend.ProverOption,
+) (groth16.Proof, error) {
+	// Create a witness from the circuit
+	witness, err := frontend.NewWitness(assignment, curve.ScalarField())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create witness: %w", err)
+	}
+	log.Debugw("using GPU prover", "curve", curve.String())
+	// Generate the proof using GPU acceleration
+	return gpugroth16.Prove(ccs, pk, witness, opts...)
 }
 
 // NewDebugProver creates a prover that runs test.IsSolved before normal proving.

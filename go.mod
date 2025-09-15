@@ -1,8 +1,10 @@
 module github.com/vocdoni/davinci-node
 
-go 1.24
+go 1.24.0
 
-replace github.com/consensys/gnark => github.com/vocdoni/gnark-no-assert v0.0.0-20250723103948-9e2777846d75
+toolchain go1.24.6
+
+replace github.com/consensys/gnark => github.com/vocdoni/gnark-no-assert v0.0.0-20250915072612-c497ea90fabd
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.3
@@ -11,7 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/consensys/gnark v0.13.0
-	github.com/consensys/gnark-crypto v0.18.0
+	github.com/consensys/gnark-crypto v0.19.0
 	github.com/crate-crypto/go-eth-kzg v1.3.0
 	github.com/ethereum/go-ethereum v1.16.1
 	github.com/frankban/quicktest v1.14.6
@@ -34,7 +36,7 @@ require (
 	github.com/vocdoni/davinci-contracts v0.0.0-20250912103256-246c3affaad0
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
 	go.mongodb.org/mongo-driver v1.12.1
-	golang.org/x/mod v0.26.0
+	golang.org/x/mod v0.27.0
 	golang.org/x/sync v0.16.0
 )
 
@@ -63,7 +65,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17 // indirect
 	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bits-and-blooms/bitset v1.22.0 // indirect
+	github.com/bits-and-blooms/bitset v1.24.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/buger/goterm v1.0.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -124,7 +126,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/pprof v0.0.0-20250630185457-6e76a2b096b5 // indirect
+	github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -140,7 +142,6 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/in-toto/in-toto-golang v0.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/ingonyama-zk/icicle-gnark/v3 v3.2.2 // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -249,13 +250,13 @@ require (
 	go.opentelemetry.io/proto/otlp v1.2.0 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.40.0 // indirect
-	golang.org/x/exp v0.0.0-20250717185816-542afb5b7346 // indirect
-	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/crypto v0.41.0 // indirect
+	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
+	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sys v0.34.0 // indirect
-	golang.org/x/term v0.33.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/term v0.34.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	google.golang.org/genproto v0.0.0-20240213162025-012b6fc9bca9 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240515191416-fc5f0ca64291 // indirect
