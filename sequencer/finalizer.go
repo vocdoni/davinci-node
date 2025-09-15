@@ -30,7 +30,7 @@ type finalizer struct {
 	stg              *storage.Storage
 	stateDB          db.Database
 	circuits         *internalCircuits // Internal circuit artifacts for proof generation and verification
-	prover           ProverFunc        // Function for generating zero-knowledge proofs
+	prover           types.ProverFunc  // Function for generating zero-knowledge proofs
 	OndemandCh       chan *types.ProcessID
 	invalidProcesses map[string]struct{} // Cache of invalid processes to avoid re-processing
 	wg               sync.WaitGroup
@@ -40,7 +40,7 @@ type finalizer struct {
 }
 
 // New creates a new Finalizer instance.
-func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, prover ProverFunc) *finalizer {
+func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, prover types.ProverFunc) *finalizer {
 	// Default prover function if none is provided
 	if prover == nil {
 		prover = GPUProver

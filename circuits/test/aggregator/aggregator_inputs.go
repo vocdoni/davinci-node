@@ -140,7 +140,7 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 		Proofs:             proofs,
 	}
 	// fill assignments with dummy values
-	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballottest.TestCircomVerificationKey, nValidVotes)
+	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballottest.TestCircomVerificationKey, nValidVotes, nil)
 	c.Assert(err, qt.IsNil, qt.Commentf("fill with dummy values"))
 
 	// fix the vote verifier verification key

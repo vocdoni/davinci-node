@@ -26,16 +26,6 @@ import (
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
-// ProverFunc defines a function type that matches the signature needed for zkSNARK proving
-// in the Sequencer package. The function is generic enough to handle all circuit types.
-type ProverFunc func(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	assignment frontend.Circuit,
-	opts ...backend.ProverOption,
-) (groth16.Proof, error)
-
 // DefaultProver is the standard implementation that simply calls groth16.Prove directly.
 // This is used in production environments.
 func DefaultProver(
@@ -80,7 +70,7 @@ func GPUProver(
 //   - t: The testing.T instance from the test
 //
 // Returns a ProverFunc that will execute test.IsSolved and then groth16.Prove
-func NewDebugProver(t *testing.T) ProverFunc {
+func NewDebugProver(t *testing.T) types.ProverFunc {
 	return func(
 		curve ecc.ID,
 		ccs constraint.ConstraintSystem,
@@ -166,6 +156,6 @@ func NewDebugProver(t *testing.T) ProverFunc {
 
 // SetProver sets a custom prover function for the Sequencer.
 // This is particularly useful for tests that need to debug circuit execution.
-func (s *Sequencer) SetProver(p ProverFunc) {
+func (s *Sequencer) SetProver(p types.ProverFunc) {
 	s.prover = p
 }

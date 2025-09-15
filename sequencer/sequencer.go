@@ -39,9 +39,9 @@ type Sequencer struct {
 	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
 	ctx                context.Context
 	cancel             context.CancelFunc
-	pids               *ProcessIDMap // Maps process IDs to their last update time
-	workInProgressLock sync.RWMutex  // Lock to block new work while processing a batch or a state transition
-	prover             ProverFunc    // Function for generating zero-knowledge proofs
+	pids               *ProcessIDMap    // Maps process IDs to their last update time
+	workInProgressLock sync.RWMutex     // Lock to block new work while processing a batch or a state transition
+	prover             types.ProverFunc // Function for generating zero-knowledge proofs
 	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
 	// If this time elapses, the batch will be processed even if not full.
 	batchTimeWindow time.Duration
