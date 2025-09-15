@@ -32,7 +32,7 @@ import (
 type CSP interface {
 	SetSeed(seed []byte) error
 	CensusOrigin() types.CensusOrigin
-	CensusRoot() types.HexBytes
+	CensusRoot() *types.CensusRoot
 	GenerateProof(processID *types.ProcessID, address common.Address) (*types.CensusProof, error)
 	VerifyProof(proof *types.CensusProof) error
 }

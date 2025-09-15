@@ -249,5 +249,5 @@ func CensusProofCSP(votersData []VoterTestData, processID *types.ProcessID, cens
 		cspProofs = append(cspProofs, *gnarkCSPProof)
 	}
 	root := eddsaCSP.CensusRoot()
-	return root.BigInt().MathBigInt(), emulatedSiblings, cspProofs, nil
+	return root.Root.BigInt().MathBigInt(), emulatedSiblings, cspProofs, nil
 }

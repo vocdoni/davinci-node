@@ -374,7 +374,7 @@ func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.Cen
 		c.Assert(err, qt.IsNil)
 		root := eddsaCSP.CensusRoot()
 		c.Assert(root, qt.IsNotNil)
-		return root, censusParticipants.Participants, signers
+		return root.Root, censusParticipants.Participants, signers
 	} else {
 		// Create a new census in the sequencer
 		body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewCensusEndpoint)
@@ -396,7 +396,7 @@ func createCensus(c *qt.C, cli *client.HTTPclient, size int) ([]byte, []*api.Cen
 		c.Assert(err, qt.IsNil)
 		c.Assert(code, qt.Equals, http.StatusOK)
 
-		var rootResp api.CensusRoot
+		var rootResp types.CensusRoot
 		err = json.NewDecoder(bytes.NewReader(body)).Decode(&rootResp)
 		c.Assert(err, qt.IsNil)
 		return rootResp.Root, censusParticipants.Participants, signers

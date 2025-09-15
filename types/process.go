@@ -330,6 +330,11 @@ type CensusProof struct {
 	Signature HexBytes `json:"signature,omitempty"`
 }
 
+// CensusRoot represents the census root used in a voting process.
+type CensusRoot struct {
+	Root HexBytes `json:"root"`
+}
+
 // Valid checks that the CensusProof is well-formed
 func (cp *CensusProof) Valid() bool {
 	if cp == nil {

@@ -103,7 +103,7 @@ func (a *API) getCensusParticipants(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httpWriteJSON(w, map[string]interface{}{
+	httpWriteJSON(w, map[string]any{
 		"participants": participants,
 	})
 }
@@ -121,8 +121,8 @@ func (a *API) getCensusRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpWriteJSON(w, map[string]types.HexBytes{
-		"root": types.HexBytes(ref.Root()),
+	httpWriteJSON(w, types.CensusRoot{
+		Root: ref.Root(),
 	})
 }
 
@@ -144,7 +144,7 @@ func (a *API) getCensusSize(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidCensusID.WithErr(err).Write(w)
 		return
 	}
-	httpWriteJSON(w, map[string]interface{}{
+	httpWriteJSON(w, map[string]any{
 		"size": size,
 	})
 }

@@ -394,7 +394,7 @@ func createCensus(cli *client.HTTPclient, size int) ([]byte, []*ethereum.Signer,
 	}
 
 	// Decode census root
-	var rootResp api.CensusRoot
+	var rootResp types.CensusRoot
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&rootResp); err != nil {
 		return nil, nil, fmt.Errorf("failed to decode census root response: %v", err)
 	}

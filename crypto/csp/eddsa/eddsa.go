@@ -85,7 +85,7 @@ func (c *EdDSA) CensusOrigin() types.CensusOrigin {
 // to compute the hash. If the EdDSA signer is not initialized or the public
 // key can not be converted to censusRoot for the instance curve, it returns
 // nil.
-func (c *EdDSA) CensusRoot() types.HexBytes {
+func (c *EdDSA) CensusRoot() *types.CensusRoot {
 	if c.signer == nil {
 		return nil
 	}
@@ -93,7 +93,9 @@ func (c *EdDSA) CensusRoot() types.HexBytes {
 	if err != nil {
 		return nil
 	}
-	return censusRoot
+	return &types.CensusRoot{
+		Root: censusRoot,
+	}
 }
 
 // GenerateProof generates a census proof for the given process ID and
