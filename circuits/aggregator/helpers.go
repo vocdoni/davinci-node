@@ -34,7 +34,7 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 	var dummyProof groth16.Proof
 
 	if proverFn == nil {
-		witness, err := frontend.NewWitness(assignment, circuits.AggregatorCurve.ScalarField())
+		witness, err := frontend.NewWitness(assignment, circuits.VoteVerifierCurve.ScalarField())
 		if err != nil {
 			return fmt.Errorf("failed to create witness: %w", err)
 		}
@@ -51,7 +51,7 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 
 		// generate dummy proof
 		dummyProof, err = proverFn(
-			circuits.AggregatorCurve,
+			circuits.VoteVerifierCurve,
 			mainCCS,
 			mainPk,
 			assignment,
