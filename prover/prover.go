@@ -1,4 +1,4 @@
-package sequencer
+package prover
 
 import (
 	"fmt"
@@ -26,9 +26,24 @@ import (
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
-// DefaultProver is the standard implementation that simply calls groth16.Prove directly.
-// This is used in production environments.
+// DefaultProver returns the default prover function.
+// It uses the GPU prover if UseGPUProver is true, otherwise it uses the CPU prover.
 func DefaultProver(
+	curve ecc.ID,
+	ccs constraint.ConstraintSystem,
+	pk groth16.ProvingKey,
+	assignment frontend.Circuit,
+	opts ...backend.ProverOption,
+) (groth16.Proof, error) {
+	if types.UseGPUProver {
+		return GPUProver(curve, ccs, pk, assignment, opts...)
+	}
+	return CPUProver(curve, ccs, pk, assignment, opts...)
+}
+
+// CPUProver is the standard implementation that simply calls groth16.Prove directly.
+// This is used in production environments.
+func CPUProver(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
 	pk groth16.ProvingKey,
@@ -152,10 +167,4 @@ func NewDebugProver(t *testing.T) types.ProverFunc {
 		t.Logf("running groth16.Prove for %T", assignment)
 		return groth16.Prove(ccs, pk, witness, opts...)
 	}
-}
-
-// SetProver sets a custom prover function for the Sequencer.
-// This is particularly useful for tests that need to debug circuit execution.
-func (s *Sequencer) SetProver(p types.ProverFunc) {
-	s.prover = p
 }

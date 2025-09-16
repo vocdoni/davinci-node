@@ -16,6 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -40,17 +41,17 @@ type finalizer struct {
 }
 
 // New creates a new Finalizer instance.
-func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, prover types.ProverFunc) *finalizer {
+func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, proverFn types.ProverFunc) *finalizer {
 	// Default prover function if none is provided
-	if prover == nil {
-		prover = GPUProver
+	if proverFn == nil {
+		proverFn = prover.DefaultProver
 	}
 	// We'll create the context in Start() now to avoid premature cancellation
 	return &finalizer{
 		stg:              stg,
 		stateDB:          stateDB,
 		circuits:         ca,
-		prover:           prover,
+		prover:           proverFn,
 		OndemandCh:       make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
 		invalidProcesses: make(map[string]struct{}),
 	}

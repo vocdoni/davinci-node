@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
@@ -83,7 +84,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		contracts:       contracts,
 		batchTimeWindow: batchTimeWindow,
 		pids:            NewProcessIDMap(),
-		prover:          GPUProver,
+		prover:          prover.DefaultProver,
 	}
 	// Load the internal circuits
 	if err := s.loadInternalCircuitArtifacts(); err != nil {
@@ -165,6 +166,12 @@ func (s *Sequencer) Stop() error {
 		log.Infow("sequencer stopped")
 	}
 	return nil
+}
+
+// SetProver sets a custom prover function for the Sequencer.
+// This is particularly useful for tests that need to debug circuit execution.
+func (s *Sequencer) SetProver(p types.ProverFunc) {
+	s.prover = p
 }
 
 // workerMode checks if the sequencer is in worker mode and also if the worker

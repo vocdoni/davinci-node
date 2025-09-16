@@ -31,8 +31,6 @@ import (
 // env var DAVINCI_ARTIFACTS_DIR or the user home directory.
 var BaseDir string
 
-var UseGPUAcceleration = true
-
 func init() {
 	if BaseDir == "" {
 		if dir := os.Getenv("DAVINCI_ARTIFACTS_DIR"); dir != "" {
@@ -165,7 +163,7 @@ func (ca *CircuitArtifacts) CircuitDefinition() (constraint.ConstraintSystem, er
 		return nil, fmt.Errorf("circuit definition not loaded")
 	}
 	var ccs constraint.ConstraintSystem
-	if UseGPUAcceleration {
+	if types.UseGPUProver {
 		ccs = gpugroth16.NewCS(ca.curve)
 	} else {
 		ccs = groth16.NewCS(ca.curve)
@@ -184,7 +182,7 @@ func (ca *CircuitArtifacts) ProvingKey() (groth16.ProvingKey, error) {
 		return nil, fmt.Errorf("proving key not loaded")
 	}
 	var pk groth16.ProvingKey
-	if UseGPUAcceleration {
+	if types.UseGPUProver {
 		pk = gpugroth16.NewProvingKey(ca.curve)
 	} else {
 		pk = groth16.NewProvingKey(ca.curve)
@@ -203,7 +201,7 @@ func (ca *CircuitArtifacts) VerifyingKey() (groth16.VerifyingKey, error) {
 		return nil, fmt.Errorf("verifying key not loaded")
 	}
 	var vk groth16.VerifyingKey
-	if UseGPUAcceleration {
+	if types.UseGPUProver {
 		vk = gpugroth16.NewVerifyingKey(ca.curve)
 	} else {
 		vk = groth16.NewVerifyingKey(ca.curve)

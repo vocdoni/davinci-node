@@ -38,6 +38,7 @@ func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 	// generate proof
 	assert := test.NewAssert(t)
 	now := time.Now()
+
 	assert.SolvingSucceeded(&placeholder, &assignments[0],
 		test.WithCurves(ecc.BLS12_377),
 		test.WithBackends(backend.GROTH16))

@@ -30,6 +30,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/storage"
@@ -328,7 +329,7 @@ func NewTestService(
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
 		logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 		// Create a debug prover that will debug circuit execution during testing
-		services.Sequencer.SetProver(sequencer.NewDebugProver(t))
+		services.Sequencer.SetProver(prover.NewDebugProver(t))
 	} else {
 		t.Log("Debug prover is disabled! Set DEBUG=true to enable it.")
 	}
