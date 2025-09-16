@@ -11,16 +11,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	gtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	vbindings "github.com/vocdoni/davinci-contracts/golang-types/verifiers"
 	"github.com/vocdoni/davinci-node/config"
-	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	ethSigner "github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3/rpc"
@@ -62,7 +64,7 @@ type Contracts struct {
 	processes                *npbindings.ProcessRegistry
 	web3pool                 *rpc.Web3Pool
 	cli                      *rpc.Client
-	signer                   *ethereum.Signer
+	signer                   *ethSigner.Signer
 
 	currentBlock           uint64
 	currentBlockLastUpdate time.Time
@@ -343,7 +345,7 @@ func (c *Contracts) AddWeb3Endpoint(web3rpc string) error {
 
 // SetAccountPrivateKey sets the private key to be used for signing transactions.
 func (c *Contracts) SetAccountPrivateKey(hexPrivKey string) error {
-	signer, err := ethereum.NewSignerFromHex(hexPrivKey)
+	signer, err := ethSigner.NewSignerFromHex(hexPrivKey)
 	if err != nil {
 		return fmt.Errorf("failed to add private key: %w", err)
 	}
@@ -387,10 +389,8 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 		return nil, fmt.Errorf("no private key set")
 	}
 	bChainID := new(big.Int).SetUint64(c.ChainID)
-	auth, err := bind.NewKeyedTransactorWithChainID((*ecdsa.PrivateKey)(c.signer), bChainID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transactor: %w", err)
-	}
+	auth := bind.NewKeyedTransactor((*ecdsa.PrivateKey)(c.signer), bChainID)
+
 	// create the context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -406,16 +406,34 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 // dev note: this is a temporary method to simulate contract calls
 // it works on geth but not expected to work on other clients or external rpc providers
 // SimulateContractCall simulates a contract call using the eth_simulateV1 RPC method.
+// If blobsSidecar is provided, it will simulate an EIP4844 transaction with blob data.
+// If blobsSidecar is nil, it will simulate a regular contract call.
 func (c *Contracts) SimulateContractCall(
 	ctx context.Context,
 	contractAddr common.Address,
 	contractABI *abi.ABI,
-	method string, args ...any,
+	method string,
+	blobsSidecar *gtypes.BlobTxSidecar,
+	args ...any,
 ) error {
+	if contractABI == nil {
+		return fmt.Errorf("nil contract ABI")
+	}
+	if (contractAddr == common.Address{}) {
+		return fmt.Errorf("empty contract address")
+	}
+	if method == "" {
+		return fmt.Errorf("empty method")
+	}
+	if c.signer == nil {
+		return fmt.Errorf("no signer defined")
+	}
+
 	data, err := contractABI.Pack(method, args...)
 	if err != nil {
 		return fmt.Errorf("pack %s: %w", method, err)
 	}
+
 	auth, err := c.authTransactOpts()
 	if err != nil {
 		return fmt.Errorf("failed to create transactor: %w", err)
@@ -425,16 +443,36 @@ func (c *Contracts) SimulateContractCall(
 	if err != nil {
 		return fmt.Errorf("failed to get gas price: %w", err)
 	}
+
+	call := Call{
+		From:     c.signer.Address(),
+		To:       contractAddr,
+		Data:     data,
+		GasPrice: (*hexutil.Big)(auth.GasPrice),
+		Nonce:    hexutil.Uint64(auth.Nonce.Uint64()),
+	}
+
+	if blobsSidecar != nil {
+		call.BlobHashes = blobsSidecar.BlobHashes()
+		call.Sidecar = blobsSidecar
+
+		gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
+			From:       c.signer.Address(),
+			To:         &contractAddr,
+			Value:      nil,
+			Data:       data,
+			BlobHashes: blobsSidecar.BlobHashes(),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to estimate gas: %w", err)
+		}
+		call.Gas = hexutil.Uint64(gas)
+	}
+
 	simReq := SimulationRequest{
 		BlockStateCalls: []BlockStateCall{
 			{
-				Calls: []Call{{
-					From:     c.signer.Address(),
-					To:       contractAddr,
-					Data:     data,
-					GasPrice: (*hexutil.Big)(big.NewInt(auth.GasPrice.Int64())),
-					Nonce:    hexutil.Uint64(auth.Nonce.Uint64()),
-				}},
+				Calls: []Call{call},
 			},
 		},
 		Validation:             true,
@@ -449,13 +487,14 @@ func (c *Contracts) SimulateContractCall(
 	if len(simBlocks) == 0 || len(simBlocks[0].Calls) == 0 {
 		return fmt.Errorf("no simulation result")
 	}
-	call := simBlocks[0].Calls[0]
-	if call.Status == "0x1" {
+
+	callResult := simBlocks[0].Calls[0]
+	if callResult.Status == "0x1" {
 		// success, nothing to do
 		return nil
 	}
 
-	reason, uerr := c.decodeRevert(call.Error.Data)
+	reason, uerr := c.decodeRevert(callResult.Error.Data)
 	if uerr != nil {
 		return fmt.Errorf("call reverted; failed to unpack reason: %w", uerr)
 	}
