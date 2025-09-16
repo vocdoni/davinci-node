@@ -9,10 +9,14 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
+	gpugroth16 "github.com/consensys/gnark/backend/accelerated/icicle/groth16"
+	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
 	"github.com/rs/zerolog"
+	"github.com/vocdoni/davinci-node/circuits"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -35,7 +39,34 @@ func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 			Address: s.Address(),
 		},
 	}, processID, types.CensusOriginMerkleTree)
-	// generate proof
+
+	// compile the circuit
+	startTime := time.Now()
+	t.Logf("compiling circuit...")
+	css, err := frontend.Compile(circuits.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, &placeholder)
+	c.Assert(err, qt.IsNil)
+	t.Logf("circuit compiled, tooks %s", time.Since(startTime).String())
+
+	t.Logf("setting up...")
+	pk, vk, err := gpugroth16.Setup(css)
+	c.Assert(err, qt.IsNil)
+
+	witness, err := frontend.NewWitness(&assignments[0], ecc.BLS12_377.ScalarField())
+	c.Assert(err, qt.IsNil)
+
+	startTime = time.Now()
+	proof, err := gpugroth16.Prove(css, pk, witness)
+	c.Assert(err, qt.IsNil)
+	t.Logf("proof generated, tooks %s", time.Since(startTime).String())
+
+	// verify proof
+	t.Logf("verifying...")
+	publicWitness, err := witness.Public()
+	c.Assert(err, qt.IsNil)
+	err = gpugroth16.Verify(proof, vk, publicWitness)
+	c.Assert(err, qt.IsNil)
+
+	// Assert
 	assert := test.NewAssert(t)
 	now := time.Now()
 
