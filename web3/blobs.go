@@ -15,6 +15,7 @@ import (
 	kzg4844 "github.com/crate-crypto/go-eth-kzg"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -114,6 +115,68 @@ func (c *Contracts) SendBlobTx(
 		commitments = append(commitments, c[:])
 	}
 	return signed, commitments, nil
+}
+
+// NewEIP4844Transaction ABI-encodes (method,args), attaches blob sidecar, and signs a type-3 tx.
+func (c *Contracts) NewEIP4844Transaction(
+	ctx context.Context,
+	to common.Address,
+	contractABI *abi.ABI,
+	method string,
+	args []any,
+	blobsSidecar *types.BlobTxSidecar,
+) (*types.Transaction, error) {
+	if contractABI == nil {
+		return nil, fmt.Errorf("nil contract ABI")
+	}
+	if (to == common.Address{}) {
+		return nil, fmt.Errorf("empty to address")
+	}
+	if method == "" {
+		return nil, fmt.Errorf("empty method")
+	}
+	if c.signer == nil {
+		return nil, fmt.Errorf("no signer defined")
+	}
+
+	data, err := contractABI.Pack(method, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
+		From:       c.AccountAddress(),
+		To:         &to,
+		Value:      nil,
+		Data:       data,
+		BlobHashes: blobsSidecar.BlobHashes(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	nonce, err := c.cli.PendingNonceAt(ctx, c.AccountAddress())
+	if err != nil {
+		return nil, err
+	}
+
+	cID := new(big.Int).SetUint64(c.ChainID)
+	inner := &types.BlobTx{
+		ChainID:    uint256.MustFromBig(cID),
+		Nonce:      nonce,
+		Gas:        gas,
+		To:         to,
+		Data:       data,
+		BlobHashes: blobsSidecar.BlobHashes(),
+		Sidecar:    blobsSidecar,
+	}
+
+	signedTx, err := types.SignNewTx((*ecdsa.PrivateKey)(c.signer), types.NewCancunSigner(cID), inner)
+	if err != nil {
+		return nil, err
+	}
+
+	return signedTx, nil
 }
 
 // BuildBlobsSidecar converts raw blobs -> commitments/proofs using crate-crypto.

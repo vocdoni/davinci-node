@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -123,28 +122,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 ) error {
 	var pid32 [32]byte
 	copy(pid32[:], processID)
-	// First, send the blob on-chain
-	log.Infow("submitting kzg4844 blob to the contract", "pid", hex.EncodeToString(processID))
-	ctx, cancel := context.WithTimeout(s.ctx, time.Minute)
-	defer cancel()
-	tx, commitments, err := s.contracts.SendBlobTx(ctx, s.contracts.ContractsAddresses.StateTransitionZKVerifier, blobSidecar)
-	if err != nil {
-		return fmt.Errorf("failed to send blob tx: %w", err)
-	}
-	log.Infow("blob tx sent",
-		"hash", tx.Hash().Hex(),
-		"commitment", fmt.Sprintf("0x%x", commitments[0]),
-		"from", s.contracts.AccountAddress().Hex(),
-		"to", s.contracts.ContractsAddresses.StateTransitionZKVerifier.Hex())
 
-	// Wait for the blob tx to be mined
-	if err := s.contracts.WaitTx(tx.Hash(), time.Minute); err != nil {
-		return fmt.Errorf("failed to wait for blob tx: %w", err)
-	}
-	log.Infow("blob tx mined", "hash", tx.Hash().Hex())
-
-	// Now we can submit the state transition
-	// convert the proof to a solidity proof
 	abiProof, err := proof.ABIEncode()
 	if err != nil {
 		return fmt.Errorf("failed to encode proof: %w", err)
@@ -168,6 +146,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 		s.contracts.ContractsAddresses.ProcessRegistry,
 		s.contracts.ContractABIs.ProcessRegistry,
 		"submitStateTransition",
+		blobSidecar,
 		pid32,
 		abiProof,
 		abiInputs,
@@ -181,7 +160,7 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	txHash, err := s.contracts.SetProcessTransition(processID,
 		abiProof,
 		abiInputs,
-		(*types.BigInt)(inputs.RootHashBefore),
+		blobSidecar,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to submit state transition: %w", err)
@@ -244,6 +223,7 @@ func (s *Sequencer) processResultsOnChain() {
 			s.contracts.ContractsAddresses.ProcessRegistry,
 			s.contracts.ContractABIs.ProcessRegistry,
 			"setProcessResults",
+			nil, // No blob sidecar for regular contract calls
 			pid32,
 			abiProof,
 			abiInputs,
@@ -266,7 +246,7 @@ func (s *Sequencer) processResultsOnChain() {
 			}
 
 			// submit the proof to the contract
-			txHash, err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs)
+			txHash, err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs, nil) // TODO: add blob sidecar
 			if err != nil {
 				lastErr = err
 				log.Warnw("failed to upload verified results",

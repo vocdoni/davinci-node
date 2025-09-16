@@ -8,6 +8,7 @@ import (
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
+	gtypes "github.com/ethereum/go-ethereum/core/types"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
@@ -118,37 +119,85 @@ func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, oldRoot *types.BigInt) (*common.Hash, error) {
+func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (*common.Hash, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-	autOpts, err := c.authTransactOpts()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transact options: %w", err)
+	if blobsSidecar == nil { // Regular transaction if no blobs are provided
+		autOpts, err := c.authTransactOpts()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create transact options: %w", err)
+		}
+		autOpts.Context = ctx
+		tx, err := c.processes.SubmitStateTransition(autOpts, pid, proof, inputs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to submit state transition: %w", err)
+		}
+		hash := tx.Hash()
+		return &hash, nil
 	}
-	autOpts.Context = ctx
-	tx, err := c.processes.SubmitStateTransition(autOpts, pid, proof, inputs)
+
+	processABI, err := c.ProcessRegistryABI()
 	if err != nil {
-		return nil, fmt.Errorf("failed to submit state transition: %w", err)
+		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+	}
+	tx, err := c.NewEIP4844Transaction(
+		ctx,
+		c.ContractsAddresses.ProcessRegistry,
+		processABI,
+		"submitStateTransition",
+		[]any{pid, proof, inputs},
+		blobsSidecar,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
+	}
+
+	if err := c.cli.SendTransaction(ctx, tx); err != nil {
+		return nil, fmt.Errorf("failed to submit state transition (EIP-4844 Tx): %w", err)
 	}
 	hash := tx.Hash()
 	return &hash, nil
 }
 
-func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (*common.Hash, error) {
+func (c *Contracts) SetProcessResults(processID, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (*common.Hash, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-	autOpts, err := c.authTransactOpts()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transact options: %w", err)
+	if blobsSidecar == nil { // Regular transaction if no blobs are provided
+		autOpts, err := c.authTransactOpts()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create transact options: %w", err)
+		}
+		autOpts.Context = ctx
+		tx, err := c.processes.SetProcessResults(autOpts, pid, proof, inputs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set process results: %w", err)
+		}
+		hash := tx.Hash()
+		return &hash, nil
 	}
-	autOpts.Context = ctx
-	tx, err := c.processes.SetProcessResults(autOpts, pid, proof, inputs)
+
+	processABI, err := c.ProcessRegistryABI()
 	if err != nil {
-		return nil, fmt.Errorf("failed to set process results: %w", err)
+		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+	}
+	tx, err := c.NewEIP4844Transaction(
+		ctx,
+		c.ContractsAddresses.ProcessRegistry,
+		processABI,
+		"setProcessResults",
+		[]any{pid, proof, inputs},
+		blobsSidecar,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
+	}
+
+	if err := c.cli.SendTransaction(ctx, tx); err != nil {
+		return nil, fmt.Errorf("failed to set process results (EIP-4844 Tx): %w", err)
 	}
 	hash := tx.Hash()
 	return &hash, nil
