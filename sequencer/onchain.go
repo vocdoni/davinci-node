@@ -71,10 +71,10 @@ func (s *Sequencer) processTransitionOnChain() {
 			log.Errorw(err, "failed to get remote state root for: "+hex.EncodeToString(pid))
 			return true // Continue to next process ID
 		}
-		thisStateRoot := batch.Inputs.RootHashBefore
-		if remoteStateRoot.MathBigInt().Cmp(thisStateRoot) != 0 {
+		localStateRoot := batch.Inputs.RootHashBefore
+		if remoteStateRoot.MathBigInt().Cmp(localStateRoot) != 0 {
 			log.Errorw(fmt.Errorf("state root mismatch for processId %s: local %s != remote %s",
-				hex.EncodeToString(pid), thisStateRoot.String(), remoteStateRoot.String()), "could not push state transition to contract")
+				hex.EncodeToString(pid), localStateRoot.String(), remoteStateRoot.String()), "could not push state transition to contract")
 			// TODO: we should probably mark the batch as failed and not retry forever
 			return true // Continue to next process ID
 		}
@@ -83,12 +83,22 @@ func (s *Sequencer) processTransitionOnChain() {
 		solidityCommitmentProof := new(solidity.Groth16CommitmentProof)
 		if err := solidityCommitmentProof.FromGnarkProof(batch.Proof); err != nil {
 			log.Errorw(err, "failed to convert gnark proof to solidity proof")
+			// reset the state root to the previous one
+			processID := new(types.ProcessID).SetBytes(batch.ProcessID)
+			if err := s.setProcessStateRoot(processID, batch.Inputs.RootHashBefore); err != nil {
+				log.Errorw(err, "failed to reset state root after failed transition")
+			}
 			return true // Continue to next process ID
 		}
 
 		// send the proof to the contract with the public witness
-		if err := s.pushTransitionToContract([]byte(pid), solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
+		if err := s.pushTransitionToContract(pid, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
 			log.Errorw(err, "failed to push to contract")
+			// reset the state root to the previous one
+			processID := new(types.ProcessID).SetBytes(batch.ProcessID)
+			if err := s.setProcessStateRoot(processID, batch.Inputs.RootHashBefore); err != nil {
+				log.Errorw(err, "failed to reset state root after failed transition")
+			}
 			return true // Continue to next process ID
 		}
 		// update the process state with the new root hash and the vote counts atomically
@@ -99,6 +109,11 @@ func (s *Sequencer) processTransitionOnChain() {
 			return nil
 		}); err != nil {
 			log.Errorw(err, "failed to update process data")
+			// reset the state root to the previous one
+			processID := new(types.ProcessID).SetBytes(batch.ProcessID)
+			if err := s.setProcessStateRoot(processID, batch.Inputs.RootHashBefore); err != nil {
+				log.Errorw(err, "failed to reset state root after failed transition")
+			}
 			return true // Continue to next process ID
 		}
 		log.Infow("process state root updated",
@@ -108,6 +123,11 @@ func (s *Sequencer) processTransitionOnChain() {
 		// mark the batch as done
 		if err := s.stg.MarkStateTransitionBatchDone(batchID, pid); err != nil {
 			log.Errorw(err, "failed to mark state transition batch as done")
+			// reset the state root to the previous one
+			processID := new(types.ProcessID).SetBytes(batch.ProcessID)
+			if err := s.setProcessStateRoot(processID, batch.Inputs.RootHashBefore); err != nil {
+				log.Errorw(err, "failed to reset state root after failed transition")
+			}
 			return true // Continue to next process ID
 		}
 		// update the last update time by re-adding the process ID
