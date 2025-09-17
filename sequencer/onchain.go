@@ -129,6 +129,12 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	if err != nil {
 		return fmt.Errorf("failed to encode proof: %w", err)
 	}
+	
+	if blobSidecar != nil {
+		inputs.BlobComitment = blobSidecar.Commitments[0]
+		inputs.BlobProof = blobSidecar.Proofs[0]
+	}
+	
 	abiInputs, err := inputs.ABIEncode()
 	if err != nil {
 		return fmt.Errorf("failed to encode inputs: %w", err)
