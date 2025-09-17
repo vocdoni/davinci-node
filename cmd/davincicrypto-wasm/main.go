@@ -4,7 +4,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"syscall/js"
 
@@ -40,11 +39,11 @@ func generateProofInputs(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("Error generating circom inputs: %v", err))
 	}
 	// encode result to json to return it
-	bRes, err := json.Marshal(circomInputs)
+	res, err := JSObject(circomInputs)
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error marshaling result: %v", err.Error()))
 	}
-	return JSResult(string(bRes))
+	return JSResult(res)
 }
 
 func cspCensusRoot(args []js.Value) any {
@@ -72,11 +71,11 @@ func cspCensusRoot(args []js.Value) any {
 	}
 	censusRoot := csp.CensusRoot()
 	// encode the census root to json to return it
-	bRes, err := json.Marshal(censusRoot)
+	res, err := JSObject(censusRoot)
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error marshaling result: %v", err.Error()))
 	}
-	return JSResult(string(bRes))
+	return JSResult(res)
 }
 
 func cspSign(args []js.Value) any {
@@ -124,11 +123,11 @@ func cspSign(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("Error generating census proof: %v", err))
 	}
 	// encode the census proof to json to return it
-	bRes, err := json.Marshal(cspProof)
+	res, err := JSObject(cspProof)
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error marshaling result: %v", err.Error()))
 	}
-	return JSResult(string(bRes))
+	return JSResult(res)
 }
 
 func cspVerify(args []js.Value) any {
