@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
+
 	ethereumtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/solidity"
@@ -138,6 +140,12 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 		"abiInputs", hex.EncodeToString(abiInputs),
 		"strProof", proof.String(),
 		"strInputs", inputs.String())
+
+	// Verify the blob proof locally before sending to the contract
+	if err := gethkzg.VerifyBlobProof(&blobSidecar.Blobs[0], blobSidecar.Commitments[0], blobSidecar.Proofs[0]); err != nil {
+		return fmt.Errorf("local blob proof verification failed: %w", err)
+	}
+	log.Debugw("local blob proof verification succeeded")
 
 	// Simulate tx to the contract to check if it will fail and get the root
 	// cause of the failure if it does

@@ -62,12 +62,25 @@ type BlobEvalData struct {
 // Computes the KZG proof and sets the relevant fields.
 // It returns itself for chaining.
 func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, error) {
-	// Compute the proof
-	proof, claim, err := ComputeProof(blob, z)
+	// Set commitment first
+	commitment, err := BlobToCommitment(blob)
 	if err != nil {
 		return nil, err
 	}
-	b.Proof = proof
+	b.Commitment = commitment
+
+	// Compute the point evaluation proof to get the claim (y value)
+	_, claim, err := ComputeProof(blob, z)
+	if err != nil {
+		return nil, err
+	}
+
+	// Compute the blob commitment proof for EIP-4844 transactions
+	blobProof, err := kzgContext.ComputeBlobKZGProof(blob, commitment, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute blob KZG proof: %w", err)
+	}
+	b.Proof = blobProof // Use blob proof for EIP-4844 compatibility
 
 	// Set evaluation point (y)
 	b.Y = new(big.Int).SetBytes(claim[:])
@@ -90,13 +103,6 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, erro
 	// Set evaluation point (z)
 	b.ForGnark.Z = z
 	b.Z = new(big.Int).Set(z)
-
-	// Set commitment
-	commitment, err := BlobToCommitment(blob)
-	if err != nil {
-		return nil, err
-	}
-	b.Commitment = commitment
 
 	// Convert blob to gnark circuit format
 	for i := range FieldElementsPerBlob {
