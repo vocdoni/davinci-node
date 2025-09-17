@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"testing"
 
-	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	kzg4844 "github.com/crate-crypto/go-eth-kzg"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
@@ -499,20 +498,11 @@ func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit *big.Int, proo
 	maxZ := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1))
 	c.Assert(z.Cmp(maxZ) <= 0, qt.IsTrue, qt.Commentf("z value exceeds 250-bit range"))
 
-	// Verify blob commitment proof (EIP-4844 style)
-	// Note: The stored proof is now a blob commitment proof, not a point evaluation proof
-	// We verify that it's a valid blob commitment proof by recomputing it
-	kzgContext, err := goethkzg.NewContext4096Secure()
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to create KZG context"))
+	// Verify KZG proof
+	recomputedProof, claim, err := blobs.ComputeProof(blob, z)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute KZG proof"))
 
-	recomputedBlobProof, err := kzgContext.ComputeBlobKZGProof(blob, recomputedCommit, 0)
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute blob KZG proof"))
-
-	c.Assert(proof, qt.Equals, recomputedBlobProof, qt.Commentf("Blob KZG proof mismatch"))
-
-	// Verify point evaluation still works for the y value
-	_, claim, err := blobs.ComputeProof(blob, z)
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to compute point evaluation"))
+	c.Assert(proof, qt.Equals, recomputedProof, qt.Commentf("KZG proof mismatch"))
 
 	// Claim is already in big-endian format
 	recomputedY := new(big.Int).SetBytes(claim[:])
