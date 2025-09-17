@@ -29,6 +29,14 @@ func GenerateBallotProofInputs(
 			fields[i] = big.NewInt(0)
 		}
 	}
+	// if no k is provided, generate a random one
+	if inputs.K == nil {
+		k, err := elgamal.RandK()
+		if err != nil {
+			return nil, fmt.Errorf("error generating random k: %w", err)
+		}
+		inputs.K = new(types.BigInt).SetBigInt(k)
+	}
 	// compose the encryption key with the coords from the inputs
 	encryptionKey := new(bjj.BJJ).SetPoint(inputs.EncryptionKey[0].MathBigInt(), inputs.EncryptionKey[1].MathBigInt())
 	// encrypt the ballot
