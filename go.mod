@@ -31,7 +31,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
-	github.com/vocdoni/davinci-contracts v0.0.0-20250917171518-2c735c5fe1fb
+	github.com/vocdoni/davinci-contracts v0.0.0-20250918142712-26b57b64d933
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
 	go.mongodb.org/mongo-driver v1.12.1
 	golang.org/x/mod v0.26.0
