@@ -498,15 +498,21 @@ func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit *big.Int, proo
 	maxZ := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1))
 	c.Assert(z.Cmp(maxZ) <= 0, qt.IsTrue, qt.Commentf("z value exceeds 250-bit range"))
 
-	// Verify KZG proof
-	recomputedProof, claim, err := blobs.ComputeProof(blob, z)
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute KZG proof"))
+	// Verify the blob commitment proof (EIP-4844 style)
+	kzgContext, err := kzg4844.NewContext4096Secure()
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to create KZG context"))
 
-	c.Assert(proof, qt.Equals, recomputedProof, qt.Commentf("KZG proof mismatch"))
+	recomputedProof, err := kzgContext.ComputeBlobKZGProof(blob, recomputedCommit, 0)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute blob KZG proof"))
 
-	// Claim is already in big-endian format
+	c.Assert(proof, qt.Equals, recomputedProof, qt.Commentf("Blob KZG proof mismatch"))
+
+	// Verify y value by computing point evaluation separately (just for verification)
+	_, claim, err := blobs.ComputeProof(blob, z)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to compute point evaluation"))
+
 	recomputedY := new(big.Int).SetBytes(claim[:])
-	c.Assert(y.Cmp(recomputedY), qt.Equals, 0, qt.Commentf("KZG evaluation mismatch"))
+	c.Assert(y.Cmp(recomputedY), qt.Equals, 0, qt.Commentf("KZG evaluation (y value) mismatch"))
 }
 
 func restoreStateFromBlob(t *testing.T, blob *kzg4844.Blob, processID, censusRoot *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
