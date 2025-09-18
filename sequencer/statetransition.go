@@ -184,6 +184,8 @@ func (s *Sequencer) processPendingTransitions() {
 				NumOverwritten:       processState.OverwrittenCount(),
 				BlobEvaluationPointZ: blobData.Z,
 				BlobEvaluationPointY: blobData.Ylimbs,
+				BlobCommitment:       new(big.Int).SetBytes(blobData.Commitment[:]),
+				BlobProof:            new(big.Int).SetBytes(blobData.Proof[:]),
 			},
 			BlobVersionHash: blobHashes[0],
 			BlobSidecar:     blobSidecar,
