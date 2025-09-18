@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
@@ -176,14 +177,14 @@ type StateTransitionBatch struct {
 // before and after the transition, the number of new votes and the number
 // of overwrites.
 type StateTransitionBatchProofInputs struct {
-	RootHashBefore       *big.Int    `json:"rootHashBefore"`
-	RootHashAfter        *big.Int    `json:"rootHashAfter"`
-	NumNewVotes          int         `json:"numNewVotes"`
-	NumOverwritten       int         `json:"numOverwritten"`
-	BlobEvaluationPointZ *big.Int    `json:"blobEvaluationPointZ"`
-	BlobEvaluationPointY [4]*big.Int `json:"blobEvaluationPointY"`
-	BlobProof            *big.Int    `json:"blobProof"`
-	BlobCommitment       *big.Int    `json:"blobCommitment"`
+	RootHashBefore       *big.Int           `json:"rootHashBefore"`
+	RootHashAfter        *big.Int           `json:"rootHashAfter"`
+	NumNewVotes          int                `json:"numNewVotes"`
+	NumOverwritten       int                `json:"numOverwritten"`
+	BlobEvaluationPointZ *big.Int           `json:"blobEvaluationPointZ"`
+	BlobEvaluationPointY [4]*big.Int        `json:"blobEvaluationPointY"`
+	BlobCommitment       kzg4844.Commitment `json:"blobCommitment"`
+	BlobProof            kzg4844.Proof      `json:"blobProof"`
 }
 
 // ABIEncode packs the four fields as a single static uint256[4] blob:
@@ -196,7 +197,7 @@ type StateTransitionBatchProofInputs struct {
 // elements are the blob evaluation point (Z and Y limbs), and the last two
 // elements are the blob commitment and proof.
 func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
-	arr := [11]*big.Int{
+	arr := [9]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
 		big.NewInt(int64(s.NumNewVotes)),
@@ -206,17 +207,21 @@ func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
 		s.BlobEvaluationPointY[1],
 		s.BlobEvaluationPointY[2],
 		s.BlobEvaluationPointY[3],
-		s.BlobCommitment,
-		s.BlobProof,
 	}
-	arrType, err := abi.NewType("uint256[11]", "", nil)
+	arrType, err := abi.NewType("uint256[9]", "", nil)
+	if err != nil {
+		return nil, err
+	}
+	bytesType, err := abi.NewType("bytes", "", nil)
 	if err != nil {
 		return nil, err
 	}
 	arguments := abi.Arguments{
 		{Type: arrType},
+		{Type: bytesType}, // blobCommitment
+		{Type: bytesType}, // blobProof
 	}
-	return arguments.Pack(arr)
+	return arguments.Pack(arr, s.BlobCommitment[:], s.BlobProof[:])
 }
 
 // String returns a JSON representation of the StateTransitionBatchProofInputs
