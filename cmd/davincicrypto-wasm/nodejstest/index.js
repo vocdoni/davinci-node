@@ -72,7 +72,7 @@ async function main() {
     if (result.error) {
       console.error('Error generating ballot proof:', result.error);
     } else {
-      const parsedResult = JSON.parse(result.data);
+      const parsedResult = result.data;
       console.log('Ballot Proof Generated:');
       console.log('- Vote ID:', parsedResult.voteId);
       console.log('\nFull Circom Inputs:', JSON.stringify(parsedResult.circomInputs, null, 2));
@@ -90,10 +90,9 @@ async function main() {
   // Call CSP functions
   try {
     const signResult = global.DavinciCrypto.cspSign(censusOrigin, privKey, processId, address);
-    const strCSPProof = signResult.data;
-    const cspProof = JSON.parse(strCSPProof);
+    const cspProof = signResult.data;
     console.log('CSP Census Proof:', cspProof);
-    const verifyResult = global.DavinciCrypto.cspVerify(strCSPProof);
+    const verifyResult = global.DavinciCrypto.cspVerify(JSON.stringify(cspProof));
     console.log('\nCSP Proof verification result:', verifyResult);
   } catch (err) {
     console.error('Execution error:', err)
