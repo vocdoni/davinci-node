@@ -147,22 +147,22 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	}
 	log.Debugw("local blob proof verification succeeded")
 
-	// Simulate tx to the contract to check if it will fail and get the root
-	// cause of the failure if it does
-	if err := s.contracts.SimulateContractCall(
-		s.ctx,
-		s.contracts.ContractsAddresses.ProcessRegistry,
-		s.contracts.ContractABIs.ProcessRegistry,
-		"submitStateTransition",
-		blobSidecar,
-		pid32,
-		abiProof,
-		abiInputs,
-	); err != nil {
-		log.Debugw("failed to simulate state transition",
-			"error", err,
-			"pid", hex.EncodeToString(processID))
-	}
+	// // Simulate tx to the contract to check if it will fail and get the root
+	// // cause of the failure if it does
+	// if err := s.contracts.SimulateContractCall(
+	// 	s.ctx,
+	// 	s.contracts.ContractsAddresses.ProcessRegistry,
+	// 	s.contracts.ContractABIs.ProcessRegistry,
+	// 	"submitStateTransition",
+	// 	blobSidecar,
+	// 	pid32,
+	// 	abiProof,
+	// 	abiInputs,
+	// ); err != nil {
+	// 	log.Debugw("failed to simulate state transition",
+	// 		"error", err,
+	// 		"pid", hex.EncodeToString(processID))
+	// }
 
 	// Submit the proof to the contract
 	txHash, err := s.contracts.SetProcessTransition(processID,

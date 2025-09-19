@@ -36,6 +36,9 @@ const FieldElementsPerBlob = 4096
 // BytesPerFieldElement defines the number of bytes per field element
 const BytesPerFieldElement = 32
 
+// CompressedG1Size is the number of bytes needed to represent a group element in G1 when compressed (on BLS12-381).
+const CompressedG1Size = 48
+
 // BN254 scalar-field modulus
 var pBN = bn254.ID.ScalarField()
 
@@ -50,12 +53,12 @@ type BlobEvalData struct {
 		Y    emulated.Element[FE]
 		Blob [N]frontend.Variable // values within bn254 field
 	}
-	Commitment goethkzg.KZGCommitment
+	Commitment [CompressedG1Size]byte
 	Z          *big.Int
 	Y          *big.Int
 	Ylimbs     [4]*big.Int
 	Blob       goethkzg.Blob
-	Proof      goethkzg.KZGProof
+	Proof      [CompressedG1Size]byte
 }
 
 // Set initializes the BlobEvalData with the given blob, claim, and evaluation point z.
