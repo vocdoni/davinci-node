@@ -112,8 +112,13 @@ func (s *Sequencer) processPendingTransitions() {
 		proof, blobData, err := s.processStateTransitionBatch(processState, reencryptedVotes, kSeed, batch.Proof)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
+			// mark the batch as failed
 			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
+			// reset the state root to the previous one
+			if err := s.setProcessStateRoot(processID, root); err != nil {
+				log.Errorw(err, "failed to reset state root after failed batch")
 			}
 			return true // Continue to next process ID
 		}
@@ -122,8 +127,13 @@ func (s *Sequencer) processPendingTransitions() {
 		rootHashAfter, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root hash after")
+			// mark the batch as failed
 			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
+			// reset the state root to the previous one
+			if err := s.setProcessStateRoot(processID, root); err != nil {
+				log.Errorw(err, "failed to reset state root after failed batch")
 			}
 			return true // Continue to next process ID
 		}
@@ -132,8 +142,13 @@ func (s *Sequencer) processPendingTransitions() {
 		blobSidecar, blobHashes, err := blobData.TxSidecar()
 		if err != nil {
 			log.Errorw(err, "failed to get blob sidecar")
+			// mark the batch as failed
 			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
+			// reset the state root to the previous one
+			if err := s.setProcessStateRoot(processID, root); err != nil {
+				log.Errorw(err, "failed to reset state root after failed batch")
 			}
 			return true // Continue to next process ID
 		}
@@ -169,8 +184,13 @@ func (s *Sequencer) processPendingTransitions() {
 			BlobSidecar:     blobSidecar,
 		}); err != nil {
 			log.Errorw(err, "failed to push state transition batch")
+			// mark the batch as failed
 			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
+			// reset the state root to the previous one
+			if err := s.setProcessStateRoot(processID, root); err != nil {
+				log.Errorw(err, "failed to reset state root after failed batch")
 			}
 			return true // Continue to next process ID
 		}
@@ -178,6 +198,14 @@ func (s *Sequencer) processPendingTransitions() {
 		// Mark the batch as done
 		if err := s.stg.MarkBallotBatchDone(batchID); err != nil {
 			log.Errorw(err, "failed to mark ballot batch as done")
+			// mark the batch as failed
+			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+				log.Errorw(err, "failed to mark ballot batch as failed")
+			}
+			// reset the state root to the previous one
+			if err := s.setProcessStateRoot(processID, root); err != nil {
+				log.Errorw(err, "failed to reset state root after failed batch")
+			}
 			return true // Continue to next process ID
 		}
 		// Update the last update time by re-adding the process ID
@@ -249,6 +277,19 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}
 	return processState, nil
+}
+
+func (s *Sequencer) setProcessStateRoot(pid *types.ProcessID, root *big.Int) error {
+	// load current state
+	state, err := s.latestProcessState(pid)
+	if err != nil {
+		return fmt.Errorf("failed to load process state: %w", err)
+	}
+	// set new root
+	if err := state.SetRootAsBigInt(root); err != nil {
+		return fmt.Errorf("failed to set state root: %w", err)
+	}
+	return nil
 }
 
 func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
