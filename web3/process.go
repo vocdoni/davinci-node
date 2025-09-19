@@ -150,6 +150,7 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 		[]any{pid, proof, inputs},
 		blobsSidecar,
 	)
+	log.Debugw("Blob sidecar transaction created", "txHash", tx.Hash(), "blobHash", blobsSidecar.BlobHashes()[0].Hex())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
 	}
