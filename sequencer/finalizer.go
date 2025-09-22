@@ -363,8 +363,8 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	}); err != nil {
 		return fmt.Errorf("could not store results for process %s: %w", pid.String(), err)
 	}
-	// Clean up ballots and vote IDs
-	return f.cleanStaleVotesByProcessID(pid.Marshal())
+
+	return nil
 }
 
 // setProcessResults sets the results of a finalized process.
@@ -430,28 +430,4 @@ func (f *finalizer) WaitUntilResults(ctx context.Context, pid *types.ProcessID) 
 				pid.String())
 		}
 	}
-}
-
-// cleanStaleVotesByProcessID removes all votes and related data for a given
-// process ID. It cleans up pending ballots, verified ballots, aggregated
-// ballots, and pending state transition batches associated with the process.
-func (f *finalizer) cleanStaleVotesByProcessID(pid []byte) error {
-	// remove pending ballots
-	if err := f.stg.RemovePendingBallotsByProcess(pid); err != nil {
-		return fmt.Errorf("error removing pending ballots for process %x: %w", pid, err)
-	}
-	// remove verified ballots (ready for aggregation)
-	if err := f.stg.RemoveVerifiedBallotsByProcess(pid); err != nil {
-		return fmt.Errorf("error removing verified ballots for process %x: %w", pid, err)
-	}
-	// remove aggregated ballots (ready for state transition)
-	if err := f.stg.RemoveBallotBatchesByProcess(pid); err != nil {
-		return fmt.Errorf("error removing ballot batches for process %x: %w", pid, err)
-	}
-	// remove pending state transitions batches
-	if err := f.stg.RemoveStateTransitionBatchesByProcess(pid); err != nil {
-		return fmt.Errorf("error removing state transition batches for process %x: %w", pid, err)
-	}
-	log.Infow("cleaned up stale votes for finalized process", "pid", fmt.Sprintf("%x", pid))
-	return nil
 }

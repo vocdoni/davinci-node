@@ -93,8 +93,8 @@ func TestHasVerifiedResultsConcurrency(t *testing.T) {
 	numGoroutines := 5
 
 	// Create and push results for multiple processes
-	for i := 0; i < numProcesses; i++ {
-		processID := []byte(fmt.Sprintf("process-%d", i))
+	for i := range numProcesses {
+		processID := fmt.Appendf(nil, "process-%d", i)
 		results := &VerifiedResults{
 			ProcessID: types.HexBytes(processID),
 			Inputs: ResultsVerifierProofInputs{
@@ -113,12 +113,12 @@ func TestHasVerifiedResultsConcurrency(t *testing.T) {
 
 	// Concurrently check for results
 	done := make(chan bool)
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(workerID int) {
 			defer func() { done <- true }()
 
-			for j := 0; j < numProcesses; j++ {
-				processID := []byte(fmt.Sprintf("process-%d", j))
+			for j := range numProcesses {
+				processID := fmt.Appendf(nil, "process-%d", j)
 				if !stg.HasVerifiedResults(processID) {
 					t.Errorf("worker %d: expected results for process %d", workerID, j)
 					return
@@ -128,21 +128,17 @@ func TestHasVerifiedResultsConcurrency(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 
 	// Verify all results still exist
 	for i := range numProcesses {
-		processID := []byte(fmt.Sprintf("process-%d", i))
+		processID := fmt.Appendf(nil, "process-%d", i)
 		hasResults := stg.HasVerifiedResults(processID)
 		c.Assert(hasResults, qt.IsTrue, qt.Commentf("expected results for process %d", i))
 	}
 }
-
-// ----------------------------
-// New tests for ballot queues
-// ----------------------------
 
 func newTestStorage(t *testing.T) *Storage {
 	t.Helper()
@@ -228,8 +224,6 @@ func TestBallotQueue_RemoveBallot(t *testing.T) {
 }
 
 func TestBallotQueue_RemovePendingBallotsByProcess_RemovesAllPendingCurrently(t *testing.T) {
-	// NOTE: current implementation removes all pending ballots, regardless of pid
-	// If behavior changes to per-process filtering, update this test accordingly.
 	c := qt.New(t)
 	stg := newTestStorage(t)
 	defer stg.Close()
