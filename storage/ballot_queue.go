@@ -397,11 +397,14 @@ func (s *Storage) RemoveVerifiedBallotsByProcess(processID []byte) error {
 	votesToRemove := []types.HexBytes{}
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	if err := rd.Iterate(processID, func(k, _ []byte) bool {
+		// Ensure we work on a stable copy of the key (iterator may reuse the slice)
+		keyCopy := make([]byte, len(k))
+		copy(keyCopy, k)
 		// Append the processID prefix to the key if missing (depends on the database implementation)
-		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
-			k = append(processID, k...)
+		if len(keyCopy) < len(processID) || !bytes.Equal(keyCopy[:len(processID)], processID) {
+			keyCopy = append(processID, keyCopy...)
 		}
-		votesToRemove = append(votesToRemove, k)
+		votesToRemove = append(votesToRemove, keyCopy)
 		return true
 	}); err != nil {
 		log.Warnw("failed to count verified ballots", "error", err.Error())
