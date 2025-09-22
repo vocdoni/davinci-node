@@ -179,7 +179,10 @@ func (s *Storage) RemovePendingBallotsByProcess(pid []byte) error {
 	votesToRemove := []types.HexBytes{}
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
-		votesToRemove = append(votesToRemove, k)
+		// Make a copy of the key to avoid slice reuse issues from the iterator
+		keyCopy := make([]byte, len(k))
+		copy(keyCopy, k)
+		votesToRemove = append(votesToRemove, keyCopy)
 		return true
 	}); err != nil {
 		return fmt.Errorf("iterate ballots: %w", err)
@@ -394,6 +397,10 @@ func (s *Storage) RemoveVerifiedBallotsByProcess(processID []byte) error {
 	votesToRemove := []types.HexBytes{}
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	if err := rd.Iterate(processID, func(k, _ []byte) bool {
+		// Append the processID prefix to the key if missing (depends on the database implementation)
+		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
+			k = append(processID, k...)
+		}
 		votesToRemove = append(votesToRemove, k)
 		return true
 	}); err != nil {
@@ -552,6 +559,10 @@ func (s *Storage) RemoveBallotBatchesByProcess(pid []byte) error {
 	batchesToRemove := []types.HexBytes{}
 	rd := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	if err := rd.Iterate(pid, func(k, _ []byte) bool {
+		// Append the processID prefix to the key if missing (depends on the database implementation)
+		if len(k) < len(pid) || !bytes.Equal(k[:len(pid)], pid) {
+			k = append(pid, k...)
+		}
 		batchesToRemove = append(batchesToRemove, k)
 		return true
 	}); err != nil {
@@ -874,6 +885,10 @@ func (s *Storage) RemoveStateTransitionBatchesByProcess(pid []byte) error {
 	batchesToRemove := []types.HexBytes{}
 	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
 	if err := pr.Iterate(pid, func(k, _ []byte) bool {
+		// Append the processID prefix to the key if missing (depends on the database implementation)
+		if len(k) < len(pid) || !bytes.Equal(k[:len(pid)], pid) {
+			k = append(pid, k...)
+		}
 		batchesToRemove = append(batchesToRemove, k)
 		return true
 	}); err != nil {
