@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
+	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	stg "github.com/vocdoni/davinci-node/storage"
@@ -26,10 +27,11 @@ const (
 // APIConfig type represents the configuration for the API HTTP server.
 // It includes the host, port and optionally an existing storage instance.
 type APIConfig struct {
-	Host    string
-	Port    int
-	Storage *stg.Storage // Optional: use existing storage instance
-	Network string       // Optional: web3 network shortname
+	Host       string
+	Port       int
+	Storage    *stg.Storage // Optional: use existing storage instance
+	Network    string       // Optional: web3 network shortname
+	Web3Config config.DavinciWeb3Config
 	// Worker configuration
 	SequencerWorkersSeed       string                  // Seed for workers authentication over current sequencer
 	WorkersAuthtokenExpiration time.Duration           // Expiration time for worker authentication tokens
@@ -39,9 +41,10 @@ type APIConfig struct {
 
 // API type represents the API HTTP server with JWT authentication capabilities.
 type API struct {
-	router  *chi.Mux
-	storage *stg.Storage
-	network string
+	router     *chi.Mux
+	storage    *stg.Storage
+	network    string
+	web3Config config.DavinciWeb3Config
 	// Workers API stuff
 	sequencerSigner            *ethereum.Signer        // Signer for workers authentication
 	sequencerUUID              *uuid.UUID              // UUID to keep the workers endpoints hidden
@@ -66,6 +69,7 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	a := &API{
 		storage:                    conf.Storage,
 		network:                    conf.Network,
+		web3Config:                 conf.Web3Config,
 		workersJobTimeout:          conf.WorkerJobTimeout,
 		workersAuthtokenExpiration: conf.WorkersAuthtokenExpiration,
 		parentCtx:                  ctx,
