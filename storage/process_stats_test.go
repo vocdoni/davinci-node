@@ -32,7 +32,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   42,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	err = st.NewProcess(createTestProcess(processID))
@@ -122,7 +122,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   43,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	err = st.NewProcess(createTestProcess(processID))
@@ -220,7 +220,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   44,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	err = st.NewProcess(createTestProcess(processID))
@@ -359,19 +359,19 @@ func TestGetTotalPendingBallots(t *testing.T) {
 	processID1 := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   1,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	processID2 := &types.ProcessID{
 		Address: common.Address{2},
 		Nonce:   2,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	processID3 := &types.ProcessID{
 		Address: common.Address{3},
 		Nonce:   3,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	// Create processes with different pending ballot counts
@@ -517,7 +517,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   100,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	err = st.NewProcess(createTestProcess(processID))
@@ -603,7 +603,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   101,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	err = st.NewProcess(createTestProcess(processID))
@@ -714,7 +714,7 @@ func TestProcessStatsNegativeValuePrevention(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   102,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	err = st.NewProcess(createTestProcess(processID))
@@ -829,17 +829,17 @@ func TestTotalStats(t *testing.T) {
 	process1 := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   1,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 	process2 := &types.ProcessID{
 		Address: common.Address{2},
 		Nonce:   2,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 	process3 := &types.ProcessID{
 		Address: common.Address{3},
 		Nonce:   3,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	// Create processes
@@ -926,12 +926,12 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	process1 := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   1,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 	process2 := &types.ProcessID{
 		Address: common.Address{2},
 		Nonce:   2,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	// Create processes
@@ -1038,7 +1038,7 @@ func TestTotalStatsConcurrency(t *testing.T) {
 		processes[i] = &types.ProcessID{
 			Address: common.Address{byte(i + 1)},
 			Nonce:   uint64(i + 1),
-			ChainID: 1,
+			Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 		}
 		err = st.NewProcess(createTestProcess(processes[i]))
 		c.Assert(err, qt.IsNil)
@@ -1112,12 +1112,12 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 	process1 := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   1,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 	process2 := &types.ProcessID{
 		Address: common.Address{2},
 		Nonce:   2,
-		ChainID: 1,
+		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	err = st.NewProcess(createTestProcess(process1))

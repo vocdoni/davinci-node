@@ -24,6 +24,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
@@ -91,10 +92,11 @@ func setupAPI(
 	workerTokenExpiration time.Duration,
 	workerTimeout time.Duration,
 	banRules *workers.WorkerBanRules,
+	web3Conf config.DavinciWeb3Config,
 ) (*service.APIService, error) {
 	tmpPort := util.RandomInt(40000, 60000)
 
-	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", false)
+	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", web3Conf, false)
 	api.SetWorkerConfig(workerSeed, workerTokenExpiration, workerTimeout, banRules)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
@@ -338,9 +340,14 @@ func NewTestService(
 	if err := pm.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
-
 	// Start API service
-	api, err := setupAPI(ctx, stg, workerSecret, workerTokenExpiration, workerTimeout, banRules)
+	web3Conf := config.DavinciWeb3Config{
+		ProcessRegistrySmartContract:      contracts.ContractsAddresses.ProcessRegistry.String(),
+		OrganizationRegistrySmartContract: contracts.ContractsAddresses.OrganizationRegistry.String(),
+		ResultsZKVerifier:                 contracts.ContractsAddresses.ResultsZKVerifier.String(),
+		StateTransitionZKVerifier:         contracts.ContractsAddresses.StateTransitionZKVerifier.String(),
+	}
+	api, err := setupAPI(ctx, stg, workerSecret, workerTokenExpiration, workerTimeout, banRules, web3Conf)
 	qt.Assert(t, err, qt.IsNil)
 	services.API = api
 
@@ -440,7 +447,10 @@ func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
 	return orgAddr
 }
 
-func createProcessInSequencer(c *qt.C, contracts *web3.Contracts, cli *client.HTTPclient,
+func createProcessInSequencer(
+	c *qt.C,
+	contracts *web3.Contracts,
+	cli *client.HTTPclient,
 	censusOrigin types.CensusOrigin,
 	censusRoot []byte,
 	ballotMode *types.BallotMode,

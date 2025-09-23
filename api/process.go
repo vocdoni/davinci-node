@@ -1,12 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
@@ -40,15 +42,18 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract our network from the process ID to validate the chain ID
-	networkInfo, ok := config.AvailableNetworks[a.network]
+	chainID, ok := config.AvailableNetworks[a.network]
 	if !ok {
 		ErrGenericInternalServerError.With("unknown network").Write(w)
 		return
 	}
 
-	// Validate the chain ID
-	if pid.ChainID != networkInfo {
-		ErrInvalidChainID.Withf("%d", pid.ChainID).Write(w)
+	// Validate the prefix by reconstructing the expected prefix with the chain
+	// ID and contract address
+	// 		prefix = first 4 bytes of keccak(chainID + contractAddress)
+	expectedPrefix := types.ProcessIDPrefix(chainID, common.HexToAddress(a.web3Config.ProcessRegistrySmartContract))
+	if !bytes.Equal(pid.Prefix, expectedPrefix[:]) {
+		ErrInvalidChainPrefix.Withf("%x", pid.Prefix).Write(w)
 		return
 	}
 
