@@ -75,6 +75,11 @@ func (s *Sequencer) processTransitionOnChain() {
 		if remoteStateRoot.MathBigInt().Cmp(thisStateRoot) != 0 {
 			log.Errorw(fmt.Errorf("state root mismatch for processId %s: local %s != remote %s",
 				hex.EncodeToString(pid), thisStateRoot.String(), remoteStateRoot.String()), "could not push state transition to contract")
+			// Mark the batch as outdated so we don't process it again
+			// and a new one will be generated with the correct root
+			if err := s.stg.MarkStateTransitionBatchOutdated(batchID); err != nil {
+				log.Errorw(err, "failed to mark state transition batch as outdated")
+			}
 			// TODO: we should probably mark the batch as failed and not retry forever
 			return true // Continue to next process ID
 		}

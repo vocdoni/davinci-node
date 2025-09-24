@@ -104,15 +104,15 @@ type reservationRecord struct {
 
 // Storage manages artifacts in various stages with reservations.
 type Storage struct {
-	db          db.Database
-	ctx         context.Context
-	cancel      context.CancelFunc
-	censusDB    *census.CensusDB
-	stateDB     db.Database
-	globalLock  sync.Mutex              // Lock for global operations
-	workersLock sync.Mutex              // Lock for worker-related operations
-	cache       *lru.Cache[string, any] // Cache for artifacts
-	nullifiers  sync.Map                // Map to track nullifiers being processed
+	db                db.Database
+	ctx               context.Context
+	cancel            context.CancelFunc
+	censusDB          *census.CensusDB
+	stateDB           db.Database
+	globalLock        sync.Mutex              // Lock for global operations
+	workersLock       sync.Mutex              // Lock for worker-related operations
+	cache             *lru.Cache[string, any] // Cache for artifacts
+	processingVoteIDs sync.Map                // Map to track voteIDs being processed
 }
 
 // New creates a new Storage instance.
@@ -416,13 +416,13 @@ func (s *Storage) recoverNullifiers() error {
 	var outerErr error
 	verifiedBallotsReader := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	if err := verifiedBallotsReader.Iterate(nil, func(k, v []byte) bool {
-		// Decode the verified ballot to extract nullifiers
+		// Decode the verified ballot to extract voteIDs
 		vb := &VerifiedBallot{}
 		if err := DecodeArtifact(v, vb); err != nil {
 			outerErr = fmt.Errorf("failed to decode verified ballot: %w", err)
 			return false
 		}
-		s.lockNullifier(vb.VoteID.BigInt().MathBigInt())
+		s.lockVoteID(vb.VoteID.BigInt().MathBigInt())
 		return true // Continue iterating
 	}); err != nil {
 		return fmt.Errorf("failed to iterate verified ballots: %w", err)
@@ -435,14 +435,14 @@ func (s *Storage) recoverNullifiers() error {
 	// Recover nullifiers from aggregated batches
 	aggregatedBallotsReader := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	if err := aggregatedBallotsReader.Iterate(nil, func(k, v []byte) bool {
-		// Decode the aggregated ballot batch to extract nullifiers
+		// Decode the aggregated ballot batch to extract voteIDs
 		abb := &AggregatorBallotBatch{}
 		if err := DecodeArtifact(v, abb); err != nil {
 			outerErr = fmt.Errorf("failed to decode aggregated ballot batch: %w", err)
 			return false // Stop iterating on error
 		}
 		for _, ballot := range abb.Ballots {
-			s.lockNullifier(ballot.VoteID.BigInt().MathBigInt())
+			s.lockVoteID(ballot.VoteID.BigInt().MathBigInt())
 		}
 		return true // Continue iterating
 	}); err != nil {
@@ -451,20 +451,20 @@ func (s *Storage) recoverNullifiers() error {
 	return outerErr
 }
 
-// lockNullifier locks a nullifier to prevent concurrent processing.
-func (s *Storage) lockNullifier(nullifier *big.Int) {
-	s.nullifiers.Store(nullifier.String(), struct{}{})
+// lockVoteID locks a voteID to prevent concurrent processing.
+func (s *Storage) lockVoteID(bigVoteID *big.Int) {
+	s.processingVoteIDs.Store(bigVoteID.String(), struct{}{})
 }
 
-// IsNullifierProcessing checks if a nullifier is currently being processed.
-func (s *Storage) IsNullifierProcessing(nullifier *big.Int) bool {
-	if _, exists := s.nullifiers.Load(nullifier.String()); exists {
+// IsVoteIDProcessing checks if a voteID is currently being processed.
+func (s *Storage) IsVoteIDProcessing(bigVoteID *big.Int) bool {
+	if _, exists := s.processingVoteIDs.Load(bigVoteID.String()); exists {
 		return true // Is processing
 	}
 	return false // Not processing
 }
 
-// releaseNullifier releases a nullifier after processing is complete or failed.
-func (s *Storage) releaseNullifier(nullifier *big.Int) {
-	s.nullifiers.Delete(nullifier.String())
+// releaseVoteID releases a voteID after processing is complete or failed.
+func (s *Storage) releaseVoteID(bigVoteID *big.Int) {
+	s.processingVoteIDs.Delete(bigVoteID.String())
 }

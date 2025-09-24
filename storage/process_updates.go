@@ -9,8 +9,8 @@ import (
 
 // Common update functions for use with UpdateProcess
 
-// ProcessUpdateCallbackStateRoot returns a function that updates the state
-// root and vote counts
+// ProcessUpdateCallbackStateRoot returns a function that updates the state root and vote counts.
+// If numNewVotes or numOverwritten is nil, it will not be updated.
 func ProcessUpdateCallbackStateRoot(root *types.BigInt, numNewVotes, numOverwritten *big.Int) func(*types.Process) error {
 	return func(p *types.Process) error {
 		p.StateRoot = root

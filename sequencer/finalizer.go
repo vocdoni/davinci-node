@@ -32,7 +32,7 @@ type finalizer struct {
 	circuits         *internalCircuits // Internal circuit artifacts for proof generation and verification
 	prover           ProverFunc        // Function for generating zero-knowledge proofs
 	OndemandCh       chan *types.ProcessID
-	invalidProcesses map[string]struct{} // Cache of invalid processes to avoid re-processing
+	invalidProcesses sync.Map // Cache of invalid processes to avoid re-processing (thread-safe)
 	wg               sync.WaitGroup
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -47,12 +47,11 @@ func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuit
 	}
 	// We'll create the context in Start() now to avoid premature cancellation
 	return &finalizer{
-		stg:              stg,
-		stateDB:          stateDB,
-		circuits:         ca,
-		prover:           prover,
-		OndemandCh:       make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
-		invalidProcesses: make(map[string]struct{}),
+		stg:        stg,
+		stateDB:    stateDB,
+		circuits:   ca,
+		prover:     prover,
+		OndemandCh: make(chan *types.ProcessID, 10), // Use buffered channel to prevent blocking
 	}
 }
 
@@ -70,13 +69,8 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 			select {
 			case pid := <-f.OndemandCh:
 				go func(pid *types.ProcessID) {
-					isInvalid := false
-					f.lock.Lock()
-					if _, invalid := f.invalidProcesses[pid.String()]; invalid {
-						isInvalid = true
-					}
-					f.lock.Unlock()
-					if !isInvalid {
+					// Check if process is marked as invalid (thread-safe)
+					if _, isInvalid := f.invalidProcesses.Load(pid.String()); !isInvalid {
 						if err := f.finalize(pid); err != nil {
 							log.Errorw(err, fmt.Sprintf("finalizing process %s", pid.String()))
 						}
@@ -171,6 +165,11 @@ func (f *finalizer) finalizeEnded() {
 	}
 	for _, pidBytes := range pids {
 		processID := new(types.ProcessID).SetBytes(pidBytes)
+		// Skip invalid processes (thread-safe check)
+		if _, isInvalid := f.invalidProcesses.Load(processID.String()); isInvalid {
+			continue
+		}
+
 		process, err := f.stg.Process(processID)
 		if err != nil {
 			log.Errorw(err, "could not retrieve process from storage: "+processID.String())
@@ -179,15 +178,20 @@ func (f *finalizer) finalizeEnded() {
 
 		// Check if process already has results in the process record
 		if process.Result != nil {
-			log.Debugw("process already finalized, skipping", "pid", processID.String())
 			continue
 		}
 
 		// Also check if verified results already exist in storage
 		// This prevents re-generation when results were generated but failed to upload
 		if f.stg.HasVerifiedResults(processID.Marshal()) {
-			log.Debugw("verified results already exist in storage, skipping finalization",
-				"pid", processID.String())
+			continue
+		}
+
+		// Check if the state root exists in the state DB. If not, mark as invalid and skip
+		// This prevents trying to finalize processes that were never properly processed.
+		if err := state.RootExists(f.stateDB, processID.BigInt(), process.StateRoot.MathBigInt()); err != nil {
+			// Mark process as invalid (thread-safe)
+			f.invalidProcesses.Store(processID.String(), struct{}{})
 			continue
 		}
 
@@ -215,9 +219,9 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 		return nil
 	}
 
-	// Helper to mark process as invalid in cache
+	// Helper to mark process as invalid in cache (thread-safe)
 	setProcessInvalid := func() {
-		f.invalidProcesses[pid.String()] = struct{}{}
+		f.invalidProcesses.Store(pid.String(), struct{}{})
 	}
 
 	// Ensure the state root exists in the state DB. If not
@@ -353,14 +357,18 @@ func (f *finalizer) finalize(pid *types.ProcessID) error {
 	}
 
 	// Store the result in the process
-	return f.setProcessResults(pid, &storage.VerifiedResults{
+	if err := f.setProcessResults(pid, &storage.VerifiedResults{
 		ProcessID: pid.Marshal(),
 		Proof:     proof.(*groth16_bn254.Proof),
 		Inputs: storage.ResultsVerifierProofInputs{
 			StateRoot: stateRootBI,
 			Results:   resultsAccumulator,
 		},
-	})
+	}); err != nil {
+		return fmt.Errorf("could not store results for process %s: %w", pid.String(), err)
+	}
+
+	return nil
 }
 
 // setProcessResults sets the results of a finalized process.

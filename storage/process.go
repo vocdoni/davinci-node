@@ -256,6 +256,30 @@ func (s *Storage) ListEndedProcessWithEncryptionKeys() ([][]byte, error) {
 	return endedPids, nil
 }
 
+// CleanProcessStaleVotes removes all votes and related data for a given
+// process ID. It cleans up pending ballots, verified ballots, aggregated
+// ballots, and pending state transition batches associated with the process.
+func (s *Storage) CleanProcessStaleVotes(pid []byte) error {
+	// remove pending ballots
+	if err := s.RemovePendingBallotsByProcess(pid); err != nil {
+		return fmt.Errorf("error removing pending ballots for process %x: %w", pid, err)
+	}
+	// remove verified ballots (ready for aggregation)
+	if err := s.RemoveVerifiedBallotsByProcess(pid); err != nil {
+		return fmt.Errorf("error removing verified ballots for process %x: %w", pid, err)
+	}
+	// remove aggregated ballots (ready for state transition)
+	if err := s.RemoveBallotBatchesByProcess(pid); err != nil {
+		return fmt.Errorf("error removing ballot batches for process %x: %w", pid, err)
+	}
+	// remove pending state transitions batches
+	if err := s.RemoveStateTransitionBatchesByProcess(pid); err != nil {
+		return fmt.Errorf("error removing state transition batches for process %x: %w", pid, err)
+	}
+	log.Infow("cleaned up stale votes for finalized process", "pid", fmt.Sprintf("%x", pid))
+	return nil
+}
+
 // listProcessesWithEncryptionKeys retrieves all process IDs that have
 // encryption keys stored. It is a wrapper around listArtifacts with the
 // encryptionKeyPrefix.

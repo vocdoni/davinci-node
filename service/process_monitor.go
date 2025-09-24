@@ -121,6 +121,12 @@ func (pm *ProcessMonitor) monitorProcesses(
 				log.Warnw("failed to update process status",
 					"pid", process.ID.String(), "err", err.Error())
 			}
+			if process.Status == types.ProcessStatusResults {
+				if err := pm.storage.CleanProcessStaleVotes(process.ID); err != nil {
+					log.Warnw("failed to clean stale votes after process finalization",
+						"pid", process.ID.String(), "err", err.Error())
+				}
+			}
 		case process := <-stateTransitionChan:
 			log.Debugw("process state root changed", "pid", process.ID.String(),
 				"stateRoot", process.NewStateRoot.String(),

@@ -155,6 +155,7 @@ func (s *Sequencer) processPendingTransitions() {
 		// Store the proof in the state transition storage
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
 			ProcessID: batch.ProcessID,
+			BatchID:   batchID,
 			Proof:     proof.(*groth16_bn254.Proof),
 			Ballots:   batch.Ballots,
 			Inputs: storage.StateTransitionBatchProofInputs{
@@ -243,8 +244,29 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 		return nil, fmt.Errorf("failed to init state: %w", err)
 	}
 
+	// get the on-chain state root to ensure we are in sync
+	onchainStateRoot, err := s.contracts.StateRoot(pid.Marshal())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get on-chain state root: %w", err)
+	}
+
+	// if the on-chain state root is different from the local one, update it
+	if onchainStateRoot.MathBigInt().Cmp(process.StateRoot.MathBigInt()) != 0 {
+		if err := st.RootExists(onchainStateRoot.MathBigInt()); err != nil {
+			return nil, fmt.Errorf("on-chain state root does not exist in local state: %w", err)
+		}
+		if err := s.stg.UpdateProcess(pid.Marshal(), storage.ProcessUpdateCallbackStateRoot(onchainStateRoot, nil, nil)); err != nil {
+			return nil, fmt.Errorf("failed to update process state root: %w", err)
+		}
+		log.Warnw("local state root mismatch, updated local state root to match on-chain",
+			"pid", pid.String(),
+			"local", process.StateRoot.String(),
+			"onchain", onchainStateRoot.String(),
+		)
+	}
+
 	// initialize the process state on the given root
-	processState, err := state.LoadOnRoot(s.stg.StateDB(), pid.BigInt(), process.StateRoot.MathBigInt())
+	processState, err := state.LoadOnRoot(s.stg.StateDB(), pid.BigInt(), onchainStateRoot.MathBigInt())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}
