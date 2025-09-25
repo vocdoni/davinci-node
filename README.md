@@ -334,9 +334,10 @@ Take a look to `davinci-crypto` WebAssembly [here](./cmd/davincicrypto-wasm/READ
       const processId = '...'; // hex encoded process ID
       const address = '...'; // hex encoded Ethereum address
 
+      const cspRoot = global.DavinciCrypto.cspCensusRoot(censusOrigin, privKey);
+      console.log('Calculated CSP Census Root:', cspRoot.data);
       const proofResult = DavinciCrypto.cspSign(censusOrigin, privKey, processId, address);
-      const proof = JSON.parse(proofResult.data);
-      console.log('Generated CSP Proof:', proof);
+      console.log('Generated CSP Proof:', proofResult.data);
 
       const verifyResult = DavinciCrypto.cspVerify(JSON.stringify(proof));
       console.log('Proof verified:', verifyResult);

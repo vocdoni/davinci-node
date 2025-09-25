@@ -71,3 +71,16 @@ func JSResult(data any, err ...error) js.Value {
 
 	return js.ValueOf(res)
 }
+
+func JSObject(data any) (map[string]any, error) {
+	// marshal the data to json and unmarshal it to a map
+	bData, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling data: %v", err)
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(bData, &obj); err != nil {
+		return nil, fmt.Errorf("error unmarshaling data to object: %v", err)
+	}
+	return obj, nil
+}
