@@ -89,6 +89,8 @@ async function main() {
   const address = "0e9eA11b92F119aEce01990b68d85227a41AA627";
   // Call CSP functions
   try {
+    const cspRoot = global.DavinciCrypto.cspCensusRoot(censusOrigin, privKey);
+    console.log('CSP Census Root:', cspRoot.data);
     const signResult = global.DavinciCrypto.cspSign(censusOrigin, privKey, processId, address);
     const cspProof = signResult.data;
     console.log('CSP Census Proof:', cspProof);

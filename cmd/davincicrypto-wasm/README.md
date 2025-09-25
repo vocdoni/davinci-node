@@ -9,6 +9,7 @@ This WASM module enables client-side cryptographic operations for private voting
 - Ballot encryption using ElGamal cryptography
 - Generation of zero-knowledge proof inputs
 - Preparation of circuit inputs for zero-knowledge proofs
+- CSP root calculation
 - CSP proofs generation and verification
 
 ## Usage
@@ -51,7 +52,7 @@ const result = DavinciCrypto.proofInputs(input);
 if (result.error) {
   console.error("Error:", result.error);
 } else {
-  const proofInputs = JSON.parse(result.data);
+  const proofInputs = result.data;
   console.log("Circuit inputs:", proofInputs.circuitInputs);
   console.log("Signature hash:", proofInputs.signatureHash);
 }
@@ -84,6 +85,29 @@ if (result.error) {
 }
 ```
 
+#### CSP root calculation
+
+```javascript
+const privKey = "50df49d9d1175d49808602d12bf945ba3f55d90146882fbc5d54078f204f5005372143904f3fd452767581fd55b4c27aedacdd7b70d14f374b7c9f341c0f9a5300";
+const processID = "00000539f39fd6e51aad88f6f4ce6ab8827279cfffb922660000000000000000";
+const address = "0e9eA11b92F119aEce01990b68d85227a41AA627";
+
+try {
+  // Root calculation
+  const cspRoot = global.DavinciCrypto.cspCensusRoot(censusOrigin, privKey);
+  console.log('CSP Census Root:', cspRoot.data);
+} catch (err) {
+  console.error('Execution error:', err)
+}
+```
+
+##### Output
+```json
+{
+  "root": "0x054b8528d8057ea9a6f2b80f6ed2eccf16c5f7db7dcc5565ceca166d66a94312"
+}
+```
+
 
 #### CSP proof generation and verification
 
@@ -95,8 +119,7 @@ const address = "0e9eA11b92F119aEce01990b68d85227a41AA627";
 try {
   // Proof generation
   const signResult = DavinciCrypto.cspSign(privKey, processID, address);
-  const strCSPProof = signResult.data;
-  const cspProof = JSON.parse(strCSPProof);
+  const cspProof = signResult.data;
   console.log('CSP Proof:', cspProof);
 
   // Proof verification
