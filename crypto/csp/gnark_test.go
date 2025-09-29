@@ -44,7 +44,7 @@ func TestCSPProofCircuit(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: orgAddress,
 		Nonce:   rand.Uint64(),
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	proof, err := csp.GenerateProof(processID, userAddress)

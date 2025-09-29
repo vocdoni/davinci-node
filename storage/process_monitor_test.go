@@ -27,7 +27,7 @@ func TestMonitorEndedProcesses(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   42,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	pastTime := time.Now().Add(-2 * time.Hour) // Started 2 hours ago
@@ -88,7 +88,7 @@ func TestMonitorEndedProcessesNotYetEnded(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   43,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	recentTime := time.Now().Add(-30 * time.Minute) // Started 30 minutes ago
@@ -149,7 +149,7 @@ func TestMonitorEndedProcessesSkipsAlreadyEnded(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{2},
 		Nonce:   44,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	pastTime := time.Now().Add(-2 * time.Hour)

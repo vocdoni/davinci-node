@@ -55,7 +55,7 @@ func TestBallotQueue(t *testing.T) {
 	processID := types.ProcessID{
 		Address: common.Address{},
 		Nonce:   0,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	// Create the process first
@@ -185,7 +185,7 @@ func TestBallotQueue(t *testing.T) {
 	// Additional scenario: no verified ballots if none processed
 	anotherPID := types.ProcessID{
 		Address: common.Address{},
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 		Nonce:   999,
 	}
 	vbsEmpty, keysEmpty, err := st.PullVerifiedBallots(anotherPID.Marshal(), 10)
@@ -210,7 +210,7 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 	processID := types.ProcessID{
 		Address: common.Address{},
 		Nonce:   0,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	// Create the process first
@@ -324,7 +324,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	processID := types.ProcessID{
 		Address: common.Address{},
 		Nonce:   0,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	// Create the process first
@@ -403,7 +403,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	// Test 4: Different process ID
 	anotherPID := types.ProcessID{
 		Address: common.Address{},
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 		Nonce:   999,
 	}
 	_, _, err = st.NextBallotBatch(anotherPID.Marshal())

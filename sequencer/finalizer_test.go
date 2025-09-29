@@ -90,7 +90,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	pid := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   42,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	// Create encryption keys

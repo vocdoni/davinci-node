@@ -27,7 +27,7 @@ func TestProcess(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   42,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
 	// Test 1: Get non-existent data
@@ -108,7 +108,7 @@ func TestProcess(t *testing.T) {
 	anotherProcessID := types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   43,
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 	process.ID = anotherProcessID.Marshal()
 

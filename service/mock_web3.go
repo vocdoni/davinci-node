@@ -61,7 +61,7 @@ func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID,
 	pid := types.ProcessID{
 		Address: process.OrganizationId,
 		Nonce:   uint64(len(m.processes)),
-		Prefix:  []byte{0x00, 0x00, 0x00, 0x01},
+		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 	process.ID = pid.Marshal()
 	m.processes = append(m.processes, process)

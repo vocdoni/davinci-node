@@ -1,16 +1,13 @@
 package api
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -28,7 +25,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Unmarshal de process ID
+	// Unmarshal the process ID
 	pid := new(types.ProcessID).SetBytes(p.ProcessID)
 	if !pid.IsValid() {
 		ErrMalformedProcessID.With("invalid process ID").Write(w)
@@ -41,19 +38,9 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract our network from the process ID to validate the chain ID
-	chainID, ok := config.AvailableNetworks[a.network]
-	if !ok {
-		ErrGenericInternalServerError.With("unknown network").Write(w)
-		return
-	}
-
-	// Validate the prefix by reconstructing the expected prefix with the chain
-	// ID and contract address
-	// 		prefix = first 4 bytes of keccak(chainID + contractAddress)
-	expectedPrefix := types.ProcessIDPrefix(chainID, common.HexToAddress(a.web3Config.ProcessRegistrySmartContract))
-	if !bytes.Equal(pid.Prefix, expectedPrefix[:]) {
-		ErrInvalidChainPrefix.Withf("%x", pid.Prefix).Write(w)
+	// Validate the process ID version
+	if !pid.HasVersion(a.processIDsVersion) {
+		ErrInvalidContractVersion.Withf("%x", pid.Version).Write(w)
 		return
 	}
 
@@ -78,13 +65,14 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the census root as a big.Int
 	censusRoot, err := p.CensusRootBigInt()
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not get census root: %v", err).Write(w)
 		return
 	}
 
-	// prepare inputs for the state ready for the state transition circuit:
+	// Prepare inputs for the state ready for the state transition circuit:
 	// - the census root must be encoded according to the arbo format
 	root, err := state.CalculateInitialRoot(
 		pid.BigInt(),
