@@ -229,7 +229,7 @@ func NewCircuitCache() (*CircuitCache, error) {
 // GenerateCacheKey creates a deterministic cache key based on circuit type and parameters
 func (c *CircuitCache) GenerateCacheKey(circuitType string, processID *types.ProcessID, params ...interface{}) string {
 	// Build cache key with circuit type, ProcessID, and additional parameters
-	keyData := fmt.Sprintf("%s-%s-%d-%d", circuitType, processID.Address.Hex(), processID.Nonce, processID.ChainID)
+	keyData := fmt.Sprintf("%s-%s-%d-%x", circuitType, processID.Address.Hex(), processID.Nonce, processID.Version)
 
 	// Append additional parameters
 	for _, param := range params {
@@ -449,7 +449,9 @@ func (dg *DeterministicGenerator) BigInt(nValidVoters int) *big.Int {
 // This ensures the same ProcessID + index always generates the same seed
 func GenerateDeterministicSeed(processID *types.ProcessID, index int) int64 {
 	// Create a simple deterministic seed from ProcessID and index
-	seed := int64(processID.ChainID)*1000000 + int64(processID.Nonce)*1000 + int64(index)
+	seed := int64(processID.Version[0])<<24 | int64(processID.Version[1])<<16 |
+		int64(processID.Version[2])<<8 | int64(processID.Version[3])
+	seed = seed*1000000 + int64(processID.Nonce)*1000 + int64(index)
 
 	// Add some variation based on the address
 	if len(processID.Address) >= 8 {

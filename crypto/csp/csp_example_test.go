@@ -26,8 +26,8 @@ func TestExampleCSP(t *testing.T) {
 	// Mock process ID for the example
 	processID := &types.ProcessID{
 		Address: orgAddress,
-		ChainID: 1,             // Example chain ID
-		Nonce:   rand.Uint64(), // Random nonce for the process
+		Version: []byte{0x00, 0x00, 0x00, 0x01}, // Example prefix
+		Nonce:   rand.Uint64(),                  // Random nonce for the process
 	}
 	// Random Ethereum address for the voter
 	voterAddress := common.BytesToAddress(util.RandomBytes(20))
