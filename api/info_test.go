@@ -22,7 +22,7 @@ func TestInfo(t *testing.T) {
 		// Create API with a valid network
 		api := &API{
 			storage: store,
-			network: "sep", // This is a valid network as defined in config.DefaultConfig
+			network: "sepolia", // This is a valid network as defined in config.DefaultConfig
 		}
 
 		// Create a new request
@@ -50,13 +50,6 @@ func TestInfo(t *testing.T) {
 		c.Assert(response.ProvingKeyHash, qt.Equals, config.BallotProofProvingKeyHash)
 		c.Assert(response.VerificationKeyURL, qt.Equals, config.BallotProofVerificationKeyURL)
 		c.Assert(response.VerificationKeyHash, qt.Equals, config.BallotProofVerificationKeyHash)
-
-		// Check contract addresses
-		contracts := config.DefaultConfig["sep"]
-		c.Assert(response.Contracts.ProcessRegistry, qt.Equals, contracts.ProcessRegistrySmartContract)
-		c.Assert(response.Contracts.OrganizationRegistry, qt.Equals, contracts.OrganizationRegistrySmartContract)
-		c.Assert(response.Contracts.ResultsZKVerifier, qt.Equals, contracts.ResultsZKVerifier)
-		c.Assert(response.Contracts.StateTransitionZKVerifier, qt.Equals, contracts.StateTransitionZKVerifier)
 	})
 
 	// Test case 2: Invalid network

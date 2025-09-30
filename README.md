@@ -44,7 +44,7 @@ The Sequencer is a specialized component designed to handle the voting process u
 3. **Configure the environment variables** in the `.env` file:
    ```bash
    DAVINCI_WEB3_PRIVKEY=<hex private key with funds> # currently Sepolia ETH
-   DAVINCI_WEB3_NETWORK=sep # for Sepolia
+   DAVINCI_WEB3_NETWORK=sepolia # for Sepolia
    DAVINCI_API_WORKERSEED=someRandomSeed # just provide some entropy to generate a UUID
    ```
 
@@ -157,7 +157,7 @@ go run ./cmd/davinci-sequencer -h
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--web3.privkey` | `-k` | | Private key for Ethereum account (required for master) |
-| `--web3.network` | `-n` | `sep` | Network to use (sep, mainnet, etc.) |
+| `--web3.network` | `-n` | `sepolia` | Network to use (sepolia, mainnet, etc.) |
 | `--web3.rpc` | `-r` | | Custom RPC endpoints (comma-separated) |
 | `--api.host` | `-h` | `0.0.0.0` | API host address |
 | `--api.port` | `-p` | `9090` | API port number |

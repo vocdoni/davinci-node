@@ -20,7 +20,7 @@ func TestAPIService(t *testing.T) {
 	defer store.Close()
 
 	// Create API service with a random available port
-	apiService := NewAPI(store, "127.0.0.1", 0, "test", config.DefaultConfig["test"], false) // Port 0 lets the OS choose an available port
+	apiService := NewAPI(store, "127.0.0.1", 0, "test", config.TestConfig, false) // Port 0 lets the OS choose an available port
 
 	// Start service in background
 	ctx := context.Background()

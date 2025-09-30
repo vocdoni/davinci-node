@@ -9,12 +9,12 @@ import (
 
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"github.com/vocdoni/davinci-node/config"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/internal"
 )
 
 const (
-	defaultNetwork                    = "sep"
+	defaultNetwork                    = "sepolia"
 	defaultCAPI                       = "https://ethereum-sepolia-beacon-api.publicnode.com"
 	defaultRPC                        = "https://ethereum-sepolia-rpc.publicnode.com"
 	defaultAPIHost                    = "0.0.0.0"
@@ -110,7 +110,7 @@ func loadConfig() (*Config, error) {
 
 	// Configure flags
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
-	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", config.AvailableNetworks))
+	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
 	flag.StringSliceP("web3.rpc", "r", []string{defaultRPC}, "web3 rpc endpoint(s), comma-separated")
 	flag.StringP("web3.capi", "c", defaultCAPI, "consensus api url")
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
@@ -187,14 +187,14 @@ func validateConfig(cfg *Config) error {
 
 	// Validate network
 	validNetwork := false
-	for n := range config.AvailableNetworks {
+	for n := range npbindings.AvailableNetworksByName {
 		if cfg.Web3.Network == n {
 			validNetwork = true
 			break
 		}
 	}
 	if !validNetwork {
-		return fmt.Errorf("invalid network %s, available networks: %v", cfg.Web3.Network, config.AvailableNetworks)
+		return fmt.Errorf("invalid network %s, available networks: %v", cfg.Web3.Network, npbindings.AvailableNetworksByName)
 	}
 
 	return nil
