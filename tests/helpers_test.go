@@ -36,6 +36,7 @@ import (
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 	"github.com/vocdoni/davinci-node/web3"
+	"github.com/vocdoni/davinci-node/web3/txmanager"
 	"github.com/vocdoni/davinci-node/workers"
 	"golang.org/x/mod/modfile"
 )
@@ -341,6 +342,12 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		}
 	}
 
+	// Start the transaction manager
+	txm, err := txmanager.New(ctx, contracts.Web3Pool(), contracts.Client(), contracts.Signer(), txmanager.DefaultConfig(contracts.ChainID))
+	c.Assert(err, qt.IsNil)
+	txm.Start(ctx)
+	contracts.SetTxManager(txm)
+	c.Cleanup(txm.Stop)
 	// Set contracts ABIs
 	contracts.ContractABIs = &web3.ContractABIs{}
 	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()

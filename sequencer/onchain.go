@@ -258,7 +258,7 @@ func (s *Sequencer) processResultsOnChain() {
 			}
 
 			// submit the proof to the contract
-			txHash, err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs, nil) // TODO: add blob sidecar
+			txHash, err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs)
 			if err != nil {
 				lastErr = err
 				log.Warnw("failed to upload verified results",

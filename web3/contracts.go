@@ -26,6 +26,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3/rpc"
+	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
 const (
@@ -75,6 +76,9 @@ type Contracts struct {
 	lastWatchProcessBlock uint64
 	knownOrganizations    map[string]struct{}
 	lastWatchOrgBlock     uint64
+
+	// Transaction manager for nonce management and stuck transaction recovery
+	txManager *txmanager.TxManager
 }
 
 // New creates a new Contracts instance with the given web3 endpoints.
@@ -145,6 +149,45 @@ func New(web3rpcs []string, web3cApi string, gasMultiplier float64) (*Contracts,
 		currentBlockLastUpdate:   time.Now(),
 	}, nil
 }
+
+func (c *Contracts) Web3Pool() *rpc.Web3Pool {
+	return c.web3pool
+}
+
+func (c *Contracts) Client() *rpc.Client {
+	return c.cli
+}
+
+func (c *Contracts) Signer() *ethSigner.Signer {
+	return c.signer
+}
+
+// SetTxManager sets the transaction manager to be used by the Contracts
+// instance.
+func (c *Contracts) SetTxManager(tm *txmanager.TxManager) {
+	c.txManager = tm
+}
+
+// // StartTxManager initializes and starts the transaction manager and its
+// // background monitoring. It returns an error if the initialization fails.
+// func (c *Contracts) StartTxManager(ctx context.Context) error {
+// 	// Initialize transaction manager with default configuration
+// 	var err error
+// 	c.txManager, err = txmanager.New(ctx, c.web3pool, c.cli, c.signer, txmanager.DefaultTxManagerConfig(c.ChainID))
+// 	if err != nil {
+// 		return fmt.Errorf("failed to initialize transaction manager: %w", err)
+// 	}
+// 	c.txManager.Start(ctx)
+// 	return nil
+// }
+
+// // StopTxManager stops the transaction manager and its background
+// // monitoring.
+// func (c *Contracts) StopTxManager() {
+// 	if c.txManager != nil {
+// 		c.txManager.Stop()
+// 	}
+// }
 
 // CurrentBlock returns the current block number for the chain.
 func (c *Contracts) CurrentBlock() uint64 {
@@ -262,8 +305,13 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 		knownOrganizations: make(map[string]struct{}),
 		ContractsAddresses: &Addresses{},
 	}
-	if err := c.SetAccountPrivateKey(privkey); err != nil {
-		return nil, err
+
+	// Initialize transaction manager with default configuration
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	c.txManager, err = txmanager.New(ctx, c.web3pool, c.cli, c.signer, txmanager.DefaultConfig(c.ChainID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize transaction manager: %w", err)
 	}
 
 	opts, err := c.authTransactOpts()
@@ -428,11 +476,12 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 	return auth, nil
 }
 
-// dev note: this is a temporary method to simulate contract calls
-// it works on geth but not expected to work on other clients or external rpc providers
-// SimulateContractCall simulates a contract call using the eth_simulateV1 RPC method.
-// If blobsSidecar is provided, it will simulate an EIP4844 transaction with blob data.
-// If blobsSidecar is nil, it will simulate a regular contract call.
+// SimulateContractCall simulates a contract call using the eth_simulateV1 RPC
+// method. If blobsSidecar is provided, it will simulate an EIP4844 transaction
+// with blob data. If blobsSidecar is nil, it will simulate a regular contract
+// call.
+// NOTE: this is a temporary method to simulate contract calls it works on geth
+// but not expected to work on other clients or external rpc providers.
 func (c *Contracts) SimulateContractCall(
 	ctx context.Context,
 	contractAddr common.Address,
