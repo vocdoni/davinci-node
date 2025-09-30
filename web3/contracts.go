@@ -158,13 +158,21 @@ func (c *Contracts) CurrentBlock() uint64 {
 	return c.currentBlock
 }
 
-// LoadContracts loads the contracts from the given addresses.
-func (c *Contracts) LoadContracts(addresses *Addresses) error {
-	organizations, err := npbindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
+// LoadContracts loads the contracts
+func (c *Contracts) LoadContracts() error {
+	organizationRegistryAddr, err := c.OrganizationRegistryAddress()
+	if err != nil {
+		return fmt.Errorf("failed to get organization registry address: %w", err)
+	}
+	organizations, err := npbindings.NewOrganizationRegistry(common.HexToAddress(organizationRegistryAddr), c.cli)
 	if err != nil {
 		return fmt.Errorf("failed to bind organization registry: %w", err)
 	}
-	process, err := npbindings.NewProcessRegistry(addresses.ProcessRegistry, c.cli)
+	processRegistryAddr, err := c.ProcessRegistryAddress()
+	if err != nil {
+		return fmt.Errorf("failed to get process registry address: %w", err)
+	}
+	process, err := npbindings.NewProcessRegistry(common.HexToAddress(processRegistryAddr), c.cli)
 	if err != nil {
 		return fmt.Errorf("failed to bind process registry: %w", err)
 	}
@@ -190,7 +198,10 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, rkey)
 	}
 
-	c.ContractsAddresses = addresses
+	c.ContractsAddresses = &Addresses{
+		OrganizationRegistry: common.HexToAddress(organizationRegistryAddr),
+		ProcessRegistry:      common.HexToAddress(processRegistryAddr),
+	}
 	c.processes = process
 	c.organizations = organizations
 
@@ -581,4 +592,36 @@ func (c *Contracts) ResultsVerifierABI() (*abi.ABI, error) {
 		return nil, fmt.Errorf("failed to parse results zk verifier ABI: %w", err)
 	}
 	return &resultsVerifierABI, nil
+}
+
+func (c *Contracts) ProcessRegistryAddress() (string, error) {
+	chainName, ok := npbindings.AvailableNetworksByID[uint32(c.ChainID)]
+	if !ok {
+		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
+	}
+	return npbindings.GetContractAddress(npbindings.ProcessRegistryContract, chainName), nil
+}
+
+func (c *Contracts) StateTransitionVerifierAddress() (string, error) {
+	chainName, ok := npbindings.AvailableNetworksByID[uint32(c.ChainID)]
+	if !ok {
+		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
+	}
+	return npbindings.GetContractAddress(npbindings.StateTransitionVerifierGroth16Contract, chainName), nil
+}
+
+func (c *Contracts) ResultsVerifierAddress() (string, error) {
+	chainName, ok := npbindings.AvailableNetworksByID[uint32(c.ChainID)]
+	if !ok {
+		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
+	}
+	return npbindings.GetContractAddress(npbindings.ResultsVerifierGroth16Contract, chainName), nil
+}
+
+func (c *Contracts) OrganizationRegistryAddress() (string, error) {
+	chainName, ok := npbindings.AvailableNetworksByID[uint32(c.ChainID)]
+	if !ok {
+		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
+	}
+	return npbindings.GetContractAddress(npbindings.OrganizationRegistryContract, chainName), nil
 }

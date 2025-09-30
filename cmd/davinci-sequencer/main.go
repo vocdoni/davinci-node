@@ -8,7 +8,7 @@ import (
 	"path"
 	"syscall"
 
-	"github.com/ethereum/go-ethereum/common"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
@@ -54,18 +54,12 @@ func main() {
 		log.Fatalf("Invalid configuration: %v", err)
 	}
 
-	// Get contract addresses
-	addresses, err := getContractAddresses(cfg)
-	if err != nil {
-		log.Fatalf("Failed to get contract addresses: %v", err)
-	}
-
 	// Create context with cancellation for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Setup services
-	services, err := setupServices(ctx, cfg, addresses)
+	services, err := setupServices(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Failed to setup services: %v", err)
 	}
@@ -143,40 +137,8 @@ func runWorkerMode(cfg *Config) {
 	}
 }
 
-// getContractAddresses returns the contract addresses based on configuration
-func getContractAddresses(cfg *Config) (*web3.Addresses, error) {
-	// Get default contract addresses for selected network
-	networkConfig, ok := config.DefaultConfig[cfg.Web3.Network]
-	if !ok {
-		return nil, fmt.Errorf("no configuration found for network %s", cfg.Web3.Network)
-	}
-
-	// Override with custom addresses if provided
-	processRegistryAddr := networkConfig.ProcessRegistrySmartContract
-	if cfg.Web3.ProcessAddr != "" {
-		processRegistryAddr = cfg.Web3.ProcessAddr
-	}
-
-	orgRegistryAddr := networkConfig.OrganizationRegistrySmartContract
-	if cfg.Web3.OrganizationsAddr != "" {
-		orgRegistryAddr = cfg.Web3.OrganizationsAddr
-	}
-
-	// Log the contract addresses being used
-	log.Infow("using contract addresses",
-		"network", cfg.Web3.Network,
-		"processRegistry", processRegistryAddr,
-		"orgRegistry", orgRegistryAddr)
-
-	// Create the addresses struct
-	return &web3.Addresses{
-		ProcessRegistry:      common.HexToAddress(processRegistryAddr),
-		OrganizationRegistry: common.HexToAddress(orgRegistryAddr),
-	}, nil
-}
-
 // setupServices initializes and starts all required services
-func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) (*Services, error) {
+func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	services := &Services{}
 
 	// Download circuit artifacts
@@ -222,7 +184,7 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	}
 
 	// Load contract bindings
-	if err := services.Contracts.LoadContracts(addresses); err != nil {
+	if err := services.Contracts.LoadContracts(); err != nil {
 		return nil, fmt.Errorf("failed to initialize contracts: %w", err)
 	}
 
@@ -243,8 +205,19 @@ func setupServices(ctx context.Context, cfg *Config, addresses *web3.Addresses) 
 	}
 
 	// Start API service
+	_, ok := npbindings.AvailableNetworksByName[cfg.Web3.Network]
+	if !ok {
+		return nil, fmt.Errorf("invalid network configuration for %s", cfg.Web3.Network)
+	}
+	contracts := npbindings.GetAllContractAddresses(cfg.Web3.Network)
+	dconfig := config.DavinciWeb3Config{
+		ProcessRegistrySmartContract:      contracts[npbindings.ProcessRegistryContract],
+		OrganizationRegistrySmartContract: contracts[npbindings.OrganizationRegistryContract],
+		ResultsZKVerifier:                 contracts[npbindings.ResultsVerifierGroth16Contract],
+		StateTransitionZKVerifier:         contracts[npbindings.StateTransitionVerifierGroth16Contract],
+	}
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
-	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network, config.DefaultConfig[cfg.Web3.Network], cfg.Log.DisableAPI)
+	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network, dconfig, cfg.Log.DisableAPI)
 
 	// Configure worker API if enabled
 	if cfg.API.SequencerWorkersSeed != "" {

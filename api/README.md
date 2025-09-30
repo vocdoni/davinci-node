@@ -105,7 +105,7 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
     "resultsVerifier": "address",
   },
   "network": { 
-    "sep": 11155111
+    "sepolia": 11155111
   },
   "sequencerAddress": "hexString"
 }

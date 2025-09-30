@@ -257,7 +257,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		err = contracts.SetAccountPrivateKey(util.TrimHex(testLocalAccountPrivKey))
 		c.Assert(err, qt.IsNil)
 		// Load the contracts addresses into the contracts object
-		err = contracts.LoadContracts(contractsAddresses)
+		err = contracts.LoadContracts()
 		c.Assert(err, qt.IsNil)
 		log.Infow("contracts deployed and loaded",
 			"chainId", contracts.ChainID,
@@ -267,12 +267,7 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		err = contracts.SetAccountPrivateKey(util.TrimHex(privKey))
 		c.Assert(err, qt.IsNil)
 		// Create the contracts object with the addresses from the environment
-		err = contracts.LoadContracts(&web3.Addresses{
-			OrganizationRegistry:      common.HexToAddress(orgRegistryAddr),
-			ProcessRegistry:           common.HexToAddress(processRegistryAddr),
-			ResultsZKVerifier:         common.HexToAddress(resultsZKVerifierAddr),
-			StateTransitionZKVerifier: common.HexToAddress(stateTransitionZKVerifierAddr),
-		})
+		err = contracts.LoadContracts()
 		c.Assert(err, qt.IsNil)
 	}
 

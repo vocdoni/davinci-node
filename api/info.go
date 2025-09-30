@@ -6,19 +6,19 @@ import (
 	"net/http"
 	"strconv"
 
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/config"
 )
 
 // info returns the information needed by the client to generate a ballot zkSNARK proof
 // GET /info
 func (a *API) info(w http.ResponseWriter, r *http.Request) {
-	// Get the contracts configuration for the current network
-	contracts := config.DefaultConfig[a.network]
-	if contracts == (config.DavinciWeb3Config{}) {
+	_, ok := npbindings.AvailableNetworksByName[a.network]
+	if !ok {
 		ErrGenericInternalServerError.Withf("invalid network configuration for %s", a.network).Write(w)
 		return
 	}
-
+	contracts := npbindings.GetAllContractAddresses(a.network)
 	// Build the response with the necessary circuit information
 	response := &SequencerInfo{
 		CircuitURL:           config.BallotProofCircuitURL,
@@ -32,13 +32,13 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 		WASMhelperExecJsURL:  config.BallotProofWasmExecJsURL,
 		WASMhelperExecJsHash: config.BallotProofWasmExecJsHash,
 		Contracts: ContractAddresses{
-			ProcessRegistry:           contracts.ProcessRegistrySmartContract,
-			OrganizationRegistry:      contracts.OrganizationRegistrySmartContract,
-			StateTransitionZKVerifier: contracts.StateTransitionZKVerifier,
-			ResultsZKVerifier:         contracts.ResultsZKVerifier,
+			ProcessRegistry:           contracts[npbindings.ProcessRegistryContract],
+			OrganizationRegistry:      contracts[npbindings.OrganizationRegistryContract],
+			StateTransitionZKVerifier: contracts[npbindings.StateTransitionVerifierGroth16Contract],
+			ResultsZKVerifier:         contracts[npbindings.ResultsVerifierGroth16Contract],
 		},
 		Network: map[string]uint32{
-			a.network: config.AvailableNetworks[a.network],
+			a.network: npbindings.AvailableNetworksByName[a.network],
 		},
 	}
 	// if the sequencer has a signer, include the sequencer address

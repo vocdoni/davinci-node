@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -212,7 +213,7 @@ func staticHandler(w http.ResponseWriter, r *http.Request) {
 // ProcessIDVersion returns the expected ProcessID version for the current
 // network and contract address. It can be used to validate ProcessIDs.
 func (a *API) ProcessIDVersion() ([]byte, error) {
-	chainID, ok := config.AvailableNetworks[a.network]
+	chainID, ok := npbindings.AvailableNetworksByName[a.network]
 	if !ok {
 		return nil, fmt.Errorf("unknown network: %s", a.network)
 	}

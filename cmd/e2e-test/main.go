@@ -14,6 +14,7 @@ import (
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	flag "github.com/spf13/pflag"
 	"github.com/vocdoni/arbo/memdb"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
 	"github.com/vocdoni/davinci-node/circuits"
@@ -34,7 +35,7 @@ import (
 )
 
 const (
-	defaultNetwork       = "sep"
+	defaultNetwork       = "sepolia"
 	defaultCAPI          = "https://ethereum-sepolia-beacon-api.publicnode.com"
 	defaultSequencerHost = "0.0.0.0"
 	defaultSequencerPort = 8080
@@ -42,7 +43,6 @@ const (
 
 var (
 	defaultSequencerEndpoint = fmt.Sprintf("http://%s:%d", defaultSequencerHost, defaultSequencerPort)
-	defaultContracts         = config.DefaultConfig[defaultNetwork]
 
 	mockedBallotMode = types.BallotMode{
 		NumFields:      circuits.MockNumFields,
@@ -57,20 +57,21 @@ var (
 )
 
 func main() {
+
 	// define cli flags
 	var (
 		privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
 		web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
 		consensusAPI                     = flag.String("consensusAPI", defaultCAPI, "web3 consensus API http endpoint")
-		organizationRegistryAddress      = flag.String("organizationRegistryAddress", defaultContracts.OrganizationRegistrySmartContract, "organization registry smart contract address")
-		processRegistryAddress           = flag.String("processRegistryAddress", defaultContracts.ProcessRegistrySmartContract, "process registry smart contract address")
-		stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", defaultContracts.StateTransitionZKVerifier, "state transition zk verifier smart contract address")
-		resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", defaultContracts.ResultsZKVerifier, "state transition zk verifier smart contract address")
+		organizationRegistryAddress      = flag.String("organizationRegistryAddress", "", "organization registry smart contract address")
+		processRegistryAddress           = flag.String("processRegistryAddress", "", "process registry smart contract address")
+		stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", "", "state transition zk verifier smart contract address")
+		resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", "", " results zk verifier smart contract address")
 		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
 		voteCount                        = flag.Int("voteCount", 10, "number of votes to cast")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
-		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", config.AvailableNetworks))
+		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
 	)
 	flag.Parse()
 	log.Init("debug", "stdout", nil)
@@ -94,23 +95,6 @@ func main() {
 		}
 	}
 
-	// If the web3Network is not the default one, use the default contracts for that network or the provided addresses
-	if *web3Network != defaultNetwork {
-		contractAddrs := config.DefaultConfig[*web3Network]
-		if *organizationRegistryAddress == defaultContracts.OrganizationRegistrySmartContract {
-			*organizationRegistryAddress = contractAddrs.OrganizationRegistrySmartContract
-		}
-		if *processRegistryAddress == defaultContracts.ProcessRegistrySmartContract {
-			*processRegistryAddress = contractAddrs.ProcessRegistrySmartContract
-		}
-		if *stateTransitionZKVerifierAddress == defaultContracts.StateTransitionZKVerifier {
-			*stateTransitionZKVerifierAddress = contractAddrs.StateTransitionZKVerifier
-		}
-		if *resultsZKVerifierAddress == defaultContracts.ResultsZKVerifier {
-			*resultsZKVerifierAddress = contractAddrs.ResultsZKVerifier
-		}
-	}
-
 	log.Infow("using web3 configuration",
 		"network", *web3Network,
 		"organizationRegistryAddress", *organizationRegistryAddress,
@@ -125,13 +109,37 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	if organizationRegistryAddress == nil || *organizationRegistryAddress == "" {
+		*organizationRegistryAddress, err = contracts.OrganizationRegistryAddress()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if processRegistryAddress == nil || *processRegistryAddress == "" {
+		*processRegistryAddress, err = contracts.ProcessRegistryAddress()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if stateTransitionZKVerifierAddress == nil || *stateTransitionZKVerifierAddress == "" {
+		*stateTransitionZKVerifierAddress, err = contracts.StateTransitionVerifierAddress()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if resultsZKVerifierAddress == nil || *resultsZKVerifierAddress == "" {
+		*resultsZKVerifierAddress, err = contracts.ResultsVerifierAddress()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	// Load contracts from the default config
-	if err = contracts.LoadContracts(&web3.Addresses{
-		OrganizationRegistry:      common.HexToAddress(*organizationRegistryAddress),
-		ProcessRegistry:           common.HexToAddress(*processRegistryAddress),
-		StateTransitionZKVerifier: common.HexToAddress(*stateTransitionZKVerifierAddress),
-		ResultsZKVerifier:         common.HexToAddress(*resultsZKVerifierAddress),
-	}); err != nil {
+	if err = contracts.LoadContracts(); err != nil {
 		log.Fatal(err)
 	}
 	// Add the web3rpcs to the contracts
@@ -301,7 +309,18 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Start API service
-	s.api = service.NewAPI(s.storage, defaultSequencerHost, defaultSequencerPort, network, config.DefaultConfig[network], false)
+	_, ok := npbindings.AvailableNetworksByName[network]
+	if !ok {
+		return fmt.Errorf("invalid network configuration for %s", network)
+	}
+	c := npbindings.GetAllContractAddresses(network)
+	dconfig := config.DavinciWeb3Config{
+		ProcessRegistrySmartContract:      c[npbindings.ProcessRegistryContract],
+		OrganizationRegistrySmartContract: c[npbindings.OrganizationRegistryContract],
+		ResultsZKVerifier:                 c[npbindings.ResultsVerifierGroth16Contract],
+		StateTransitionZKVerifier:         c[npbindings.StateTransitionVerifierGroth16Contract],
+	}
+	s.api = service.NewAPI(s.storage, defaultSequencerHost, defaultSequencerPort, network, dconfig, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}
