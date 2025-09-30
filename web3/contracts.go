@@ -159,20 +159,27 @@ func (c *Contracts) CurrentBlock() uint64 {
 }
 
 // LoadContracts loads the contracts
-func (c *Contracts) LoadContracts() error {
-	organizationRegistryAddr, err := c.OrganizationRegistryAddress()
-	if err != nil {
-		return fmt.Errorf("failed to get organization registry address: %w", err)
+func (c *Contracts) LoadContracts(addresses *Addresses) error {
+	if addresses == nil {
+		organizationRegistryAddr, err := c.OrganizationRegistryAddress()
+		if err != nil {
+			return fmt.Errorf("failed to get organization registry address: %w", err)
+		}
+		processRegistryAddr, err := c.ProcessRegistryAddress()
+		if err != nil {
+			return fmt.Errorf("failed to get process registry address: %w", err)
+		}
+		addresses = &Addresses{
+			OrganizationRegistry: common.HexToAddress(organizationRegistryAddr),
+			ProcessRegistry:      common.HexToAddress(processRegistryAddr),
+		}
 	}
-	organizations, err := npbindings.NewOrganizationRegistry(common.HexToAddress(organizationRegistryAddr), c.cli)
+
+	organizations, err := npbindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
 	if err != nil {
 		return fmt.Errorf("failed to bind organization registry: %w", err)
 	}
-	processRegistryAddr, err := c.ProcessRegistryAddress()
-	if err != nil {
-		return fmt.Errorf("failed to get process registry address: %w", err)
-	}
-	process, err := npbindings.NewProcessRegistry(common.HexToAddress(processRegistryAddr), c.cli)
+	process, err := npbindings.NewProcessRegistry(addresses.ProcessRegistry, c.cli)
 	if err != nil {
 		return fmt.Errorf("failed to bind process registry: %w", err)
 	}
@@ -198,10 +205,7 @@ func (c *Contracts) LoadContracts() error {
 		return fmt.Errorf("proving key hash mismatch with the one provided by the smart contract: %s != %x", config.StateTransitionProvingKeyHash, rkey)
 	}
 
-	c.ContractsAddresses = &Addresses{
-		OrganizationRegistry: common.HexToAddress(organizationRegistryAddr),
-		ProcessRegistry:      common.HexToAddress(processRegistryAddr),
-	}
+	c.ContractsAddresses = addresses
 	c.processes = process
 	c.organizations = organizations
 

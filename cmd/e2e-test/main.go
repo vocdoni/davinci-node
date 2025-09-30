@@ -57,7 +57,6 @@ var (
 )
 
 func main() {
-
 	// define cli flags
 	var (
 		privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
@@ -139,7 +138,7 @@ func main() {
 	}
 
 	// Load contracts from the default config
-	if err = contracts.LoadContracts(); err != nil {
+	if err = contracts.LoadContracts(nil); err != nil {
 		log.Fatal(err)
 	}
 	// Add the web3rpcs to the contracts

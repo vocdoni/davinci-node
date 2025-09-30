@@ -184,7 +184,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 
 	// Load contract bindings
-	if err := services.Contracts.LoadContracts(); err != nil {
+	if err := services.Contracts.LoadContracts(nil); err != nil {
 		return nil, fmt.Errorf("failed to initialize contracts: %w", err)
 	}
 
