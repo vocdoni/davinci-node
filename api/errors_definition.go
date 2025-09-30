@@ -43,7 +43,7 @@ var (
 	ErrBallotAlreadySubmitted   = Error{Code: 40018, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("ballot already submitted")}
 	ErrBallotAlreadyProcessing  = Error{Code: 40019, HTTPstatus: http.StatusConflict, Err: fmt.Errorf("ballot is already processing")}
 	ErrProcessNotAcceptingVotes = Error{Code: 40020, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("process is not accepting votes")}
-	ErrInvalidContractVersion   = Error{Code: 40021, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("not supported contract version")}
+	ErrInvalidChainID           = Error{Code: 40021, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("not supported chain Id")}
 	// Worker errors
 	ErrWorkerNotAvailable     = Error{Code: 40022, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("worker not available")}
 	ErrMalformedWorkerInfo    = Error{Code: 40023, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed worker info")}

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/vocdoni/davinci-node/api"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/workers"
@@ -22,7 +21,6 @@ type APIService struct {
 	host                       string
 	port                       int
 	network                    string
-	web3Config                 config.DavinciWeb3Config
 	sequencerWorkersSeed       string
 	workersAuthtokenExpiration time.Duration
 	workersJobTimeout          time.Duration
@@ -30,17 +28,16 @@ type APIService struct {
 }
 
 // NewAPI creates a new APIService instance.
-func NewAPI(storage *storage.Storage, host string, port int, network string, web3Config config.DavinciWeb3Config, disableLogging bool) *APIService {
+func NewAPI(storage *storage.Storage, host string, port int, network string, disableLogging bool) *APIService {
 	if disableLogging {
 		api.DisabledLogging = disableLogging
 		log.Debugw("API logging is disabled")
 	}
 	return &APIService{
-		storage:    storage,
-		host:       host,
-		port:       port,
-		network:    network,
-		web3Config: web3Config,
+		storage: storage,
+		host:    host,
+		port:    port,
+		network: network,
 	}
 }
 
@@ -74,7 +71,6 @@ func (as *APIService) Start(ctx context.Context) error {
 		Port:                       as.port,
 		Storage:                    as.storage,
 		Network:                    as.network,
-		Web3Config:                 as.web3Config,
 		SequencerWorkersSeed:       as.sequencerWorkersSeed,
 		WorkersAuthtokenExpiration: as.workersAuthtokenExpiration,
 		WorkerJobTimeout:           as.workersJobTimeout,

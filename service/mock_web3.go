@@ -14,12 +14,14 @@ var _ ContractsService = &MockContracts{}
 // MockContracts implements a mock version of web3.Contracts for testing
 type MockContracts struct {
 	processes []*types.Process
+	chainID   uint64
 	mu        sync.Mutex
 }
 
 func NewMockContracts() *MockContracts {
 	return &MockContracts{
 		processes: make([]*types.Process, 0),
+		chainID:   1,
 	}
 }
 
@@ -61,7 +63,7 @@ func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID,
 	pid := types.ProcessID{
 		Address: process.OrganizationId,
 		Nonce:   uint64(len(m.processes)),
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: uint32(m.chainID),
 	}
 	process.ID = pid.Marshal()
 	m.processes = append(m.processes, process)

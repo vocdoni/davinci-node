@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -25,7 +26,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Unmarshal the process ID
+	// Unmarshal de process ID
 	pid := new(types.ProcessID).SetBytes(p.ProcessID)
 	if !pid.IsValid() {
 		ErrMalformedProcessID.With("invalid process ID").Write(w)
@@ -38,9 +39,16 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the process ID version
-	if !pid.HasVersion(a.processIDsVersion) {
-		ErrInvalidContractVersion.Withf("%x", pid.Version).Write(w)
+	// Extract our network from the process ID to validate the chain ID
+	networkInfo, ok := config.AvailableNetworks[a.network]
+	if !ok {
+		ErrGenericInternalServerError.With("unknown network").Write(w)
+		return
+	}
+
+	// Validate the chain ID
+	if pid.ChainID != networkInfo {
+		ErrInvalidChainID.Withf("%d", pid.ChainID).Write(w)
 		return
 	}
 
@@ -65,14 +73,13 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the census root as a big.Int
 	censusRoot, err := p.CensusRootBigInt()
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not get census root: %v", err).Write(w)
 		return
 	}
 
-	// Prepare inputs for the state ready for the state transition circuit:
+	// prepare inputs for the state ready for the state transition circuit:
 	// - the census root must be encoded according to the arbo format
 	root, err := state.CalculateInitialRoot(
 		pid.BigInt(),

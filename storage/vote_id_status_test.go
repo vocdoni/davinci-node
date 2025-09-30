@@ -26,7 +26,7 @@ func TestVoteIDStatus(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{},
 		Nonce:   42,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: 1,
 	}
 	pidBytes := processID.Marshal()
 

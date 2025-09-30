@@ -29,12 +29,12 @@ func TestCleanupEndedProcess(t *testing.T) {
 	processID1 := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   1,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: 1,
 	}
 	processID2 := &types.ProcessID{
 		Address: common.Address{2},
 		Nonce:   2,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: 1,
 	}
 
 	// Create processes
@@ -71,7 +71,7 @@ func TestCleanupEndedProcessWithSettledVotes(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   1,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: 1,
 	}
 
 	err = st.NewProcess(createTestProcess(processID))
@@ -113,7 +113,7 @@ func TestMarkProcessVoteIDsTimeout(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   1,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: 1,
 	}
 
 	// Create test vote IDs with different statuses

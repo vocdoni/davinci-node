@@ -8,16 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	stg "github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
@@ -29,11 +26,10 @@ const (
 // APIConfig type represents the configuration for the API HTTP server.
 // It includes the host, port and optionally an existing storage instance.
 type APIConfig struct {
-	Host       string
-	Port       int
-	Storage    *stg.Storage // Optional: use existing storage instance
-	Network    string       // Optional: web3 network shortname
-	Web3Config config.DavinciWeb3Config
+	Host    string
+	Port    int
+	Storage *stg.Storage // Optional: use existing storage instance
+	Network string       // Optional: web3 network shortname
 	// Worker configuration
 	SequencerWorkersSeed       string                  // Seed for workers authentication over current sequencer
 	WorkersAuthtokenExpiration time.Duration           // Expiration time for worker authentication tokens
@@ -43,11 +39,9 @@ type APIConfig struct {
 
 // API type represents the API HTTP server with JWT authentication capabilities.
 type API struct {
-	router            *chi.Mux
-	storage           *stg.Storage
-	network           string
-	web3Config        config.DavinciWeb3Config
-	processIDsVersion []byte // Current process ID version
+	router  *chi.Mux
+	storage *stg.Storage
+	network string
 	// Workers API stuff
 	sequencerSigner            *ethereum.Signer        // Signer for workers authentication
 	sequencerUUID              *uuid.UUID              // UUID to keep the workers endpoints hidden
@@ -72,18 +66,10 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	a := &API{
 		storage:                    conf.Storage,
 		network:                    conf.Network,
-		web3Config:                 conf.Web3Config,
 		workersJobTimeout:          conf.WorkerJobTimeout,
 		workersAuthtokenExpiration: conf.WorkersAuthtokenExpiration,
 		parentCtx:                  ctx,
 	}
-
-	// Set the supported process ID versions
-	currentProcessIDVersion, err := a.ProcessIDVersion()
-	if err != nil {
-		return nil, fmt.Errorf("could not determine current process ID version: %w", err)
-	}
-	a.processIDsVersion = currentProcessIDVersion
 
 	// If no ban rules for workers are provided, use default rules
 	if conf.WorkerBanRules != nil {
@@ -191,8 +177,6 @@ func (a *API) initRouter() {
 	a.router.Use(middleware.Throttle(100))
 	a.router.Use(middleware.ThrottleBacklog(5000, 40000, 60*time.Second))
 	a.router.Use(middleware.Timeout(45 * time.Second))
-	// Add middleware to skip unknown process ID versions
-	a.router.Use(skipUnknownProcessIDMiddleware(a.processIDsVersion))
 
 	a.registerHandlers()
 }
@@ -207,15 +191,4 @@ func staticHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Serve the file using http.ServeFile
 	http.ServeFile(w, r, filePath)
-}
-
-// ProcessIDVersion returns the expected ProcessID version for the current
-// network and contract address. It can be used to validate ProcessIDs.
-func (a *API) ProcessIDVersion() ([]byte, error) {
-	chainID, ok := config.AvailableNetworks[a.network]
-	if !ok {
-		return nil, fmt.Errorf("unknown network: %s", a.network)
-	}
-	contractAddr := common.HexToAddress(a.web3Config.ProcessRegistrySmartContract)
-	return types.ProcessIDVersion(chainID, contractAddr), nil
 }

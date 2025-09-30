@@ -28,13 +28,13 @@ func TestEncryptionKeys(t *testing.T) {
 	processID1 := &types.ProcessID{
 		Address: common.Address{1},
 		Nonce:   42,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: 1,
 	}
 
 	processID2 := &types.ProcessID{
 		Address: common.Address{2},
 		Nonce:   43,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: 1,
 	}
 
 	// Test 1: Initially no encryption keys exist

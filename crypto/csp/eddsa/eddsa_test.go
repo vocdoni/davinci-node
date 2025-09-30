@@ -20,7 +20,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 	processID := &types.ProcessID{
 		Address: orgAddress,
 		Nonce:   rand.Uint64(),
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
+		ChainID: rand.Uint32(),
 	}
 
 	csp, err := CSP(twistededwards.BLS12_377)
