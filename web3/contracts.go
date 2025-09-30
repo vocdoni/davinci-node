@@ -74,6 +74,9 @@ type Contracts struct {
 	lastWatchProcessBlock uint64
 	knownOrganizations    map[string]struct{}
 	lastWatchOrgBlock     uint64
+
+	// Transaction manager for nonce management and stuck transaction recovery
+	txManager *TransactionManager
 }
 
 // New creates a new Contracts instance with the given web3 endpoints.
@@ -125,7 +128,7 @@ func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 	// calculate the start block to watch
 	startBlock := max(int64(lastBlock)-maxPastBlocksToWatch, 0)
 
-	return &Contracts{
+	c := &Contracts{
 		ChainID:                  *chainID,
 		web3pool:                 w3pool,
 		cli:                      cli,
@@ -136,7 +139,12 @@ func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 		lastWatchOrgBlock:        uint64(startBlock),
 		currentBlock:             lastBlock,
 		currentBlockLastUpdate:   time.Now(),
-	}, nil
+	}
+
+	// Initialize transaction manager with default configuration
+	c.txManager = NewTransactionManager(c, DefaultTransactionManagerConfig())
+
+	return c, nil
 }
 
 // CurrentBlock returns the current block number for the chain.
@@ -255,6 +263,10 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 		knownOrganizations: make(map[string]struct{}),
 		ContractsAddresses: &Addresses{},
 	}
+	
+	// Initialize transaction manager with default configuration
+	c.txManager = NewTransactionManager(c, DefaultTransactionManagerConfig())
+	
 	if err := c.SetAccountPrivateKey(privkey); err != nil {
 		return nil, err
 	}
@@ -631,4 +643,34 @@ func (c *Contracts) OrganizationRegistryAddress() (string, error) {
 		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
 	}
 	return npbindings.GetContractAddress(npbindings.OrganizationRegistryContract, chainName), nil
+}
+
+// InitializeTransactionManager initializes the transaction manager by fetching the current on-chain nonce
+func (c *Contracts) InitializeTransactionManager(ctx context.Context) error {
+	if c.txManager == nil {
+		return fmt.Errorf("transaction manager not initialized")
+	}
+	return c.txManager.Initialize(ctx)
+}
+
+// StartTransactionMonitoring starts the background monitoring of pending transactions
+func (c *Contracts) StartTransactionMonitoring(ctx context.Context) {
+	if c.txManager != nil {
+		c.txManager.StartMonitoring(ctx)
+	}
+}
+
+// StopTransactionMonitoring stops the background monitoring of pending transactions
+func (c *Contracts) StopTransactionMonitoring() {
+	if c.txManager != nil {
+		c.txManager.StopMonitoring()
+	}
+}
+
+// GetPendingTransactionCount returns the number of pending transactions being tracked
+func (c *Contracts) GetPendingTransactionCount() int {
+	if c.txManager == nil {
+		return 0
+	}
+	return c.txManager.GetPendingTransactionCount()
 }

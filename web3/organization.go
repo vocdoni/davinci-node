@@ -7,12 +7,27 @@ import (
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
+	gtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
 // CreateOrganization creates a new organization in the OrganizationRegistry contract.
 func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.OrganizationInfo) (common.Hash, error) {
+	ctx := context.Background()
+	
+	// Use transaction manager if available for automatic nonce management
+	if c.txManager != nil {
+		txHash, err := c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+			return c.buildCreateOrganizationTx(ctx, orgInfo, nonce)
+		})
+		if err != nil {
+			return common.Hash{}, fmt.Errorf("failed to create organization: %w", err)
+		}
+		return *txHash, nil
+	}
+	
+	// Fallback to old method if transaction manager not initialized
 	txOpts, err := c.authTransactOpts()
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to create transact options: %w", err)
@@ -22,6 +37,21 @@ func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.Or
 		return common.Hash{}, fmt.Errorf("failed to create organization: %w", err)
 	}
 	return tx.Hash(), nil
+}
+
+// buildCreateOrganizationTx builds a create organization transaction with the given nonce
+func (c *Contracts) buildCreateOrganizationTx(ctx context.Context, orgInfo *types.OrganizationInfo, nonce uint64) (*gtypes.Transaction, error) {
+	orgABI, err := c.OrganizationRegistryABI()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get organization registry ABI: %w", err)
+	}
+
+	data, err := orgABI.Pack("createOrganization", orgInfo.Name, orgInfo.MetadataURI, []common.Address{c.signer.Address()})
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack data: %w", err)
+	}
+
+	return c.buildDynamicFeeTx(ctx, c.ContractsAddresses.OrganizationRegistry, data, nonce)
 }
 
 // Organization returns the organization with the given address from the OrganizationRegistry contract.

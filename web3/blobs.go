@@ -146,7 +146,7 @@ func (c *Contracts) NewEIP4844Transaction(
 	}
 
 	// Estimate execution gas, include blob hashes so any contract logic that
-	// references them (e.g. checks) isn’t under-estimated.
+	// references them (e.g. checks) isn't under-estimated.
 	gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
 		From:       c.AccountAddress(),
 		To:         &to,
@@ -183,7 +183,7 @@ func (c *Contracts) NewEIP4844Transaction(
 	maxFee.Add(maxFee, tipCap)
 
 	// Base fee for *blob gas* (separate market). Use RPC eth_blobBaseFee.
-	// NOTE: go-ethereum doesn’t have a typed helper; call raw RPC:
+	// NOTE: go-ethereum doesn't have a typed helper; call raw RPC:
 	var blobBaseFeeHex string
 	ethclient, err := c.cli.EthClient()
 	if err != nil {
@@ -201,6 +201,103 @@ func (c *Contracts) NewEIP4844Transaction(
 	inner := &types.BlobTx{
 		ChainID:    uint256.MustFromBig(cID),
 		Nonce:      nonce,
+		GasTipCap:  uint256.MustFromBig(tipCap),
+		GasFeeCap:  uint256.MustFromBig(maxFee),
+		Gas:        gas,
+		To:         to,
+		Value:      uint256.NewInt(0),
+		Data:       data,
+		BlobFeeCap: uint256.MustFromBig(blobFeeCap), // REQUIRED for blobs
+		BlobHashes: blobsSidecar.BlobHashes(),
+		Sidecar:    blobsSidecar, // attach sidecar for gossip
+	}
+
+	signedTx, err := types.SignNewTx((*ecdsa.PrivateKey)(c.signer), types.NewCancunSigner(cID), inner)
+	if err != nil {
+		return nil, err
+	}
+	return signedTx, nil
+}
+
+// NewEIP4844TransactionWithNonce is like NewEIP4844Transaction but uses a provided nonce instead of fetching from RPC
+func (c *Contracts) NewEIP4844TransactionWithNonce(
+	ctx context.Context,
+	to common.Address,
+	contractABI *abi.ABI,
+	method string,
+	args []any,
+	blobsSidecar *types.BlobTxSidecar,
+	nonce uint64,
+) (*types.Transaction, error) {
+	if contractABI == nil {
+		return nil, fmt.Errorf("nil contract ABI")
+	}
+	if (to == common.Address{}) {
+		return nil, fmt.Errorf("empty to address")
+	}
+	if method == "" {
+		return nil, fmt.Errorf("empty method")
+	}
+	if c.signer == nil {
+		return nil, fmt.Errorf("no signer defined")
+	}
+
+	// ABI-encode call data
+	data, err := contractABI.Pack(method, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Estimate execution gas, include blob hashes so any contract logic that
+	// references them (e.g. checks) isn't under-estimated.
+	gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
+		From:       c.AccountAddress(),
+		To:         &to,
+		Data:       data,
+		BlobHashes: blobsSidecar.BlobHashes(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Fee building
+	// Tip suggestion (EIP-1559)
+	tipCap, err := c.cli.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Base fee for *execution gas* from latest block
+	h, err := c.cli.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	baseFee := h.BaseFee // can be nil on pre-London, but not on mainnet today
+
+	// Choose a reasonable safety multiplier for max fee per gas.
+	// Common pattern: maxFee = baseFee*2 + tip
+	maxFee := new(big.Int).Mul(baseFee, big.NewInt(2))
+	maxFee.Add(maxFee, tipCap)
+
+	// Base fee for *blob gas* (separate market). Use RPC eth_blobBaseFee.
+	// NOTE: go-ethereum doesn't have a typed helper; call raw RPC:
+	var blobBaseFeeHex string
+	ethclient, err := c.cli.EthClient()
+	if err != nil {
+		return nil, fmt.Errorf("cannot get eth client: %w", err)
+	}
+	if err := ethclient.Client().CallContext(ctx, &blobBaseFeeHex, "eth_blobBaseFee"); err != nil {
+		return nil, fmt.Errorf("eth_blobBaseFee: %w", err)
+	}
+	blobBaseFee, _ := new(big.Int).SetString(strings.TrimPrefix(blobBaseFeeHex, "0x"), 16)
+	// Be safe: cap blob fee above base (e.g., 2x)
+	blobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
+
+	// Build & sign the blob transaction
+	cID := new(big.Int).SetUint64(c.ChainID)
+	inner := &types.BlobTx{
+		ChainID:    uint256.MustFromBig(cID),
+		Nonce:      nonce, // Use provided nonce
 		GasTipCap:  uint256.MustFromBig(tipCap),
 		GasFeeCap:  uint256.MustFromBig(maxFee),
 		Gas:        gas,

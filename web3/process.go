@@ -2,10 +2,12 @@ package web3
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	gtypes "github.com/ethereum/go-ethereum/core/types"
@@ -124,7 +126,21 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-	if blobsSidecar == nil { // Regular transaction if no blobs are provided
+
+	// Use transaction manager if available for automatic nonce management and stuck tx recovery
+	if c.txManager != nil {
+		return c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+			if blobsSidecar == nil {
+				// Regular transaction
+				return c.buildRegularTransition(ctx, pid, proof, inputs, nonce)
+			}
+			// Blob transaction
+			return c.buildBlobTransition(ctx, pid, proof, inputs, blobsSidecar, nonce)
+		})
+	}
+
+	// Fallback to old method if transaction manager not initialized
+	if blobsSidecar == nil {
 		autOpts, err := c.authTransactOpts()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create transact options: %w", err)
@@ -142,13 +158,14 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
 	}
-	tx, err := c.NewEIP4844Transaction(
+	tx, err := c.NewEIP4844TransactionWithNonce(
 		ctx,
 		c.ContractsAddresses.ProcessRegistry,
 		processABI,
 		"submitStateTransition",
 		[]any{pid, proof, inputs},
 		blobsSidecar,
+		0, // nonce will be fetched inside
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
@@ -161,12 +178,59 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 	return &hash, nil
 }
 
+// buildRegularTransition builds a regular (non-blob) state transition transaction with the given nonce
+func (c *Contracts) buildRegularTransition(ctx context.Context, pid [32]byte, proof, inputs []byte, nonce uint64) (*gtypes.Transaction, error) {
+	processABI, err := c.ProcessRegistryABI()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+	}
+
+	data, err := processABI.Pack("submitStateTransition", pid, proof, inputs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack data: %w", err)
+	}
+
+	return c.buildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+}
+
+// buildBlobTransition builds a blob state transition transaction with the given nonce
+func (c *Contracts) buildBlobTransition(ctx context.Context, pid [32]byte, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar, nonce uint64) (*gtypes.Transaction, error) {
+	processABI, err := c.ProcessRegistryABI()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+	}
+
+	return c.NewEIP4844TransactionWithNonce(
+		ctx,
+		c.ContractsAddresses.ProcessRegistry,
+		processABI,
+		"submitStateTransition",
+		[]any{pid, proof, inputs},
+		blobsSidecar,
+		nonce,
+	)
+}
+
 func (c *Contracts) SetProcessResults(processID, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (*common.Hash, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-	if blobsSidecar == nil { // Regular transaction if no blobs are provided
+
+	// Use transaction manager if available for automatic nonce management and stuck tx recovery
+	if c.txManager != nil {
+		return c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+			if blobsSidecar == nil {
+				// Regular transaction
+				return c.buildRegularResults(ctx, pid, proof, inputs, nonce)
+			}
+			// Blob transaction
+			return c.buildBlobResults(ctx, pid, proof, inputs, blobsSidecar, nonce)
+		})
+	}
+
+	// Fallback to old method if transaction manager not initialized
+	if blobsSidecar == nil {
 		autOpts, err := c.authTransactOpts()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create transact options: %w", err)
@@ -184,13 +248,14 @@ func (c *Contracts) SetProcessResults(processID, proof, inputs []byte, blobsSide
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
 	}
-	tx, err := c.NewEIP4844Transaction(
+	tx, err := c.NewEIP4844TransactionWithNonce(
 		ctx,
 		c.ContractsAddresses.ProcessRegistry,
 		processABI,
 		"setProcessResults",
 		[]any{pid, proof, inputs},
 		blobsSidecar,
+		0, // nonce will be fetched inside
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
@@ -201,6 +266,88 @@ func (c *Contracts) SetProcessResults(processID, proof, inputs []byte, blobsSide
 	}
 	hash := tx.Hash()
 	return &hash, nil
+}
+
+// buildRegularResults builds a regular (non-blob) results transaction with the given nonce
+func (c *Contracts) buildRegularResults(ctx context.Context, pid [32]byte, proof, inputs []byte, nonce uint64) (*gtypes.Transaction, error) {
+	processABI, err := c.ProcessRegistryABI()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+	}
+
+	data, err := processABI.Pack("setProcessResults", pid, proof, inputs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack data: %w", err)
+	}
+
+	return c.buildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+}
+
+// buildBlobResults builds a blob results transaction with the given nonce
+func (c *Contracts) buildBlobResults(ctx context.Context, pid [32]byte, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar, nonce uint64) (*gtypes.Transaction, error) {
+	processABI, err := c.ProcessRegistryABI()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+	}
+
+	return c.NewEIP4844TransactionWithNonce(
+		ctx,
+		c.ContractsAddresses.ProcessRegistry,
+		processABI,
+		"setProcessResults",
+		[]any{pid, proof, inputs},
+		blobsSidecar,
+		nonce,
+	)
+}
+
+// buildDynamicFeeTx builds a standard EIP-1559 transaction with the given nonce
+func (c *Contracts) buildDynamicFeeTx(ctx context.Context, to common.Address, data []byte, nonce uint64) (*gtypes.Transaction, error) {
+	// Get gas price and tip
+	tipCap, err := c.cli.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tip cap: %w", err)
+	}
+
+	baseFee, err := c.cli.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get base fee: %w", err)
+	}
+
+	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
+
+	// Estimate gas
+	gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
+		From:      c.AccountAddress(),
+		To:        &to,
+		Data:      data,
+		GasFeeCap: gasFeeCap,
+		GasTipCap: tipCap,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate gas: %w", err)
+	}
+
+	// Create transaction
+	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
+		ChainID:   new(big.Int).SetUint64(c.ChainID),
+		Nonce:     nonce,
+		GasTipCap: tipCap,
+		GasFeeCap: gasFeeCap,
+		Gas:       gas,
+		To:        &to,
+		Value:     big.NewInt(0),
+		Data:      data,
+	})
+
+	// Sign transaction
+	signer := gtypes.NewCancunSigner(new(big.Int).SetUint64(c.ChainID))
+	signed, err := gtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(c.signer))
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign transaction: %w", err)
+	}
+
+	return signed, nil
 }
 
 func (c *Contracts) SetProcessStatus(processID []byte, status types.ProcessStatus) (*common.Hash, error) {
