@@ -338,16 +338,19 @@ func (c *Contracts) CheckTxStatus(txHash common.Hash) (bool, error) {
 
 // WaitTx waits for a transaction to be mined.
 func (c *Contracts) WaitTx(txHash common.Hash, timeOut time.Duration) error {
+	timeout := time.After(timeOut)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-time.After(timeOut):
+		case <-timeout:
 			return fmt.Errorf("timeout waiting for tx %s", txHash.Hex())
-		default:
+		case <-ticker.C:
 			status, _ := c.CheckTxStatus(txHash)
 			if status {
 				return nil
 			}
-			time.Sleep(1 * time.Second)
 		}
 	}
 }
