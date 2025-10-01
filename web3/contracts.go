@@ -141,10 +141,27 @@ func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 		currentBlockLastUpdate:   time.Now(),
 	}
 
+	return c, nil
+}
+
+// StartTransactionManager initializes and starts the transaction manager and
+// its background monitoring. It returns an error if the initialization fails.
+func (c *Contracts) StartTransactionManager(ctx context.Context) error {
 	// Initialize transaction manager with default configuration
 	c.txManager = NewTransactionManager(c, DefaultTransactionManagerConfig())
+	if err := c.txManager.Initialize(ctx); err != nil {
+		return fmt.Errorf("failed to initialize transaction manager: %w", err)
+	}
+	c.txManager.StartMonitoring(ctx)
+	return nil
+}
 
-	return c, nil
+// StopTransactionManager stops the transaction manager and its background
+// monitoring.
+func (c *Contracts) StopTransactionManager() {
+	if c.txManager != nil {
+		c.txManager.StopMonitoring()
+	}
 }
 
 // CurrentBlock returns the current block number for the chain.

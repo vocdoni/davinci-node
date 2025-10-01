@@ -193,6 +193,11 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		return nil, fmt.Errorf("failed to set account private key: %w", err)
 	}
 
+	// Init transaction manager
+	if err := services.Contracts.StartTransactionManager(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start transaction manager: %w", err)
+	}
+
 	log.Infow("contracts initialized",
 		"chainId", services.Contracts.ChainID,
 		"account", services.Contracts.AccountAddress().Hex())
@@ -263,5 +268,6 @@ func shutdownServices(services *Services) {
 	if services.ProcessMon != nil {
 		services.ProcessMon.Stop()
 	}
-	services.Storage.Close() // Close storage last
+	services.Contracts.StopTransactionManager() // Stop transaction manager
+	services.Storage.Close()                    // Close storage last
 }
