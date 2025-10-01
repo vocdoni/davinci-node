@@ -276,6 +276,10 @@ func setupWeb3(t *testing.T, ctx context.Context) *web3.Contracts {
 		c.Assert(err, qt.IsNil)
 	}
 
+	// Start the transaction manager
+	err = contracts.StartTransactionManager(ctx)
+	c.Assert(err, qt.IsNil)
+	c.Cleanup(contracts.StopTransactionManager)
 	// Set contracts ABIs
 	contracts.ContractABIs = &web3.ContractABIs{}
 	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
