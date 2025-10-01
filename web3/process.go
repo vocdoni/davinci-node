@@ -129,14 +129,35 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 
 	// Use transaction manager if available for automatic nonce management and stuck tx recovery
 	if c.txManager != nil {
-		return c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+		var sentTx *gtypes.Transaction
+		txHash, err := c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+			var tx *gtypes.Transaction
+			var err error
 			if blobsSidecar == nil {
 				// Regular transaction
-				return c.buildRegularTransition(ctx, pid, proof, inputs, nonce)
+				tx, err = c.buildRegularTransition(ctx, pid, proof, inputs, nonce)
+			} else {
+				// Blob transaction
+				tx, err = c.buildBlobTransition(ctx, pid, proof, inputs, blobsSidecar, nonce)
 			}
-			// Blob transaction
-			return c.buildBlobTransition(ctx, pid, proof, inputs, blobsSidecar, nonce)
+			if err == nil {
+				sentTx = tx // Store the transaction for sidecar tracking
+			}
+			return tx, err
 		})
+
+		// If blob transaction sent successfully, store sidecar for recovery
+		if err == nil && blobsSidecar != nil && sentTx != nil {
+			if err := c.txManager.TrackBlobTransactionWithSidecar(sentTx, blobsSidecar); err != nil {
+				log.Warnw("failed to track blob sidecar for recovery", "error", err, "hash", txHash.Hex())
+			} else {
+				log.Infow("blob sidecar tracked for stuck transaction recovery",
+					"hash", txHash.Hex(),
+					"blobCount", len(blobsSidecar.Blobs))
+			}
+		}
+
+		return txHash, err
 	}
 
 	// Fallback to old method if transaction manager not initialized
@@ -211,58 +232,29 @@ func (c *Contracts) buildBlobTransition(ctx context.Context, pid [32]byte, proof
 	)
 }
 
-func (c *Contracts) SetProcessResults(processID, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (*common.Hash, error) {
+func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (*common.Hash, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
-	// Use transaction manager if available for automatic nonce management and stuck tx recovery
+	// Use transaction manager if available for automatic nonce management
 	if c.txManager != nil {
+		// Results are always regular transactions (no blobs)
 		return c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
-			if blobsSidecar == nil {
-				// Regular transaction
-				return c.buildRegularResults(ctx, pid, proof, inputs, nonce)
-			}
-			// Blob transaction
-			return c.buildBlobResults(ctx, pid, proof, inputs, blobsSidecar, nonce)
+			return c.buildRegularResults(ctx, pid, proof, inputs, nonce)
 		})
 	}
 
 	// Fallback to old method if transaction manager not initialized
-	if blobsSidecar == nil {
-		autOpts, err := c.authTransactOpts()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create transact options: %w", err)
-		}
-		autOpts.Context = ctx
-		tx, err := c.processes.SetProcessResults(autOpts, pid, proof, inputs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to set process results: %w", err)
-		}
-		hash := tx.Hash()
-		return &hash, nil
-	}
-
-	processABI, err := c.ProcessRegistryABI()
+	autOpts, err := c.authTransactOpts()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+		return nil, fmt.Errorf("failed to create transact options: %w", err)
 	}
-	tx, err := c.NewEIP4844TransactionWithNonce(
-		ctx,
-		c.ContractsAddresses.ProcessRegistry,
-		processABI,
-		"setProcessResults",
-		[]any{pid, proof, inputs},
-		blobsSidecar,
-		0, // nonce will be fetched inside
-	)
+	autOpts.Context = ctx
+	tx, err := c.processes.SetProcessResults(autOpts, pid, proof, inputs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
-	}
-
-	if err := c.cli.SendTransaction(ctx, tx); err != nil {
-		return nil, fmt.Errorf("failed to set process results (EIP-4844 Tx): %w", err)
+		return nil, fmt.Errorf("failed to set process results: %w", err)
 	}
 	hash := tx.Hash()
 	return &hash, nil
@@ -281,24 +273,6 @@ func (c *Contracts) buildRegularResults(ctx context.Context, pid [32]byte, proof
 	}
 
 	return c.buildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
-}
-
-// buildBlobResults builds a blob results transaction with the given nonce
-func (c *Contracts) buildBlobResults(ctx context.Context, pid [32]byte, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar, nonce uint64) (*gtypes.Transaction, error) {
-	processABI, err := c.ProcessRegistryABI()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
-	}
-
-	return c.NewEIP4844TransactionWithNonce(
-		ctx,
-		c.ContractsAddresses.ProcessRegistry,
-		processABI,
-		"setProcessResults",
-		[]any{pid, proof, inputs},
-		blobsSidecar,
-		nonce,
-	)
 }
 
 // buildDynamicFeeTx builds a standard EIP-1559 transaction with the given nonce

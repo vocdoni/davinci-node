@@ -9,8 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/vocdoni/davinci-node/log"
 )
 
@@ -56,6 +58,7 @@ type PendingTransaction struct {
 	Data             []byte
 	Value            *big.Int
 	BlobHashes       []common.Hash
+	BlobSidecar      *types.BlobTxSidecar // Store sidecar for rebuilding blob txs
 }
 
 // TransactionManager handles nonce management and stuck transaction recovery
@@ -218,6 +221,14 @@ func (tm *TransactionManager) trackTransaction(tx *types.Transaction) {
 		ptx.OriginalGasPrice = tx.GasFeeCap()
 		ptx.OriginalBlobFee = tx.BlobGasFeeCap()
 		ptx.BlobHashes = tx.BlobHashes()
+		// Note: Cannot extract sidecar from transaction after creation due to
+		// unexported fields in go-ethereum. Blob sidecars must be stored separately
+		// via TrackBlobTransactionWithSidecar() to enable recovery.
+		// WARNING: Without the sidecar, stuck blob transactions CANNOT be recovered
+		// (they cannot be cancelled like regular txs, only replaced with same blob data).
+		log.Debugw("tracking blob transaction (sidecar not stored - recovery not possible)",
+			"nonce", tx.Nonce(),
+			"blobCount", len(tx.BlobHashes()))
 	case types.DynamicFeeTxType:
 		ptx.OriginalGasPrice = tx.GasFeeCap()
 	case types.LegacyTxType:
@@ -225,6 +236,32 @@ func (tm *TransactionManager) trackTransaction(tx *types.Transaction) {
 	}
 
 	tm.pendingTxs[tx.Nonce()] = ptx
+}
+
+// TrackBlobTransactionWithSidecar tracks a blob transaction with its sidecar for potential recovery
+// This should be called immediately after sending a blob transaction if recovery is desired
+func (tm *TransactionManager) TrackBlobTransactionWithSidecar(tx *types.Transaction, sidecar *types.BlobTxSidecar) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	if tx.Type() != types.BlobTxType {
+		return fmt.Errorf("transaction is not a blob transaction")
+	}
+
+	// Check if transaction is already tracked
+	ptx, exists := tm.pendingTxs[tx.Nonce()]
+	if !exists {
+		return fmt.Errorf("transaction not tracked, call SendTransactionWithFallback first")
+	}
+
+	// Update with sidecar
+	ptx.BlobSidecar = sidecar
+	log.Infow("blob transaction sidecar stored for recovery",
+		"nonce", tx.Nonce(),
+		"hash", tx.Hash().Hex(),
+		"blobCount", len(sidecar.Blobs))
+
+	return nil
 }
 
 // handleStuckTransactions checks for and handles stuck transactions
@@ -298,10 +335,26 @@ func (tm *TransactionManager) speedUpTransaction(ctx context.Context, ptx *Pendi
 		newBlobFee := new(big.Int).Mul(ptx.OriginalBlobFee, increaseFactor)
 		newBlobFee.Div(newBlobFee, big.NewInt(100))
 
-		log.Warnw("cannot rebuild blob transaction, will cancel instead",
-			"nonce", ptx.Nonce,
-			"reason", "blob transactions require sidecar which is not stored")
-		return tm.cancelTransaction(ctx, ptx)
+		// Check if sidecar is available for rebuilding
+		if ptx.BlobSidecar != nil {
+			newTx, err = tm.rebuildBlobTransaction(ctx, ptx, newGasPrice, newBlobFee)
+			if err != nil {
+				log.Errorw(err, "failed to rebuild blob transaction")
+				return fmt.Errorf("cannot rebuild blob transaction: %w", err)
+			}
+			log.Infow("blob transaction rebuilt with higher fees",
+				"nonce", ptx.Nonce,
+				"newGasPrice", newGasPrice,
+				"newBlobFee", newBlobFee)
+		} else {
+			// CRITICAL: Blob transactions cannot be cancelled! They can only be replaced
+			// with another blob transaction using the same blob data. Without the sidecar,
+			// we cannot create a replacement, so the transaction is permanently stuck.
+			err := fmt.Errorf("blob transaction stuck: nonce=%d hash=%s - sidecar not stored via TrackBlobTransactionWithSidecar",
+				ptx.Nonce, ptx.Hash.Hex())
+			log.Errorw(err, "blob transaction stuck without recovery option")
+			return err
+		}
 	} else {
 		newTx, err = tm.rebuildRegularTransaction(ctx, ptx, newGasPrice)
 		if err != nil {
@@ -319,6 +372,11 @@ func (tm *TransactionManager) speedUpTransaction(ctx context.Context, ptx *Pendi
 	ptx.RetryCount++
 	ptx.Timestamp = time.Now()
 	ptx.OriginalGasPrice = newGasPrice
+	if ptx.IsBlob {
+		newBlobFee := new(big.Int).Mul(ptx.OriginalBlobFee, increaseFactor)
+		newBlobFee.Div(newBlobFee, big.NewInt(100))
+		ptx.OriginalBlobFee = newBlobFee
+	}
 
 	log.Infow("transaction sped up",
 		"nonce", ptx.Nonce,
@@ -363,8 +421,79 @@ func (tm *TransactionManager) rebuildRegularTransaction(
 	return signed, nil
 }
 
-// cancelTransaction sends a 0-value transaction to self with higher fees to cancel
+// rebuildBlobTransaction rebuilds a blob transaction with higher fees
+// This requires the original sidecar to be stored via TrackBlobTransactionWithSidecar
+func (tm *TransactionManager) rebuildBlobTransaction(
+	ctx context.Context,
+	ptx *PendingTransaction,
+	newGasPrice *big.Int,
+	newBlobFee *big.Int,
+) (*types.Transaction, error) {
+	if ptx.BlobSidecar == nil {
+		return nil, fmt.Errorf("blob sidecar not available for rebuilding")
+	}
+
+	// Get gas tip cap
+	tipCap, err := tm.contracts.cli.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tip cap: %w", err)
+	}
+
+	// Estimate gas for the blob transaction
+	gasLimit, err := tm.contracts.cli.EstimateGas(ctx, ethereum.CallMsg{
+		From:          tm.contracts.AccountAddress(),
+		To:            &ptx.To,
+		Data:          ptx.Data,
+		BlobHashes:    ptx.BlobSidecar.BlobHashes(),
+		BlobGasFeeCap: newBlobFee,
+	})
+	if err != nil {
+		// If estimation fails, use a reasonable default
+		gasLimit = 300000
+		log.Warnw("gas estimation failed for blob tx, using default",
+			"error", err,
+			"gasLimit", gasLimit)
+	}
+
+	// Build the replacement blob transaction with higher fees
+	blobTx := &types.BlobTx{
+		ChainID:    uint256.NewInt(tm.contracts.ChainID),
+		Nonce:      ptx.Nonce,
+		GasTipCap:  uint256.MustFromBig(tipCap),
+		GasFeeCap:  uint256.MustFromBig(newGasPrice),
+		Gas:        gasLimit,
+		To:         ptx.To,
+		Value:      uint256.MustFromBig(ptx.Value),
+		Data:       ptx.Data,
+		BlobFeeCap: uint256.MustFromBig(newBlobFee),
+		BlobHashes: ptx.BlobSidecar.BlobHashes(),
+		Sidecar:    ptx.BlobSidecar,
+	}
+
+	// Create and sign the transaction
+	tx := types.NewTx(blobTx)
+	signer := types.NewCancunSigner(new(big.Int).SetUint64(tm.contracts.ChainID))
+	signed, err := types.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.contracts.signer))
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign blob transaction: %w", err)
+	}
+
+	log.Infow("rebuilt blob transaction with higher fees",
+		"nonce", ptx.Nonce,
+		"originalBlobFee", ptx.OriginalBlobFee,
+		"newBlobFee", newBlobFee,
+		"originalGasPrice", ptx.OriginalGasPrice,
+		"newGasPrice", newGasPrice)
+
+	return signed, nil
+}
+
+// cancelTransaction sends a 0-value transaction to self with higher fees to cancel a regular transaction
+// NOTE: This does NOT work for blob transactions! Blob txs can only be replaced with another blob tx.
 func (tm *TransactionManager) cancelTransaction(ctx context.Context, ptx *PendingTransaction) error {
+	if ptx.IsBlob {
+		return fmt.Errorf("cannot cancel blob transaction %s: blob txs can only be replaced with same blob data", ptx.Hash.Hex())
+	}
 	// Calculate cancellation gas price (2x original)
 	gasPrice := new(big.Int).Mul(ptx.OriginalGasPrice, big.NewInt(2))
 

@@ -15,7 +15,7 @@ import (
 // CreateOrganization creates a new organization in the OrganizationRegistry contract.
 func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.OrganizationInfo) (common.Hash, error) {
 	ctx := context.Background()
-	
+
 	// Use transaction manager if available for automatic nonce management
 	if c.txManager != nil {
 		txHash, err := c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
@@ -26,7 +26,7 @@ func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.Or
 		}
 		return *txHash, nil
 	}
-	
+
 	// Fallback to old method if transaction manager not initialized
 	txOpts, err := c.authTransactOpts()
 	if err != nil {

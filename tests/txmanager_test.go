@@ -44,7 +44,7 @@ func TestTransactionManagerStuckTransactions(t *testing.T) {
 			qt.Commentf("Expected nonce to increment by 1 after org creation"))
 
 		t.Log("✓ Transaction manager correctly initialized and tracked nonce")
-		
+
 		// Note: The monitor runs every 30 seconds, so we don't verify pending count
 		// immediately as it would require waiting 30+ seconds. The important verification
 		// is that the nonce was properly tracked and incremented.

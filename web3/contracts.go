@@ -263,10 +263,10 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 		knownOrganizations: make(map[string]struct{}),
 		ContractsAddresses: &Addresses{},
 	}
-	
+
 	// Initialize transaction manager with default configuration
 	c.txManager = NewTransactionManager(c, DefaultTransactionManagerConfig())
-	
+
 	if err := c.SetAccountPrivateKey(privkey); err != nil {
 		return nil, err
 	}
