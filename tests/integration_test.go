@@ -12,22 +12,10 @@ import (
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
-	"github.com/vocdoni/davinci-node/workers"
 )
-
-func TestMain(m *testing.M) {
-	log.Init(log.LogLevelDebug, "stdout", nil)
-	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
-		log.Errorw(err, "failed to download artifacts")
-		return
-	}
-	os.Exit(m.Run())
-}
 
 func TestIntegration(t *testing.T) {
 	numBallots := 5
@@ -35,7 +23,7 @@ func TestIntegration(t *testing.T) {
 
 	// Setup
 	ctx := t.Context()
-	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTokenExpiration, testWorkerTimeout, workers.DefaultWorkerBanRules)
+
 	_, port := services.API.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
@@ -50,14 +38,10 @@ func TestIntegration(t *testing.T) {
 		participants  []*api.CensusParticipant
 	)
 
-	c.Run("create organization", func(c *qt.C) {
-		orgAddr := createOrganization(c, services.Contracts)
-		t.Logf("Organization address: %s", orgAddr.String())
-	})
-
 	c.Run("create process", func(c *qt.C) {
 		// Create census with numBallot participants
-		censusRoot, participants, signers = createCensus(c, cli, numBallots)
+		censusRoot, participants, signers, err = createCensus(cli, numBallots)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 		ballotMode = &types.BallotMode{
 			NumFields:      circuits.MockNumFields,
 			UniqueValues:   circuits.MockUniqueValues == 1,
@@ -74,16 +58,20 @@ func TestIntegration(t *testing.T) {
 			// but only if we are not using a CSP census
 			{
 				// create a different censusRoot for testing
-				root2, _, _ := createCensus(c, cli, numBallots*2)
+				root2, _, _, err := createCensus(cli, numBallots*2)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 				// createProcessInSequencer should be idempotent, but there was a bug in this. Test it's fixed
-				pid1, encryptionKey1, stateRoot1 := createProcessInSequencer(c, services.Contracts, cli, testCensusOrigin(), root2, ballotMode)
-				pid2, encryptionKey2, stateRoot2 := createProcessInSequencer(c, services.Contracts, cli, testCensusOrigin(), root2, ballotMode)
+				pid1, encryptionKey1, stateRoot1, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2, ballotMode)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
+				pid2, encryptionKey2, stateRoot2, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2, ballotMode)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 				c.Assert(pid2.String(), qt.Equals, pid1.String())
 				c.Assert(encryptionKey2, qt.DeepEquals, encryptionKey1)
 				c.Assert(stateRoot2.String(), qt.Equals, stateRoot1.String())
 				// a subsequent call to create process, same processID but with different censusRoot
 				// should return the same encryptionKey but yield a different stateRoot.
-				pid3, encryptionKey3, stateRoot3 := createProcessInSequencer(c, services.Contracts, cli, testCensusOrigin(), censusRoot, ballotMode)
+				pid3, encryptionKey3, stateRoot3, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), censusRoot, ballotMode)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 				c.Assert(pid3.String(), qt.Equals, pid1.String())
 				c.Assert(encryptionKey3, qt.DeepEquals, encryptionKey1)
 				c.Assert(stateRoot3.String(), qt.Not(qt.Equals), stateRoot1.String(),
@@ -93,10 +81,12 @@ func TestIntegration(t *testing.T) {
 		// this final call is the good one, with the real censusRoot, should return the correct stateRoot and encryptionKey that
 		// we'll use to create process in contracts
 		var stateRoot *types.HexBytes
-		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, testCensusOrigin(), censusRoot, ballotMode)
+		pid, encryptionKey, stateRoot, err = createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), censusRoot, ballotMode)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts
-		pid2 := createProcessInContracts(c, services.Contracts, testCensusOrigin(), censusRoot, ballotMode, encryptionKey, stateRoot)
+		pid2, err := createProcessInContracts(services.Contracts, testCensusOrigin(), censusRoot, ballotMode, encryptionKey, stateRoot)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
 		// create a timeout for the process creation, if it is greater than the test timeout
@@ -147,12 +137,13 @@ func TestIntegration(t *testing.T) {
 		// Generate proof for first participant
 		proofs = make([]*types.CensusProof, numBallots)
 		for i := range participants {
-			proofs[i] = generateCensusProof(c, cli, censusRoot, pid.Marshal(), participants[i].Key)
+			proofs[i], err = generateCensusProof(cli, censusRoot, pid.Marshal(), participants[i].Key)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			c.Assert(proofs[i], qt.Not(qt.IsNil))
 		}
 		// Check the first proof key is the same as the participant key and signer address
-		qt.Assert(t, proofs[0].Address.String(), qt.DeepEquals, participants[0].Key.String())
-		qt.Assert(t, string(proofs[0].Address), qt.DeepEquals, string(signers[0].Address().Bytes()))
+		c.Assert(proofs[0].Address.String(), qt.DeepEquals, participants[0].Key.String())
+		c.Assert(string(proofs[0].Address), qt.DeepEquals, string(signers[0].Address().Bytes()))
 	})
 
 	// Store the voteIDs returned from the API to check their status later
@@ -164,9 +155,11 @@ func TestIntegration(t *testing.T) {
 		for i := range signers {
 			// generate a vote for the first participant
 			k := util.RandomBigInt(big.NewInt(100000000), big.NewInt(9999999999999999))
-			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], k)
+			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], k)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			vote.CensusProof = *censusProof
 			// Make the request to cast the vote
@@ -188,7 +181,8 @@ func TestIntegration(t *testing.T) {
 	c.Assert(voteIDs, qt.HasLen, numBallots)
 
 	c.Run("create invalid votes", func(c *qt.C) {
-		vote := createVoteFromInvalidVoter(c, pid, ballotMode, encryptionKey)
+		vote, err := createVoteFromInvalidVoter(pid, ballotMode, encryptionKey)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote from invalid voter"))
 		// Make the request to try cast the vote
 		body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 		c.Assert(err, qt.IsNil)
@@ -199,9 +193,11 @@ func TestIntegration(t *testing.T) {
 	c.Run("try to overwrite valid votes", func(c *qt.C) {
 		for i := range signers {
 			// generate a vote for the first participant
-			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], ks[i])
+			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], ks[i])
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			vote.CensusProof = *censusProof
 			// Make the request to cast the vote
@@ -249,7 +245,8 @@ func TestIntegration(t *testing.T) {
 			select {
 			case <-ticker.C:
 				// Check that votes are settled (state transitions confirmed on blockchain)
-				if allSettled, failed := checkVoteStatus(t, cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
+				if allSettled, failed, err := checkVoteStatus(cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
+					c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
 					if len(failed) > 0 {
 						hexFailed := make([]string, len(failed))
 						for i, v := range failed {
@@ -258,7 +255,9 @@ func TestIntegration(t *testing.T) {
 						t.Fatalf("Some votes failed to be settled: %v", hexFailed)
 					}
 				}
-				if publishedVotes(t, services.Contracts, pid) < numBallots {
+				published, err := publishedVotes(services.Contracts, pid)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published votes from contract"))
+				if published < numBallots {
 					continue
 				}
 				break SettledVotesLoop
@@ -275,9 +274,11 @@ func TestIntegration(t *testing.T) {
 		count := 0
 		for i := range signers {
 			// generate a vote for the first participant
-			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], nil)
+			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], nil)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			vote.CensusProof = *censusProof
 			// Make the request to cast the vote
@@ -305,7 +306,9 @@ func TestIntegration(t *testing.T) {
 			select {
 			case <-ticker.C:
 				// Check that votes are settled (state transitions confirmed on blockchain)
-				if allSettled, failed := checkVoteStatus(t, cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
+				allSettled, failed, err := checkVoteStatus(cli, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled))
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to check overwrite vote status"))
+				if !allSettled {
 					if len(failed) > 0 {
 						hexFailed := make([]string, len(failed))
 						for i, v := range failed {
@@ -314,7 +317,9 @@ func TestIntegration(t *testing.T) {
 						t.Fatalf("Some overwrite votes failed to be processed: %v", hexFailed)
 					}
 				}
-				if publishedOverwriteVotes(t, services.Contracts, pid) < numBallots {
+				publishedOverwrite, err := publishedOverwriteVotes(services.Contracts, pid)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published overwrite votes from contract"))
+				if publishedOverwrite < numBallots {
 					continue
 				}
 				break ResultsLoop2
@@ -326,7 +331,8 @@ func TestIntegration(t *testing.T) {
 	})
 
 	c.Run("wait for publish votes", func(c *qt.C) {
-		finishProcessOnContract(t, services.Contracts, pid)
+		err := finishProcessOnContract(services.Contracts, pid)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to finish process on contract"))
 		results, err := services.Sequencer.WaitUntilResults(t.Context(), pid)
 		c.Assert(err, qt.IsNil)
 		c.Logf("Results calculated: %v, waiting for onchain results...", results)
@@ -338,7 +344,8 @@ func TestIntegration(t *testing.T) {
 		for {
 			select {
 			case <-ticker.C:
-				results := publishedResults(t, services.Contracts, pid)
+				results, err := publishedResults(services.Contracts, pid)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published results from contract"))
 				if results == nil {
 					t.Log("Results not yet published, waiting...")
 					continue
@@ -354,9 +361,11 @@ func TestIntegration(t *testing.T) {
 	c.Run("try to send votes to ended process", func(c *qt.C) {
 		for i := range signers {
 			// generate a vote for the first participant
-			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signers[i], nil)
+			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], nil)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			vote.CensusProof = *censusProof
 			// Make the request to cast the vote
