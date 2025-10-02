@@ -69,6 +69,10 @@ func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID,
 	return &pid, &hash, nil
 }
 
+func (m *MockContracts) EndProcess(processID *types.ProcessID) (*common.Hash, error) {
+	return nil, nil
+}
+
 func (m *MockContracts) AccountAddress() common.Address {
 	return common.HexToAddress("0x1234567890123456789012345678901234567890")
 }

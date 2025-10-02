@@ -221,6 +221,18 @@ func (c *Contracts) SetProcessStatus(processID []byte, status types.ProcessStatu
 	return &hash, nil
 }
 
+func (c *Contracts) EndProcess(processID *types.ProcessID) (*common.Hash, error) {
+	process, err := c.Process(processID.Marshal())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process: %w", err)
+	}
+	// Only processes in Ready status can be ended
+	if process.Status != types.ProcessStatusReady {
+		return nil, fmt.Errorf("process cannot be ended, invalid status: %s", process.Status.String())
+	}
+	return c.SetProcessStatus(processID.Marshal(), types.ProcessStatusEnded)
+}
+
 // MonitorProcessCreation monitors the creation of new processes by polling the ProcessRegistry contract every interval.
 func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
 	ch := make(chan *types.Process)

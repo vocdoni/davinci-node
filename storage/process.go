@@ -1,9 +1,7 @@
 package storage
 
 import (
-	"encoding/hex"
 	"fmt"
-	"time"
 
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
@@ -285,61 +283,4 @@ func (s *Storage) CleanProcessStaleVotes(pid []byte) error {
 // encryptionKeyPrefix.
 func (s *Storage) listProcessesWithEncryptionKeys() ([][]byte, error) {
 	return s.listArtifacts(encryptionKeyPrefix)
-}
-
-// monitorEndedProcesses starts a goroutine that periodically checks for processes
-// that have ended and updates their status accordingly.
-// It runs every 30 seconds to ensure that processes that have reached their
-// duration are marked as ended.
-func (s *Storage) monitorEndedProcesses() {
-	ticker := time.NewTicker(30 * time.Second)
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-s.ctx.Done():
-				log.Info("monitorEndedProcesses stopped")
-				return
-			case <-ticker.C:
-				s.checkAndUpdateEndedProcesses()
-			}
-		}
-	}()
-}
-
-// checkAndUpdateEndedProcesses checks for processes that have ended based on their
-// start time and duration.
-func (s *Storage) checkAndUpdateEndedProcesses() {
-	pids, err := s.ListProcesses()
-	if err != nil {
-		log.Errorw(err, "failed to list  processes")
-		return
-	}
-
-	for _, pid := range pids {
-		p, err := s.Process(new(types.ProcessID).SetBytes(pid))
-		if err != nil {
-			log.Errorw(err, "failed to retrieve process for monitoring")
-			continue
-		}
-
-		if p.Status != types.ProcessStatusEnded &&
-			p.Status != types.ProcessStatusResults &&
-			p.Status != types.ProcessStatusCanceled {
-			if p.StartTime.Add(p.Duration).Before(time.Now()) {
-				// Update the process status to ended
-				if err := s.UpdateProcess(pid, func(p *types.Process) error {
-					p.Status = types.ProcessStatusEnded
-					return nil
-				}); err != nil {
-					log.Errorw(err, "failed to update process status to ended")
-					continue
-				}
-				log.Infow("process status updated to ended", "pid", hex.EncodeToString(pid))
-				if err := s.cleanupEndedProcess(pid); err != nil {
-					log.Errorw(err, "failed to cleanup ended process "+hex.EncodeToString(pid))
-				}
-			}
-		}
-	}
 }

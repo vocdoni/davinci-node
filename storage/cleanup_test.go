@@ -50,7 +50,7 @@ func TestCleanupEndedProcess(t *testing.T) {
 	verifyInitialState(c, st, processID1, processID2)
 
 	// Cleanup processID1
-	err = st.cleanupEndedProcess(processID1.Marshal())
+	err = st.CleanupEndedProcess(processID1.Marshal())
 	c.Assert(err, qt.IsNil)
 
 	// Verify cleanup results
@@ -88,7 +88,7 @@ func TestCleanupEndedProcessWithSettledVotes(t *testing.T) {
 	}
 
 	// Cleanup the process
-	err = st.cleanupEndedProcess(processID.Marshal())
+	err = st.CleanupEndedProcess(processID.Marshal())
 	c.Assert(err, qt.IsNil)
 
 	// Verify settled votes remain settled (not marked as timeout)

@@ -700,6 +700,37 @@ func waitUntilProcessStarts(
 	}
 }
 
+func waitUntilProcessEnds(
+	contracts *web3.Contracts,
+	pid *types.ProcessID,
+	timeout time.Duration,
+) error {
+	// Wait for the process to be in the expected status
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for process to end")
+		case <-ticker.C:
+			process, err := contracts.Process(pid.Marshal())
+			if err != nil {
+				log.Warnw("failed to get process", "error", err)
+				continue
+			}
+			if process == nil {
+				log.Warnw("process not found", "processID", pid.String())
+				continue
+			}
+			if process.Status == types.ProcessStatusEnded {
+				return nil
+			}
+		}
+	}
+}
+
 func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
 	var err error
 	// emulate user inputs
@@ -920,8 +951,7 @@ func finishProcessOnContract(contracts *web3.Contracts, pid *types.ProcessID) er
 	if txHash == nil {
 		return fmt.Errorf("transaction hash is nil")
 	}
-	err = contracts.WaitTx(*txHash, time.Second*30)
-	if err != nil {
+	if err := contracts.WaitTx(*txHash, time.Second*30); err != nil {
 		return fmt.Errorf("failed to wait for transaction: %w", err)
 	}
 	return nil

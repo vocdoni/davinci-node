@@ -10,7 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 )
 
-// cleanupEndedProcess removes all ballots, batches, state transitions and their
+// CleanupEndedProcess removes all ballots, batches, state transitions and their
 // reservations for a given processID. This method is called when a process is
 // ended to free storage space. All votes that were not yet settled are marked
 // as timeout before removal to preserve vote status for voter queries.
@@ -25,7 +25,7 @@ import (
 //
 // Important: This method does NOT clean process metadata, encryption keys,
 // or statistics as they serve as historical records.
-func (s *Storage) cleanupEndedProcess(processID []byte) error {
+func (s *Storage) CleanupEndedProcess(processID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 

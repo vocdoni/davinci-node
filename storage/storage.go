@@ -137,7 +137,7 @@ func New(db db.Database) *Storage {
 	}
 
 	// start monitoring for ended processes
-	s.monitorEndedProcesses()
+	// s.monitorEndedProcesses()
 
 	// start monitoring for stale reservations
 	s.monitorStaleReservations()

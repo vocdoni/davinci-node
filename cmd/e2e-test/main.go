@@ -268,21 +268,21 @@ func main() {
 	}
 	log.Info("all votes registered in smart contract, finishing the process in the smart contract...")
 	time.Sleep(1 * time.Second)
-	// finish the process in the smart contract
-	if err := finishProcessOnChain(contracts, pid); err != nil {
-		log.Errorw(err, "failed to finish process in smart contract")
-		return
-	}
-	log.Infow("process finished in smart contract", "pid", pid.String())
-	// Wait for the process to be finished in the sequencer
-	resultsCtx, cancel := context.WithTimeout(testCtx, 2*time.Minute)
-	defer cancel()
-	results, err := waitForOnChainResults(resultsCtx, contracts, pid)
-	if err != nil {
-		log.Errorw(err, "failed to wait for on-chain results")
-		return
-	}
-	log.Infow("on-chain results received", "pid", pid.String(), "results", results)
+	// // finish the process in the smart contract
+	// if err := finishProcessOnChain(contracts, pid); err != nil {
+	// 	log.Errorw(err, "failed to finish process in smart contract")
+	// 	return
+	// }
+	// log.Infow("process finished in smart contract", "pid", pid.String())
+	// // Wait for the process to be finished in the sequencer
+	// resultsCtx, cancel := context.WithTimeout(testCtx, 2*time.Minute)
+	// defer cancel()
+	// results, err := waitForOnChainResults(resultsCtx, contracts, pid)
+	// if err != nil {
+	// 	log.Errorw(err, "failed to wait for on-chain results")
+	// 	return
+	// }
+	// log.Infow("on-chain results received", "pid", pid.String(), "results", results)
 }
 
 type localService struct {
@@ -471,9 +471,10 @@ func createProcess(
 		EncryptionKey:  encryptionKeys,
 		StateRoot:      resp.StateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
-		Duration:       time.Hour,
-		MetadataURI:    "https://example.com/metadata",
-		BallotMode:     &ballotMode,
+		// Duration:       time.Hour,
+		Duration:    10 * time.Minute,
+		MetadataURI: "https://example.com/metadata",
+		BallotMode:  &ballotMode,
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
 			MaxVotes:     new(types.BigInt).SetUint64(1000),

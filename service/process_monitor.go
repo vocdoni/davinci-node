@@ -16,11 +16,12 @@ import (
 // ProcessMonitor is a service that monitors new voting processes or process
 // updates and update them in the local storage.
 type ProcessMonitor struct {
-	contracts ContractsService
-	storage   *storage.Storage
-	interval  time.Duration
-	mu        sync.Mutex
-	cancel    context.CancelFunc
+	contracts    ContractsService
+	storage      *storage.Storage
+	interval     time.Duration
+	mu           sync.Mutex
+	cancel       context.CancelFunc
+	alreadyEnded sync.Map // map[string]bool to track ended processes
 }
 
 // ContractsService defines the interface for web3 contract operations.
@@ -29,6 +30,7 @@ type ContractsService interface {
 	MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error)
 	MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error)
 	CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error)
+	EndProcess(processID *types.ProcessID) (*common.Hash, error)
 	AccountAddress() common.Address
 	WaitTx(hash common.Hash, timeout time.Duration) error
 }
@@ -77,7 +79,9 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start monitor of process state root changes: %w", err)
 	}
 
-	go pm.monitorProcesses(ctx, newProcChan, changedStatusProcChan, stateTransitionChan)
+	durationReachedChan := pm.monitorDurationReachedProcesses(ctx, pm.interval)
+
+	go pm.monitorProcesses(ctx, newProcChan, changedStatusProcChan, stateTransitionChan, durationReachedChan)
 	return nil
 }
 
@@ -97,6 +101,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 	newProcChan <-chan *types.Process,
 	changedStatusProcChan <-chan *types.ProcessWithStatusChange,
 	stateTransitionChan <-chan *types.ProcessWithStateRootChange,
+	toEndProcChan <-chan *types.Process,
 ) {
 	for {
 		select {
@@ -138,6 +143,60 @@ func (pm *ProcessMonitor) monitorProcesses(
 				log.Warnw("failed to update process state root",
 					"pid", process.ID.String(), "err", err.Error())
 			}
+		case process := <-toEndProcChan:
+			pid := new(types.ProcessID).SetBytes(process.ID)
+			if _, loaded := pm.alreadyEnded.LoadOrStore(pid.String(), true); loaded {
+				// Already marked as ended, skip
+				continue
+			}
+			log.Infow("process duration reached, marking as ended", "pid", pid.String())
+			_, err := pm.contracts.EndProcess(pid)
+			if err != nil {
+				log.Errorw(err, "could not end process on contract: "+pid.String())
+				continue
+			}
+			// Mark as ended in local storage to avoid repeated attempts
+			pm.alreadyEnded.Store(pid.String(), true)
 		}
 	}
+}
+
+func (pm *ProcessMonitor) monitorDurationReachedProcesses(ctx context.Context, interval time.Duration) <-chan *types.Process {
+	ch := make(chan *types.Process)
+	go func() {
+		defer close(ch)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Infow("exiting monitor process updates")
+				return
+			case <-ticker.C:
+				pids, err := pm.storage.ListProcessWithEncryptionKeys()
+				if err != nil {
+					log.Errorw(err, "could not list processes")
+					continue
+				}
+				for _, pidBytes := range pids {
+					processID := new(types.ProcessID).SetBytes(pidBytes)
+
+					process, err := pm.storage.Process(processID)
+					if err != nil {
+						if err != storage.ErrNotFound {
+							log.Errorw(err, "could not retrieve process from storage: "+processID.String())
+						}
+						continue
+					}
+
+					expired := time.Now().After(process.StartTime.Add(process.Duration))
+					if process.Status == types.ProcessStatusReady && expired {
+						ch <- process
+					}
+				}
+			}
+		}
+	}()
+	return ch
 }
