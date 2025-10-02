@@ -34,8 +34,8 @@ type TransactionManagerConfig struct {
 	MonitorInterval    time.Duration
 }
 
-// DefaultTransactionManagerConfig returns a default configuration
-func DefaultTransactionManagerConfig() TransactionManagerConfig {
+// DefaultTxManagerConfig returns a default configuration
+func DefaultTxManagerConfig() TransactionManagerConfig {
 	return TransactionManagerConfig{
 		MaxPendingTime:     defaultMaxPendingTime,
 		MaxRetries:         defaultMaxRetries,
@@ -82,28 +82,23 @@ type TransactionManager struct {
 	monitorCancel context.CancelFunc
 }
 
-// NewTransactionManager creates a new transaction manager
-func NewTransactionManager(contracts *Contracts, config TransactionManagerConfig) *TransactionManager {
-	return &TransactionManager{
+// newTxManager creates a new transaction manager and initializes it
+// by fetching the current on-chain nonce
+func newTxManager(ctx context.Context, contracts *Contracts, config TransactionManagerConfig) (*TransactionManager, error) {
+	tm := &TransactionManager{
 		contracts:  contracts,
 		pendingTxs: make(map[uint64]*PendingTransaction),
 		config:     config,
 	}
-}
-
-// Initialize initializes the transaction manager by fetching the current on-chain nonce
-func (tm *TransactionManager) Initialize(ctx context.Context) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
 
 	// Get confirmed on-chain nonce (not pending!)
 	ethcli, err := tm.contracts.cli.EthClient()
 	if err != nil {
-		return fmt.Errorf("failed to get eth client: %w", err)
+		return nil, fmt.Errorf("failed to get eth client: %w", err)
 	}
 	nonce, err := ethcli.NonceAt(ctx, tm.contracts.AccountAddress(), nil)
 	if err != nil {
-		return fmt.Errorf("failed to get on-chain nonce: %w", err)
+		return nil, fmt.Errorf("failed to get on-chain nonce: %w", err)
 	}
 
 	tm.lastConfirmedNonce = nonce
@@ -114,11 +109,11 @@ func (tm *TransactionManager) Initialize(ctx context.Context) error {
 		"address", tm.contracts.AccountAddress().Hex(),
 		"nonce", nonce)
 
-	return nil
+	return tm, nil
 }
 
-// StartMonitoring starts the background monitoring of pending transactions
-func (tm *TransactionManager) StartMonitoring(ctx context.Context) {
+// startMonitoring starts the background monitoring of pending transactions
+func (tm *TransactionManager) startMonitoring(ctx context.Context) {
 	tm.monitorCtx, tm.monitorCancel = context.WithCancel(ctx)
 
 	go func() {
@@ -143,8 +138,8 @@ func (tm *TransactionManager) StartMonitoring(ctx context.Context) {
 	}()
 }
 
-// StopMonitoring stops the background monitoring
-func (tm *TransactionManager) StopMonitoring() {
+// stopMonitoring stops the background monitoring
+func (tm *TransactionManager) stopMonitoring() {
 	if tm.monitorCancel != nil {
 		tm.monitorCancel()
 	}
@@ -610,18 +605,4 @@ func (tm *TransactionManager) recoverFromNonceGap(
 		"nonce", onChainNonce)
 
 	return &hash, nil
-}
-
-// GetPendingTransactionCount returns the number of pending transactions
-func (tm *TransactionManager) GetPendingTransactionCount() int {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	return len(tm.pendingTxs)
-}
-
-// GetNextNonce returns the next nonce that will be used
-func (tm *TransactionManager) GetNextNonce() uint64 {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	return tm.nextNonce
 }

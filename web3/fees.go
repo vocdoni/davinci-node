@@ -6,15 +6,6 @@ import (
 	"math/big"
 )
 
-type FeeCaps struct {
-	// Execution gas fee caps (EIP-1559)
-	TipCap *big.Int // maxPriorityFeePerGas
-	FeeCap *big.Int // maxFeePerGas
-
-	// Optional: Blob fee cap (EIP-4844). If nil, treated as non-blob.
-	BlobFeeCap *big.Int
-}
-
 const (
 	minTipBumpGwei    = int64(2) // 2 gwei min absolute bump for tip
 	minFeeCapBumpGwei = int64(5) // 5 gwei min absolute bump for fee cap
@@ -24,9 +15,20 @@ const (
 	bumpFactorDen = int64(1000)
 )
 
-// SuggestInitialFees returns initial FeeCaps built from on-chain conditions.
+// FeeCaps holds the gas fee caps for EIP-1559 transactions, and optionally
+// the blob fee cap for EIP-4844 transactions.
+type FeeCaps struct {
+	// Execution gas fee caps (EIP-1559)
+	TipCap *big.Int // maxPriorityFeePerGas
+	FeeCap *big.Int // maxFeePerGas
+
+	// Optional: Blob fee cap (EIP-4844). If nil, treated as non-blob.
+	BlobFeeCap *big.Int
+}
+
+// suggestInitialFees returns initial FeeCaps built from on-chain conditions.
 // If forBlobs is true, it also includes BlobFeeCap (2x blob base fee).
-func (c *Contracts) SuggestInitialFees(ctx context.Context, forBlobs bool) (FeeCaps, error) {
+func (c *Contracts) suggestInitialFees(ctx context.Context, forBlobs bool) (FeeCaps, error) {
 	var fees FeeCaps
 
 	tip, err := c.cli.SuggestGasTipCap(ctx)
@@ -59,8 +61,8 @@ func (c *Contracts) SuggestInitialFees(ctx context.Context, forBlobs bool) (FeeC
 	return fees, nil
 }
 
-// BumpFees bumps the provided FeeCaps using EIP-1559-friendly rules and current base fees.
-func (c *Contracts) BumpFees(ctx context.Context, fees FeeCaps) (FeeCaps, error) {
+// bumpFees bumps the provided FeeCaps using EIP-1559-friendly rules and current base fees.
+func (c *Contracts) bumpFees(ctx context.Context, fees FeeCaps) (FeeCaps, error) {
 	// Re-suggest tip for sanity, but ensure minimum absolute bump is respected.
 	suggestedTip, err := c.cli.SuggestGasTipCap(ctx)
 	if err != nil {
@@ -106,34 +108,4 @@ func (c *Contracts) BumpFees(ctx context.Context, fees FeeCaps) (FeeCaps, error)
 		FeeCap:     feeCapBumped,
 		BlobFeeCap: blobFeeCapBumped,
 	}, nil
-}
-
-func mulFrac(x *big.Int, num, den int64) *big.Int {
-	if x == nil {
-		return nil
-	}
-	xx := new(big.Int).Set(x)
-	xx.Mul(xx, big.NewInt(num))
-	xx.Div(xx, big.NewInt(den))
-	return xx
-}
-
-func maxBig(vals ...*big.Int) *big.Int {
-	var best *big.Int
-	for _, v := range vals {
-		if v == nil {
-			continue
-		}
-		if best == nil || v.Cmp(best) > 0 {
-			best = new(big.Int).Set(v)
-		}
-	}
-	if best == nil {
-		return big.NewInt(0)
-	}
-	return best
-}
-
-func gwei(n int64) *big.Int {
-	return new(big.Int).Mul(big.NewInt(n), big.NewInt(1_000_000_000))
 }

@@ -34,7 +34,7 @@ func (c *Contracts) SendTxWithReplacement(
 		return nil, fmt.Errorf("no signer defined")
 	}
 
-	fees, err := c.SuggestInitialFees(ctx, forBlobs)
+	fees, err := c.suggestInitialFees(ctx, forBlobs)
 	if err != nil {
 		return nil, fmt.Errorf("initial fees: %w", err)
 	}
@@ -80,7 +80,7 @@ func (c *Contracts) SendTxWithReplacement(
 					// If cancel was underpriced, bump and retry once for this nonce.
 					if isUnderpriced(err) || isFeeTooLow(err) {
 						var bumpErr error
-						fees, bumpErr = c.BumpFees(ctx, fees)
+						fees, bumpErr = c.bumpFees(ctx, fees)
 						if bumpErr != nil {
 							return nil, fmt.Errorf("bump fees for cancel: %w", bumpErr)
 						}
@@ -102,7 +102,7 @@ func (c *Contracts) SendTxWithReplacement(
 		case isUnderpriced(sendErr) || isFeeTooLow(sendErr):
 			// Bump fees and retry with same nonce.
 			var bumpErr error
-			fees, bumpErr = c.BumpFees(ctx, fees)
+			fees, bumpErr = c.bumpFees(ctx, fees)
 			if bumpErr != nil {
 				return nil, fmt.Errorf("bump fees: %w", bumpErr)
 			}

@@ -17,12 +17,9 @@ func TestTransactionManagerStuckTransactions(t *testing.T) {
 	contracts := setupWeb3(t, ctx)
 
 	// Initialize transaction manager
-	err := contracts.InitializeTransactionManager(ctx)
+	err := contracts.StartTxManager(ctx)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize transaction manager"))
-
-	// Start monitoring in background
-	contracts.StartTransactionMonitoring(ctx)
-	defer contracts.StopTransactionMonitoring()
+	defer contracts.StopTxManager()
 
 	t.Run("test transaction manager initialization and nonce tracking", func(t *testing.T) {
 		c := qt.New(t)

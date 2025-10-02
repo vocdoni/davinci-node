@@ -194,7 +194,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 
 	// Init transaction manager
-	if err := services.Contracts.StartTransactionManager(ctx); err != nil {
+	if err := services.Contracts.StartTxManager(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start transaction manager: %w", err)
 	}
 
@@ -268,6 +268,6 @@ func shutdownServices(services *Services) {
 	if services.ProcessMon != nil {
 		services.ProcessMon.Stop()
 	}
-	services.Contracts.StopTransactionManager() // Stop transaction manager
-	services.Storage.Close()                    // Close storage last
+	services.Contracts.StopTxManager() // Stop transaction manager
+	services.Storage.Close()           // Close storage last
 }

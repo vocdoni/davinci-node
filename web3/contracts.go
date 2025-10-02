@@ -128,7 +128,7 @@ func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 	// calculate the start block to watch
 	startBlock := max(int64(lastBlock)-maxPastBlocksToWatch, 0)
 
-	c := &Contracts{
+	return &Contracts{
 		ChainID:                  *chainID,
 		web3pool:                 w3pool,
 		cli:                      cli,
@@ -139,28 +139,26 @@ func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 		lastWatchOrgBlock:        uint64(startBlock),
 		currentBlock:             lastBlock,
 		currentBlockLastUpdate:   time.Now(),
-	}
-
-	return c, nil
+	}, nil
 }
 
-// StartTransactionManager initializes and starts the transaction manager and
-// its background monitoring. It returns an error if the initialization fails.
-func (c *Contracts) StartTransactionManager(ctx context.Context) error {
+// StartTxManager initializes and starts the transaction manager and its
+// background monitoring. It returns an error if the initialization fails.
+func (c *Contracts) StartTxManager(ctx context.Context) error {
 	// Initialize transaction manager with default configuration
-	c.txManager = NewTransactionManager(c, DefaultTransactionManagerConfig())
-	if err := c.txManager.Initialize(ctx); err != nil {
+	var err error
+	if c.txManager, err = newTxManager(ctx, c, DefaultTxManagerConfig()); err != nil {
 		return fmt.Errorf("failed to initialize transaction manager: %w", err)
 	}
-	c.txManager.StartMonitoring(ctx)
+	c.txManager.startMonitoring(ctx)
 	return nil
 }
 
-// StopTransactionManager stops the transaction manager and its background
+// StopTxManager stops the transaction manager and its background
 // monitoring.
-func (c *Contracts) StopTransactionManager() {
+func (c *Contracts) StopTxManager() {
 	if c.txManager != nil {
-		c.txManager.StopMonitoring()
+		c.txManager.stopMonitoring()
 	}
 }
 
@@ -282,9 +280,9 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	}
 
 	// Initialize transaction manager with default configuration
-	c.txManager = NewTransactionManager(c, DefaultTransactionManagerConfig())
-
-	if err := c.SetAccountPrivateKey(privkey); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if c.txManager, err = newTxManager(ctx, c, DefaultTxManagerConfig()); err != nil {
 		return nil, err
 	}
 
@@ -660,34 +658,4 @@ func (c *Contracts) OrganizationRegistryAddress() (string, error) {
 		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
 	}
 	return npbindings.GetContractAddress(npbindings.OrganizationRegistryContract, chainName), nil
-}
-
-// InitializeTransactionManager initializes the transaction manager by fetching the current on-chain nonce
-func (c *Contracts) InitializeTransactionManager(ctx context.Context) error {
-	if c.txManager == nil {
-		return fmt.Errorf("transaction manager not initialized")
-	}
-	return c.txManager.Initialize(ctx)
-}
-
-// StartTransactionMonitoring starts the background monitoring of pending transactions
-func (c *Contracts) StartTransactionMonitoring(ctx context.Context) {
-	if c.txManager != nil {
-		c.txManager.StartMonitoring(ctx)
-	}
-}
-
-// StopTransactionMonitoring stops the background monitoring of pending transactions
-func (c *Contracts) StopTransactionMonitoring() {
-	if c.txManager != nil {
-		c.txManager.StopMonitoring()
-	}
-}
-
-// GetPendingTransactionCount returns the number of pending transactions being tracked
-func (c *Contracts) GetPendingTransactionCount() int {
-	if c.txManager == nil {
-		return 0
-	}
-	return c.txManager.GetPendingTransactionCount()
 }
