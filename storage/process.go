@@ -177,35 +177,20 @@ func (s *Storage) Metadata(hash []byte) (*types.Metadata, error) {
 }
 
 // ProcessIsAcceptingVotes checks if the process is ready to accept votes,
-// which means that the process is in the "Ready" state and the state root
-// in the storage matches the state root in the state database. If
-// the process is not ready, it returns false and an error explaining why.
+// which means that the process is in the "Ready" state.
 func (s *Storage) ProcessIsAcceptingVotes(pid []byte) (bool, error) {
-	// Check if the stateRoot from the storage matches with the root of the state
-	processID := new(types.ProcessID).SetBytes(pid)
 	// Get the process from storage
+	processID := new(types.ProcessID).SetBytes(pid)
 	stgProcess, err := s.Process(processID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get process %x: %w", pid, err)
 	}
-	// Get the state root from the process
+	// Basic checks
 	if stgProcess.StateRoot == nil {
 		return false, fmt.Errorf("process %x has no state root", pid)
 	}
-	stgRoot := stgProcess.StateRoot.MathBigInt()
-	// Get the state from the stateDB
-	stateProcess, err := state.New(s.StateDB(), processID.BigInt())
-	if err != nil {
-		return false, fmt.Errorf("failed to get state for process %x: %w", pid, err)
-	}
-	// Get the state root from the state
-	stateRoot, err := stateProcess.RootAsBigInt()
-	if err != nil {
-		return false, fmt.Errorf("failed to get state root for process %x: %w", pid, err)
-	}
-	// Compare the state root from storage with the one from the state
-	if stgRoot.Cmp(stateRoot) != 0 {
-		return false, fmt.Errorf("process %x state root mismatch: storage %s, state %s", pid, stgRoot.String(), stateRoot.String())
+	if stgProcess.StartTime.Add(stgProcess.Duration).Before(time.Now()) {
+		return false, fmt.Errorf("process %x has expired", pid)
 	}
 	if stgProcess.Status != types.ProcessStatusReady {
 		return false, fmt.Errorf("process %x status: %s", pid, stgProcess.Status)
