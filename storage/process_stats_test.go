@@ -63,7 +63,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 				}
 
 				// Get the ballot
-				b, key, err := st.NextBallotForWorker()
+				b, key, err := st.NextBallot()
 				if err != nil {
 					// Another goroutine might have taken it
 					continue
@@ -249,7 +249,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 					panic(err)
 				}
 
-				b, key, err := st.NextBallotForWorker()
+				b, key, err := st.NextBallot()
 				if err == ErrNoMoreElements {
 					continue
 				}

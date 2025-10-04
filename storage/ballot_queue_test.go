@@ -196,6 +196,40 @@ func ensureProcess(t *testing.T, stg *Storage, pid []byte) {
 	}
 }
 
+func TestBallotQueue_Ballot(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	pid := []byte("p1")
+	id1 := []byte("id1")
+	ensureProcess(t, stg, pid)
+
+	// push a pending ballot
+	ballot := mkBallot(pid, id1)
+	err := stg.PushBallot(ballot)
+	c.Assert(err, qt.IsNil)
+
+	// retrieve the ballot by voteID
+	retrievedBallot, err := stg.Ballot(id1)
+	c.Assert(err, qt.IsNil)
+	c.Assert(retrievedBallot, qt.Not(qt.IsNil))
+	c.Assert([]byte(retrievedBallot.ProcessID), qt.DeepEquals, pid)
+	c.Assert([]byte(retrievedBallot.VoteID), qt.DeepEquals, id1)
+
+	// try to retrieve a non-existent ballot
+	nonExistentID := []byte("nonexistent")
+	_, err = stg.Ballot(nonExistentID)
+	c.Assert(errors.Is(err, ErrNotFound), qt.IsTrue)
+
+	// verify that Ballot doesn't create a reservation (ballot should still be available)
+	c.Assert(stg.CountPendingBallots(), qt.Equals, 1)
+
+	// verify we can still get it with NextBallot
+	_, _, err = stg.NextBallot()
+	c.Assert(err, qt.IsNil)
+}
+
 func TestBallotQueue_RemoveBallot(t *testing.T) {
 	c := qt.New(t)
 	stg := newTestStorage(t)
