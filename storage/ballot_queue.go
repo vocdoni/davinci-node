@@ -84,14 +84,6 @@ func (s *Storage) NextBallot() (*Ballot, []byte, error) {
 	return s.nextBallot()
 }
 
-// NextBallotForWorker is like NextBallot but does not lock the global lock.
-// It is used by workers to fetch the next ballot without blocking other operations.
-func (s *Storage) NextBallotForWorker() (*Ballot, []byte, error) {
-	s.workersLock.Lock()
-	defer s.workersLock.Unlock()
-	return s.nextBallot()
-}
-
 func (s *Storage) nextBallot() (*Ballot, []byte, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	var chosenKey, chosenVal []byte
@@ -117,22 +109,36 @@ func (s *Storage) nextBallot() (*Ballot, []byte, error) {
 		return nil, nil, fmt.Errorf("decode ballot: %w", err)
 	}
 
-	// The key must match the ballot's VoteID
-	// When using prefixed iteration, ensure we use the ballot's actual VoteID as the key
-	voteID := b.VoteID
-
-	// Verify that the chosen key matches the ballot's VoteID
-	if !bytes.Equal(chosenKey, voteID) {
-		// This should not happen, but if it does, use the ballot's VoteID as the correct key
-		chosenKey = voteID
-	}
-
 	// set reservation
 	if err := s.setReservation(ballotReservationPrefix, chosenKey); err != nil {
 		return nil, nil, ErrNoMoreElements
 	}
 
 	return &b, chosenKey, nil
+}
+
+// Ballot retrieves a ballot from the pending queue by its voteID.
+// Returns the ballot or ErrNotFound if it doesn't exist.
+// This is a read-only operation that doesn't create reservations or modify the ballot.
+func (s *Storage) Ballot(voteID []byte) (*Ballot, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
+	val, err := pr.Get(voteID)
+	if err != nil {
+		if errors.Is(err, db.ErrKeyNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get ballot: %w", err)
+	}
+
+	var b Ballot
+	if err := DecodeArtifact(val, &b); err != nil {
+		return nil, fmt.Errorf("decode ballot: %w", err)
+	}
+
+	return &b, nil
 }
 
 // removeBallot is an internal helper to remove a ballot from the pending queue.

@@ -211,8 +211,6 @@ func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Debugw("new job requested from a worker", "worker", workerAddr.Hex())
-
 	// Check if worker is available
 	if available, err := a.jobsManager.IsWorkerAvailable(workerAddr.Hex()); !available {
 		log.Warnw("worker not available", "worker", workerAddr.Hex())
@@ -250,7 +248,6 @@ func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
 		"worker", workerAddr.Hex(),
 		"processID", hex.EncodeToString(ballot.ProcessID))
 
-	// Check if worker is registered for this process
 	// Return ballot
 	data, err := storage.EncodeArtifact(ballot)
 	if err != nil {
@@ -275,10 +272,8 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Debugw("worker job submission received", "worker", workerAddr.Hex())
-
 	// Decode verified ballot
-	var vb storage.VerifiedBallot
+	var workerVerifiedBallot storage.VerifiedBallot
 	body, err := io.ReadAll(r.Body) // Read the body to ensure it's consumed
 	if err != nil {
 		log.Warnw("failed to read request body",
@@ -286,37 +281,74 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.WithErr(err).Write(w)
 		return
 	}
-	if err := storage.DecodeArtifact(body, &vb); err != nil {
+	if err := storage.DecodeArtifact(body, &workerVerifiedBallot); err != nil {
 		log.Warnw("failed to decode verified ballot",
 			"error", err.Error())
 		ErrMalformedBody.WithErr(err).Write(w)
 		return
 	}
 
+	// Sanity checks
+	if workerVerifiedBallot.VoteID == nil || workerVerifiedBallot.Proof == nil {
+		log.Warnw("malformed verified ballot", "error", "missing required fields")
+		ErrMalformedBody.Withf("missing required fields").Write(w)
+		return
+	}
+
+	// Check if the job exists and is assigned to this worker
+	if _, err := a.jobsManager.Job(workerAddr.Hex(), workerVerifiedBallot.VoteID); err != nil {
+		log.Warnw("failed to get job for worker",
+			"error", err.Error(),
+			"worker", workerAddr.Hex())
+		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+
+	// Get the original ballot from the storage, from now on we will use it to
+	// validate the verified ballot
+	ballot, err := a.storage.Ballot(workerVerifiedBallot.VoteID)
+	if err != nil {
+		log.Warnw("failed to get ballot for voteID",
+			"error", err.Error(),
+			"voteID", workerVerifiedBallot.VoteID.String())
+		ErrResourceNotFound.Withf("ballot not found").Write(w)
+		return
+	}
+
+	// Prepare the verified ballot to be used and stored
+	// Note that we use the original ballot parameters, not the ones
+	// provided by the worker, to avoid tampering.
+	verifiedBallot := storage.VerifiedBallot{
+		VoteID:          workerVerifiedBallot.VoteID,
+		Proof:           workerVerifiedBallot.Proof,
+		ProcessID:       ballot.ProcessID,
+		Address:         ballot.Address,
+		EncryptedBallot: ballot.EncryptedBallot,
+		InputsHash:      ballot.BallotInputsHash,
+		VoterWeight:     ballot.VoterWeight,
+	}
+
 	// Verify the worker proof
-	if err := voteverifier.PublicInputs(vb.InputsHash).VerifyProof(groth16.Proof(vb.Proof)); err != nil {
+	if err := voteverifier.PublicInputs(verifiedBallot.InputsHash).VerifyProof(groth16.Proof(verifiedBallot.Proof)); err != nil {
 		log.Warnw("failed to verify public circuit inputs", "error", err.Error())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
 	}
 
-	// Validate job ownership
-	voteIDStr := hex.EncodeToString(vb.VoteID)
-
 	// Set job as completed
-	job := a.jobsManager.CompleteJob(vb.VoteID, true)
+	job := a.jobsManager.CompleteJob(verifiedBallot.VoteID, true)
 	if job == nil {
 		log.Warnw("job not found or expired",
-			"voteID", voteIDStr)
+			"voteID", verifiedBallot.VoteID.String())
 		ErrResourceNotFound.Withf("job not found or expired").Write(w)
 		return
 	}
 
 	// Mark ballot as done
-	if err := a.storage.MarkBallotDone(vb.VoteID, &vb); err != nil {
+	if err := a.storage.MarkBallotDone(verifiedBallot.VoteID, &verifiedBallot); err != nil {
 		log.Warnw("failed to mark ballot as done",
 			"error", err.Error(),
-			"voteID", voteIDStr)
+			"voteID", verifiedBallot.VoteID.String())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
 	}
@@ -331,7 +363,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infow("worker job completed",
-		"voteID", voteIDStr,
+		"voteID", verifiedBallot.VoteID.String(),
 		"workerAddr", job.Address,
 		"workerName", stats.Name,
 		"duration", time.Since(job.Timestamp).String(),
@@ -341,7 +373,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	// Prepare response
 	response := WorkerJobResponse{
-		VoteID:       vb.VoteID,
+		VoteID:       verifiedBallot.VoteID,
 		Address:      job.Address,
 		SuccessCount: stats.SuccessCount,
 		FailedCount:  stats.FailedCount,
