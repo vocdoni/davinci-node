@@ -8,7 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/consensys/gnark/backend/groth16"
+	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
+	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
@@ -328,10 +329,17 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		VoterWeight:     ballot.VoterWeight,
 	}
 
+	// Prepare the circuit to verify the proof, with the public inputs
+	circuit := &voteverifier.VerifyVoteCircuit{
+		IsValid:    1,
+		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](verifiedBallot.InputsHash),
+	}
+
 	// Verify the worker proof
-	if err := voteverifier.PublicInputs(verifiedBallot.InputsHash).VerifyProof(groth16.Proof(verifiedBallot.Proof)); err != nil {
-		log.Warnw("failed to verify public circuit inputs", "error", err.Error())
-		ErrGenericInternalServerError.WithErr(err).Write(w)
+	if err := circuit.VerifyProof(verifiedBallot.Proof); err != nil {
+		ErrGenericInternalServerError.WithErr(
+			fmt.Errorf("failed to verify worker proof, inputsHash: %v, proof: %v, err: %s",
+				circuit.InputsHash, verifiedBallot.Proof, err.Error())).Write(w)
 		return
 	}
 
