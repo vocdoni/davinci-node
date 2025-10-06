@@ -114,6 +114,14 @@ func (a *API) Router() *chi.Mux {
 	return a.router
 }
 
+// SequencerUUID returns the UUID used to hide the workers endpoints
+func (a *API) SequencerUUID() *uuid.UUID {
+	if a.sequencerUUID == nil {
+		return nil
+	}
+	return a.sequencerUUID
+}
+
 // registerHandlers registers all the HTTP handlers for the API endpoints.
 func (a *API) registerHandlers() {
 	// health check endpoint

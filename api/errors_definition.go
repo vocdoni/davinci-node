@@ -47,9 +47,10 @@ var (
 	// Worker errors
 	ErrWorkerNotAvailable     = Error{Code: 40022, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("worker not available")}
 	ErrMalformedWorkerInfo    = Error{Code: 40023, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed worker info")}
-	ErrInvalidWorkerAuthtoken = Error{Code: 40024, HTTPstatus: http.StatusForbidden, Err: fmt.Errorf("invalid worker authentication token")}
-	ErrExpiredWorkerAuthtoken = Error{Code: 40025, HTTPstatus: http.StatusForbidden, Err: fmt.Errorf("expired worker authentication token")}
+	ErrInvalidWorkerAuthtoken = Error{Code: 40024, HTTPstatus: http.StatusUnauthorized, Err: fmt.Errorf("invalid worker authentication token")}
+	ErrExpiredWorkerAuthtoken = Error{Code: 40025, HTTPstatus: http.StatusUnauthorized, Err: fmt.Errorf("expired worker authentication token")}
 	ErrWorkerNotFound         = Error{Code: 40026, HTTPstatus: http.StatusNotFound, Err: fmt.Errorf("worker not found")}
+	ErrWorkerBanned           = Error{Code: 40027, HTTPstatus: http.StatusForbidden, Err: fmt.Errorf("worker is banned")}
 
 	ErrMarshalingServerJSONFailed = Error{Code: 50001, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("marshaling (server-side) JSON failed")}
 	ErrGenericInternalServerError = Error{Code: 50002, HTTPstatus: http.StatusInternalServerError, Err: fmt.Errorf("internal server error")}

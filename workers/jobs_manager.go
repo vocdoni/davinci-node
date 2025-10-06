@@ -15,6 +15,7 @@ import (
 var (
 	ErrWorkerNotFound    = fmt.Errorf("worker not found")
 	ErrWorkerBanned      = fmt.Errorf("worker is banned")
+	ErrWorkerBusy        = fmt.Errorf("worker is busy")
 	ErrWorkerJobMismatch = fmt.Errorf("worker job mismatch")
 	ErrJobNotFound       = fmt.Errorf("job not found")
 )
@@ -145,14 +146,14 @@ func (jm *JobsManager) IsWorkerAvailable(workerAddr string) (bool, error) {
 	}
 	// Check if worker is banned
 	if worker.IsBanned(jm.WorkerManager.rules) {
-		return false, fmt.Errorf("worker banned") // Worker is banned
+		return false, ErrWorkerBanned // Worker is banned
 	}
 	// Check if worker has pending jobs
 	jm.pendingMtx.RLock()
 	defer jm.pendingMtx.RUnlock()
 	for _, job := range jm.pending {
 		if job.Address == worker.Address {
-			return false, fmt.Errorf("worker busy") // Worker has pending jobs
+			return false, ErrWorkerBusy // Worker has pending jobs
 		}
 	}
 	return true, nil // Worker is available
