@@ -16,6 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
@@ -185,8 +186,7 @@ func (a *API) workersList(w http.ResponseWriter, r *http.Request) {
 //	Authorizing worker in sequencer '<sequencerAddress>' at <timestamp>
 func (a *API) workersTokenData(w http.ResponseWriter, r *http.Request) {
 	// sign message with api.workerSigner
-	timestamp := time.Now()
-	msg, createdAt, authTokenSuffix := workers.WorkerAuthTokenData(a.sequencerSigner.Address(), timestamp)
+	msg, createdAt, authTokenSuffix := workers.WorkerAuthTokenData(a.sequencerSigner.Address(), time.Now())
 	signature, err := a.sequencerSigner.Sign([]byte(msg))
 	if err != nil {
 		log.Warnw("failed to sign worker message",
@@ -316,47 +316,66 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prepare the verified ballot to be used and stored
-	// Note that we use the original ballot parameters, not the ones
-	// provided by the worker, to avoid tampering.
-	verifiedBallot := storage.VerifiedBallot{
-		VoteID:          workerVerifiedBallot.VoteID,
-		Proof:           workerVerifiedBallot.Proof,
-		ProcessID:       ballot.ProcessID,
-		Address:         ballot.Address,
-		EncryptedBallot: ballot.EncryptedBallot,
-		InputsHash:      ballot.BallotInputsHash,
-		VoterWeight:     ballot.VoterWeight,
+	// Get the process for the ballot to obtain the public inputs
+	process, err := a.storage.Process(new(types.ProcessID).SetBytes(ballot.ProcessID))
+	if err != nil {
+		log.Warnw("failed to get process for ballot",
+			"error", err.Error(),
+			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			"voteID", ballot.VoteID.String())
+		ErrResourceNotFound.Withf("process not found").Write(w)
+		return
+	}
+
+	// Recompute the inputs hash from the original ballot parameters, instead
+	// of use the one provided by the worker to avoid tampering.
+	originalInputs := new(voteverifier.VoteVerifierInputs)
+	if err := originalInputs.FromProcessBallot(process, ballot); err != nil {
+		log.Warnw("failed to generate original inputs from ballot",
+			"error", err.Error(),
+			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			"voteID", ballot.VoteID.String())
+		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+
+	inputHash, err := originalInputs.InputsHash()
+	if err != nil {
+		log.Warnw("failed to generate inputs hash",
+			"error", err.Error(),
+			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			"voteID", ballot.VoteID.String())
+		ErrGenericInternalServerError.WithErr(err).Write(w)
 	}
 
 	// Prepare the circuit to verify the proof, with the public inputs
 	circuit := &voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
-		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](verifiedBallot.InputsHash),
+		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 	}
 
 	// Verify the worker proof
-	if err := circuit.VerifyProof(verifiedBallot.Proof); err != nil {
+	if err := circuit.VerifyProof(workerVerifiedBallot.Proof); err != nil {
 		ErrGenericInternalServerError.WithErr(
 			fmt.Errorf("failed to verify worker proof, inputsHash: %v, proof: %v, err: %s",
-				circuit.InputsHash, verifiedBallot.Proof, err.Error())).Write(w)
+				circuit.InputsHash, workerVerifiedBallot.Proof, err.Error())).Write(w)
 		return
 	}
 
 	// Set job as completed
-	job := a.jobsManager.CompleteJob(verifiedBallot.VoteID, true)
+	job := a.jobsManager.CompleteJob(ballot.VoteID, true)
 	if job == nil {
 		log.Warnw("job not found or expired",
-			"voteID", verifiedBallot.VoteID.String())
+			"voteID", ballot.VoteID.String())
 		ErrResourceNotFound.Withf("job not found or expired").Write(w)
 		return
 	}
 
 	// Mark ballot as done
-	if err := a.storage.MarkBallotDone(verifiedBallot.VoteID, &verifiedBallot); err != nil {
+	if err := a.storage.MarkBallotDone(ballot.VoteID, &workerVerifiedBallot); err != nil {
 		log.Warnw("failed to mark ballot as done",
 			"error", err.Error(),
-			"voteID", verifiedBallot.VoteID.String())
+			"voteID", ballot.VoteID.String())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
 	}
@@ -371,7 +390,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infow("worker job completed",
-		"voteID", verifiedBallot.VoteID.String(),
+		"voteID", ballot.VoteID.String(),
 		"workerAddr", job.Address,
 		"workerName", stats.Name,
 		"duration", time.Since(job.Timestamp).String(),
@@ -381,7 +400,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	// Prepare response
 	response := WorkerJobResponse{
-		VoteID:       verifiedBallot.VoteID,
+		VoteID:       workerVerifiedBallot.VoteID,
 		Address:      job.Address,
 		SuccessCount: stats.SuccessCount,
 		FailedCount:  stats.FailedCount,

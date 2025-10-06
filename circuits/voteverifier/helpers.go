@@ -53,15 +53,10 @@ func (a *VerifyVoteCircuit) VerifyProof(proof groth16.Proof) error {
 	if err != nil {
 		return fmt.Errorf("failed to read vote verifier verifying key: %w", err)
 	}
-	// encode the assignment to witness
-	witness, err := frontend.NewWitness(a, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+	// encode the assignment to public witness
+	pubWitness, err := frontend.NewWitness(a, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 	if err != nil {
 		return fmt.Errorf("failed to create witness: %w", err)
-	}
-	// get the public witness
-	pubWitness, err := witness.Public()
-	if err != nil {
-		return fmt.Errorf("failed to create public witness: %w", err)
 	}
 	// set up the verifier for the circuit curves
 	opts := stdgroth16.GetNativeVerifierOptions(
