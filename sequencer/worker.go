@@ -255,6 +255,7 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, s.sequencerUUID)
 	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
 	uri = api.EndpointWithParam(uri, api.WorkerTokenQueryParam, s.workerAuthtoken)
+	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
 	seqUrl := fmt.Sprintf("%s%s", s.sequencerURL, uri)
 
 	client := &http.Client{Timeout: 20 * time.Second}
@@ -298,6 +299,7 @@ func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
 	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, s.sequencerUUID)
 	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
 	uri = api.EndpointWithParam(uri, api.WorkerTokenQueryParam, s.workerAuthtoken)
+	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
 	seqUrl := fmt.Sprintf("%s%s", s.sequencerURL, uri)
 
 	body, err := storage.EncodeArtifact(vb)
