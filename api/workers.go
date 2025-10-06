@@ -215,6 +215,10 @@ func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
 	// Check if worker is available
 	if available, err := a.jobsManager.IsWorkerAvailable(workerAddr.Hex()); !available {
 		log.Warnw("worker not available", "worker", workerAddr.Hex())
+		if errors.Is(err, workers.ErrWorkerBanned) {
+			ErrWorkerBanned.Write(w)
+			return
+		}
 		ErrWorkerNotAvailable.WithErr(err).Write(w)
 		return
 	}

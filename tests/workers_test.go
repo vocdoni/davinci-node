@@ -24,6 +24,7 @@ func TestWorkerIntegration(t *testing.T) {
 	numBallots := 20                     // number of ballots to be sent in the process
 	failedJobsToGetBanned := 3           // number of failed jobs to get banned
 	workerBanTimeout := 30 * time.Second // timeout for worker ban
+
 	// Setup
 	services.API.SetWorkerConfig(testWorkerSeed, testWorkerTokenExpiration, testWorkerTimeout, &workers.WorkerBanRules{
 		BanTimeout:          workerBanTimeout,
@@ -33,6 +34,9 @@ func TestWorkerIntegration(t *testing.T) {
 
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
+
+	sequencerUUID := services.API.API.SequencerUUID()
+	c.Assert(sequencerUUID, qt.IsNotNil, qt.Commentf("Sequencer UUID is nil, workers endpoints not available"))
 
 	// get the worker sign message from the API
 	body, status, err := cli.Request(http.MethodGet, nil, nil, api.WorkerTokenDataEndpoint)
@@ -57,11 +61,17 @@ func TestWorkerIntegration(t *testing.T) {
 	workerAddr := workerSigner.Address().Hex()
 	workerSignature, err := workerSigner.Sign([]byte(signMessageResponse.Message))
 	c.Assert(err, qt.IsNil)
+	// create the worker auth token
+	authToken, err := workers.EncodeWorkerAuthTokenFromStringTime(workerSignature, signMessageResponse.CreatedAt)
+	c.Assert(err, qt.IsNil)
 
 	c.Run("launch a worker with no jobs pending", func(c *qt.C) {
-		getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.WorkerAddressQueryParam, workerAddr)
-		getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerTokenQueryParam, workerSignature.String())
-		body, status, err := cli.Request(http.MethodGet, nil, []string{api.WorkerNameQueryParam, workerName}, getJobEndpoint)
+		getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, sequencerUUID.String())
+		body, status, err := cli.Request(http.MethodGet, nil, []string{
+			api.WorkerNameQueryParam, workerName,
+			api.WorkerAddressQueryParam, workerAddr,
+			api.WorkerTokenQueryParam, authToken.String(),
+		}, getJobEndpoint)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
 		c.Assert(status, qt.Equals, http.StatusNoContent, qt.Commentf("Expected 204 No Content, got %d: %s", status, string(body)))
 		c.Log("Ghost worker job request successful, no job available yet")
@@ -162,9 +172,12 @@ func TestWorkerIntegration(t *testing.T) {
 				return
 			default:
 				// make a request to the api to get a job until get banned
-				getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.WorkerAddressQueryParam, workerAddr)
-				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerTokenQueryParam, workerSignature.String())
-				body, status, err := cli.Request(http.MethodGet, nil, []string{api.WorkerNameQueryParam, workerName}, getJobEndpoint)
+				getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, sequencerUUID.String())
+				body, status, err := cli.Request(http.MethodGet, nil, []string{
+					api.WorkerNameQueryParam, workerName,
+					api.WorkerAddressQueryParam, workerAddr,
+					api.WorkerTokenQueryParam, authToken.String(),
+				}, getJobEndpoint)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
 				if status == http.StatusOK || status == http.StatusNoContent {
 					continue
@@ -190,9 +203,12 @@ func TestWorkerIntegration(t *testing.T) {
 				return
 			default:
 				// make a request to the api to get a job until get unbanned
-				getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.WorkerAddressQueryParam, workerAddr)
-				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerTokenQueryParam, workerSignature.String())
-				body, status, err := cli.Request(http.MethodGet, nil, []string{api.WorkerNameQueryParam, workerName}, getJobEndpoint)
+				getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, sequencerUUID.String())
+				body, status, err := cli.Request(http.MethodGet, nil, []string{
+					api.WorkerNameQueryParam, workerName,
+					api.WorkerAddressQueryParam, workerAddr,
+					api.WorkerTokenQueryParam, authToken.String(),
+				}, getJobEndpoint)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
 				if status == http.StatusBadRequest || strings.Contains(string(body), "worker banned") {
 					time.Sleep(workerBanTimeout)
