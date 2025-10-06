@@ -54,7 +54,7 @@ func (a *VerifyVoteCircuit) VerifyProof(proof groth16.Proof) error {
 		return fmt.Errorf("failed to read vote verifier verifying key: %w", err)
 	}
 	// encode the assignment to witness
-	witness, err := frontend.NewWitness(a, circuits.VoteVerifierCurve.ScalarField())
+	witness, err := frontend.NewWitness(a, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 	if err != nil {
 		return fmt.Errorf("failed to create witness: %w", err)
 	}
