@@ -74,6 +74,9 @@ type Contracts struct {
 	lastWatchProcessBlock uint64
 	knownOrganizations    map[string]struct{}
 	lastWatchOrgBlock     uint64
+
+	// Transaction manager for nonce management and stuck transaction recovery
+	txManager *TransactionManager
 }
 
 // New creates a new Contracts instance with the given web3 endpoints.
@@ -137,6 +140,26 @@ func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 		currentBlock:             lastBlock,
 		currentBlockLastUpdate:   time.Now(),
 	}, nil
+}
+
+// StartTxManager initializes and starts the transaction manager and its
+// background monitoring. It returns an error if the initialization fails.
+func (c *Contracts) StartTxManager(ctx context.Context) error {
+	// Initialize transaction manager with default configuration
+	var err error
+	if c.txManager, err = newTxManager(ctx, c, DefaultTxManagerConfig()); err != nil {
+		return fmt.Errorf("failed to initialize transaction manager: %w", err)
+	}
+	c.txManager.startMonitoring(ctx)
+	return nil
+}
+
+// StopTxManager stops the transaction manager and its background
+// monitoring.
+func (c *Contracts) StopTxManager() {
+	if c.txManager != nil {
+		c.txManager.stopMonitoring()
+	}
 }
 
 // CurrentBlock returns the current block number for the chain.
@@ -255,7 +278,11 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 		knownOrganizations: make(map[string]struct{}),
 		ContractsAddresses: &Addresses{},
 	}
-	if err := c.SetAccountPrivateKey(privkey); err != nil {
+
+	// Initialize transaction manager with default configuration
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if c.txManager, err = newTxManager(ctx, c, DefaultTxManagerConfig()); err != nil {
 		return nil, err
 	}
 

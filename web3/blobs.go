@@ -117,7 +117,9 @@ func (c *Contracts) SendBlobTx(
 	return signed, commitments, nil
 }
 
-// NewEIP4844Transaction ABI-encodes (method,args), attaches blob sidecar, and signs a type-3 tx.
+// NewEIP4844Transaction method creates and signs a new EIP-4844 (type-3)
+// transaction by calculating the nonce from the RPC and returning the result
+// of NewEIP4844TransactionWithNonce.
 func (c *Contracts) NewEIP4844Transaction(
 	ctx context.Context,
 	to common.Address,
@@ -125,6 +127,32 @@ func (c *Contracts) NewEIP4844Transaction(
 	method string,
 	args []any,
 	blobsSidecar *types.BlobTxSidecar,
+) (*types.Transaction, error) {
+	// Nonce
+	nonce, err := c.cli.PendingNonceAt(ctx, c.AccountAddress())
+	if err != nil {
+		return nil, err
+	}
+	return c.NewEIP4844TransactionWithNonce(ctx, to, contractABI, method, args, blobsSidecar, nonce)
+}
+
+// NewEIP4844TransactionWithNonce method creates and signs a new EIP-4844. It
+// calculates gas limits and fee caps, and returns the signed transaction.
+// The provided nonce is used (caller must ensure it's correct).
+//
+// Requirements:
+//   - `to` MUST be non-nil per EIP-4844.
+//   - `contractABI` MUST be non-nil.
+//   - `method` MUST be a valid method in the ABI.
+//   - `c.signer` MUST be non-nil (private key set).
+func (c *Contracts) NewEIP4844TransactionWithNonce(
+	ctx context.Context,
+	to common.Address,
+	contractABI *abi.ABI,
+	method string,
+	args []any,
+	blobsSidecar *types.BlobTxSidecar,
+	nonce uint64,
 ) (*types.Transaction, error) {
 	if contractABI == nil {
 		return nil, fmt.Errorf("nil contract ABI")
@@ -146,19 +174,13 @@ func (c *Contracts) NewEIP4844Transaction(
 	}
 
 	// Estimate execution gas, include blob hashes so any contract logic that
-	// references them (e.g. checks) isn’t under-estimated.
+	// references them (e.g. checks) isn't under-estimated.
 	gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
 		From:       c.AccountAddress(),
 		To:         &to,
 		Data:       data,
 		BlobHashes: blobsSidecar.BlobHashes(),
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Nonce
-	nonce, err := c.cli.PendingNonceAt(ctx, c.AccountAddress())
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +205,7 @@ func (c *Contracts) NewEIP4844Transaction(
 	maxFee.Add(maxFee, tipCap)
 
 	// Base fee for *blob gas* (separate market). Use RPC eth_blobBaseFee.
-	// NOTE: go-ethereum doesn’t have a typed helper; call raw RPC:
+	// NOTE: go-ethereum doesn't have a typed helper; call raw RPC.
 	var blobBaseFeeHex string
 	ethclient, err := c.cli.EthClient()
 	if err != nil {
@@ -200,7 +222,7 @@ func (c *Contracts) NewEIP4844Transaction(
 	cID := new(big.Int).SetUint64(c.ChainID)
 	inner := &types.BlobTx{
 		ChainID:    uint256.MustFromBig(cID),
-		Nonce:      nonce,
+		Nonce:      nonce, // Use provided nonce
 		GasTipCap:  uint256.MustFromBig(tipCap),
 		GasFeeCap:  uint256.MustFromBig(maxFee),
 		Gas:        gas,
