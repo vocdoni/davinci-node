@@ -275,6 +275,8 @@ func (s *Storage) PullVerifiedBallots(processID []byte, numFields int) ([]*Verif
 	if numFields == 0 {
 		return []*VerifiedBallot{}, nil, nil
 	}
+	// Map to track unique addresses
+	addrMap := make(map[string]struct{})
 
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	var res []*VerifiedBallot
@@ -299,6 +301,12 @@ func (s *Storage) PullVerifiedBallots(processID []byte, numFields int) ([]*Verif
 		if err := DecodeArtifact(v, &vb); err != nil {
 			return true
 		}
+
+		// Skip if address is duplicate, we only want unique addresses per batch
+		if _, exists := addrMap[vb.Address.String()]; exists {
+			return true
+		}
+		addrMap[vb.Address.String()] = struct{}{}
 
 		// Make a copy of the key to avoid any potential modification
 		keyCopy := make([]byte, len(k))

@@ -147,6 +147,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 
 		verifiedBallot := &VerifiedBallot{
 			ProcessID:   b.ProcessID,
+			Address:     b.Address,
 			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}

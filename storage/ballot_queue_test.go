@@ -158,9 +158,13 @@ func mkBallot(pid, id []byte) *Ballot {
 }
 
 func mkVerifiedBallot(pid, id []byte) *VerifiedBallot {
+	// Generate unique address from voteID to avoid duplicates in batch
+	addr := new(big.Int).SetBytes(id)
 	return &VerifiedBallot{
-		ProcessID: types.HexBytes(pid),
-		VoteID:    types.HexBytes(id),
+		ProcessID:   types.HexBytes(pid),
+		VoteID:      types.HexBytes(id),
+		Address:     addr,
+		VoterWeight: big.NewInt(1),
 	}
 }
 

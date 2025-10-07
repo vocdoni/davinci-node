@@ -235,6 +235,7 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 
 		verified := &VerifiedBallot{
 			ProcessID:   processID.Marshal(),
+			Address:     b.Address,                   // Set address to ensure uniqueness
 			VoterWeight: big.NewInt(int64(i+1) * 10), // Different weights for identification
 		}
 		c.Assert(st.MarkBallotDone(key, verified), qt.IsNil)
