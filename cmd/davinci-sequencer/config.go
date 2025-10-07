@@ -37,12 +37,13 @@ var Version = internal.Version
 
 // Config holds the application configuration
 type Config struct {
-	Web3    Web3Config
-	API     APIConfig
-	Batch   BatchConfig
-	Log     LogConfig
-	Worker  WorkerConfig
-	Datadir string
+	Web3         Web3Config
+	API          APIConfig
+	Batch        BatchConfig
+	Log          LogConfig
+	Worker       WorkerConfig
+	Datadir      string
+	ForceCleanup bool `mapstructure:"forceCleanup"` // Force cleanup of all pending items at startup
 }
 
 // Web3Config holds Ethereum-related configuration
@@ -127,6 +128,7 @@ func loadConfig() (*Config, error) {
 	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
 	flag.Bool("log.disableAPI", defaultLogDisableAPI, "disable API logging middleware")
 	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
+	flag.Bool("forceCleanup", false, "force cleanup of all pending verified votes, aggregated batches and state transitions at startup")
 	// worker mode flags
 	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
 	flag.StringP("worker.address", "a", "", "worker Ethereum address")

@@ -154,6 +154,15 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 	services.Storage = storage.New(storagedb)
 
+	// Force cleanup if requested
+	if cfg.ForceCleanup {
+		log.Warn("force cleanup enabled: cleaning all pending verified votes, aggregated batches and state transitions")
+		if err := services.Storage.CleanAllPending(); err != nil {
+			return nil, fmt.Errorf("failed to clean all pending items: %w", err)
+		}
+		log.Info("force cleanup completed successfully")
+	}
+
 	// Initialize web3 contracts
 	log.Info("initializing web3 contracts")
 
