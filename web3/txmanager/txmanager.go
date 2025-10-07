@@ -1,4 +1,4 @@
-package web3
+package txmanager
 
 import (
 	"context"
@@ -13,7 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
+	ethSigner "github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
 const (
@@ -25,27 +27,30 @@ const (
 	defaultMonitorInterval    = 30 * time.Second
 )
 
-// TransactionManagerConfig holds configuration for the transaction manager
-type TransactionManagerConfig struct {
+// Config holds configuration for the transaction manager
+type Config struct {
 	MaxPendingTime     time.Duration
 	MaxRetries         int
 	FeeIncreasePercent int
 	MaxGasPriceGwei    *big.Int
 	MonitorInterval    time.Duration
+	ChainID            *big.Int
 }
 
-// DefaultTxManagerConfig returns a default configuration
-func DefaultTxManagerConfig() TransactionManagerConfig {
-	return TransactionManagerConfig{
+// DefaultConfig returns a default configuration
+func DefaultConfig(chainID uint64) Config {
+	return Config{
 		MaxPendingTime:     defaultMaxPendingTime,
 		MaxRetries:         defaultMaxRetries,
 		FeeIncreasePercent: defaultFeeIncreasePercent,
 		MaxGasPriceGwei:    new(big.Int).Mul(big.NewInt(defaultMaxGasPriceGwei), big.NewInt(1e9)), // Convert to wei
 		MonitorInterval:    defaultMonitorInterval,
+		ChainID:            new(big.Int).SetUint64(chainID),
 	}
 }
 
-// PendingTransaction represents a transaction that has been sent but not yet confirmed
+// PendingTransaction represents a transaction that has been sent but not yet
+// confirmed.
 type PendingTransaction struct {
 	Hash             common.Hash
 	Nonce            uint64
@@ -61,10 +66,12 @@ type PendingTransaction struct {
 	BlobSidecar      *types.BlobTxSidecar // Store sidecar for rebuilding blob txs
 }
 
-// TransactionManager handles nonce management and stuck transaction recovery
-type TransactionManager struct {
-	contracts *Contracts
-	mu        sync.Mutex
+// TxManager handles nonce management and stuck transaction recovery.
+type TxManager struct {
+	web3pool *rpc.Web3Pool
+	cli      *rpc.Client
+	signer   *ethSigner.Signer
+	mu       sync.Mutex
 
 	// Nonce tracking
 	nextNonce          uint64
@@ -75,28 +82,30 @@ type TransactionManager struct {
 	pendingTxs map[uint64]*PendingTransaction
 
 	// Configuration
-	config TransactionManagerConfig
+	config Config
 
 	// Monitoring
 	monitorCtx    context.Context
 	monitorCancel context.CancelFunc
 }
 
-// newTxManager creates a new transaction manager and initializes it
-// by fetching the current on-chain nonce
-func newTxManager(ctx context.Context, contracts *Contracts, config TransactionManagerConfig) (*TransactionManager, error) {
-	tm := &TransactionManager{
-		contracts:  contracts,
+// New creates a new transaction manager and initializes it by fetching the
+// current on-chain nonce.
+func New(ctx context.Context, web3pool *rpc.Web3Pool, cli *rpc.Client, signer *ethSigner.Signer, config Config) (*TxManager, error) {
+	tm := &TxManager{
+		web3pool:   web3pool,
+		cli:        cli,
+		signer:     signer,
 		pendingTxs: make(map[uint64]*PendingTransaction),
 		config:     config,
 	}
 
-	// Get confirmed on-chain nonce (not pending!)
-	ethcli, err := tm.contracts.cli.EthClient()
+	// Get confirmed on-chain nonce (not pending)
+	ethcli, err := tm.cli.EthClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get eth client: %w", err)
 	}
-	nonce, err := ethcli.NonceAt(ctx, tm.contracts.AccountAddress(), nil)
+	nonce, err := ethcli.NonceAt(ctx, tm.signer.Address(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get on-chain nonce: %w", err)
 	}
@@ -104,16 +113,11 @@ func newTxManager(ctx context.Context, contracts *Contracts, config TransactionM
 	tm.lastConfirmedNonce = nonce
 	tm.nextNonce = nonce
 	tm.nonceInitialized = true
-
-	log.Infow("transaction manager initialized",
-		"address", tm.contracts.AccountAddress().Hex(),
-		"nonce", nonce)
-
 	return tm, nil
 }
 
-// startMonitoring starts the background monitoring of pending transactions
-func (tm *TransactionManager) startMonitoring(ctx context.Context) {
+// Start starts the background monitoring of pending transactions.
+func (tm *TxManager) Start(ctx context.Context) {
 	tm.monitorCtx, tm.monitorCancel = context.WithCancel(ctx)
 
 	go func() {
@@ -138,18 +142,15 @@ func (tm *TransactionManager) startMonitoring(ctx context.Context) {
 	}()
 }
 
-// stopMonitoring stops the background monitoring
-func (tm *TransactionManager) stopMonitoring() {
+// Stop stops the background monitoring
+func (tm *TxManager) Stop() {
 	if tm.monitorCancel != nil {
 		tm.monitorCancel()
 	}
 }
 
 // SendTransactionWithFallback sends a transaction with automatic fallback and recovery mechanisms
-func (tm *TransactionManager) SendTransactionWithFallback(
-	ctx context.Context,
-	txBuilder func(nonce uint64) (*types.Transaction, error),
-) (*common.Hash, error) {
+func (tm *TxManager) SendTransactionWithFallback(ctx context.Context, txBuilder func(nonce uint64) (*types.Transaction, error)) (*common.Hash, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -173,7 +174,7 @@ func (tm *TransactionManager) SendTransactionWithFallback(
 	}
 
 	// Send transaction
-	if err := tm.contracts.cli.SendTransaction(ctx, tx); err != nil {
+	if err := tm.cli.SendTransaction(ctx, tx); err != nil {
 		// Check if error is nonce-related
 		if strings.Contains(err.Error(), "nonce too high") || strings.Contains(err.Error(), "nonce too low") {
 			log.Warnw("nonce mismatch detected, attempting recovery",
@@ -198,7 +199,7 @@ func (tm *TransactionManager) SendTransactionWithFallback(
 }
 
 // trackTransaction adds a transaction to the pending list
-func (tm *TransactionManager) trackTransaction(tx *types.Transaction) {
+func (tm *TxManager) trackTransaction(tx *types.Transaction) {
 	ptx := &PendingTransaction{
 		Hash:      tx.Hash(),
 		Nonce:     tx.Nonce(),
@@ -216,11 +217,12 @@ func (tm *TransactionManager) trackTransaction(tx *types.Transaction) {
 		ptx.OriginalGasPrice = tx.GasFeeCap()
 		ptx.OriginalBlobFee = tx.BlobGasFeeCap()
 		ptx.BlobHashes = tx.BlobHashes()
-		// Note: Cannot extract sidecar from transaction after creation due to
-		// unexported fields in go-ethereum. Blob sidecars must be stored separately
-		// via TrackBlobTransactionWithSidecar() to enable recovery.
-		// WARNING: Without the sidecar, stuck blob transactions CANNOT be recovered
-		// (they cannot be cancelled like regular txs, only replaced with same blob data).
+		// NOTE: Cannot extract sidecar from transaction after creation due
+		// to unexported fields in go-ethereum. Blob sidecars must be stored
+		// separately via TrackBlobTransactionWithSidecar() to enable recovery.
+		// WARNING: Without the sidecar, stuck blob transactions CANNOT be
+		// recovered (they cannot be cancelled like regular txs, only replaced
+		// with same blob data).
 		log.Debugw("tracking blob transaction (sidecar not stored - recovery not possible)",
 			"nonce", tx.Nonce(),
 			"blobCount", len(tx.BlobHashes()))
@@ -233,9 +235,10 @@ func (tm *TransactionManager) trackTransaction(tx *types.Transaction) {
 	tm.pendingTxs[tx.Nonce()] = ptx
 }
 
-// TrackBlobTransactionWithSidecar tracks a blob transaction with its sidecar for potential recovery
-// This should be called immediately after sending a blob transaction if recovery is desired
-func (tm *TransactionManager) TrackBlobTransactionWithSidecar(tx *types.Transaction, sidecar *types.BlobTxSidecar) error {
+// TrackBlobTransactionWithSidecar tracks a blob transaction with its sidecar
+// for potential recovery. This should be called immediately after sending a
+// blob transaction if recovery is desired.
+func (tm *TxManager) TrackBlobTransactionWithSidecar(tx *types.Transaction, sidecar *types.BlobTxSidecar) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -260,7 +263,7 @@ func (tm *TransactionManager) TrackBlobTransactionWithSidecar(tx *types.Transact
 }
 
 // handleStuckTransactions checks for and handles stuck transactions
-func (tm *TransactionManager) handleStuckTransactions(ctx context.Context) error {
+func (tm *TxManager) handleStuckTransactions(ctx context.Context) error {
 	now := time.Now()
 
 	for nonce, ptx := range tm.pendingTxs {
@@ -270,7 +273,7 @@ func (tm *TransactionManager) handleStuckTransactions(ctx context.Context) error
 		}
 
 		// Check if transaction was mined
-		ethcli, err := tm.contracts.cli.EthClient()
+		ethcli, err := tm.cli.EthClient()
 		if err != nil {
 			log.Warnw("failed to get eth client", "error", err)
 			continue
@@ -304,8 +307,9 @@ func (tm *TransactionManager) handleStuckTransactions(ctx context.Context) error
 	return nil
 }
 
-// speedUpTransaction attempts to speed up a stuck transaction by resending with higher fees
-func (tm *TransactionManager) speedUpTransaction(ctx context.Context, ptx *PendingTransaction) error {
+// speedUpTransaction attempts to speed up a stuck transaction by resending
+// with higher fees.
+func (tm *TxManager) speedUpTransaction(ctx context.Context, ptx *PendingTransaction) error {
 	if ptx.RetryCount >= tm.config.MaxRetries {
 		log.Warnw("max retries reached, will cancel transaction",
 			"nonce", ptx.Nonce)
@@ -342,9 +346,10 @@ func (tm *TransactionManager) speedUpTransaction(ctx context.Context, ptx *Pendi
 				"newGasPrice", newGasPrice,
 				"newBlobFee", newBlobFee)
 		} else {
-			// CRITICAL: Blob transactions cannot be cancelled! They can only be replaced
-			// with another blob transaction using the same blob data. Without the sidecar,
-			// we cannot create a replacement, so the transaction is permanently stuck.
+			// CRITICAL: Blob transactions cannot be cancelled. They can only
+			// be replaced with another blob transaction using the same blob
+			// data. Without the sidecar, we cannot create a replacement, so
+			// the transaction is permanently stuck.
 			err := fmt.Errorf("blob transaction stuck: nonce=%d hash=%s - sidecar not stored via TrackBlobTransactionWithSidecar",
 				ptx.Nonce, ptx.Hash.Hex())
 			log.Errorw(err, "blob transaction stuck without recovery option")
@@ -358,7 +363,7 @@ func (tm *TransactionManager) speedUpTransaction(ctx context.Context, ptx *Pendi
 	}
 
 	// Send replacement
-	if err := tm.contracts.cli.SendTransaction(ctx, newTx); err != nil {
+	if err := tm.cli.SendTransaction(ctx, newTx); err != nil {
 		return fmt.Errorf("failed to send replacement: %w", err)
 	}
 
@@ -382,21 +387,21 @@ func (tm *TransactionManager) speedUpTransaction(ctx context.Context, ptx *Pendi
 	return nil
 }
 
-// rebuildRegularTransaction rebuilds a regular transaction with new gas price
-func (tm *TransactionManager) rebuildRegularTransaction(
+// rebuildRegularTransaction rebuilds a regular transaction with new gas price.
+func (tm *TxManager) rebuildRegularTransaction(
 	ctx context.Context,
 	ptx *PendingTransaction,
 	newGasPrice *big.Int,
 ) (*types.Transaction, error) {
 	// Get gas tip cap
-	tipCap, err := tm.contracts.cli.SuggestGasTipCap(ctx)
+	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tip cap: %w", err)
 	}
 
 	// Create new transaction with same parameters but higher fees
 	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   new(big.Int).SetUint64(tm.contracts.ChainID),
+		ChainID:   tm.config.ChainID,
 		Nonce:     ptx.Nonce,
 		GasTipCap: tipCap,
 		GasFeeCap: newGasPrice,
@@ -407,8 +412,8 @@ func (tm *TransactionManager) rebuildRegularTransaction(
 	})
 
 	// Sign transaction
-	signer := types.NewCancunSigner(new(big.Int).SetUint64(tm.contracts.ChainID))
-	signed, err := types.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.contracts.signer))
+	signer := types.NewCancunSigner(tm.config.ChainID)
+	signed, err := types.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}
@@ -416,9 +421,9 @@ func (tm *TransactionManager) rebuildRegularTransaction(
 	return signed, nil
 }
 
-// rebuildBlobTransaction rebuilds a blob transaction with higher fees
-// This requires the original sidecar to be stored via TrackBlobTransactionWithSidecar
-func (tm *TransactionManager) rebuildBlobTransaction(
+// rebuildBlobTransaction rebuilds a blob transaction with higher fees. This
+// requires the original sidecar to be stored via TrackBlobTransactionWithSidecar.
+func (tm *TxManager) rebuildBlobTransaction(
 	ctx context.Context,
 	ptx *PendingTransaction,
 	newGasPrice *big.Int,
@@ -429,14 +434,14 @@ func (tm *TransactionManager) rebuildBlobTransaction(
 	}
 
 	// Get gas tip cap
-	tipCap, err := tm.contracts.cli.SuggestGasTipCap(ctx)
+	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tip cap: %w", err)
 	}
 
 	// Estimate gas for the blob transaction
-	gasLimit, err := tm.contracts.cli.EstimateGas(ctx, ethereum.CallMsg{
-		From:          tm.contracts.AccountAddress(),
+	gasLimit, err := tm.cli.EstimateGas(ctx, ethereum.CallMsg{
+		From:          tm.signer.Address(),
 		To:            &ptx.To,
 		Data:          ptx.Data,
 		BlobHashes:    ptx.BlobSidecar.BlobHashes(),
@@ -452,7 +457,7 @@ func (tm *TransactionManager) rebuildBlobTransaction(
 
 	// Build the replacement blob transaction with higher fees
 	blobTx := &types.BlobTx{
-		ChainID:    uint256.NewInt(tm.contracts.ChainID),
+		ChainID:    uint256.NewInt(tm.config.ChainID.Uint64()),
 		Nonce:      ptx.Nonce,
 		GasTipCap:  uint256.MustFromBig(tipCap),
 		GasFeeCap:  uint256.MustFromBig(newGasPrice),
@@ -467,8 +472,8 @@ func (tm *TransactionManager) rebuildBlobTransaction(
 
 	// Create and sign the transaction
 	tx := types.NewTx(blobTx)
-	signer := types.NewCancunSigner(new(big.Int).SetUint64(tm.contracts.ChainID))
-	signed, err := types.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.contracts.signer))
+	signer := types.NewCancunSigner(tm.config.ChainID)
+	signed, err := types.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign blob transaction: %w", err)
 	}
@@ -483,9 +488,11 @@ func (tm *TransactionManager) rebuildBlobTransaction(
 	return signed, nil
 }
 
-// cancelTransaction sends a 0-value transaction to self with higher fees to cancel a regular transaction
-// NOTE: This does NOT work for blob transactions! Blob txs can only be replaced with another blob tx.
-func (tm *TransactionManager) cancelTransaction(ctx context.Context, ptx *PendingTransaction) error {
+// cancelTransaction sends a 0-value transaction to self with higher fees to
+// cancel a regular transaction.
+// NOTE: This does NOT work for blob transactions! Blob txs can only be
+// replaced with another blob tx.
+func (tm *TxManager) cancelTransaction(ctx context.Context, ptx *PendingTransaction) error {
 	if ptx.IsBlob {
 		return fmt.Errorf("cannot cancel blob transaction %s: blob txs can only be replaced with same blob data", ptx.Hash.Hex())
 	}
@@ -493,15 +500,15 @@ func (tm *TransactionManager) cancelTransaction(ctx context.Context, ptx *Pendin
 	gasPrice := new(big.Int).Mul(ptx.OriginalGasPrice, big.NewInt(2))
 
 	// Get tip cap
-	tipCap, err := tm.contracts.cli.SuggestGasTipCap(ctx)
+	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get tip cap: %w", err)
 	}
 
-	selfAddress := tm.contracts.AccountAddress()
+	selfAddress := tm.signer.Address()
 
 	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   new(big.Int).SetUint64(tm.contracts.ChainID),
+		ChainID:   tm.config.ChainID,
 		Nonce:     ptx.Nonce,
 		GasTipCap: tipCap,
 		GasFeeCap: gasPrice,
@@ -511,13 +518,13 @@ func (tm *TransactionManager) cancelTransaction(ctx context.Context, ptx *Pendin
 		Data:      []byte{},
 	})
 
-	signer := types.NewCancunSigner(new(big.Int).SetUint64(tm.contracts.ChainID))
-	signed, err := types.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.contracts.signer))
+	signer := types.NewCancunSigner(tm.config.ChainID)
+	signed, err := types.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
 	if err != nil {
 		return fmt.Errorf("failed to sign cancel tx: %w", err)
 	}
 
-	if err := tm.contracts.cli.SendTransaction(ctx, signed); err != nil {
+	if err := tm.cli.SendTransaction(ctx, signed); err != nil {
 		return fmt.Errorf("failed to send cancel tx: %w", err)
 	}
 
@@ -532,16 +539,16 @@ func (tm *TransactionManager) cancelTransaction(ctx context.Context, ptx *Pendin
 }
 
 // recoverFromNonceGap attempts to recover from a nonce gap situation
-func (tm *TransactionManager) recoverFromNonceGap(
+func (tm *TxManager) recoverFromNonceGap(
 	ctx context.Context,
 	txBuilder func(nonce uint64) (*types.Transaction, error),
 ) (*common.Hash, error) {
 	// Get actual on-chain nonce
-	ethcli, err := tm.contracts.cli.EthClient()
+	ethcli, err := tm.cli.EthClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get eth client: %w", err)
 	}
-	onChainNonce, err := ethcli.NonceAt(ctx, tm.contracts.AccountAddress(), nil)
+	onChainNonce, err := ethcli.NonceAt(ctx, tm.signer.Address(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get on-chain nonce: %w", err)
 	}
@@ -592,7 +599,7 @@ func (tm *TransactionManager) recoverFromNonceGap(
 		return nil, fmt.Errorf("failed to rebuild transaction with corrected nonce: %w", err)
 	}
 
-	if err := tm.contracts.cli.SendTransaction(ctx, tx); err != nil {
+	if err := tm.cli.SendTransaction(ctx, tx); err != nil {
 		return nil, fmt.Errorf("failed to send transaction after nonce recovery: %w", err)
 	}
 

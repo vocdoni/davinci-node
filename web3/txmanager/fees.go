@@ -1,4 +1,4 @@
-package web3
+package txmanager
 
 import (
 	"context"
@@ -28,7 +28,7 @@ type FeeCaps struct {
 
 // suggestInitialFees returns initial FeeCaps built from on-chain conditions.
 // If forBlobs is true, it also includes BlobFeeCap (2x blob base fee).
-func (c *Contracts) suggestInitialFees(ctx context.Context, forBlobs bool) (FeeCaps, error) {
+func (c *TxManager) suggestInitialFees(ctx context.Context, forBlobs bool) (FeeCaps, error) {
 	var fees FeeCaps
 
 	tip, err := c.cli.SuggestGasTipCap(ctx)
@@ -61,8 +61,9 @@ func (c *Contracts) suggestInitialFees(ctx context.Context, forBlobs bool) (FeeC
 	return fees, nil
 }
 
-// bumpFees bumps the provided FeeCaps using EIP-1559-friendly rules and current base fees.
-func (c *Contracts) bumpFees(ctx context.Context, fees FeeCaps) (FeeCaps, error) {
+// bumpFees bumps the provided FeeCaps using EIP-1559-friendly rules and
+// current base fees.
+func (c *TxManager) bumpFees(ctx context.Context, fees FeeCaps) (FeeCaps, error) {
 	// Re-suggest tip for sanity, but ensure minimum absolute bump is respected.
 	suggestedTip, err := c.cli.SuggestGasTipCap(ctx)
 	if err != nil {

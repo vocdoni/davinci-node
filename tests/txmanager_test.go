@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
 // TestTransactionManagerStuckTransactions tests the transaction manager's ability
@@ -17,9 +18,10 @@ func TestTransactionManagerStuckTransactions(t *testing.T) {
 	contracts := setupWeb3(t, ctx)
 
 	// Initialize transaction manager
-	err := contracts.StartTxManager(ctx)
+	txm, err := txmanager.New(ctx, contracts.Web3Pool(), contracts.Client(), contracts.Signer(), txmanager.DefaultConfig(contracts.ChainID))
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize transaction manager"))
-	defer contracts.StopTxManager()
+	txm.Start(ctx)
+	defer txm.Stop()
 
 	t.Run("test transaction manager initialization and nonce tracking", func(t *testing.T) {
 		c := qt.New(t)

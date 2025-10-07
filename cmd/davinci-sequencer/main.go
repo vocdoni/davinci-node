@@ -18,12 +18,14 @@ import (
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
+	"github.com/vocdoni/davinci-node/web3/txmanager"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
 // Services holds all the running services
 type Services struct {
 	Contracts  *web3.Contracts
+	TxManager  *txmanager.TxManager
 	Storage    *storage.Storage
 	ProcessMon *service.ProcessMonitor
 	API        *service.APIService
@@ -194,9 +196,12 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 
 	// Init transaction manager
-	if err := services.Contracts.StartTxManager(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start transaction manager: %w", err)
+	services.TxManager, err = txmanager.New(ctx, services.Contracts.Web3Pool(), services.Contracts.Client(), services.Contracts.Signer(), txmanager.DefaultConfig(services.Contracts.ChainID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transaction manager: %w", err)
 	}
+	services.TxManager.Start(ctx)
+	services.Contracts.SetTxManager(services.TxManager)
 
 	log.Infow("contracts initialized",
 		"chainId", services.Contracts.ChainID,
@@ -268,6 +273,6 @@ func shutdownServices(services *Services) {
 	if services.ProcessMon != nil {
 		services.ProcessMon.Stop()
 	}
-	services.Contracts.StopTxManager() // Stop transaction manager
-	services.Storage.Close()           // Close storage last
+	services.TxManager.Stop() // Stop transaction manager
+	services.Storage.Close()  // Close storage last
 }
