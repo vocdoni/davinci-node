@@ -232,7 +232,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 	}
 
 	// Initialize the contracts object
-	contracts, err := web3.New([]string{rpcUrl}, "")
+	contracts, err := web3.New([]string{rpcUrl}, "", 1.0)
 	if err != nil {
 		cleanup() // Clean up what we've done so far
 		return nil, nil, fmt.Errorf("failed to create web3 contracts: %w", err)

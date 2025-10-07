@@ -60,6 +60,7 @@ type Contracts struct {
 	ContractsAddresses       *Addresses
 	ContractABIs             *ContractABIs
 	Web3ConsensusAPIEndpoint string
+	GasMultiplier            float64
 	organizations            *npbindings.OrganizationRegistry
 	processes                *npbindings.ProcessRegistry
 	web3pool                 *rpc.Web3Pool
@@ -78,7 +79,7 @@ type Contracts struct {
 
 // New creates a new Contracts instance with the given web3 endpoints.
 // It initializes the web3 pool and the client, and sets up the known processes
-func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
+func New(web3rpcs []string, web3cApi string, gasMultiplier float64) (*Contracts, error) {
 	w3pool := rpc.NewWeb3Pool()
 	var chainID *uint64
 	for _, rpc := range web3rpcs {
@@ -125,11 +126,17 @@ func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 	// calculate the start block to watch
 	startBlock := max(int64(lastBlock)-maxPastBlocksToWatch, 0)
 
+	// Default to 1.0 if not set or invalid
+	if gasMultiplier <= 0 {
+		gasMultiplier = 1.0
+	}
+
 	return &Contracts{
 		ChainID:                  *chainID,
 		web3pool:                 w3pool,
 		cli:                      cli,
 		Web3ConsensusAPIEndpoint: web3cApi,
+		GasMultiplier:            gasMultiplier,
 		knownProcesses:           make(map[string]struct{}),
 		knownOrganizations:       make(map[string]struct{}),
 		lastWatchProcessBlock:    uint64(startBlock),

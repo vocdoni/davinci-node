@@ -178,7 +178,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 
 	// Initialize web3 contracts
-	services.Contracts, err = web3.New(w3rpc, cfg.Web3.Capi)
+	services.Contracts, err = web3.New(w3rpc, cfg.Web3.Capi, cfg.Web3.GasMultiplier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize web3 client: %w", err)
 	}
@@ -195,7 +195,8 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 
 	log.Infow("contracts initialized",
 		"chainId", services.Contracts.ChainID,
-		"account", services.Contracts.AccountAddress().Hex())
+		"account", services.Contracts.AccountAddress().Hex(),
+		"gasMultiplier", services.Contracts.GasMultiplier)
 
 	// Start process monitor
 	log.Info("starting process monitor")
