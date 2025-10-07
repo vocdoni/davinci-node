@@ -41,7 +41,7 @@ func main() {
 	log.Infow("starting sendblob")
 
 	// 1) Init Contracts
-	contracts, err := web3.New([]string{*rpcURL}, *capi)
+	contracts, err := web3.New([]string{*rpcURL}, *capi, 1.0)
 	if err != nil {
 		log.Fatalf("init web3: %v", err)
 	}

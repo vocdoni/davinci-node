@@ -150,7 +150,6 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	if err := gethkzg.VerifyBlobProof(&blobSidecar.Blobs[0], blobSidecar.Commitments[0], blobSidecar.Proofs[0]); err != nil {
 		return fmt.Errorf("local blob proof verification failed: %w", err)
 	}
-	log.Debugw("local blob proof verification succeeded")
 
 	// Simulate tx to the contract to check if it will fail and get the root
 	// cause of the failure if it does

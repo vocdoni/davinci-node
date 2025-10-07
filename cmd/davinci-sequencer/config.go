@@ -24,6 +24,7 @@ const (
 	defaultLogOutput                  = "stdout"
 	defaultLogDisableAPI              = false
 	defaultDatadir                    = ".davinci" // Will be prefixed with user's home directory
+	defaultGasMultiplier              = 1.2
 	artifactsTimeout                  = 20 * time.Minute
 	monitorInterval                   = 10 * time.Second
 	defaultWorkersBanTimeout          = 30 * time.Minute
@@ -46,12 +47,13 @@ type Config struct {
 
 // Web3Config holds Ethereum-related configuration
 type Web3Config struct {
-	PrivKey           string   `mapstructure:"privkey"` // Private key for the Ethereum account
-	Network           string   `mapstructure:"network"` // Network shortname
-	Rpc               []string `mapstructure:"rpc"`     // Web3 RPC endpoints, can be multiple
-	Capi              string   `mapstructure:"capi"`    // Consensus API URL
-	ProcessAddr       string   `mapstructure:"process"` // Custom contract addresses, overrides network defaults
-	OrganizationsAddr string   `mapstructure:"orgs"`    // Custom contract addresses, overrides network defaults
+	PrivKey           string   `mapstructure:"privkey"`       // Private key for the Ethereum account
+	Network           string   `mapstructure:"network"`       // Network shortname
+	Rpc               []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
+	Capi              string   `mapstructure:"capi"`          // Consensus API URL
+	ProcessAddr       string   `mapstructure:"process"`       // Custom contract addresses, overrides network defaults
+	OrganizationsAddr string   `mapstructure:"orgs"`          // Custom contract addresses, overrides network defaults
+	GasMultiplier     float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
 }
 
 // APIConfig holds the API-specific configuration
@@ -100,6 +102,7 @@ func loadConfig() (*Config, error) {
 	v.SetDefault("web3.network", defaultNetwork)
 	v.SetDefault("web3.rpc", defaultRPC)
 	v.SetDefault("web3.capi", defaultCAPI)
+	v.SetDefault("web3.gasMultiplier", defaultGasMultiplier)
 	v.SetDefault("api.host", defaultAPIHost)
 	v.SetDefault("api.port", defaultAPIPort)
 	v.SetDefault("batch.time", defaultBatchTime)
@@ -113,6 +116,7 @@ func loadConfig() (*Config, error) {
 	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
 	flag.StringSliceP("web3.rpc", "r", []string{defaultRPC}, "web3 rpc endpoint(s), comma-separated")
 	flag.StringP("web3.capi", "c", defaultCAPI, "consensus api url")
+	flag.Float64("web3.gasMultiplier", defaultGasMultiplier, "gas price multiplier for transactions (1.0 = default, 2.0 = double gas prices)")
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
 	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")
@@ -195,6 +199,14 @@ func validateConfig(cfg *Config) error {
 	}
 	if !validNetwork {
 		return fmt.Errorf("invalid network %s, available networks: %v", cfg.Web3.Network, npbindings.AvailableNetworksByName)
+	}
+
+	// Validate gas multiplier
+	if cfg.Web3.GasMultiplier <= 0 {
+		return fmt.Errorf("gas multiplier must be greater than 0, got: %f", cfg.Web3.GasMultiplier)
+	}
+	if cfg.Web3.GasMultiplier > 100 {
+		return fmt.Errorf("gas multiplier too high (max 100), got: %f", cfg.Web3.GasMultiplier)
 	}
 
 	return nil

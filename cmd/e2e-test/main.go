@@ -104,7 +104,7 @@ func main() {
 	)
 
 	// Intance contracts with the provided web3rpcs
-	contracts, err := web3.New(*web3rpcs, *consensusAPI)
+	contracts, err := web3.New(*web3rpcs, *consensusAPI, 1.0)
 	if err != nil {
 		log.Fatal(err)
 	}
