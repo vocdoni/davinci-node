@@ -35,7 +35,8 @@ const (
 	// shortNameSourceUri is the URI to get the chain metadata from an external
 	shortNameSourceUri = "https://chainid.network/chains_mini.json"
 	// checkWeb3EndpointsTimeout is the timeout to check the web3 endpoints.
-	checkWeb3EndpointsTimeout = time.Second * 10
+	// Increased to accommodate exponential backoff (up to 31s per endpoint).
+	checkWeb3EndpointsTimeout = time.Second * 45
 	// foundTxErrMessage is the error message when a transaction is found but it
 	// is not supported.
 	foundTxErrMessage = "transaction type not supported"
@@ -225,8 +226,13 @@ func (nm *Web3Pool) NetworkInfoByChainID(chainID uint64) *Web3Endpoint {
 // It retries to connect to the web3 provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
 func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.Client, err error) {
-	for range DefaultMaxWeb3ClientRetries {
+	retryDelay := time.Second
+	for i := range DefaultMaxWeb3ClientRetries {
 		if client, err = ethclient.DialContext(ctx, uri); err != nil {
+			if i < DefaultMaxWeb3ClientRetries-1 {
+				time.Sleep(retryDelay)
+				retryDelay *= 2
+			}
 			continue
 		}
 		return
@@ -238,8 +244,13 @@ func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.
 // It retries to connect to the rpc provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
 func connectNodeRawRPC(ctx context.Context, uri string) (client *rpc.Client, err error) {
-	for range DefaultMaxWeb3ClientRetries {
+	retryDelay := time.Second
+	for i := range DefaultMaxWeb3ClientRetries {
 		if client, err = rpc.DialContext(ctx, uri); err != nil {
+			if i < DefaultMaxWeb3ClientRetries-1 {
+				time.Sleep(retryDelay)
+				retryDelay *= 2
+			}
 			continue
 		}
 		return

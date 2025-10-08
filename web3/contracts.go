@@ -30,7 +30,8 @@ import (
 
 const (
 	// web3QueryTimeout is the timeout for web3 queries.
-	web3QueryTimeout = 10 * time.Second
+	// Increased to accommodate retry logic with endpoint switching.
+	web3QueryTimeout = 25 * time.Second
 
 	// maxPastBlocksToWatch is the maximum number of past blocks to watch for events.
 	maxPastBlocksToWatch = 9990
