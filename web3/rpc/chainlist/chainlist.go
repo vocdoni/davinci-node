@@ -47,7 +47,7 @@ type Chain struct {
 	Icon           string         `json:"icon,omitempty"`
 	RPC            []RPCEntry     `json:"rpc"`
 	Features       []Feature      `json:"features,omitempty"`
-	Faucets        []string       `json:"faucets"`
+	Faucets        faucets        `json:"faucets"`
 	NativeCurrency NativeCurrency `json:"nativeCurrency"`
 	InfoURL        string         `json:"infoURL"`
 	ShortName      string         `json:"shortName"`
@@ -473,4 +473,26 @@ func ChainList() (map[string]uint64, error) {
 	}
 
 	return result, nil
+}
+
+// faucets is a custom type that can unmarshal from either a string or an array of strings
+type faucets []string
+
+// UnmarshalJSON implements custom unmarshaling to handle both string and array cases
+func (f *faucets) UnmarshalJSON(data []byte) error {
+	var arr []string // try array
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*f = faucets(arr)
+		return nil
+	}
+	var str string // try string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	if str == "" { // empty string case
+		*f = faucets([]string{})
+	} else {
+		*f = faucets([]string{str})
+	}
+	return nil
 }
