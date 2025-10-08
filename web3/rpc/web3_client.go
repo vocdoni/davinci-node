@@ -15,15 +15,14 @@ import (
 )
 
 const (
-	defaultRetries       = 3
-	maxEndpointSwitches  = 5 // Maximum number of endpoint switches before giving up
+	defaultRetries      = 3
+	maxEndpointSwitches = 5 // Maximum number of endpoint switches before giving up
 )
 
 var (
 	defaultTimeout    = 20 * time.Second
 	filterLogsTimeout = 25 * time.Second
 	retryStartDelay   = 300 * time.Millisecond
-	minTimeForRetry   = 500 * time.Millisecond // Minimum time needed to attempt another retry
 )
 
 // Client struct implements bind.ContractBackend interface for a web3 pool with

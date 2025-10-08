@@ -121,7 +121,7 @@ func (w3pp *Web3Iterator) Disable(uri string) {
 	defer w3pp.mtx.Unlock()
 
 	// Find the index of the endpoint to disable
-	var index = -1
+	index := -1
 	for i, e := range w3pp.available {
 		if e.URI == uri {
 			index = i

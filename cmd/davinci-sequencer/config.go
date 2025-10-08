@@ -106,40 +106,44 @@ func loadConfig() (*Config, error) {
 	v.SetDefault("web3.gasMultiplier", defaultGasMultiplier)
 	v.SetDefault("api.host", defaultAPIHost)
 	v.SetDefault("api.port", defaultAPIPort)
+	v.SetDefault("api.workersBanTimeout", defaultWorkersBanTimeout)
+	v.SetDefault("api.workersAuthtokenExpiration", defaultWorkersAuthtokenExpiration)
+	v.SetDefault("api.workersFailuresToGetBanned", defaultWorkerBanFailures)
 	v.SetDefault("batch.time", defaultBatchTime)
 	v.SetDefault("log.level", defaultLogLevel)
 	v.SetDefault("log.output", defaultLogOutput)
 	v.SetDefault("log.disableAPI", defaultLogDisableAPI)
+	v.SetDefault("worker.timeout", 1*time.Minute)
 	v.SetDefault("datadir", defaultDatadirPath)
 
 	// Configure flags
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
-	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
-	flag.StringSliceP("web3.rpc", "r", []string{defaultRPC}, "web3 rpc endpoint(s), comma-separated")
-	flag.StringP("web3.capi", "c", defaultCAPI, "consensus api url")
-	flag.Float64("web3.gasMultiplier", defaultGasMultiplier, "gas price multiplier for transactions (1.0 = default, 2.0 = double gas prices)")
-	flag.StringP("api.host", "h", defaultAPIHost, "API host")
-	flag.IntP("api.port", "p", defaultAPIPort, "API port")
-	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")
+	flag.StringP("web3.network", "n", "", fmt.Sprintf("network to use %v (default: %s)", npbindings.AvailableNetworksByName, defaultNetwork))
+	flag.StringSlice("web3.rpc", nil, fmt.Sprintf("web3 rpc endpoint(s), comma-separated (default: %s)", defaultRPC))
+	flag.StringP("web3.capi", "c", "", fmt.Sprintf("consensus api url (default: %s)", defaultCAPI))
+	flag.Float64("web3.gasMultiplier", 0, fmt.Sprintf("gas price multiplier for transactions (1.0 = default, 2.0 = double gas prices) (default: %v)", defaultGasMultiplier))
+	flag.StringP("api.host", "h", "", fmt.Sprintf("API host (default: %s)", defaultAPIHost))
+	flag.IntP("api.port", "p", 0, fmt.Sprintf("API port (default: %d)", defaultAPIPort))
+	flag.DurationP("batch.time", "b", 0, fmt.Sprintf("sequencer batch max time window (i.e 10m or 1h) (default: %v)", defaultBatchTime))
 	flag.String("web3.process", "", "custom process registry contract address (overrides network default)")
 	flag.String("web3.orgs", "", "custom organization registry contract address (overrides network default)")
 	flag.String("web3.results", "", "custom results registry contract address (overrides network default)")
-	flag.StringP("log.level", "l", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
-	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
-	flag.Bool("log.disableAPI", defaultLogDisableAPI, "disable API logging middleware")
-	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
-	flag.Bool("forceCleanup", false, "force cleanup of all pending verified votes, aggregated batches and state transitions at startup")
+	flag.StringP("log.level", "l", "", fmt.Sprintf("log level (debug, info, warn, error, fatal) (default: %s)", defaultLogLevel))
+	flag.StringP("log.output", "o", "", fmt.Sprintf("log output (stdout, stderr or filepath) (default: %s)", defaultLogOutput))
+	flag.Bool("log.disableAPI", false, fmt.Sprintf("disable API logging middleware (default: %v)", defaultLogDisableAPI))
+	flag.StringP("datadir", "d", "", fmt.Sprintf("data directory for database and storage files (default: %s)", defaultDatadirPath))
+	flag.Bool("forceCleanup", false, "force cleanup of all pending verified votes, aggregated batches and state transitions at startup (default: false)")
 	// worker mode flags
-	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
+	flag.Duration("worker.timeout", 0, "worker job timeout duration (default: 1m)")
 	flag.StringP("worker.address", "a", "", "worker Ethereum address")
 	flag.String("worker.name", "", "worker name for identification")
 	flag.StringP("worker.authtoken", "t", "", "worker authentication token (required for running in worker mode)")
 	flag.StringP("worker.sequencerURL", "w", "", "sequencer URL (required for running in worker mode)")
 	// sequencer workers api flags
 	flag.String("api.workersSeed", "", "enable master worker endpoint with URL seed for authentication")
-	flag.Duration("api.workersBanTimeout", defaultWorkersBanTimeout, "timeout for worker ban in seconds")
-	flag.Duration("api.workersAuthtokenExpiration", defaultWorkersAuthtokenExpiration, "timeout for worker authentication token expiration")
-	flag.Int("api.workersFailuresToGetBanned", defaultWorkerBanFailures, "number of failed jobs to get banned")
+	flag.Duration("api.workersBanTimeout", 0, fmt.Sprintf("timeout for worker ban (default: %v)", defaultWorkersBanTimeout))
+	flag.Duration("api.workersAuthtokenExpiration", 0, fmt.Sprintf("timeout for worker authentication token expiration (default: %v)", defaultWorkersAuthtokenExpiration))
+	flag.Int("api.workersFailuresToGetBanned", 0, fmt.Sprintf("number of failed jobs to get banned (default: %d)", defaultWorkerBanFailures))
 
 	// Configure usage information
 	flag.Usage = func() {
@@ -159,19 +163,17 @@ func loadConfig() (*Config, error) {
 		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.process_registry=0x456... --web3.org_registry=0x789...\n")
 	}
 
-	// Parse flags
-	flag.CommandLine.SortFlags = false
-	flag.Parse()
-
 	// Configure Viper to use environment variables
 	v.SetEnvPrefix("DAVINCI")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	// Bind flags to Viper
 	if err := v.BindPFlags(flag.CommandLine); err != nil {
 		return nil, fmt.Errorf("error binding flags: %w", err)
 	}
+
+	flag.CommandLine.SortFlags = false
+	flag.Parse()
 
 	// Create config struct
 	cfg := &Config{}

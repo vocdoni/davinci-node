@@ -35,7 +35,6 @@ const (
 	// shortNameSourceUri is the URI to get the chain metadata from an external
 	shortNameSourceUri = "https://chainid.network/chains_mini.json"
 	// checkWeb3EndpointsTimeout is the timeout to check the web3 endpoints.
-	// Increased to accommodate exponential backoff (up to 31s per endpoint).
 	checkWeb3EndpointsTimeout = time.Second * 45
 	// foundTxErrMessage is the error message when a transaction is found but it
 	// is not supported.
