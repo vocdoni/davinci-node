@@ -188,7 +188,7 @@ func loadConfig() (*Config, error) {
 func validateConfig(cfg *Config) error {
 	// Validate required fields
 	if cfg.Web3.PrivKey == "" {
-		return fmt.Errorf("private key is required (use --privkey flag or DAVINCI_PRIVKEY environment variable)")
+		return fmt.Errorf("private key is required (use --privkey flag or DAVINCI_WEB3_PRIVKEY environment variable)")
 	}
 
 	// Validate network
