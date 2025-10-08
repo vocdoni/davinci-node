@@ -73,6 +73,10 @@ func (m *MockContracts) AccountAddress() common.Address {
 	return common.HexToAddress("0x1234567890123456789012345678901234567890")
 }
 
-func (m *MockContracts) WaitTx(hash common.Hash, timeout time.Duration) error {
+func (m *MockContracts) WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error {
+	return nil
+}
+
+func (m *MockContracts) WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error {
 	return nil
 }

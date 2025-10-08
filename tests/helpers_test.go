@@ -449,7 +449,7 @@ func createOrganization(c *qt.C, contracts *web3.Contracts) common.Address {
 	})
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to create organization: %v", err))
 
-	err = contracts.WaitTx(txHash, time.Second*30)
+	err = contracts.WaitTxByHash(txHash, time.Second*30)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to wait for organization creation transaction: %v", err))
 	return orgAddr
 }
@@ -527,7 +527,7 @@ func createProcessInContracts(c *qt.C, contracts *web3.Contracts,
 	})
 	c.Assert(err, qt.IsNil)
 
-	err = contracts.WaitTx(*txHash, time.Second*15)
+	err = contracts.WaitTxByHash(*txHash, time.Second*15)
 	c.Assert(err, qt.IsNil)
 
 	return pid
@@ -724,7 +724,7 @@ func finishProcessOnContract(t *testing.T, contracts *web3.Contracts, pid *types
 	txHash, err := contracts.SetProcessStatus(pid.Marshal(), types.ProcessStatusEnded)
 	c.Assert(err, qt.IsNil)
 	c.Assert(txHash, qt.IsNotNil)
-	err = contracts.WaitTx(*txHash, time.Second*30)
+	err = contracts.WaitTxByHash(*txHash, time.Second*30)
 	c.Assert(err, qt.IsNil)
 	t.Logf("process %s finished successfully", pid.String())
 }

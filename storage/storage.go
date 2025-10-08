@@ -93,6 +93,7 @@ var (
 	metadataPrefix              = []byte("md/")
 	censusDBprefix              = []byte("cs_")
 	stateDBprefix               = []byte("st_")
+	pendingTxPrefix             = []byte("ptx/")
 
 	maxKeySize = 12
 )

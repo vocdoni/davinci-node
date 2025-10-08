@@ -87,7 +87,7 @@ func main() {
 
 	// 4) Optionally wait
 	if *wait {
-		if err := contracts.WaitTx(tx.Hash(), 2*time.Minute); err != nil {
+		if err := contracts.WaitTxByHash(tx.Hash(), 2*time.Minute); err != nil {
 			log.Errorf("wait tx %s: %v", tx.Hash().Hex(), err)
 		} else {
 			log.Infow("tx mined", "hash", tx.Hash().Hex())

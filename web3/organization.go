@@ -7,26 +7,13 @@ import (
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
-	gtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// CreateOrganization creates a new organization in the OrganizationRegistry contract.
+// CreateOrganization creates a new organization in the OrganizationRegistry
+// contract.
 func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.OrganizationInfo) (common.Hash, error) {
-	ctx := context.Background()
-
-	// Use transaction manager if available for automatic nonce management
-	if c.txManager != nil {
-		txHash, err := c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
-			return c.buildCreateOrganizationTx(ctx, orgInfo, nonce)
-		})
-		if err != nil {
-			return common.Hash{}, fmt.Errorf("failed to create organization: %w", err)
-		}
-		return *txHash, nil
-	}
-
 	// Fallback to old method if transaction manager not initialized
 	txOpts, err := c.authTransactOpts()
 	if err != nil {
@@ -39,22 +26,8 @@ func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.Or
 	return tx.Hash(), nil
 }
 
-// buildCreateOrganizationTx builds a create organization transaction with the given nonce
-func (c *Contracts) buildCreateOrganizationTx(ctx context.Context, orgInfo *types.OrganizationInfo, nonce uint64) (*gtypes.Transaction, error) {
-	orgABI, err := c.OrganizationRegistryABI()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get organization registry ABI: %w", err)
-	}
-
-	data, err := orgABI.Pack("createOrganization", orgInfo.Name, orgInfo.MetadataURI, []common.Address{c.signer.Address()})
-	if err != nil {
-		return nil, fmt.Errorf("failed to pack data: %w", err)
-	}
-
-	return c.buildDynamicFeeTx(ctx, c.ContractsAddresses.OrganizationRegistry, data, nonce)
-}
-
-// Organization returns the organization with the given address from the OrganizationRegistry contract.
+// Organization returns the organization with the given address from the
+// OrganizationRegistry contract.
 func (c *Contracts) Organization(address common.Address) (*types.OrganizationInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	org, err := c.organizations.GetOrganization(&bind.CallOpts{Context: ctx}, address)
@@ -68,7 +41,8 @@ func (c *Contracts) Organization(address common.Address) (*types.OrganizationInf
 	}, nil
 }
 
-// MonitorOrganizationCreatedByPolling monitors the creation of organizations by polling the logs of the blockchain.
+// MonitorOrganizationCreatedByPolling monitors the creation of organizations
+// by polling the logs of the blockchain.
 func (c *Contracts) MonitorOrganizationCreatedByPolling(ctx context.Context, interval time.Duration) (<-chan *types.OrganizationInfo, error) {
 	ch := make(chan *types.OrganizationInfo)
 	go func() {

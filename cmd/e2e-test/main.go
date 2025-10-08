@@ -356,7 +356,7 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	}
 
 	// Wait for the transaction to be mined
-	if err := contracts.WaitTx(txHash, time.Second*30); err != nil {
+	if err := contracts.WaitTxByHash(txHash, time.Second*30); err != nil {
 		return common.Address{}, err
 	}
 
@@ -488,7 +488,7 @@ func createProcess(
 	}
 
 	// Wait for the process creation transaction to be mined
-	if err = contracts.WaitTx(*txHash, time.Second*15); err != nil {
+	if err = contracts.WaitTxByHash(*txHash, time.Second*15); err != nil {
 		return nil, nil, fmt.Errorf("failed to wait for process creation tx: %v", err)
 	}
 
@@ -668,7 +668,7 @@ func finishProcessOnChain(contracts *web3.Contracts, pid *types.ProcessID) error
 	if err != nil {
 		return fmt.Errorf("failed to finish process: %v", err)
 	}
-	if err := contracts.WaitTx(*finishTx, time.Second*30); err != nil {
+	if err := contracts.WaitTxByHash(*finishTx, time.Second*30); err != nil {
 		return fmt.Errorf("failed to wait for process finish tx: %v", err)
 	}
 	return nil

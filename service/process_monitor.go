@@ -30,7 +30,8 @@ type ContractsService interface {
 	MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error)
 	CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error)
 	AccountAddress() common.Address
-	WaitTx(hash common.Hash, timeout time.Duration) error
+	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
+	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
 }
 
 // NewProcessMonitor creates a new ProcessMonitor service. If storage is nil, it uses a memory storage.
