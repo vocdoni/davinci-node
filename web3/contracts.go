@@ -168,6 +168,10 @@ func (c *Contracts) SetTxManager(tm *txmanager.TxManager) {
 	c.txManager = tm
 }
 
+func (c *Contracts) TxManager() *txmanager.TxManager {
+	return c.txManager
+}
+
 // // StartTxManager initializes and starts the transaction manager and its
 // // background monitoring. It returns an error if the initialization fails.
 // func (c *Contracts) StartTxManager(ctx context.Context) error {
@@ -322,7 +326,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy organization registry: %w", err)
 	}
-	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	c.organizations = orgBindings
@@ -337,7 +341,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy state transition zkverifier contract: %w", err)
 	}
-	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	c.ContractsAddresses.StateTransitionZKVerifier = addr
@@ -347,7 +351,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy results zkverifier contract: %w", err)
 	}
-	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	c.ContractsAddresses.ResultsZKVerifier = addr
@@ -367,7 +371,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process registry: %w", err)
 	}
-	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	log.Infow("deployed ProcessRegistry", "address", c.ContractsAddresses.ProcessRegistry, "tx", tx.Hash().Hex())
@@ -391,23 +395,39 @@ func (c *Contracts) CheckTxStatus(txHash common.Hash) (bool, error) {
 	return receipt.Status == 1, nil
 }
 
-// WaitTx waits for a transaction to be mined.
-func (c *Contracts) WaitTx(txHash common.Hash, timeOut time.Duration) error {
-	timeout := time.After(timeOut)
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+// WaitTxByHash waits for a transaction to be mined given its hash. If the
+// transaction is not mined within the timeout, it returns an error.
+func (c *Contracts) WaitTxByHash(txHash common.Hash, timeOut time.Duration, cb ...func(error)) error {
+	return c.TxManager().WaitTxByHash(txHash, timeOut, cb...)
+}
 
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("timeout waiting for tx %s", txHash.Hex())
-		case <-ticker.C:
-			status, _ := c.CheckTxStatus(txHash)
-			if status {
-				return nil
+// WaitTxByID waits for a transaction to be mined given its hash. If the
+// transaction is not mined within the timeout, it returns an error.
+func (c *Contracts) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(error)) error {
+	return c.TxManager().WaitTxByID(id, timeOut, cb...)
+}
+
+// WaitTxWithCallback waits for a transaction to be mined in the background and
+// calls the provided callback with the result when done or timeout occurs.
+func (c *Contracts) WaitTxWithCallback(txHash common.Hash, timeOut time.Duration, cb func(error)) {
+	go func() {
+		timeout := time.After(timeOut)
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-timeout:
+				cb(fmt.Errorf("timeout waiting for tx %s", txHash.Hex()))
+				return
+			case <-ticker.C:
+				// Check if the transaction is mined
+				if status, _ := c.CheckTxStatus(txHash); status {
+					cb(nil)
+					return
+				}
 			}
 		}
-	}
+	}()
 }
 
 // AddWeb3Endpoint adds a new web3 endpoint to the pool.

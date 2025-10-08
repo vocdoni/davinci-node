@@ -63,6 +63,14 @@ func (s *Sequencer) processPendingTransitions() {
 			}
 			return true // Continue to next process ID
 		}
+
+		// If there are pending txs, skip this process ID
+		if s.stg.HasPendingTx(storage.StateTransitionTx, pid) {
+			log.Debugw("skipping state transition processing due to pending txs",
+				"processID", fmt.Sprintf("%x", pid))
+			return true // Continue to next process ID
+		}
+
 		// Decode process ID and load metadata
 		processID := new(types.ProcessID).SetBytes(batch.ProcessID)
 
@@ -150,6 +158,12 @@ func (s *Sequencer) processPendingTransitions() {
 		commitments := make([]string, len(p.Commitments))
 		for i, c := range p.Commitments {
 			commitments[i] = c.String()
+		}
+
+		if err := s.stg.SetPendingTx(storage.StateTransitionTx, batch.ProcessID); err != nil {
+			log.Warnw("failed to mark process as having pending tx",
+				"error", err,
+				"processID", fmt.Sprintf("%x", processID))
 		}
 
 		// Store the proof in the state transition storage

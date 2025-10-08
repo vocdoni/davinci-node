@@ -344,10 +344,15 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 
 	// Start the transaction manager
 	txm, err := txmanager.New(ctx, contracts.Web3Pool(), contracts.Client(), contracts.Signer(), txmanager.DefaultConfig(contracts.ChainID))
-	c.Assert(err, qt.IsNil)
+	if err != nil {
+		cleanup() // Clean up what we've done so far
+		return nil, nil, fmt.Errorf("failed to create transaction manager: %w", err)
+	}
 	txm.Start(ctx)
 	contracts.SetTxManager(txm)
-	c.Cleanup(txm.Stop)
+	cleanupFuncs = append(cleanupFuncs, func() {
+		txm.Stop()
+	})
 	// Set contracts ABIs
 	contracts.ContractABIs = &web3.ContractABIs{}
 	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
@@ -573,8 +578,7 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 		return common.Address{}, fmt.Errorf("failed to create organization: %w", err)
 	}
 
-	err = contracts.WaitTx(txHash, time.Second*30)
-	if err != nil {
+	if err = contracts.WaitTxByHash(txHash, time.Second*30); err != nil {
 		return common.Address{}, fmt.Errorf("failed to wait for organization creation transaction: %w", err)
 	}
 	return orgAddr, nil
@@ -667,13 +671,7 @@ func createProcessInContracts(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create process: %w", err)
 	}
-
-	err = contracts.WaitTx(*txHash, time.Second*15)
-	if err != nil {
-		return nil, fmt.Errorf("failed to wait for process creation transaction: %w", err)
-	}
-
-	return pid, nil
+	return pid, contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
 func waitUntilProcessStarts(
@@ -927,8 +925,7 @@ func finishProcessOnContract(contracts *web3.Contracts, pid *types.ProcessID) er
 	if txHash == nil {
 		return fmt.Errorf("transaction hash is nil")
 	}
-	err = contracts.WaitTx(*txHash, time.Second*30)
-	if err != nil {
+	if err = contracts.WaitTxByHash(*txHash, time.Second*30); err != nil {
 		return fmt.Errorf("failed to wait for transaction: %w", err)
 	}
 	return nil

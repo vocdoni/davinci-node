@@ -2,12 +2,10 @@ package web3
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	gtypes "github.com/ethereum/go-ethereum/core/types"
@@ -15,6 +13,23 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
+
+// ProcessRegistryProcess is a mirror of the on-chain process tuple constructed
+// with the auto-generated bindings.
+type ProcessRegistryProcess struct {
+	Status               uint8
+	OrganizationId       common.Address
+	EncryptionKey        npbindings.IProcessRegistryEncryptionKey
+	LatestStateRoot      *big.Int
+	StartTime            *big.Int
+	Duration             *big.Int
+	MetadataURI          string
+	BallotMode           npbindings.IProcessRegistryBallotMode
+	Census               npbindings.IProcessRegistryCensus
+	VoteCount            *big.Int
+	VoteOverwrittenCount *big.Int
+	Result               []*big.Int
+}
 
 // CreateProcess creates a new process in the ProcessRegistry contract.
 // It returns the process ID and the transaction hash.
@@ -54,7 +69,8 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 	return pidDecoded, &hash, nil
 }
 
-// Process returns the process with the given ID from the ProcessRegistry contract.
+// Process returns the process with the given ID from the ProcessRegistry
+// contract.
 func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
@@ -88,7 +104,8 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	return process, nil
 }
 
-// NextProcessID returns the next process ID that will be created in the ProcessRegistry contract for the given address.
+// NextProcessID returns the next process ID that will be created in the
+// ProcessRegistry contract for the given address.
 func (c *Contracts) NextProcessID(address common.Address) (*types.ProcessID, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
@@ -121,209 +138,134 @@ func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (*common.Hash, error) {
+func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) ([]byte, *common.Hash, error) {
+	// If the transaction manager is not available, return an error
+	if c.txManager == nil {
+		return nil, nil, fmt.Errorf("transaction manager not initialized")
+	}
+	// Copy processID into a fixed-size array to match the contract's expected
+	// type
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-
-	// Use transaction manager if available for automatic nonce management and stuck tx recovery
-	if c.txManager != nil {
-		var sentTx *gtypes.Transaction
-		txHash, err := c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
-			var tx *gtypes.Transaction
-			var err error
-			if blobsSidecar == nil {
-				// Regular transaction
-				tx, err = c.buildRegularTransition(ctx, pid, proof, inputs, nonce)
-			} else {
-				// Blob transaction
-				tx, err = c.buildBlobTransition(ctx, pid, proof, inputs, blobsSidecar, nonce)
-			}
-			if err == nil {
-				sentTx = tx // Store the transaction for sidecar tracking
-			}
-			return tx, err
-		})
-
-		// If blob transaction sent successfully, store sidecar for recovery
-		if err == nil && blobsSidecar != nil && sentTx != nil {
-			if err := c.txManager.TrackBlobTransactionWithSidecar(sentTx, blobsSidecar); err != nil {
-				log.Warnw("failed to track blob sidecar for recovery", "error", err, "hash", txHash.Hex())
-			} else {
-				log.Infow("blob sidecar tracked for stuck transaction recovery",
-					"hash", txHash.Hex(),
-					"blobCount", len(blobsSidecar.Blobs))
-			}
-		}
-
-		return txHash, err
-	}
-
-	// Fallback to old method if transaction manager not initialized
-	if blobsSidecar == nil {
-		autOpts, err := c.authTransactOpts()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create transact options: %w", err)
-		}
-		autOpts.Context = ctx
-		tx, err := c.processes.SubmitStateTransition(autOpts, pid, proof, inputs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to submit state transition: %w", err)
-		}
-		hash := tx.Hash()
-		return &hash, nil
-	}
-
+	// Prepare the ABI for packing the data
 	processABI, err := c.ProcessRegistryABI()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
 	}
-	tx, err := c.NewEIP4844TransactionWithNonce(
-		ctx,
-		c.ContractsAddresses.ProcessRegistry,
-		processABI,
-		"submitStateTransition",
-		[]any{pid, proof, inputs},
-		blobsSidecar,
-		0, // nonce will be fetched inside
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
-	}
+	// Use transaction manager for automatic nonce management
+	var sentTx *gtypes.Transaction
+	txID, txHash, err := c.txManager.SendTxWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+		var tx *gtypes.Transaction
+		if blobsSidecar == nil {
+			// Regular transaction
+			data, dataErr := processABI.Pack("submitStateTransition", pid, proof, inputs)
+			if dataErr != nil {
+				return nil, fmt.Errorf("failed to pack data: %w", dataErr)
+			}
 
-	if err := c.cli.SendTransaction(ctx, tx); err != nil {
-		return nil, fmt.Errorf("failed to submit state transition (EIP-4844 Tx): %w", err)
+			tx, err = c.txManager.BuildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+		} else {
+			// Blob transaction
+			tx, err = c.NewEIP4844TransactionWithNonce(
+				ctx,
+				c.ContractsAddresses.ProcessRegistry,
+				processABI,
+				"submitStateTransition",
+				[]any{pid, proof, inputs},
+				blobsSidecar,
+				nonce,
+			)
+		}
+		if err == nil {
+			sentTx = tx // Store the transaction for sidecar tracking
+		}
+		return tx, err
+	})
+	// If blob transaction sent successfully, store sidecar for recovery
+	if err == nil && blobsSidecar != nil && sentTx != nil {
+		if err := c.txManager.TrackBlobTxWithSidecar(sentTx, blobsSidecar); err != nil {
+			log.Warnw("failed to track blob sidecar for recovery",
+				"error", err,
+				"hash", txHash.Hex(),
+				"txID", fmt.Sprintf("%x", txID))
+		} else {
+			log.Infow("blob sidecar tracked for stuck transaction recovery",
+				"hash", txHash.Hex(),
+				"txID", fmt.Sprintf("%x", txID),
+				"blobCount", len(blobsSidecar.Blobs))
+		}
 	}
-	hash := tx.Hash()
-	return &hash, nil
+	log.Infow("state transition submitted",
+		"hash", txHash.Hex(),
+		"txID", fmt.Sprintf("%x", txID),
+		"processID", fmt.Sprintf("%x", processID))
+	return txID, txHash, err
 }
 
-// buildRegularTransition builds a regular (non-blob) state transition transaction with the given nonce
-func (c *Contracts) buildRegularTransition(ctx context.Context, pid [32]byte, proof, inputs []byte, nonce uint64) (*gtypes.Transaction, error) {
-	processABI, err := c.ProcessRegistryABI()
+func (c *Contracts) SetProcessTransitionAndWait(
+	processID, proof, inputs []byte,
+	blobsSidecar *gtypes.BlobTxSidecar,
+	timeout time.Duration, callback ...func(error),
+) error {
+	txID, txHash, err := c.SetProcessTransition(processID, proof, inputs, blobsSidecar)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+		return fmt.Errorf("failed to set process transition: %w", err)
 	}
-
-	data, err := processABI.Pack("submitStateTransition", pid, proof, inputs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pack data: %w", err)
-	}
-
-	return c.buildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+	log.Infow("waiting for state transition to be mined",
+		"hash", txHash.Hex(),
+		"txID", fmt.Sprintf("%x", txID),
+		"processID", fmt.Sprintf("%x", processID))
+	return c.txManager.WaitTxByID(txID, timeout, callback...)
 }
 
-// buildBlobTransition builds a blob state transition transaction with the given nonce
-func (c *Contracts) buildBlobTransition(ctx context.Context, pid [32]byte, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar, nonce uint64) (*gtypes.Transaction, error) {
-	processABI, err := c.ProcessRegistryABI()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (types.HexBytes, *common.Hash, error) {
+	// If the transaction manager is not available, return an error
+	if c.txManager == nil {
+		return nil, nil, fmt.Errorf("transaction manager not initialized")
 	}
-
-	return c.NewEIP4844TransactionWithNonce(
-		ctx,
-		c.ContractsAddresses.ProcessRegistry,
-		processABI,
-		"submitStateTransition",
-		[]any{pid, proof, inputs},
-		blobsSidecar,
-		nonce,
-	)
-}
-
-func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (*common.Hash, error) {
+	// Copy processID into a fixed-size array to match the contract's expected
+	// type
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-
-	// Use transaction manager if available for automatic nonce management
-	if c.txManager != nil {
-		// Results are always regular transactions (no blobs)
-		return c.txManager.SendTransactionWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
-			return c.buildRegularResults(ctx, pid, proof, inputs, nonce)
-		})
-	}
-
-	// Fallback to old method if transaction manager not initialized
-	autOpts, err := c.authTransactOpts()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transact options: %w", err)
-	}
-	autOpts.Context = ctx
-	tx, err := c.processes.SetProcessResults(autOpts, pid, proof, inputs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to set process results: %w", err)
-	}
-	hash := tx.Hash()
-	return &hash, nil
-}
-
-// buildRegularResults builds a regular (non-blob) results transaction with the given nonce
-func (c *Contracts) buildRegularResults(ctx context.Context, pid [32]byte, proof, inputs []byte, nonce uint64) (*gtypes.Transaction, error) {
+	// Prepare the ABI for packing the data
 	processABI, err := c.ProcessRegistryABI()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
 	}
-
+	// Pack the data for the setProcessResults function
 	data, err := processABI.Pack("setProcessResults", pid, proof, inputs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack data: %w", err)
+		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}
-
-	return c.buildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+	// Use transaction manager for automatic nonce management
+	return c.txManager.SendTxWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+		// Results are always regular transactions (no blobs)
+		return c.txManager.BuildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+	})
 }
 
-// buildDynamicFeeTx builds a standard EIP-1559 transaction with the given nonce
-func (c *Contracts) buildDynamicFeeTx(ctx context.Context, to common.Address, data []byte, nonce uint64) (*gtypes.Transaction, error) {
-	// Get gas price and tip
-	tipCap, err := c.cli.SuggestGasTipCap(ctx)
+func (c *Contracts) SetProcessResultsAndWait(
+	processID, proof, inputs []byte,
+	timeout time.Duration, callback ...func(error),
+) error {
+	txID, txHash, err := c.SetProcessResults(processID, proof, inputs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get tip cap: %w", err)
+		return fmt.Errorf("failed to set process results: %w", err)
 	}
-
-	baseFee, err := c.cli.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get base fee: %w", err)
-	}
-
-	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
-
-	// Estimate gas
-	gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
-		From:      c.AccountAddress(),
-		To:        &to,
-		Data:      data,
-		GasFeeCap: gasFeeCap,
-		GasTipCap: tipCap,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to estimate gas: %w", err)
-	}
-
-	// Create transaction
-	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
-		ChainID:   new(big.Int).SetUint64(c.ChainID),
-		Nonce:     nonce,
-		GasTipCap: tipCap,
-		GasFeeCap: gasFeeCap,
-		Gas:       gas,
-		To:        &to,
-		Value:     big.NewInt(0),
-		Data:      data,
-	})
-
-	// Sign transaction
-	signer := gtypes.NewCancunSigner(new(big.Int).SetUint64(c.ChainID))
-	signed, err := gtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(c.signer))
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign transaction: %w", err)
-	}
-
-	return signed, nil
+	log.Infow("waiting for process results to be mined",
+		"hash", txHash.Hex(),
+		"txID", fmt.Sprintf("%x", txID),
+		"processID", fmt.Sprintf("%x", processID))
+	return c.txManager.WaitTxByID(txID, timeout, callback...)
 }
 
+// SetProcessStatus sets the status of the process with the given ID in the
+// ProcessRegistry contract. It returns the transaction hash of the status
+// update, or an error if the update fails.
 func (c *Contracts) SetProcessStatus(processID []byte, status types.ProcessStatus) (*common.Hash, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
@@ -342,7 +284,8 @@ func (c *Contracts) SetProcessStatus(processID []byte, status types.ProcessStatu
 	return &hash, nil
 }
 
-// MonitorProcessCreation monitors the creation of new processes by polling the ProcessRegistry contract every interval.
+// MonitorProcessCreation monitors the creation of new processes by polling the
+// ProcessRegistry contract every interval.
 func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
 	ch := make(chan *types.Process)
 	go func() {
@@ -386,9 +329,9 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 	return ch, nil
 }
 
-// MonitorProcessStatusChanges monitors the status changes in processes by polling
-// the ProcessRegistry contract every interval. It returns a channel that emits
-// processes with the old and new status.
+// MonitorProcessStatusChanges monitors the status changes in processes by
+// polling the ProcessRegistry contract every interval. It returns a channel
+// that emits processes with the old and new status.
 func (c *Contracts) MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error) {
 	updatedProcChan := make(chan *types.ProcessWithStatusChange)
 	go func() {
@@ -487,8 +430,9 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 	return updatedProcChan, nil
 }
 
-// MonitorProcessCreationBySubscription monitors the creation of new processes by subscribing to the ProcessRegistry contract.
-// Requires the web3 rpc endpoint to support subscriptions on websockets.
+// MonitorProcessCreationBySubscription monitors the creation of new processes
+// by subscribing to the ProcessRegistry contract. Requires the web3 rpc
+// endpoint to support subscriptions on websockets.
 func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<-chan *types.Process, error) {
 	ch1 := make(chan *npbindings.ProcessRegistryProcessCreated)
 	ch2 := make(chan *types.Process)
@@ -595,22 +539,6 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 		VoteOverwrittenCount: (*types.BigInt)(p.VoteOverwrittenCount),
 		Result:               results,
 	}, nil
-}
-
-// ProcessRegistryProcess is a mirror of the on-chain process tuple constructed with the auto-generated bindings
-type ProcessRegistryProcess struct {
-	Status               uint8
-	OrganizationId       common.Address
-	EncryptionKey        npbindings.IProcessRegistryEncryptionKey
-	LatestStateRoot      *big.Int
-	StartTime            *big.Int
-	Duration             *big.Int
-	MetadataURI          string
-	BallotMode           npbindings.IProcessRegistryBallotMode
-	Census               npbindings.IProcessRegistryCensus
-	VoteCount            *big.Int
-	VoteOverwrittenCount *big.Int
-	Result               []*big.Int
 }
 
 func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
