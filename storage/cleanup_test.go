@@ -274,12 +274,13 @@ func TestCleanAllPending(t *testing.T) {
 		_, _, err = s.NextStateTransitionBatch(processID2)
 		c.Assert(err, qt.Equals, ErrNoMoreElements)
 
-		// Verify vote IDs are marked as error
+		// Verify vote IDs remain in PROCESSED status (not marked as error)
+		// PROCESSED votes are valid and just waiting for settlement
 		for _, stb := range []*StateTransitionBatch{stb1, stb2} {
 			for _, ballot := range stb.Ballots {
 				status, err := s.VoteIDStatus(stb.ProcessID, ballot.VoteID)
 				c.Assert(err, qt.IsNil)
-				c.Assert(status, qt.Equals, VoteIDStatusError)
+				c.Assert(status, qt.Equals, VoteIDStatusProcessed, qt.Commentf("state transition votes should remain PROCESSED, not ERROR"))
 
 				// Verify nullifier locks are released
 				c.Assert(s.IsVoteIDProcessing(ballot.VoteID.BigInt().MathBigInt()), qt.IsFalse)
@@ -344,13 +345,23 @@ func TestCleanAllPending(t *testing.T) {
 		_, _, err = s.NextStateTransitionBatch(processID1)
 		c.Assert(err, qt.Equals, ErrNoMoreElements)
 
-		// Verify all vote IDs are marked as error and locks released
-		for _, voteID := range []types.HexBytes{vb.VoteID, batch.Ballots[0].VoteID, stb.Ballots[0].VoteID} {
-			status, err := s.VoteIDStatus(processID1, voteID)
-			c.Assert(err, qt.IsNil)
-			c.Assert(status, qt.Equals, VoteIDStatusError)
-			c.Assert(s.IsVoteIDProcessing(voteID.BigInt().MathBigInt()), qt.IsFalse)
-		}
+		// Verify vote IDs status and locks released
+		// Verified and aggregated ballots should be ERROR
+		status, err := s.VoteIDStatus(processID1, vb.VoteID)
+		c.Assert(err, qt.IsNil)
+		c.Assert(status, qt.Equals, VoteIDStatusError)
+		c.Assert(s.IsVoteIDProcessing(vb.VoteID.BigInt().MathBigInt()), qt.IsFalse)
+
+		status, err = s.VoteIDStatus(processID1, batch.Ballots[0].VoteID)
+		c.Assert(err, qt.IsNil)
+		c.Assert(status, qt.Equals, VoteIDStatusError)
+		c.Assert(s.IsVoteIDProcessing(batch.Ballots[0].VoteID.BigInt().MathBigInt()), qt.IsFalse)
+
+		// State transition ballot should remain PROCESSED (not ERROR)
+		status, err = s.VoteIDStatus(processID1, stb.Ballots[0].VoteID)
+		c.Assert(err, qt.IsNil)
+		c.Assert(status, qt.Equals, VoteIDStatusProcessed, qt.Commentf("state transition votes should remain PROCESSED"))
+		c.Assert(s.IsVoteIDProcessing(stb.Ballots[0].VoteID.BigInt().MathBigInt()), qt.IsFalse)
 	})
 
 	// Test 5: Clean with mixed vote statuses

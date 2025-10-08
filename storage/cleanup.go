@@ -153,12 +153,14 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 				"currentStatus", VoteIDStatusName(currentStatus))
 		}
 
-		// Mark vote ID as error (regardless of current status)
-		if err := s.setVoteIDStatus(ballot.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
-			log.Warnw("failed to set vote ID status to error",
-				"processID", fmt.Sprintf("%x", ballot.ProcessID),
-				"voteID", hex.EncodeToString(ballot.VoteID),
-				"error", err.Error())
+		// Mark vote ID as error only if not already settled
+		if currentStatus != VoteIDStatusSettled {
+			if err := s.setVoteIDStatus(ballot.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
+				log.Warnw("failed to set vote ID status to error",
+					"processID", fmt.Sprintf("%x", ballot.ProcessID),
+					"voteID", hex.EncodeToString(ballot.VoteID),
+					"error", err.Error())
+			}
 		}
 
 		// Release nullifier lock
@@ -265,12 +267,14 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 					"currentStatus", VoteIDStatusName(currentStatus))
 			}
 
-			// Mark vote ID as error (regardless of current status)
-			if err := s.setVoteIDStatus(batch.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
-				log.Warnw("failed to set vote ID status to error",
-					"processID", fmt.Sprintf("%x", batch.ProcessID),
-					"voteID", hex.EncodeToString(ballot.VoteID),
-					"error", err.Error())
+			// Mark vote ID as error only if not already settled
+			if currentStatus != VoteIDStatusSettled {
+				if err := s.setVoteIDStatus(batch.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
+					log.Warnw("failed to set vote ID status to error",
+						"processID", fmt.Sprintf("%x", batch.ProcessID),
+						"voteID", hex.EncodeToString(ballot.VoteID),
+						"error", err.Error())
+				}
 			}
 
 			// Release nullifier lock
@@ -309,6 +313,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 		if cleanup.validCount > 0 {
 			if err := s.updateProcessStats(processID, []ProcessStatsUpdate{
 				{TypeStats: types.TypeStatsAggregatedVotes, Delta: -cleanup.validCount},
+				{TypeStats: types.TypeStatsCurrentBatchSize, Delta: -cleanup.validCount},
 			}); err != nil {
 				log.Warnw("failed to update process stats after cleaning aggregated batches",
 					"error", err.Error(),
@@ -384,12 +389,25 @@ func (s *Storage) cleanAllStateTransitions() error {
 
 		// Process each ballot in the batch
 		for _, ballot := range stb.Ballots {
-			// Mark vote ID as error (regardless of current status)
-			if err := s.setVoteIDStatus(stb.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
-				log.Warnw("failed to set vote ID status to error",
+			// Check current status - only mark as error if not PROCESSED or SETTLED
+			currentStatus, err := s.voteIDStatusUnsafe(stb.ProcessID, ballot.VoteID)
+			if err != nil {
+				log.Warnw("could not get vote ID status during state transition cleanup",
 					"processID", fmt.Sprintf("%x", stb.ProcessID),
 					"voteID", hex.EncodeToString(ballot.VoteID),
 					"error", err.Error())
+			}
+
+			// Only mark as error if not in PROCESSED or SETTLED status
+			// PROCESSED votes are valid and just waiting for settlement
+			// SETTLED votes have already been finalized
+			if currentStatus != VoteIDStatusProcessed && currentStatus != VoteIDStatusSettled {
+				if err := s.setVoteIDStatus(stb.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
+					log.Warnw("failed to set vote ID status to error",
+						"processID", fmt.Sprintf("%x", stb.ProcessID),
+						"voteID", hex.EncodeToString(ballot.VoteID),
+						"error", err.Error())
+				}
 			}
 
 			// Release nullifier lock

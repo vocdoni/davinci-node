@@ -152,18 +152,91 @@ func (s *Storage) markProcessVoteIDsTimeout(processID []byte) (int, error) {
 }
 
 // setVoteIDStatus is an internal helper to set the status of a vote ID.
+// It enforces status transition rules to prevent invalid state changes:
+// - SETTLED status is final and cannot be changed
+// - Status transitions must follow the valid progression
 func (s *Storage) setVoteIDStatus(processID, voteID []byte, status int) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), voteIDStatusPrefix)
 	defer wTx.Discard()
 
 	key := createVoteIDStatusKey(processID, voteID)
-	statusBytes := intToBytes(status)
 
+	// Check current status to enforce transition rules
+	currentStatusBytes, err := wTx.Get(key)
+	if err == nil && currentStatusBytes != nil {
+		currentStatus, err := bytesToInt(currentStatusBytes)
+		if err == nil {
+			// SETTLED is a final status - cannot be changed
+			if currentStatus == VoteIDStatusSettled {
+				log.Debugw("attempted to change settled vote status",
+					"processID", fmt.Sprintf("%x", processID),
+					"voteID", fmt.Sprintf("%x", voteID),
+					"currentStatus", VoteIDStatusName(currentStatus),
+					"attemptedStatus", VoteIDStatusName(status))
+				return nil // Silently ignore - this is expected behavior
+			}
+
+			// Validate status transition
+			if !isValidStatusTransition(currentStatus, status) {
+				log.Warnw("invalid vote status transition",
+					"processID", fmt.Sprintf("%x", processID),
+					"voteID", fmt.Sprintf("%x", voteID),
+					"from", VoteIDStatusName(currentStatus),
+					"to", VoteIDStatusName(status))
+				// Allow the transition but log the warning
+				// This prevents breaking existing flows while alerting us to issues
+			}
+		}
+	}
+
+	statusBytes := intToBytes(status)
 	if err := wTx.Set(key, statusBytes); err != nil {
 		return fmt.Errorf("set vote ID status: %w", err)
 	}
 
 	return wTx.Commit()
+}
+
+// isValidStatusTransition checks if a status transition is valid.
+// Valid transitions follow this flow:
+// PENDING → VERIFIED → AGGREGATED → PROCESSED → SETTLED
+// Any status can transition to ERROR or TIMEOUT (except SETTLED)
+func isValidStatusTransition(from, to int) bool {
+	// SETTLED is final - no transitions allowed
+	if from == VoteIDStatusSettled {
+		return false
+	}
+
+	// ERROR and TIMEOUT are terminal states (except from SETTLED)
+	if to == VoteIDStatusError || to == VoteIDStatusTimeout {
+		return true
+	}
+
+	// SETTLED can only be reached from PROCESSED
+	if to == VoteIDStatusSettled {
+		return from == VoteIDStatusProcessed
+	}
+
+	// Valid forward progressions
+	validTransitions := map[int][]int{
+		VoteIDStatusPending:    {VoteIDStatusVerified},
+		VoteIDStatusVerified:   {VoteIDStatusAggregated},
+		VoteIDStatusAggregated: {VoteIDStatusProcessed},
+		VoteIDStatusProcessed:  {VoteIDStatusSettled},
+	}
+
+	allowedNext, exists := validTransitions[from]
+	if !exists {
+		return false
+	}
+
+	for _, allowed := range allowedNext {
+		if to == allowed {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Helper function to create a composite key for vote ID status
