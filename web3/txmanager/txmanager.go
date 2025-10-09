@@ -3,11 +3,13 @@ package txmanager
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	gtypes "github.com/ethereum/go-ethereum/core/types"
 	ethSigner "github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
@@ -34,6 +36,7 @@ type Config struct {
 	MonitorInterval    time.Duration
 	ChainID            *big.Int
 	SimpleTxTimeout    time.Duration
+	GasEstimateOpts    *GasEstimateOpts
 }
 
 // DefaultConfig returns a default configuration
@@ -46,6 +49,7 @@ func DefaultConfig(chainID uint64) Config {
 		MonitorInterval:    defaultMonitorInterval,
 		ChainID:            new(big.Int).SetUint64(chainID),
 		SimpleTxTimeout:    defaultSimpleTxTimeout,
+		GasEstimateOpts:    DefaultGasEstimateOpts,
 	}
 }
 
@@ -60,6 +64,7 @@ type PendingTransaction struct {
 	IsBlob           bool
 	OriginalGasPrice *big.Int
 	OriginalBlobFee  *big.Int
+	OriginalGasLimit uint64
 	To               common.Address
 	Data             []byte
 	Value            *big.Int
@@ -79,6 +84,10 @@ type TxManager struct {
 	lastConfirmedNonce uint64
 	nonceInitialized   bool
 
+	// Gas estimation cache
+	gasCache   map[string]uint64
+	gasCacheMu sync.RWMutex
+
 	// Transaction tracking
 	pendingTxs map[uint64]*PendingTransaction
 
@@ -97,6 +106,7 @@ func New(ctx context.Context, web3pool *rpc.Web3Pool, cli *rpc.Client, signer *e
 		web3pool:   web3pool,
 		cli:        cli,
 		signer:     signer,
+		gasCache:   make(map[string]uint64),
 		pendingTxs: make(map[uint64]*PendingTransaction),
 		config:     config,
 	}
@@ -145,6 +155,49 @@ func (tm *TxManager) Stop() {
 	if tm.monitorCancel != nil {
 		tm.monitorCancel()
 	}
+}
+
+// BuildDynamicFeeTx builds a standard EIP-1559 transaction with the given
+// nonce and parameters. It fetches the current gas price and tip cap,
+// estimates gas, and signs the transaction. It returns the signed transaction
+// or an error if any step fails.
+func (tm *TxManager) BuildDynamicFeeTx(ctx context.Context, to common.Address, data []byte, nonce uint64) (*gtypes.Transaction, error) {
+	// Get gas price and tip
+	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tip cap: %w", err)
+	}
+	baseFee, err := tm.cli.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get base fee: %w", err)
+	}
+	// Cap gas fee (baseFee * 2 + tipCap)
+	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
+	// Estimate gas
+	gas := tm.EstimateGas(ctx, ethereum.CallMsg{
+		From:      tm.signer.Address(),
+		To:        &to,
+		Data:      data,
+		GasFeeCap: gasFeeCap,
+		GasTipCap: tipCap,
+	}, tm.config.GasEstimateOpts, DefaultCancelGasFallback)
+	// Create transaction
+	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
+		ChainID:   tm.config.ChainID,
+		Nonce:     nonce,
+		GasTipCap: tipCap,
+		GasFeeCap: gasFeeCap,
+		Gas:       gas,
+		To:        &to,
+		Value:     big.NewInt(0),
+		Data:      data,
+	})
+	// Sign transaction
+	signed, err := tm.signTx(tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign transaction: %w", err)
+	}
+	return signed, nil
 }
 
 // CheckTxStatusByHash checks the status of a transaction given its ID. Returns
@@ -263,4 +316,14 @@ func (tm *TxManager) txReceipt(ctx context.Context, hash common.Hash) (*gtypes.R
 		return nil, fmt.Errorf("failed to get transaction receipt: %w", err)
 	}
 	return receipt, nil
+}
+
+// signTx signs a transaction with the configured signer
+func (tm *TxManager) signTx(tx *gtypes.Transaction) (*gtypes.Transaction, error) {
+	signer := gtypes.NewCancunSigner(tm.config.ChainID)
+	signed, err := gtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign transaction: %w", err)
+	}
+	return signed, nil
 }

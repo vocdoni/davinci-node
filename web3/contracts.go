@@ -33,6 +33,9 @@ const (
 	// web3QueryTimeout is the timeout for web3 queries.
 	web3QueryTimeout = 10 * time.Second
 
+	// web3WaitTimeout is the timeout for waiting for web3 transactions to be sent.
+	web3WaitTimeout = 2 * time.Minute
+
 	// maxPastBlocksToWatch is the maximum number of past blocks to watch for events.
 	maxPastBlocksToWatch = 9990
 
@@ -143,14 +146,17 @@ func New(web3rpcs []string, web3cApi string) (*Contracts, error) {
 	}, nil
 }
 
+// Web3Pool returns the web3 pool used by the Contracts instance.
 func (c *Contracts) Web3Pool() *rpc.Web3Pool {
 	return c.web3pool
 }
 
+// Client returns the web3 client used by the Contracts instance.
 func (c *Contracts) Client() *rpc.Client {
 	return c.cli
 }
 
+// Signer returns the signer used by the Contracts instance.
 func (c *Contracts) Signer() *ethSigner.Signer {
 	return c.signer
 }
@@ -161,30 +167,10 @@ func (c *Contracts) SetTxManager(tm *txmanager.TxManager) {
 	c.txManager = tm
 }
 
+// TxManager returns the transaction manager used by the Contracts instance.
 func (c *Contracts) TxManager() *txmanager.TxManager {
 	return c.txManager
 }
-
-// // StartTxManager initializes and starts the transaction manager and its
-// // background monitoring. It returns an error if the initialization fails.
-// func (c *Contracts) StartTxManager(ctx context.Context) error {
-// 	// Initialize transaction manager with default configuration
-// 	var err error
-// 	c.txManager, err = txmanager.New(ctx, c.web3pool, c.cli, c.signer, txmanager.DefaultTxManagerConfig(c.ChainID))
-// 	if err != nil {
-// 		return fmt.Errorf("failed to initialize transaction manager: %w", err)
-// 	}
-// 	c.txManager.Start(ctx)
-// 	return nil
-// }
-
-// // StopTxManager stops the transaction manager and its background
-// // monitoring.
-// func (c *Contracts) StopTxManager() {
-// 	if c.txManager != nil {
-// 		c.txManager.Stop()
-// 	}
-// }
 
 // CurrentBlock returns the current block number for the chain.
 func (c *Contracts) CurrentBlock() uint64 {
@@ -391,36 +377,37 @@ func (c *Contracts) CheckTxStatus(txHash common.Hash) (bool, error) {
 // WaitTxByHash waits for a transaction to be mined given its hash. If the
 // transaction is not mined within the timeout, it returns an error.
 func (c *Contracts) WaitTxByHash(txHash common.Hash, timeOut time.Duration, cb ...func(error)) error {
-	return c.TxManager().WaitTxByHash(txHash, timeOut, cb...)
+	if c.txManager != nil {
+		return c.txManager.WaitTxByHash(txHash, timeOut, cb...)
+	}
+	return c.waitTx(txHash, timeOut)
 }
 
 // WaitTxByID waits for a transaction to be mined given its hash. If the
 // transaction is not mined within the timeout, it returns an error.
 func (c *Contracts) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(error)) error {
+	if c.txManager == nil {
+		return fmt.Errorf("no transaction manager configured")
+	}
 	return c.TxManager().WaitTxByID(id, timeOut, cb...)
 }
 
-// WaitTxWithCallback waits for a transaction to be mined in the background and
-// calls the provided callback with the result when done or timeout occurs.
-func (c *Contracts) WaitTxWithCallback(txHash common.Hash, timeOut time.Duration, cb func(error)) {
-	go func() {
-		timeout := time.After(timeOut)
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-timeout:
-				cb(fmt.Errorf("timeout waiting for tx %s", txHash.Hex()))
-				return
-			case <-ticker.C:
-				// Check if the transaction is mined
-				if status, _ := c.CheckTxStatus(txHash); status {
-					cb(nil)
-					return
-				}
+// waitTx waits for a transaction to be mined given its hash.
+func (c *Contracts) waitTx(txHash common.Hash, timeOut time.Duration) error {
+	timeout := time.After(timeOut)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for tx %s", txHash.Hex())
+		case <-ticker.C:
+			// Check if the transaction is mined
+			if status, _ := c.CheckTxStatus(txHash); status {
+				return nil
 			}
 		}
-	}()
+	}
 }
 
 // AddWeb3Endpoint adds a new web3 endpoint to the pool.

@@ -147,7 +147,7 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 	// type
 	var pid [32]byte
 	copy(pid[:], processID)
-	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
 	// Prepare the ABI for packing the data
 	processABI, err := c.ProcessRegistryABI()
@@ -156,7 +156,10 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 	}
 	// Use transaction manager for automatic nonce management
 	var sentTx *gtypes.Transaction
-	txID, txHash, err := c.txManager.SendTxWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+	txID, txHash, err := c.txManager.SendTx(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+		internalCtx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
+		defer cancel()
+
 		var tx *gtypes.Transaction
 		if blobsSidecar == nil {
 			// Regular transaction
@@ -165,11 +168,11 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 				return nil, fmt.Errorf("failed to pack data: %w", dataErr)
 			}
 
-			tx, err = c.txManager.BuildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+			tx, err = c.txManager.BuildDynamicFeeTx(internalCtx, c.ContractsAddresses.ProcessRegistry, data, nonce)
 		} else {
 			// Blob transaction
 			tx, err = c.NewEIP4844TransactionWithNonce(
-				ctx,
+				internalCtx,
 				c.ContractsAddresses.ProcessRegistry,
 				processABI,
 				"submitStateTransition",
@@ -229,7 +232,7 @@ func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (types.He
 	// type
 	var pid [32]byte
 	copy(pid[:], processID)
-	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
 	// Prepare the ABI for packing the data
 	processABI, err := c.ProcessRegistryABI()
@@ -242,9 +245,11 @@ func (c *Contracts) SetProcessResults(processID, proof, inputs []byte) (types.He
 		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}
 	// Use transaction manager for automatic nonce management
-	return c.txManager.SendTxWithFallback(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+	return c.txManager.SendTx(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+		internalCtx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
+		defer cancel()
 		// Results are always regular transactions (no blobs)
-		return c.txManager.BuildDynamicFeeTx(ctx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+		return c.txManager.BuildDynamicFeeTx(internalCtx, c.ContractsAddresses.ProcessRegistry, data, nonce)
 	})
 }
 

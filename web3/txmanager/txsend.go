@@ -2,10 +2,8 @@ package txmanager
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"math/big"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -16,58 +14,12 @@ import (
 	"github.com/vocdoni/davinci-node/util"
 )
 
-// BuildDynamicFeeTx builds a standard EIP-1559 transaction with the given
-// nonce and parameters. It fetches the current gas price and tip cap,
-// estimates gas, and signs the transaction. It returns the signed transaction
-// or an error if any step fails.
-func (tm *TxManager) BuildDynamicFeeTx(ctx context.Context, to common.Address, data []byte, nonce uint64) (*gtypes.Transaction, error) {
-	// Get gas price and tip
-	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tip cap: %w", err)
-	}
-	baseFee, err := tm.cli.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get base fee: %w", err)
-	}
-	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
-	// Estimate gas
-	gas, err := tm.cli.EstimateGas(ctx, ethereum.CallMsg{
-		From:      tm.signer.Address(),
-		To:        &to,
-		Data:      data,
-		GasFeeCap: gasFeeCap,
-		GasTipCap: tipCap,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to estimate gas: %w", err)
-	}
-	// Create transaction
-	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
-		ChainID:   tm.config.ChainID,
-		Nonce:     nonce,
-		GasTipCap: tipCap,
-		GasFeeCap: gasFeeCap,
-		Gas:       gas,
-		To:        &to,
-		Value:     big.NewInt(0),
-		Data:      data,
-	})
-	// Sign transaction
-	signer := gtypes.NewCancunSigner(tm.config.ChainID)
-	signed, err := gtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign transaction: %w", err)
-	}
-	return signed, nil
-}
-
-// SendTxWithFallback sends a transaction with automatic fallback and recovery
-// mechanisms. It accepts a transaction builder function that takes a nonce
-// and returns a signed transaction. If a nonce mismatch is detected, it
-// attempts to recover by querying the actual on-chain nonce and resending
-// the transaction. It returns the transaction ID or an error.
-func (tm *TxManager) SendTxWithFallback(
+// SendTx sends a transaction with automatic fallback and recovery mechanisms.
+// It accepts a transaction builder function that takes a nonce and returns a
+// signed transaction. If a nonce mismatch is detected, it attempts to recover
+// by querying the actual on-chain nonce and resending the transaction. It
+// returns the transaction ID or an error.
+func (tm *TxManager) SendTx(
 	ctx context.Context,
 	txBuilder func(nonce uint64) (*gtypes.Transaction, error),
 ) ([]byte, *common.Hash, error) {
@@ -81,24 +33,25 @@ func (tm *TxManager) SendTxWithFallback(
 	// Check for stuck transactions before sending new one, continue anyway
 	// we'll try to send
 	if err := tm.handleStuckTxs(ctx); err != nil {
-		log.Warnw("failed to handle stuck transactions", "error", err)
+		log.Warnw("failed to handle stuck transactions",
+			"error", err)
 	}
 	// Use our tracked nonce instead of pending nonce
 	nonce := tm.nextNonce
 	// Build transaction with our nonce
-	tx, err := txBuilder(nonce)
+	tx, err := txBuilder(tm.nextNonce)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build transaction: %w", err)
 	}
 	// Send transaction
 	if err := tm.cli.SendTransaction(ctx, tx); err != nil {
 		// Check if error is nonce-related
-		if strings.Contains(err.Error(), "nonce too high") || strings.Contains(err.Error(), "nonce too low") {
+		if isNonceError(err) {
 			log.Warnw("nonce mismatch detected, attempting recovery",
 				"error", err.Error(),
 				"ourNonce", nonce)
 			// Attempt recovery
-			hash, err := tm.recoverFromNonceGap(ctx, id, txBuilder)
+			hash, err := tm.recoverTxFromNonceGap(ctx, id, txBuilder)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to recover from nonce gap: %w", err)
 			}
@@ -148,13 +101,14 @@ func (tm *TxManager) TrackBlobTxWithSidecar(tx *gtypes.Transaction, sidecar *gty
 // it in the pending transactions map.
 func (tm *TxManager) trackTx(id []byte, tx *gtypes.Transaction) {
 	ptx := &PendingTransaction{
-		ID:        id,
-		Hash:      tx.Hash(),
-		Nonce:     tx.Nonce(),
-		Timestamp: time.Now(),
-		To:        *tx.To(),
-		Data:      tx.Data(),
-		Value:     tx.Value(),
+		ID:               id,
+		Hash:             tx.Hash(),
+		Nonce:            tx.Nonce(),
+		Timestamp:        time.Now(),
+		OriginalGasLimit: tx.Gas(),
+		To:               *tx.To(),
+		Data:             tx.Data(),
+		Value:            tx.Value(),
 	}
 	// Determine transaction type and extract fee information
 	switch tx.Type() {
@@ -198,10 +152,7 @@ func (tm *TxManager) handleStuckTxs(ctx context.Context) error {
 			log.Infow("transaction confirmed",
 				"nonce", nonce,
 				"hash", ptx.Hash.Hex())
-			delete(tm.pendingTxs, nonce)
-			if nonce >= tm.lastConfirmedNonce {
-				tm.lastConfirmedNonce = nonce + 1
-			}
+			tm.updateNonceTracking(nonce)
 			continue
 		}
 		// Transaction is stuck - attempt replacement
@@ -224,9 +175,18 @@ func (tm *TxManager) handleStuckTxs(ctx context.Context) error {
 // It returns an error if the operation fails.
 func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) error {
 	if ptx.RetryCount >= tm.config.MaxRetries {
-		log.Warnw("max retries reached, will cancel transaction",
-			"nonce", ptx.Nonce)
+		// Max retries reached, cancel transaction
 		return tm.cancelTx(ctx, ptx)
+	}
+	// Check if transaction was already mined
+	onChainNonce, err := tm.lastOnChainNonce(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get last on-chain nonce: %w", err)
+	}
+	if onChainNonce > ptx.Nonce {
+		// pending nonce already advanced on-chain, skipping speed-up
+		tm.updateNonceTracking(ptx.Nonce)
+		return nil
 	}
 	// Calculate new gas price
 	increaseFactor := big.NewInt(int64(100 + tm.config.FeeIncreasePercent))
@@ -237,33 +197,22 @@ func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) err
 		newGasPrice = new(big.Int).Set(tm.config.MaxGasPriceGwei)
 	}
 	var newTx *gtypes.Transaction
-	var err error
 	if ptx.IsBlob {
 		// For blob transactions, also increase blob gas fee
 		newBlobFee := new(big.Int).Mul(ptx.OriginalBlobFee, increaseFactor)
 		newBlobFee.Div(newBlobFee, big.NewInt(100))
-
 		// Check if sidecar is available for rebuilding
 		if ptx.BlobSidecar != nil {
+			// Rebuild blob transaction with higher fees
 			newTx, err = tm.rebuildBlobTx(ctx, ptx, newGasPrice, newBlobFee)
 			if err != nil {
-				log.Errorw(err, "failed to rebuild blob transaction")
 				return fmt.Errorf("cannot rebuild blob transaction: %w", err)
 			}
-			log.Infow("blob transaction rebuilt with higher fees",
-				"id", fmt.Sprintf("%x", ptx.ID),
-				"nonce", ptx.Nonce,
-				"newGasPrice", newGasPrice,
-				"newBlobFee", newBlobFee)
 		} else {
 			// CRITICAL: Blob transactions cannot be cancelled. They can only
 			// be replaced with another blob transaction using the same blob
 			// data. Without the sidecar, we cannot create a replacement, so
 			// the transaction is permanently stuck.
-			log.Warnw("blob transaction stuck without recovery option",
-				"nonce", ptx.Nonce,
-				"hash", ptx.Hash.Hex(),
-				"id", fmt.Sprintf("%x", ptx.ID))
 			return fmt.Errorf("blob transaction stuck without recovery option")
 		}
 	} else {
@@ -274,6 +223,11 @@ func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) err
 	}
 	// Send replacement
 	if err := tm.cli.SendTransaction(ctx, newTx); err != nil {
+		if isNonceError(err) {
+			// replacement unnecessary, nonce already advanced
+			tm.updateNonceTracking(ptx.Nonce)
+			return nil
+		}
 		return fmt.Errorf("failed to send replacement: %w", err)
 	}
 	// Update tracking
@@ -292,7 +246,6 @@ func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) err
 		"newHash", newTx.Hash().Hex(),
 		"newGasPrice", newGasPrice,
 		"retry", ptx.RetryCount)
-
 	return nil
 }
 
@@ -310,24 +263,27 @@ func (tm *TxManager) rebuildRegularTx(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tip cap: %w", err)
 	}
+	// Estimate gas for the transaction
+	gasLimit := tm.EstimateGas(ctx, ethereum.CallMsg{
+		From:      tm.signer.Address(),
+		To:        &ptx.To,
+		GasTipCap: tipCap,
+		GasFeeCap: newGasPrice,
+		Data:      ptx.Data,
+	}, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
 	// Create new transaction with same parameters but higher fees
 	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
 		ChainID:   tm.config.ChainID,
 		Nonce:     ptx.Nonce,
 		GasTipCap: tipCap,
 		GasFeeCap: newGasPrice,
-		Gas:       300000, // Use a reasonable default
+		Gas:       gasLimit,
 		To:        &ptx.To,
 		Value:     ptx.Value,
 		Data:      ptx.Data,
 	})
 	// Sign transaction
-	signer := gtypes.NewCancunSigner(tm.config.ChainID)
-	signed, err := gtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign transaction: %w", err)
-	}
-	return signed, nil
+	return tm.signTx(tx)
 }
 
 // rebuildBlobTx rebuilds a blob transaction with higher fees. This requires
@@ -347,24 +303,17 @@ func (tm *TxManager) rebuildBlobTx(
 		return nil, fmt.Errorf("failed to get tip cap: %w", err)
 	}
 	// Estimate gas for the blob transaction
-	gasLimit, err := tm.cli.EstimateGas(ctx, ethereum.CallMsg{
+	gasLimit := tm.EstimateGas(ctx, ethereum.CallMsg{
 		From:          tm.signer.Address(),
 		To:            &ptx.To,
+		GasTipCap:     tipCap,
+		GasFeeCap:     newGasPrice,
 		Data:          ptx.Data,
 		BlobHashes:    ptx.BlobSidecar.BlobHashes(),
 		BlobGasFeeCap: newBlobFee,
-	})
-	if err != nil {
-		// If estimation fails, use a reasonable default
-		gasLimit = 300000
-		log.Warnw("gas estimation failed for blob tx, using default",
-			"id", fmt.Sprintf("%x", ptx.ID),
-			"nonce", ptx.Nonce,
-			"error", err,
-			"gasLimit", gasLimit)
-	}
+	}, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
 	// Build the replacement blob transaction with higher fees
-	blobTx := &gtypes.BlobTx{
+	blobTx := gtypes.NewTx(&gtypes.BlobTx{
 		ChainID:    uint256.NewInt(tm.config.ChainID.Uint64()),
 		Nonce:      ptx.Nonce,
 		GasTipCap:  uint256.MustFromBig(tipCap),
@@ -376,22 +325,9 @@ func (tm *TxManager) rebuildBlobTx(
 		BlobFeeCap: uint256.MustFromBig(newBlobFee),
 		BlobHashes: ptx.BlobSidecar.BlobHashes(),
 		Sidecar:    ptx.BlobSidecar,
-	}
+	})
 	// Create and sign the transaction
-	tx := gtypes.NewTx(blobTx)
-	signer := gtypes.NewCancunSigner(tm.config.ChainID)
-	signed, err := gtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign blob transaction: %w", err)
-	}
-	log.Infow("rebuilt blob transaction with higher fees",
-		"id", fmt.Sprintf("%x", ptx.ID),
-		"nonce", ptx.Nonce,
-		"originalBlobFee", ptx.OriginalBlobFee,
-		"newBlobFee", newBlobFee,
-		"originalGasPrice", ptx.OriginalGasPrice,
-		"newGasPrice", newGasPrice)
-	return signed, nil
+	return tm.signTx(blobTx)
 }
 
 // cancelTx sends a 0-value transaction to self with higher fees to cancel a
@@ -410,22 +346,35 @@ func (tm *TxManager) cancelTx(ctx context.Context, ptx *PendingTransaction) erro
 		return fmt.Errorf("failed to get tip cap: %w", err)
 	}
 	selfAddress := tm.signer.Address()
+	// Estimate gas for the cancel transaction
+	gasLimit := tm.EstimateGas(ctx, ethereum.CallMsg{
+		From:      selfAddress,
+		To:        &selfAddress,
+		Data:      []byte{},
+		GasFeeCap: gasPrice,
+		GasTipCap: tipCap,
+	}, tm.config.GasEstimateOpts, DefaultCancelGasFallback)
+	// Create cancel transaction
 	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
 		ChainID:   tm.config.ChainID,
 		Nonce:     ptx.Nonce,
 		GasTipCap: tipCap,
 		GasFeeCap: gasPrice,
-		Gas:       21000, // standard transfer
+		Gas:       gasLimit,
 		To:        &selfAddress,
 		Value:     big.NewInt(0),
 		Data:      []byte{},
 	})
-	signer := gtypes.NewCancunSigner(tm.config.ChainID)
-	signed, err := gtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
+	// Sign transaction
+	signed, err := tm.signTx(tx)
 	if err != nil {
 		return fmt.Errorf("failed to sign cancel tx: %w", err)
 	}
 	if err := tm.cli.SendTransaction(ctx, signed); err != nil {
+		if isNonceError(err) {
+			tm.updateNonceTracking(ptx.Nonce)
+			return nil
+		}
 		return fmt.Errorf("failed to send cancel tx: %w", err)
 	}
 	log.Warnw("transaction cancelled",
@@ -438,49 +387,24 @@ func (tm *TxManager) cancelTx(ctx context.Context, ptx *PendingTransaction) erro
 	return nil
 }
 
-// recoverFromNonceGap attempts to recover from a nonce gap situation by
+// recoverTxFromNonceGap attempts to recover from a nonce gap situation by
 // querying the actual on-chain nonce and resending the transaction with the
 // correct nonce. It returns the hash of the sent transaction or an error.
-func (tm *TxManager) recoverFromNonceGap(
+func (tm *TxManager) recoverTxFromNonceGap(
 	ctx context.Context,
 	id []byte,
 	txBuilder func(nonce uint64) (*gtypes.Transaction, error),
 ) (*common.Hash, error) {
 	// Get actual on-chain nonce
-	ethcli, err := tm.cli.EthClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get eth client: %w", err)
-	}
-	// Try both NonceAt and PendingNonceAt to ensure we get the most accurate nonce
-	onChainNonce, err := ethcli.NonceAt(ctx, tm.signer.Address(), nil)
+	onChainNonce, err := tm.lastOnChainNonce(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get on-chain nonce: %w", err)
 	}
-	pendingNonce, err := tm.cli.PendingNonceAt(ctx, tm.signer.Address())
-	if err != nil {
-		log.Warnw("failed to get pending nonce, using confirmed nonce", "error", err)
-	} else if pendingNonce > onChainNonce {
-		// Use the higher nonce to prevent "nonce too low" errors
-		onChainNonce = pendingNonce
-		log.Infow("using pending nonce for recovery",
-			"pendingNonce", pendingNonce,
-			"confirmedNonce", onChainNonce)
-	}
-	log.Warnw("nonce gap detected, attempting recovery",
-		"id", fmt.Sprintf("%x", id),
-		"ourNextNonce", tm.nextNonce,
-		"onChainNonce", onChainNonce,
-		"pendingCount", len(tm.pendingTxs))
 	// Clear confirmed transactions from pending list
 	for nonce := range tm.pendingTxs {
 		if nonce < onChainNonce {
-			if ptx, ok := tm.pendingTxs[nonce]; ok {
-				log.Debugw("removing confirmed transaction from pending list",
-					"nonce", nonce,
-					"id", fmt.Sprintf("%x", ptx.ID),
-					"hash", ptx.Hash.Hex())
-				delete(tm.pendingTxs, nonce)
-			}
+			// removing confirmed transaction from pending list
+			delete(tm.pendingTxs, nonce)
 		}
 	}
 	// Find lowest stuck nonce
@@ -503,14 +427,8 @@ func (tm *TxManager) recoverFromNonceGap(
 		return &ptx.Hash, nil
 	}
 	// No stuck transaction found, reset our nonce and retry
-	log.Warnw("no stuck transaction found, resetting nonce",
-		"from", tm.nextNonce,
-		"to", onChainNonce)
-	// Update our internal nonce tracking
 	tm.nextNonce = onChainNonce
 	tm.lastConfirmedNonce = onChainNonce
-	// Verify the nonce is correctly updated
-	log.Infow("nonce updated", "newNextNonce", tm.nextNonce)
 	// Add a small delay to ensure node nonce caches are updated
 	time.Sleep(500 * time.Millisecond)
 	// Build and send with corrected nonce
@@ -529,25 +447,22 @@ func (tm *TxManager) recoverFromNonceGap(
 			log.Infow("retrying send after nonce recovery", "attempt", attempt+1)
 			time.Sleep(time.Second)
 		}
-		if err := tm.cli.SendTransaction(ctx, tx); err == nil {
-			// Success
-			hash := tx.Hash()
-			tm.trackTx(id, tx)
-			tm.nextNonce++
-
-			log.Infow("transaction sent after nonce recovery",
-				"hash", hash.Hex(),
-				"nonce", onChainNonce,
-				"nextNonce", tm.nextNonce,
-				"attempt", attempt+1)
-
-			return &hash, nil
-		} else {
-			sendErr = err
+		if sendErr = tm.cli.SendTransaction(ctx, tx); sendErr != nil {
 			log.Warnw("failed to send transaction after nonce recovery",
-				"error", err,
+				"error", sendErr,
 				"attempt", attempt+1)
+			continue
 		}
+		// Success
+		hash := tx.Hash()
+		tm.trackTx(id, tx)
+		tm.nextNonce++
+		log.Infow("transaction sent after nonce recovery",
+			"hash", hash.Hex(),
+			"nonce", onChainNonce,
+			"nextNonce", tm.nextNonce,
+			"attempt", attempt+1)
+		return &hash, nil
 	}
 	return nil, fmt.Errorf("failed to send transaction after nonce recovery after 3 attempts: %w", sendErr)
 }
