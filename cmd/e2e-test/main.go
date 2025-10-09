@@ -488,7 +488,7 @@ func createProcess(
 	}
 
 	// Wait for the process creation transaction to be mined
-	if err = contracts.WaitTxByHash(*txHash, time.Second*15); err != nil {
+	if err = contracts.WaitTxByHash(*txHash, time.Minute*2); err != nil {
 		return nil, nil, fmt.Errorf("failed to wait for process creation tx: %v", err)
 	}
 
