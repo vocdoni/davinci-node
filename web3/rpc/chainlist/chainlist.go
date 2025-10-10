@@ -47,7 +47,6 @@ type Chain struct {
 	Icon           string         `json:"icon,omitempty"`
 	RPC            []RPCEntry     `json:"rpc"`
 	Features       []Feature      `json:"features,omitempty"`
-	Faucets        []string       `json:"faucets"`
 	NativeCurrency NativeCurrency `json:"nativeCurrency"`
 	InfoURL        string         `json:"infoURL"`
 	ShortName      string         `json:"shortName"`
