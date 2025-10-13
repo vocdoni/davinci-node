@@ -84,6 +84,7 @@ var (
 	verifiedBallotReservPrefix  = []byte("vbr/")
 	aggregBatchPrefix           = []byte("ag/")
 	aggregBatchReservPrefix     = []byte("agr/")
+	pendingAggregBatchPrefix    = []byte("pag/")
 	stateTransitionPrefix       = []byte("st/")
 	stateTransitionReservPrefix = []byte("str/")
 	verifiedResultPrefix        = []byte("vr/")

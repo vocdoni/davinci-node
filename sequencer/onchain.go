@@ -168,35 +168,49 @@ func (s *Sequencer) pushTransitionToContract(
 			"pid", fmt.Sprintf("%x", processID))
 	}
 
+	// Submit the proof to the contract
 	log.Infow("state transition pending to be mined",
 		"pid", fmt.Sprintf("%x", processID))
-
-	// Submit the proof to the contract
-	return s.contracts.SetProcessTransitionAndWait(processID, abiProof,
+	if err := s.contracts.SetProcessTransitionAndWait(processID, abiProof,
 		abiInputs, blobSidecar, time.Hour*2, func(err error) {
+			defer func() {
+				// Remove the pending tx mark
+				if err := s.stg.ClearPendingTx(storage.StateTransitionTx, processID); err != nil {
+					log.Warnw("failed to release pending tx",
+						"error", err,
+						"processID", fmt.Sprintf("%x", processID))
+				}
+				log.Infow("pending tx released", "pid", fmt.Sprintf("%x", processID))
+			}()
+			// If there was an error, log it and recover the batch if possible
 			if err != nil {
 				log.Errorf("failed to wait for state transition of %x: %s", processID, err)
-				// TODO: recover batch to pending to retry later. It only is
-				// possible if the MarkBallotBatchDone is modified to move the
-				// batch to a pending state instead of deleting it.
+				pendingBatch, err := s.stg.PendingAggregatorBatch(processID)
+				if err != nil && !errors.Is(err, storage.ErrNotFound) {
+					log.Warnw("failed to get pending aggregator batch after state transition failure",
+						"error", err,
+						"processID", fmt.Sprintf("%x", processID))
+					return
+				}
+				if pendingBatch != nil {
+					if err := s.stg.PushBallotBatch(pendingBatch); err != nil {
+						log.Warnw("failed to recover aggregator batch after state transition failure",
+							"error", err,
+							"processID", fmt.Sprintf("%x", processID))
+					}
+				}
 				return
 			}
-
-			log.Infow("state transition uploaded to contract",
-				"pid", fmt.Sprintf("%x", processID))
-
-			// Remove the pending tx mark
-			if err := s.stg.ClearPendingTx(storage.StateTransitionTx, processID); err != nil {
-				log.Warnw("failed to release pending tx",
-					"error", err,
-					"processID", fmt.Sprintf("%x", processID))
-			}
-
-			log.Infow("pending tx released",
-				"pid", fmt.Sprintf("%x", processID))
-
-			// TODO: Remove the batch from storage if it is in a pending state
-		})
+			log.Infow("state transition uploaded to contract", "pid", fmt.Sprintf("%x", processID))
+		}); err != nil {
+		if err := s.stg.ClearPendingTx(storage.StateTransitionTx, processID); err != nil {
+			log.Warnw("failed to release pending tx",
+				"error", err,
+				"processID", fmt.Sprintf("%x", processID))
+		}
+		log.Infow("pending tx released", "pid", fmt.Sprintf("%x", processID))
+	}
+	return nil
 }
 
 func (s *Sequencer) processResultsOnChain() {

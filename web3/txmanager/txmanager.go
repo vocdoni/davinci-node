@@ -131,9 +131,7 @@ func (tm *TxManager) Start(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(tm.config.MonitorInterval)
 		defer ticker.Stop()
-
 		log.Infow("transaction monitor started", "interval", tm.config.MonitorInterval)
-
 		for {
 			select {
 			case <-tm.monitorCtx.Done():
@@ -161,7 +159,12 @@ func (tm *TxManager) Stop() {
 // nonce and parameters. It fetches the current gas price and tip cap,
 // estimates gas, and signs the transaction. It returns the signed transaction
 // or an error if any step fails.
-func (tm *TxManager) BuildDynamicFeeTx(ctx context.Context, to common.Address, data []byte, nonce uint64) (*gtypes.Transaction, error) {
+func (tm *TxManager) BuildDynamicFeeTx(
+	ctx context.Context,
+	to common.Address,
+	data []byte,
+	nonce uint64,
+) (*gtypes.Transaction, error) {
 	// Get gas price and tip
 	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
 	if err != nil {

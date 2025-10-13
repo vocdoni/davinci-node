@@ -716,6 +716,83 @@ func (s *Storage) NextBallotBatch(processID []byte) (*AggregatorBallotBatch, []b
 	return &abb, chosenKey, nil
 }
 
+// MarkAggregatorBatchPending moves an aggregator batch to the pending state.
+// This is used when an aggregator batch needs to be retried or reprocessed.
+// It ensures that the batch is stored in the pending queue and can be picked
+// up for processing again. If the batch already exists in the pending queue,
+// it returns ErrKeyAlreadyExists. Only one pending batch per process is
+// allowed.
+func (s *Storage) MarkAggregatorBatchPending(batch *AggregatorBallotBatch) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	val, err := EncodeArtifact(batch)
+	if err != nil {
+		return fmt.Errorf("encode batch: %w", err)
+	}
+	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
+	key := hashKey(val)
+	// Check if already exists
+	if _, err := wTx.Get(append(slices.Clone(batch.ProcessID), key...)); err == nil {
+		wTx.Discard()
+		return ErrKeyAlreadyExists
+	}
+
+	if err := wTx.Set(append(slices.Clone(batch.ProcessID), key...), val); err != nil {
+		wTx.Discard()
+		return err
+	}
+	return wTx.Commit()
+}
+
+// PendingAggregatorBatch retrieves a pending aggregator batch for a given
+// processID. If no pending batch is found, it returns ErrNotFound.
+func (s *Storage) PendingAggregatorBatch(processID []byte) (*AggregatorBallotBatch, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	pr := prefixeddb.NewPrefixedReader(s.db, pendingAggregBatchPrefix)
+	var chosenVal []byte
+	if err := pr.Iterate(processID, func(_, v []byte) bool {
+		chosenVal = v
+		return false
+	}); err != nil {
+		return nil, fmt.Errorf("iterate pending agg batches: %w", err)
+	}
+	if chosenVal == nil {
+		return nil, ErrNotFound
+	}
+
+	var batch AggregatorBallotBatch
+	if err := DecodeArtifact(chosenVal, &batch); err != nil {
+		return nil, fmt.Errorf("decode pending agg batch: %w", err)
+	}
+	return &batch, nil
+}
+
+// RemovePendingAggregatorBatch removes a pending aggregator batch for a given
+// processID. If no pending batch is found, it does nothing and returns nil.
+func (s *Storage) RemovePendingAggregatorBatch(processID []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	pr := prefixeddb.NewPrefixedReader(s.db, pendingAggregBatchPrefix)
+	var chosenKey []byte
+	if err := pr.Iterate(processID, func(k, _ []byte) bool {
+		chosenKey = k
+		return false
+	}); err != nil {
+		return fmt.Errorf("iterate pending agg batches: %w", err)
+	}
+	if chosenKey == nil {
+		return nil
+	}
+	if err := s.deleteArtifact(pendingAggregBatchPrefix, chosenKey); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete pending aggregator batch: %w", err)
+	}
+	return nil
+}
+
 // MarkBallotBatchDone called after processing aggregator batch. For simplicity,
 // we just remove it from aggregator queue and reservation.
 func (s *Storage) MarkBallotBatchDone(k []byte) error {

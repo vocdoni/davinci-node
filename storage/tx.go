@@ -2,10 +2,8 @@ package storage
 
 type PendingTxType []byte
 
-var (
-	// StateTransitionTx indicates a pending state transition transaction
-	StateTransitionTx PendingTxType = []byte("st/")
-)
+// StateTransitionTx indicates a pending state transition transaction
+var StateTransitionTx PendingTxType = []byte("st/")
 
 // pendingTxs method retrieves the list of pending transaction hashes for a
 // given process ID. If no pending transactions are found, it returns an empty

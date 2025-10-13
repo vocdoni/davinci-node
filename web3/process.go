@@ -201,8 +201,6 @@ func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsS
 		}
 	}
 	log.Infow("state transition submitted",
-		"hash", txHash.Hex(),
-		"txID", fmt.Sprintf("%x", txID),
 		"processID", fmt.Sprintf("%x", processID))
 	return txID, txHash, err
 }
