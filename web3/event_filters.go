@@ -46,9 +46,11 @@ func (c *Contracts) ProcessStateRootFilter(ctx context.Context, start, end uint6
 		ch <- &types.ProcessWithChanges{
 			ProcessID: iter.Event.ProcessId[:],
 			StateRootChange: &types.StateRootChange{
+				OldStateRoot:             new(types.BigInt).SetBigInt(iter.Event.OldStateRoot),
 				NewStateRoot:             new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
-				VotersCount:              new(types.BigInt).SetBigInt(iter.Event.NewVotersCount),
+				NewVotersCount:           new(types.BigInt).SetBigInt(iter.Event.NewVotersCount),
 				NewOverwrittenVotesCount: new(types.BigInt).SetBigInt(iter.Event.NewOverwrittenVotesCount),
+				TxHash:                   &iter.Event.Raw.TxHash, // so statesync can fetch the corresponding blob from CL
 			},
 		}
 	}

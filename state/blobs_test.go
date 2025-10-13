@@ -2,8 +2,12 @@ package state
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
@@ -14,6 +18,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -313,7 +318,7 @@ func TestBlobStateTransition(t *testing.T) {
 
 		// Apply each blob in sequence to restore the cumulative state
 		for i, transition := range transitions {
-			blobData, err := ParseBlobData(&transition.Blob.Blob)
+			blobData, err := ParseBlobData(transition.Blob.Blob[:])
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob data for transition %d", i+1))
 
 			// Apply the blob data to the test state
@@ -361,7 +366,7 @@ func TestBlobStateTransition(t *testing.T) {
 		}
 
 		// Now apply the last transition using the blob
-		blobData, err := ParseBlobData(&lastTransition.Blob.Blob)
+		blobData, err := ParseBlobData(lastTransition.Blob.Blob[:])
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse last blob data"))
 
 		err = testState.ApplyBlobToState(blobData)
@@ -441,7 +446,7 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 func verifyBlobStructureBasic(t *testing.T, blob *gethkzg.Blob, votes []*Vote) {
 	c := qt.New(t)
 	// Parse blob data
-	blobData, err := ParseBlobData(blob)
+	blobData, err := ParseBlobData(blob[:])
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob data"))
 
 	// Verify number of votes
@@ -503,7 +508,7 @@ func verifyKZGCommitment(t *testing.T, blob *gethkzg.Blob, commit *gethkzg.Commi
 func restoreStateFromBlob(t *testing.T, blob *gethkzg.Blob, processID *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
 	c := qt.New(t)
 	// Parse blob data
-	blobData, err := ParseBlobData(blob)
+	blobData, err := ParseBlobData(blob[:])
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob data"))
 
 	// Create new state
@@ -576,7 +581,7 @@ func TestBlobDataParsing(t *testing.T) {
 
 			// This would normally populate the blob with test data
 			// For now, we'll test the parsing logic with empty data
-			blobData, err := ParseBlobData(blob)
+			blobData, err := ParseBlobData(blob[:])
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob"))
 
 			// With empty blob, we should get 0 votes (since first cell is 0x0 = sentinel)
@@ -586,5 +591,50 @@ func TestBlobDataParsing(t *testing.T) {
 
 			c.Assert(len(blobData.ResultsSub), qt.Equals, 32, qt.Commentf("Expected 32 ResultsSub coordinates, got %d", len(blobData.ResultsSub)))
 		})
+	}
+}
+
+func TestParseBlobData_FromFile(t *testing.T) {
+	log.Init("debug", "stdout", nil)
+	// Path: state/testdata/blob.bin
+	blobPath := filepath.Join("testdata", "blob.bin")
+
+	b, err := os.ReadFile(blobPath)
+	if err != nil {
+		t.Fatalf("read blob hex file: %v", err)
+	}
+
+	hexStr := strings.TrimSpace(string(b))
+	hexStr = strings.TrimPrefix(hexStr, "0x")
+
+	// remove whitespace/newlines just in case
+	hexStr = strings.ReplaceAll(hexStr, "\n", "")
+	hexStr = strings.ReplaceAll(hexStr, "\r", "")
+	hexStr = strings.ReplaceAll(hexStr, " ", "")
+	hexStr = strings.ReplaceAll(hexStr, "\t", "")
+
+	raw, err := hex.DecodeString(hexStr)
+	if err != nil {
+		t.Fatalf("hex decode failed: %v", err)
+	}
+
+	expectedLen := blobs.FieldElementsPerBlob * blobs.BytesPerFieldElement
+	if len(raw) != expectedLen {
+		t.Fatalf("unexpected blob length: got %d, want %d", len(raw), expectedLen)
+	}
+
+	data, err := ParseBlobData(raw)
+	if err != nil {
+		t.Fatalf("ParseBlobData returned error: %v", err)
+	}
+
+	// Basic sanity logs (helpful while debugging)
+	t.Logf("parsed votes: %d", len(data.Votes))
+	t.Logf("results add coords: %d", len(data.ResultsAdd))
+	t.Logf("results sub coords: %d", len(data.ResultsSub))
+
+	// Optional extra invariants:
+	if len(data.ResultsAdd) != len(data.ResultsSub) {
+		t.Fatalf("results length mismatch add=%d sub=%d", len(data.ResultsAdd), len(data.ResultsSub))
 	}
 }

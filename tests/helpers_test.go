@@ -531,9 +531,20 @@ func NewTestService(
 	}
 	services.CensusDownloader = cd
 
+	// Start StateSync
+	stateSync := service.NewStateSync(contracts, stg)
+	if err := stateSync.Start(ctx); err != nil {
+		cd.Stop()
+		vp.Stop()
+		seqCancel()
+		web3Cleanup() // Clean up web3 if process monitor fails to start
+		return nil, nil, fmt.Errorf("failed to start state sync: %v", err)
+	}
+
 	// Start process monitor
-	pm := service.NewProcessMonitor(contracts, stg, cd, time.Second*2)
+	pm := service.NewProcessMonitor(contracts, stg, cd, stateSync, time.Second*2)
 	if err := pm.Start(ctx); err != nil {
+		stateSync.Stop()
 		cd.Stop()
 		vp.Stop()
 		seqCancel()
@@ -550,6 +561,7 @@ func NewTestService(
 	api, err := setupAPI(ctx, stg, workerSecret, workerTokenExpiration, workerTimeout, banRules, web3Conf)
 	if err != nil {
 		pm.Stop()
+		stateSync.Stop()
 		cd.Stop()
 		vp.Stop()
 		seqCancel()
@@ -562,6 +574,7 @@ func NewTestService(
 	cleanup := func() {
 		seqCancel()
 		api.Stop()
+		stateSync.Stop()
 		cd.Stop()
 		pm.Stop()
 		vp.Stop()

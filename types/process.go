@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
 )
 
 type ProcessStatus uint8
@@ -209,6 +210,14 @@ func (p *Process) String() string {
 type EncryptionKey struct {
 	X *BigInt `json:"x" cbor:"0,keyasint,omitempty"`
 	Y *BigInt `json:"y" cbor:"1,keyasint,omitempty"`
+}
+
+func EncryptionKeyFromPoint(publicKey ecc.Point) EncryptionKey {
+	x, y := publicKey.Point()
+	return EncryptionKey{
+		X: BigIntConverter(x),
+		Y: BigIntConverter(y),
+	}
 }
 
 type OrganizationInfo struct {

@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
 	gethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/spf13/pflag"
 
@@ -208,10 +207,10 @@ func RandomBlob() []byte {
 }
 
 func DummyBlobWithCafe() []byte {
-	const feSize = params.BlobTxBytesPerFieldElement              // 32
-	out := make([]byte, params.BlobTxFieldElementsPerBlob*feSize) // 131072
+	const feSize = gethparams.BlobTxBytesPerFieldElement              // 32
+	out := make([]byte, gethparams.BlobTxFieldElementsPerBlob*feSize) // 131072
 	var el fr.Element
-	for i := range params.BlobTxFieldElementsPerBlob {
+	for i := range gethparams.BlobTxFieldElementsPerBlob {
 		el.SetUint64(0xcafedecaca<<20 + uint64(i))     // uniquely identify content
 		copy(out[i*feSize:(i+1)*feSize], el.Marshal()) // big-endian canonical bytes
 	}
