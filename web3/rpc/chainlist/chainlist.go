@@ -42,53 +42,14 @@ var (
 
 // Chain represents blockchain network metadata from chainlist.org
 type Chain struct {
-	Name           string         `json:"name"`
-	Chain          string         `json:"chain"`
-	Icon           string         `json:"icon,omitempty"`
-	RPC            []RPCEntry     `json:"rpc"`
-	Features       []Feature      `json:"features,omitempty"`
-	NativeCurrency NativeCurrency `json:"nativeCurrency"`
-	InfoURL        string         `json:"infoURL"`
-	ShortName      string         `json:"shortName"`
-	ChainID        uint64         `json:"chainId"`
-	NetworkID      int            `json:"networkId"`
-	Slip44         int            `json:"slip44,omitempty"`
-	ENS            *ENSConfig     `json:"ens,omitempty"`
-	Explorers      []Explorer     `json:"explorers,omitempty"`
-	TVL            float64        `json:"tvl,omitempty"`
-	ChainSlug      string         `json:"chainSlug"`
+	RPC       []RPCEntry `json:"rpc"`
+	ShortName string     `json:"shortName"`
+	ChainID   uint64     `json:"chainId"`
 }
 
 // RPCEntry represents an RPC endpoint for a blockchain
 type RPCEntry struct {
-	URL          string `json:"url"`
-	Tracking     string `json:"tracking,omitempty"`
-	IsOpenSource bool   `json:"isOpenSource,omitempty"`
-}
-
-// Feature represents a blockchain feature
-type Feature struct {
-	Name string `json:"name"`
-}
-
-// NativeCurrency represents the blockchain's native currency
-type NativeCurrency struct {
-	Name     string `json:"name"`
-	Symbol   string `json:"symbol"`
-	Decimals int    `json:"decimals"`
-}
-
-// ENSConfig represents Ethereum Name Service configuration
-type ENSConfig struct {
-	Registry string `json:"registry"`
-}
-
-// Explorer represents a blockchain explorer
-type Explorer struct {
-	Name     string `json:"name"`
-	URL      string `json:"url"`
-	Icon     string `json:"icon,omitempty"`
-	Standard string `json:"standard"`
+	URL string `json:"url"`
 }
 
 // jsonRPCRequest represents a JSON-RPC 2.0 request
@@ -108,12 +69,6 @@ type jsonRPCResponse struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
 	ID int `json:"id"`
-}
-
-// ChainInfo represents a simplified chain information with ID and short name
-type ChainInfo struct {
-	ChainID   uint64
-	ShortName string
 }
 
 // initialize fetches the chain list data and populates the maps
