@@ -3,9 +3,8 @@ package state
 import (
 	"fmt"
 	"math/big"
-	"unsafe"
 
-	kzg4844 "github.com/crate-crypto/go-eth-kzg"
+	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
@@ -30,7 +29,7 @@ func (st *State) BuildKZGCommitment() (
 	blobData *blobs.BlobEvalData,
 	err error,
 ) {
-	blob := &kzg4844.Blob{}
+	blob := &goethkzg.Blob{}
 	var cells [blobs.FieldElementsPerBlob][blobs.BytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) {
@@ -94,7 +93,7 @@ func (st *State) BuildKZGCommitment() (
 }
 
 // ParseBlobData extracts vote and results data from a blob
-func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
+func ParseBlobData(blob []byte) (*BlobData, error) {
 	coordsPerBallot := types.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
 
 	data := &BlobData{
@@ -104,13 +103,12 @@ func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
 	}
 
 	// extract big.Int from blob cell
-	blobBytes := (*(*[131072]byte)(unsafe.Pointer(blob)))[:]
 	getCell := func(cellIndex int) *big.Int {
 		if cellIndex >= blobs.FieldElementsPerBlob {
 			return big.NewInt(0)
 		}
 		start := cellIndex * blobs.BytesPerFieldElement
-		cellBytes := blobBytes[start : start+blobs.BytesPerFieldElement]
+		cellBytes := blob[start : start+blobs.BytesPerFieldElement]
 		// Read blob cells as big-endian (canonical form)
 		return new(big.Int).SetBytes(cellBytes)
 	}

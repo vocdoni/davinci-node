@@ -429,8 +429,14 @@ func NewTestService(
 		log.Info("Debug prover is disabled in non-testing context")
 	}
 
+	// Start StateSync
+	stateSync := service.NewStateSync(contracts, stg)
+	if err := stateSync.Start(ctx); err != nil {
+		return nil, nil, fmt.Errorf("failed to start state sync: %v", err)
+	}
+
 	// Start process monitor
-	pm := service.NewProcessMonitor(contracts, stg, time.Second*2)
+	pm := service.NewProcessMonitor(contracts, stg, time.Second*2, stateSync)
 	if err := pm.Start(ctx); err != nil {
 		vp.Stop()
 		web3Cleanup() // Clean up web3 if process monitor fails to start

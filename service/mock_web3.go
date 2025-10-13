@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"sync"
 	"time"
 
+	eth2deneb "github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -79,4 +81,11 @@ func (m *MockContracts) WaitTxByHash(hash common.Hash, timeout time.Duration, cb
 
 func (m *MockContracts) WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error {
 	return nil
+}
+
+func (m *MockContracts) BlobsByTxHash(ctx context.Context, txHash common.Hash,
+) ([]*eth2deneb.BlobSidecar, error) {
+	return []*eth2deneb.BlobSidecar{{
+		Blob: eth2deneb.Blob(bytes.Repeat([]byte("MockBlob"), 131072)),
+	}}, nil
 }

@@ -25,7 +25,7 @@ func TestProcessMonitor(t *testing.T) {
 	contracts := NewMockContracts()
 
 	// Create process monitor
-	monitor := NewProcessMonitor(contracts, store, time.Second)
+	monitor := NewProcessMonitor(contracts, store, time.Second, nil)
 
 	// Start monitoring in background
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
