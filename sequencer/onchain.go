@@ -193,7 +193,7 @@ func (s *Sequencer) pushTransitionToContract(
 					return
 				}
 				if pendingBatch != nil {
-					if err := s.stg.PushBallotBatch(pendingBatch); err != nil {
+					if err := s.stg.PushAggregatorBatch(pendingBatch); err != nil {
 						log.Warnw("failed to recover aggregator batch after state transition failure",
 							"error", err,
 							"processID", fmt.Sprintf("%x", processID))

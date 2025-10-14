@@ -81,7 +81,7 @@ func (a *API) startWorkersMonitor() {
 					"duration", now.Sub(failedJob.Timestamp).String())
 
 				// Remove ballot reservation (this will put it back in the queue)
-				if err := a.storage.ReleaseBallotReservation(failedJob.VoteID); err != nil {
+				if err := a.storage.ReleasePendingBallotReservation(failedJob.VoteID); err != nil {
 					log.Warnw("failed to remove timed out ballot",
 						"error", err.Error(),
 						"voteID", voteIDStr)
@@ -224,7 +224,7 @@ func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get next ballot
-	ballot, voteID, err := a.storage.NextBallot()
+	ballot, voteID, err := a.storage.NextPendingBallot()
 	if err != nil {
 		if errors.Is(err, storage.ErrNoMoreElements) {
 			w.WriteHeader(http.StatusNoContent)
@@ -376,7 +376,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mark ballot as done
-	if err := a.storage.MarkBallotDone(ballot.VoteID, &workerVerifiedBallot); err != nil {
+	if err := a.storage.MarkBallotVerified(workerVerifiedBallot.VoteID, &workerVerifiedBallot); err != nil {
 		log.Warnw("failed to mark ballot as done",
 			"error", err.Error(),
 			"voteID", ballot.VoteID.String())

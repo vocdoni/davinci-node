@@ -48,7 +48,7 @@ func (s *Sequencer) processPendingTransitions() {
 	// Process each registered process ID
 	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
 		// Check if there is a batch ready for processing
-		batch, batchID, err := s.stg.NextBallotBatch(pid)
+		batch, batchID, err := s.stg.NextAggregatorBatch(pid)
 		if err != nil {
 			if err != storage.ErrNoMoreElements {
 				log.Errorw(err, "failed to get next ballot batch")
@@ -58,7 +58,7 @@ func (s *Sequencer) processPendingTransitions() {
 		// If the batch is nil, skip it
 		if batch == nil || len(batch.Ballots) == 0 {
 			log.Debugw("no ballots in batch", "batchID", batchID)
-			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
 			return true // Continue to next process ID
@@ -83,7 +83,7 @@ func (s *Sequencer) processPendingTransitions() {
 		processState, err := s.latestProcessState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
-			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
 			return true // Continue to next process ID
@@ -93,7 +93,7 @@ func (s *Sequencer) processPendingTransitions() {
 		root, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root")
-			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
 			return true // Continue to next process ID
@@ -109,7 +109,7 @@ func (s *Sequencer) processPendingTransitions() {
 		reencryptedVotes, kSeed, err := s.reencryptVotes(processID, batch.Ballots)
 		if err != nil {
 			log.Errorw(err, "failed to reencrypt votes")
-			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
 			return true // Continue to next process ID
@@ -120,7 +120,7 @@ func (s *Sequencer) processPendingTransitions() {
 		proof, blobData, err := s.processStateTransitionBatch(processState, reencryptedVotes, kSeed, batch.Proof)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
-			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
 			return true // Continue to next process ID
@@ -130,7 +130,7 @@ func (s *Sequencer) processPendingTransitions() {
 		rootHashAfter, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root hash after")
-			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
 			return true // Continue to next process ID
@@ -140,7 +140,7 @@ func (s *Sequencer) processPendingTransitions() {
 		blobSidecar, blobHashes, err := blobData.TxSidecar()
 		if err != nil {
 			log.Errorw(err, "failed to get blob sidecar")
-			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
 			return true // Continue to next process ID
@@ -187,14 +187,14 @@ func (s *Sequencer) processPendingTransitions() {
 			BlobSidecar:     blobSidecar,
 		}); err != nil {
 			log.Errorw(err, "failed to push state transition batch")
-			if err := s.stg.MarkBallotBatchFailed(batchID); err != nil {
+			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
 			return true // Continue to next process ID
 		}
 
 		// Mark the batch as done
-		if err := s.stg.MarkBallotBatchDone(batchID); err != nil {
+		if err := s.stg.MarkAggregatorBatchDone(batchID); err != nil {
 			log.Errorw(err, "failed to mark ballot batch as done")
 			return true // Continue to next process ID
 		}

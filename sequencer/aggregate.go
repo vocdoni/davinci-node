@@ -241,7 +241,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	log.Debugw("pushing aggregated batch to storage")
-	if err := s.stg.PushBallotBatch(&abb); err != nil {
+	if err := s.stg.PushAggregatorBatch(&abb); err != nil {
 		return fmt.Errorf("failed to push ballot batch: %w", err)
 	}
 
