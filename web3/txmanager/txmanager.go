@@ -25,6 +25,10 @@ const (
 	defaultMaxGasPriceGwei    = 300
 	defaultMonitorInterval    = 30 * time.Second
 	defaultSimpleTxTimeout    = 20 * time.Second
+
+	// Small delay after nonce reset to allow node caches to update, only for
+	// internal use.
+	sleepForNonceCache = 500 * time.Millisecond
 )
 
 // Config holds configuration for the transaction manager
@@ -56,20 +60,34 @@ func DefaultConfig(chainID uint64) Config {
 // PendingTransaction represents a transaction that has been sent but not yet
 // confirmed.
 type PendingTransaction struct {
-	ID               []byte
-	Hash             common.Hash
-	Nonce            uint64
-	Timestamp        time.Time
-	RetryCount       int
-	IsBlob           bool
+	// ID is a unique identifier for the transaction. It does not change even
+	// if the transaction is retried with a different gas price or nonce.
+	ID []byte
+	// Hash is the current transaction hash. It may change if the transaction
+	// is retried or cancelled.
+	Hash common.Hash
+	// Nonce is the transaction nonce. It may change if some nonce issue arises.
+	Nonce uint64
+	// Time the transaction was first sent.
+	Timestamp time.Time
+	// RetryCount is the number of times the transaction has been retried.
+	RetryCount int
+	// IsBlob indicates if the transaction is a blob transaction.
+	IsBlob bool
+	// OriginalGasPrice, OriginalBlobFee and OriginalGasLimit store the
+	// original parameters of the transaction for reference in case of retries.
+	// They do not change.
 	OriginalGasPrice *big.Int
 	OriginalBlobFee  *big.Int
 	OriginalGasLimit uint64
-	To               common.Address
-	Data             []byte
-	Value            *big.Int
-	BlobHashes       []common.Hash
-	BlobSidecar      *gtypes.BlobTxSidecar // Store sidecar for rebuilding blob txs
+	// To, Data and Value store the basic parameters of the transaction.
+	To    common.Address
+	Data  []byte
+	Value *big.Int
+	// BlobHashes store the hashes of the blobs associated with the transaction.
+	BlobHashes []common.Hash
+	// BlobSidecar stores the sidecar for rebuilding blob transactions.
+	BlobSidecar *gtypes.BlobTxSidecar
 }
 
 // TxManager handles nonce management and stuck transaction recovery.

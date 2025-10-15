@@ -86,7 +86,7 @@ func (s *Sequencer) processPendingBatches() {
 
 // processAndUpdateBatch handles the processing of a batch of ballots and updates
 // the necessary timestamps. It returns true to continue processing other process IDs.
-func (s *Sequencer) processAndUpdateBatch(pid []byte) bool {
+func (s *Sequencer) processAndUpdateBatch(pid types.HexBytes) bool {
 	if err := s.aggregateBatch(pid); err != nil {
 		log.Warnw("failed to aggregate batch",
 			"error", err.Error(),

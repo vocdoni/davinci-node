@@ -52,8 +52,8 @@ func (s *Storage) HasPendingTx(txType PendingTxType, processID []byte) bool {
 	return err == nil && pending
 }
 
-// ClearPendingTx removes the pending transaction marker for a process.
-func (s *Storage) ClearPendingTx(txType PendingTxType, processID []byte) error {
+// PrunePendingTx removes the pending transaction marker for a process.
+func (s *Storage) PrunePendingTx(txType PendingTxType, processID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	prefix := append(pendingTxPrefix, txType...)

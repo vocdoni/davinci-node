@@ -11,6 +11,7 @@ import (
 	gtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -22,7 +23,7 @@ import (
 func (tm *TxManager) SendTx(
 	ctx context.Context,
 	txBuilder func(nonce uint64) (*gtypes.Transaction, error),
-) ([]byte, *common.Hash, error) {
+) (types.HexBytes, *common.Hash, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if !tm.nonceInitialized {
@@ -197,27 +198,25 @@ func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) err
 		newGasPrice = new(big.Int).Set(tm.config.MaxGasPriceGwei)
 	}
 	var newTx *gtypes.Transaction
-	if ptx.IsBlob {
+	switch ptx.IsBlob {
+	case true:
 		// For blob transactions, also increase blob gas fee
 		newBlobFee := new(big.Int).Mul(ptx.OriginalBlobFee, increaseFactor)
 		newBlobFee.Div(newBlobFee, big.NewInt(100))
 		// Check if sidecar is available for rebuilding
-		if ptx.BlobSidecar != nil {
-			// Rebuild blob transaction with higher fees
-			newTx, err = tm.rebuildBlobTx(ctx, ptx, newGasPrice, newBlobFee)
-			if err != nil {
-				return fmt.Errorf("cannot rebuild blob transaction: %w", err)
-			}
-		} else {
+		if ptx.BlobSidecar == nil {
 			// CRITICAL: Blob transactions cannot be cancelled. They can only
 			// be replaced with another blob transaction using the same blob
 			// data. Without the sidecar, we cannot create a replacement, so
 			// the transaction is permanently stuck.
 			return fmt.Errorf("blob transaction stuck without recovery option")
 		}
-	} else {
-		newTx, err = tm.rebuildRegularTx(ctx, ptx, newGasPrice)
-		if err != nil {
+		// Rebuild blob transaction with higher fees
+		if newTx, err = tm.rebuildBlobTx(ctx, ptx, newGasPrice, newBlobFee); err != nil {
+			return fmt.Errorf("cannot rebuild blob transaction: %w", err)
+		}
+	case false:
+		if newTx, err = tm.rebuildRegularTx(ctx, ptx, newGasPrice); err != nil {
 			return fmt.Errorf("failed to rebuild transaction: %w", err)
 		}
 	}
@@ -430,7 +429,7 @@ func (tm *TxManager) recoverTxFromNonceGap(
 	tm.nextNonce = onChainNonce
 	tm.lastConfirmedNonce = onChainNonce
 	// Add a small delay to ensure node nonce caches are updated
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(sleepForNonceCache)
 	// Build and send with corrected nonce
 	tx, err := txBuilder(onChainNonce)
 	if err != nil {

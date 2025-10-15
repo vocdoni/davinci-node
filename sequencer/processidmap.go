@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // ProcessIDMap provides a thread-safe map for storing and retrieving process IDs.
@@ -28,7 +29,7 @@ func NewProcessIDMap() *ProcessIDMap {
 // Add adds a process ID to the map with the current time.
 // If the process ID already exists, this operation has no effect.
 // Returns true if the process ID was added, false if it already existed.
-func (p *ProcessIDMap) Add(pid []byte) bool {
+func (p *ProcessIDMap) Add(pid types.HexBytes) bool {
 	if len(pid) == 0 {
 		log.Warnw("attempted to add empty process ID")
 		return false
@@ -51,7 +52,7 @@ func (p *ProcessIDMap) Add(pid []byte) bool {
 // Remove removes a process ID from the map.
 // If the process ID is not in the map, this operation has no effect.
 // Returns true if the process ID was removed, false if it wasn't in the map.
-func (p *ProcessIDMap) Remove(pid []byte) bool {
+func (p *ProcessIDMap) Remove(pid types.HexBytes) bool {
 	if len(pid) == 0 {
 		return false
 	}
@@ -65,7 +66,7 @@ func (p *ProcessIDMap) Remove(pid []byte) bool {
 }
 
 // Exists checks if a process ID is in the map.
-func (p *ProcessIDMap) Exists(pid []byte) bool {
+func (p *ProcessIDMap) Exists(pid types.HexBytes) bool {
 	if len(pid) == 0 {
 		return false
 	}
@@ -80,7 +81,7 @@ func (p *ProcessIDMap) Exists(pid []byte) bool {
 
 // Get returns the time when a process ID was added and a boolean indicating
 // whether the process ID exists in the map.
-func (p *ProcessIDMap) Get(pid []byte) (time.Time, bool) {
+func (p *ProcessIDMap) Get(pid types.HexBytes) (time.Time, bool) {
 	if len(pid) == 0 {
 		return time.Time{}, false
 	}
@@ -151,7 +152,7 @@ func (p *ProcessIDMap) Len() int {
 
 // SetFirstBallotTime sets the timestamp for when the first ballot arrived
 // after the last batch, but only if it hasn't been set already.
-func (p *ProcessIDMap) SetFirstBallotTime(pid []byte) {
+func (p *ProcessIDMap) SetFirstBallotTime(pid types.HexBytes) {
 	if len(pid) == 0 {
 		return
 	}
@@ -168,7 +169,7 @@ func (p *ProcessIDMap) SetFirstBallotTime(pid []byte) {
 
 // GetFirstBallotTime returns the timestamp of when the first ballot arrived
 // after the last batch processing, and a boolean indicating if it exists.
-func (p *ProcessIDMap) GetFirstBallotTime(pid []byte) (time.Time, bool) {
+func (p *ProcessIDMap) GetFirstBallotTime(pid types.HexBytes) (time.Time, bool) {
 	if len(pid) == 0 {
 		return time.Time{}, false
 	}
@@ -183,7 +184,7 @@ func (p *ProcessIDMap) GetFirstBallotTime(pid []byte) (time.Time, bool) {
 
 // ClearFirstBallotTime clears the first ballot timestamp for a process ID.
 // This should be called after a batch is processed.
-func (p *ProcessIDMap) ClearFirstBallotTime(pid []byte) {
+func (p *ProcessIDMap) ClearFirstBallotTime(pid types.HexBytes) {
 	if len(pid) == 0 {
 		return
 	}

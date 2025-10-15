@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/vocdoni/davinci-node/log"
 )
 
 // isNonceError checks if an error is related to nonce issues
@@ -42,21 +40,14 @@ func (tm *TxManager) lastOnChainNonce(ctx context.Context) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to get eth client: %w", err)
 	}
-
+	// Get the last confirmed nonce from the blockchain
 	lastNonce, err := ethcli.NonceAt(ctx, tm.signer.Address(), nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get on-chain nonce: %w", err)
 	}
-
-	pendingNonce, err := tm.cli.PendingNonceAt(ctx, tm.signer.Address())
-	if err != nil {
-		log.Warnw("failed to get pending nonce, using confirmed nonce", "error", err)
-	} else if pendingNonce > lastNonce {
-		// Use the higher nonce to prevent "nonce too low" errors
+	// Also check the pending nonce to avoid "nonce too low" errors
+	if pendingNonce, err := tm.cli.PendingNonceAt(ctx, tm.signer.Address()); err == nil && pendingNonce > lastNonce {
 		lastNonce = pendingNonce
-		log.Infow("using pending nonce for recovery",
-			"pendingNonce", pendingNonce,
-			"confirmedNonce", lastNonce)
 	}
 	return lastNonce, nil
 }

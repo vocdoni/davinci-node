@@ -167,6 +167,8 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 		if err := s.stg.MarkAggregatorBatchPending(batch); err != nil {
 			log.Errorw(err, "failed to mark aggregator batch as pending, it will not be retried")
+			// If the storage fails, continue to next process ID
+			return true
 		}
 
 		// Store the proof in the state transition storage

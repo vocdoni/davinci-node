@@ -51,7 +51,7 @@ func TestPendingTxs(t *testing.T) {
 		hasPending := st.HasPendingTx(StateTransitionTx, testProcessID)
 		c.Assert(hasPending, qt.Equals, true)
 
-		err = st.ClearPendingTx(StateTransitionTx, testProcessID)
+		err = st.PrunePendingTx(StateTransitionTx, testProcessID)
 		c.Assert(err, qt.IsNil)
 
 		hasPending = st.HasPendingTx(StateTransitionTx, testProcessID)

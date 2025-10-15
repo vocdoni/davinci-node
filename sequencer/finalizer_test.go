@@ -44,7 +44,7 @@ func TestFinalize(t *testing.T) {
 	f.Start(t.Context(), 0)
 
 	// Test finalize
-	f.OndemandCh <- pid
+	f.OndemandCh <- pid.Marshal()
 	_, err := f.WaitUntilResults(t.Context(), pid)
 	c.Assert(err, qt.IsNil, qt.Commentf("finalize failed: %v", err))
 
