@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -16,9 +15,16 @@ import (
 )
 
 const (
+	// Interval for checking and processing state transitions to be sent on-chain
 	transitionOnChainTickInterval = 10 * time.Second
-	resultsOnChainTickInterval    = 10 * time.Second
-	maxResultsUploadRetries       = 3
+	// Timeout for waiting for a state transition transaction to be mined (not sent)
+	transitionOnChainTimeout = 30 * time.Minute
+	// Interval for checking and processing verified results to be sent on-chain
+	resultsOnChainTickInterval = 10 * time.Second
+	// Timeout for waiting for a verified results transaction to be mined (not sent)
+	resultsOnChainTimeout = 2 * time.Minute
+	// Maximum number of retries for uploading verified results
+	maxResultsUploadRetries = 3
 )
 
 func (s *Sequencer) startOnchainProcessor() error {
@@ -62,19 +68,19 @@ func (s *Sequencer) processTransitionOnChain() {
 			return true // Continue to next process ID
 		}
 		log.Infow("state transition batch ready for on-chain upload",
-			"pid", hex.EncodeToString(pid),
-			"batchID", hex.EncodeToString(batchID))
+			"pid", fmt.Sprintf("%x", pid),
+			"batchID", fmt.Sprintf("%x", batchID))
 
 		// check the remote state root matches the local one
 		remoteStateRoot, err := s.contracts.StateRoot(pid)
 		if err != nil || remoteStateRoot == nil {
-			log.Errorw(err, "failed to get remote state root for: "+hex.EncodeToString(pid))
+			log.Errorw(err, "failed to get remote state root for: "+fmt.Sprintf("%x", pid))
 			return true // Continue to next process ID
 		}
 		thisStateRoot := batch.Inputs.RootHashBefore
 		if remoteStateRoot.MathBigInt().Cmp(thisStateRoot) != 0 {
 			log.Errorw(fmt.Errorf("state root mismatch for processId %s: local %s != remote %s",
-				hex.EncodeToString(pid), thisStateRoot.String(), remoteStateRoot.String()), "could not push state transition to contract")
+				fmt.Sprintf("%x", pid), thisStateRoot.String(), remoteStateRoot.String()), "could not push state transition to contract")
 			// Mark the batch as outdated so we don't process it again
 			// and a new one will be generated with the correct root
 			if err := s.stg.MarkStateTransitionBatchOutdated(batchID); err != nil {
@@ -107,7 +113,7 @@ func (s *Sequencer) processTransitionOnChain() {
 			return true // Continue to next process ID
 		}
 		log.Infow("process state root updated",
-			"pid", hex.EncodeToString(pid),
+			"pid", fmt.Sprintf("%x", pid),
 			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
 			"rootHashAfter", batch.Inputs.RootHashAfter.String())
 		// mark the batch as done
@@ -122,7 +128,8 @@ func (s *Sequencer) processTransitionOnChain() {
 	})
 }
 
-func (s *Sequencer) pushTransitionToContract(processID []byte,
+func (s *Sequencer) pushTransitionToContract(
+	processID types.HexBytes,
 	proof *solidity.Groth16CommitmentProof,
 	inputs storage.StateTransitionBatchProofInputs,
 	blobSidecar *ethereumtypes.BlobTxSidecar,
@@ -140,9 +147,9 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	}
 
 	log.Debugw("proof ready to submit to the contract",
-		"pid", hex.EncodeToString(processID),
-		"abiProof", hex.EncodeToString(abiProof),
-		"abiInputs", hex.EncodeToString(abiInputs),
+		"pid", processID.String(),
+		"abiProof", fmt.Sprintf("%x", abiProof),
+		"abiInputs", fmt.Sprintf("%x", abiInputs),
 		"strProof", proof.String(),
 		"strInputs", inputs.String())
 
@@ -165,21 +172,62 @@ func (s *Sequencer) pushTransitionToContract(processID []byte,
 	); err != nil {
 		log.Debugw("failed to simulate state transition",
 			"error", err,
-			"pid", hex.EncodeToString(processID))
+			"pid", processID.String())
 	}
 
 	// Submit the proof to the contract
-	txHash, err := s.contracts.SetProcessTransition(processID,
+	log.Infow("state transition pending to be mined",
+		"pid", processID.String())
+	if err := s.contracts.SetProcessTransition(
+		processID,
 		abiProof,
 		abiInputs,
 		blobSidecar,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to submit state transition: %w", err)
+		transitionOnChainTimeout,
+		s.pushStateTransitionCallback(processID),
+	); err != nil {
+		if err := s.stg.PrunePendingTx(storage.StateTransitionTx, processID); err != nil {
+			log.Warnw("failed to release pending tx",
+				"error", err,
+				"processID", processID.String())
+		}
+		log.Infow("pending tx released", "pid", processID.String())
 	}
+	return nil
+}
 
-	// Wait for the transaction to be mined
-	return s.contracts.WaitTx(*txHash, time.Minute)
+func (s *Sequencer) pushStateTransitionCallback(pid types.HexBytes) func(err error) {
+	return func(err error) {
+		defer func() {
+			// Remove the pending tx mark
+			if err := s.stg.PrunePendingTx(storage.StateTransitionTx, pid); err != nil {
+				log.Warnw("failed to release pending tx",
+					"error", err,
+					"processID", pid.String())
+			}
+			log.Infow("pending tx released", "pid", pid.String())
+		}()
+		// If there was an error, log it and recover the batch if possible
+		if err != nil {
+			log.Errorf("failed to wait for state transition of %s: %s", pid.String(), err)
+			pendingBatch, err := s.stg.PendingAggregatorBatch(pid)
+			if err != nil && !errors.Is(err, storage.ErrNotFound) {
+				log.Warnw("failed to get pending aggregator batch after state transition failure",
+					"error", err,
+					"processID", pid.String())
+				return
+			}
+			if pendingBatch != nil {
+				if err := s.stg.PushAggregatorBatch(pendingBatch); err != nil {
+					log.Warnw("failed to recover aggregator batch after state transition failure",
+						"error", err,
+						"processID", pid.String())
+				}
+			}
+			return
+		}
+		log.Infow("state transition uploaded to contract", "pid", pid.String())
+	}
 }
 
 func (s *Sequencer) processResultsOnChain() {
@@ -222,8 +270,8 @@ func (s *Sequencer) processResultsOnChain() {
 		}
 		log.Debugw("verified results ready to upload to contract",
 			"pid", res.ProcessID.String(),
-			"abiProof", hex.EncodeToString(abiProof),
-			"abiInputs", hex.EncodeToString(abiInputs),
+			"abiProof", fmt.Sprintf("%x", abiProof),
+			"abiInputs", fmt.Sprintf("%x", abiInputs),
 			"strProof", solidityProof.String(),
 			"strInputs", res.Inputs.String())
 		// Simulate tx to the contract to check if it will fail and get the root
@@ -257,8 +305,9 @@ func (s *Sequencer) processResultsOnChain() {
 				time.Sleep(time.Second * 2) // Simple 2-second delay between retries
 			}
 
-			// submit the proof to the contract
-			txHash, err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs, nil) // TODO: add blob sidecar
+			// submit the proof to the contract and wait for the transaction to
+			// be mined
+			err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs, resultsOnChainTimeout)
 			if err != nil {
 				lastErr = err
 				log.Warnw("failed to upload verified results",
@@ -268,20 +317,9 @@ func (s *Sequencer) processResultsOnChain() {
 				continue
 			}
 
-			// wait for the transaction to be mined
-			if err := s.contracts.WaitTx(*txHash, time.Second*120); err != nil {
-				lastErr = err
-				log.Warnw("failed to wait for verified results upload transaction",
-					"attempt", attempt+1,
-					"error", err,
-					"processID", res.ProcessID.String())
-				continue
-			}
-
 			// Success!
 			log.Infow("verified results uploaded to contract",
-				"pid", hex.EncodeToString(res.ProcessID),
-				"txHash", txHash.String(),
+				"pid", res.ProcessID.String(),
 				"results", res.Inputs.Results,
 				"attempt", attempt+1)
 			uploadSuccess = true

@@ -46,6 +46,9 @@ The ballot processing follows these stages:
 ## Worker Stats
 - ws/ : workerAddress → WorkerStats (success/failure counts per worker)
 
+## Pending OnChain Transactions
+- ptx/: ProcessID → nil (tracks if there are pending on-chain tx for a process)
+
 ## Separate Databases
 - cs_ : prefix for census database (merkle trees for voter eligibility)
 - st_ : prefix for state database (merkle trees for vote state)
@@ -84,6 +87,7 @@ var (
 	verifiedBallotReservPrefix  = []byte("vbr/")
 	aggregBatchPrefix           = []byte("ag/")
 	aggregBatchReservPrefix     = []byte("agr/")
+	pendingAggregBatchPrefix    = []byte("pag/")
 	stateTransitionPrefix       = []byte("st/")
 	stateTransitionReservPrefix = []byte("str/")
 	verifiedResultPrefix        = []byte("vr/")
@@ -93,6 +97,7 @@ var (
 	metadataPrefix              = []byte("md/")
 	censusDBprefix              = []byte("cs_")
 	stateDBprefix               = []byte("st_")
+	pendingTxPrefix             = []byte("ptx/")
 
 	maxKeySize = 12
 )

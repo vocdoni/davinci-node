@@ -180,7 +180,7 @@ func TestCleanAllPending(t *testing.T) {
 
 		// Store batches and set vote statuses
 		for _, batch := range []*AggregatorBallotBatch{batch1, batch2} {
-			err := s.PushBallotBatch(batch)
+			err := s.PushAggregatorBatch(batch)
 			c.Assert(err, qt.IsNil)
 
 			// Lock vote IDs
@@ -194,10 +194,10 @@ func TestCleanAllPending(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Verify batches are cleaned
-		_, _, err = s.NextBallotBatch(processID1)
+		_, _, err = s.NextAggregatorBatch(processID1)
 		c.Assert(err, qt.Equals, ErrNoMoreElements)
 
-		_, _, err = s.NextBallotBatch(processID2)
+		_, _, err = s.NextAggregatorBatch(processID2)
 		c.Assert(err, qt.Equals, ErrNoMoreElements)
 
 		// Verify vote IDs are marked as error
@@ -314,7 +314,7 @@ func TestCleanAllPending(t *testing.T) {
 			ProcessID: processID1,
 			Ballots:   []*AggregatorBallot{createAggregatorBallot(51)},
 		}
-		err = s.PushBallotBatch(batch)
+		err = s.PushAggregatorBatch(batch)
 		c.Assert(err, qt.IsNil)
 		s.lockVoteID(batch.Ballots[0].VoteID.BigInt().MathBigInt())
 
@@ -339,7 +339,7 @@ func TestCleanAllPending(t *testing.T) {
 		// Verify all are cleaned
 		c.Assert(s.CountVerifiedBallots(processID1), qt.Equals, 0)
 
-		_, _, err = s.NextBallotBatch(processID1)
+		_, _, err = s.NextAggregatorBatch(processID1)
 		c.Assert(err, qt.Equals, ErrNoMoreElements)
 
 		_, _, err = s.NextStateTransitionBatch(processID1)

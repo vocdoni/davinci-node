@@ -225,7 +225,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 
 	// push the ballot to the sequencer storage queue to be verified, aggregated
 	// and published
-	if err := a.storage.PushBallot(ballot); err != nil {
+	if err := a.storage.PushPendingBallot(ballot); err != nil {
 		switch {
 		case errors.Is(err, storage.ErroBallotAlreadyExists):
 			ErrBallotAlreadySubmitted.Write(w)

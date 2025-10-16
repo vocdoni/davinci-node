@@ -64,7 +64,7 @@ func TestBallotQueue(t *testing.T) {
 
 	// Scenario: No ballots initially
 	c.Assert(st.CountPendingBallots(), qt.Equals, 0, qt.Commentf("no pending ballots expected initially"))
-	_, _, err = st.NextBallot()
+	_, _, err = st.NextPendingBallot()
 	c.Assert(err, qt.Equals, ErrNoMoreElements, qt.Commentf("no ballots expected initially"))
 
 	// Create ballots with fixed data for deterministic testing
@@ -80,14 +80,14 @@ func TestBallotQueue(t *testing.T) {
 	}
 
 	// Push the ballots
-	c.Assert(st.PushBallot(ballot1), qt.IsNil)
-	c.Assert(st.PushBallot(ballot2), qt.IsNil)
+	c.Assert(st.PushPendingBallot(ballot1), qt.IsNil)
+	c.Assert(st.PushPendingBallot(ballot2), qt.IsNil)
 
 	// Verify count of pending ballots
 	c.Assert(st.CountPendingBallots(), qt.Equals, 2, qt.Commentf("should have 2 pending ballots after pushing"))
 
 	// Fetch next ballot and verify its content
-	b1, b1key, err := st.NextBallot()
+	b1, b1key, err := st.NextPendingBallot()
 	c.Assert(err, qt.IsNil, qt.Commentf("should retrieve a ballot"))
 	c.Assert(b1, qt.IsNotNil)
 	c.Assert(b1key, qt.IsNotNil)
@@ -103,10 +103,10 @@ func TestBallotQueue(t *testing.T) {
 		ProcessID:   processID.Marshal(),
 		VoterWeight: big.NewInt(42),
 	}
-	c.Assert(st.MarkBallotDone(b1key, verified1), qt.IsNil)
+	c.Assert(st.MarkBallotVerified(b1key, verified1), qt.IsNil)
 
 	// Fetch the second ballot
-	b2, b2key, err := st.NextBallot()
+	b2, b2key, err := st.NextPendingBallot()
 	c.Assert(err, qt.IsNil, qt.Commentf("should retrieve second ballot"))
 	c.Assert(b2, qt.IsNotNil)
 	c.Assert(b2key, qt.IsNotNil)
@@ -127,7 +127,7 @@ func TestBallotQueue(t *testing.T) {
 		ProcessID:   processID.Marshal(),
 		VoterWeight: big.NewInt(24),
 	}
-	c.Assert(st.MarkBallotDone(b2key, verified2), qt.IsNil)
+	c.Assert(st.MarkBallotVerified(b2key, verified2), qt.IsNil)
 
 	// There should be now 2 verified ballots.
 	c.Assert(st.CountVerifiedBallots(
@@ -174,12 +174,12 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(keys10, qt.IsNil)
 
 	// Try again NextBallot. There should be no more ballots.
-	_, _, err = st.NextBallot()
+	_, _, err = st.NextPendingBallot()
 	c.Assert(err, qt.Equals, ErrNoMoreElements, qt.Commentf("no more ballots expected"))
 
 	// Additional scenario: MarkBallotDone on a non-existent/reserved key
 	nonExistentKey := []byte("fakekey")
-	err = st.MarkBallotDone(nonExistentKey, verified1)
+	err = st.MarkBallotVerified(nonExistentKey, verified1)
 	c.Assert(err, qt.IsNil)
 
 	// Additional scenario: no verified ballots if none processed
@@ -224,12 +224,12 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 			Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
 			VoteID:    fmt.Appendf(nil, "vote%d", i+1),
 		}
-		c.Assert(st.PushBallot(ballot), qt.IsNil)
+		c.Assert(st.PushPendingBallot(ballot), qt.IsNil)
 	}
 
 	// Process all ballots and convert them to verified ballots
 	for i := range 5 {
-		b, key, err := st.NextBallot()
+		b, key, err := st.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
 		c.Assert(b, qt.IsNotNil)
 
@@ -238,7 +238,7 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 			Address:     b.Address,                   // Set address to ensure uniqueness
 			VoterWeight: big.NewInt(int64(i+1) * 10), // Different weights for identification
 		}
-		c.Assert(st.MarkBallotDone(key, verified), qt.IsNil)
+		c.Assert(st.MarkBallotVerified(key, verified), qt.IsNil)
 	}
 
 	// Verify we have 5 verified ballots
@@ -333,7 +333,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Test 1: Empty state
-	_, _, err = st.NextBallotBatch(processID.Marshal())
+	_, _, err = st.NextAggregatorBatch(processID.Marshal())
 	c.Assert(err, qt.Equals, ErrNoMoreElements, qt.Commentf("no batches expected initially"))
 
 	// Test 2: Single batch lifecycle
@@ -345,17 +345,17 @@ func TestBallotBatchQueue(t *testing.T) {
 	}
 
 	// Push batch and wait a moment to ensure different timestamps
-	c.Assert(st.PushBallotBatch(batch1), qt.IsNil)
+	c.Assert(st.PushAggregatorBatch(batch1), qt.IsNil)
 
 	// Get batch
-	b1, b1key, err := st.NextBallotBatch(processID.Marshal())
+	b1, b1key, err := st.NextAggregatorBatch(processID.Marshal())
 	c.Assert(err, qt.IsNil, qt.Commentf("should retrieve the batch"))
 	c.Assert(b1, qt.IsNotNil)
 	c.Assert(len(b1.Ballots), qt.Equals, 1)
 	c.Assert(b1.Ballots[0].Address.Cmp(batch1.Ballots[0].Address), qt.Equals, 0)
 
 	// Mark batch done and wait a moment
-	c.Assert(st.MarkBallotBatchDone(b1key), qt.IsNil)
+	c.Assert(st.MarkAggregatorBatchDone(b1key), qt.IsNil)
 
 	// Test 3: Multiple batches
 	batch2 := &AggregatorBallotBatch{
@@ -366,17 +366,17 @@ func TestBallotBatchQueue(t *testing.T) {
 	}
 
 	// Push batch2 and wait
-	c.Assert(st.PushBallotBatch(batch2), qt.IsNil)
+	c.Assert(st.PushAggregatorBatch(batch2), qt.IsNil)
 
 	// Get and verify batch2
-	b2, b2key, err := st.NextBallotBatch(processID.Marshal())
+	b2, b2key, err := st.NextAggregatorBatch(processID.Marshal())
 	c.Assert(err, qt.IsNil)
 	c.Assert(b2, qt.IsNotNil)
 	c.Assert(len(b2.Ballots), qt.Equals, 1)
 	c.Assert(b2.Ballots[0].Address.Cmp(batch2.Ballots[0].Address), qt.Equals, 0)
 
 	// Mark batch2 done and wait
-	c.Assert(st.MarkBallotBatchDone(b2key), qt.IsNil)
+	c.Assert(st.MarkAggregatorBatchDone(b2key), qt.IsNil)
 
 	// Push and verify batch3
 	batch3 := &AggregatorBallotBatch{
@@ -386,19 +386,19 @@ func TestBallotBatchQueue(t *testing.T) {
 		},
 	}
 
-	c.Assert(st.PushBallotBatch(batch3), qt.IsNil)
+	c.Assert(st.PushAggregatorBatch(batch3), qt.IsNil)
 
-	b3, b3key, err := st.NextBallotBatch(processID.Marshal())
+	b3, b3key, err := st.NextAggregatorBatch(processID.Marshal())
 	c.Assert(err, qt.IsNil)
 	c.Assert(b3, qt.IsNotNil)
 	c.Assert(len(b3.Ballots), qt.Equals, 1)
 	c.Assert(b3.Ballots[0].Address.Cmp(batch3.Ballots[0].Address), qt.Equals, 0)
 
 	// Mark batch3 done
-	c.Assert(st.MarkBallotBatchDone(b3key), qt.IsNil)
+	c.Assert(st.MarkAggregatorBatchDone(b3key), qt.IsNil)
 
 	// Verify no more batches
-	_, _, err = st.NextBallotBatch(processID.Marshal())
+	_, _, err = st.NextAggregatorBatch(processID.Marshal())
 	c.Assert(err, qt.Equals, ErrNoMoreElements)
 
 	// Test 4: Different process ID
@@ -407,6 +407,6 @@ func TestBallotBatchQueue(t *testing.T) {
 		Version: []byte{0x00, 0x00, 0x00, 0x01},
 		Nonce:   999,
 	}
-	_, _, err = st.NextBallotBatch(anotherPID.Marshal())
+	_, _, err = st.NextAggregatorBatch(anotherPID.Marshal())
 	c.Assert(err, qt.Equals, ErrNoMoreElements)
 }

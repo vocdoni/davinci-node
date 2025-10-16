@@ -57,13 +57,13 @@ func TestProcessStatsConcurrency(t *testing.T) {
 				}
 
 				// Push ballot (pending +1)
-				err := st.PushBallot(ballot)
+				err := st.PushPendingBallot(ballot)
 				if err != nil && err != ErroBallotAlreadyExists {
 					panic(err)
 				}
 
 				// Get the ballot
-				b, key, err := st.NextBallot()
+				b, key, err := st.NextPendingBallot()
 				if err != nil {
 					// Another goroutine might have taken it
 					continue
@@ -75,7 +75,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 					VoteID:      b.VoteID,
 					VoterWeight: big.NewInt(1),
 				}
-				err = st.MarkBallotDone(key, verifiedBallot)
+				err = st.MarkBallotVerified(key, verifiedBallot)
 				if err != nil {
 					panic(err)
 				}
@@ -138,11 +138,11 @@ func TestProcessStatsAggregation(t *testing.T) {
 		}
 
 		// Push ballot
-		err := st.PushBallot(ballot)
+		err := st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)
 
 		// Get and mark as done
-		b, key, err := st.NextBallot()
+		b, key, err := st.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
 
 		verifiedBallot := &VerifiedBallot{
@@ -151,7 +151,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
-		err = st.MarkBallotDone(key, verifiedBallot)
+		err = st.MarkBallotVerified(key, verifiedBallot)
 		c.Assert(err, qt.IsNil)
 	}
 
@@ -183,7 +183,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 	}
 
 	// Push the batch (this should update aggregated votes and current batch size)
-	err = st.PushBallotBatch(batch)
+	err = st.PushAggregatorBatch(batch)
 	c.Assert(err, qt.IsNil)
 
 	// Mark verified ballots as done
@@ -246,11 +246,11 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 				}
 
 				// Push and process ballot
-				if err := st.PushBallot(ballot); err != nil && err != ErroBallotAlreadyExists {
+				if err := st.PushPendingBallot(ballot); err != nil && err != ErroBallotAlreadyExists {
 					panic(err)
 				}
 
-				b, key, err := st.NextBallot()
+				b, key, err := st.NextPendingBallot()
 				if err == ErrNoMoreElements {
 					continue
 				}
@@ -263,7 +263,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 					VoteID:      b.VoteID,
 					VoterWeight: big.NewInt(1),
 				}
-				if err := st.MarkBallotDone(key, verifiedBallot); err != nil {
+				if err := st.MarkBallotVerified(key, verifiedBallot); err != nil {
 					panic(err)
 				}
 			}
@@ -300,7 +300,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 					Ballots:   aggBallots,
 				}
 
-				if err := st.PushBallotBatch(batch); err != nil {
+				if err := st.PushAggregatorBatch(batch); err != nil {
 					panic(err)
 				}
 
@@ -466,7 +466,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 		Address:          big.NewInt(1000),
 		BallotInputsHash: big.NewInt(2000),
 	}
-	err = st.PushBallot(ballot1)
+	err = st.PushPendingBallot(ballot1)
 	c.Assert(err, qt.IsNil)
 
 	// TotalPendingBallots should now return 1 (0 + 1)
@@ -478,7 +478,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 	c.Assert(actualCount, qt.Equals, 1, qt.Commentf("Should have 1 actual ballot in queue"))
 
 	// Test: Process the ballot and verify stats are updated
-	b, key, err := st.NextBallot()
+	b, key, err := st.NextPendingBallot()
 	c.Assert(err, qt.IsNil)
 	c.Assert(b, qt.IsNotNil)
 
@@ -487,7 +487,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 		VoteID:      b.VoteID,
 		VoterWeight: big.NewInt(1),
 	}
-	err = st.MarkBallotDone(key, verifiedBallot)
+	err = st.MarkBallotVerified(key, verifiedBallot)
 	c.Assert(err, qt.IsNil)
 
 	// TotalPendingBallots should return 0 again (1 - 1)
@@ -535,11 +535,11 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 		}
 
 		// Push ballot
-		err := st.PushBallot(ballot)
+		err := st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)
 
 		// Get and mark as done (verified)
-		b, key, err := st.NextBallot()
+		b, key, err := st.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
 
 		verifiedBallot := &VerifiedBallot{
@@ -548,7 +548,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
-		err = st.MarkBallotDone(key, verifiedBallot)
+		err = st.MarkBallotVerified(key, verifiedBallot)
 		c.Assert(err, qt.IsNil)
 
 		// Store the verified ballot key for later failure
@@ -620,11 +620,11 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 		}
 
 		// Push ballot
-		err := st.PushBallot(ballot)
+		err := st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)
 
 		// Get and mark as done (verified)
-		b, key, err := st.NextBallot()
+		b, key, err := st.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
 
 		verifiedBallot := &VerifiedBallot{
@@ -633,7 +633,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
-		err = st.MarkBallotDone(key, verifiedBallot)
+		err = st.MarkBallotVerified(key, verifiedBallot)
 		c.Assert(err, qt.IsNil)
 	}
 
@@ -657,7 +657,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 	}
 
 	// Push the batch (this updates aggregated votes and decreases current batch size)
-	err = st.PushBallotBatch(batch)
+	err = st.PushAggregatorBatch(batch)
 	c.Assert(err, qt.IsNil)
 
 	// Mark verified ballots as done
@@ -672,13 +672,13 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 	c.Assert(proc1.SequencerStats.CurrentBatchSize, qt.Equals, 0)
 
 	// Get the batch key to mark it as failed
-	batchEntry, batchKey, err := st.NextBallotBatch(processID.Marshal())
+	batchEntry, batchKey, err := st.NextAggregatorBatch(processID.Marshal())
 	c.Assert(err, qt.IsNil)
 	c.Assert(batchEntry, qt.IsNotNil)
 	c.Assert(len(batchEntry.Ballots), qt.Equals, numBallots)
 
 	// Mark the batch as failed
-	err = st.MarkBallotBatchFailed(batchKey)
+	err = st.MarkAggregatorBatchFailed(batchKey)
 	c.Assert(err, qt.IsNil)
 
 	// Check stats after batch failure
@@ -953,12 +953,12 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 		VoteID:    fmt.Appendf(nil, "vote2"),
 	}
 
-	err = st.PushBallot(ballot1)
+	err = st.PushPendingBallot(ballot1)
 	c.Assert(err, qt.IsNil)
 	total = st.TotalPendingBallots()
 	c.Assert(total, qt.Equals, 1)
 
-	err = st.PushBallot(ballot2)
+	err = st.PushPendingBallot(ballot2)
 	c.Assert(err, qt.IsNil)
 	total = st.TotalPendingBallots()
 	c.Assert(total, qt.Equals, 2)
@@ -970,13 +970,13 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 		VoteID:    fmt.Appendf(nil, "vote3"),
 	}
 
-	err = st.PushBallot(ballot3)
+	err = st.PushPendingBallot(ballot3)
 	c.Assert(err, qt.IsNil)
 	total = st.TotalPendingBallots()
 	c.Assert(total, qt.Equals, 3)
 
 	// Test 5: Process a ballot and verify total pending decreases
-	b1, key1, err := st.NextBallot()
+	b1, key1, err := st.NextPendingBallot()
 	c.Assert(err, qt.IsNil)
 
 	verifiedBallot1 := &VerifiedBallot{
@@ -984,34 +984,34 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 		VoteID:      b1.VoteID,
 		VoterWeight: big.NewInt(1),
 	}
-	err = st.MarkBallotDone(key1, verifiedBallot1)
+	err = st.MarkBallotVerified(key1, verifiedBallot1)
 	c.Assert(err, qt.IsNil)
 
 	total = st.TotalPendingBallots()
 	c.Assert(total, qt.Equals, 2)
 
 	// Test 6: Process remaining ballots
-	b2, key2, err := st.NextBallot()
+	b2, key2, err := st.NextPendingBallot()
 	c.Assert(err, qt.IsNil)
 	verifiedBallot2 := &VerifiedBallot{
 		ProcessID:   b2.ProcessID,
 		VoteID:      b2.VoteID,
 		VoterWeight: big.NewInt(1),
 	}
-	err = st.MarkBallotDone(key2, verifiedBallot2)
+	err = st.MarkBallotVerified(key2, verifiedBallot2)
 	c.Assert(err, qt.IsNil)
 
 	total = st.TotalPendingBallots()
 	c.Assert(total, qt.Equals, 1)
 
-	b3, key3, err := st.NextBallot()
+	b3, key3, err := st.NextPendingBallot()
 	c.Assert(err, qt.IsNil)
 	verifiedBallot3 := &VerifiedBallot{
 		ProcessID:   b3.ProcessID,
 		VoteID:      b3.VoteID,
 		VoterWeight: big.NewInt(1),
 	}
-	err = st.MarkBallotDone(key3, verifiedBallot3)
+	err = st.MarkBallotVerified(key3, verifiedBallot3)
 	c.Assert(err, qt.IsNil)
 
 	total = st.TotalPendingBallots()
@@ -1137,7 +1137,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 			Address:   big.NewInt(int64(i + 1000)),
 			VoteID:    fmt.Appendf(nil, "vote%d", i),
 		}
-		err = st.PushBallot(ballot)
+		err = st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)
 	}
 
@@ -1147,7 +1147,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 			Address:   big.NewInt(int64(i + 3000)),
 			VoteID:    fmt.Appendf(nil, "vote%d", i+numBallotsP1),
 		}
-		err = st.PushBallot(ballot)
+		err = st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)
 	}
 
@@ -1157,7 +1157,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 	// Step 2: Process some ballots
 	processedCount := 0
 	for range 4 { // Process 4 ballots
-		b, key, err := st.NextBallot()
+		b, key, err := st.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
 
 		verifiedBallot := &VerifiedBallot{
@@ -1166,7 +1166,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
-		err = st.MarkBallotDone(key, verifiedBallot)
+		err = st.MarkBallotVerified(key, verifiedBallot)
 		c.Assert(err, qt.IsNil)
 		processedCount++
 	}
@@ -1200,7 +1200,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 			Ballots:   aggBallots,
 		}
 
-		err = st.PushBallotBatch(batch)
+		err = st.PushAggregatorBatch(batch)
 		c.Assert(err, qt.IsNil)
 
 		err = st.MarkVerifiedBallotsDone(keys...)

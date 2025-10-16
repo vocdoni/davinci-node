@@ -11,8 +11,10 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// CreateOrganization creates a new organization in the OrganizationRegistry contract.
+// CreateOrganization creates a new organization in the OrganizationRegistry
+// contract.
 func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.OrganizationInfo) (common.Hash, error) {
+	// Fallback to old method if transaction manager not initialized
 	txOpts, err := c.authTransactOpts()
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to create transact options: %w", err)
@@ -24,7 +26,8 @@ func (c *Contracts) CreateOrganization(address common.Address, orgInfo *types.Or
 	return tx.Hash(), nil
 }
 
-// Organization returns the organization with the given address from the OrganizationRegistry contract.
+// Organization returns the organization with the given address from the
+// OrganizationRegistry contract.
 func (c *Contracts) Organization(address common.Address) (*types.OrganizationInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	org, err := c.organizations.GetOrganization(&bind.CallOpts{Context: ctx}, address)
@@ -38,7 +41,8 @@ func (c *Contracts) Organization(address common.Address) (*types.OrganizationInf
 	}, nil
 }
 
-// MonitorOrganizationCreatedByPolling monitors the creation of organizations by polling the logs of the blockchain.
+// MonitorOrganizationCreatedByPolling monitors the creation of organizations
+// by polling the logs of the blockchain.
 func (c *Contracts) MonitorOrganizationCreatedByPolling(ctx context.Context, interval time.Duration) (<-chan *types.OrganizationInfo, error) {
 	ch := make(chan *types.OrganizationInfo)
 	go func() {

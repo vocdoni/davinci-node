@@ -26,11 +26,15 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3/rpc"
+	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
 const (
 	// web3QueryTimeout is the timeout for web3 queries.
 	web3QueryTimeout = 10 * time.Second
+
+	// web3WaitTimeout is the timeout for waiting for web3 transactions to be sent.
+	web3WaitTimeout = 2 * time.Minute
 
 	// maxPastBlocksToWatch is the maximum number of past blocks to watch for events.
 	maxPastBlocksToWatch = 9990
@@ -75,6 +79,9 @@ type Contracts struct {
 	lastWatchProcessBlock uint64
 	knownOrganizations    map[string]struct{}
 	lastWatchOrgBlock     uint64
+
+	// Transaction manager for nonce management and stuck transaction recovery
+	txManager *txmanager.TxManager
 }
 
 // New creates a new Contracts instance with the given web3 endpoints.
@@ -144,6 +151,32 @@ func New(web3rpcs []string, web3cApi string, gasMultiplier float64) (*Contracts,
 		currentBlock:             lastBlock,
 		currentBlockLastUpdate:   time.Now(),
 	}, nil
+}
+
+// Web3Pool returns the web3 pool used by the Contracts instance.
+func (c *Contracts) Web3Pool() *rpc.Web3Pool {
+	return c.web3pool
+}
+
+// Client returns the web3 client used by the Contracts instance.
+func (c *Contracts) Client() *rpc.Client {
+	return c.cli
+}
+
+// Signer returns the signer used by the Contracts instance.
+func (c *Contracts) Signer() *ethSigner.Signer {
+	return c.signer
+}
+
+// SetTxManager sets the transaction manager to be used by the Contracts
+// instance.
+func (c *Contracts) SetTxManager(tm *txmanager.TxManager) {
+	c.txManager = tm
+}
+
+// TxManager returns the transaction manager used by the Contracts instance.
+func (c *Contracts) TxManager() *txmanager.TxManager {
+	return c.txManager
 }
 
 // CurrentBlock returns the current block number for the chain.
@@ -262,8 +295,13 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 		knownOrganizations: make(map[string]struct{}),
 		ContractsAddresses: &Addresses{},
 	}
-	if err := c.SetAccountPrivateKey(privkey); err != nil {
-		return nil, err
+
+	// Initialize transaction manager with default configuration
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	c.txManager, err = txmanager.New(ctx, c.web3pool, c.cli, c.signer, txmanager.DefaultConfig(c.ChainID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize transaction manager: %w", err)
 	}
 
 	opts, err := c.authTransactOpts()
@@ -274,7 +312,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy organization registry: %w", err)
 	}
-	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	c.organizations = orgBindings
@@ -289,7 +327,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy state transition zkverifier contract: %w", err)
 	}
-	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	c.ContractsAddresses.StateTransitionZKVerifier = addr
@@ -299,7 +337,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy results zkverifier contract: %w", err)
 	}
-	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	c.ContractsAddresses.ResultsZKVerifier = addr
@@ -319,7 +357,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process registry: %w", err)
 	}
-	if err := c.WaitTx(tx.Hash(), web3QueryTimeout); err != nil {
+	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
 		return nil, err
 	}
 	log.Infow("deployed ProcessRegistry", "address", c.ContractsAddresses.ProcessRegistry, "tx", tx.Hash().Hex())
@@ -343,19 +381,36 @@ func (c *Contracts) CheckTxStatus(txHash common.Hash) (bool, error) {
 	return receipt.Status == 1, nil
 }
 
-// WaitTx waits for a transaction to be mined.
-func (c *Contracts) WaitTx(txHash common.Hash, timeOut time.Duration) error {
+// WaitTxByHash waits for a transaction to be mined given its hash. If the
+// transaction is not mined within the timeout, it returns an error.
+func (c *Contracts) WaitTxByHash(txHash common.Hash, timeOut time.Duration, cb ...func(error)) error {
+	if c.txManager != nil {
+		return c.txManager.WaitTxByHash(txHash, timeOut, cb...)
+	}
+	return c.waitTx(txHash, timeOut)
+}
+
+// WaitTxByID waits for a transaction to be mined given its hash. If the
+// transaction is not mined within the timeout, it returns an error.
+func (c *Contracts) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(error)) error {
+	if c.txManager == nil {
+		return fmt.Errorf("no transaction manager configured")
+	}
+	return c.TxManager().WaitTxByID(id, timeOut, cb...)
+}
+
+// waitTx waits for a transaction to be mined given its hash.
+func (c *Contracts) waitTx(txHash common.Hash, timeOut time.Duration) error {
 	timeout := time.After(timeOut)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-timeout:
 			return fmt.Errorf("timeout waiting for tx %s", txHash.Hex())
 		case <-ticker.C:
-			status, _ := c.CheckTxStatus(txHash)
-			if status {
+			// Check if the transaction is mined
+			if status, _ := c.CheckTxStatus(txHash); status {
 				return nil
 			}
 		}
@@ -428,11 +483,12 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 	return auth, nil
 }
 
-// dev note: this is a temporary method to simulate contract calls
-// it works on geth but not expected to work on other clients or external rpc providers
-// SimulateContractCall simulates a contract call using the eth_simulateV1 RPC method.
-// If blobsSidecar is provided, it will simulate an EIP4844 transaction with blob data.
-// If blobsSidecar is nil, it will simulate a regular contract call.
+// SimulateContractCall simulates a contract call using the eth_simulateV1 RPC
+// method. If blobsSidecar is provided, it will simulate an EIP4844 transaction
+// with blob data. If blobsSidecar is nil, it will simulate a regular contract
+// call.
+// NOTE: this is a temporary method to simulate contract calls it works on geth
+// but not expected to work on other clients or external rpc providers.
 func (c *Contracts) SimulateContractCall(
 	ctx context.Context,
 	contractAddr common.Address,

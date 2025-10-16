@@ -9,6 +9,10 @@ import (
 // base64 default.
 type HexBytes []byte
 
+func (b *HexBytes) Bytes() []byte {
+	return *b
+}
+
 func (b *HexBytes) String() string {
 	return "0x" + hex.EncodeToString(*b)
 }
