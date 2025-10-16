@@ -242,7 +242,7 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 
 	// Choose a reasonable safety multiplier for max fee per gas.
 	// Common pattern: maxFee = (baseFee*2 + tip) * multiplier
-	baseMaxFee := new(big.Int).Mul(baseFee, big.NewInt(2))
+	baseMaxFee := new(big.Int).Mul(h.BaseFee, big.NewInt(2))
 	baseMaxFee.Add(baseMaxFee, tipCap)
 	maxFee := applyGasMultiplier(baseMaxFee, c.GasMultiplier)
 
