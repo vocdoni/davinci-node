@@ -315,6 +315,7 @@ func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
 		uint32(chainID),
 		c.ContractsAddresses.StateTransitionZKVerifier,
 		c.ContractsAddresses.ResultsZKVerifier,
+		true,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deploy process registry: %w", err)
