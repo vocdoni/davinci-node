@@ -73,7 +73,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 
 	for {
 		// Try to fetch the next ballot
-		ballot, key, err := s.stg.NextBallot()
+		ballot, key, err := s.stg.NextPendingBallot()
 		if err != nil {
 			if !errors.Is(err, storage.ErrNoMoreElements) {
 				log.Errorw(err, "failed to get next ballot")
@@ -100,14 +100,14 @@ func (s *Sequencer) processAvailableBallots() bool {
 				"error", err.Error(),
 				"ballot", ballot.String(),
 			)
-			if err := s.stg.RemoveBallot(ballot.ProcessID, key); err != nil {
+			if err := s.stg.RemovePendingBallot(ballot.ProcessID, key); err != nil {
 				log.Warnw("failed to remove invalid ballot", "error", err.Error())
 			}
 			continue
 		}
 
 		// Mark the ballot as processed
-		if err := s.stg.MarkBallotDone(key, verifiedBallot); err != nil {
+		if err := s.stg.MarkBallotVerified(key, verifiedBallot); err != nil {
 			log.Warnw("failed to mark ballot as processed",
 				"error", err.Error(),
 				"address", ballot.Address.String(),

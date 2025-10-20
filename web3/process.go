@@ -14,6 +14,23 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+// contractProcess is a mirror of the on-chain process tuple constructed
+// with the auto-generated bindings.
+type contractProcess struct {
+	Status               uint8
+	OrganizationId       common.Address
+	EncryptionKey        npbindings.IProcessRegistryEncryptionKey
+	LatestStateRoot      *big.Int
+	StartTime            *big.Int
+	Duration             *big.Int
+	MetadataURI          string
+	BallotMode           npbindings.IProcessRegistryBallotMode
+	Census               npbindings.IProcessRegistryCensus
+	VoteCount            *big.Int
+	VoteOverwrittenCount *big.Int
+	Result               []*big.Int
+}
+
 // CreateProcess creates a new process in the ProcessRegistry contract.
 // It returns the process ID and the transaction hash.
 func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
@@ -52,7 +69,8 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 	return pidDecoded, &hash, nil
 }
 
-// Process returns the process with the given ID from the ProcessRegistry contract.
+// Process returns the process with the given ID from the ProcessRegistry
+// contract.
 func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
@@ -65,7 +83,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
 
-	process, err := contractProcess2Process(&ProcessRegistryProcess{
+	process, err := contractProcess2Process(&contractProcess{
 		Status:               p.Status,
 		OrganizationId:       p.OrganizationId,
 		EncryptionKey:        p.EncryptionKey,
@@ -86,7 +104,8 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	return process, nil
 }
 
-// NextProcessID returns the next process ID that will be created in the ProcessRegistry contract for the given address.
+// NextProcessID returns the next process ID that will be created in the
+// ProcessRegistry contract for the given address.
 func (c *Contracts) NextProcessID(address common.Address) (*types.ProcessID, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
@@ -114,96 +133,150 @@ func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 	return process.StateRoot, nil
 }
 
-// SetProcessTransition submits a state transition for the process with the
+// sendProcessTransition submits a state transition for the process with the
 // given ID. It verifies that the old root matches the current state root of
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) SetProcessTransition(processID, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (*common.Hash, error) {
+func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
+	// Copy processID into a fixed-size array to match the contract's expected
+	// type
 	var pid [32]byte
 	copy(pid[:], processID)
-	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
-	if blobsSidecar == nil { // Regular transaction if no blobs are provided
-		autOpts, err := c.authTransactOpts()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create transact options: %w", err)
-		}
-		autOpts.Context = ctx
-		tx, err := c.processes.SubmitStateTransition(autOpts, pid, proof, inputs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to submit state transition: %w", err)
-		}
-		hash := tx.Hash()
-		return &hash, nil
-	}
-
+	// Prepare the ABI for packing the data
 	processABI, err := c.ProcessRegistryABI()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
-	}
-	tx, err := c.NewEIP4844Transaction(
-		ctx,
-		c.ContractsAddresses.ProcessRegistry,
-		processABI,
-		"submitStateTransition",
-		[]any{pid, proof, inputs},
-		blobsSidecar,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
+		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
 	}
 
-	if err := c.cli.SendTransaction(ctx, tx); err != nil {
-		return nil, fmt.Errorf("failed to submit state transition (EIP-4844 Tx): %w", err)
+	// Use transaction manager for automatic nonce management
+	var sentTx *gtypes.Transaction
+	txID, txHash, err := c.txManager.SendTx(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+		internalCtx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
+		defer cancel()
+		// Build the transaction based on whether blobs are provided
+		switch blobsSidecar {
+		case nil: // Regular transaction
+			data, err := processABI.Pack("submitStateTransition", pid, proof, inputs)
+			if err != nil {
+				return nil, fmt.Errorf("failed to pack data: %w", err)
+			}
+			// No blobs so we dont not need to track sidecar, sentTx will be nil
+			return c.txManager.BuildDynamicFeeTx(internalCtx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+		default: // Blob transaction
+			// Store tx in sentTx for tracking sidecar later
+			sentTx, err = c.NewEIP4844TransactionWithNonce(
+				internalCtx,
+				c.ContractsAddresses.ProcessRegistry,
+				processABI,
+				"submitStateTransition",
+				[]any{pid, proof, inputs},
+				blobsSidecar,
+				nonce,
+			)
+			return sentTx, err
+		}
+	})
+	// If blob transaction sent successfully, store sidecar for recovery
+	if err == nil && blobsSidecar != nil && sentTx != nil {
+		if err := c.txManager.TrackBlobTxWithSidecar(sentTx, blobsSidecar); err != nil {
+			log.Warnw("failed to track blob sidecar for recovery",
+				"error", err,
+				"hash", txHash.Hex(),
+				"txID", txID.String())
+		} else {
+			log.Infow("blob sidecar tracked for stuck transaction recovery",
+				"hash", txHash.Hex(),
+				"txID", txID.String(),
+				"blobCount", len(blobsSidecar.Blobs))
+		}
 	}
-	hash := tx.Hash()
-	return &hash, nil
+	log.Infow("state transition submitted",
+		"processID", processID.String())
+	return txID, txHash, err
 }
 
-func (c *Contracts) SetProcessResults(processID, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (*common.Hash, error) {
+// SetProcessTransition submits a state transition for the process with the
+// given ID and waits for the transaction to be mined. Once mined or the timeout
+// is reached, it calls the optional callback with the result of the operation.
+// It returns an error if the submission fails.
+func (c *Contracts) SetProcessTransition(
+	processID types.HexBytes,
+	proof, inputs []byte,
+	blobsSidecar *gtypes.BlobTxSidecar,
+	timeout time.Duration,
+	callback ...func(error),
+) error {
+	txID, txHash, err := c.sendProcessTransition(processID, proof, inputs, blobsSidecar)
+	if err != nil {
+		return fmt.Errorf("failed to set process transition: %w", err)
+	}
+	log.Infow("waiting for state transition to be mined",
+		"hash", txHash.Hex(),
+		"txID", txID.String(),
+		"processID", processID.String())
+	return c.txManager.WaitTxByID(txID, timeout, callback...)
+}
+
+// sendProcessResults sets the results of the process with the given ID in the
+// ProcessRegistry contract. It returns the transaction ID and hash of the
+// results submission, or an error if the submission fails.
+func (c *Contracts) sendProcessResults(processID types.HexBytes, proof, inputs []byte) (types.HexBytes, *common.Hash, error) {
+	// If the transaction manager is not available, return an error
+	if c.txManager == nil {
+		return nil, nil, fmt.Errorf("transaction manager not initialized")
+	}
+	// Copy processID into a fixed-size array to match the contract's expected
+	// type
 	var pid [32]byte
 	copy(pid[:], processID)
-	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
-	if blobsSidecar == nil { // Regular transaction if no blobs are provided
-		autOpts, err := c.authTransactOpts()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create transact options: %w", err)
-		}
-		autOpts.Context = ctx
-		tx, err := c.processes.SetProcessResults(autOpts, pid, proof, inputs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to set process results: %w", err)
-		}
-		hash := tx.Hash()
-		return &hash, nil
-	}
-
+	// Prepare the ABI for packing the data
 	processABI, err := c.ProcessRegistryABI()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
 	}
-	tx, err := c.NewEIP4844Transaction(
-		ctx,
-		c.ContractsAddresses.ProcessRegistry,
-		processABI,
-		"setProcessResults",
-		[]any{pid, proof, inputs},
-		blobsSidecar,
-	)
+	// Pack the data for the setProcessResults function
+	data, err := processABI.Pack("setProcessResults", pid, proof, inputs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create EIP-4844 transaction: %w", err)
+		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}
-
-	if err := c.cli.SendTransaction(ctx, tx); err != nil {
-		return nil, fmt.Errorf("failed to set process results (EIP-4844 Tx): %w", err)
-	}
-	hash := tx.Hash()
-	return &hash, nil
+	// Use transaction manager for automatic nonce management
+	return c.txManager.SendTx(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+		internalCtx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
+		defer cancel()
+		// Results are always regular transactions (no blobs)
+		return c.txManager.BuildDynamicFeeTx(internalCtx, c.ContractsAddresses.ProcessRegistry, data, nonce)
+	})
 }
 
-func (c *Contracts) SetProcessStatus(processID []byte, status types.ProcessStatus) (*common.Hash, error) {
+// SetProcessResults sets the results of the process with the given ID in the
+// ProcessRegistry contract and waits for the transaction to be mined. Once
+// mined or the timeout is reached, it calls the optional callback with the
+// result of the operation. It returns an error if the submission fails.
+func (c *Contracts) SetProcessResults(
+	processID types.HexBytes,
+	proof, inputs []byte,
+	timeout time.Duration, callback ...func(error),
+) error {
+	txID, txHash, err := c.sendProcessResults(processID, proof, inputs)
+	if err != nil {
+		return fmt.Errorf("failed to set process results: %w", err)
+	}
+	log.Infow("waiting for process results to be mined",
+		"hash", txHash.Hex(),
+		"txID", txID.String(),
+		"processID", processID.String())
+	return c.txManager.WaitTxByID(txID, timeout, callback...)
+}
+
+// SetProcessStatus sets the status of the process with the given ID in the
+// ProcessRegistry contract. It returns the transaction hash of the status
+// update, or an error if the update fails.
+func (c *Contracts) SetProcessStatus(processID types.HexBytes, status types.ProcessStatus) (*common.Hash, error) {
 	var pid [32]byte
 	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
@@ -221,7 +294,8 @@ func (c *Contracts) SetProcessStatus(processID []byte, status types.ProcessStatu
 	return &hash, nil
 }
 
-// MonitorProcessCreation monitors the creation of new processes by polling the ProcessRegistry contract every interval.
+// MonitorProcessCreation monitors the creation of new processes by polling the
+// ProcessRegistry contract every interval.
 func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
 	ch := make(chan *types.Process)
 	go func() {
@@ -265,9 +339,9 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 	return ch, nil
 }
 
-// MonitorProcessStatusChanges monitors the status changes in processes by polling
-// the ProcessRegistry contract every interval. It returns a channel that emits
-// processes with the old and new status.
+// MonitorProcessStatusChanges monitors the status changes in processes by
+// polling the ProcessRegistry contract every interval. It returns a channel
+// that emits processes with the old and new status.
 func (c *Contracts) MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error) {
 	updatedProcChan := make(chan *types.ProcessWithStatusChange)
 	go func() {
@@ -366,8 +440,9 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 	return updatedProcChan, nil
 }
 
-// MonitorProcessCreationBySubscription monitors the creation of new processes by subscribing to the ProcessRegistry contract.
-// Requires the web3 rpc endpoint to support subscriptions on websockets.
+// MonitorProcessCreationBySubscription monitors the creation of new processes
+// by subscribing to the ProcessRegistry contract. Requires the web3 rpc
+// endpoint to support subscriptions on websockets.
 func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<-chan *types.Process, error) {
 	ch1 := make(chan *npbindings.ProcessRegistryProcessCreated)
 	ch2 := make(chan *types.Process)
@@ -424,7 +499,7 @@ func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<
 	return ch2, nil
 }
 
-func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) {
+func contractProcess2Process(p *contractProcess) (*types.Process, error) {
 	mode := types.BallotMode{
 		UniqueValues:   p.BallotMode.UniqueValues,
 		CostFromWeight: p.BallotMode.CostFromWeight,
@@ -476,24 +551,8 @@ func contractProcess2Process(p *ProcessRegistryProcess) (*types.Process, error) 
 	}, nil
 }
 
-// ProcessRegistryProcess is a mirror of the on-chain process tuple constructed with the auto-generated bindings
-type ProcessRegistryProcess struct {
-	Status               uint8
-	OrganizationId       common.Address
-	EncryptionKey        npbindings.IProcessRegistryEncryptionKey
-	LatestStateRoot      *big.Int
-	StartTime            *big.Int
-	Duration             *big.Int
-	MetadataURI          string
-	BallotMode           npbindings.IProcessRegistryBallotMode
-	Census               npbindings.IProcessRegistryCensus
-	VoteCount            *big.Int
-	VoteOverwrittenCount *big.Int
-	Result               []*big.Int
-}
-
-func process2ContractProcess(p *types.Process) ProcessRegistryProcess {
-	var prp ProcessRegistryProcess
+func process2ContractProcess(p *types.Process) contractProcess {
+	var prp contractProcess
 
 	prp.Status = uint8(p.Status)
 	prp.OrganizationId = p.OrganizationId

@@ -18,16 +18,16 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 	// 1) Verified ballots (push pending -> reserve -> mark done)
 	verifiedIDs := [][]byte{[]byte("vv1")}
 	for _, id := range verifiedIDs {
-		c.Assert(stg.PushBallot(mkBallot(pid, id)), qt.IsNil)
-		_, key, err := stg.NextBallot()
+		c.Assert(stg.PushPendingBallot(mkBallot(pid, id)), qt.IsNil)
+		_, key, err := stg.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
-		c.Assert(stg.MarkBallotDone(key, mkVerifiedBallot(pid, id)), qt.IsNil)
+		c.Assert(stg.MarkBallotVerified(key, mkVerifiedBallot(pid, id)), qt.IsNil)
 	}
 
 	// 2) Pending ballots
 	pendingIDs := [][]byte{[]byte("pv1"), []byte("pv2")}
 	for _, id := range pendingIDs {
-		c.Assert(stg.PushBallot(mkBallot(pid, id)), qt.IsNil)
+		c.Assert(stg.PushPendingBallot(mkBallot(pid, id)), qt.IsNil)
 	}
 
 	// 3) Aggregator batch (ready for state transition)
@@ -36,7 +36,7 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 	for _, id := range aggIDs {
 		aggBallots = append(aggBallots, mkAggBallot(id))
 	}
-	c.Assert(stg.PushBallotBatch(&AggregatorBallotBatch{
+	c.Assert(stg.PushAggregatorBatch(&AggregatorBallotBatch{
 		ProcessID: types.HexBytes(pid),
 		Ballots:   aggBallots,
 	}), qt.IsNil)
@@ -72,7 +72,7 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 	}
 
 	// Assert: aggregator batches removed
-	if _, _, err := stg.NextBallotBatch(pid); err == nil {
+	if _, _, err := stg.NextAggregatorBatch(pid); err == nil {
 		t.Fatalf("expected no more aggregator batches after cleanup")
 	} else if err != ErrNoMoreElements {
 		t.Fatalf("expected ErrNoMoreElements for aggregator batches, got: %v", err)

@@ -254,7 +254,7 @@ func (s *Storage) CleanProcessStaleVotes(pid []byte) error {
 		return fmt.Errorf("error removing verified ballots for process %x: %w", pid, err)
 	}
 	// remove aggregated ballots (ready for state transition)
-	if err := s.RemoveBallotBatchesByProcess(pid); err != nil {
+	if err := s.RemoveAggregatorBatchesByProcess(pid); err != nil {
 		return fmt.Errorf("error removing ballot batches for process %x: %w", pid, err)
 	}
 	// remove pending state transitions batches
