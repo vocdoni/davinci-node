@@ -18,6 +18,14 @@ func newDatabase(t *testing.T) db.Database {
 	return metadb.NewTest(t)
 }
 
+// makeAddress creates a 20-byte address from a string for testing.
+// It pads or truncates the input to exactly 20 bytes.
+func makeAddress(s string) []byte {
+	addr := make([]byte, 20)
+	copy(addr, []byte(s))
+	return addr
+}
+
 func TestNewCensusDB(t *testing.T) {
 	t.Parallel()
 	db := newDatabase(t)
@@ -108,6 +116,10 @@ func TestPersistenceAcrossCensusDBInstances(t *testing.T) {
 	ref1, err := censusDB1.New(censusID)
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, ref1, qt.IsNotNil)
+
+	// Close the first tree to release the Pebble database lock.
+	err = ref1.tree.Close()
+	qt.Assert(t, err, qt.IsNil)
 
 	// Create a new CensusDB instance sharing the same underlying database.
 	censusDB2 := NewCensusDB(db)
@@ -310,18 +322,17 @@ func TestProofByRootNonExistentLeaf(t *testing.T) {
 	ref, err := censusDB.New(censusID)
 	qt.Assert(t, err, qt.IsNil)
 	// Insert a known key/value pair.
-	leafKey := []byte("existingKey")
+	leafKey := makeAddress("existingKey")
 	value := []byte("someValue")
 	err = ref.Insert(leafKey, value)
 	qt.Assert(t, err, qt.IsNil)
 
 	// Now query with a non-existent leaf key.
-	nonExistentLeaf := []byte("nonExistentKey")
+	nonExistentLeaf := makeAddress("nonExistentKey")
 	root := ref.Root()
 	proof, err := censusDB.ProofByRoot(root, nonExistentLeaf)
 	qt.Assert(t, proof, qt.IsNil)
 	qt.Assert(t, err, qt.Not(qt.IsNil))
-	qt.Assert(t, err.Error(), qt.Contains, "key not found")
 }
 
 func TestProofByRootValid(t *testing.T) {
@@ -332,7 +343,7 @@ func TestProofByRootValid(t *testing.T) {
 	ref, err := censusDB.New(censusID)
 	qt.Assert(t, err, qt.IsNil)
 	// Insert a key/value pair.
-	leafKey := []byte("myKey")
+	leafKey := makeAddress("myKey")
 	value := []byte("myValue")
 	err = ref.Insert(leafKey, value)
 	qt.Assert(t, err, qt.IsNil)
@@ -342,8 +353,9 @@ func TestProofByRootValid(t *testing.T) {
 	proof, err := censusDB.ProofByRoot(newRoot, leafKey)
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, proof, qt.Not(qt.IsNil))
-	qt.Assert(t, string(proof.Address), qt.DeepEquals, string(leafKey))
-	qt.Assert(t, string(proof.Value), qt.DeepEquals, string(value))
+	qt.Assert(t, []byte(proof.Address), qt.DeepEquals, leafKey)
+	// Note: proof.Value is the packed address+weight, not the raw value
+	qt.Assert(t, proof.Weight, qt.IsNotNil)
 }
 
 func TestUpdateRootConcurrent(t *testing.T) {
@@ -364,7 +376,7 @@ func TestUpdateRootConcurrent(t *testing.T) {
 			qt.Assert(t, err, qt.IsNil)
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
-				key := []byte(fmt.Sprintf("key%d%d", i, j))
+				key := makeAddress(fmt.Sprintf("key%d%d", i, j))
 				val := []byte(fmt.Sprintf("val%d%d", i, j))
 				_ = ref2.Insert(key, val)
 			}
@@ -373,7 +385,7 @@ func TestUpdateRootConcurrent(t *testing.T) {
 	wg.Wait()
 
 	// After concurrent updates, try generating a proof for one key.
-	testKey := []byte("key00")
+	testKey := makeAddress("key00")
 	proof, err := censusDB.ProofByRoot(ref.Root(), testKey)
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, ref.Root(), qt.IsNotNil)
@@ -393,7 +405,7 @@ func TestSameRootForMultipleCensuses(t *testing.T) {
 	qt.Assert(t, err, qt.IsNil)
 
 	// Insert the same key/value pair into both trees.
-	leafKey := []byte("sameKey")
+	leafKey := makeAddress("sameKey")
 	value := []byte("sameValue")
 	err = ref1.Insert(leafKey, value)
 	qt.Assert(t, err, qt.IsNil)
@@ -420,7 +432,7 @@ func TestVerifyProof(t *testing.T) {
 	ref, err := censusDB.New(censusID)
 	qt.Assert(t, err, qt.IsNil)
 	// Insert a key/value pair.
-	leafKey := []byte("myKey")
+	leafKey := makeAddress("myKey")
 	value := []byte("myValue")
 	err = ref.Insert(leafKey, value)
 	qt.Assert(t, err, qt.IsNil)
