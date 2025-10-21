@@ -28,6 +28,7 @@ func main() {
 	numBlobs := pflag.Int("n", 1, "Number of random blobs to include")
 	wait := pflag.Bool("wait", true, "Wait for tx to be mined")
 	capi := pflag.String("capi", "https://ethereum-sepolia-beacon-api.publicnode.com", "Consensus API URL (required)")
+
 	pflag.Parse()
 
 	if *rpcURL == "" || *privKey == "" || *capi == "" {
@@ -84,6 +85,18 @@ func main() {
 	for i, c := range commitments {
 		log.Infow("commitment", "index", i, "hash", fmt.Sprintf("0x%x", c))
 	}
+
+	go func() {
+		stateTransitionChan, err := contracts.MonitorProcessStateRootChange(context.TODO(), time.Second*10)
+		if err != nil {
+			log.Fatalf("MonitorProcessStateRootChange: %v", err)
+		}
+		process := <-stateTransitionChan
+		log.Debugw("process state root changed", "pid", process.ID.String(),
+			"stateRoot", process.NewStateRoot.String(),
+			"voteCount", process.NewVoteCount.String(),
+			"voteOverwrittenCount", process.NewVoteOverwrittenCount.String())
+	}()
 
 	// 4) Optionally wait
 	if *wait {

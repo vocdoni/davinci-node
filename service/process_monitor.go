@@ -138,6 +138,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				log.Warnw("failed to update process state root",
 					"pid", process.ID.String(), "err", err.Error())
 			}
+			// pm.storage.FetchBlob or something like this, here
 		}
 	}
 }

@@ -109,12 +109,12 @@ func New(beaconAPI string, cfg *Config) *Client {
 func (c *Client) Start(ctx context.Context) error {
 	backoff := c.cfg.BackoffInitial
 	for {
-
 		if err := c.consumeOnce(ctx); err != nil {
 			// If context canceled or closed, exit.
 			if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) {
 				return err
 			}
+			log.Warn(err)
 			// Backoff and retry.
 			t := min(backoff, c.cfg.BackoffMax)
 			// Optional: jitter could be added here.
@@ -138,15 +138,18 @@ func (c *Client) consumeOnce(ctx context.Context) error {
 	q := url.Values{}
 	q.Set("topics", strings.Join(c.cfg.Topics, ","))
 	u := fmt.Sprintf("%s/eth/v1/events?%s", c.beaconAPI, q.Encode())
+	log.Infow("consumeOnce", "q", q, "u", u)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
+		log.Errorw(err, "return")
 		return err
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := c.cfg.HTTPClient.Do(req)
 	if err != nil {
+		log.Errorw(err, "return")
 		return err
 	}
 	defer func() {
@@ -155,9 +158,12 @@ func (c *Client) consumeOnce(ctx context.Context) error {
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
+		log.Errorw(err, "return")
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 		return fmt.Errorf("SSE subscribe failed: %d %s", resp.StatusCode, string(b))
 	}
+
+	log.Infof("resp.Body: %s", resp.Body)
 
 	reader := bufio.NewReader(resp.Body)
 	var evName string

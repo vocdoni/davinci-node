@@ -398,3 +398,81 @@ func (c *Contracts) BlobByCommitment(
 	}
 	return nil, fmt.Errorf("commitment %s not found in slot %d sidecars", commitmentHex, targetSlot)
 }
+
+// BlobByTxHash fetches blobs via EL RPC (preferred) and verifies against tx blobVersionedHashes.
+func (c *Contracts) BlobByTxHash(ctx context.Context, txHash common.Hash) ([][]byte, error) {
+	ethcli, err := c.cli.EthClient()
+	if err != nil {
+		return nil, fmt.Errorf("eth client: %w", err)
+	}
+
+	// 1) Load tx to get its blob versioned hashes
+	tx, _, err := ethcli.TransactionByHash(ctx, txHash)
+	if err != nil {
+		return nil, fmt.Errorf("tx: %w", err)
+	}
+	if tx.Type() != types.BlobTxType {
+		return nil, fmt.Errorf("not a blob tx (type=%d)", tx.Type())
+	}
+	want := tx.BlobHashes() // []common.Hash (versioned)
+
+	// 2) Try the EL convenience RPC
+	var sidecar struct {
+		Blobs       []string `json:"blobs"`
+		Commitments []string `json:"commitments"`
+		Proofs      []string `json:"proofs"`
+	}
+	raw, err := c.cli.RPCClient()
+	if err != nil {
+		return nil, fmt.Errorf("rpc client: %w", err)
+	}
+
+	if err := raw.CallContext(ctx, &sidecar, "eth_getBlobSidecarByTxHash", txHash.Hex()); err == nil {
+		// 3) Verify & collect
+		out := make([][]byte, 0, len(sidecar.Blobs))
+		for i := range sidecar.Blobs {
+			blobB, err := hexutil.Decode(sidecar.Blobs[i])
+			if err != nil {
+				return nil, err
+			}
+			commB, err := hexutil.Decode(sidecar.Commitments[i])
+			if err != nil {
+				return nil, err
+			}
+			var comm kzg4844.Commitment
+			copy(comm[:], commB)
+			got := kzg4844.KZGToVersionedHash(comm) // compare to want[i] (order is not guaranteed)
+			ok := false
+			for _, vh := range want {
+				if bytes.Equal(got[:], vh[:]) {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return nil, fmt.Errorf("sidecar commitment not in tx blobVersionedHashes")
+			}
+			out = append(out, blobB)
+		}
+		return out, nil
+	}
+
+	// 4) Fallback to your CL path for each commitment expected by the tx
+	// Use your existing BlobByCommitment with each tx.BlobHashes converted back to commitment if you stored them,
+	// or first fetch commitments via consensus sidecars for the right slot (similar to your current code).
+	// (You can call your BlobByCommitment once, but still verify got hash ∈ want)
+	receipt, err := ethcli.TransactionReceipt(ctx, txHash)
+	if err != nil {
+		return nil, err
+	}
+	hdr, err := ethcli.HeaderByHash(ctx, receipt.BlockHash)
+	if err != nil {
+		return nil, err
+	}
+	if hdr.ParentBeaconRoot == nil {
+		return nil, fmt.Errorf("no parent beacon root in header")
+	}
+	// ... your existing parentRoot -> slot -> /eth/v1/beacon/blob_sidecars/{slot} code here ...
+	// make sure to match commitments -> versioned hashes against 'want' like above.
+	return nil, fmt.Errorf("CL fallback not implemented in this sketch")
+}
