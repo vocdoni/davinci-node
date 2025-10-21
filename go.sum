@@ -119,8 +119,8 @@ github.com/codahale/rfc6979 v0.0.0-20141003034818-6a90f24967eb h1:EDmT6Q9Zs+SbUo
 github.com/codahale/rfc6979 v0.0.0-20141003034818-6a90f24967eb/go.mod h1:ZjrT6AXHbDs86ZSdt/osfBi5qfexBrKUdONk989Wnk4=
 github.com/compose-spec/compose-go/v2 v2.1.3 h1:bD67uqLuL/XgkAK6ir3xZvNLFPxPScEi1KW7R5esrLE=
 github.com/compose-spec/compose-go/v2 v2.1.3/go.mod h1:lFN0DrMxIncJGYAXTfWuajfwj5haBJqrBkarHcnjJKc=
-github.com/consensys/gnark-crypto v0.18.0 h1:vIye/FqI50VeAr0B3dx+YjeIvmc3LWz4yEfbWBpTUf0=
-github.com/consensys/gnark-crypto v0.18.0/go.mod h1:L3mXGFTe1ZN+RSJ+CLjUt9x7PNdx8ubaYfDROyp2Z8c=
+github.com/consensys/gnark-crypto v0.19.0 h1:zXCqeY2txSaMl6G5wFpZzMWJU9HPNh8qxPnYJ1BL9vA=
+github.com/consensys/gnark-crypto v0.19.0/go.mod h1:rT23F0XSZqE0mUA0+pRtnL56IbPxs6gp4CeRsBk4XS0=
 github.com/containerd/cgroups v1.1.0 h1:v8rEWFl6EoqHB+swVNjVoCJE8o3jX7e8nqBGPLaDFBM=
 github.com/containerd/cgroups v1.1.0/go.mod h1:6ppBcbh/NOOUU+dMKrykgaBnK9lCIBxHqJDGwsa1mIw=
 github.com/containerd/console v1.0.4 h1:F2g4+oChYvBTsASRTz8NP6iIAi97J3TtSAsLbIFn4ro=
@@ -730,6 +730,10 @@ github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97 
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97/go.mod h1:BOS7k/ifqwicL1CgLiq1NylPnMLCuNRBHU2HHHtnWOE=
 github.com/vocdoni/gnark-no-assert v0.0.0-20250723103948-9e2777846d75 h1:CiaS9DIFLgLplyamifm0wG5obinb4+BSoVfjRbv36SA=
 github.com/vocdoni/gnark-no-assert v0.0.0-20250723103948-9e2777846d75/go.mod h1:F6k35ZIi9GC//wW2i9Fz9mURBcLF8qJLQQ/BETnQ9Z4=
+github.com/vocdoni/lean-imt-go v0.0.0-20250919074949-2b27df1f1aab h1:Vjs1rNmo+SA2s9QZb/gKNEHqVj+WyG+91eCbGI0+ud0=
+github.com/vocdoni/lean-imt-go v0.0.0-20250919074949-2b27df1f1aab/go.mod h1:td3j8rydLQRGcizIiXV7kp2FErbduOgxJMp3bQhR24E=
+github.com/vocdoni/lean-imt-go v0.0.0-20251002083034-be3d942711bf h1:HJ+Zs/bWCUqFpKJ0zTJXr80rnh8C7tc65HNruoPl6EE=
+github.com/vocdoni/lean-imt-go v0.0.0-20251002083034-be3d942711bf/go.mod h1:td3j8rydLQRGcizIiXV7kp2FErbduOgxJMp3bQhR24E=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=

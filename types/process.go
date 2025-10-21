@@ -322,6 +322,7 @@ type CensusProof struct {
 	Address      HexBytes     `json:"address"`
 	Weight       *BigInt      `json:"weight,omitempty"`
 	// Merkletree related fields
+	Index    uint64   `json:"index,omitempty"` // Leaf index in the tree (used by leanimt)
 	Siblings HexBytes `json:"siblings,omitempty"`
 	Value    HexBytes `json:"value,omitempty"`
 	// CSP related fields

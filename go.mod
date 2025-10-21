@@ -1,6 +1,6 @@
 module github.com/vocdoni/davinci-node
 
-go 1.24
+go 1.24.6
 
 replace github.com/consensys/gnark => github.com/vocdoni/gnark-no-assert v0.0.0-20250723103948-9e2777846d75
 
@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/consensys/gnark v0.13.0
-	github.com/consensys/gnark-crypto v0.18.0
+	github.com/consensys/gnark-crypto v0.19.0
 	github.com/crate-crypto/go-eth-kzg v1.3.0
 	github.com/ethereum/go-ethereum v1.16.3
 	github.com/frankban/quicktest v1.14.6
@@ -33,6 +33,7 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/davinci-contracts v0.0.0-20250930080235-db145178b2fa
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
+	github.com/vocdoni/lean-imt-go v0.0.0-20251002083034-be3d942711bf
 	go.mongodb.org/mongo-driver v1.12.1
 	golang.org/x/mod v0.26.0
 	golang.org/x/sync v0.16.0
