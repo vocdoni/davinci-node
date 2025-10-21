@@ -82,6 +82,8 @@ type Contracts struct {
 
 	// Transaction manager for nonce management and stuck transaction recovery
 	txManager *txmanager.TxManager
+	// Whether the current contracts support blob transactions
+	supportForBlobTxs bool
 }
 
 // New creates a new Contracts instance with the given web3 endpoints.
@@ -198,6 +200,26 @@ func (c *Contracts) CurrentBlock() uint64 {
 	return c.currentBlock
 }
 
+// SupportBlobTxs returns whether the current contracts support blob
+// transactions.
+func (c *Contracts) SupportBlobTxs() bool {
+	return c.supportForBlobTxs
+}
+
+// supportBlobTxs queries the ProcessRegistry contract to check if blob
+// transactions are supported.
+func (c *Contracts) supportBlobTxs() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	supported, err := c.processes.BlobsDA(&bind.CallOpts{
+		Context: ctx,
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to check blob support: %w", err)
+	}
+	return supported, nil
+}
+
 // LoadContracts loads the contracts
 func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	if addresses == nil {
@@ -273,6 +295,11 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 		ResultsZKVerifier:         &rVerifierABI,
 	}
 
+	// check for blob transaction support querying the ProcessRegistry contract
+	c.supportForBlobTxs, err = c.supportBlobTxs()
+	if err != nil {
+		log.Warnw("failed to check blob transaction support, defaulting to false", "error", err)
+	}
 	return nil
 }
 
