@@ -347,7 +347,6 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 					if _, exists := c.knownProcesses[processID]; !exists {
 						continue
 					}
-					// iter.Event.Raw.TxHash
 					process, err := c.Process(iter.Event.ProcessId[:])
 					if err != nil {
 						log.Errorw(err, "failed to get process while monitoring process status changes")
@@ -359,6 +358,7 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 						NewStateRoot:            new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
 						NewVoteCount:            process.VoteCount,
 						NewVoteOverwrittenCount: process.VoteOverwrittenCount,
+						// TxHash:                  iter.Event.Raw.TxHash, // so we can fetch the corresponding blob from CL
 					}
 				}
 			}
