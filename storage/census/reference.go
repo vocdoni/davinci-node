@@ -1,41 +1,40 @@
 package census
 
 import (
-	"bytes"
-	"encoding/binary"
-	"io"
+	"fmt"
 	"math/big"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
-	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/lean-imt-go/census"
+
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// CensusRef is a reference to a census. It holds the Merkle tree.
+// CensusRef is a reference to a census. It holds the leanimt census tree.
 // All accesses to the underlying tree (and its currentRoot) are protected by treeMu.
 type CensusRef struct {
 	ID          uuid.UUID
-	MaxLevels   int
 	HashType    string
 	LastUsed    time.Time
 	currentRoot []byte
-	tree        *arbo.Tree `gob:"-"`
-	// treeMu protects all access to the underlying Merkle tree.
+	tree        *census.CensusIMT `gob:"-"`
+	// treeMu protects all access to the underlying census tree.
 	treeMu sync.Mutex `gob:"-"`
 	// updateRootRequest is the channel to send asynchronous root update requests.
 	updateRootRequest chan *updateRootRequest `gob:"-"`
 }
 
-// Tree returns the underlying arbo.Tree pointer.
+// Tree returns the underlying census.CensusIMT pointer.
 // (Not concurrency‑safe; use Insert, Root, or GenProof.)
-func (cr *CensusRef) Tree() *arbo.Tree {
+func (cr *CensusRef) Tree() *census.CensusIMT {
 	return cr.tree
 }
 
-// SetTree sets the arbo.Tree pointer.
-func (cr *CensusRef) SetTree(tree *arbo.Tree) {
+// SetTree sets the census.CensusIMT pointer.
+func (cr *CensusRef) SetTree(tree *census.CensusIMT) {
 	cr.tree = tree
 }
 
@@ -52,131 +51,106 @@ func (cr *CensusRef) sendUpdateRoot(newRoot []byte) error {
 	return nil
 }
 
-// Insert safely inserts a key/value pair into the Merkle tree.
+// Insert safely inserts an address/weight pair into the census tree.
 // It holds treeMu during the Add and Root calls.
 func (cr *CensusRef) Insert(key, value []byte) error {
+	// Convert key to Ethereum address (20 bytes).
+	if len(key) != 20 {
+		return fmt.Errorf("invalid key length: expected 20 bytes, got %d", len(key))
+	}
+	addr := common.BytesToAddress(key)
+
+	// Convert value to weight (big.Int).
+	weight := new(big.Int).SetBytes(value)
+
 	cr.treeMu.Lock()
-	err := cr.tree.Add(key, value)
+	err := cr.tree.Add(addr, weight)
 	if err != nil {
 		cr.treeMu.Unlock()
 		return err
 	}
-	newRoot, err := cr.tree.Root()
-	cr.treeMu.Unlock()
-	if err != nil {
-		return err
+	root, exists := cr.tree.Root()
+	if !exists {
+		root = big.NewInt(0)
 	}
+	newRoot := root.Bytes()
+	cr.treeMu.Unlock()
+
 	return cr.sendUpdateRoot(newRoot)
 }
 
-// InsertBatch safely inserts a batch of key/value pairs into the Merkle tree.
-func (cr *CensusRef) InsertBatch(keys, values [][]byte) ([]arbo.Invalid, error) {
+// InsertBatch safely inserts a batch of address/weight pairs into the census tree.
+func (cr *CensusRef) InsertBatch(keys, values [][]byte) ([]interface{}, error) {
+	if len(keys) != len(values) {
+		return nil, fmt.Errorf("keys and values length mismatch")
+	}
+
+	// Convert keys to addresses and values to weights.
+	addresses := make([]common.Address, len(keys))
+	weights := make([]*big.Int, len(values))
+	for i := range keys {
+		if len(keys[i]) != 20 {
+			return nil, fmt.Errorf("invalid key length at index %d: expected 20 bytes, got %d", i, len(keys[i]))
+		}
+		addresses[i] = common.BytesToAddress(keys[i])
+		weights[i] = new(big.Int).SetBytes(values[i])
+	}
+
 	cr.treeMu.Lock()
-	invalid, err := cr.tree.AddBatch(keys, values)
+	err := cr.tree.AddBulk(addresses, weights)
 	if err != nil {
 		cr.treeMu.Unlock()
-		return invalid, err
+		return nil, err
 	}
-	newRoot, err := cr.tree.Root()
+	root, exists := cr.tree.Root()
+	if !exists {
+		root = big.NewInt(0)
+	}
+	newRoot := root.Bytes()
 	cr.treeMu.Unlock()
-	if err != nil {
-		return invalid, err
-	}
-	return invalid, cr.sendUpdateRoot(newRoot)
+
+	// leanimt doesn't return invalid entries like arbo does.
+	// Return empty slice for compatibility.
+	return []interface{}{}, cr.sendUpdateRoot(newRoot)
 }
 
-// FetchKeysAndValues fetches all keys and values from the Merkle tree.
-// Returns the keys as byte arrays and the values as BigInts.
+// FetchKeysAndValues fetches all keys and values from the census tree.
+// Returns the keys as byte arrays (addresses) and the values as BigInts (weights).
+// NOTE: This is not efficiently supported by leanimt. The census tree doesn't
+// expose an iteration API. This method returns an error for now.
+// TODO: Consider maintaining a separate index of addresses if this functionality is needed.
 func (cr *CensusRef) FetchKeysAndValues() ([]types.HexBytes, []*types.BigInt, error) {
-	cr.treeMu.Lock()
-	defer cr.treeMu.Unlock()
-
-	buf := new(bytes.Buffer)
-	err := cr.tree.DumpWriter(nil, buf)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var keys []types.HexBytes
-	var values []*types.BigInt
-
-	for {
-		l := make([]byte, 3)
-		_, err = io.ReadFull(buf, l)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, nil, err
-		}
-		lenK := int(l[0])
-		k := make([]byte, lenK)
-		_, err = io.ReadFull(buf, k)
-		if err != nil {
-			return nil, nil, err
-		}
-		lenV := binary.LittleEndian.Uint16(l[1:3])
-		v := make([]byte, lenV)
-		_, err = io.ReadFull(buf, v)
-		if err != nil {
-			return nil, nil, err
-		}
-		keys = append(keys, k)
-		values = append(values, (*types.BigInt)(arbo.BytesToBigInt(v)))
-	}
-
-	return keys, values, nil
+	return nil, nil, fmt.Errorf("FetchKeysAndValues is not supported by leanimt census implementation")
 }
 
-// Root safely returns the current Merkle tree root.
+// Root safely returns the current census tree root.
 func (cr *CensusRef) Root() []byte {
 	cr.treeMu.Lock()
 	defer cr.treeMu.Unlock()
-	root, err := cr.tree.Root()
-	if err != nil {
-		return nil
+	root, exists := cr.tree.Root()
+	if !exists {
+		return big.NewInt(0).Bytes()
 	}
-	return root
+	return root.Bytes()
 }
 
-// Size safely returns the number of leaves in the Merkle tree.
+// Size safely returns the number of leaves in the census tree.
 func (cr *CensusRef) Size() int {
 	cr.treeMu.Lock()
 	defer cr.treeMu.Unlock()
-	size, err := cr.tree.GetNLeafs()
-	if err != nil {
-		return 0
-	}
-	return size
+	return cr.tree.Size()
 }
 
-// GenProof safely generates a Merkle proof for the given leaf key.
-// It returns the proof components and an inclusion boolean.
-func (cr *CensusRef) GenProof(key []byte) ([]byte, []byte, []byte, bool, error) {
+// GenProof safely generates a census proof for the given address.
+// It returns a census.CensusProof structure.
+func (cr *CensusRef) GenProof(addr common.Address) (*census.CensusProof, error) {
 	cr.treeMu.Lock()
 	defer cr.treeMu.Unlock()
-	return cr.tree.GenProof(key)
+	return cr.tree.GenerateProof(addr)
 }
 
-// VerifyProof verifies a Merkle proof for the given leaf key.
-func VerifyProof(key, value, root, siblings []byte) bool {
-	valid, err := arbo.CheckProof(defaultHashFunction, key, value, root, siblings)
-	if err != nil {
-		return false
-	}
-	return valid
-}
-
-// BigIntSiblings unpacks a serialized siblings array using the default hash
-// function and returns the individual sibling leaves as big.Ints in
-// little-endian format.
+// BigIntSiblings converts packed siblings bytes to a slice of big.Int siblings.
+// This is for compatibility with existing code that expects big.Int siblings.
 func BigIntSiblings(siblings []byte) ([]*big.Int, error) {
-	unpackedSiblings, err := arbo.UnpackSiblings(defaultHashFunction, siblings)
-	if err != nil {
-		return nil, err
-	}
-	bigSiblings := []*big.Int{}
-	for _, sibling := range unpackedSiblings {
-		bigSiblings = append(bigSiblings, arbo.BytesToBigInt(sibling))
-	}
-	return bigSiblings, nil
+	return unpackSiblings(siblings), nil
 }

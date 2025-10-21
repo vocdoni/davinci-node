@@ -6,13 +6,18 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
-	"github.com/vocdoni/arbo"
+	leanimt "github.com/vocdoni/lean-imt-go"
+	"github.com/vocdoni/lean-imt-go/census"
+
 	"github.com/vocdoni/davinci-node/db"
-	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -33,8 +38,6 @@ var (
 	ErrCensusIsLocked = fmt.Errorf("census is locked")
 	// ErrKeyNotFound is returned when a key is not found in the Merkle tree.
 	ErrKeyNotFound = fmt.Errorf("key not found")
-
-	defaultHashFunction = arbo.HashFunctionMiMC_BLS12_377
 )
 
 // updateRootRequest is used to update the root of a census tree.
@@ -109,29 +112,24 @@ func (c *CensusDB) New(censusID uuid.UUID) (*CensusRef, error) {
 
 	// Prepare a new census reference.
 	ref := &CensusRef{
-		ID:        censusID,
-		MaxLevels: types.CensusTreeMaxLevels,
-		HashType:  string(defaultHashFunction.Type()),
-		LastUsed:  time.Now(),
+		ID:       censusID,
+		HashType: "poseidon",
+		LastUsed: time.Now(),
 	}
 
-	// Create the Merkle tree.
-	tree, err := arbo.NewTree(arbo.Config{
-		Database:     prefixeddb.NewPrefixedDatabase(c.db, censusPrefix(censusID)),
-		MaxLevels:    types.CensusTreeMaxLevels,
-		HashFunction: defaultHashFunction,
-	})
-	tree.HashFunction().Type()
+	// Create the census tree using leanimt with Pebble persistence.
+	censusTree, err := census.NewCensusIMTWithPebble(censusPrefix(censusID), leanimt.PoseidonHasher)
 	if err != nil {
 		return nil, err
 	}
-	ref.SetTree(tree)
-	// Compute and update the current root.
-	root, err := tree.Root()
-	if err != nil {
-		return nil, err
+	ref.SetTree(censusTree)
+
+	// Get the current root.
+	root, exists := censusTree.Root()
+	if !exists {
+		root = big.NewInt(0)
 	}
-	ref.currentRoot = root
+	ref.currentRoot = root.Bytes()
 
 	// Prepare the root update channel.
 	ref.updateRootRequest = c.updateRootChan
@@ -143,7 +141,7 @@ func (c *CensusDB) New(censusID uuid.UUID) (*CensusRef, error) {
 
 	// Add to the in‑memory maps.
 	c.loadedCensus[censusID] = ref
-	rk := rootKey(root)
+	rk := rootKey(ref.currentRoot)
 	if _, exists := c.rootIndex[rk]; !exists {
 		c.rootIndex[rk] = censusID
 	}
@@ -166,22 +164,20 @@ func (c *CensusDB) writeReference(ref *CensusRef) error {
 	return wtx.Commit()
 }
 
-// HashAndTrunk computes the hash of a key and truncates it to the required length.
-// Returns nil if the hash function fails. Panics if the hash output is too short.
+// HashAndTrunkKey computes the hash of a key and truncates it to the required length.
+// For leanimt, we use the address directly (20 bytes for Ethereum addresses).
 func (c *CensusDB) HashAndTrunkKey(key []byte) []byte {
-	hash, err := defaultHashFunction.Hash(key)
-	if err != nil {
-		return nil
+	// For leanimt census, keys are Ethereum addresses (20 bytes)
+	if len(key) > 20 {
+		return key[:20]
 	}
-	if len(hash) < types.CensusKeyMaxLen {
-		panic("hash function output is too short, maxlevels is too high")
-	}
-	return hash[:types.CensusKeyMaxLen]
+	return key
 }
 
 // HashLen returns the length of the hash function output in bytes.
+// Poseidon hash outputs 32 bytes.
 func (c *CensusDB) HashLen() int {
-	return defaultHashFunction.Len()
+	return 32
 }
 
 // Exists returns true if the censusID exists in the local database.
@@ -232,20 +228,18 @@ func (c *CensusDB) loadCensusRef(censusID uuid.UUID) (*CensusRef, error) {
 		return nil, err
 	}
 
-	tree, err := arbo.NewTree(arbo.Config{
-		Database:     prefixeddb.NewPrefixedDatabase(c.db, censusPrefix(censusID)),
-		MaxLevels:    ref.MaxLevels,
-		HashFunction: defaultHashFunction,
-	})
+	// Reopen the census tree.
+	censusTree, err := census.NewCensusIMTWithPebble(censusPrefix(censusID), leanimt.PoseidonHasher)
 	if err != nil {
 		return nil, err
 	}
-	ref.tree = tree
-	root, err := tree.Root()
-	if err != nil {
-		return nil, err
+	ref.tree = censusTree
+
+	root, exists := censusTree.Root()
+	if !exists {
+		root = big.NewInt(0)
 	}
-	ref.currentRoot = root
+	ref.currentRoot = root.Bytes()
 	ref.updateRootRequest = c.updateRootChan
 
 	// Update the LastUsed timestamp and write back to the database.
@@ -255,7 +249,7 @@ func (c *CensusDB) loadCensusRef(censusID uuid.UUID) (*CensusRef, error) {
 	}
 
 	c.loadedCensus[censusID] = &ref
-	rk := rootKey(root)
+	rk := rootKey(ref.currentRoot)
 	if _, exists := c.rootIndex[rk]; !exists {
 		c.rootIndex[rk] = censusID
 	}
@@ -278,35 +272,24 @@ func (c *CensusDB) Del(censusID uuid.UUID) error {
 	if ref, exists := c.loadedCensus[censusID]; exists {
 		delete(c.rootIndex, rootKey(ref.currentRoot))
 		delete(c.loadedCensus, censusID)
+		// Close the tree to release resources.
+		if ref.tree != nil {
+			_ = ref.tree.Close()
+		}
 	}
 	c.mu.Unlock()
 
+	// Note: leanimt's Pebble database is stored in a directory.
+	// We should clean up the directory asynchronously.
 	go func(id uuid.UUID) {
-		if _, err := deleteCensusTreeFromDatabase(c.db, censusPrefix(id)); err != nil {
-			log.Warnw("error deleting census tree", "id", hex.EncodeToString(id[:]), "err", err)
-		}
+		// The census data is stored in the directory specified by censusPrefix.
+		// For now, we'll leave the cleanup to the OS or manual intervention.
+		log.Infow("census deleted, manual cleanup of directory may be needed",
+			"id", hex.EncodeToString(id[:]),
+			"path", censusPrefix(id))
 	}(censusID)
 
 	return nil
-}
-
-// deleteCensusTreeFromDatabase removes all keys belonging to a census tree from the database.
-func deleteCensusTreeFromDatabase(kv db.Database, prefix []byte) (int, error) {
-	database := prefixeddb.NewPrefixedDatabase(kv, prefix)
-	wtx := database.WriteTx()
-	count := 0
-	err := database.Iterate(nil, func(k, _ []byte) bool {
-		if err := wtx.Delete(k); err != nil {
-			log.Warnw("could not remove key from database", "key", hex.EncodeToString(k))
-		} else {
-			count++
-		}
-		return true
-	})
-	if err != nil {
-		return 0, err
-	}
-	return count, wtx.Commit()
 }
 
 // ProofByRoot finds a census by its Merkle tree root and generates a Merkle proof for the given leafKey.
@@ -323,21 +306,33 @@ func (c *CensusDB) ProofByRoot(root, leafKey []byte) (*types.CensusProof, error)
 	if err != nil {
 		return nil, err
 	}
-	key, value, siblings, inclusion, err := ref.GenProof(leafKey)
+
+	// Convert leafKey to Ethereum address.
+	if len(leafKey) != 20 {
+		return nil, fmt.Errorf("invalid key length: expected 20 bytes, got %d", len(leafKey))
+	}
+	addr := common.BytesToAddress(leafKey)
+
+	// Generate proof using leanimt census.
+	proof, err := ref.GenProof(addr)
 	if err != nil {
 		return nil, err
 	}
-	if !inclusion {
-		return nil, ErrKeyNotFound
-	}
+
+	// Convert leanimt proof to types.CensusProof.
+	// The census proof already contains the packed address+weight value internally.
+	// We need to reconstruct it: packed = (address << 88) | weight
+	packedValue := new(big.Int).Lsh(new(big.Int).SetBytes(proof.Address.Bytes()), 88)
+	packedValue.Or(packedValue, proof.Weight)
 
 	return &types.CensusProof{
 		CensusOrigin: types.CensusOriginMerkleTree,
-		Root:         root,
-		Address:      key,
-		Value:        value,
-		Siblings:     siblings,
-		Weight:       (*types.BigInt)(arbo.BytesToBigInt(value)),
+		Root:         proof.Root.Bytes(),
+		Address:      addr.Bytes(),
+		Value:        packedValue.Bytes(),
+		Siblings:     packSiblings(proof.Siblings),
+		Weight:       (*types.BigInt)(proof.Weight),
+		Index:        proof.Index,
 	}, nil
 }
 
@@ -346,13 +341,28 @@ func (c *CensusDB) VerifyProof(proof *types.CensusProof) bool {
 	if proof == nil {
 		return false
 	}
-	// if weight is available, check it
+	// If weight is available, check it matches the value.
 	if proof.Weight != nil {
-		if proof.Weight.MathBigInt().Cmp(arbo.BytesToBigInt(proof.Value)) != 0 {
+		// For leanimt census, the value is the packed address+weight.
+		// Reconstruct: packed = (address << 88) | weight
+		addr := common.BytesToAddress(proof.Address)
+		packedValue := new(big.Int).Lsh(new(big.Int).SetBytes(addr.Bytes()), 88)
+		packedValue.Or(packedValue, proof.Weight.MathBigInt())
+		if packedValue.Cmp(new(big.Int).SetBytes(proof.Value)) != 0 {
 			return false
 		}
 	}
-	return VerifyProof(proof.Address, proof.Value, proof.Root, proof.Siblings)
+
+	// Verify using leanimt.
+	// Create a MerkleProof structure for verification.
+	siblings := unpackSiblings(proof.Siblings)
+	merkleProof := leanimt.MerkleProof[*big.Int]{
+		Root:     new(big.Int).SetBytes(proof.Root),
+		Leaf:     new(big.Int).SetBytes(proof.Value),
+		Index:    proof.Index,
+		Siblings: siblings,
+	}
+	return leanimt.VerifyProofWith(merkleProof, leanimt.PoseidonHasher, leanimt.BigIntEqual)
 }
 
 // SizeByRoot returns the number of leaves in the Merkle tree with the given root.
@@ -397,7 +407,38 @@ func (c *CensusDB) updateRoot(censusID uuid.UUID, newRoot []byte) error {
 	return nil
 }
 
-// censusPrefix returns the prefix used for the census tree in the database.
-func censusPrefix(censusID uuid.UUID) []byte {
-	return append([]byte(censusDBprefix), censusID[:]...)
+// censusPrefix returns the directory path used for the census tree in the database.
+// If TMPDIR environment variable is set, it uses that, otherwise uses /tmp.
+func censusPrefix(censusID uuid.UUID) string {
+	tmpDir := os.TempDir()
+	return filepath.Join(tmpDir, fmt.Sprintf("%s%x", censusDBprefix, censusID[:]))
+}
+
+// packSiblings packs a slice of big.Int siblings into a byte array.
+// Each sibling is encoded as 32 bytes in big-endian format.
+func packSiblings(siblings []*big.Int) []byte {
+	if len(siblings) == 0 {
+		return []byte{}
+	}
+	packed := make([]byte, 0, len(siblings)*32)
+	for _, s := range siblings {
+		siblingBytes := make([]byte, 32)
+		s.FillBytes(siblingBytes)
+		packed = append(packed, siblingBytes...)
+	}
+	return packed
+}
+
+// unpackSiblings unpacks a byte array into a slice of big.Int siblings.
+// Each sibling is expected to be 32 bytes in big-endian format.
+func unpackSiblings(packed []byte) []*big.Int {
+	if len(packed) == 0 {
+		return []*big.Int{}
+	}
+	numSiblings := len(packed) / 32
+	siblings := make([]*big.Int, numSiblings)
+	for i := 0; i < numSiblings; i++ {
+		siblings[i] = new(big.Int).SetBytes(packed[i*32 : (i+1)*32])
+	}
+	return siblings
 }

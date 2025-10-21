@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
@@ -59,7 +58,9 @@ func (a *API) addCensusParticipants(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		keys = append(keys, p.Key)
-		values = append(values, arbo.BigIntToBytes(a.storage.CensusDB().HashLen(), p.Weight.MathBigInt()))
+		// Convert weight to bytes (big-endian)
+		weightBytes := p.Weight.MathBigInt().Bytes()
+		values = append(values, weightBytes)
 	}
 
 	// insert the keys and values into the tree
