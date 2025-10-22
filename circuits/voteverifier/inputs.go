@@ -7,12 +7,12 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/iden3/go-iden3-crypto/mimc7"
+	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -54,7 +54,7 @@ func (vi *VoteVerifierInputs) FromProcessBallot(process *types.Process, b *stora
 	case types.CensusOriginMerkleTree:
 		// For Merkle Tree origin, we need to convert the siblings to
 		// emulated elements and set the CSPProof to a dummy value
-		censusSiblings, err := census.BigIntSiblings(b.CensusProof.Siblings)
+		censusSiblings, err := censusdb.BigIntSiblings(b.CensusProof.Siblings)
 		if err != nil {
 			return fmt.Errorf("failed to unpack census proof siblings: %w", err)
 		}
