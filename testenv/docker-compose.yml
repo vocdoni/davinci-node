@@ -13,6 +13,8 @@ services:
       - "1"
       - --block-time
       - "4"
+      - --hardfork
+      - "cancun"
       - -vvvvv
     ports:
       - "${ANVIL_PORT:-8545}:8545"
