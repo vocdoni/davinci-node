@@ -18,6 +18,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
@@ -25,7 +26,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -82,7 +82,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	inputHash, err := mimc7.Hash(hashInputs, nil)
 	c.Assert(err, qt.IsNil)
 
-	siblings, err := census.BigIntSiblings(vote.CensusProof.Siblings)
+	siblings, err := censusdb.BigIntSiblings(vote.CensusProof.Siblings)
 	c.Assert(err, qt.IsNil)
 
 	emulatedSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
