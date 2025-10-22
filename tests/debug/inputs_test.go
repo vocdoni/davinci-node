@@ -25,7 +25,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/storage/census"
+	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
