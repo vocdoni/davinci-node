@@ -160,9 +160,16 @@ func (s *Sequencer) pushTransitionToContract(
 		"strProof", proof.String(),
 		"strInputs", inputs.String())
 
-	// Verify the blob proof locally before sending to the contract
-	if err := gethkzg.VerifyBlobProof(&blobSidecar.Blobs[0], blobSidecar.Commitments[0], blobSidecar.Proofs[0]); err != nil {
-		return fmt.Errorf("local blob proof verification failed: %w", err)
+	// If the current contracts support blob transactions, verify the blob
+	// proof locally before sending to the contract
+	if s.contracts.SupportBlobTxs() {
+		if err := gethkzg.VerifyBlobProof(&blobSidecar.Blobs[0], blobSidecar.Commitments[0], blobSidecar.Proofs[0]); err != nil {
+			return fmt.Errorf("local blob proof verification failed: %w", err)
+		}
+	} else {
+		// If they does not support blob transactions, set sidecar to nil to
+		// avoid sending it
+		blobSidecar = nil
 	}
 
 	// Simulate tx to the contract to check if it will fail and get the root
