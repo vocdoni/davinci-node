@@ -182,9 +182,9 @@ func (a *API) getCensusProof(w http.ResponseWriter, r *http.Request) {
 
 	leafKey := key
 	if len(key) > types.CensusKeyMaxLen {
-		leafKey = a.storage.CensusDB().HashAndTrunkKey(key)
+		leafKey = a.storage.CensusDB().TrunkKey(key)
 		if leafKey == nil {
-			ErrGenericInternalServerError.WithErr(fmt.Errorf("failed to hash participant key")).Write(w)
+			ErrGenericInternalServerError.WithErr(fmt.Errorf("failed to trunk participant key")).Write(w)
 			return
 		}
 	}

@@ -33,7 +33,6 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/davinci-contracts v0.0.0-20251114124048-cc12eb62f40f
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
-	github.com/vocdoni/lean-imt-go v0.0.0-20251002083034-be3d942711bf
 	go.mongodb.org/mongo-driver v1.12.1
 	golang.org/x/mod v0.27.0
 	golang.org/x/sync v0.16.0
@@ -224,6 +223,7 @@ require (
 	github.com/tonistiigi/fsutil v0.0.0-20240424095704-91a3fc46842c // indirect
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea // indirect
 	github.com/tonistiigi/vt100 v0.0.0-20240514184818-90bafcd6abab // indirect
+	github.com/vocdoni/lean-imt-go v0.0.0-20251002083034-be3d942711bf // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
@@ -280,3 +280,5 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 	tags.cncf.io/container-device-interface v0.7.2 // indirect
 )
+
+replace github.com/vocdoni/census3-bigquery => ./census3-bigquery

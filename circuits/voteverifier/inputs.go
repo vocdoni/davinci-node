@@ -12,7 +12,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/storage/census"
+	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/types"
 )
 
