@@ -192,19 +192,14 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 	if method == "" {
 		return nil, fmt.Errorf("empty method")
 	}
-	if blobsSidecar == nil {
-		return nil, fmt.Errorf("nil blob sidecar")
-	}
 	if c.signer == nil {
-		return nil, fmt.Errorf("no signer configured")
-	}
-	if len(blobsSidecar.BlobHashes()) == 0 {
-		return nil, fmt.Errorf("empty blob hashes in sidecar")
+		return nil, fmt.Errorf("no signer defined")
 	}
 
+	// ABI-encode call data
 	data, err := contractABI.Pack(method, args...)
 	if err != nil {
-		return nil, fmt.Errorf("pack: %w", err)
+		return nil, err
 	}
 
 	// Estimate execution gas, include blob hashes so any contract logic that
@@ -216,33 +211,26 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 		BlobHashes: blobsSidecar.BlobHashes(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("estimate gas: %w", err)
-	}
-	if gas == 0 {
-		return nil, fmt.Errorf("gas estimation returned zero")
+		return nil, err
 	}
 
 	// Fee building
 	// Tip suggestion (EIP-1559)
 	tipCap, err := c.cli.SuggestGasTipCap(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("tip cap: %w", err)
-	}
-	if tipCap == nil {
-		return nil, fmt.Errorf("tip cap is nil")
+		return nil, err
 	}
 
+	// Base fee for *execution gas* from latest block
 	h, err := c.cli.HeaderByNumber(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("header: %w", err)
+		return nil, err
 	}
-	if h.BaseFee == nil {
-		return nil, fmt.Errorf("header base fee is nil")
-	}
+	baseFee := h.BaseFee // can be nil on pre-London, but not on mainnet today
 
 	// Choose a reasonable safety multiplier for max fee per gas.
 	// Common pattern: maxFee = (baseFee*2 + tip) * multiplier
-	baseMaxFee := new(big.Int).Mul(h.BaseFee, big.NewInt(2))
+	baseMaxFee := new(big.Int).Mul(baseFee, big.NewInt(2))
 	baseMaxFee.Add(baseMaxFee, tipCap)
 	maxFee := applyGasMultiplier(baseMaxFee, c.GasMultiplier)
 
@@ -261,39 +249,8 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 	baseBlobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
 	blobFeeCap := applyGasMultiplier(baseBlobFeeCap, c.GasMultiplier)
 
-	nonce, err := c.cli.PendingNonceAt(ctx, c.AccountAddress())
-	if err != nil {
-		return nil, fmt.Errorf("nonce: %w", err)
-	}
+	// Build & sign the blob transaction
 	cID := new(big.Int).SetUint64(c.ChainID)
-	if cID == nil {
-		return nil, fmt.Errorf("chain ID is nil")
-	}
-
-	if maxFee == nil {
-		return nil, fmt.Errorf("max fee is nil")
-	}
-
-	chainID, overflow := uint256.FromBig(cID)
-	if overflow {
-		return nil, fmt.Errorf("chainID overflow")
-	}
-
-	tipCapU256, overflow := uint256.FromBig(tipCap)
-	if overflow {
-		return nil, fmt.Errorf("tipCap overflow")
-	}
-
-	maxFeeU256, overflow := uint256.FromBig(maxFee)
-	if overflow {
-		return nil, fmt.Errorf("maxFee overflow")
-	}
-
-	blobFeeCapU256, overflow := uint256.FromBig(blobFeeCap)
-	if overflow {
-		return nil, fmt.Errorf("blobFeeCap overflow")
-	}
-
 	inner := &types.BlobTx{
 		ChainID:    uint256.MustFromBig(cID),
 		Nonce:      nonce, // Use provided nonce
@@ -303,25 +260,15 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 		To:         to,
 		Value:      uint256.NewInt(0),
 		Data:       data,
-		BlobFeeCap: blobFeeCapU256,
+		BlobFeeCap: uint256.MustFromBig(blobFeeCap), // REQUIRED for blobs
 		BlobHashes: blobsSidecar.BlobHashes(),
-		Sidecar:    blobsSidecar,
+		Sidecar:    blobsSidecar, // attach sidecar for gossip
 	}
 
-	priv := (*ecdsa.PrivateKey)(c.signer)
-	if priv == nil {
-		return nil, fmt.Errorf("signer private key is nil")
-	}
-
-	signedTx, err := types.SignNewTx(priv, types.NewCancunSigner(cID), inner)
+	signedTx, err := types.SignNewTx((*ecdsa.PrivateKey)(c.signer), types.NewCancunSigner(cID), inner)
 	if err != nil {
-		return nil, fmt.Errorf("sign: %w", err)
+		return nil, err
 	}
-
-	if signedTx == nil {
-		return nil, fmt.Errorf("signed transaction is nil")
-	}
-
 	return signedTx, nil
 }
 
