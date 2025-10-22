@@ -170,6 +170,12 @@ func (wm *WorkerManager) Stop() {
 func (wm *WorkerManager) AddWorker(address, name string) *Worker {
 	// Worker already exists, no need to add again
 	if w, exists := wm.GetWorker(address); exists {
+		// Update the worker's name if provided and different from the existing
+		// one
+		if name != "" && w.Name == "" {
+			w.Name = name
+			wm.workers.Store(address, w)
+		}
 		return w
 	}
 	w := &Worker{
