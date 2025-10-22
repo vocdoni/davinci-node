@@ -27,6 +27,9 @@ const (
 	maxResultsUploadRetries = 3
 )
 
+// startOnchainProcessor starts the on-chain processor that periodically
+// processes state transitions and verified results to be uploaded to the
+// contract.
 func (s *Sequencer) startOnchainProcessor() error {
 	// Create tickers for processing on-chain transitions and listening for
 	// finished processes
@@ -56,6 +59,8 @@ func (s *Sequencer) startOnchainProcessor() error {
 	return nil
 }
 
+// processTransitionOnChain processes state transition batches ready to be
+// uploaded on-chain for each registered process ID.
 func (s *Sequencer) processTransitionOnChain() {
 	// process each registered process ID
 	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
@@ -128,6 +133,8 @@ func (s *Sequencer) processTransitionOnChain() {
 	})
 }
 
+// pushTransitionToContract pushes the given state transition proof and inputs
+// to the smart contract for the given process ID.
 func (s *Sequencer) pushTransitionToContract(
 	processID types.HexBytes,
 	proof *solidity.Groth16CommitmentProof,
@@ -178,24 +185,43 @@ func (s *Sequencer) pushTransitionToContract(
 	// Submit the proof to the contract
 	log.Infow("state transition pending to be mined",
 		"pid", processID.String())
+	// Create a callback for the state transition
+	callback := s.pushStateTransitionCallback(processID)
 	if err := s.contracts.SetProcessTransition(
 		processID,
 		abiProof,
 		abiInputs,
 		blobSidecar,
 		transitionOnChainTimeout,
-		s.pushStateTransitionCallback(processID),
+		callback,
 	); err != nil {
-		if err := s.stg.PrunePendingTx(storage.StateTransitionTx, processID); err != nil {
-			log.Warnw("failed to release pending tx",
-				"error", err,
-				"processID", processID.String())
-		}
-		log.Infow("pending tx released", "pid", processID.String())
+		// TODO: mark the batch as failed? recover the pending batch?
+		// If this function returns an error, the caller skips to the next
+		// pending transition, so it should be retried later.
+		return fmt.Errorf("failed to set process transition: %w", err)
 	}
 	return nil
 }
 
+// recoverPendingBatch attempts to recover any pending state
+// transitions for the given process ID by re-pushing the batch to storage to
+// be retried later in a new state transition cycle.
+func (s *Sequencer) recoverPendingBatch(pid types.HexBytes) error {
+	pendingBatch, err := s.stg.PendingAggregatorBatch(pid)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return fmt.Errorf("failed to get pending aggregator batch: %w", err)
+	}
+	if pendingBatch != nil {
+		if err := s.stg.PushAggregatorBatch(pendingBatch); err != nil {
+			return fmt.Errorf("failed to recover pending aggregator batch: %w", err)
+		}
+	}
+	return nil
+}
+
+// pushStateTransitionCallback returns a callback function to be called when
+// the state transition transaction is mined or fails. It handles logging and
+// recovery of pending state transitions.
 func (s *Sequencer) pushStateTransitionCallback(pid types.HexBytes) func(err error) {
 	return func(err error) {
 		defer func() {
@@ -210,19 +236,10 @@ func (s *Sequencer) pushStateTransitionCallback(pid types.HexBytes) func(err err
 		// If there was an error, log it and recover the batch if possible
 		if err != nil {
 			log.Errorf("failed to wait for state transition of %s: %s", pid.String(), err)
-			pendingBatch, err := s.stg.PendingAggregatorBatch(pid)
-			if err != nil && !errors.Is(err, storage.ErrNotFound) {
-				log.Warnw("failed to get pending aggregator batch after state transition failure",
+			if err := s.recoverPendingBatch(pid); err != nil {
+				log.Warnw("failed to recover pending state transition after state transition failure",
 					"error", err,
 					"processID", pid.String())
-				return
-			}
-			if pendingBatch != nil {
-				if err := s.stg.PushAggregatorBatch(pendingBatch); err != nil {
-					log.Warnw("failed to recover aggregator batch after state transition failure",
-						"error", err,
-						"processID", pid.String())
-				}
 			}
 			return
 		}
@@ -230,6 +247,8 @@ func (s *Sequencer) pushStateTransitionCallback(pid types.HexBytes) func(err err
 	}
 }
 
+// processResultsOnChain processes verified results and uploads them to the
+// contract.
 func (s *Sequencer) processResultsOnChain() {
 	for {
 		res, err := s.stg.NextVerifiedResults()

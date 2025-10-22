@@ -445,10 +445,11 @@ func (s *Storage) RemoveStateTransitionBatchesByProcess(pid []byte) error {
 }
 
 // MarkStateTransitionBatchOutdated marks a state transition batch as outdated,
-// removes the reservation, and deletes the batch from the state transition queue.
-// This is called when the Ethereum smart contract state root differs from the local one,
-// indicating that the state transition proof needs to be regenerated. The ballots and
-// vote IDs remain valid and keep their current status (processed), but the proof is outdated.
+// removes the reservation, and deletes the batch from the state transition
+// queue. This is called when the Ethereum smart contract state root differs
+// from the local one, indicating that the state transition proof needs to be
+// regenerated. The ballots and vote IDs remain valid and keep their current
+// status (processed), but the proof is outdated.
 func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
