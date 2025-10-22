@@ -12,14 +12,19 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/vocdoni/davinci-node/log"
 )
 
-const defaultRetries = 3
+const (
+	// defaultRetries is the number of times to retry an RPC call on the same endpoint before switching
+	defaultRetries = 2
+	// defaultRetrySleep is the time to wait between retries on the same endpoint
+	defaultRetrySleep = 200 * time.Millisecond
+)
 
 var (
-	defaultTimeout    = 2 * time.Second
-	filterLogsTimeout = 3 * time.Second
-	retrySleep        = 200 * time.Millisecond
+	defaultTimeout    = 3 * time.Second
+	filterLogsTimeout = 5 * time.Second
 )
 
 // Client struct implements bind.ContractBackend interface for a web3 pool with
@@ -56,12 +61,7 @@ func (c *Client) RPCClient() (*rpc.Client, error) {
 // found in the pool or if the method fails. Required by the bind.ContractBackend
 // interface.
 func (c *Client) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.CodeAt(internalCtx, account, blockNumber)
@@ -77,12 +77,7 @@ func (c *Client) CodeAt(ctx context.Context, account common.Address, blockNumber
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
 func (c *Client) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.CallContract(internalCtx, call, blockNumber)
@@ -103,7 +98,6 @@ func (c *Client) CallSimulation(
 	if err != nil {
 		return fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
 	}
-	// no retry wrapper here, or wrap if you want retries for simulate too
 	return endpoint.rpcClient.CallContext(ctx, result, "eth_simulateV1", simReq, blockTag)
 }
 
@@ -112,12 +106,7 @@ func (c *Client) CallSimulation(
 // found in the pool or if the method fails. Required by the bind.ContractBackend
 // interface.
 func (c *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return 0, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.EstimateGas(internalCtx, msg)
@@ -133,12 +122,7 @@ func (c *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64,
 // found in the pool or if the method fails. Required by the bind.ContractBackend
 // interface.
 func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, filterLogsTimeout)
 		defer cancel()
 		return endpoint.client.FilterLogs(internalCtx, query)
@@ -154,12 +138,7 @@ func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
 func (c *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.HeaderByNumber(internalCtx, number)
@@ -175,12 +154,7 @@ func (c *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.He
 // if the chainID is not found in the pool or if the method fails. Required by
 // the bind.ContractBackend interface.
 func (c *Client) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return 0, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.PendingNonceAt(internalCtx, account)
@@ -196,12 +170,7 @@ func (c *Client) PendingNonceAt(ctx context.Context, account common.Address) (ui
 // if the chainID is not found in the pool or if the method fails. Required by
 // the bind.ContractBackend interface.
 func (c *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.SuggestGasPrice(internalCtx)
@@ -217,12 +186,7 @@ func (c *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
 func (c *Client) SendTransaction(ctx context.Context, tx *types.Transaction) error {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	_, err = c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	_, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return nil, endpoint.client.SendTransaction(internalCtx, tx)
@@ -235,12 +199,7 @@ func (c *Client) SendTransaction(ctx context.Context, tx *types.Transaction) err
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
 func (c *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.PendingCodeAt(internalCtx, account)
@@ -258,12 +217,7 @@ func (c *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]b
 func (c *Client) SubscribeFilterLogs(ctx context.Context,
 	query ethereum.FilterQuery, ch chan<- types.Log,
 ) (ethereum.Subscription, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.SubscribeFilterLogs(internalCtx, query, ch)
@@ -279,12 +233,7 @@ func (c *Client) SubscribeFilterLogs(ctx context.Context,
 // if the chainID is not found in the pool or if the method fails. Required by
 // the bind.ContractBackend interface.
 func (c *Client) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.SuggestGasTipCap(internalCtx)
@@ -300,12 +249,7 @@ func (c *Client) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 // found in the pool or if the method fails. This method is required by internal
 // logic, it is not required by the bind.ContractBackend interface.
 func (c *Client) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.BalanceAt(internalCtx, account, blockNumber)
@@ -321,12 +265,7 @@ func (c *Client) BalanceAt(ctx context.Context, account common.Address, blockNum
 // found in the pool or if the method fails. This method is required by internal
 // logic, it is not required by the bind.ContractBackend interface.
 func (c *Client) BlockNumber(ctx context.Context) (uint64, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return 0, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	// retry the method in case of failure and get final result and error
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
 		return endpoint.client.BlockNumber(internalCtx)
@@ -339,11 +278,7 @@ func (c *Client) BlockNumber(ctx context.Context) (uint64, error) {
 
 // BlobBaseFee retrieves the base fee for blob transactions on the blockchain.
 func (c *Client) BlobBaseFee(ctx context.Context) (*big.Int, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	res, err := c.retryAndCheckErr(endpoint.URI, func() (any, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		var hexFee string
 		if err := endpoint.rpcClient.CallContext(ctx, &hexFee, "eth_blobBaseFee"); err != nil {
 			return nil, err
@@ -360,21 +295,77 @@ func (c *Client) BlobBaseFee(ctx context.Context) (*big.Int, error) {
 	return res.(*big.Int), nil
 }
 
-// retryAndCheckErr method retries a function call in case of error and checks
-// the error after the retries. It returns the result of the function call and
-// the error if the retries are exhausted. It is used to retry the methods of
-// the ethclient.Client in case of failure. If the error is not nil after the
-// retries, the endpoint is disabled in the pool and the error is returned.
-func (c *Client) retryAndCheckErr(uri string, fn func() (any, error)) (any, error) {
-	var res any
-	var err error
-	for range defaultRetries {
-		res, err = fn()
-		if err == nil {
-			return res, nil
-		}
-		time.Sleep(retrySleep)
+// retryAndCheckErr method retries a function call with endpoint switching.
+// The function fn receives a fresh endpoint on each attempt. It first retries
+// on the current endpoint, and if that fails, it disables the endpoint and tries
+// the next available one. This continues until either the operation succeeds or
+// all endpoints have been exhausted. This ensures no RPC calls are lost due to
+// a single endpoint failure. Thread-safe: all operations are mutex-protected.
+func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, error) {
+	// Track which endpoints we've tried to avoid infinite loops
+	triedEndpoints := make(map[string]bool)
+
+	// Get total number of available endpoints for this chainID
+	totalEndpoints := c.w3p.NumberOfEndpoints(c.chainID, false)
+	if totalEndpoints == 0 {
+		return nil, fmt.Errorf("no endpoints available for chainID %d", c.chainID)
 	}
-	c.w3p.DisableEndpoint(c.chainID, uri)
-	return nil, fmt.Errorf("error after %d retries: %w", defaultRetries, err)
+
+	var lastErr error
+	endpointAttempts := 0
+
+	// Try all available endpoints
+	for endpointAttempts < totalEndpoints {
+		// Get current endpoint
+		endpoint, err := c.w3p.Endpoint(c.chainID)
+		if err != nil {
+			return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
+		}
+
+		// Check if we've already tried this endpoint
+		if triedEndpoints[endpoint.URI] {
+			log.Errorw(lastErr, fmt.Sprintf("endpoint rotation returned already-tried endpoint %s for chainID %d",
+				endpoint.URI, c.chainID))
+			return nil, fmt.Errorf("endpoint rotation failed for chainID %d: %w", c.chainID, lastErr)
+		}
+		triedEndpoints[endpoint.URI] = true
+
+		// Retry on current endpoint
+		var res any
+		for retry := 0; retry < defaultRetries; retry++ {
+			res, err = fn(endpoint)
+			if err == nil {
+				// Success! Log if we had to switch endpoints
+				if endpointAttempts > 0 {
+					log.Infow("RPC call succeeded after endpoint switch",
+						"chainID", c.chainID,
+						"successfulURI", endpoint.URI,
+						"endpointAttempts", endpointAttempts+1,
+						"retriesOnEndpoint", retry+1)
+				}
+				return res, nil
+			}
+			lastErr = err
+			if retry < defaultRetries-1 {
+				time.Sleep(defaultRetrySleep)
+			}
+		}
+
+		// All retries failed on this endpoint, disable it and try next
+		log.Warnw("endpoint failed after retries, switching to next",
+			"chainID", c.chainID,
+			"failedURI", endpoint.URI,
+			"error", err,
+			"retries", defaultRetries,
+			"endpointAttempt", endpointAttempts+1)
+
+		c.w3p.DisableEndpoint(c.chainID, endpoint.URI)
+		endpointAttempts++
+	}
+
+	// All endpoints exhausted
+	log.Errorw(lastErr, fmt.Sprintf("no more endpoints available after failures for chainID %d, tried %d endpoints",
+		c.chainID, len(triedEndpoints)))
+	return nil, fmt.Errorf("all endpoints exhausted for chainID %d after %d attempts: %w",
+		c.chainID, endpointAttempts, lastErr)
 }

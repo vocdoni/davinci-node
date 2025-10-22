@@ -148,7 +148,25 @@ func (nm *Web3Pool) Endpoint(chainID uint64) (*Web3Endpoint, error) {
 // in the chainID provided.
 func (nm *Web3Pool) DisableEndpoint(chainID uint64, uri string) {
 	if endpoints, ok := nm.endpoints[chainID]; ok {
+		availableBefore := endpoints.Available()
 		endpoints.Disable(uri)
+		availableAfter := endpoints.Available()
+
+		// Log the disable operation
+		if availableBefore != availableAfter {
+			log.Warnw("endpoint disabled",
+				"chainID", chainID,
+				"uri", uri,
+				"availableEndpoints", availableAfter,
+				"disabledEndpoints", endpoints.Disabled())
+
+			// If all endpoints were disabled and got reset, log that too
+			if availableAfter > availableBefore {
+				log.Infow("all endpoints were disabled, reset to available",
+					"chainID", chainID,
+					"resetEndpoints", availableAfter)
+			}
+		}
 	}
 }
 
