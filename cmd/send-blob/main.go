@@ -41,7 +41,7 @@ func main() {
 	log.Infow("starting sendblob")
 
 	// 1) Init Contracts
-	contracts, err := web3.New([]string{*rpcURL}, *capi)
+	contracts, err := web3.New([]string{*rpcURL}, *capi, 1.0)
 	if err != nil {
 		log.Fatalf("init web3: %v", err)
 	}
@@ -87,7 +87,7 @@ func main() {
 
 	// 4) Optionally wait
 	if *wait {
-		if err := contracts.WaitTx(tx.Hash(), 2*time.Minute); err != nil {
+		if err := contracts.WaitTxByHash(tx.Hash(), 2*time.Minute); err != nil {
 			log.Errorf("wait tx %s: %v", tx.Hash().Hex(), err)
 		} else {
 			log.Infow("tx mined", "hash", tx.Hash().Hex())

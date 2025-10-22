@@ -22,7 +22,32 @@ import (
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844" // for the struct types
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/vocdoni/davinci-node/log"
 )
+
+// applyGasMultiplier applies the gas multiplier to a base fee value.
+// It multiplies the base fee by the multiplier and returns the result.
+// The multiplier is a float64 value (e.g., 1.0 = no change, 2.0 = double).
+func applyGasMultiplier(baseFee *big.Int, multiplier float64) *big.Int {
+	if multiplier <= 0 {
+		multiplier = 1.0
+	}
+	// Convert multiplier to big.Float for precision
+	mult := new(big.Float).SetFloat64(multiplier)
+	// Convert baseFee to big.Float
+	baseFeeFloat := new(big.Float).SetInt(baseFee)
+	// Multiply
+	result := new(big.Float).Mul(baseFeeFloat, mult)
+	// Convert back to big.Int (truncating decimals)
+	resultInt, _ := result.Int(nil)
+
+	log.Debugw("applied gas multiplier",
+		"baseFee", baseFee.String(),
+		"multiplier", multiplier,
+		"result", resultInt.String())
+
+	return resultInt
+}
 
 // SendBlobTx builds, signs and broadcasts an EIP-4844 (type-3) tx.
 //   - `to` MUST be non-nil per EIP-4844.
@@ -62,14 +87,18 @@ func (c *Contracts) SendBlobTx(
 	if err != nil {
 		return nil, nil, fmt.Errorf("base gas fee: %w", err)
 	}
-	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
+	// Apply gas multiplier: (baseFee * 2 + tipCap) * multiplier
+	baseGasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
+	gasFeeCap := applyGasMultiplier(baseGasFeeCap, c.GasMultiplier)
 
 	// Blob gas cap
 	blobBaseFee, err := c.cli.BlobBaseFee(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("blob base fee: %w", err)
 	}
-	blobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
+	// Apply gas multiplier: (blobBaseFee * 2) * multiplier
+	baseBlobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
+	blobFeeCap := applyGasMultiplier(baseBlobFeeCap, c.GasMultiplier)
 
 	// Estimate execution gas (must include blob fields)
 	call := ethereum.CallMsg{
@@ -117,7 +146,9 @@ func (c *Contracts) SendBlobTx(
 	return signed, commitments, nil
 }
 
-// NewEIP4844Transaction ABI-encodes (method,args), attaches blob sidecar, and signs a type-3 tx.
+// NewEIP4844Transaction method creates and signs a new EIP-4844 (type-3)
+// transaction by calculating the nonce from the RPC and returning the result
+// of NewEIP4844TransactionWithNonce.
 func (c *Contracts) NewEIP4844Transaction(
 	ctx context.Context,
 	to common.Address,
@@ -125,6 +156,32 @@ func (c *Contracts) NewEIP4844Transaction(
 	method string,
 	args []any,
 	blobsSidecar *types.BlobTxSidecar,
+) (*types.Transaction, error) {
+	// Nonce
+	nonce, err := c.cli.PendingNonceAt(ctx, c.AccountAddress())
+	if err != nil {
+		return nil, err
+	}
+	return c.NewEIP4844TransactionWithNonce(ctx, to, contractABI, method, args, blobsSidecar, nonce)
+}
+
+// NewEIP4844TransactionWithNonce method creates and signs a new EIP-4844. It
+// calculates gas limits and fee caps, and returns the signed transaction.
+// The provided nonce is used (caller must ensure it's correct).
+//
+// Requirements:
+//   - `to` MUST be non-nil per EIP-4844.
+//   - `contractABI` MUST be non-nil.
+//   - `method` MUST be a valid method in the ABI.
+//   - `c.signer` MUST be non-nil (private key set).
+func (c *Contracts) NewEIP4844TransactionWithNonce(
+	ctx context.Context,
+	to common.Address,
+	contractABI *abi.ABI,
+	method string,
+	args []any,
+	blobsSidecar *types.BlobTxSidecar,
+	nonce uint64,
 ) (*types.Transaction, error) {
 	if contractABI == nil {
 		return nil, fmt.Errorf("nil contract ABI")
@@ -146,19 +203,13 @@ func (c *Contracts) NewEIP4844Transaction(
 	}
 
 	// Estimate execution gas, include blob hashes so any contract logic that
-	// references them (e.g. checks) isn’t under-estimated.
+	// references them (e.g. checks) isn't under-estimated.
 	gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
 		From:       c.AccountAddress(),
 		To:         &to,
 		Data:       data,
 		BlobHashes: blobsSidecar.BlobHashes(),
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Nonce
-	nonce, err := c.cli.PendingNonceAt(ctx, c.AccountAddress())
 	if err != nil {
 		return nil, err
 	}
@@ -178,12 +229,13 @@ func (c *Contracts) NewEIP4844Transaction(
 	baseFee := h.BaseFee // can be nil on pre-London, but not on mainnet today
 
 	// Choose a reasonable safety multiplier for max fee per gas.
-	// Common pattern: maxFee = baseFee*2 + tip
-	maxFee := new(big.Int).Mul(baseFee, big.NewInt(2))
-	maxFee.Add(maxFee, tipCap)
+	// Common pattern: maxFee = (baseFee*2 + tip) * multiplier
+	baseMaxFee := new(big.Int).Mul(baseFee, big.NewInt(2))
+	baseMaxFee.Add(baseMaxFee, tipCap)
+	maxFee := applyGasMultiplier(baseMaxFee, c.GasMultiplier)
 
 	// Base fee for *blob gas* (separate market). Use RPC eth_blobBaseFee.
-	// NOTE: go-ethereum doesn’t have a typed helper; call raw RPC:
+	// NOTE: go-ethereum doesn't have a typed helper; call raw RPC:
 	var blobBaseFeeHex string
 	ethclient, err := c.cli.EthClient()
 	if err != nil {
@@ -193,14 +245,15 @@ func (c *Contracts) NewEIP4844Transaction(
 		return nil, fmt.Errorf("eth_blobBaseFee: %w", err)
 	}
 	blobBaseFee, _ := new(big.Int).SetString(strings.TrimPrefix(blobBaseFeeHex, "0x"), 16)
-	// Be safe: cap blob fee above base (e.g., 2x)
-	blobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
+	// Apply gas multiplier: (blobBaseFee * 2) * multiplier
+	baseBlobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
+	blobFeeCap := applyGasMultiplier(baseBlobFeeCap, c.GasMultiplier)
 
 	// Build & sign the blob transaction
 	cID := new(big.Int).SetUint64(c.ChainID)
 	inner := &types.BlobTx{
 		ChainID:    uint256.MustFromBig(cID),
-		Nonce:      nonce,
+		Nonce:      nonce, // Use provided nonce
 		GasTipCap:  uint256.MustFromBig(tipCap),
 		GasFeeCap:  uint256.MustFromBig(maxFee),
 		Gas:        gas,

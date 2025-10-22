@@ -24,7 +24,13 @@ import (
 // ErrNoJobAvailable is returned when there are no jobs available for the
 // worker to process. This can happen if the sequencer node has no ballots
 // assigned to this worker or if all ballots have been processed.
-var ErrNoJobAvailable = errors.New("no job available")
+var (
+	ErrNoJobAvailable = errors.New("no job available")
+	ErrWorkerBanned   = errors.New("worker is banned")
+	ErrWorkerBusy     = errors.New("worker is busy")
+
+	CooldownDuration = 30 * time.Second // Default cooldown duration when worker is busy or banned
+)
 
 // NewWorker creates a Sequencer instance configured for worker mode.
 // Only loads the necessary artifacts for ballot processing (vote verifier).
@@ -148,6 +154,11 @@ func (s *Sequencer) startWorkerModeServices() error {
 				return
 			case <-ticker.C:
 				if err := s.processWorkerJob(); err != nil {
+					if errors.Is(err, ErrWorkerBanned) || errors.Is(err, ErrWorkerBusy) {
+						time.Sleep(CooldownDuration)
+						continue
+					}
+
 					if errors.Is(err, ErrNoJobAvailable) {
 						consecutiveErrors = 0
 						continue
@@ -160,7 +171,7 @@ func (s *Sequencer) startWorkerModeServices() error {
 
 					if consecutiveErrors >= maxConsecutiveErrors {
 						log.Errorw(nil, "too many consecutive errors, backing off")
-						time.Sleep(30 * time.Second)
+						time.Sleep(CooldownDuration)
 						consecutiveErrors = 0
 					}
 				} else {
@@ -255,6 +266,7 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, s.sequencerUUID)
 	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
 	uri = api.EndpointWithParam(uri, api.WorkerTokenQueryParam, s.workerAuthtoken)
+	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
 	seqUrl := fmt.Sprintf("%s%s", s.sequencerURL, uri)
 
 	client := &http.Client{Timeout: 20 * time.Second}
@@ -285,11 +297,23 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 			"processID", fmt.Sprintf("%x", ballot.ProcessID))
 
 		return &ballot, nil
+	case http.StatusUnauthorized:
+		return nil, fmt.Errorf("unauthorized: invalid worker authentication")
 	case http.StatusForbidden:
-		return nil, fmt.Errorf("forbidden: invalid worker authentication")
+		return nil, fmt.Errorf("forbidden: worker is banned")
 	default:
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read error response body: %w", err)
+		}
+		originalErr := &api.Error{}
+		if jsonErr := json.Unmarshal(body, originalErr); jsonErr != nil {
+			log.Debugw("failed to unmarshal error response", "error", jsonErr.Error())
+		}
+		if originalErr.Code == api.ErrWorkerNotAvailable.Code {
+			return nil, ErrNoJobAvailable
+		}
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, originalErr.Err)
 	}
 }
 
@@ -297,7 +321,9 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
 	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, s.sequencerUUID)
 	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
+	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
 	uri = api.EndpointWithParam(uri, api.WorkerTokenQueryParam, s.workerAuthtoken)
+	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
 	seqUrl := fmt.Sprintf("%s%s", s.sequencerURL, uri)
 
 	body, err := storage.EncodeArtifact(vb)

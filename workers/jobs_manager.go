@@ -13,8 +13,11 @@ import (
 )
 
 var (
-	ErrWorkerNotFound = fmt.Errorf("worker not found")
-	ErrWorkerBanned   = fmt.Errorf("worker is banned")
+	ErrWorkerNotFound    = fmt.Errorf("worker not found")
+	ErrWorkerBanned      = fmt.Errorf("worker is banned")
+	ErrWorkerBusy        = fmt.Errorf("worker is busy")
+	ErrWorkerJobMismatch = fmt.Errorf("worker job mismatch")
+	ErrJobNotFound       = fmt.Errorf("job not found")
 )
 
 // defaultTickerInterval defines the default interval for the ticker that
@@ -143,14 +146,14 @@ func (jm *JobsManager) IsWorkerAvailable(workerAddr string) (bool, error) {
 	}
 	// Check if worker is banned
 	if worker.IsBanned(jm.WorkerManager.rules) {
-		return false, fmt.Errorf("worker banned") // Worker is banned
+		return false, ErrWorkerBanned // Worker is banned
 	}
 	// Check if worker has pending jobs
 	jm.pendingMtx.RLock()
 	defer jm.pendingMtx.RUnlock()
 	for _, job := range jm.pending {
 		if job.Address == worker.Address {
-			return false, fmt.Errorf("worker busy") // Worker has pending jobs
+			return false, ErrWorkerBusy // Worker has pending jobs
 		}
 	}
 	return true, nil // Worker is available
@@ -180,6 +183,21 @@ func (jm *JobsManager) RegisterJob(workerAddr string, voteID types.HexBytes) (*W
 		Expiration: time.Now().Add(jm.JobTimeout), // Default expiration
 	}
 	jm.pending[hex.EncodeToString(voteID)] = job
+	return job, nil
+}
+
+// Job retrieves a job by its vote ID and verifies that it is assigned to
+// the specified worker. If the job is found and matches the worker, it is returned.
+func (jm *JobsManager) Job(workerAddr string, voteID types.HexBytes) (*WorkerJob, error) {
+	jm.pendingMtx.RLock()
+	defer jm.pendingMtx.RUnlock()
+	job, exists := jm.pending[hex.EncodeToString(voteID)]
+	if !exists {
+		return nil, ErrJobNotFound
+	}
+	if job.Address != workerAddr {
+		return nil, ErrWorkerJobMismatch
+	}
 	return job, nil
 }
 

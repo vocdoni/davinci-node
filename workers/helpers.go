@@ -30,12 +30,13 @@ func ValidWorkerAddress(address string) (common.Address, error) {
 	return common.Address{}, fmt.Errorf("invalid Ethereum address: %s", address)
 }
 
-// WorkerNameFromAddress generates a worker name by obfuscating the first
-// 32 characters of the provided Ethereum address as string.
+// WorkerNameFromAddress generates a worker name by masking all but the
+// last 4 hexadecimal characters of the provided Ethereum address as string.
 func WorkerNameFromAddress(address string) (string, error) {
-	if len(address) < 42 {
-		return "", fmt.Errorf("invalid address length: %d, expected at least 40 characters", len(address))
+	addr, err := ValidWorkerAddress(address) // Validate address format
+	if err != nil {
+		return "", err
 	}
-	// Obfuscate the first 16 characters of the address
-	return strings.Repeat("*", 40) + address[40:], nil
+	addrBytes := addr.Bytes()
+	return strings.Repeat("*", len(addrBytes)-4) + fmt.Sprintf("%x", addrBytes[len(addrBytes)-4:]), nil
 }

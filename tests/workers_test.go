@@ -3,7 +3,6 @@ package tests
 import (
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -16,24 +15,18 @@ import (
 	"github.com/vocdoni/davinci-node/workers"
 )
 
-const (
-	testWorkerSeed            = "test-seed"
-	testWorkerTokenExpiration = 24 * time.Hour // 90 days
-	testWorkerTimeout         = time.Second * 5
-)
-
 func TestWorkerIntegration(t *testing.T) {
-	if enabled := os.Getenv("WORKER_INTEGRATION_TEST"); enabled != "1" || enabled == "true" || enabled == "TRUE" {
-		t.Skip("Skipping worker integration test, set WORKER_INTEGRATION_TEST=1 to run it")
+	if !boolEnvVar("EXTENDED_CI_TESTS") {
+		t.Skip("Skipping worker integration test, set EXTENDED_CI_TESTS=1 to run it")
 	}
 
 	c := qt.New(t)
 	numBallots := 20                     // number of ballots to be sent in the process
 	failedJobsToGetBanned := 3           // number of failed jobs to get banned
 	workerBanTimeout := 30 * time.Second // timeout for worker ban
+
 	// Setup
-	ctx := t.Context()
-	services := NewTestService(t, ctx, testWorkerSeed, testWorkerTokenExpiration, testWorkerTimeout, &workers.WorkerBanRules{
+	services.API.SetWorkerConfig(testWorkerSeed, testWorkerTokenExpiration, testWorkerTimeout, &workers.WorkerBanRules{
 		BanTimeout:          workerBanTimeout,
 		FailuresToGetBanned: failedJobsToGetBanned,
 	})
@@ -41,6 +34,9 @@ func TestWorkerIntegration(t *testing.T) {
 
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
+
+	sequencerUUID := services.API.API.SequencerUUID()
+	c.Assert(sequencerUUID, qt.IsNotNil, qt.Commentf("Sequencer UUID is nil, workers endpoints not available"))
 
 	// get the worker sign message from the API
 	body, status, err := cli.Request(http.MethodGet, nil, nil, api.WorkerTokenDataEndpoint)
@@ -65,11 +61,17 @@ func TestWorkerIntegration(t *testing.T) {
 	workerAddr := workerSigner.Address().Hex()
 	workerSignature, err := workerSigner.Sign([]byte(signMessageResponse.Message))
 	c.Assert(err, qt.IsNil)
+	// create the worker auth token
+	authToken, err := workers.EncodeWorkerAuthTokenFromStringTime(workerSignature, signMessageResponse.CreatedAt)
+	c.Assert(err, qt.IsNil)
 
 	c.Run("launch a worker with no jobs pending", func(c *qt.C) {
-		getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.WorkerAddressQueryParam, workerAddr)
-		getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerTokenQueryParam, workerSignature.String())
-		body, status, err := cli.Request(http.MethodGet, nil, []string{api.WorkerNameQueryParam, workerName}, getJobEndpoint)
+		getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, sequencerUUID.String())
+		body, status, err := cli.Request(http.MethodGet, nil, []string{
+			api.WorkerNameQueryParam, workerName,
+			api.WorkerAddressQueryParam, workerAddr,
+			api.WorkerTokenQueryParam, authToken.String(),
+		}, getJobEndpoint)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
 		c.Assert(status, qt.Equals, http.StatusNoContent, qt.Commentf("Expected 204 No Content, got %d: %s", status, string(body)))
 		c.Log("Ghost worker job request successful, no job available yet")
@@ -87,7 +89,8 @@ func TestWorkerIntegration(t *testing.T) {
 	c.Run("create process", func(c *qt.C) {
 		// Create census with numBallot participants
 		var participants []*api.CensusParticipant
-		censusRoot, participants, signers = createCensus(c, cli, numBallots)
+		censusRoot, participants, signers, err = createCensus(cli, numBallots)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 		c.Assert(participants, qt.Not(qt.IsNil))
 		c.Assert(signers, qt.Not(qt.IsNil))
 		c.Assert(len(participants), qt.Equals, numBallots)
@@ -102,8 +105,9 @@ func TestWorkerIntegration(t *testing.T) {
 			CostFromWeight: circuits.MockCostFromWeight == 1,
 			CostExponent:   circuits.MockCostExponent,
 		}
-		pid, encryptionKey, stateRoot = createProcessInSequencer(c, services.Contracts, cli, types.CensusOriginMerkleTree, censusRoot, ballotMode)
-		pid2 := createProcessInContracts(c, services.Contracts, types.CensusOriginMerkleTree, censusRoot, ballotMode, encryptionKey, stateRoot)
+		pid, encryptionKey, stateRoot, err = createProcessInSequencer(services.Contracts, cli, types.CensusOriginMerkleTree, censusRoot, ballotMode)
+		pid2, err := createProcessInContracts(services.Contracts, types.CensusOriginMerkleTree, censusRoot, ballotMode, encryptionKey, stateRoot)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
 		// Wait for the process to be registered
@@ -142,9 +146,11 @@ func TestWorkerIntegration(t *testing.T) {
 	c.Run("send votes", func(c *qt.C) {
 		for _, signer := range signers {
 			// generate a vote for the first participant
-			vote := createVoteWithRandomFields(c, pid, ballotMode, encryptionKey, signer, nil)
+			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signer, nil)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof for first participant
-			censusProof := generateCensusProof(c, cli, censusRoot, pid.Marshal(), signer.Address().Bytes())
+			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signer.Address().Bytes())
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			c.Assert(censusProof.Siblings, qt.IsNotNil)
 			vote.CensusProof = *censusProof
@@ -166,9 +172,12 @@ func TestWorkerIntegration(t *testing.T) {
 				return
 			default:
 				// make a request to the api to get a job until get banned
-				getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.WorkerAddressQueryParam, workerAddr)
-				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerTokenQueryParam, workerSignature.String())
-				body, status, err := cli.Request(http.MethodGet, nil, []string{api.WorkerNameQueryParam, workerName}, getJobEndpoint)
+				getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, sequencerUUID.String())
+				body, status, err := cli.Request(http.MethodGet, nil, []string{
+					api.WorkerNameQueryParam, workerName,
+					api.WorkerAddressQueryParam, workerAddr,
+					api.WorkerTokenQueryParam, authToken.String(),
+				}, getJobEndpoint)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
 				if status == http.StatusOK || status == http.StatusNoContent {
 					continue
@@ -194,9 +203,12 @@ func TestWorkerIntegration(t *testing.T) {
 				return
 			default:
 				// make a request to the api to get a job until get unbanned
-				getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.WorkerAddressQueryParam, workerAddr)
-				getJobEndpoint = api.EndpointWithParam(getJobEndpoint, api.WorkerTokenQueryParam, workerSignature.String())
-				body, status, err := cli.Request(http.MethodGet, nil, []string{api.WorkerNameQueryParam, workerName}, getJobEndpoint)
+				getJobEndpoint := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, sequencerUUID.String())
+				body, status, err := cli.Request(http.MethodGet, nil, []string{
+					api.WorkerNameQueryParam, workerName,
+					api.WorkerAddressQueryParam, workerAddr,
+					api.WorkerTokenQueryParam, authToken.String(),
+				}, getJobEndpoint)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get job: %v", err))
 				if status == http.StatusBadRequest || strings.Contains(string(body), "worker banned") {
 					time.Sleep(workerBanTimeout)

@@ -18,12 +18,14 @@ import (
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
+	"github.com/vocdoni/davinci-node/web3/txmanager"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
 // Services holds all the running services
 type Services struct {
 	Contracts  *web3.Contracts
+	TxManager  *txmanager.TxManager
 	Storage    *storage.Storage
 	ProcessMon *service.ProcessMonitor
 	API        *service.APIService
@@ -154,6 +156,15 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 	services.Storage = storage.New(storagedb)
 
+	// Force cleanup if requested
+	if cfg.ForceCleanup {
+		log.Warn("force cleanup enabled: cleaning all pending verified votes, aggregated batches and state transitions")
+		if err := services.Storage.CleanAllPending(); err != nil {
+			return nil, fmt.Errorf("failed to clean all pending items: %w", err)
+		}
+		log.Info("force cleanup completed successfully")
+	}
+
 	// Initialize web3 contracts
 	log.Info("initializing web3 contracts")
 
@@ -178,7 +189,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 
 	// Initialize web3 contracts
-	services.Contracts, err = web3.New(w3rpc, cfg.Web3.Capi)
+	services.Contracts, err = web3.New(w3rpc, cfg.Web3.Capi, cfg.Web3.GasMultiplier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize web3 client: %w", err)
 	}
@@ -193,9 +204,18 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		return nil, fmt.Errorf("failed to set account private key: %w", err)
 	}
 
+	// Init transaction manager
+	services.TxManager, err = txmanager.New(ctx, services.Contracts.Web3Pool(), services.Contracts.Client(), services.Contracts.Signer(), txmanager.DefaultConfig(services.Contracts.ChainID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transaction manager: %w", err)
+	}
+	services.TxManager.Start(ctx)
+	services.Contracts.SetTxManager(services.TxManager)
+
 	log.Infow("contracts initialized",
 		"chainId", services.Contracts.ChainID,
-		"account", services.Contracts.AccountAddress().Hex())
+		"account", services.Contracts.AccountAddress().Hex(),
+		"gasMultiplier", services.Contracts.GasMultiplier)
 
 	// Start process monitor
 	log.Info("starting process monitor")
@@ -263,5 +283,6 @@ func shutdownServices(services *Services) {
 	if services.ProcessMon != nil {
 		services.ProcessMon.Stop()
 	}
-	services.Storage.Close() // Close storage last
+	services.TxManager.Stop() // Stop transaction manager
+	services.Storage.Close()  // Close storage last
 }

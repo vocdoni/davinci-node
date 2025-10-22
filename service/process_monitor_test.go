@@ -71,7 +71,7 @@ func TestProcessMonitor(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Wait for transaction to be mined
-	err = contracts.WaitTx(*createTx, 30*time.Second)
+	err = contracts.WaitTxByHash(*createTx, 30*time.Second)
 	c.Assert(err, qt.IsNil)
 
 	// Give monitor time to detect and store the process

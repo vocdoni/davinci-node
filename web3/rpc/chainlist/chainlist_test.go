@@ -70,8 +70,6 @@ func TestEndpointList(t *testing.T) {
 	// Create mock chains for testing
 	mockChains := []Chain{
 		{
-			Name:      "Ethereum Mainnet",
-			Chain:     "ETH",
 			ShortName: "eth",
 			ChainID:   1,
 			RPC: []RPCEntry{
@@ -81,8 +79,6 @@ func TestEndpointList(t *testing.T) {
 			},
 		},
 		{
-			Name:      "Arbitrum One",
-			Chain:     "ARB1",
 			ShortName: "arb1",
 			ChainID:   42161,
 			RPC: []RPCEntry{
@@ -140,14 +136,10 @@ func TestGetChainList(t *testing.T) {
 	// Create mock chains for testing
 	mockChains := []Chain{
 		{
-			Name:      "Ethereum Mainnet",
-			Chain:     "ETH",
 			ShortName: "eth",
 			ChainID:   1,
 		},
 		{
-			Name:      "Arbitrum One",
-			Chain:     "ARB1",
 			ShortName: "arb1",
 			ChainID:   42161,
 		},
@@ -188,8 +180,6 @@ func TestHealthyEndpointFiltering(t *testing.T) {
 	// Create mock chains for testing
 	mockChains := []Chain{
 		{
-			Name:      "Test Chain",
-			Chain:     "TEST",
 			ShortName: "test",
 			ChainID:   1,
 			RPC: []RPCEntry{
@@ -279,8 +269,6 @@ func TestEnhancedHealthCheck(t *testing.T) {
 	// Create mock chains for testing
 	mockChains := []Chain{
 		{
-			Name:      "Test Chain",
-			Chain:     "TEST",
 			ShortName: "test",
 			ChainID:   1,
 			RPC: []RPCEntry{

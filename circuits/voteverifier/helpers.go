@@ -2,13 +2,10 @@ package voteverifier
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
-	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 )
@@ -41,16 +38,6 @@ func (a *VerifyVoteCircuit) Prove() (groth16.Proof, error) {
 	return groth16.Prove(ccs, pk, witness)
 }
 
-// PublicInputs function creates a new instance of VerifyVoteCircuit with the
-// given inputs hash in the right format and mark the circuit as a valid one
-// (not dummy).
-func PublicInputs(inputsHash *big.Int) *VerifyVoteCircuit {
-	return &VerifyVoteCircuit{
-		IsValid:    1,
-		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
-	}
-}
-
 // VerifyProof method verifies the proof of the circuit with the current
 // assignment. It loads the verifying key from circuit artifacts, encodes the
 // witness and tries to verify the given proof. It is usefull to validate the
@@ -66,15 +53,10 @@ func (a *VerifyVoteCircuit) VerifyProof(proof groth16.Proof) error {
 	if err != nil {
 		return fmt.Errorf("failed to read vote verifier verifying key: %w", err)
 	}
-	// encode the assignment to witness
-	witness, err := frontend.NewWitness(a, circuits.VoteVerifierCurve.ScalarField())
+	// encode the assignment to public witness
+	pubWitness, err := frontend.NewWitness(a, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 	if err != nil {
 		return fmt.Errorf("failed to create witness: %w", err)
-	}
-	// get the public witness
-	pubWitness, err := witness.Public()
-	if err != nil {
-		return fmt.Errorf("failed to create public witness: %w", err)
 	}
 	// set up the verifier for the circuit curves
 	opts := stdgroth16.GetNativeVerifierOptions(

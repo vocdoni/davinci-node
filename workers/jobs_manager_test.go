@@ -193,7 +193,7 @@ func TestJobsManagerIsWorkerAvailable(t *testing.T) {
 
 		available, err := jm.IsWorkerAvailable(testWorkerAddr)
 		c.Assert(available, qt.IsFalse)
-		c.Assert(err, qt.ErrorMatches, "worker banned")
+		c.Assert(err, qt.ErrorIs, ErrWorkerBanned)
 	})
 
 	t.Run("Worker with pending job is not available", func(t *testing.T) {
@@ -209,7 +209,7 @@ func TestJobsManagerIsWorkerAvailable(t *testing.T) {
 		// Worker should not be available
 		available, err := jm.IsWorkerAvailable(testWorkerAddr)
 		c.Assert(available, qt.IsFalse)
-		c.Assert(err, qt.ErrorMatches, "worker busy")
+		c.Assert(err, qt.ErrorIs, ErrWorkerBusy)
 	})
 
 	t.Run("Worker without pending jobs is available", func(t *testing.T) {

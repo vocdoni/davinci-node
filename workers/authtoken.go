@@ -27,9 +27,17 @@ const (
 func WorkerAuthTokenData(sequencerAddress common.Address, timestamp time.Time) (string, string, types.HexBytes) {
 	t := timestamp.UTC().Format(timestampFormat)
 	signMessage := fmt.Sprintf(workerSignMessage, sequencerAddress.String(), t)
-	tokenSuffix := make([]byte, timestampLen)
-	copy(tokenSuffix, []byte(t))
-	return signMessage, t, tokenSuffix
+	return signMessage, t, TimestampToSufix(timestamp)
+}
+
+// TimestampToSufix function encodes a time.Time value into a byte slice that
+// can be used as a suffix for the worker authentication token. The timestamp is
+// formatted using the RFC3339FixedNano format and converted to a byte slice.
+// The resulting byte slice has a fixed length defined by timestampLen.
+func TimestampToSufix(t time.Time) types.HexBytes {
+	b := make([]byte, timestampLen)
+	copy(b, []byte(t.UTC().Format(timestampFormat)))
+	return types.HexBytes(b)
 }
 
 // DecodeWorkerAuthToken function decodes a worker authentication token into
@@ -56,6 +64,39 @@ func DecodeWorkerAuthToken(bToken types.HexBytes) (*ethereum.ECDSASignature, tim
 		return nil, time.Time{}, fmt.Errorf("failed to parse worker token signature: %w", err)
 	}
 	return signature, timestamp, nil
+}
+
+// EncodeWorkerAuthToken function encodes a worker authentication token from
+// the provided signature and timestamp. It concatenates the signature bytes
+// with the timestamp formatted as a byte slice. If the signature is nil or has
+// an invalid length, an error is returned. It returns the encoded token as a
+// byte slice.
+func EncodeWorkerAuthToken(signature *ethereum.ECDSASignature, timestamp time.Time) (types.HexBytes, error) {
+	if signature == nil {
+		return nil, fmt.Errorf("signature cannot be nil")
+	}
+	bSignature := signature.Bytes()
+	if len(bSignature) != signatureLen {
+		return nil, fmt.Errorf("invalid signature length: %d", len(bSignature))
+	}
+	tokenSuffix := TimestampToSufix(timestamp)
+	// concatenate the signature and the token suffix
+	token := make([]byte, tokenLen)
+	copy(token, bSignature)
+	copy(token[signatureLen:], tokenSuffix)
+	return types.HexBytes(token), nil
+}
+
+// EncodeWorkerAuthTokenFromStringTime function is a wrapper to EncodeWorkerAuthToken
+// that accepts a string representation of the timestamp. It parses the string to a
+// time.Time value and calls the main function. If the string cannot be parsed, an
+// error is returned.
+func EncodeWorkerAuthTokenFromStringTime(signature *ethereum.ECDSASignature, strTimestamp string) (types.HexBytes, error) {
+	timestamp, err := time.Parse(timestampFormat, strTimestamp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse worker token timestamp: %w", err)
+	}
+	return EncodeWorkerAuthToken(signature, timestamp)
 }
 
 // VerifyWorkerToken function verifies a worker authentication token against the
