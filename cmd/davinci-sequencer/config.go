@@ -102,7 +102,7 @@ func loadConfig() (*Config, error) {
 	// Configure flags
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
 	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
-	flag.StringSliceP("web3.rpc", "r", []string{defaultRPC}, "web3 rpc endpoint(s), comma-separated")
+	flag.StringSliceP("web3.rpc", "r", nil, "web3 rpc endpoint(s), comma-separated")
 	flag.StringP("web3.capi", "c", defaultCAPI, "consensus api url")
 	flag.Float64("web3.gasMultiplier", defaultGasMultiplier, "gas price multiplier for transactions (1.0 = default, 2.0 = double gas prices)")
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
