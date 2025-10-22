@@ -81,16 +81,16 @@ func (st *State) BuildKZGCommitment() (
 	// Find valid evaluation point z
 	z, err := blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, blob)
 	if err != nil {
-		return
+		return blobData, err
 	}
 
 	blobData, err = new(blobs.BlobEvalData).Set(blob, z)
 	if err != nil {
 		err = fmt.Errorf("set blob eval data failed: %w", err)
-		return
+		return blobData, err
 	}
 
-	return
+	return blobData, err
 }
 
 // ParseBlobData extracts vote and results data from a blob

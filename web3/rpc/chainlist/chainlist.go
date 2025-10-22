@@ -36,6 +36,10 @@ var (
 	chainsByID map[uint64]*Chain
 	// chainsByShortName stores chains indexed by their short name
 	chainsByShortName map[string]*Chain
+	// networkNameReplaceMap stores chain names replacements for matching chainlist short network names
+	networkNameReplaceMap = map[string]string{
+		"sepolia": "sep",
+	}
 	// initErr stores any error that occurred during initialization
 	initErr error
 )
@@ -338,6 +342,8 @@ func EndpointList(chainName string, numEndpoints int) ([]string, error) {
 	// Check if the chain exists
 	var chain *Chain
 	var ok bool
+
+	chainName = chainListNetworkName(chainName)
 	chain, ok = chainsByShortName[chainName]
 	if !ok {
 		return nil, fmt.Errorf("chain with short name %q not found", chainName)
@@ -423,8 +429,16 @@ func ChainList() (map[string]uint64, error) {
 
 	result := make(map[string]uint64, len(chainsByShortName))
 	for shortName, chain := range chainsByShortName {
-		result[shortName] = chain.ChainID
+		result[chainListNetworkName(shortName)] = chain.ChainID
 	}
 
 	return result, nil
+}
+
+func chainListNetworkName(name string) string {
+	newName, ok := networkNameReplaceMap[name]
+	if !ok {
+		return name
+	}
+	return newName
 }

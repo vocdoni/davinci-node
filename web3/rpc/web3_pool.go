@@ -229,7 +229,7 @@ func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.
 		if client, err = ethclient.DialContext(ctx, uri); err != nil {
 			continue
 		}
-		return
+		return client, err
 	}
 	return nil, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
 }
@@ -242,7 +242,7 @@ func connectNodeRawRPC(ctx context.Context, uri string) (client *rpc.Client, err
 		if client, err = rpc.DialContext(ctx, uri); err != nil {
 			continue
 		}
-		return
+		return client, err
 	}
 	return nil, fmt.Errorf("error dialing rpc provider uri '%s': %w", uri, err)
 }

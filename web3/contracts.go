@@ -82,6 +82,8 @@ type Contracts struct {
 
 	// Transaction manager for nonce management and stuck transaction recovery
 	txManager *txmanager.TxManager
+	// Whether the current contracts support blob transactions
+	supportForBlobTxs bool
 }
 
 // New creates a new Contracts instance with the given web3 endpoints.
@@ -198,6 +200,26 @@ func (c *Contracts) CurrentBlock() uint64 {
 	return c.currentBlock
 }
 
+// SupportBlobTxs returns whether the current contracts support blob
+// transactions.
+func (c *Contracts) SupportBlobTxs() bool {
+	return c.supportForBlobTxs
+}
+
+// supportBlobTxs queries the ProcessRegistry contract to check if blob
+// transactions are supported.
+func (c *Contracts) supportBlobTxs() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	supported, err := c.processes.BlobsDA(&bind.CallOpts{
+		Context: ctx,
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to check blob support: %w", err)
+	}
+	return supported, nil
+}
+
 // LoadContracts loads the contracts
 func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	if addresses == nil {
@@ -273,96 +295,12 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 		ResultsZKVerifier:         &rVerifierABI,
 	}
 
+	// check for blob transaction support querying the ProcessRegistry contract
+	c.supportForBlobTxs, err = c.supportBlobTxs()
+	if err != nil {
+		log.Warnw("failed to check blob transaction support, defaulting to false", "error", err)
+	}
 	return nil
-}
-
-// DeployContracts deploys new contracts and returns the bindings.
-func DeployContracts(web3rpc, privkey string) (*Contracts, error) {
-	w3pool := rpc.NewWeb3Pool()
-	chainID, err := w3pool.AddEndpoint(web3rpc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to add web3 endpoint: %w", err)
-	}
-	cli, err := w3pool.Client(chainID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-	c := &Contracts{
-		ChainID:            chainID,
-		web3pool:           w3pool,
-		cli:                cli,
-		knownProcesses:     make(map[string]struct{}),
-		knownOrganizations: make(map[string]struct{}),
-		ContractsAddresses: &Addresses{},
-	}
-
-	// Initialize transaction manager with default configuration
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	c.txManager, err = txmanager.New(ctx, c.web3pool, c.cli, c.signer, txmanager.DefaultConfig(c.ChainID))
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize transaction manager: %w", err)
-	}
-
-	opts, err := c.authTransactOpts()
-	if err != nil {
-		return nil, err
-	}
-	addr, tx, orgBindings, err := npbindings.DeployOrganizationRegistry(opts, cli)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy organization registry: %w", err)
-	}
-	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
-		return nil, err
-	}
-	c.organizations = orgBindings
-	c.ContractsAddresses.OrganizationRegistry = addr
-	log.Infow("deployed OrganizationRegistry", "address", addr, "tx", tx.Hash().Hex())
-
-	opts, err = c.authTransactOpts()
-	if err != nil {
-		return nil, err
-	}
-	addr, tx, _, err = vbindings.DeployStateTransitionVerifierGroth16(opts, cli)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy state transition zkverifier contract: %w", err)
-	}
-	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
-		return nil, err
-	}
-	c.ContractsAddresses.StateTransitionZKVerifier = addr
-	log.Infow("deployed state transition ZKVerifier contract", "address", addr, "tx", tx.Hash().Hex())
-
-	addr, tx, _, err = vbindings.DeployResultsVerifierGroth16(opts, cli)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy results zkverifier contract: %w", err)
-	}
-	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
-		return nil, err
-	}
-	c.ContractsAddresses.ResultsZKVerifier = addr
-	log.Infow("deployed results ZKVerifier contract", "address", addr, "tx", tx.Hash().Hex())
-
-	opts, err = c.authTransactOpts()
-	if err != nil {
-		return nil, err
-	}
-	c.ContractsAddresses.ProcessRegistry, tx, c.processes, err = npbindings.DeployProcessRegistry(
-		opts,
-		cli,
-		uint32(chainID),
-		c.ContractsAddresses.StateTransitionZKVerifier,
-		c.ContractsAddresses.ResultsZKVerifier,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deploy process registry: %w", err)
-	}
-	if err := c.WaitTxByHash(tx.Hash(), web3QueryTimeout); err != nil {
-		return nil, err
-	}
-	log.Infow("deployed ProcessRegistry", "address", c.ContractsAddresses.ProcessRegistry, "tx", tx.Hash().Hex())
-
-	return c, nil
 }
 
 // CheckTxStatus checks the status of a transaction given its hash.

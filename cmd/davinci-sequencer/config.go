@@ -90,27 +90,14 @@ type WorkerConfig struct {
 
 // loadConfig loads configuration from flags, environment variables, and defaults
 func loadConfig() (*Config, error) {
-	v := viper.New()
+	cfg := &Config{}
 
-	// Set up default values
 	// Get user's home directory for default datadir
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
 		userHomeDir = "."
 	}
 	defaultDatadirPath := filepath.Join(userHomeDir, defaultDatadir)
-
-	v.SetDefault("web3.network", defaultNetwork)
-	v.SetDefault("web3.rpc", defaultRPC)
-	v.SetDefault("web3.capi", defaultCAPI)
-	v.SetDefault("web3.gasMultiplier", defaultGasMultiplier)
-	v.SetDefault("api.host", defaultAPIHost)
-	v.SetDefault("api.port", defaultAPIPort)
-	v.SetDefault("batch.time", defaultBatchTime)
-	v.SetDefault("log.level", defaultLogLevel)
-	v.SetDefault("log.output", defaultLogOutput)
-	v.SetDefault("log.disableAPI", defaultLogDisableAPI)
-	v.SetDefault("datadir", defaultDatadirPath)
 
 	// Configure flags
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
@@ -163,21 +150,17 @@ func loadConfig() (*Config, error) {
 	flag.CommandLine.SortFlags = false
 	flag.Parse()
 
-	// Configure Viper to use environment variables
-	v.SetEnvPrefix("DAVINCI")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
+	// Configure Viper
+	viper.SetEnvPrefix("DAVINCI")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
 
-	// Bind flags to Viper
-	if err := v.BindPFlags(flag.CommandLine); err != nil {
+	if err := viper.BindPFlags(flag.CommandLine); err != nil {
 		return nil, fmt.Errorf("error binding flags: %w", err)
 	}
 
-	// Create config struct
-	cfg := &Config{}
-
 	// Unmarshal configuration into struct
-	if err := v.Unmarshal(cfg); err != nil {
+	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 
@@ -188,7 +171,7 @@ func loadConfig() (*Config, error) {
 func validateConfig(cfg *Config) error {
 	// Validate required fields
 	if cfg.Web3.PrivKey == "" {
-		return fmt.Errorf("private key is required (use --privkey flag or DAVINCI_PRIVKEY environment variable)")
+		return fmt.Errorf("private key is required (use --privkey flag or DAVINCI_WEB3_PRIVKEY environment variable)")
 	}
 
 	// Validate network
