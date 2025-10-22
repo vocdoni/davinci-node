@@ -13,29 +13,6 @@ import (
 	"github.com/vocdoni/davinci-node/internal"
 )
 
-// pflagValueSet implements viper.FlagValueSet for proper env var precedence.
-// This wrapper ensures viper only treats explicitly-set flags as "changed",
-// allowing env vars to override flag defaults.
-type pflagValueSet struct {
-	flags *flag.FlagSet
-}
-
-func (p pflagValueSet) VisitAll(fn func(flag viper.FlagValue)) {
-	p.flags.VisitAll(func(flag *flag.Flag) {
-		fn(pflagValue{flag})
-	})
-}
-
-// pflagValue wraps pflag.Flag so it implements viper.FlagValue.
-type pflagValue struct {
-	flag *flag.Flag
-}
-
-func (p pflagValue) Name() string        { return p.flag.Name }
-func (p pflagValue) HasChanged() bool    { return p.flag.Changed }
-func (p pflagValue) ValueString() string { return p.flag.Value.String() }
-func (p pflagValue) ValueType() string   { return p.flag.Value.Type() }
-
 const (
 	defaultNetwork                    = "sepolia"
 	defaultCAPI                       = "https://ethereum-sepolia-beacon-api.publicnode.com"
@@ -174,29 +151,16 @@ func loadConfig() (*Config, error) {
 	flag.Parse()
 
 	// Configure Viper
-	v := viper.New()
-	v.SetEnvPrefix("DAVINCI")
-	v.AutomaticEnv()
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.SetEnvPrefix("DAVINCI")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
 
-	// Bind flags to Viper using custom wrapper for proper env var precedence
-	if err := v.BindFlagValues(pflagValueSet{flag.CommandLine}); err != nil {
-		return nil, fmt.Errorf("failed binding flags to viper configuration")
+	if err := viper.BindPFlags(flag.CommandLine); err != nil {
+		return nil, fmt.Errorf("error binding flags: %w", err)
 	}
 
-	// Manually inject env vars for unchanged flags
-	// AutomaticEnv() doesn't work with Unmarshal when flags are bound
-	flag.CommandLine.VisitAll(func(f *flag.Flag) {
-		if !f.Changed {
-			envKey := "DAVINCI_" + strings.ToUpper(strings.ReplaceAll(f.Name, ".", "_"))
-			if val := os.Getenv(envKey); val != "" {
-				v.Set(f.Name, val)
-			}
-		}
-	})
-
 	// Unmarshal configuration into struct
-	if err := v.Unmarshal(cfg); err != nil {
+	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 
