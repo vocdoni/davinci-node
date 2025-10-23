@@ -62,7 +62,7 @@ func main() {
 	// 2) Build blobs
 	blobs := make([][]byte, *numBlobs)
 	for i := range blobs {
-		b := RandomBlob()
+		b := DummyBlobWithCafe()
 		blobs[i] = b
 	}
 
@@ -142,8 +142,19 @@ func RandomBlob() []byte {
 	const feSize = params.BlobTxBytesPerFieldElement              // 32
 	out := make([]byte, params.BlobTxFieldElementsPerBlob*feSize) // 131072
 	var el fr.Element
-	for i := 0; i < params.BlobTxFieldElementsPerBlob; i++ {
+	for i := range params.BlobTxFieldElementsPerBlob {
 		el.MustSetRandom()                             // uses crypto/rand.Reader
+		copy(out[i*feSize:(i+1)*feSize], el.Marshal()) // big-endian canonical bytes
+	}
+	return out
+}
+
+func DummyBlobWithCafe() []byte {
+	const feSize = params.BlobTxBytesPerFieldElement              // 32
+	out := make([]byte, params.BlobTxFieldElementsPerBlob*feSize) // 131072
+	var el fr.Element
+	for i := range params.BlobTxFieldElementsPerBlob {
+		el.SetUint64(0xcafedecaca<<20 + uint64(i))     // uniquely identify content
 		copy(out[i*feSize:(i+1)*feSize], el.Marshal()) // big-endian canonical bytes
 	}
 	return out
