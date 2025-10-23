@@ -315,6 +315,9 @@ func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error
 		Commitments: comms,
 		Proofs:      proofs,
 	}
+	if err := sc.ToV1(); err != nil { // TODO: construct a V1 from the start, rather than the calling ToV1()
+		return nil, nil, fmt.Errorf("failed to convert sidecar to v1: %w", err)
+	}
 	return sc, sc.BlobHashes(), nil
 }
 
