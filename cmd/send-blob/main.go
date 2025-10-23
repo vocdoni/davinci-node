@@ -117,7 +117,7 @@ func main() {
 
 	// Get blob by commitment
 	for i, c := range commitments {
-		blobs, err := contracts.BlobByCommitment(ctx2, tx.Hash())
+		blobs, err := contracts.BlobsByTxHash(ctx2, tx.Hash())
 		if err != nil {
 			log.Errorf("get blob %d by commitment 0x%x: %v", i, c, err)
 			continue

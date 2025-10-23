@@ -303,9 +303,9 @@ func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error
 	return sc, sc.BlobHashes(), nil
 }
 
-// BlobByCommitment gets the blob bytes matching `commitmentHex` (0x...) for tx `txHash`
+// BlobsByTxHash returns all the blobs of a tx, given a `txHash`
 // using the provided Consensus (beacon) API base URL.
-func (c *Contracts) BlobByCommitment(
+func (c *Contracts) BlobsByTxHash(
 	ctx context.Context,
 	txHash common.Hash,
 ) ([]deneb.Blob, error) {
