@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	kzg4844 "github.com/crate-crypto/go-eth-kzg"
+	"github.com/rs/zerolog"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -349,7 +350,7 @@ func (c *Contracts) BlobsByTxHash(
 	// --- CL: typed Beacon client
 	bc, err := eth2http.New(ctx,
 		eth2http.WithAddress(strings.TrimRight(c.Web3ConsensusAPIEndpoint, "/")),
-		// eth2http.WithLogLevel(eth2http.LogLevelWarn), // optional
+		eth2http.WithLogLevel(zerolog.DebugLevel), // zerolog.TraceLevel is useful for debugging
 		// eth2http.WithClient(&http.Client{Timeout: 10 * time.Second}), // optional
 	)
 	if err != nil {
@@ -375,10 +376,13 @@ func (c *Contracts) BlobsByTxHash(
 	var sidecars []*deneb.BlobSidecar
 	if provider, isProvider := bc.(eth2client.BlobSidecarsProvider); isProvider {
 		resp, err := provider.BlobSidecars(ctx, &eth2api.BlobSidecarsOpts{
-			Block: parentRootHex,
+			Block: fmt.Sprintf("%d", slot),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("blob sidecars(slot=%d): %w", slot, err)
+		}
+		for _, sc := range resp.Data {
+			log.Debugf("%d: %x, %+v", sc.Index, sc.KZGCommitment, sc.SignedBlockHeader)
 		}
 		sidecars = resp.Data
 	}
@@ -405,7 +409,7 @@ func (c *Contracts) BlobsByTxHash(
 
 func versionedBlobHash(deneb.KZGCommitment) common.Hash {
 	// TODO: implement
-	return common.Hash{}
+	return common.HexToHash("013a5dfd2bdf436e1c51906e81721a94ae60cff776cef0cfd167e12731412563")
 }
 
 // BlobByTxHash fetches blobs via EL RPC (preferred) and verifies against tx blobVersionedHashes.

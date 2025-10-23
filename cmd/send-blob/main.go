@@ -28,10 +28,11 @@ func main() {
 	numBlobs := pflag.Int("n", 1, "Number of random blobs to include")
 	wait := pflag.Bool("wait", true, "Wait for tx to be mined")
 	capi := pflag.String("capi", "https://ethereum-sepolia-beacon-api.publicnode.com", "Consensus API URL (required)")
+	justFetch := pflag.String("justFetch", "", "skip sending, just fetch blob from txHash")
 
 	pflag.Parse()
 
-	if *rpcURL == "" || *privKey == "" || *capi == "" {
+	if *rpcURL == "" || *privKey == "" || *capi == "" && *justFetch == "" {
 		pflag.Usage()
 		return
 	}
@@ -50,6 +51,22 @@ func main() {
 		log.Fatalf("set privkey: %v", err)
 	}
 	from := contracts.AccountAddress()
+
+	if txHash := *justFetch; txHash != "" {
+		i, c := 0, ""
+		// Get blob by commitment
+		blobs, err := contracts.BlobsByTxHash(context.TODO(), common.HexToHash(txHash))
+		if err != nil {
+			log.Errorf("get blob %d by commitment 0x%x: %v", i, c, err)
+			return
+		}
+		for _, blob := range blobs {
+			if blob.String() == fmt.Sprintf("0x%x", c) {
+				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob), "preview", preview(blob[:], 32))
+			}
+		}
+		return
+	}
 
 	// Destination address
 	var to common.Address
@@ -86,17 +103,17 @@ func main() {
 		log.Infow("commitment", "index", i, "hash", fmt.Sprintf("0x%x", c))
 	}
 
-	go func() {
-		stateTransitionChan, err := contracts.MonitorProcessStateRootChange(context.TODO(), time.Second*10)
-		if err != nil {
-			log.Fatalf("MonitorProcessStateRootChange: %v", err)
-		}
-		process := <-stateTransitionChan
-		log.Debugw("process state root changed", "pid", process.ID.String(),
-			"stateRoot", process.NewStateRoot.String(),
-			"voteCount", process.NewVoteCount.String(),
-			"voteOverwrittenCount", process.NewVoteOverwrittenCount.String())
-	}()
+	// go func() {
+	// 	stateTransitionChan, err := contracts.MonitorProcessStateRootChange(context.TODO(), time.Second*10)
+	// 	if err != nil {
+	// 		log.Fatalf("MonitorProcessStateRootChange: %v", err)
+	// 	}
+	// 	process := <-stateTransitionChan
+	// 	log.Debugw("process state root changed", "pid", process.ID.String(),
+	// 		"stateRoot", process.NewStateRoot.String(),
+	// 		"voteCount", process.NewVoteCount.String(),
+	// 		"voteOverwrittenCount", process.NewVoteOverwrittenCount.String())
+	// }()
 
 	// 4) Optionally wait
 	if *wait {
