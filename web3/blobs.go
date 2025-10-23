@@ -6,7 +6,7 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
-	"strconv"
+	"slices"
 	"strings"
 
 	kzg4844 "github.com/crate-crypto/go-eth-kzg"
@@ -23,9 +23,10 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 
 	eth2client "github.com/attestantio/go-eth2-client"
-	"github.com/attestantio/go-eth2-client/api"
-	eth2api "github.com/attestantio/go-eth2-client/api/v1"
+	eth2api "github.com/attestantio/go-eth2-client/api"
+	eth2apiv1 "github.com/attestantio/go-eth2-client/api/v1"
 	eth2http "github.com/attestantio/go-eth2-client/http"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 )
 
 // applyGasMultiplier applies the gas multiplier to a base fee value.
@@ -304,8 +305,7 @@ func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error
 func (c *Contracts) BlobByCommitment(
 	ctx context.Context,
 	txHash common.Hash,
-	commitmentHex string,
-) ([]byte, error) {
+) ([]deneb.Blob, error) {
 	if c.Web3ConsensusAPIEndpoint == "" {
 		return nil, fmt.Errorf("no consensus API endpoint configured")
 	}
@@ -322,6 +322,16 @@ func (c *Contracts) BlobByCommitment(
 	if receipt.BlockHash == (common.Hash{}) {
 		return nil, fmt.Errorf("tx not mined yet")
 	}
+
+	// 1) Load tx to get its blob versioned hashes
+	tx, _, err := ethcli.TransactionByHash(ctx, txHash)
+	if err != nil {
+		return nil, fmt.Errorf("tx: %w", err)
+	}
+	if tx.Type() != types.BlobTxType {
+		return nil, fmt.Errorf("not a blob tx (type=%d)", tx.Type())
+	}
+	wantedHashes := tx.BlobHashes() // []common.Hash (versioned)
 
 	// EL header -> parent beacon root (EIP-4788)
 	hdr, err := ethcli.HeaderByHash(ctx, receipt.BlockHash)
@@ -347,7 +357,7 @@ func (c *Contracts) BlobByCommitment(
 	// Block IDs can be roots, slots, or keywords; use the root string directly.
 	var parentSlot uint64
 	if provider, isProvider := bc.(eth2client.BeaconBlockHeadersProvider); isProvider {
-		headers, err := provider.BeaconBlockHeader(ctx, &api.BeaconBlockHeaderOpts{
+		headers, err := provider.BeaconBlockHeader(ctx, &eth2api.BeaconBlockHeaderOpts{
 			Block: parentRootHex,
 		})
 		if err != nil {
@@ -356,29 +366,43 @@ func (c *Contracts) BlobByCommitment(
 		parentSlot = uint64(headers.Data.Header.Message.Slot)
 	}
 	slot := parentSlot + 1 // slot of our EL block’s beacon root
+	// TODO: is this whole step needed? if BlobSidecars accepts parentRootHex
 
 	// --- CL: fetch blob sidecars for that slot (typed)
-	sidecars, err := bc.(interface {
-		BlobSidecars(ctx context.Context, blockID string) ([]*eth2api.BlobSidecar, error)
-	}).BlobSidecars(ctx, strconv.FormatUint(slot, 10))
-	if err != nil {
-		return nil, fmt.Errorf("blob sidecars(slot=%d): %w", slot, err)
+	var sidecars []*deneb.BlobSidecar
+	if provider, isProvider := bc.(eth2client.BlobSidecarsProvider); isProvider {
+		resp, err := provider.BlobSidecars(ctx, &eth2api.BlobSidecarsOpts{
+			Block: parentRootHex,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("blob sidecars(slot=%d): %w", slot, err)
+		}
+		sidecars = resp.Data
 	}
-
 	// --- Find the requested commitment; return its blob bytes
-	needle := strings.ToLower(strings.TrimPrefix(commitmentHex, "0x"))
+
+	blobs := []deneb.Blob{}
 	for _, sc := range sidecars {
 		if sc == nil {
 			continue
 		}
-		got := strings.ToLower(strings.TrimPrefix(sc.KZGCommitment, "0x"))
-		if got == needle {
-			// sc.Blob is 0x-hex; decode to raw []byte (131072 bytes)
-			return hexutil.Decode(sc.Blob)
+		if slices.Contains(wantedHashes, versionedBlobHash(sc.KZGCommitment)) {
+			blobs = append(blobs, sc.Blob)
 		}
+		// DEAD CODE
+		// if strings.TrimPrefix(strings.ToLower(sc.KZGCommitment.String()), "0x") ==
+		// 	strings.TrimPrefix(strings.ToLower(commitmentHex), "0x") {
+		// 	return &sc.Blob, nil
+		// }
 	}
 
-	return nil, fmt.Errorf("commitment %s not found in slot %d sidecars", commitmentHex, slot)
+	return blobs, nil
+	// return nil, fmt.Errorf("commitment %s not found in slot %d sidecars", commitmentHex, slot)
+}
+
+func versionedBlobHash(deneb.KZGCommitment) common.Hash {
+	// TODO: implement
+	return common.Hash{}
 }
 
 // BlobByTxHash fetches blobs via EL RPC (preferred) and verifies against tx blobVersionedHashes.
@@ -421,9 +445,10 @@ func (c *Contracts) BlobByTxHash(ctx context.Context, txHash common.Hash) ([][]b
 			if err != nil {
 				return nil, err
 			}
-			var comm kzg4844.Commitment
+			// var comm kzg4844.KZGCommitment
+			var comm deneb.KZGCommitment
 			copy(comm[:], commB)
-			got := kzg4844.KZGToVersionedHash(comm) // compare to want[i] (order is not guaranteed)
+			got := versionedBlobHash(comm) // compare to want[i] (order is not guaranteed)
 			ok := false
 			for _, vh := range want {
 				if bytes.Equal(got[:], vh[:]) {
@@ -488,8 +513,8 @@ func SlotByTxHash(ctx context.Context, el *ethclient.Client, beaconURL string, t
 	// Block ID can be the block root hex directly
 	// We use the typed API so we don't hand-roll JSON
 	headers, err := bc.(interface {
-		BeaconBlockHeaders(ctx context.Context, opts *eth2api.BeaconBlockHeadersOpts) ([]*eth2api.BeaconBlockHeader, error)
-	}).BeaconBlockHeaders(ctx, &eth2api.BeaconBlockHeadersOpts{Block: parentRoot})
+		BeaconBlockHeaders(ctx context.Context, opts *eth2api.BeaconBlockHeaderOpts) ([]*eth2apiv1.BeaconBlockHeader, error)
+	}).BeaconBlockHeaders(ctx, &eth2api.BeaconBlockHeaderOpts{Block: parentRoot})
 	if err != nil {
 		return 0, fmt.Errorf("beacon headers: %w", err)
 	}

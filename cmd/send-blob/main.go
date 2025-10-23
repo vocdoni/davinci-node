@@ -117,12 +117,16 @@ func main() {
 
 	// Get blob by commitment
 	for i, c := range commitments {
-		blob, err := contracts.BlobByCommitment(ctx2, tx.Hash(), fmt.Sprintf("0x%x", c))
+		blobs, err := contracts.BlobByCommitment(ctx2, tx.Hash())
 		if err != nil {
 			log.Errorf("get blob %d by commitment 0x%x: %v", i, c, err)
 			continue
 		}
-		log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob), "preview", preview(blob, 32))
+		for _, blob := range blobs {
+			if blob.String() == fmt.Sprintf("0x%x", c) {
+				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob), "preview", preview(blob[:], 32))
+			}
+		}
 	}
 }
 
