@@ -335,7 +335,14 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 					continue
 				}
 				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessStateRootUpdated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, End: &end, Context: ctxQuery}, nil, nil)
+				if c.processes == nil {
+					panic("c.processes is nil")
+				}
+				iter, err := c.processes.FilterProcessStateRootUpdated(&bind.FilterOpts{
+					Start:   c.lastWatchProcessBlock,
+					End:     &end,
+					Context: ctxQuery,
+				}, nil, nil)
 				cancel()
 				if err != nil || iter == nil {
 					log.Debugw("failed to filter process finalized, retrying", "err", err)
