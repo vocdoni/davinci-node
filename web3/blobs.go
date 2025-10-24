@@ -15,17 +15,14 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844" // for the struct types
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/vocdoni/davinci-node/log"
 
 	eth2client "github.com/attestantio/go-eth2-client"
 	eth2api "github.com/attestantio/go-eth2-client/api"
-	eth2apiv1 "github.com/attestantio/go-eth2-client/api/v1"
 	eth2http "github.com/attestantio/go-eth2-client/http"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 )
@@ -304,50 +301,50 @@ func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error
 	return sc, sc.BlobHashes(), nil
 }
 
-// BlobsByTxHash returns all the blobs of a tx, given a `txHash`
-// using the provided Consensus (beacon) API base URL.
-func (c *Contracts) BlobsByTxHash(
-	ctx context.Context,
-	txHash common.Hash,
-) ([]deneb.Blob, error) {
-	if c.Web3ConsensusAPIEndpoint == "" {
-		return nil, fmt.Errorf("no consensus API endpoint configured")
+// TransactionWithReceipt returns the full tx including it's receipt
+// of an already mined transaction, identified by txHash.
+func (c *Contracts) TransactionWithReceipt(ctx context.Context, txHash common.Hash,
+) (*types.Transaction, *types.Receipt, error) {
+	ethcli, err := c.cli.EthClient()
+	if err != nil {
+		return nil, nil, fmt.Errorf("eth client: %w", err)
+	}
+	// EL: txHash -> receipt
+	receipt, err := ethcli.TransactionReceipt(ctx, txHash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("tx receipt: %w", err)
+	}
+	if receipt.BlockHash == (common.Hash{}) {
+		return nil, nil, fmt.Errorf("tx not mined yet")
+	}
+	// EL: txHash -> full tx
+	tx, _, err := ethcli.TransactionByHash(ctx, txHash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("tx: %w", err)
 	}
 
-	// --- EL: receipt -> block hash
+	return tx, receipt, nil
+}
+
+// BlobSidecarsOfBlock returns the blob sidecars stored in consensus layer,
+// of a block identified by a blockHash.
+func (c *Contracts) BlobSidecarsOfBlock(ctx context.Context, blockHash common.Hash) ([]*deneb.BlobSidecar, error) {
+	// EL: RPC client
 	ethcli, err := c.cli.EthClient()
 	if err != nil {
 		return nil, fmt.Errorf("eth client: %w", err)
 	}
-	receipt, err := ethcli.TransactionReceipt(ctx, txHash)
-	if err != nil {
-		return nil, fmt.Errorf("tx receipt: %w", err)
-	}
-	if receipt.BlockHash == (common.Hash{}) {
-		return nil, fmt.Errorf("tx not mined yet")
-	}
 
-	// 1) Load tx to get its blob versioned hashes
-	tx, _, err := ethcli.TransactionByHash(ctx, txHash)
-	if err != nil {
-		return nil, fmt.Errorf("tx: %w", err)
-	}
-	if tx.Type() != types.BlobTxType {
-		return nil, fmt.Errorf("not a blob tx (type=%d)", tx.Type())
-	}
-	wantedHashes := tx.BlobHashes() // []common.Hash (versioned)
-
-	// EL header -> parent beacon root (EIP-4788)
-	hdr, err := ethcli.HeaderByHash(ctx, receipt.BlockHash)
+	// EL: block hash -> header -> parent beacon root (EIP-4788)
+	hdr, err := ethcli.HeaderByHash(ctx, blockHash)
 	if err != nil {
 		return nil, fmt.Errorf("header by hash: %w", err)
 	}
 	if hdr.ParentBeaconRoot == nil {
 		return nil, fmt.Errorf("parent beacon root missing (EL client too old?)")
 	}
-	parentRootHex := hdr.ParentBeaconRoot.Hex()
 
-	// --- CL: typed Beacon client
+	// CL: Beacon client
 	bc, err := eth2http.New(ctx,
 		eth2http.WithAddress(strings.TrimRight(c.Web3ConsensusAPIEndpoint, "/")),
 		eth2http.WithLogLevel(zerolog.DebugLevel), // zerolog.TraceLevel is useful for debugging
@@ -357,22 +354,21 @@ func (c *Contracts) BlobsByTxHash(
 		return nil, fmt.Errorf("beacon client: %w", err)
 	}
 
-	// --- CL: resolve parent root -> parent slot (typed)
+	// CL: resolve parent root -> parent slot
 	// Block IDs can be roots, slots, or keywords; use the root string directly.
 	var parentSlot uint64
 	if provider, isProvider := bc.(eth2client.BeaconBlockHeadersProvider); isProvider {
 		headers, err := provider.BeaconBlockHeader(ctx, &eth2api.BeaconBlockHeaderOpts{
-			Block: parentRootHex,
+			Block: hdr.ParentBeaconRoot.Hex(),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("beacon headers(%s): %w", parentRootHex, err)
+			return nil, fmt.Errorf("beacon headers(%s): %w", hdr.ParentBeaconRoot, err)
 		}
 		parentSlot = uint64(headers.Data.Header.Message.Slot)
 	}
-	slot := parentSlot + 1 // slot of our EL block’s beacon root
-	// TODO: is this whole step needed? if BlobSidecars accepts parentRootHex
+	slot := parentSlot + 1 // slot of our EL block
 
-	// --- CL: fetch blob sidecars for that slot (typed)
+	// CL: fetch blob sidecars for that slot
 	var sidecars []*deneb.BlobSidecar
 	if provider, isProvider := bc.(eth2client.BlobSidecarsProvider); isProvider {
 		resp, err := provider.BlobSidecars(ctx, &eth2api.BlobSidecarsOpts{
@@ -381,156 +377,51 @@ func (c *Contracts) BlobsByTxHash(
 		if err != nil {
 			return nil, fmt.Errorf("blob sidecars(slot=%d): %w", slot, err)
 		}
-		for _, sc := range resp.Data {
+		for _, sc := range resp.Data { // DEBUG
 			log.Debugf("%d: %x, %+v", sc.Index, sc.KZGCommitment, sc.SignedBlockHeader)
 		}
 		sidecars = resp.Data
 	}
-	// --- Find the requested commitment; return its blob bytes
+
+	return sidecars, nil
+}
+
+// BlobsByTxHash returns all the blobs of a tx, given a `txHash`.
+func (c *Contracts) BlobsByTxHash(
+	ctx context.Context,
+	txHash common.Hash,
+) ([]deneb.Blob, error) {
+	if c.Web3ConsensusAPIEndpoint == "" {
+		return nil, fmt.Errorf("no consensus API endpoint configured")
+	}
+
+	tx, txReceipt, err := c.TransactionWithReceipt(ctx, txHash)
+	if err != nil {
+		return nil, fmt.Errorf("tx parent beacon root: %w", err)
+	}
+	if tx.Type() != types.BlobTxType {
+		return nil, fmt.Errorf("not a blob tx (type=%d)", tx.Type())
+	}
+
+	sidecars, err := c.BlobSidecarsOfBlock(ctx, txReceipt.BlockHash)
+	if err != nil {
+		return nil, fmt.Errorf("fetch blob sidecars: %w", err)
+	}
 
 	blobs := []deneb.Blob{}
 	for _, sc := range sidecars {
 		if sc == nil {
 			continue
 		}
-		if slices.Contains(wantedHashes, versionedBlobHash(sc.KZGCommitment)) {
+		// filter to keep only the blobs related to this transaction
+		if slices.Contains(tx.BlobHashes(), versionedBlobHash(sc.KZGCommitment)) {
 			blobs = append(blobs, sc.Blob)
 		}
-		// DEAD CODE
-		// if strings.TrimPrefix(strings.ToLower(sc.KZGCommitment.String()), "0x") ==
-		// 	strings.TrimPrefix(strings.ToLower(commitmentHex), "0x") {
-		// 	return &sc.Blob, nil
-		// }
 	}
-
 	return blobs, nil
-	// return nil, fmt.Errorf("commitment %s not found in slot %d sidecars", commitmentHex, slot)
 }
 
 func versionedBlobHash(deneb.KZGCommitment) common.Hash {
 	// TODO: implement
 	return common.HexToHash("013a5dfd2bdf436e1c51906e81721a94ae60cff776cef0cfd167e12731412563")
-}
-
-// BlobByTxHash fetches blobs via EL RPC (preferred) and verifies against tx blobVersionedHashes.
-func (c *Contracts) BlobByTxHash(ctx context.Context, txHash common.Hash) ([][]byte, error) {
-	ethcli, err := c.cli.EthClient()
-	if err != nil {
-		return nil, fmt.Errorf("eth client: %w", err)
-	}
-
-	// 1) Load tx to get its blob versioned hashes
-	tx, _, err := ethcli.TransactionByHash(ctx, txHash)
-	if err != nil {
-		return nil, fmt.Errorf("tx: %w", err)
-	}
-	if tx.Type() != types.BlobTxType {
-		return nil, fmt.Errorf("not a blob tx (type=%d)", tx.Type())
-	}
-	want := tx.BlobHashes() // []common.Hash (versioned)
-
-	// 2) Try the EL convenience RPC
-	var sidecar struct {
-		Blobs       []string `json:"blobs"`
-		Commitments []string `json:"commitments"`
-		Proofs      []string `json:"proofs"`
-	}
-	raw, err := c.cli.RPCClient()
-	if err != nil {
-		return nil, fmt.Errorf("rpc client: %w", err)
-	}
-
-	if err := raw.CallContext(ctx, &sidecar, "eth_getBlobSidecarByTxHash", txHash.Hex()); err == nil {
-		// 3) Verify & collect
-		out := make([][]byte, 0, len(sidecar.Blobs))
-		for i := range sidecar.Blobs {
-			blobB, err := hexutil.Decode(sidecar.Blobs[i])
-			if err != nil {
-				return nil, err
-			}
-			commB, err := hexutil.Decode(sidecar.Commitments[i])
-			if err != nil {
-				return nil, err
-			}
-			// var comm kzg4844.KZGCommitment
-			var comm deneb.KZGCommitment
-			copy(comm[:], commB)
-			got := versionedBlobHash(comm) // compare to want[i] (order is not guaranteed)
-			ok := false
-			for _, vh := range want {
-				if bytes.Equal(got[:], vh[:]) {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				return nil, fmt.Errorf("sidecar commitment not in tx blobVersionedHashes")
-			}
-			out = append(out, blobB)
-		}
-		return out, nil
-	}
-
-	// 4) Fallback to your CL path for each commitment expected by the tx
-	// Use your existing BlobByCommitment with each tx.BlobHashes converted back to commitment if you stored them,
-	// or first fetch commitments via consensus sidecars for the right slot (similar to your current code).
-	// (You can call your BlobByCommitment once, but still verify got hash ∈ want)
-	receipt, err := ethcli.TransactionReceipt(ctx, txHash)
-	if err != nil {
-		return nil, err
-	}
-	hdr, err := ethcli.HeaderByHash(ctx, receipt.BlockHash)
-	if err != nil {
-		return nil, err
-	}
-	if hdr.ParentBeaconRoot == nil {
-		return nil, fmt.Errorf("no parent beacon root in header")
-	}
-	// ... your existing parentRoot -> slot -> /eth/v1/beacon/blob_sidecars/{slot} code here ...
-	// make sure to match commitments -> versioned hashes against 'want' like above.
-	return nil, fmt.Errorf("CL fallback not implemented in this sketch")
-}
-
-func SlotByTxHash(ctx context.Context, el *ethclient.Client, beaconURL string, txHash common.Hash) (uint64, error) {
-	// 1) EL: receipt -> block hash
-	r, err := el.TransactionReceipt(ctx, txHash)
-	if err != nil {
-		return 0, fmt.Errorf("receipt: %w", err)
-	}
-	if r.BlockHash == (common.Hash{}) {
-		return 0, fmt.Errorf("tx not mined")
-	}
-
-	// 2) EL: header -> parentBeaconBlockRoot (EIP-4788)
-	hdr, err := el.HeaderByHash(ctx, r.BlockHash)
-	if err != nil {
-		return 0, fmt.Errorf("header: %w", err)
-	}
-	if hdr.ParentBeaconRoot == nil {
-		return 0, fmt.Errorf("parent beacon root missing (EL client too old?)")
-	}
-	parentRoot := hdr.ParentBeaconRoot.Hex()
-
-	// 3) CL: resolve that root to a header (and slot)
-	bc, err := eth2http.New(ctx, eth2http.WithAddress(beaconURL))
-	if err != nil {
-		return 0, fmt.Errorf("beacon client: %w", err)
-	}
-
-	// Block ID can be the block root hex directly
-	// We use the typed API so we don't hand-roll JSON
-	headers, err := bc.(interface {
-		BeaconBlockHeaders(ctx context.Context, opts *eth2api.BeaconBlockHeaderOpts) ([]*eth2apiv1.BeaconBlockHeader, error)
-	}).BeaconBlockHeaders(ctx, &eth2api.BeaconBlockHeaderOpts{Block: parentRoot})
-	if err != nil {
-		return 0, fmt.Errorf("beacon headers: %w", err)
-	}
-	if len(headers) == 0 {
-		return 0, fmt.Errorf("no beacon header for %s", parentRoot)
-	}
-
-	parentSlot := uint64(headers[0].Header.Message.Slot)
-
-	// 4) Our EL block’s beacon slot = parent slot + 1
-	return parentSlot + 1, nil
 }
