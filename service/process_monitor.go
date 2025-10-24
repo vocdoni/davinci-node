@@ -139,6 +139,9 @@ func (pm *ProcessMonitor) monitorProcesses(
 				log.Warnw("failed to update process state root",
 					"pid", process.ID.String(), "err", err.Error())
 			}
+			log.Debugw("state root change means new blob was published", "txHash", process.TxHash)
+			// if err := pm.storage.UpdateProcessAndState(process.ID,
+
 		}
 	}
 }

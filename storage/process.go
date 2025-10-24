@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/deneb"
+	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -96,6 +98,58 @@ func (s *Storage) UpdateProcess(pid []byte, updateFunc ...func(*types.Process) e
 
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+
+	// Read current state
+	p := &types.Process{}
+	if err := s.getArtifact(processPrefix, pid, p); err != nil {
+		return fmt.Errorf("failed to get process for update: %w", err)
+	}
+
+	// Apply the update functions, each of which can modify the process state
+	for _, f := range updateFunc {
+		if err := f(p); err != nil {
+			return fmt.Errorf("update function failed: %w", err)
+		}
+	}
+
+	// Write back atomically
+	if err := s.setArtifact(processPrefix, pid, p); err != nil {
+		return fmt.Errorf("failed to save updated process: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateProcessAndState performs an atomic read-modify-write operation on a process,
+// also applying the passed blob to the statedb of the process.
+// The updateFunc is called with the current process state and can modify it.
+// This ensures no race conditions between concurrent process updates.
+func (s *Storage) UpdateProcessAndState(pid types.HexBytes, blob deneb.Blob, updateFunc ...func(*types.Process) error) error {
+	if pid == nil {
+		return fmt.Errorf("nil process ID")
+	}
+	if len(updateFunc) == 0 {
+		return fmt.Errorf("no update function provided")
+	}
+
+	// TODO: use same type everywhere?
+	b := goethkzg.Blob{}
+	copy(b[:], blob[:])
+	parsedBlob, err := state.ParseBlobData(&b)
+	if err != nil {
+		return fmt.Errorf("failed to parse blob data: %w", err)
+	}
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	// Create the process state
+	pState, err := state.New(s.StateDB(), pid.BigInt().MathBigInt())
+	if err != nil {
+		return fmt.Errorf("failed to create process state: %w", err)
+	}
+	if err := pState.ApplyBlobToState(parsedBlob); err != nil {
+		return fmt.Errorf("failed to apply blob to state: %w", err)
+	}
 
 	// Read current state
 	p := &types.Process{}

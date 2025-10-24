@@ -200,6 +200,7 @@ type ProcessWithStateRootChange struct {
 	NewStateRoot            *BigInt
 	NewVoteCount            *BigInt
 	NewVoteOverwrittenCount *BigInt
+	TxHash                  common.Hash // this is really hacky, shouldn't be here
 }
 
 type SequencerProcessStats struct {
