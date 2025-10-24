@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"unsafe"
 
-	kzg4844 "github.com/crate-crypto/go-eth-kzg"
+	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
@@ -30,7 +30,7 @@ func (st *State) BuildKZGCommitment() (
 	blobData *blobs.BlobEvalData,
 	err error,
 ) {
-	blob := &kzg4844.Blob{}
+	blob := &goethkzg.Blob{}
 	var cells [blobs.FieldElementsPerBlob][blobs.BytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) {
@@ -94,7 +94,7 @@ func (st *State) BuildKZGCommitment() (
 }
 
 // ParseBlobData extracts vote and results data from a blob
-func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
+func ParseBlobData(blob *goethkzg.Blob) (*BlobData, error) {
 	coordsPerBallot := types.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
 
 	data := &BlobData{

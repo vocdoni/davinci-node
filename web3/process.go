@@ -365,7 +365,8 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 						NewStateRoot:            new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
 						NewVoteCount:            process.VoteCount,
 						NewVoteOverwrittenCount: process.VoteOverwrittenCount,
-						// TxHash:                  iter.Event.Raw.TxHash, // so we can fetch the corresponding blob from CL
+						TxHash:                  iter.Event.Raw.TxHash, // hack, so we can fetch the corresponding blob from CL
+						// maybe make a second chan "types.BlobsToFetch" or "types.BlobTxs" and send the txhash over there?
 					}
 				}
 			}

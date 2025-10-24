@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	kzg4844 "github.com/crate-crypto/go-eth-kzg"
+	goethkzg "github.com/crate-crypto/go-eth-kzg"
 	"github.com/rs/zerolog"
 
 	"github.com/ethereum/go-ethereum"
@@ -259,7 +259,7 @@ func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error
 	if len(raw) == 0 {
 		return nil, nil, fmt.Errorf("no blobs")
 	}
-	ctx, err := kzg4844.NewContext4096Secure()
+	ctx, err := goethkzg.NewContext4096Secure()
 	if err != nil {
 		return nil, nil, fmt.Errorf("kzg ctx: %w", err)
 	}
@@ -273,7 +273,7 @@ func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error
 			return nil, nil, fmt.Errorf("blob %d wrong size: got %d", i, len(b))
 		}
 		// cast []byte -> crate blob then to geth blob bytes
-		var crateBlob kzg4844.Blob
+		var crateBlob goethkzg.Blob
 		copy(crateBlob[:], b)
 
 		commit, err := ctx.BlobToKZGCommitment(&crateBlob, 0)
