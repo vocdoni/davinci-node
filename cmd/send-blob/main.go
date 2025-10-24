@@ -53,7 +53,7 @@ func main() {
 	from := contracts.AccountAddress()
 
 	if txHash := *justFetch; txHash != "" {
-		i, c := 0, ""
+		i, c := 0, "0132c2d5dbc01c3990b1542ffb909338a0e43ed3572d238e3827bccd3bf4646f"
 		// Get blob by commitment
 		blobs, err := contracts.BlobsByTxHash(context.TODO(), common.HexToHash(txHash))
 		if err != nil {
@@ -61,8 +61,9 @@ func main() {
 			return
 		}
 		for _, blob := range blobs {
-			if blob.String() == fmt.Sprintf("0x%x", c) {
-				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob), "preview", preview(blob[:], 32))
+			log.Infow(blob.KZGCommitment.String(), fmt.Sprintf("0x%s", c))
+			if blob.String() == fmt.Sprintf("0x%s", c) {
+				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob.Blob), "preview", preview(blob.Blob[:], 32))
 			}
 		}
 		return
@@ -140,8 +141,10 @@ func main() {
 			continue
 		}
 		for _, blob := range blobs {
+			log.Info(blob.KZGCommitment.String(), fmt.Sprintf("0x%s", c))
+
 			if blob.String() == fmt.Sprintf("0x%x", c) {
-				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob), "preview", preview(blob[:], 32))
+				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob.Blob), "preview", preview(blob.Blob[:], 32))
 			}
 		}
 	}

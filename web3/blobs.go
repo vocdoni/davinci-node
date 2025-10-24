@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"fmt"
 	"math/big"
 	"slices"
@@ -386,15 +387,11 @@ func (c *Contracts) BlobSidecarsOfBlock(ctx context.Context, blockHash common.Ha
 	return sidecars, nil
 }
 
-// BlobsByTxHash returns all the blobs of a tx, given a `txHash`.
+// BlobsByTxHash returns all the blobs sidecars of a tx, given a `txHash`.
 func (c *Contracts) BlobsByTxHash(
 	ctx context.Context,
 	txHash common.Hash,
-) ([]deneb.Blob, error) {
-	if c.Web3ConsensusAPIEndpoint == "" {
-		return nil, fmt.Errorf("no consensus API endpoint configured")
-	}
-
+) ([]*deneb.BlobSidecar, error) {
 	tx, txReceipt, err := c.TransactionWithReceipt(ctx, txHash)
 	if err != nil {
 		return nil, fmt.Errorf("tx parent beacon root: %w", err)
@@ -408,20 +405,20 @@ func (c *Contracts) BlobsByTxHash(
 		return nil, fmt.Errorf("fetch blob sidecars: %w", err)
 	}
 
-	blobs := []deneb.Blob{}
+	// filter to keep only the blobs related to this transaction
+	blobs := []*deneb.BlobSidecar{}
 	for _, sc := range sidecars {
-		if sc == nil {
-			continue
-		}
-		// filter to keep only the blobs related to this transaction
-		if slices.Contains(tx.BlobHashes(), versionedBlobHash(sc.KZGCommitment)) {
-			blobs = append(blobs, sc.Blob)
+		if sc != nil && slices.Contains(tx.BlobHashes(), versionedBlobHash(sc.KZGCommitment)) {
+			blobs = append(blobs, sc)
 		}
 	}
 	return blobs, nil
 }
 
-func versionedBlobHash(deneb.KZGCommitment) common.Hash {
-	// TODO: implement
-	return common.HexToHash("013a5dfd2bdf436e1c51906e81721a94ae60cff776cef0cfd167e12731412563")
+// versionedBlobHash takes a commitment and calculates the versioned blob hash.
+func versionedBlobHash(commitment deneb.KZGCommitment) common.Hash {
+	var c gethkzg.Commitment
+	copy(c[:], commitment[:])
+	vh := gethkzg.CalcBlobHashV1(sha256.New(), &c)
+	return common.BytesToHash(vh[:])
 }
