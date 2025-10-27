@@ -13,7 +13,7 @@ COPY webapp ./
 RUN pnpm run build
 
 # Build Go binary
-FROM golang:1.24 AS builder
+FROM golang:1.25 AS builder
 WORKDIR /src
 # Copy go mod files
 COPY go.mod go.sum ./

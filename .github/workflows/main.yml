@@ -33,7 +33,7 @@ jobs:
       - name: Set up Go environment
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
 
       - name: Tidy go module
         run: |
@@ -61,7 +61,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1
+          version: v2.5
 
   job_go_test:
     runs-on: [self-hosted]
@@ -147,7 +147,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache: false # we manage cache oruselves
 
       - name: Prep Go module cache
