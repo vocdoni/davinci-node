@@ -194,12 +194,14 @@ type ProcessWithStatusChange struct {
 }
 
 // ProcessWithStateRootChange extends types.Process to add NewStateRoot,
-// NewVoteCount, and NewVoteOverwrittenCount fields
+// NewVoteCount, and NewVoteOverwrittenCount fields, as well as the TxHash
+// that originated the state root change, so the corresponding blob can be fetched.
 type ProcessWithStateRootChange struct {
 	*Process
 	NewStateRoot            *BigInt
 	NewVoteCount            *BigInt
 	NewVoteOverwrittenCount *BigInt
+	TxHash                  common.Hash
 }
 
 type SequencerProcessStats struct {

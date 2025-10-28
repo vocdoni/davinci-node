@@ -432,6 +432,9 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 						NewStateRoot:            new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
 						NewVoteCount:            process.VoteCount,
 						NewVoteOverwrittenCount: process.VoteOverwrittenCount,
+						TxHash:                  iter.Event.Raw.TxHash, // so we can fetch the corresponding blob from CL
+						// another option would be to fetch the actual blob here, and pass (a pointer to) the 128 kB
+						// this would keep all the "web3 stuff" here, and avoid handling blob stuff inside ProcessMonitor
 					}
 				}
 			}

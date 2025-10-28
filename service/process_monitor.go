@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	eth2deneb "github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/log"
@@ -19,6 +20,7 @@ type ProcessMonitor struct {
 	contracts ContractsService
 	storage   *storage.Storage
 	interval  time.Duration
+	statesync *StateSync
 	mu        sync.Mutex
 	cancel    context.CancelFunc
 }
@@ -32,10 +34,11 @@ type ContractsService interface {
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
+	BlobsByTxHash(ctx context.Context, txHash common.Hash) ([]*eth2deneb.BlobSidecar, error)
 }
 
 // NewProcessMonitor creates a new ProcessMonitor service. If storage is nil, it uses a memory storage.
-func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, interval time.Duration) *ProcessMonitor {
+func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, interval time.Duration, stateSync *StateSync) *ProcessMonitor {
 	if stg == nil {
 		kv := memdb.New()
 		stg = storage.New(kv)
@@ -44,6 +47,7 @@ func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, interva
 		contracts: contracts,
 		storage:   stg,
 		interval:  interval,
+		statesync: stateSync,
 	}
 }
 
@@ -133,12 +137,25 @@ func (pm *ProcessMonitor) monitorProcesses(
 				"stateRoot", process.NewStateRoot.String(),
 				"voteCount", process.NewVoteCount.String(),
 				"voteOverwrittenCount", process.NewVoteOverwrittenCount.String())
+
 			if err := pm.storage.UpdateProcess(process.ID,
 				storage.ProcessUpdateCallbackSetStateRoot(process.NewStateRoot,
-					process.NewVoteCount, process.NewVoteOverwrittenCount)); err != nil {
+					process.NewVoteCount,
+					process.NewVoteOverwrittenCount)); err != nil {
 				log.Warnw("failed to update process state root",
 					"pid", process.ID.String(), "err", err.Error())
 			}
+
+			// Notify StateSync service for blob fetching and state reconstruction (non-blocking)
+			if pm.statesync != nil {
+				select {
+				case pm.statesync.notifications <- process:
+					log.Debugw("state transition notification sent to statesync", "pid", process.ID.String())
+				default:
+					log.Warnw("statesync notification dropped - channel full", "pid", process.ID.String())
+				}
+			}
+
 		}
 	}
 }
