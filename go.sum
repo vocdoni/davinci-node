@@ -398,6 +398,8 @@ github.com/influxdata/influxdb1-client v0.0.0-20220302092344-a9ab5670611c h1:qSH
 github.com/influxdata/influxdb1-client v0.0.0-20220302092344-a9ab5670611c/go.mod h1:qj24IKcXYK6Iy9ceXlo3Tc+vtHo9lIhSX5JddghvEPo=
 github.com/influxdata/line-protocol v0.0.0-20200327222509-2487e7298839 h1:W9WBk7wlPfJLvMCdtV4zPulc4uCPrlywQOmbFOhgQNU=
 github.com/influxdata/line-protocol v0.0.0-20200327222509-2487e7298839/go.mod h1:xaLFMmpvUxqXtVkUJfg9QmT88cDaCJ3ZKgdZ78oO8Qo=
+github.com/ingonyama-zk/icicle-gnark/v3 v3.2.2 h1:B+aWVgAx+GlFLhtYjIaF0uGjU3rzpl99Wf9wZWt+Mq8=
+github.com/ingonyama-zk/icicle-gnark/v3 v3.2.2/go.mod h1:CH/cwcr21pPWH+9GtK/PFaa4OGTv4CtfkCKro6GpbRE=
 github.com/jackpal/go-nat-pmp v1.0.2 h1:KzKSgb7qkJvOUTqYl9/Hg/me3pWgBmERKrTGD7BdWus=
 github.com/jackpal/go-nat-pmp v1.0.2/go.mod h1:QPH045xvCAeXUZOxsnwmrtiCoxIr9eob+4orBN1SBKc=
 github.com/jinzhu/gorm v0.0.0-20170222002820-5409931a1bb8 h1:CZkYfurY6KGhVtlalI4QwQ6T0Cu6iuY3e0x5RLu96WE=
@@ -730,8 +732,8 @@ github.com/vocdoni/davinci-contracts v0.0.0-20251022141219-8f57cedc14b1 h1:M3DvP
 github.com/vocdoni/davinci-contracts v0.0.0-20251022141219-8f57cedc14b1/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97 h1:85N0hCD0MxBH7P76m7TJB+6JwxzT2ajxrn5qutemTGs=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97/go.mod h1:BOS7k/ifqwicL1CgLiq1NylPnMLCuNRBHU2HHHtnWOE=
-github.com/vocdoni/gnark-no-assert v0.0.0-20250915072612-c497ea90fabd h1:eX2YRiyKiMaJn46DWct1HTRjy+AZqY+w9z4xfZcrC8Q=
-github.com/vocdoni/gnark-no-assert v0.0.0-20250915072612-c497ea90fabd/go.mod h1:1IBpDPB/Rdyh55bQRR4b0z1WvfHQN1e0020jCvKP2Gk=
+github.com/vocdoni/gnark-no-assert v0.0.0-20251027185305-5927e3d455cc h1:aYpdRW5R++Kzj9mgkNHRIjr1NhdI85jHKR0xLMOMxEA=
+github.com/vocdoni/gnark-no-assert v0.0.0-20251027185305-5927e3d455cc/go.mod h1:1IBpDPB/Rdyh55bQRR4b0z1WvfHQN1e0020jCvKP2Gk=
 github.com/vocdoni/lean-imt-go v0.0.0-20251002083034-be3d942711bf h1:HJ+Zs/bWCUqFpKJ0zTJXr80rnh8C7tc65HNruoPl6EE=
 github.com/vocdoni/lean-imt-go v0.0.0-20251002083034-be3d942711bf/go.mod h1:td3j8rydLQRGcizIiXV7kp2FErbduOgxJMp3bQhR24E=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
