@@ -66,7 +66,6 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
 	address "github.com/vocdoni/gnark-crypto-primitives/emulated/ecdsa"
-	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 )
 
@@ -257,40 +256,40 @@ func (c *VerifyVoteCircuit) CensusOrigin() frontend.Variable {
 // value, but it asserts that the proof is valid for the address and user weight
 // provided by the user. The census key and value comes from the address and
 // user weight provided by the user.
-func (c *VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
-	key, err := c.censusKey(api)
-	if err != nil {
-		circuits.FrontendError(api, "failed to get census key-value", err)
-	}
-	// convert the user weight from the scalar field of the bn254 curve to the
-	// current compiler field as a variable to be used in the census proof
-	value, err := utils.PackScalarToVar(api, c.UserWeight)
-	if err != nil {
-		circuits.FrontendError(api, "failed to convert weight emulated element to var: %w", err)
-	}
-	// convert emulated census root and siblings to native variables
-	root, err := utils.PackScalarToVar(api, c.Process.CensusRoot)
-	if err != nil {
-		circuits.FrontendError(api, "failed to convert emulated root to var", err)
-	}
-	siblings := make([]frontend.Variable, len(c.CensusSiblings))
-	for i, sibling := range c.CensusSiblings {
-		siblings[i], err = utils.PackScalarToVar(api, sibling)
-		if err != nil {
-			circuits.FrontendError(api, "failed to convert emulated sibling to var", err)
-		}
-	}
-	// verify the census proof using the derived address and the user weight
-	// provided as leaf key-value, adn the root and siblings provided
-	isValid := smt.InclusionVerifier(api, utils.MiMCHasher, root, siblings, key, value)
-	// check if the proof is valid only if the census origin is MerkleTree
-	// and the current vote inputs are from a valid vote.
-	isMerkleTreeCensus := api.IsZero(api.Sub(c.CensusOrigin(), uint8(types.CensusOriginMerkleTree)))
-	shouldBeValid := api.And(c.IsValid, isMerkleTreeCensus)
-	// if the inputs are valid, ensure that the result of the verification is 1,
-	// otherwise, the result does not matter so force it to be 1
-	api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
-}
+// func (c *VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
+// 	key, err := c.censusKey(api)
+// 	if err != nil {
+// 		circuits.FrontendError(api, "failed to get census key-value", err)
+// 	}
+// 	// convert the user weight from the scalar field of the bn254 curve to the
+// 	// current compiler field as a variable to be used in the census proof
+// 	value, err := utils.PackScalarToVar(api, c.UserWeight)
+// 	if err != nil {
+// 		circuits.FrontendError(api, "failed to convert weight emulated element to var: %w", err)
+// 	}
+// 	// convert emulated census root and siblings to native variables
+// 	root, err := utils.PackScalarToVar(api, c.Process.CensusRoot)
+// 	if err != nil {
+// 		circuits.FrontendError(api, "failed to convert emulated root to var", err)
+// 	}
+// 	siblings := make([]frontend.Variable, len(c.CensusSiblings))
+// 	for i, sibling := range c.CensusSiblings {
+// 		siblings[i], err = utils.PackScalarToVar(api, sibling)
+// 		if err != nil {
+// 			circuits.FrontendError(api, "failed to convert emulated sibling to var", err)
+// 		}
+// 	}
+// 	// verify the census proof using the derived address and the user weight
+// 	// provided as leaf key-value, adn the root and siblings provided
+// 	isValid := smt.InclusionVerifier(api, utils.MiMCHasher, root, siblings, key, value)
+// 	// check if the proof is valid only if the census origin is MerkleTree
+// 	// and the current vote inputs are from a valid vote.
+// 	isMerkleTreeCensus := api.IsZero(api.Sub(c.CensusOrigin(), uint8(types.CensusOriginMerkleTree)))
+// 	shouldBeValid := api.And(c.IsValid, isMerkleTreeCensus)
+// 	// if the inputs are valid, ensure that the result of the verification is 1,
+// 	// otherwise, the result does not matter so force it to be 1
+// 	api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
+// }
 
 // verifyCSPProof circuit method verifies the credential service providers
 // proof provided by the user. It uses proof provided by the user to verify
@@ -298,16 +297,16 @@ func (c *VerifyVoteCircuit) verifyCensusProof(api frontend.API) {
 // a variable and then verifies the proof using the root, the process ID and
 // the address of the voter. It only asserts that the proof is valid if the
 // census origin is CSP and the current vote inputs are from a valid vote.
-func (c *VerifyVoteCircuit) verifyCSPProof(api frontend.API) {
-	isValid := c.CSPProof.IsValid(api, c.Process.CensusRoot, c.Process.ID, c.Vote.Address)
-	// check if the proof is valid only if the census origin is MerkleTree
-	// and the current vote inputs are from a valid vote.
-	isCSPCensus := api.IsZero(api.Sub(c.CensusOrigin(), uint8(types.CensusOriginCSPEdDSABLS12377)))
-	shouldBeValid := api.And(c.IsValid, isCSPCensus)
-	// if the inputs are valid, ensure that the result of the verification is 1,
-	// otherwise, the result does not matter so force it to be 1
-	api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
-}
+// func (c *VerifyVoteCircuit) verifyCSPProof(api frontend.API) {
+// 	isValid := c.CSPProof.IsValid(api, c.Process.CensusRoot, c.Process.ID, c.Vote.Address)
+// 	// check if the proof is valid only if the census origin is MerkleTree
+// 	// and the current vote inputs are from a valid vote.
+// 	isCSPCensus := api.IsZero(api.Sub(c.CensusOrigin(), uint8(types.CensusOriginCSPEdDSABLS12377)))
+// 	shouldBeValid := api.And(c.IsValid, isCSPCensus)
+// 	// if the inputs are valid, ensure that the result of the verification is 1,
+// 	// otherwise, the result does not matter so force it to be 1
+// 	api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
+// }
 
 func (c *VerifyVoteCircuit) Define(api frontend.API) error {
 	// check the hash of the inputs provided by the user
@@ -315,8 +314,8 @@ func (c *VerifyVoteCircuit) Define(api frontend.API) error {
 	// verify the signature of the public inputs
 	c.verifySigForAddress(api)
 	// verify the census proof
-	c.verifyCensusProof(api)
-	c.verifyCSPProof(api)
+	// c.verifyCensusProof(api)
+	// c.verifyCSPProof(api)
 	// verify the ballot proof
 	c.verifyCircomProof(api)
 	return nil

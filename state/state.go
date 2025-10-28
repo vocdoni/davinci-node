@@ -27,8 +27,8 @@ var (
 )
 
 var (
-	KeyProcessID     = new(big.Int).SetBytes([]byte{0x00})
-	KeyCensusRoot    = new(big.Int).SetBytes([]byte{0x01})
+	KeyProcessID = new(big.Int).SetBytes([]byte{0x00})
+	// KeyCensusRoot    = new(big.Int).SetBytes([]byte{0x01})
 	KeyBallotMode    = new(big.Int).SetBytes([]byte{0x02})
 	KeyEncryptionKey = new(big.Int).SetBytes([]byte{0x03})
 	KeyResultsAdd    = new(big.Int).SetBytes([]byte{0x04})
@@ -65,9 +65,9 @@ type State struct {
 // ProcessProofs stores the Merkle proofs for the process, including the ID
 // census root, ballot mode, and encryption key proofs.
 type ProcessProofs struct {
-	ID            *ArboProof
-	CensusOrigin  *ArboProof
-	CensusRoot    *ArboProof
+	ID           *ArboProof
+	CensusOrigin *ArboProof
+	// CensusRoot    *ArboProof
 	BallotMode    *ArboProof
 	EncryptionKey *ArboProof
 }
@@ -138,7 +138,7 @@ func RootExists(db db.Database, processId, root *big.Int) error {
 func CalculateInitialRoot(
 	processID *big.Int,
 	censusOrigin *big.Int,
-	censusRoot *big.Int,
+	// censusRoot *big.Int,
 	ballotMode *types.BallotMode,
 	publicKey ecc.Point,
 ) (*big.Int, error) {
@@ -157,7 +157,7 @@ func CalculateInitialRoot(
 	// Initialize the state with the census root, ballot mode and the encryption key
 	if err := st.Initialize(
 		censusOrigin,
-		censusRoot,
+		// censusRoot,
 		circuits.BallotModeToCircuit(ballotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
 		return nil, fmt.Errorf("could not initialize state: %v", err)
@@ -171,7 +171,7 @@ func CalculateInitialRoot(
 // StartBatch...
 func (o *State) Initialize(
 	censusOrigin *big.Int,
-	censusRoot *big.Int,
+	// censusRoot *big.Int,
 	ballotMode circuits.BallotMode[*big.Int],
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) error {
@@ -182,9 +182,9 @@ func (o *State) Initialize(
 	if err := o.tree.AddBigInt(KeyProcessID, o.processID); err != nil {
 		return fmt.Errorf("could not set process ID: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyCensusRoot, censusRoot); err != nil {
-		return fmt.Errorf("could not set census root: %w", err)
-	}
+	// if err := o.tree.AddBigInt(KeyCensusRoot, censusRoot); err != nil {
+	// 	return fmt.Errorf("could not set census root: %w", err)
+	// }
 	if err := o.tree.AddBigInt(KeyBallotMode, ballotMode.Serialize()...); err != nil {
 		return fmt.Errorf("could not set ballot mode: %w", err)
 	}
@@ -248,9 +248,9 @@ func (o *State) EndBatch() error {
 	if o.processProofs.CensusOrigin, err = o.GenArboProof(KeyCensusOrigin); err != nil {
 		return fmt.Errorf("could not get CensusOrigin proof: %w", err)
 	}
-	if o.processProofs.CensusRoot, err = o.GenArboProof(KeyCensusRoot); err != nil {
-		return fmt.Errorf("could not get CensusRoot proof: %w", err)
-	}
+	// if o.processProofs.CensusRoot, err = o.GenArboProof(KeyCensusRoot); err != nil {
+	// 	return fmt.Errorf("could not get CensusRoot proof: %w", err)
+	// }
 	if o.processProofs.BallotMode, err = o.GenArboProof(KeyBallotMode); err != nil {
 		return fmt.Errorf("could not get BallotMode proof: %w", err)
 	}
@@ -407,9 +407,9 @@ func (o *State) PaddedVotes() []*Vote {
 // Proccess returns all process details from the state
 func (o *State) Process() circuits.Process[*big.Int] {
 	return circuits.Process[*big.Int]{
-		ID:            o.ProcessID(),
-		CensusOrigin:  o.CensusOrigin(),
-		CensusRoot:    o.CensusRoot(),
+		ID:           o.ProcessID(),
+		CensusOrigin: o.CensusOrigin(),
+		// CensusRoot:    o.CensusRoot(),
 		BallotMode:    o.BallotMode(),
 		EncryptionKey: o.EncryptionKey(),
 	}
@@ -426,7 +426,7 @@ func (o *State) ProcessSerializeBigInts() []*big.Int {
 	list := []*big.Int{}
 	list = append(list, o.ProcessID())
 	list = append(list, o.CensusOrigin())
-	list = append(list, o.CensusRoot())
+	// list = append(list, o.CensusRoot())
 	list = append(list, o.BallotMode().Serialize()...)
 	list = append(list, o.EncryptionKey().Serialize()...)
 	return list
@@ -456,17 +456,17 @@ func (o *State) CensusOrigin() *big.Int {
 	return v[0]
 }
 
-// CensusRoot returns the census root of the state as a big.Int.
-func (o *State) CensusRoot() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyCensusRoot)
-	if err != nil {
-		log.Errorw(err, "failed to get census root from state")
-	}
-	if len(v) == 0 {
-		return big.NewInt(0) // default value if not set
-	}
-	return v[0]
-}
+// // CensusRoot returns the census root of the state as a big.Int.
+// func (o *State) CensusRoot() *big.Int {
+// 	_, v, err := o.tree.GetBigInt(KeyCensusRoot)
+// 	if err != nil {
+// 		log.Errorw(err, "failed to get census root from state")
+// 	}
+// 	if len(v) == 0 {
+// 		return big.NewInt(0) // default value if not set
+// 	}
+// 	return v[0]
+// }
 
 // BallotMode returns the ballot mode of the state as a
 // circuits.BallotMode[*big.Int].

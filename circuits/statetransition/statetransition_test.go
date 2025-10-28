@@ -259,6 +259,8 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vo
 	if err != nil {
 		t.Fatal(err)
 	}
+	// mock census root
+	// witness.CensusRoot = new(big.Int).SetInt64(1)
 
 	aggregatorHash, err := aggregatorWitnessHashForTest(s)
 	if err != nil {
@@ -301,7 +303,7 @@ func newMockState(t *testing.T) *state.State {
 	_, encryptionKey := circuits.MockEncryptionKey()
 	if err := s.Initialize(
 		types.CensusOriginMerkleTree.BigInt().MathBigInt(),
-		new(big.Int).SetBytes(util.RandomBytes(16)),
+		// new(big.Int).SetBytes(util.RandomBytes(16)),
 		circuits.MockBallotMode(),
 		encryptionKey,
 	); err != nil {

@@ -114,8 +114,9 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 	// get the encryption key from the aggregator inputs
 	encryptionKey := state.Curve.New().SetPoint(aggInputs.Process.EncryptionKey.PubKey[0], aggInputs.Process.EncryptionKey.PubKey[1])
 	// init final assignments stuff
-	s := newState(c, aggInputs.Process.ID, aggInputs.Process.CensusRoot,
-		circuits.MockBallotMode(), aggInputs.Process.EncryptionKey)
+	// s := newState(c, aggInputs.Process.ID, aggInputs.Process.CensusRoot,
+	// 	circuits.MockBallotMode(), aggInputs.Process.EncryptionKey)
+	s := newState(c, aggInputs.Process.ID, circuits.MockBallotMode(), aggInputs.Process.EncryptionKey)
 
 	err = s.StartBatch()
 	c.Assert(err, qt.IsNil, qt.Commentf("start batch"))
@@ -152,7 +153,12 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 	}, circuitPlaceholder, witness
 }
 
-func newState(c *qt.C, processId, censusRoot *big.Int, ballotMode circuits.BallotMode[*big.Int],
+// func newState(c *qt.C, processId, censusRoot *big.Int, ballotMode circuits.BallotMode[*big.Int],
+//
+//	encryptionKey circuits.EncryptionKey[*big.Int],
+//
+// ) *state.State {
+func newState(c *qt.C, processId *big.Int, ballotMode circuits.BallotMode[*big.Int],
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) *state.State {
 	dir, err := os.MkdirTemp(os.TempDir(), "statetransition")
@@ -164,9 +170,14 @@ func newState(c *qt.C, processId, censusRoot *big.Int, ballotMode circuits.Ballo
 	s, err := state.New(db, processId)
 	c.Assert(err, qt.IsNil, qt.Commentf("create state"))
 
+	// err = s.Initialize(
+	// 	types.CensusOriginMerkleTree.BigInt().MathBigInt(),
+	// 	censusRoot,
+	// 	ballotMode,
+	// 	encryptionKey,
+	// )
 	err = s.Initialize(
 		types.CensusOriginMerkleTree.BigInt().MathBigInt(),
-		censusRoot,
 		ballotMode,
 		encryptionKey,
 	)

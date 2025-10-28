@@ -25,7 +25,7 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 
 	witness.Process.ID = o.Process().ID
 	witness.Process.CensusOrigin = o.Process().CensusOrigin
-	witness.Process.CensusRoot = o.Process().CensusRoot
+	// witness.Process.CensusRoot = o.Process().CensusRoot
 	witness.Process.BallotMode = circuits.BallotMode[frontend.Variable]{
 		NumFields:      o.Process().BallotMode.NumFields,
 		UniqueValues:   o.Process().BallotMode.UniqueValues,
@@ -60,10 +60,10 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 	if err != nil {
 		return nil, fmt.Errorf("could not get CensusOrigin proof: %w", err)
 	}
-	witness.ProcessProofs.CensusRoot, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().CensusRoot)
-	if err != nil {
-		return nil, fmt.Errorf("could not get CensusRoot proof: %w", err)
-	}
+	// witness.ProcessProofs.CensusRoot, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().CensusRoot)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("could not get CensusRoot proof: %w", err)
+	// }
 	witness.ProcessProofs.BallotMode, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().BallotMode)
 	if err != nil {
 		return nil, fmt.Errorf("could not get BallotMode proof: %w", err)

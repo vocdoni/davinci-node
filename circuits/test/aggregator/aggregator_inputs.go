@@ -169,8 +169,8 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 	return &circuitstest.AggregatorTestResults{
 		InputsHash: inputsHash,
 		Process: circuits.Process[*big.Int]{
-			ID:            vvInputs.ProcessID,
-			CensusRoot:    vvInputs.CensusRoot,
+			ID: vvInputs.ProcessID,
+			// CensusRoot:    vvInputs.CensusRoot,
 			EncryptionKey: vvInputs.EncryptionPubKey,
 		},
 		Votes: votes,
