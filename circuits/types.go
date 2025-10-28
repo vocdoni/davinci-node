@@ -281,9 +281,9 @@ func EncryptionKeyToCircuit(k types.EncryptionKey) EncryptionKey[*big.Int] {
 // Process is a struct that contains the common inputs for a process.
 // Is a generic struct that can be used with any type of circuit input.
 type Process[T any] struct {
-	ID            T
-	CensusOrigin  T
-	CensusRoot    T
+	ID           T
+	CensusOrigin T
+	// CensusRoot    T
 	BallotMode    BallotMode[T]
 	EncryptionKey EncryptionKey[T]
 }
@@ -298,7 +298,7 @@ func (p Process[T]) Serialize() []T {
 	list := []T{}
 	list = append(list, p.ID)
 	list = append(list, p.CensusOrigin)
-	list = append(list, p.CensusRoot)
+	// list = append(list, p.CensusRoot)
 	list = append(list, p.BallotMode.Serialize()...)
 	list = append(list, p.EncryptionKey.Serialize()...)
 	return list
@@ -323,9 +323,9 @@ func (pt Process[T]) SerializeForBallotProof(api frontend.API) []emulated.Elemen
 
 func (p Process[T]) VarsToEmulatedElementBN254(api frontend.API) Process[emulated.Element[sw_bn254.ScalarField]] {
 	return Process[emulated.Element[sw_bn254.ScalarField]]{
-		ID:            *varToEmulatedElementBN254(api, p.ID),
-		CensusOrigin:  *varToEmulatedElementBN254(api, p.CensusOrigin),
-		CensusRoot:    *varToEmulatedElementBN254(api, p.CensusRoot),
+		ID:           *varToEmulatedElementBN254(api, p.ID),
+		CensusOrigin: *varToEmulatedElementBN254(api, p.CensusOrigin),
+		// CensusRoot:    *varToEmulatedElementBN254(api, p.CensusRoot),
 		BallotMode:    p.BallotMode.VarsToEmulatedElementBN254(api),
 		EncryptionKey: p.EncryptionKey.VarsToEmulatedElementBN254(api),
 	}

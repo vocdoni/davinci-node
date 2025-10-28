@@ -119,8 +119,8 @@ func TestDebugVoteVerifier(t *testing.T) {
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Weight.MathBigInt()),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-			ID:            emulated.ValueOf[sw_bn254.ScalarField](processID),
-			CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](root),
+			ID: emulated.ValueOf[sw_bn254.ScalarField](processID),
+			// CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](root),
 			EncryptionKey: encryptionKey.BigIntsToEmulatedElementBN254(),
 			BallotMode:    ballotMode.BigIntsToEmulatedElementBN254(),
 		},

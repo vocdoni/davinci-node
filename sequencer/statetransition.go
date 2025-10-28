@@ -251,14 +251,14 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state: %w", err)
 	}
-	censusRoot, err := process.BigCensusRoot()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get census root: %w", err)
-	}
+	// censusRoot, err := process.BigCensusRoot()
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to get census root: %w", err)
+	// }
 
 	if err := st.Initialize(
 		process.Census.CensusOrigin.BigInt().MathBigInt(),
-		censusRoot.MathBigInt(),
+		// censusRoot.MathBigInt(),
 		circuits.BallotModeToCircuit(process.BallotMode),
 		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),
 	); err != nil && !errors.Is(err, state.ErrStateAlreadyInitialized) {

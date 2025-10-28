@@ -109,7 +109,7 @@ func VoteVerifierInputsForTest(
 			voterProof.Address,
 			voterProof.VoteID,
 			voterProof.Ballot.FromTEtoRTE(),
-			censusRoot,
+			// censusRoot,
 			censusOrigin,
 		)
 		c.Assert(err, qt.IsNil, qt.Commentf("vote verifier input hash for voter %d", i))
@@ -130,9 +130,9 @@ func VoteVerifierInputsForTest(
 			},
 			UserWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
 			Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-				ID:            emulated.ValueOf[sw_bn254.ScalarField](voterProof.ProcessID),
-				CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](censusOrigin.BigInt().MathBigInt()),
-				CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](censusRoot),
+				ID:           emulated.ValueOf[sw_bn254.ScalarField](voterProof.ProcessID),
+				CensusOrigin: emulated.ValueOf[sw_bn254.ScalarField](censusOrigin.BigInt().MathBigInt()),
+				// CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](censusRoot),
 				EncryptionKey: encryptionKey.BigIntsToEmulatedElementBN254(),
 				BallotMode:    circuits.MockBallotModeEmulated(),
 			},
