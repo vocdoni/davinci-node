@@ -1,8 +1,9 @@
 package service
 
 import (
-	"bytes"
 	"context"
+	"crypto/rand"
+	"fmt"
 	"sync"
 	"time"
 
@@ -16,12 +17,19 @@ var _ ContractsService = &MockContracts{}
 // MockContracts implements a mock version of web3.Contracts for testing
 type MockContracts struct {
 	processes []*types.Process
-	mu        sync.Mutex
+	blobs     map[common.Hash]*eth2deneb.Blob
+
+	chanStateRootChange chan *types.ProcessWithStateRootChange
+
+	mu sync.Mutex
 }
 
 func NewMockContracts() *MockContracts {
 	return &MockContracts{
 		processes: make([]*types.Process, 0),
+		blobs:     make(map[common.Hash]*eth2deneb.Blob),
+
+		chanStateRootChange: make(chan *types.ProcessWithStateRootChange),
 	}
 }
 
@@ -53,7 +61,7 @@ func (m *MockContracts) MonitorProcessStatusChanges(ctx context.Context, interva
 }
 
 func (m *MockContracts) MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error) {
-	return make(chan *types.ProcessWithStateRootChange), nil
+	return m.chanStateRootChange, nil
 }
 
 func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
@@ -85,7 +93,24 @@ func (m *MockContracts) WaitTxByID(id []byte, timeout time.Duration, cb ...func(
 
 func (m *MockContracts) BlobsByTxHash(ctx context.Context, txHash common.Hash,
 ) ([]*eth2deneb.BlobSidecar, error) {
-	return []*eth2deneb.BlobSidecar{{
-		Blob: eth2deneb.Blob(bytes.Repeat([]byte("MockBlob"), 131072)),
-	}}, nil
+	if blob, ok := m.blobs[txHash]; ok {
+		return []*eth2deneb.BlobSidecar{{
+			Blob: *blob,
+		}}, nil
+	}
+	return nil, fmt.Errorf("txHash not found")
+}
+
+func (m *MockContracts) MockStateRootChange(_ context.Context, process *types.ProcessWithStateRootChange) error {
+	m.chanStateRootChange <- process
+	return nil
+}
+
+func (m *MockContracts) SendBlobTx(
+	blob *eth2deneb.Blob,
+) common.Hash {
+	var txHash common.Hash
+	_, _ = rand.Read(txHash[:])
+	m.blobs[txHash] = blob
+	return txHash
 }

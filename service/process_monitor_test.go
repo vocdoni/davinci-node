@@ -1,21 +1,26 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
 
+	eth2deneb "github.com/attestantio/go-eth2-client/spec/deneb"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestProcessMonitor(t *testing.T) {
 	c := qt.New(t)
+
+	log.Init("debug", "stdout", nil)
 
 	// Setup storage
 	store := storage.New(memdb.New())
@@ -24,14 +29,20 @@ func TestProcessMonitor(t *testing.T) {
 	// Setup mock web3 contracts
 	contracts := NewMockContracts()
 
-	// Create process monitor
-	monitor := NewProcessMonitor(contracts, store, time.Second, nil)
-
 	// Start monitoring in background
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err := monitor.Start(ctx)
+	// Start StateSync
+	stateSync := NewStateSync(contracts, store)
+	err := stateSync.Start(ctx)
+	c.Assert(err, qt.IsNil)
+	defer stateSync.Stop()
+
+	// Create process monitor
+	monitor := NewProcessMonitor(contracts, store, time.Second, stateSync)
+
+	err = monitor.Start(ctx)
 	c.Assert(err, qt.IsNil)
 	defer monitor.Stop()
 
@@ -82,4 +93,19 @@ func TestProcessMonitor(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(proc, qt.Not(qt.IsNil))
 	c.Assert(proc.MetadataURI, qt.Equals, "https://example.com/metadata")
+
+	blob := &eth2deneb.Blob{}
+	copy(blob[:], bytes.Repeat([]byte("MockBlob"), 131072))
+	txHash := contracts.SendBlobTx(blob)
+	err = contracts.MockStateRootChange(ctx, &types.ProcessWithStateRootChange{
+		Process:                 proc,
+		NewStateRoot:            types.NewInt(12345),
+		NewVoteCount:            types.NewInt(2),
+		NewVoteOverwrittenCount: types.NewInt(1),
+		TxHash:                  txHash,
+	})
+	c.Assert(err, qt.IsNil)
+
+	// Give monitor some time
+	time.Sleep(3 * time.Second)
 }
