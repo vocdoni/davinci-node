@@ -31,6 +31,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
+	github.com/vocdoni/census3-bigquery v0.0.0-20251027173954-b1fea8ebf0d3
 	github.com/vocdoni/davinci-contracts v0.0.0-20251022141219-8f57cedc14b1
 	github.com/vocdoni/census3-bigquery v0.0.0-20251021223448-351a2d5243f9
 	github.com/vocdoni/davinci-contracts v0.0.0-20250930080235-db145178b2fa
@@ -281,5 +282,3 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 	tags.cncf.io/container-device-interface v0.7.2 // indirect
 )
-
-replace github.com/vocdoni/census3-bigquery => ./census3-bigquery
