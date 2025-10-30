@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -14,6 +15,29 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
+
+// permanentErrorPatterns defines error patterns that indicate permanent
+// failures that should not be retried. These are typically contract-level
+// rejections that will never succeed regardless of gas price or retries.
+// Add new patterns here as they are discovered and confirmed.
+var permanentErrorPatterns = []string{
+	"execution reverted", // Contract rejected the transaction
+}
+
+// isPermanentError checks if an error represents a permanent failure that
+// should not be retried.
+func isPermanentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	for _, pattern := range permanentErrorPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+	return false
+}
 
 // SendTx sends a transaction with automatic fallback and recovery mechanisms.
 // It accepts a transaction builder function that takes a nonce and returns a
@@ -156,6 +180,10 @@ func (tm *TxManager) handleStuckTxs(ctx context.Context) error {
 			tm.updateNonceTracking(nonce)
 			continue
 		}
+		// Store the error for categorization
+		if err != nil {
+			ptx.LastError = err
+		}
 		// Transaction is stuck - attempt replacement
 		log.Warnw("stuck transaction detected",
 			"id", fmt.Sprintf("%x", ptx.ID),
@@ -175,6 +203,27 @@ func (tm *TxManager) handleStuckTxs(ctx context.Context) error {
 // fees. If max retries are reached, it cancels the transaction if possible.
 // It returns an error if the operation fails.
 func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) error {
+	// Check if last error was permanent - no point in retrying
+	if isPermanentError(ptx.LastError) {
+		log.Warnw("transaction failed with permanent error, not retrying",
+			"id", fmt.Sprintf("%x", ptx.ID),
+			"nonce", ptx.Nonce,
+			"error", ptx.LastError.Error())
+		// For non-blob txs, cancel them to free the nonce
+		if !ptx.IsBlob {
+			if err := tm.cancelTx(ctx, ptx); err != nil {
+				log.Errorw(err, "failed to cancel transaction with permanent error")
+			}
+		} else {
+			// For blob txs, we can't cancel - just remove from tracking
+			log.Warnw("blob transaction permanently failed, removing from tracking",
+				"id", fmt.Sprintf("%x", ptx.ID),
+				"nonce", ptx.Nonce)
+		}
+		delete(tm.pendingTxs, ptx.Nonce)
+		return fmt.Errorf("transaction permanently failed: %w", ptx.LastError)
+	}
+
 	if ptx.RetryCount >= tm.config.MaxRetries {
 		// Max retries reached, cancel transaction
 		return tm.cancelTx(ctx, ptx)
