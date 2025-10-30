@@ -88,6 +88,9 @@ type PendingTransaction struct {
 	BlobHashes []common.Hash
 	// BlobSidecar stores the sidecar for rebuilding blob transactions.
 	BlobSidecar *gtypes.BlobTxSidecar
+	// LastError stores the last error encountered for this transaction.
+	// Used to categorize failures as permanent or temporary.
+	LastError error
 }
 
 // TxManager handles nonce management and stuck transaction recovery.
