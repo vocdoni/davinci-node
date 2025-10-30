@@ -58,11 +58,13 @@ type BlobEvalData struct {
 	Y          *big.Int
 	Ylimbs     [4]*big.Int
 	Blob       goethkzg.Blob
-	Proof      [CompressedG1Size]byte
+	// Cell proofs for EIP-7594 (Fusaka upgrade)
+	// Each blob has CellsPerExtBlob (128) cell proofs
+	CellProofs [goethkzg.CellsPerExtBlob]goethkzg.KZGProof
 }
 
 // Set initializes the BlobEvalData with the given blob, claim, and evaluation point z.
-// Computes the KZG proof and sets the relevant fields.
+// Computes the KZG cell proofs (EIP-7594) and sets the relevant fields.
 // It returns itself for chaining.
 func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, error) {
 	// Set commitment first
@@ -78,12 +80,12 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, erro
 		return nil, err
 	}
 
-	// Compute the blob commitment proof for EIP-4844 transactions
-	blobProof, err := kzgContext.ComputeBlobKZGProof(blob, commitment, 0)
+	// Compute cell proofs for EIP-7594 (Fusaka upgrade)
+	_, cellProofs, err := kzgContext.ComputeCellsAndKZGProofs(blob, 0)
 	if err != nil {
-		return nil, fmt.Errorf("failed to compute blob KZG proof: %w", err)
+		return nil, fmt.Errorf("failed to compute cell KZG proofs: %w", err)
 	}
-	b.Proof = blobProof // Use blob proof for EIP-4844 compatibility
+	b.CellProofs = cellProofs
 
 	// Set evaluation point (y)
 	b.Y = new(big.Int).SetBytes(claim[:])
@@ -120,22 +122,31 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, erro
 	return b, err
 }
 
-// TxSidecar converts the KZG blob, commitment, and proof into a geth Sidecar format.
+// TxSidecar converts the KZG blob, commitment, and cell proofs into a geth Sidecar format.
+// Returns a Version 1 sidecar with cell proofs for EIP-7594 (Fusaka upgrade).
 func (b *BlobEvalData) TxSidecar() (*gethtypes.BlobTxSidecar, []common.Hash, error) {
-	// convert to geth types - create slices with exactly 1 element each
+	// Convert to geth types - create slices with exactly 1 element each
 	blobs := make([]gethkzg.Blob, 1)
 	comms := make([]gethkzg.Commitment, 1)
-	proofs := make([]gethkzg.Proof, 1)
+
+	// For Version 1 sidecar, we need all cell proofs (128 per blob)
+	proofs := make([]gethkzg.Proof, goethkzg.CellsPerExtBlob)
 
 	copy(blobs[0][:], b.Blob[:])
 	copy(comms[0][:], b.Commitment[:])
-	copy(proofs[0][:], b.Proof[:])
 
-	sc := &gethtypes.BlobTxSidecar{
-		Blobs:       blobs,
-		Commitments: comms,
-		Proofs:      proofs,
+	// Copy all cell proofs
+	for i := range b.CellProofs {
+		copy(proofs[i][:], b.CellProofs[i][:])
 	}
+
+	// Create Version 1 sidecar with cell proofs
+	sc := gethtypes.NewBlobTxSidecar(
+		gethtypes.BlobSidecarVersion1,
+		blobs,
+		comms,
+		proofs,
+	)
 
 	return sc, sc.BlobHashes(), nil
 }
