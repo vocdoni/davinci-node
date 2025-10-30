@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
@@ -59,7 +58,9 @@ func (a *API) addCensusParticipants(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		keys = append(keys, p.Key)
-		values = append(values, arbo.BigIntToBytes(a.storage.CensusDB().HashLen(), p.Weight.MathBigInt()))
+		// Convert weight to bytes (big-endian)
+		weightBytes := p.Weight.MathBigInt().Bytes()
+		values = append(values, weightBytes)
 	}
 
 	// insert the keys and values into the tree
@@ -181,9 +182,9 @@ func (a *API) getCensusProof(w http.ResponseWriter, r *http.Request) {
 
 	leafKey := key
 	if len(key) > types.CensusKeyMaxLen {
-		leafKey = a.storage.CensusDB().HashAndTrunkKey(key)
+		leafKey = a.storage.CensusDB().TrunkKey(key)
 		if leafKey == nil {
-			ErrGenericInternalServerError.WithErr(fmt.Errorf("failed to hash participant key")).Write(w)
+			ErrGenericInternalServerError.WithErr(fmt.Errorf("failed to trunk participant key")).Write(w)
 			return
 		}
 	}

@@ -63,7 +63,7 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 			ID:           dummyEmulatedBN254,
 			CensusOrigin: dummyEmulatedBN254,
-			CensusRoot:   dummyEmulatedBN254,
+			// CensusRoot:   dummyEmulatedBN254,
 			EncryptionKey: circuits.EncryptionKey[emulated.Element[sw_bn254.ScalarField]]{
 				PubKey: [2]emulated.Element[sw_bn254.ScalarField]{dummyEmulatedBN254, dummyEmulatedBN254},
 			},

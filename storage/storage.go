@@ -67,10 +67,10 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 
+	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/storage/census"
 )
 
 var (
@@ -112,7 +112,7 @@ type Storage struct {
 	db                db.Database
 	ctx               context.Context
 	cancel            context.CancelFunc
-	censusDB          *census.CensusDB
+	censusDB          *censusdb.CensusDB
 	stateDB           db.Database
 	globalLock        sync.Mutex              // Lock for global operations
 	workersLock       sync.Mutex              // Lock for worker-related operations
@@ -132,7 +132,7 @@ func New(db db.Database) *Storage {
 		ctx:      internalCtx,
 		cancel:   cancel,
 		stateDB:  prefixeddb.NewPrefixedDatabase(db, stateDBprefix),
-		censusDB: census.NewCensusDB(prefixeddb.NewPrefixedDatabase(db, censusDBprefix)),
+		censusDB: censusdb.NewCensusDB(prefixeddb.NewPrefixedDatabase(db, censusDBprefix)),
 		cache:    cache,
 	}
 
@@ -380,7 +380,7 @@ func (s *Storage) listArtifacts(prefix []byte) ([][]byte, error) {
 }
 
 // CensusDB returns the census database instance.
-func (s *Storage) CensusDB() *census.CensusDB {
+func (s *Storage) CensusDB() *censusdb.CensusDB {
 	return s.censusDB
 }
 
