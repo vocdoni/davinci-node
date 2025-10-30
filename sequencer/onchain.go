@@ -160,11 +160,20 @@ func (s *Sequencer) pushTransitionToContract(
 		"strProof", proof.String(),
 		"strInputs", inputs.String())
 
-	// If the current contracts support blob transactions, verify the blob
-	// proof locally before sending to the contract
+	// If the current contracts support blob transactions, verify the sidecar
+	// Note: With EIP-7594 (Fusaka), we use Version 1 sidecars with cell proofs.
+	// Cell proofs are verified during their generation in ComputeCellsAndKZGProofs.
 	if s.contracts.SupportBlobTxs() {
-		if err := gethkzg.VerifyBlobProof(&blobSidecar.Blobs[0], blobSidecar.Commitments[0], blobSidecar.Proofs[0]); err != nil {
-			return fmt.Errorf("local blob proof verification failed: %w", err)
+		// Verify sidecar version and structure
+		if blobSidecar.Version != ethereumtypes.BlobSidecarVersion1 {
+			return fmt.Errorf("unexpected blob sidecar version: got %d, expected %d",
+				blobSidecar.Version, ethereumtypes.BlobSidecarVersion1)
+		}
+		// Verify we have the correct number of cell proofs (128 per blob)
+		expectedProofs := len(blobSidecar.Blobs) * gethkzg.CellProofsPerBlob
+		if len(blobSidecar.Proofs) != expectedProofs {
+			return fmt.Errorf("incorrect number of cell proofs: got %d, expected %d",
+				len(blobSidecar.Proofs), expectedProofs)
 		}
 	} else {
 		// If they does not support blob transactions, set sidecar to nil to

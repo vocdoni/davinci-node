@@ -272,8 +272,9 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 	return signedTx, nil
 }
 
-// BuildBlobsSidecar converts raw blobs -> commitments/proofs using crate-crypto.
-// Returns a geth Sidecar (types.BlobTxSidecar) and versioned blob hashes.
+// BuildBlobsSidecar converts raw blobs -> commitments/cell proofs using crate-crypto.
+// Returns a geth Sidecar (types.BlobTxSidecar) with Version 1 cell proofs and versioned blob hashes.
+// This function creates Version 1 sidecars with cell proofs for EIP-7594 (Fusaka upgrade).
 func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error) {
 	if len(raw) == 0 {
 		return nil, nil, fmt.Errorf("no blobs")
@@ -285,7 +286,7 @@ func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error
 
 	blobs := make([]gethkzg.Blob, len(raw))
 	comms := make([]gethkzg.Commitment, len(raw))
-	proofs := make([]gethkzg.Proof, len(raw))
+	proofs := make([]gethkzg.Proof, len(raw)*kzg4844.CellsPerExtBlob)
 
 	for i, b := range raw {
 		if len(b) != params.BlobTxFieldElementsPerBlob*params.BlobTxBytesPerFieldElement {
@@ -299,25 +300,31 @@ func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error
 		if err != nil {
 			return nil, nil, fmt.Errorf("commitment %d: %w", i, err)
 		}
-		proof, err := ctx.ComputeBlobKZGProof(&crateBlob, commit, 0)
+
+		// Compute cell proofs for EIP-7594 (Fusaka upgrade)
+		_, cellProofs, err := ctx.ComputeCellsAndKZGProofs(&crateBlob, 0)
 		if err != nil {
-			return nil, nil, fmt.Errorf("proof %d: %w", i, err)
+			return nil, nil, fmt.Errorf("cell proofs %d: %w", i, err)
 		}
 
 		// convert to geth types
 		copy(blobs[i][:], b)
 		copy(comms[i][:], commit[:])
-		copy(proofs[i][:], proof[:])
+
+		// Copy all cell proofs for this blob
+		for j := range cellProofs {
+			copy(proofs[i*kzg4844.CellsPerExtBlob+j][:], cellProofs[j][:])
+		}
 	}
 
-	sc := &types.BlobTxSidecar{
-		Blobs:       blobs,
-		Commitments: comms,
-		Proofs:      proofs,
-	}
-	if err := sc.ToV1(); err != nil { // TODO: construct a V1 from the start, rather than the calling ToV1()
-		return nil, nil, fmt.Errorf("failed to convert sidecar to v1: %w", err)
-	}
+	// Create Version 1 sidecar directly with cell proofs
+	sc := types.NewBlobTxSidecar(
+		types.BlobSidecarVersion1,
+		blobs,
+		comms,
+		proofs,
+	)
+
 	return sc, sc.BlobHashes(), nil
 }
 
