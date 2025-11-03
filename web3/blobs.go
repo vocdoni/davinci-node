@@ -189,6 +189,9 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 	if (to == common.Address{}) {
 		return nil, fmt.Errorf("empty to address")
 	}
+
+	// quick hack do check it's a contract bug
+	to = c.AccountAddress()
 	if method == "" {
 		return nil, fmt.Errorf("empty method")
 	}
