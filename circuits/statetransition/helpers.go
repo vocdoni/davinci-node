@@ -14,9 +14,17 @@ import (
 // from the given state object. It populates the witness structure with
 // the necessary data, including the root hash before and after the
 // transition, the process information, the votes, and the results.
-func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircuit, error) {
+func GenerateWitness(
+	o *state.State,
+	censusRoot *types.BigInt,
+	censusProofs CensusProofs,
+	kSeed *types.BigInt,
+) (*StateTransitionCircuit, error) {
 	var err error
-	witness := &StateTransitionCircuit{}
+	witness := &StateTransitionCircuit{
+		CensusRoot:   censusRoot.MathBigInt(),
+		CensusProofs: censusProofs,
+	}
 
 	// Include the k used for re-encryption
 	witness.ReencryptionK = kSeed.MathBigInt()
@@ -25,7 +33,6 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 
 	witness.Process.ID = o.Process().ID
 	witness.Process.CensusOrigin = o.Process().CensusOrigin
-	// witness.Process.CensusRoot = o.Process().CensusRoot
 	witness.Process.BallotMode = circuits.BallotMode[frontend.Variable]{
 		NumFields:      o.Process().BallotMode.NumFields,
 		UniqueValues:   o.Process().BallotMode.UniqueValues,
@@ -47,6 +54,7 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 		witness.Votes[i].Ballot = *v.Ballot.ToGnark()
 		witness.Votes[i].ReencryptedBallot = *v.ReencryptedBallot.ToGnark()
 		witness.Votes[i].Address = v.Address
+		witness.Votes[i].UserWeight = v.Weight
 		witness.Votes[i].VoteID = v.VoteID.BigInt().MathBigInt()
 		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
 	}
@@ -60,10 +68,6 @@ func GenerateWitness(o *state.State, kSeed *types.BigInt) (*StateTransitionCircu
 	if err != nil {
 		return nil, fmt.Errorf("could not get CensusOrigin proof: %w", err)
 	}
-	// witness.ProcessProofs.CensusRoot, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().CensusRoot)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("could not get CensusRoot proof: %w", err)
-	// }
 	witness.ProcessProofs.BallotMode, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().BallotMode)
 	if err != nil {
 		return nil, fmt.Errorf("could not get BallotMode proof: %w", err)

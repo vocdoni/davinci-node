@@ -27,7 +27,7 @@ type cspProofCircuit struct {
 }
 
 func (c *cspProofCircuit) Define(api frontend.API) error {
-	api.AssertIsEqual(c.Proof.IsValid(api, c.CensusRoot, c.ProcessID, c.Address), 1)
+	api.AssertIsEqual(c.Proof.IsValidEmulated(api, types.CensusOriginCSPEdDSABLS12377.CurveID(), c.CensusRoot, c.ProcessID, c.Address), 1)
 	return nil
 }
 
@@ -50,7 +50,7 @@ func TestCSPProofCircuit(t *testing.T) {
 	proof, err := csp.GenerateProof(processID, userAddress)
 	c.Assert(err, qt.IsNil)
 
-	gnarkProof, err := CensusProofToCSPProof(proof)
+	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABLS12377.CurveID(), proof)
 	c.Assert(err, qt.IsNil)
 
 	hexPID := types.HexBytes(processID.Marshal())

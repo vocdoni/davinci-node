@@ -180,14 +180,11 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-			ID:           emulated.ValueOf[sw_bn254.ScalarField](inputs.ProcessID),
-			CensusOrigin: emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusOrigin.BigInt().MathBigInt()),
-			// CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusRoot),
+			ID:            emulated.ValueOf[sw_bn254.ScalarField](inputs.ProcessID),
+			CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusOrigin.BigInt().MathBigInt()),
 			EncryptionKey: inputs.EncryptionKey.BigIntsToEmulatedElementBN254(),
 			BallotMode:    inputs.BallotMode.BigIntsToEmulatedElementBN254(),
 		},
-		CensusSiblings: inputs.CensusSiblings,
-		CSPProof:       inputs.CSPProof,
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),

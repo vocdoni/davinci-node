@@ -124,7 +124,6 @@ func TestDebugVoteVerifier(t *testing.T) {
 			EncryptionKey: encryptionKey.BigIntsToEmulatedElementBN254(),
 			BallotMode:    ballotMode.BigIntsToEmulatedElementBN254(),
 		},
-		CensusSiblings: emulatedSiblings,
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),

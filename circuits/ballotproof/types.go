@@ -114,6 +114,7 @@ type CircomInputs struct {
 type BallotProofInputsResult struct {
 	ProcessID        types.HexBytes  `json:"processId"`
 	Address          types.HexBytes  `json:"address"`
+	Weight           *types.BigInt   `json:"weight"`
 	Ballot           *elgamal.Ballot `json:"ballot"`
 	BallotInputsHash *types.BigInt   `json:"ballotInputsHash"`
 	VoteID           types.HexBytes  `json:"voteId"`

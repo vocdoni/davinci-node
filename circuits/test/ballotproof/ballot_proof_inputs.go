@@ -194,6 +194,7 @@ func CompileAndGenerateProofForTest(inputs []byte) (string, string, error) {
 type VoterProofResult struct {
 	ProcessID  *big.Int
 	Address    *big.Int
+	Weight     *big.Int
 	Ballot     *elgamal.Ballot
 	Proof      string
 	PubInputs  string
@@ -215,13 +216,14 @@ func BallotProofForTest(address []byte, processID *types.ProcessID, encryptionKe
 		return nil, err
 	}
 	// generate ballot proof inputs
+	weight := new(types.BigInt).SetInt(circuits.MockWeight)
 	ballotProofInputs := &ballotproof.BallotProofInputs{
 		ProcessID:     processID.Marshal(),
 		Address:       address,
 		EncryptionKey: types.SliceOf(encryptionKey.BigInts(), types.BigIntConverter),
 		K:             new(types.BigInt).SetBigInt(k),
 		BallotMode:    circuits.MockBallotModeInternal(),
-		Weight:        new(types.BigInt).SetInt(circuits.MockWeight),
+		Weight:        weight,
 		FieldValues:   fields[:],
 	}
 	proofInputs, err := ballotproof.GenerateBallotProofInputs(ballotProofInputs)
@@ -239,8 +241,9 @@ func BallotProofForTest(address []byte, processID *types.ProcessID, encryptionKe
 	}
 	log.Printf("ballot proof generation ends, it tooks %s", time.Since(now))
 	return &VoterProofResult{
-		ProcessID:  proofInputs.CircomInputs.ProcessID.MathBigInt(),
-		Address:    proofInputs.CircomInputs.Address.MathBigInt(),
+		ProcessID:  proofInputs.ProcessID.BigInt().MathBigInt(),
+		Address:    proofInputs.Address.BigInt().MathBigInt(),
+		Weight:     proofInputs.Weight.MathBigInt(),
 		Ballot:     proofInputs.Ballot,
 		Proof:      circomProof,
 		PubInputs:  circomPubInputs,

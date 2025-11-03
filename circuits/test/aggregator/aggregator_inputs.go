@@ -31,8 +31,13 @@ import (
 
 // AggregatorInputsForTest returns the AggregatorTestResults, the placeholder
 // and the assignments of a AggregatorCircuit for the processId provided
-// generating nValidVotes.
-func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVotes int) (
+// generating nValidVotes. Uses quicktest assertions instead of returning errors.
+func AggregatorInputsForTest(
+	t *testing.T,
+	processID *types.ProcessID,
+	censusOrigin types.CensusOrigin,
+	nValidVotes int,
+) (
 	*circuitstest.AggregatorTestResults, *aggregator.AggregatorCircuit, *aggregator.AggregatorCircuit,
 ) {
 	c := qt.New(t)
@@ -71,7 +76,7 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 		// generate vote verifier circuit and inputs with deterministic ProcessID
 		var vvPlaceholder voteverifier.VerifyVoteCircuit
 		var vvAssignments []voteverifier.VerifyVoteCircuit
-		vvInputs, vvPlaceholder, vvAssignments = voteverifiertest.VoteVerifierInputsForTest(t, vvData, processID, types.CensusOriginMerkleTree)
+		vvInputs, vvPlaceholder, vvAssignments = voteverifiertest.VoteVerifierInputsForTest(t, vvData, processID, censusOrigin)
 
 		vvCCS, err = frontend.Compile(circuits.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, &vvPlaceholder)
 		c.Assert(err, qt.IsNil, qt.Commentf("compile vote verifier circuit"))
@@ -162,6 +167,7 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 		votes = append(votes, state.Vote{
 			Address: vvInputs.Addresses[i],
 			VoteID:  vvInputs.VoteIDs[i],
+			Weight:  vvInputs.Weights[i],
 			Ballot:  vvInputs.Ballots[i].FromTEtoRTE(),
 		})
 	}
@@ -169,9 +175,9 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 	return &circuitstest.AggregatorTestResults{
 		InputsHash: inputsHash,
 		Process: circuits.Process[*big.Int]{
-			ID: vvInputs.ProcessID,
-			// CensusRoot:    vvInputs.CensusRoot,
+			ID:            vvInputs.ProcessID,
 			EncryptionKey: vvInputs.EncryptionPubKey,
+			CensusOrigin:  new(big.Int).SetInt64(int64(censusOrigin)),
 		},
 		Votes: votes,
 	}, finalPlaceholder, finalAssignments

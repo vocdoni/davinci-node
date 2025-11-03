@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo"
 )
@@ -247,16 +248,31 @@ const (
 	CensusOriginUnknown CensusOrigin = iota
 	CensusOriginMerkleTree
 	CensusOriginCSPEdDSABLS12377
+	CensusOriginCSPEdDSABN254
 
 	CensusOriginNameUnknown          = "unknown"
 	CensusOriginNameMerkleTree       = "merkle_tree"
 	CensusOriginNameCSPEdDSABLS12377 = "csp_eddsa_bls12377"
+	CensusOriginNameCSPEdDSABN254    = "csp_eddsa_bn254"
 )
+
+// CurveID returns the twistededwards.ID associated with the CensusOrigin. Only
+// CSP origins have an associated curve, the rest return UNKNOWN.
+func (co CensusOrigin) CurveID() twistededwards.ID {
+	switch co {
+	case CensusOriginCSPEdDSABLS12377:
+		return twistededwards.BLS12_377
+	case CensusOriginCSPEdDSABN254:
+		return twistededwards.BN254
+	default:
+		return twistededwards.UNKNOWN
+	}
+}
 
 // Valid checks if the CensusOrigin is a valid value.
 func (co CensusOrigin) Valid() bool {
 	switch co {
-	case CensusOriginMerkleTree, CensusOriginCSPEdDSABLS12377:
+	case CensusOriginMerkleTree, CensusOriginCSPEdDSABLS12377, CensusOriginCSPEdDSABN254:
 		return true
 	default:
 		return false
@@ -270,6 +286,8 @@ func (co CensusOrigin) String() string {
 		return CensusOriginNameMerkleTree
 	case CensusOriginCSPEdDSABLS12377:
 		return CensusOriginNameCSPEdDSABLS12377
+	case CensusOriginCSPEdDSABN254:
+		return CensusOriginNameCSPEdDSABN254
 	default:
 		return CensusOriginNameUnknown
 	}

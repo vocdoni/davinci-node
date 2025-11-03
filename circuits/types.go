@@ -281,9 +281,8 @@ func EncryptionKeyToCircuit(k types.EncryptionKey) EncryptionKey[*big.Int] {
 // Process is a struct that contains the common inputs for a process.
 // Is a generic struct that can be used with any type of circuit input.
 type Process[T any] struct {
-	ID           T
-	CensusOrigin T
-	// CensusRoot    T
+	ID            T
+	CensusOrigin  T
 	BallotMode    BallotMode[T]
 	EncryptionKey EncryptionKey[T]
 }
@@ -291,14 +290,13 @@ type Process[T any] struct {
 // Serialize returns a slice with the process parameters in order
 //
 //	Process.ID
-//	Process.CensusRoot
+//	Process.CensusOrigin
 //	Process.BallotMode
 //	Process.EncryptionKey
 func (p Process[T]) Serialize() []T {
 	list := []T{}
 	list = append(list, p.ID)
 	list = append(list, p.CensusOrigin)
-	// list = append(list, p.CensusRoot)
 	list = append(list, p.BallotMode.Serialize()...)
 	list = append(list, p.EncryptionKey.Serialize()...)
 	return list
@@ -323,9 +321,8 @@ func (pt Process[T]) SerializeForBallotProof(api frontend.API) []emulated.Elemen
 
 func (p Process[T]) VarsToEmulatedElementBN254(api frontend.API) Process[emulated.Element[sw_bn254.ScalarField]] {
 	return Process[emulated.Element[sw_bn254.ScalarField]]{
-		ID:           *varToEmulatedElementBN254(api, p.ID),
-		CensusOrigin: *varToEmulatedElementBN254(api, p.CensusOrigin),
-		// CensusRoot:    *varToEmulatedElementBN254(api, p.CensusRoot),
+		ID:            *varToEmulatedElementBN254(api, p.ID),
+		CensusOrigin:  *varToEmulatedElementBN254(api, p.CensusOrigin),
 		BallotMode:    p.BallotMode.VarsToEmulatedElementBN254(api),
 		EncryptionKey: p.EncryptionKey.VarsToEmulatedElementBN254(api),
 	}
@@ -334,9 +331,10 @@ func (p Process[T]) VarsToEmulatedElementBN254(api frontend.API) Process[emulate
 // Vote is a struct that contains all data related to a vote.
 // Is a generic struct that can be used with any type of circuit input.
 type Vote[T any] struct {
-	Ballot  Ballot
-	VoteID  T
-	Address T
+	Ballot     Ballot
+	VoteID     T
+	Address    T
+	UserWeight T
 }
 
 func (v Vote[T]) ToEmulated(api frontend.API) EmulatedVote[sw_bn254.ScalarField] {
@@ -517,9 +515,10 @@ type EmulatedBallot[F emulated.FieldParams] [types.FieldsPerBallot]EmulatedCiphe
 // type as generic type for the Address, VoteID fields and the EmulatedBallot
 // type for the Ballot field.
 type EmulatedVote[F emulated.FieldParams] struct {
-	Address emulated.Element[F]
-	VoteID  emulated.Element[F]
-	Ballot  EmulatedBallot[F]
+	Address    emulated.Element[F]
+	VoteID     emulated.Element[F]
+	Ballot     EmulatedBallot[F]
+	UserWeight emulated.Element[F]
 }
 
 // Serialize returns a slice with the vote parameters in order

@@ -73,6 +73,7 @@ func GenerateBallotProofInputs(
 	return &BallotProofInputsResult{
 		ProcessID:        inputs.ProcessID,
 		Address:          inputs.Address,
+		Weight:           inputs.Weight,
 		Ballot:           ballot.FromRTEtoTE(),
 		BallotInputsHash: ballotInputsHash,
 		VoteID:           voteIDForSign,

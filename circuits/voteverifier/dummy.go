@@ -4,15 +4,11 @@ import (
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
-	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/signature/ecdsa"
-	"github.com/consensys/gnark/std/signature/eddsa"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -55,22 +51,20 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 		IsValid:    0,
 		InputsHash: dummyEmulatedBN254,
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address: dummyEmulatedBN254,
-			VoteID:  dummyEmulatedBN254,
-			Ballot:  *elgamal.NewBallot(curve).ToGnarkEmulatedBN254(),
+			Address:    dummyEmulatedBN254,
+			VoteID:     dummyEmulatedBN254,
+			UserWeight: dummyEmulatedBN254,
+			Ballot:     *elgamal.NewBallot(curve).ToGnarkEmulatedBN254(),
 		},
 		UserWeight: dummyEmulatedBN254,
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 			ID:           dummyEmulatedBN254,
 			CensusOrigin: dummyEmulatedBN254,
-			// CensusRoot:   dummyEmulatedBN254,
 			EncryptionKey: circuits.EncryptionKey[emulated.Element[sw_bn254.ScalarField]]{
 				PubKey: [2]emulated.Element[sw_bn254.ScalarField]{dummyEmulatedBN254, dummyEmulatedBN254},
 			},
 			BallotMode: circuits.MockBallotModeEmulated(),
 		},
-		CensusSiblings: DummySiblings(),
-		CSPProof:       DummyCSPProof(),
 		PublicKey: ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: dummyEmulatedSecp256k1Fp,
 			Y: dummyEmulatedSecp256k1Fp,
@@ -94,30 +88,4 @@ func DummyWitness(ballotProofVKey []byte, curve ecc.Point) (witness.Witness, err
 		return nil, err
 	}
 	return frontend.NewWitness(assignment, circuits.VoteVerifierCurve.ScalarField())
-}
-
-// DummySiblings function returns a dummy siblings to fill the vote verifier
-// inputs siblings in the VoteVerifierInputs when the census origin is not
-// MerkleTree.
-func DummySiblings() [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField] {
-	siblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
-	for i := range siblings {
-		siblings[i] = emulated.ValueOf[sw_bn254.ScalarField](1)
-	}
-	return siblings
-}
-
-// DummyCSPProof function returns a dummy CSP public key and signature to fill
-// the vote verifier inputs when the census origin is not CSP.
-func DummyCSPProof() csp.CSPProof {
-	dummyTwistedPoint := twistededwards.Point{X: 0, Y: 1}
-	return csp.CSPProof{
-		PublicKey: eddsa.PublicKey{
-			A: dummyTwistedPoint,
-		},
-		Signature: eddsa.Signature{
-			R: dummyTwistedPoint,
-			S: 1,
-		},
-	}
 }
