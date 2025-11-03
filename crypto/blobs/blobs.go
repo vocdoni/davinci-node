@@ -129,25 +129,28 @@ func (b *BlobEvalData) TxSidecar() (*gethtypes.BlobTxSidecar, []common.Hash, err
 	blobs := make([]gethkzg.Blob, 1)
 	comms := make([]gethkzg.Commitment, 1)
 
-	// For Version 1 sidecar, we need all cell proofs (128 per blob)
-	proofs := make([]gethkzg.Proof, goethkzg.CellsPerExtBlob)
+	// // For Version 1 sidecar, we need all cell proofs (128 per blob)
+	// proofs := make([]gethkzg.Proof, goethkzg.CellsPerExtBlob)
 
 	copy(blobs[0][:], b.Blob[:])
 	copy(comms[0][:], b.Commitment[:])
 
-	// Copy all cell proofs
-	for i := range b.CellProofs {
-		copy(proofs[i][:], b.CellProofs[i][:])
-	}
+	// // Copy all cell proofs
+	// for i := range b.CellProofs {
+	// 	copy(proofs[i][:], b.CellProofs[i][:])
+	// }
 
 	// Create Version 1 sidecar with cell proofs
 	sc := gethtypes.NewBlobTxSidecar(
-		gethtypes.BlobSidecarVersion1,
+		gethtypes.BlobSidecarVersion0,
 		blobs,
 		comms,
-		proofs,
+		nil,
 	)
-
+	// quick debug to discard errors during ComputeCellProofs
+	if err := sc.ToV1(); err != nil {
+		panic(err)
+	}
 	return sc, sc.BlobHashes(), nil
 }
 
