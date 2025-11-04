@@ -172,11 +172,6 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 
 		// Store the proof in the state transition storage
-		// Note: We store the first cell proof in BlobProof for the ABI encoding.
-		// The full sidecar with all 128 cell proofs is stored separately.
-		var firstCellProof [48]byte
-		copy(firstCellProof[:], blobData.CellProofs[0][:])
-
 		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
 			ProcessID: batch.ProcessID,
 			BatchID:   batchID,
@@ -190,7 +185,7 @@ func (s *Sequencer) processPendingTransitions() {
 				BlobEvaluationPointZ: blobData.Z,
 				BlobEvaluationPointY: blobData.Ylimbs,
 				BlobCommitment:       blobData.Commitment,
-				BlobProof:            firstCellProof,
+				BlobProof:            blobData.OpeningProof,
 			},
 			BlobVersionHash: blobHashes[0],
 			BlobSidecar:     blobSidecar,

@@ -58,6 +58,8 @@ type BlobEvalData struct {
 	Y          *big.Int
 	Ylimbs     [4]*big.Int
 	Blob       goethkzg.Blob
+	// Opening proof for point-evaluation precompile (integrity check)
+	OpeningProof [CompressedG1Size]byte
 	// Cell proofs for EIP-7594 (Fusaka upgrade)
 	// Each blob has CellsPerExtBlob (128) cell proofs
 	CellProofs [goethkzg.CellsPerExtBlob]goethkzg.KZGProof
@@ -74,11 +76,12 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, erro
 	}
 	b.Commitment = commitment
 
-	// Compute the point evaluation proof to get the claim (y value)
-	_, claim, err := ComputeProof(blob, z)
+	// Compute the point evaluation proof to get the claim (y value) and OpeningProof
+	openingProof, claim, err := ComputeProof(blob, z)
 	if err != nil {
 		return nil, err
 	}
+	b.OpeningProof = openingProof
 
 	// Compute cell proofs for EIP-7594 (Fusaka upgrade)
 	_, cellProofs, err := kzgContext.ComputeCellsAndKZGProofs(blob, 0)
