@@ -7,7 +7,7 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/sequencer"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -19,7 +19,7 @@ func TestNoResults(t *testing.T) {
 	c := qt.New(t)
 
 	// Set debug prover to catch circuit errors
-	services.Sequencer.SetProver(sequencer.NewDebugProver(t))
+	services.Sequencer.SetProver(prover.NewDebugProver(t))
 
 	// Setup
 	ctx := t.Context()

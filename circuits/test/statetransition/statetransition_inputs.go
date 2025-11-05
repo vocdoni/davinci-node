@@ -70,10 +70,10 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 		c.Assert(err, qt.IsNil, qt.Commentf("aggregator setup"))
 		agVk = vk
 
-		// generate the proof
-		proof, err = groth16.Prove(agCCS, agPk, fullWitness, stdgroth16.GetNativeProverOptions(
-			circuits.StateTransitionCurve.ScalarField(),
-			circuits.AggregatorCurve.ScalarField()))
+		// generate the proof (automatically uses GPU if enabled)
+		proof, err = types.ProveWithWitness(agCCS, agPk, fullWitness,
+			stdgroth16.GetNativeProverOptions(circuits.StateTransitionCurve.ScalarField(),
+				circuits.AggregatorCurve.ScalarField()))
 		c.Assert(err, qt.IsNil, qt.Commentf("proving aggregator circuit"))
 
 		// Save proof, verification key, CCS, and witness to cache for future use

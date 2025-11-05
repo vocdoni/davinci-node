@@ -29,7 +29,7 @@ import (
 
 // AggregatorInputsForTest returns the AggregatorTestResults, the placeholder
 // and the assignments of a AggregatorCircuit for the processId provided
-// generating nValidVotes. Uses quicktest assertions instead of returning errors.
+// generating nValidVotes.
 func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVotes int) (
 	*circuitstest.AggregatorTestResults, *aggregator.AggregatorCircuit, *aggregator.AggregatorCircuit,
 ) {
@@ -109,10 +109,10 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 	proofs := [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
 	proofsInputsHashes := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
 	for i := range vvWitness {
-		// generate the proof
-		proof, err := groth16.Prove(vvCCS, vvPk, vvWitness[i], stdgroth16.GetNativeProverOptions(
-			circuits.AggregatorCurve.ScalarField(),
-			circuits.VoteVerifierCurve.ScalarField()))
+		// generate the proof (automatically uses GPU if enabled)
+		proof, err := types.ProveWithWitness(vvCCS, vvPk, vvWitness[i],
+			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
+				circuits.VoteVerifierCurve.ScalarField()))
 		c.Assert(err, qt.IsNil, qt.Commentf("proving voteverifier circuit %d", i))
 
 		// convert the proof to the circuit proof type
@@ -140,7 +140,7 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 		Proofs:             proofs,
 	}
 	// fill assignments with dummy values
-	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballottest.TestCircomVerificationKey, nValidVotes)
+	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballottest.TestCircomVerificationKey, nValidVotes, nil)
 	c.Assert(err, qt.IsNil, qt.Commentf("fill with dummy values"))
 
 	// fix the vote verifier verification key

@@ -13,6 +13,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // FillWithDummy function fills the assignments provided with a dummy proofs
@@ -20,18 +21,61 @@ import (
 // the proving key. It generates dummy proofs using the inner verification key
 // provided. It starts to fill from the index provided. Returns an error if
 // something fails.
+// If proverFn is nil, it uses the DefaultProver implementation.
 func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.ConstraintSystem,
-	mainPk groth16.ProvingKey, innerVk []byte, fromIdx int,
+	mainPk groth16.ProvingKey, innerVk []byte, fromIdx int, proverFn types.ProverFunc,
 ) error {
 	// get dummy proof witness
-	dummyWitness, err := voteverifier.DummyWitness(innerVk, new(bjj.BJJ).New())
+	assignment, err := voteverifier.DummyAssignment(innerVk, new(bjj.BJJ).New())
 	if err != nil {
-		return fmt.Errorf("dummy witness error: %w", err)
+		return fmt.Errorf("dummy assignment error: %w", err)
 	}
-	// generate dummy proof
-	dummyProof, err := groth16.Prove(mainCCS, mainPk, dummyWitness, stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(), circuits.VoteVerifierCurve.ScalarField()))
-	if err != nil {
-		return fmt.Errorf("proof error: %w", err)
+
+	var dummyProof groth16.Proof
+
+	// If a custom prover function is provided, use it (e.g., for debug proving)
+	// Otherwise, use types.DefaultProver which supports GPU if enabled
+	if proverFn != nil {
+		// Use custom prover function (for debug/testing)
+		dummyProof, err = proverFn(
+			circuits.VoteVerifierCurve,
+			mainCCS,
+			mainPk,
+			assignment,
+			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
+				circuits.VoteVerifierCurve.ScalarField()),
+		)
+		if err != nil {
+			return fmt.Errorf("proof error: %w", err)
+		}
+	} else if types.DefaultProver != nil {
+		// Use the default prover (supports GPU if enabled)
+		// types.DefaultProver is set by the prover package during initialization
+		dummyProof, err = types.DefaultProver(
+			circuits.VoteVerifierCurve,
+			mainCCS,
+			mainPk,
+			assignment,
+			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
+				circuits.VoteVerifierCurve.ScalarField()),
+		)
+		if err != nil {
+			return fmt.Errorf("proof error: %w", err)
+		}
+	} else {
+		// Fallback to standard groth16.Prove if DefaultProver is not set
+		// (shouldn't happen in practice, but provides a safe fallback)
+		witness, err := frontend.NewWitness(assignment, circuits.VoteVerifierCurve.ScalarField())
+		if err != nil {
+			return fmt.Errorf("failed to create witness: %w", err)
+		}
+		dummyProof, err = groth16.Prove(mainCCS, mainPk, witness,
+			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
+				circuits.VoteVerifierCurve.ScalarField()),
+		)
+		if err != nil {
+			return fmt.Errorf("proof error: %w", err)
+		}
 	}
 	// prepare dummy proof to recursion
 	recursiveDummyProof, err := stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](dummyProof)

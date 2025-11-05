@@ -196,7 +196,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	// Fill any remaining slots with dummy proofs if needed
 	if len(ballots) < types.VotesPerBatch {
 		log.Debugw("filling with dummy proofs", "count", types.VotesPerBatch-len(ballots))
-		if err := assignment.FillWithDummy(s.vvCcs, s.vvPk, s.bVkCircom, len(ballots)); err != nil {
+		if err := assignment.FillWithDummy(s.vvCcs, s.vvPk, s.bVkCircom, len(ballots), s.prover); err != nil {
 			if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
 				log.Warnw("failed to mark ballot batch as failed",
 					"error", err.Error(),
