@@ -1,4 +1,4 @@
-package sequencer
+package prover
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
+	"github.com/consensys/gnark/backend/accelerated/icicle"
+	gpugroth16 "github.com/consensys/gnark/backend/accelerated/icicle/groth16"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
@@ -20,23 +22,47 @@ import (
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	teststatetransition "github.com/vocdoni/davinci-node/circuits/test/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
-// ProverFunc defines a function type that matches the signature needed for zkSNARK proving
-// in the Sequencer package. The function is generic enough to handle all circuit types.
-type ProverFunc func(
+func init() {
+	// Set the default prover in the types package to avoid circular dependencies
+	// This allows circuit packages to use the prover without importing this package
+	types.DefaultProver = defaultProverImpl
+}
+
+// defaultProverImpl is the internal implementation that gets assigned to types.DefaultProver
+func defaultProverImpl(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
 	pk groth16.ProvingKey,
 	assignment frontend.Circuit,
 	opts ...backend.ProverOption,
-) (groth16.Proof, error)
+) (groth16.Proof, error) {
+	if types.UseGPUProver {
+		return GPUProver(curve, ccs, pk, assignment, opts...)
+	}
+	return CPUProver(curve, ccs, pk, assignment, opts...)
+}
 
-// DefaultProver is the standard implementation that simply calls groth16.Prove directly.
-// This is used in production environments.
+// DefaultProver is a convenience wrapper that calls the default prover implementation.
+// It uses the GPU prover if UseGPUProver is true, otherwise it uses the CPU prover.
+// This function can be used directly or accessed via types.DefaultProver.
 func DefaultProver(
+	curve ecc.ID,
+	ccs constraint.ConstraintSystem,
+	pk groth16.ProvingKey,
+	assignment frontend.Circuit,
+	opts ...backend.ProverOption,
+) (groth16.Proof, error) {
+	return defaultProverImpl(curve, ccs, pk, assignment, opts...)
+}
+
+// CPUProver is the standard implementation that simply calls groth16.Prove directly.
+// This is used in production environments.
+func CPUProver(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
 	pk groth16.ProvingKey,
@@ -53,6 +79,30 @@ func DefaultProver(
 	return groth16.Prove(ccs, pk, witness, opts...)
 }
 
+// GPUProver is an implementation that uses GPU acceleration for proving.
+func GPUProver(
+	curve ecc.ID,
+	ccs constraint.ConstraintSystem,
+	pk groth16.ProvingKey,
+	assignment frontend.Circuit,
+	opts ...backend.ProverOption,
+) (groth16.Proof, error) {
+	// Create a witness from the circuit
+	witness, err := frontend.NewWitness(assignment, curve.ScalarField())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create witness: %w", err)
+	}
+	log.Debugw("using GPU prover", "curve", curve.String())
+
+	// Convert backend.ProverOption to icicle.Option
+	var icicleOpts []icicle.Option
+	if len(opts) > 0 {
+		icicleOpts = append(icicleOpts, icicle.WithProverOptions(opts...))
+	}
+	// Generate the proof using GPU acceleration with converted options
+	return gpugroth16.Prove(ccs, pk, witness, icicleOpts...)
+}
+
 // NewDebugProver creates a prover that runs test.IsSolved before normal proving.
 // This is used in test environments to debug circuit execution.
 //
@@ -60,7 +110,7 @@ func DefaultProver(
 //   - t: The testing.T instance from the test
 //
 // Returns a ProverFunc that will execute test.IsSolved and then groth16.Prove
-func NewDebugProver(t *testing.T) ProverFunc {
+func NewDebugProver(t *testing.T) types.ProverFunc {
 	return func(
 		curve ecc.ID,
 		ccs constraint.ConstraintSystem,
@@ -142,10 +192,4 @@ func NewDebugProver(t *testing.T) ProverFunc {
 		t.Logf("running groth16.Prove for %T", assignment)
 		return groth16.Prove(ccs, pk, witness, opts...)
 	}
-}
-
-// SetProver sets a custom prover function for the Sequencer.
-// This is particularly useful for tests that need to debug circuit execution.
-func (s *Sequencer) SetProver(p ProverFunc) {
-	s.prover = p
 }

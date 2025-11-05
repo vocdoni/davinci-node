@@ -15,6 +15,7 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // DummyAggCircuit is dummy aggregator circuit
@@ -117,11 +118,15 @@ func Prove(placeholder, assignment frontend.Circuit, outer *big.Int, field *big.
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("init error: %w", err)
 	}
+
+	// Create the full witness (needed for return value and verification)
 	fullWitness, err := frontend.NewWitness(assignment, field)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("full witness error: %w", err)
 	}
-	proof, err := groth16.Prove(ccs, pk, fullWitness, stdgroth16.GetNativeProverOptions(outer, field))
+
+	// Generate proof (automatically uses GPU if enabled)
+	proof, err := types.ProveWithWitness(ccs, pk, fullWitness, stdgroth16.GetNativeProverOptions(outer, field))
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("proof error: %w", err)
 	}
@@ -140,6 +145,7 @@ func CompileAndSetup(placeholder frontend.Circuit, field *big.Int) (constraint.C
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("compile error: %w", err)
 	}
+
 	pk, vk, err := groth16.Setup(ccs)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("setup error: %w", err)

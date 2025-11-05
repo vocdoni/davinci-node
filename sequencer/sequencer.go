@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
@@ -39,9 +40,9 @@ type Sequencer struct {
 	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
 	ctx                context.Context
 	cancel             context.CancelFunc
-	pids               *ProcessIDMap // Maps process IDs to their last update time
-	workInProgressLock sync.RWMutex  // Lock to block new work while processing a batch or a state transition
-	prover             ProverFunc    // Function for generating zero-knowledge proofs
+	pids               *ProcessIDMap    // Maps process IDs to their last update time
+	workInProgressLock sync.RWMutex     // Lock to block new work while processing a batch or a state transition
+	prover             types.ProverFunc // Function for generating zero-knowledge proofs
 	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
 	// If this time elapses, the batch will be processed even if not full.
 	batchTimeWindow time.Duration
@@ -83,7 +84,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		contracts:       contracts,
 		batchTimeWindow: batchTimeWindow,
 		pids:            NewProcessIDMap(),
-		prover:          DefaultProver,
+		prover:          prover.DefaultProver,
 	}
 	// Load the internal circuits
 	if err := s.loadInternalCircuitArtifacts(); err != nil {
@@ -261,4 +262,10 @@ func (s *Sequencer) SetBatchTimeWindow(window time.Duration) {
 // by the sequencer.
 func (s *Sequencer) ActiveProcessIDs() [][]byte {
 	return s.pids.List()
+}
+
+// SetProver sets a custom prover function for the Sequencer.
+// This is particularly useful for tests that need to debug circuit execution.
+func (s *Sequencer) SetProver(p types.ProverFunc) {
+	s.prover = p
 }
