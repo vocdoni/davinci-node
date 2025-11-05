@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -108,6 +111,14 @@ func (pm *ProcessMonitor) monitorProcesses(
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
+			// download the census if needed
+			if err := pm.DownloadCensus(ctx, process.Census.CensusOrigin, process.Census.CensusURI); err != nil {
+				log.Warnw("failed to download census for new process",
+					"pid", process.ID.String(),
+					"censusOrigin", process.Census.CensusOrigin.String(),
+					"censusURI", process.Census.CensusURI,
+					"err", err.Error())
+			}
 			// if it does not exist, create a new one
 			log.Debugw("new process found", "pid", process.ID.String())
 			if err := pm.storage.NewProcess(process); err != nil {
@@ -141,4 +152,41 @@ func (pm *ProcessMonitor) monitorProcesses(
 			}
 		}
 	}
+}
+
+func (pm *ProcessMonitor) DownloadCensus(ctx context.Context, censusOrigin types.CensusOrigin, censusURI string) error {
+	log.Debugw("downloading census", "origin", censusOrigin.String(), "uri", censusURI)
+
+	switch censusOrigin {
+	case types.CensusOriginMerkleTree:
+		// Check if the URI is a valid URL
+		if u, err := url.Parse(censusURI); err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("invalid URL: %s", censusURI)
+		}
+
+		// Download json dump from URI
+		dumpRes, err := http.Get(censusURI)
+		if err != nil {
+			return fmt.Errorf("failed to download census merkle tree dump from %s: %w", censusURI, err)
+		}
+		defer dumpRes.Body.Close()
+
+		if dumpRes.StatusCode != http.StatusOK {
+			return fmt.Errorf("failed to download census merkle tree dump from %s: status code %d", censusURI, dumpRes.StatusCode)
+		}
+		// Decode the JSON as census merkle tree dump
+		dump, err := io.ReadAll(dumpRes.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read census merkle tree dump from %s: %w", censusURI, err)
+		}
+
+		// Import the census merkle tree dump into the census DB
+		db := pm.storage.CensusDB()
+		if _, err := db.Import(dump); err != nil {
+			return fmt.Errorf("failed to import census merkle tree dump from %s: %w", censusURI, err)
+		}
+	default:
+		return fmt.Errorf("unsupported census origin: %s", censusOrigin.String())
+	}
+	return nil
 }

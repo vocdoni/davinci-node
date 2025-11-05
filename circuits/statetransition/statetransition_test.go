@@ -22,6 +22,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	dlog "github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
+	testcensus "github.com/vocdoni/davinci-node/tests/census"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 
@@ -302,7 +303,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vot
 	censusOrigin := types.CensusOrigin(s.CensusOrigin().Uint64())
 	pid := new(types.ProcessID).SetBytes(s.ProcessID().Bytes())
 
-	censusRoot, censusProofs, err := statetransitiontest.CensusProofsForTest(votes, censusOrigin, pid)
+	censusRoot, censusProofs, err := testcensus.CensusProofsForCircuitTest(votes, censusOrigin, pid)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,164 @@
+package types
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"math/big"
+
+	"github.com/consensys/gnark-crypto/ecc/twistededwards"
+	"github.com/vocdoni/arbo"
+)
+
+// CensusOrigin represents the origin of the census used in a voting process.
+type CensusOrigin uint8
+
+const (
+	CensusOriginUnknown CensusOrigin = iota
+	CensusOriginMerkleTree
+	CensusOriginCSPEdDSABLS12377
+	CensusOriginCSPEdDSABN254
+
+	CensusOriginNameUnknown          = "unknown"
+	CensusOriginNameMerkleTree       = "merkle_tree"
+	CensusOriginNameCSPEdDSABLS12377 = "csp_eddsa_bls12377"
+	CensusOriginNameCSPEdDSABN254    = "csp_eddsa_bn254"
+)
+
+var supportedCensusOrigins = map[CensusOrigin]string{
+	CensusOriginMerkleTree:       CensusOriginNameMerkleTree,
+	CensusOriginCSPEdDSABLS12377: CensusOriginNameCSPEdDSABLS12377,
+	CensusOriginCSPEdDSABN254:    CensusOriginNameCSPEdDSABN254,
+}
+
+// CurveID returns the twistededwards.ID associated with the CensusOrigin. Only
+// CSP origins have an associated curve, the rest return UNKNOWN.
+func (co CensusOrigin) CurveID() twistededwards.ID {
+	switch co {
+	case CensusOriginCSPEdDSABLS12377:
+		return twistededwards.BLS12_377
+	case CensusOriginCSPEdDSABN254:
+		return twistededwards.BN254
+	default:
+		return twistededwards.UNKNOWN
+	}
+}
+
+// Valid checks if the CensusOrigin is a valid value.
+func (co CensusOrigin) Valid() bool {
+	_, ok := supportedCensusOrigins[co]
+	return ok
+}
+
+// String returns a string representation of the CensusOrigin.
+func (co CensusOrigin) String() string {
+	if name, ok := supportedCensusOrigins[co]; ok {
+		return name
+	}
+	return CensusOriginNameUnknown
+}
+
+// BigInt converts the CensusOrigin to a *types.BigInt representation.
+func (co CensusOrigin) BigInt() *BigInt {
+	if !co.Valid() {
+		return nil
+	}
+	return (*BigInt)(new(big.Int).SetUint64(uint64(co)))
+}
+
+// Number of bytes in the census root
+const CensusRootLength = 32
+
+// NormalizedCensusRoot function ensures that the census root is always of a
+// fixed length. If its length is not CensusRootLength, it truncates or pads
+// it accordingly.
+func NormalizedCensusRoot(original HexBytes) HexBytes {
+	if len(original) > CensusRootLength {
+		// If the original is longer than the allowed length, truncate it
+		return original[:CensusRootLength]
+	}
+	if diff := CensusRootLength - len(original); diff > 0 {
+		// If the original is shorter than the allowed length, pad it with
+		// zeros at the end
+		padded := make(HexBytes, CensusRootLength)
+		copy(padded, original)
+		return padded
+	}
+	// If the original is already the correct length, return it as is
+	return original
+}
+
+type Census struct {
+	CensusOrigin CensusOrigin `json:"censusOrigin" cbor:"0,keyasint,omitempty"`
+	MaxVotes     *BigInt      `json:"maxVotes"     cbor:"1,keyasint,omitempty"`
+	CensusRoot   HexBytes     `json:"censusRoot"   cbor:"2,keyasint,omitempty"`
+	CensusURI    string       `json:"censusURI"    cbor:"3,keyasint,omitempty"`
+}
+
+// CensusProof is the struct to represent a proof of inclusion in the census
+// merkle tree. For example, it will be provided by the user to verify that he
+// or she can vote in the process.
+type CensusProof struct {
+	// Generic fields
+	CensusOrigin CensusOrigin `json:"censusOrigin"`
+	Root         HexBytes     `json:"root"`
+	Address      HexBytes     `json:"address"`
+	Weight       *BigInt      `json:"weight,omitempty"`
+	// Merkletree related fields
+	Index    uint64   `json:"index,omitempty"` // Leaf index in the tree (used by leanimt)
+	Siblings HexBytes `json:"siblings,omitempty"`
+	Value    HexBytes `json:"value,omitempty"`
+	// CSP related fields
+	ProcessID HexBytes `json:"processId,omitempty"`
+	PublicKey HexBytes `json:"publicKey,omitempty"`
+	Signature HexBytes `json:"signature,omitempty"`
+}
+
+// CensusRoot represents the census root used in a voting process.
+type CensusRoot struct {
+	Root HexBytes `json:"root"`
+}
+
+// Valid checks that the CensusProof is well-formed
+func (cp *CensusProof) Valid() bool {
+	if cp == nil {
+		return false
+	}
+	switch cp.CensusOrigin {
+	case CensusOriginMerkleTree:
+		return cp.Root != nil && cp.Address != nil && cp.Value != nil &&
+			cp.Siblings != nil && cp.Weight != nil
+	case CensusOriginCSPEdDSABLS12377:
+		return cp.Root != nil && cp.Address != nil && cp.ProcessID != nil &&
+			cp.PublicKey != nil && cp.Signature != nil
+	default:
+		return false
+	}
+}
+
+// HasRoot method checks if the CensusProof has the given census root.
+func (cp *CensusProof) HasRoot(censusRoot HexBytes) bool {
+	return bytes.Equal(NormalizedCensusRoot(cp.Root), NormalizedCensusRoot(censusRoot))
+}
+
+// String returns a string representation of the CensusProof
+// in JSON format. It returns an empty string if the JSON marshaling fails.
+func (cp *CensusProof) String() string {
+	data, err := json.Marshal(cp)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// processCensusRootToBigInt helper converts the census root from its original
+// format to a BigInt according to the census origin.
+func processCensusRootToBigInt(origin CensusOrigin, root HexBytes) (*BigInt, error) {
+	if _, ok := supportedCensusOrigins[origin]; !ok {
+		return nil, fmt.Errorf("unsupported census origin: %s", origin)
+	}
+	if origin == CensusOriginMerkleTree {
+		return new(BigInt).SetBigInt(arbo.BytesToBigInt(root)), nil
+	}
+	return root.BigInt(), nil
+}

@@ -12,14 +12,17 @@ import (
 	"github.com/consensys/gnark/backend/solidity"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
+	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	imtcircuit "github.com/vocdoni/lean-imt-go/circuit"
 )
 
 func (s *Sequencer) startStateTransitionProcessor() error {
@@ -347,8 +350,15 @@ func (s *Sequencer) stateBatchToWitness(
 	if err := processState.EndBatch(); err != nil {
 		return nil, nil, fmt.Errorf("failed to end batch: %w", err)
 	}
+
+	// get the census proofs for the current batch
+	censusRoot, censusProofs, err := s.censusRootAndProofs(processState.ProcessID().Bytes(), votes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get census proofs: %w", err)
+	}
+
 	// generate the state transition vote witness
-	proofWitness, err := statetransition.GenerateWitness(processState, kSeed)
+	proofWitness, err := statetransition.GenerateWitness(processState, censusRoot, *censusProofs, kSeed)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate witness: %w", err)
 	}
@@ -366,4 +376,54 @@ func (s *Sequencer) stateBatchToWitness(
 	proofWitness.BlobEvaluationResultY = blobData.ForGnark.Y
 
 	return proofWitness, blobData, nil
+}
+
+func (s *Sequencer) censusRootAndProofs(pid types.HexBytes, votes []*state.Vote) (*types.BigInt, *statetransition.CensusProofs, error) {
+	// decode process ID
+	processID := new(types.ProcessID)
+	if err := processID.Unmarshal(pid); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal process ID: %w", err)
+	}
+	// get the process from the storage
+	process, err := s.stg.Process(processID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get process metadata: %w", err)
+	}
+
+	var root *big.Int
+	merkleProofs := [types.VotesPerBatch]imtcircuit.MerkleProof{}
+	cspProofs := [types.VotesPerBatch]csp.CSPProof{}
+	switch process.Census.CensusOrigin {
+	case types.CensusOriginMerkleTree:
+		// load the census from the storage
+		censusRef, err := s.stg.CensusDB().LoadByRoot(process.Census.CensusRoot)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to load census by root: %w", err)
+		}
+		// get the merkle tree and its root
+		censusTree := censusRef.Tree()
+		var ok bool
+		if root, ok = censusTree.Root(); !ok {
+			return nil, nil, fmt.Errorf("error getting census merkle tree root")
+		}
+		// iterate over the votes to generate the merkle proofs of each voter
+		for i, v := range votes {
+			if i < len(votes) {
+				addr := common.BigToAddress(v.Address)
+				proof, err := censusTree.GenerateProof(addr)
+				if err != nil {
+					return nil, nil, fmt.Errorf("error generating census proof for address %s: %w", addr.Hex(), err)
+				}
+				merkleProofs[i] = imtcircuit.CensusProofToMerkleProof(proof)
+			} else {
+				merkleProofs[i] = statetransition.DummyMerkleProof()
+			}
+		}
+	default:
+		return nil, nil, fmt.Errorf("unsupported census origin: %s", process.Census.CensusOrigin.String())
+	}
+	return new(types.BigInt).SetBigInt(root), &statetransition.CensusProofs{
+		MerkleProofs: merkleProofs,
+		CSPProofs:    cspProofs,
+	}, nil
 }
