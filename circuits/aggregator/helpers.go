@@ -13,6 +13,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -34,7 +35,7 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 	var dummyProof groth16.Proof
 
 	// If a custom prover function is provided, use it (e.g., for debug proving)
-	// Otherwise, use types.DefaultProver which supports GPU if enabled
+	// Otherwise, use prover.DefaultProver which supports GPU if enabled
 	if proverFn != nil {
 		// Use custom prover function (for debug/testing)
 		dummyProof, err = proverFn(
@@ -45,13 +46,9 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
 				circuits.VoteVerifierCurve.ScalarField()),
 		)
-		if err != nil {
-			return fmt.Errorf("proof error: %w", err)
-		}
-	} else if types.DefaultProver != nil {
+	} else {
 		// Use the default prover (supports GPU if enabled)
-		// types.DefaultProver is set by the prover package during initialization
-		dummyProof, err = types.DefaultProver(
+		dummyProof, err = prover.DefaultProver(
 			circuits.VoteVerifierCurve,
 			mainCCS,
 			mainPk,
@@ -59,23 +56,9 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
 				circuits.VoteVerifierCurve.ScalarField()),
 		)
-		if err != nil {
-			return fmt.Errorf("proof error: %w", err)
-		}
-	} else {
-		// Fallback to standard groth16.Prove if DefaultProver is not set
-		// (shouldn't happen in practice, but provides a safe fallback)
-		witness, err := frontend.NewWitness(assignment, circuits.VoteVerifierCurve.ScalarField())
-		if err != nil {
-			return fmt.Errorf("failed to create witness: %w", err)
-		}
-		dummyProof, err = groth16.Prove(mainCCS, mainPk, witness,
-			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
-				circuits.VoteVerifierCurve.ScalarField()),
-		)
-		if err != nil {
-			return fmt.Errorf("proof error: %w", err)
-		}
+	}
+	if err != nil {
+		return fmt.Errorf("proof error: %w", err)
 	}
 	// prepare dummy proof to recursion
 	recursiveDummyProof, err := stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](dummyProof)

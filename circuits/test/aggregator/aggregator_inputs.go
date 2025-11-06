@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vocdoni/davinci-node/prover"
+
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
@@ -110,7 +112,7 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 	proofsInputsHashes := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
 	for i := range vvWitness {
 		// generate the proof (automatically uses GPU if enabled)
-		proof, err := types.ProveWithWitness(vvCCS, vvPk, vvWitness[i],
+		proof, err := prover.ProveWithWitness(circuits.VoteVerifierCurve, vvCCS, vvPk, vvWitness[i],
 			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
 				circuits.VoteVerifierCurve.ScalarField()))
 		c.Assert(err, qt.IsNil, qt.Commentf("proving voteverifier circuit %d", i))

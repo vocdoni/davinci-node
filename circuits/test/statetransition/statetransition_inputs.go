@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/vocdoni/davinci-node/prover"
+
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/frontend"
@@ -71,7 +73,7 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 		agVk = vk
 
 		// generate the proof (automatically uses GPU if enabled)
-		proof, err = types.ProveWithWitness(agCCS, agPk, fullWitness,
+		proof, err = prover.ProveWithWitness(circuits.AggregatorCurve, agCCS, agPk, fullWitness,
 			stdgroth16.GetNativeProverOptions(circuits.StateTransitionCurve.ScalarField(),
 				circuits.AggregatorCurve.ScalarField()))
 		c.Assert(err, qt.IsNil, qt.Commentf("proving aggregator circuit"))
