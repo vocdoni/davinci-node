@@ -2,54 +2,69 @@ package prover
 
 import (
 	"fmt"
-	"testing"
-	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/accelerated/icicle"
 	gpugroth16 "github.com/consensys/gnark/backend/accelerated/icicle/groth16"
 	"github.com/consensys/gnark/backend/groth16"
+	bls12377groth16 "github.com/consensys/gnark/backend/groth16/bls12-377"
+	bls12381groth16 "github.com/consensys/gnark/backend/groth16/bls12-381"
+	bn254groth16 "github.com/consensys/gnark/backend/groth16/bn254"
+	bw6761groth16 "github.com/consensys/gnark/backend/groth16/bw6-761"
+	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
-	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
-	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/consensys/gnark/test"
-	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/circuits/aggregator"
-	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
-	teststatetransition "github.com/vocdoni/davinci-node/circuits/test/statetransition"
-	"github.com/vocdoni/davinci-node/circuits/voteverifier"
-	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
-func init() {
-	// Set the default prover in the types package to avoid circular dependencies
-	// This allows circuit packages to use the prover without importing this package
-	types.DefaultProver = defaultProverImpl
-}
-
-// defaultProverImpl is the internal implementation that gets assigned to types.DefaultProver
-func defaultProverImpl(
+// callGPUProver is a helper function that calls the GPU prover with proper curve-specific type assertions.
+// The icicle GPU library requires concrete curve-specific types, not generic interfaces.
+func callGPUProver(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
 	pk groth16.ProvingKey,
-	assignment frontend.Circuit,
-	opts ...backend.ProverOption,
+	w witness.Witness,
+	icicleOpts []icicle.Option,
 ) (groth16.Proof, error) {
-	if types.UseGPUProver {
-		return GPUProver(curve, ccs, pk, assignment, opts...)
+	// Type assert the proving key to the concrete curve-specific type
+	switch curve {
+	case ecc.BN254:
+		bn254Pk, ok := pk.(*bn254groth16.ProvingKey)
+		if !ok {
+			return nil, fmt.Errorf("proving key type mismatch for BN254: expected *bn254.ProvingKey, got %T", pk)
+		}
+		return gpugroth16.Prove(ccs, bn254Pk, w, icicleOpts...)
+
+	case ecc.BLS12_377:
+		bls12377Pk, ok := pk.(*bls12377groth16.ProvingKey)
+		if !ok {
+			return nil, fmt.Errorf("proving key type mismatch for BLS12_377: expected *bls12_377.ProvingKey, got %T", pk)
+		}
+		return gpugroth16.Prove(ccs, bls12377Pk, w, icicleOpts...)
+
+	case ecc.BLS12_381:
+		bls12381Pk, ok := pk.(*bls12381groth16.ProvingKey)
+		if !ok {
+			return nil, fmt.Errorf("proving key type mismatch for BLS12_381: expected *bls12_381.ProvingKey, got %T", pk)
+		}
+		return gpugroth16.Prove(ccs, bls12381Pk, w, icicleOpts...)
+
+	case ecc.BW6_761:
+		bw6761Pk, ok := pk.(*bw6761groth16.ProvingKey)
+		if !ok {
+			return nil, fmt.Errorf("proving key type mismatch for BW6_761: expected *bw6_761.ProvingKey, got %T", pk)
+		}
+		return gpugroth16.Prove(ccs, bw6761Pk, w, icicleOpts...)
+
+	default:
+		return nil, fmt.Errorf("GPU proving not supported for curve %s", curve)
 	}
-	return CPUProver(curve, ccs, pk, assignment, opts...)
 }
 
-// DefaultProver is a convenience wrapper that calls the default prover implementation.
+// DefaultProver is the default prover implementation.
 // It uses the GPU prover if UseGPUProver is true, otherwise it uses the CPU prover.
-// This function can be used directly or accessed via types.DefaultProver.
+// If GPU proving fails, it falls back to CPU proving.
 func DefaultProver(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
@@ -57,7 +72,16 @@ func DefaultProver(
 	assignment frontend.Circuit,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return defaultProverImpl(curve, ccs, pk, assignment, opts...)
+	if types.UseGPUProver {
+		proof, err := GPUProver(curve, ccs, pk, assignment, opts...)
+		if err != nil {
+			// GPU proving failed, fall back to CPU
+			fmt.Printf("GPU proving failed (%v), falling back to CPU\n", err)
+			return CPUProver(curve, ccs, pk, assignment, opts...)
+		}
+		return proof, nil
+	}
+	return CPUProver(curve, ccs, pk, assignment, opts...)
 }
 
 // CPUProver is the standard implementation that simply calls groth16.Prove directly.
@@ -70,13 +94,13 @@ func CPUProver(
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
 	// Create a witness from the circuit
-	witness, err := frontend.NewWitness(assignment, curve.ScalarField())
+	w, err := frontend.NewWitness(assignment, curve.ScalarField())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create witness: %w", err)
 	}
 
 	// Generate the proof
-	return groth16.Prove(ccs, pk, witness, opts...)
+	return groth16.Prove(ccs, pk, w, opts...)
 }
 
 // GPUProver is an implementation that uses GPU acceleration for proving.
@@ -88,108 +112,65 @@ func GPUProver(
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
 	// Create a witness from the circuit
-	witness, err := frontend.NewWitness(assignment, curve.ScalarField())
+	w, err := frontend.NewWitness(assignment, curve.ScalarField())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create witness: %w", err)
 	}
-	log.Debugw("using GPU prover", "curve", curve.String())
-
 	// Convert backend.ProverOption to icicle.Option
 	var icicleOpts []icicle.Option
 	if len(opts) > 0 {
 		icicleOpts = append(icicleOpts, icicle.WithProverOptions(opts...))
 	}
-	// Generate the proof using GPU acceleration with converted options
-	return gpugroth16.Prove(ccs, pk, witness, icicleOpts...)
+	// Use helper function to call GPU prover with proper type assertions
+	return callGPUProver(curve, ccs, pk, w, icicleOpts)
 }
 
-// NewDebugProver creates a prover that runs test.IsSolved before normal proving.
-// This is used in test environments to debug circuit execution.
-//
-// Parameters:
-//   - t: The testing.T instance from the test
-//
-// Returns a ProverFunc that will execute test.IsSolved and then groth16.Prove
-func NewDebugProver(t *testing.T) types.ProverFunc {
-	return func(
-		curve ecc.ID,
-		ccs constraint.ConstraintSystem,
-		pk groth16.ProvingKey,
-		assignment frontend.Circuit,
-		opts ...backend.ProverOption,
-	) (groth16.Proof, error) {
-		var placeholder frontend.Circuit
-
-		switch assignment.(type) {
-		case *voteverifier.VerifyVoteCircuit:
-			t.Logf("running debug prover for voteverifier")
-			circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-				ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
-			if err != nil {
-				t.Fatal(err)
-			}
-			placeholder = &voteverifier.VerifyVoteCircuit{
-				CircomProof:           circomPlaceholder.Proof,
-				CircomVerificationKey: circomPlaceholder.Vk,
-			}
-		case *aggregator.AggregatorCircuit:
-			t.Logf("running debug prover for aggregator")
-			vvk, err := voteverifier.Artifacts.VerifyingKey()
-			if err != nil {
-				t.Fatal(err)
-			}
-			fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](vvk)
-			if err != nil {
-				t.Fatal(err)
-			}
-			p := &aggregator.AggregatorCircuit{
-				Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
-				VerificationKey: fixedVk,
-			}
-			ccs, err := aggregator.Artifacts.CircuitDefinition()
-			if err != nil {
-				t.Fatal(err)
-			}
-			for i := range types.VotesPerBatch {
-				p.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](ccs)
-			}
-			placeholder = p
-		case *statetransition.StateTransitionCircuit:
-			t.Logf("running debug prover for statetransition")
-			agVk, err := aggregator.Artifacts.VerifyingKey()
-			if err != nil {
-				t.Fatal(err)
-			}
-			p := teststatetransition.CircuitPlaceholder()
-			fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](agVk)
-			if err != nil {
-				t.Fatal(err)
-			}
-			p.AggregatorVK = fixedVk
-			placeholder = p
-		default:
-			t.Fatalf("unsupported circuit type: %T", assignment)
-
-		}
-
-		// First run the circuit solver verification for debugging
-		assert := test.NewAssert(t)
-		startTime := time.Now()
-		assert.SolvingSucceeded(placeholder, assignment,
-			test.WithCurves(curve),
-			test.WithBackends(backend.GROTH16),
-			test.WithProverOpts(opts...),
-		)
-		t.Logf("debug prover succeeded for %T, took %s", assignment, time.Since(startTime).String())
-
-		// Then do the normal proof generation
-		witness, err := frontend.NewWitness(assignment, curve.ScalarField())
+// ProveWithWitness generates a proof from an already-created witness.
+// It automatically uses GPU acceleration if UseGPUProver is true.
+// If GPU proving fails, it falls back to CPU proving.
+func ProveWithWitness(
+	curve ecc.ID,
+	ccs constraint.ConstraintSystem,
+	pk groth16.ProvingKey,
+	w witness.Witness,
+	opts ...backend.ProverOption,
+) (groth16.Proof, error) {
+	if types.UseGPUProver {
+		proof, err := GPUProverWithWitness(curve, ccs, pk, w, opts...)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create witness: %w", err)
+			// GPU proving failed, fall back to CPU
+			fmt.Printf("GPU proving failed (%v), falling back to CPU\n", err)
+			return CPUProverWithWitness(curve, ccs, pk, w, opts...)
 		}
-
-		// Generate the proof
-		t.Logf("running groth16.Prove for %T", assignment)
-		return groth16.Prove(ccs, pk, witness, opts...)
+		return proof, nil
 	}
+	return CPUProverWithWitness(curve, ccs, pk, w, opts...)
+}
+
+// CPUProverWithWitness proves using CPU with an already-created witness.
+func CPUProverWithWitness(
+	curve ecc.ID,
+	ccs constraint.ConstraintSystem,
+	pk groth16.ProvingKey,
+	w witness.Witness,
+	opts ...backend.ProverOption,
+) (groth16.Proof, error) {
+	return groth16.Prove(ccs, pk, w, opts...)
+}
+
+// GPUProverWithWitness proves using GPU with an already-created witness.
+func GPUProverWithWitness(
+	curve ecc.ID,
+	ccs constraint.ConstraintSystem,
+	pk groth16.ProvingKey,
+	w witness.Witness,
+	opts ...backend.ProverOption,
+) (groth16.Proof, error) {
+	// Convert backend.ProverOption to icicle.Option
+	var icicleOpts []icicle.Option
+	if len(opts) > 0 {
+		icicleOpts = append(icicleOpts, icicle.WithProverOptions(opts...))
+	}
+	// Use helper function to call GPU prover with proper type assertions
+	return callGPUProver(curve, ccs, pk, w, icicleOpts)
 }

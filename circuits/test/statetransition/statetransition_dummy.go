@@ -15,7 +15,7 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/prover"
 )
 
 // DummyAggCircuit is dummy aggregator circuit
@@ -125,8 +125,11 @@ func Prove(placeholder, assignment frontend.Circuit, outer *big.Int, field *big.
 		return nil, nil, nil, nil, fmt.Errorf("full witness error: %w", err)
 	}
 
+	// Determine curve from field - AggregatorCurve uses BW6-761
+	curve := circuits.AggregatorCurve
+
 	// Generate proof (automatically uses GPU if enabled)
-	proof, err := types.ProveWithWitness(ccs, pk, fullWitness, stdgroth16.GetNativeProverOptions(outer, field))
+	proof, err := prover.ProveWithWitness(curve, ccs, pk, fullWitness, stdgroth16.GetNativeProverOptions(outer, field))
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("proof error: %w", err)
 	}

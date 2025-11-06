@@ -7,7 +7,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/prover"
 )
 
 // Prove method of VoteVerifierCircuit instance generates a proof of the
@@ -30,17 +30,7 @@ func (a *VerifyVoteCircuit) Prove() (groth16.Proof, error) {
 		return nil, fmt.Errorf("failed to read vote verifier proving key: %w", err)
 	}
 	// generate the final proof using the default prover (supports GPU if enabled)
-	// types.DefaultProver is set by the prover package during initialization
-	if types.DefaultProver != nil {
-		return types.DefaultProver(circuits.VoteVerifierCurve, ccs, pk, a)
-	}
-	// Fallback to standard groth16.Prove if DefaultProver is not set
-	// (shouldn't happen in practice, but provides a safe fallback)
-	witness, err := frontend.NewWitness(a, circuits.VoteVerifierCurve.ScalarField())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create witness: %w", err)
-	}
-	return groth16.Prove(ccs, pk, witness)
+	return prover.DefaultProver(circuits.VoteVerifierCurve, ccs, pk, a)
 }
 
 // VerifyProof method verifies the proof of the circuit with the current
