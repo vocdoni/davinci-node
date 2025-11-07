@@ -7,11 +7,11 @@ import (
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/accelerated/icicle"
 	gpugroth16 "github.com/consensys/gnark/backend/accelerated/icicle/groth16"
+	icicle_bls12377 "github.com/consensys/gnark/backend/accelerated/icicle/groth16/bls12-377"
+	icicle_bls12381 "github.com/consensys/gnark/backend/accelerated/icicle/groth16/bls12-381"
+	icicle_bn254 "github.com/consensys/gnark/backend/accelerated/icicle/groth16/bn254"
+	icicle_bw6761 "github.com/consensys/gnark/backend/accelerated/icicle/groth16/bw6-761"
 	"github.com/consensys/gnark/backend/groth16"
-	bls12377groth16 "github.com/consensys/gnark/backend/groth16/bls12-377"
-	bls12381groth16 "github.com/consensys/gnark/backend/groth16/bls12-381"
-	bn254groth16 "github.com/consensys/gnark/backend/groth16/bn254"
-	bw6761groth16 "github.com/consensys/gnark/backend/groth16/bw6-761"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
@@ -30,30 +30,30 @@ func callGPUProver(
 	// Type assert the proving key to the concrete curve-specific type
 	switch curve {
 	case ecc.BN254:
-		bn254Pk, ok := pk.(*bn254groth16.ProvingKey)
+		bn254Pk, ok := pk.(*icicle_bn254.ProvingKey)
 		if !ok {
-			return nil, fmt.Errorf("proving key type mismatch for BN254: expected *bn254.ProvingKey, got %T", pk)
+			return nil, fmt.Errorf("proving key type mismatch for BN254: expected *icicle_bn254.ProvingKey, got %T", pk)
 		}
 		return gpugroth16.Prove(ccs, bn254Pk, w, icicleOpts...)
 
 	case ecc.BLS12_377:
-		bls12377Pk, ok := pk.(*bls12377groth16.ProvingKey)
+		bls12377Pk, ok := pk.(*icicle_bls12377.ProvingKey)
 		if !ok {
-			return nil, fmt.Errorf("proving key type mismatch for BLS12_377: expected *bls12_377.ProvingKey, got %T", pk)
+			return nil, fmt.Errorf("proving key type mismatch for BLS12_377: expected *icicle_bls12_377.ProvingKey, got %T", pk)
 		}
 		return gpugroth16.Prove(ccs, bls12377Pk, w, icicleOpts...)
 
 	case ecc.BLS12_381:
-		bls12381Pk, ok := pk.(*bls12381groth16.ProvingKey)
+		bls12381Pk, ok := pk.(*icicle_bls12381.ProvingKey)
 		if !ok {
-			return nil, fmt.Errorf("proving key type mismatch for BLS12_381: expected *bls12_381.ProvingKey, got %T", pk)
+			return nil, fmt.Errorf("proving key type mismatch for BLS12_381: expected *icicle_bls12_381.ProvingKey, got %T", pk)
 		}
 		return gpugroth16.Prove(ccs, bls12381Pk, w, icicleOpts...)
 
 	case ecc.BW6_761:
-		bw6761Pk, ok := pk.(*bw6761groth16.ProvingKey)
+		bw6761Pk, ok := pk.(*icicle_bw6761.ProvingKey)
 		if !ok {
-			return nil, fmt.Errorf("proving key type mismatch for BW6_761: expected *bw6_761.ProvingKey, got %T", pk)
+			return nil, fmt.Errorf("proving key type mismatch for BW6_761: expected *icicle_bw6_761.ProvingKey, got %T", pk)
 		}
 		return gpugroth16.Prove(ccs, bw6761Pk, w, icicleOpts...)
 
@@ -93,6 +93,7 @@ func CPUProver(
 	assignment frontend.Circuit,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
+	stdPk := cpuReadyProvingKey(pk)
 	// Create a witness from the circuit
 	w, err := frontend.NewWitness(assignment, curve.ScalarField())
 	if err != nil {
@@ -100,7 +101,7 @@ func CPUProver(
 	}
 
 	// Generate the proof
-	return groth16.Prove(ccs, pk, w, opts...)
+	return groth16.Prove(ccs, stdPk, w, opts...)
 }
 
 // GPUProver is an implementation that uses GPU acceleration for proving.
@@ -155,7 +156,7 @@ func CPUProverWithWitness(
 	w witness.Witness,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return groth16.Prove(ccs, pk, w, opts...)
+	return groth16.Prove(ccs, cpuReadyProvingKey(pk), w, opts...)
 }
 
 // GPUProverWithWitness proves using GPU with an already-created witness.
@@ -173,4 +174,19 @@ func GPUProverWithWitness(
 	}
 	// Use helper function to call GPU prover with proper type assertions
 	return callGPUProver(curve, ccs, pk, w, icicleOpts)
+}
+
+func cpuReadyProvingKey(pk groth16.ProvingKey) groth16.ProvingKey {
+	switch t := pk.(type) {
+	case *icicle_bn254.ProvingKey:
+		return &t.ProvingKey
+	case *icicle_bls12377.ProvingKey:
+		return &t.ProvingKey
+	case *icicle_bls12381.ProvingKey:
+		return &t.ProvingKey
+	case *icicle_bw6761.ProvingKey:
+		return &t.ProvingKey
+	default:
+		return pk
+	}
 }

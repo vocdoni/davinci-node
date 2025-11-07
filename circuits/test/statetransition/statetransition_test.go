@@ -68,7 +68,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// setup proving and verifying keys
 	now = time.Now()
-	pk, vk, err := groth16.Setup(ccs)
+	pk, vk, err := prover.Setup(ccs)
 	c.Assert(err, qt.IsNil, qt.Commentf("setup"))
 	c.Logf("setup took %s", time.Since(now).String())
 
