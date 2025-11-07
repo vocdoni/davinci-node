@@ -68,7 +68,7 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 		agCCS, err := frontend.Compile(circuits.AggregatorCurve.ScalarField(), r1cs.NewBuilder, agPlaceholder)
 		c.Assert(err, qt.IsNil, qt.Commentf("aggregator compile"))
 
-		agPk, vk, err := groth16.Setup(agCCS)
+		agPk, vk, err := prover.Setup(agCCS)
 		c.Assert(err, qt.IsNil, qt.Commentf("aggregator setup"))
 		agVk = vk
 

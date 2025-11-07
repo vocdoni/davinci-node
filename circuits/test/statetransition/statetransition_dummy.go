@@ -149,7 +149,7 @@ func CompileAndSetup(placeholder frontend.Circuit, field *big.Int) (constraint.C
 		return nil, nil, nil, fmt.Errorf("compile error: %w", err)
 	}
 
-	pk, vk, err := groth16.Setup(ccs)
+	pk, vk, err := prover.Setup(ccs)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("setup error: %w", err)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/consensys/gnark/constraint"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -156,7 +157,7 @@ func readGroth16VerifyingKey(path string, curve ecc.ID) (groth16.VerifyingKey, e
 
 // readGroth16ProvingKey reads a groth16 proving key from file
 func readGroth16ProvingKey(path string, curve ecc.ID) (groth16.ProvingKey, error) {
-	pk := groth16.NewProvingKey(curve)
+	pk := prover.NewProvingKey(curve)
 	err := readFromFile(path, func(r io.Reader) error {
 		_, err := pk.ReadFrom(r)
 		return err

@@ -76,7 +76,7 @@ func AggregatorInputsForTest(t *testing.T, processID *types.ProcessID, nValidVot
 		vvCCS, err = frontend.Compile(circuits.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, &vvPlaceholder)
 		c.Assert(err, qt.IsNil, qt.Commentf("compile vote verifier circuit"))
 
-		pk, vk, err := groth16.Setup(vvCCS)
+		pk, vk, err := prover.Setup(vvCCS)
 		c.Assert(err, qt.IsNil, qt.Commentf("setup vote verifier circuit"))
 		vvPk = pk
 		vvVk = vk
