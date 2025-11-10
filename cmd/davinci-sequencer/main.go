@@ -8,6 +8,8 @@ import (
 	"path"
 	"syscall"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/db"
@@ -195,7 +197,10 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 
 	// Load contract bindings
-	if err := services.Contracts.LoadContracts(nil); err != nil {
+	if err := services.Contracts.LoadContracts(&web3.Addresses{
+		OrganizationRegistry: common.HexToAddress(cfg.Web3.OrganizationsAddr),
+		ProcessRegistry:      common.HexToAddress(cfg.Web3.ProcessAddr),
+	}); err != nil {
 		return nil, fmt.Errorf("failed to initialize contracts: %w", err)
 	}
 
