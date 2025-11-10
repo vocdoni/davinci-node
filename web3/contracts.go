@@ -223,18 +223,23 @@ func (c *Contracts) supportBlobTxs() (bool, error) {
 // LoadContracts loads the contracts
 func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	if addresses == nil {
+		addresses = &Addresses{}
+	}
+
+	if addresses.OrganizationRegistry == (common.Address{}) {
 		organizationRegistryAddr, err := c.OrganizationRegistryAddress()
 		if err != nil {
 			return fmt.Errorf("failed to get organization registry address: %w", err)
 		}
+		addresses.OrganizationRegistry = common.HexToAddress(organizationRegistryAddr)
+	}
+
+	if addresses.ProcessRegistry == (common.Address{}) {
 		processRegistryAddr, err := c.ProcessRegistryAddress()
 		if err != nil {
 			return fmt.Errorf("failed to get process registry address: %w", err)
 		}
-		addresses = &Addresses{
-			OrganizationRegistry: common.HexToAddress(organizationRegistryAddr),
-			ProcessRegistry:      common.HexToAddress(processRegistryAddr),
-		}
+		addresses.ProcessRegistry = common.HexToAddress(processRegistryAddr)
 	}
 
 	organizations, err := npbindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
