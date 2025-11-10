@@ -345,6 +345,44 @@ Take a look to `davinci-crypto` WebAssembly [here](./cmd/davincicrypto-wasm/READ
 </script>
 ```
 
+## GPU Prover Support
+
+GPU acceleration can significantly speed up zkSNARK proof generation by leveraging parallel processing. This is beneficial for high-throughput voting processes requiring rapid proof generation.
+
+**Implementation:** Uses [Icicle](https://github.com/ingonyama-zk/icicle) backend via [icicle-gnark](https://github.com/ingonyama-zk/icicle-gnark) wrapper.
+
+**Status:** ⚠️ Experimental - not production-tested. Use at your own risk.
+
+**Supported curves:** BN254, BLS12-377, BLS12-381, BW6-761
+
+### Setup (CUDA-enabled Linux)
+
+1. **Install Icicle backend:**
+   ```bash
+   git clone https://github.com/vocdoni/davinci-node
+   cd davinci-node && go mod tidy
+   # As root:
+   cd ~/go/pkg/mod/github.com/ingonyama-zk/icicle-gnark/v3@v3.2.2/wrappers/golang
+   bash build.sh -curve=all
+   ```
+
+2. **Run with GPU:**
+   ```bash
+   GPU_PROVER=true \
+   LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
+   ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend \
+   go run -tags=icicle ./cmd/davinci-sequencer
+   ```
+
+3. **Test GPU proving:**
+   ```bash
+   RUN_CIRCUIT_BENCHMARK=10 GPU_PROVER=true \
+   LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
+   ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend \
+   go test -v -tags=icicle ./circuits/test/statetransition/ -timeout=1h
+   ```
+
+> 💡 **Note:** Without `-tags=icicle`, the build uses CPU-only proving. GPU support requires the icicle build tag and proper CUDA setup.
 
 ## 📚 Additional Resources
 
