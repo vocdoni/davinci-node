@@ -34,7 +34,7 @@ require (
 	github.com/vocdoni/census3-bigquery v0.0.0-20251027173954-b1fea8ebf0d3
 	github.com/vocdoni/davinci-contracts v0.0.0-20251107190420-1f0c3b269397
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
-	github.com/vocdoni/lean-imt-go v0.0.0-20251105103306-af84381de7e9
+	github.com/vocdoni/lean-imt-go v0.0.0-20251105170711-67328b0a2698
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/mod v0.29.0
 	golang.org/x/sync v0.17.0
