@@ -240,6 +240,11 @@ func (s *Sequencer) processStateTransitionBatch(
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
+	if verifyErr := VerifyProof(circuits.StateTransitionCurve, s.stVk, proof, assignments); err != nil {
+		log.Warnf("proof verification failed: %w", verifyErr)
+	} else {
+		log.Info("proof verification succeeded")
+	}
 	return censusRoot, proof, blobData, nil
 }
 

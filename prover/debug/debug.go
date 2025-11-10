@@ -24,6 +24,17 @@ import (
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
+func VerifyProof(curve ecc.ID, vk groth16.VerifyingKey, proof groth16.Proof, assignment frontend.Circuit) error {
+	// Create a witness from the circuit
+	witness, err := frontend.NewWitness(assignment, curve.ScalarField())
+	if err != nil {
+		return fmt.Errorf("failed to create witness: %w", err)
+	}
+
+	// Verify the proof
+	return groth16.Verify(proof, vk, witness)
+}
+
 // NewDebugProver creates a prover that runs test.IsSolved before normal proving.
 // This is used in test environments to debug circuit execution.
 //
