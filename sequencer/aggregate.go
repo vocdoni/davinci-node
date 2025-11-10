@@ -171,6 +171,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
 			VoteID:          b.VoteID,
 			Address:         b.Address,
+			Weight:          b.VoterWeight,
 			EncryptedBallot: b.EncryptedBallot,
 		})
 	}

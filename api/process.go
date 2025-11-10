@@ -33,8 +33,8 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate the census origin
-	if !p.CensusOrigin.Valid() {
-		ErrMalformedBody.Withf("invalid census origin: %d", p.CensusOrigin).Write(w)
+	if !p.Census.CensusOrigin.Valid() {
+		ErrMalformedBody.Withf("invalid census origin: %d", p.Census.CensusOrigin).Write(w)
 		return
 	}
 
@@ -69,7 +69,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// - the census root must be encoded according to the arbo format
 	root, err := state.CalculateInitialRoot(
 		pid.BigInt(),
-		p.CensusOrigin.BigInt().MathBigInt(),
+		p.Census.CensusOrigin.BigInt().MathBigInt(),
 		p.BallotMode,
 		publicKey)
 	if err != nil {
@@ -89,7 +89,9 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// Write the response
 	log.Infow("new process setup query",
 		"address", address.String(),
-		"censusOrigin", p.CensusOrigin.String(),
+		"censusOrigin", p.Census.CensusOrigin.String(),
+		"censusRoot", p.Census.CensusRoot.String(),
+		"censusURI", p.Census.CensusURI,
 		"processId", pid.String(),
 		"pubKeyX", pr.EncryptionPubKey[0].String(),
 		"pubKeyY", pr.EncryptionPubKey[1].String(),
@@ -108,20 +110,20 @@ func (a *API) process(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
 		return
 	}
-	pid := types.ProcessID{}
+	pid := new(types.ProcessID)
 	if err := pid.Unmarshal(pidBytes); err != nil {
 		ErrMalformedProcessID.Withf("could not unmarshal process ID: %v", err).Write(w)
 		return
 	}
 
 	// Retrieve the process
-	proc, err := a.storage.Process(&pid)
+	proc, err := a.storage.Process(pid)
 	if err != nil {
 		ErrProcessNotFound.Withf("could not retrieve process: %v", err).Write(w)
 		return
 	}
 
-	isAcceptingVotes, _ := a.storage.ProcessIsAcceptingVotes(pid.Marshal())
+	isAcceptingVotes, _ := a.storage.ProcessIsAcceptingVotes(pid)
 	// Write the response
 	httpWriteJSON(w, &ProcessResponse{
 		Process:          *proc,
@@ -140,7 +142,7 @@ func (a *API) processList(w http.ResponseWriter, r *http.Request) {
 	}
 	processList := ProcessList{}
 	for _, p := range processes {
-		processList.Processes = append(processList.Processes, p)
+		processList.Processes = append(processList.Processes, p.Marshal())
 	}
 	// Write the response
 	httpWriteJSON(w, &processList)

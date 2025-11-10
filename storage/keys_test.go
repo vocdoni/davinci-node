@@ -63,7 +63,7 @@ func TestEncryptionKeys(t *testing.T) {
 	pids, err = st.ListProcessWithEncryptionKeys()
 	c.Assert(err, qt.IsNil)
 	c.Assert(len(pids), qt.Equals, 1)
-	c.Assert(string(pids[0]), qt.DeepEquals, string(processID1.Marshal()))
+	c.Assert(string(pids[0].Marshal()), qt.DeepEquals, string(processID1.Marshal()))
 
 	// Generate a key pair for processID2
 	publicKey2, privateKey2, err := elgamal.GenerateKey(bjj.New())
@@ -84,10 +84,10 @@ func TestEncryptionKeys(t *testing.T) {
 	foundProcessID2 := false
 
 	for _, pid := range pids {
-		if string(pid) == string(processID1.Marshal()) {
+		if string(pid.Marshal()) == string(processID1.Marshal()) {
 			foundProcessID1 = true
 		}
-		if string(pid) == string(processID2.Marshal()) {
+		if string(pid.Marshal()) == string(processID2.Marshal()) {
 			foundProcessID2 = true
 		}
 	}

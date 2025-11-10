@@ -146,7 +146,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 
 	// Setup state with test data
 	process.StateRoot = setupTestState(t, stateDB, pid, pubKey, process.StateRoot.MathBigInt(), addValue, subValue)
-	err = stg.UpdateProcess(pid.Marshal(), func(p *types.Process) error {
+	err = stg.UpdateProcess(pid, func(p *types.Process) error {
 		p.StateRoot = process.StateRoot
 		return nil
 	})

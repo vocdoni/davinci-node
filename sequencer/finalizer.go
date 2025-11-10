@@ -164,8 +164,7 @@ func (f *finalizer) finalizeEnded() {
 		log.Errorw(err, "could not list ended processes")
 		return
 	}
-	for _, pidBytes := range pids {
-		processID := new(types.ProcessID).SetBytes(pidBytes)
+	for _, processID := range pids {
 		// Skip invalid processes (thread-safe check)
 		if _, isInvalid := f.invalidProcesses.Load(processID.String()); isInvalid {
 			continue
@@ -393,7 +392,8 @@ func (f *finalizer) setProcessResults(pid types.HexBytes, res *storage.VerifiedR
 	}
 
 	// Update the process atomically to avoid race conditions
-	if err := f.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackFinalization(results)); err != nil {
+	processID := new(types.ProcessID).SetBytes(pid)
+	if err := f.stg.UpdateProcess(processID, storage.ProcessUpdateCallbackFinalization(results)); err != nil {
 		return fmt.Errorf("could not update process %s with results: %w", pid.String(), err)
 	}
 

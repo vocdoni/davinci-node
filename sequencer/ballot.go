@@ -210,7 +210,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	log.Infow("ballot verified",
 		"pid", pid.String(),
 		"voteID", hex.EncodeToString(b.VoteID),
-		"address", b.Address.String(),
+		"address", hex.EncodeToString(b.Address.Bytes()),
 		"took", time.Since(startTime).String(),
 	)
 

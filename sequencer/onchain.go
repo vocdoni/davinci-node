@@ -103,7 +103,7 @@ func (s *Sequencer) processTransitionOnChain() {
 		}
 
 		// send the proof to the contract with the public witness
-		if err := s.pushTransitionToContract([]byte(pid), solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
+		if err := s.pushTransitionToContract(pid, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
 			log.Errorw(err, "failed to push to contract")
 			if err := s.stg.MarkStateTransitionBatchFailed(batchID, pid); err != nil {
 				log.Errorw(err, "failed to mark state transition batch as failed")

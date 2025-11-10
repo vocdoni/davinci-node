@@ -706,7 +706,10 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 	}
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID:        wasmResult.ProcessID,
+		ProcessID: wasmResult.ProcessID,
+		CensusProof: types.CensusProof{
+			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
+		},
 		Address:          wasmInputs.Address,
 		VoteID:           wasmResult.VoteID,
 		Ballot:           wasmResult.Ballot,
@@ -792,6 +795,9 @@ func createVoteFromInvalidVoter(pid *types.ProcessID, bm *types.BallotMode, encK
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 		VoteID:           wasmResult.VoteID,
+		CensusProof: types.CensusProof{
+			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
+		},
 	}, nil
 }
 

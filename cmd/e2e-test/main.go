@@ -442,11 +442,13 @@ func createProcess(
 
 	// Make the request to create the process
 	process := &types.ProcessSetup{
-		ProcessID:    processId.Marshal(),
-		CensusRoot:   censusRoot,
-		BallotMode:   &ballotMode,
-		Signature:    signature,
-		CensusOrigin: types.CensusOriginMerkleTree,
+		ProcessID:  processId.Marshal(),
+		BallotMode: &ballotMode,
+		Signature:  signature,
+		Census: &types.Census{
+			CensusRoot:   censusRoot,
+			CensusOrigin: types.CensusOriginMerkleTree,
+		},
 	}
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
 	if err != nil {

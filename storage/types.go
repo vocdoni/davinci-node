@@ -87,7 +87,8 @@ type Ballot struct {
 func (b *Ballot) Valid() bool {
 	if b.ProcessID == nil || b.VoterWeight == nil || b.Address == nil ||
 		b.BallotInputsHash == nil || b.EncryptedBallot == nil ||
-		b.Signature == nil || b.CensusProof == nil || b.PubKey == nil {
+		b.Signature == nil ||
+		b.PubKey == nil {
 		log.Debug("ballot is not valid, nil fields")
 		return false
 	}
@@ -97,10 +98,6 @@ func (b *Ballot) Valid() bool {
 	}
 	if !b.Signature.Valid() {
 		log.Debugf("signature is not valid: %s", b.Signature.String())
-		return false
-	}
-	if !b.CensusProof.Valid() {
-		log.Debug("census proof is not valid")
 		return false
 	}
 	return true
@@ -143,6 +140,7 @@ func (b *Ballot) String() string {
 type AggregatorBallot struct {
 	VoteID          types.HexBytes  `json:"voteId"`
 	Address         *big.Int        `json:"address"`
+	Weight          *big.Int        `json:"weight"`
 	EncryptedBallot *elgamal.Ballot `json:"encryptedBallot"`
 }
 
@@ -182,34 +180,36 @@ type StateTransitionBatchProofInputs struct {
 	RootHashAfter        *big.Int           `json:"rootHashAfter"`
 	NumNewVotes          int                `json:"numNewVotes"`
 	NumOverwritten       int                `json:"numOverwritten"`
+	CensusRoot           *big.Int           `json:"censusRoot"`
 	BlobEvaluationPointZ *big.Int           `json:"blobEvaluationPointZ"`
 	BlobEvaluationPointY [4]*big.Int        `json:"blobEvaluationPointY"`
 	BlobCommitment       kzg4844.Commitment `json:"blobCommitment"`
 	BlobProof            kzg4844.Proof      `json:"blobProof"`
 }
 
-// ABIEncode packs the four fields as a single static uint256[4] blob:
+// ABIEncode packs the fields as a single static uint256[10] blob:
 //
-//		[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten,
+//		[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten, censusRoot,
 //	      blobEvaluationPointZ, blobEvaluationPointY[0], blobEvaluationPointY[1],
 //	      blobEvaluationPointY[2], blobEvaluationPointY[3], blobCommitment, blobProof ]
 //
-// where the first four elements are the root hashes and counts, the next five
-// elements are the blob evaluation point (Z and Y limbs), and the last two
-// elements are the blob commitment and proof.
+// where the first four elements are the root hashes, counts and the census root,
+// the next five elements are the blob evaluation point (Z and Y limbs), and the
+// last two elements are the blob commitment and proof.
 func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
-	arr := [9]*big.Int{
+	arr := [10]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
 		big.NewInt(int64(s.NumNewVotes)),
 		big.NewInt(int64(s.NumOverwritten)),
+		s.CensusRoot,
 		s.BlobEvaluationPointZ,    // Z is on bn254, so we don't need limbs
 		s.BlobEvaluationPointY[0], // Y is on bls12-381, so we need all 4 limbs
 		s.BlobEvaluationPointY[1],
 		s.BlobEvaluationPointY[2],
 		s.BlobEvaluationPointY[3],
 	}
-	arrType, err := abi.NewType("uint256[9]", "", nil)
+	arrType, err := abi.NewType("uint256[10]", "", nil)
 	if err != nil {
 		return nil, err
 	}

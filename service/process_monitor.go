@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo/memdb"
+	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -112,7 +114,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				continue
 			}
 			// download the census if needed
-			if err := pm.DownloadCensus(ctx, process.Census.CensusOrigin, process.Census.CensusURI); err != nil {
+			if err := pm.ImportCensus(ctx, process); err != nil {
 				log.Warnw("failed to download census for new process",
 					"pid", process.ID.String(),
 					"censusOrigin", process.Census.CensusOrigin.String(),
@@ -122,16 +124,24 @@ func (pm *ProcessMonitor) monitorProcesses(
 			// if it does not exist, create a new one
 			log.Debugw("new process found", "pid", process.ID.String())
 			if err := pm.storage.NewProcess(process); err != nil {
-				log.Warnw("failed to store new process", "pid", process.ID.String(), "err", err.Error())
+				log.Warnw("failed to store new process",
+					"pid", process.ID.String(),
+					"err", err.Error())
 			}
 			// initialize the state for the process
 			log.Debugw("process state created", "pid", process.ID.String())
 		case process := <-changedStatusProcChan:
-			log.Debugw("process changed status", "pid", process.ID.String(),
-				"old", process.OldStatus.String(), "new", process.NewStatus.String())
-			if err := pm.storage.UpdateProcess(process.ID, storage.ProcessUpdateCallbackSetStatus(process.Status)); err != nil {
+			log.Debugw("process changed status",
+				"pid", process.ID.String(),
+				"old", process.OldStatus.String(),
+				"new", process.NewStatus.String())
+			if err := pm.storage.UpdateProcess(
+				new(types.ProcessID).SetBytes(process.ID),
+				storage.ProcessUpdateCallbackSetStatus(process.Status),
+			); err != nil {
 				log.Warnw("failed to update process status",
-					"pid", process.ID.String(), "err", err.Error())
+					"pid", process.ID.String(),
+					"err", err.Error())
 			}
 			if process.Status == types.ProcessStatusResults {
 				if err := pm.storage.CleanProcessStaleVotes(process.ID); err != nil {
@@ -140,53 +150,82 @@ func (pm *ProcessMonitor) monitorProcesses(
 				}
 			}
 		case process := <-stateTransitionChan:
-			log.Debugw("process state root changed", "pid", process.ID.String(),
+			log.Debugw("process state root changed",
+				"pid", process.ID.String(),
 				"stateRoot", process.NewStateRoot.String(),
 				"voteCount", process.NewVoteCount.String(),
 				"voteOverwrittenCount", process.NewVoteOverwrittenCount.String())
-			if err := pm.storage.UpdateProcess(process.ID,
-				storage.ProcessUpdateCallbackSetStateRoot(process.NewStateRoot,
-					process.NewVoteCount, process.NewVoteOverwrittenCount)); err != nil {
+			if err := pm.storage.UpdateProcess(
+				new(types.ProcessID).SetBytes(process.ID),
+				storage.ProcessUpdateCallbackSetStateRoot(
+					process.NewStateRoot,
+					process.NewVoteCount,
+					process.NewVoteOverwrittenCount,
+				),
+			); err != nil {
 				log.Warnw("failed to update process state root",
-					"pid", process.ID.String(), "err", err.Error())
+					"pid", process.ID.String(),
+					"err", err.Error())
 			}
 		}
 	}
 }
 
-func (pm *ProcessMonitor) DownloadCensus(ctx context.Context, censusOrigin types.CensusOrigin, censusURI string) error {
-	log.Debugw("downloading census", "origin", censusOrigin.String(), "uri", censusURI)
+// ImportCensus downloads and imports the census from the given URI based on
+// its origin:
+//   - For CensusOriginMerkleTree, it expects a URL pointing to a JSON dump of
+//     the census merkle tree, downloads it, and imports it into the census DB
+//     by its census root.
+//
+// It returns an error if the download or import fails.
+//
+// TODO: Think about if this function should be here or in another package
+// based on the final implementation of census downloading and importing by
+// census origin.
+func (pm *ProcessMonitor) ImportCensus(ctx context.Context, process *types.Process) error {
+	origin := process.Census.CensusOrigin
+	uri := process.Census.CensusURI
 
-	switch censusOrigin {
+	log.Debugw("downloading census",
+		"pid", process.ID.String(),
+		"origin", process.Census.CensusOrigin.String(),
+		"uri", uri)
+
+	var ref *censusdb.CensusRef
+	switch process.Census.CensusOrigin {
 	case types.CensusOriginMerkleTree:
 		// Check if the URI is a valid URL
-		if u, err := url.Parse(censusURI); err != nil || u.Scheme == "" || u.Host == "" {
-			return fmt.Errorf("invalid URL: %s", censusURI)
+		if u, err := url.Parse(uri); err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("invalid URL: %s", uri)
 		}
-
 		// Download json dump from URI
-		dumpRes, err := http.Get(censusURI)
+		dumpRes, err := http.Get(process.Census.CensusURI)
 		if err != nil {
-			return fmt.Errorf("failed to download census merkle tree dump from %s: %w", censusURI, err)
+			return fmt.Errorf("failed to download census merkle tree dump from %s: %w", process.Census.CensusURI, err)
 		}
 		defer dumpRes.Body.Close()
 
 		if dumpRes.StatusCode != http.StatusOK {
-			return fmt.Errorf("failed to download census merkle tree dump from %s: status code %d", censusURI, dumpRes.StatusCode)
+			return fmt.Errorf("failed to download census merkle tree dump from %s: status code %d", uri, dumpRes.StatusCode)
 		}
 		// Decode the JSON as census merkle tree dump
 		dump, err := io.ReadAll(dumpRes.Body)
 		if err != nil {
-			return fmt.Errorf("failed to read census merkle tree dump from %s: %w", censusURI, err)
+			return fmt.Errorf("failed to read census merkle tree dump from %s: %w", uri, err)
 		}
 
 		// Import the census merkle tree dump into the census DB
-		db := pm.storage.CensusDB()
-		if _, err := db.Import(dump); err != nil {
-			return fmt.Errorf("failed to import census merkle tree dump from %s: %w", censusURI, err)
+		if ref, err = pm.storage.CensusDB().Import(dump); err != nil {
+			return fmt.Errorf("failed to import census merkle tree dump from %s: %w", uri, err)
 		}
 	default:
-		return fmt.Errorf("unsupported census origin: %s", censusOrigin.String())
+		return fmt.Errorf("unsupported census origin: %s", origin.String())
 	}
+	log.Infow("census imported",
+		"pid", process.ID.String(),
+		"origin", origin.String(),
+		"uri", uri,
+		"length", ref.Size(),
+		"root", hex.EncodeToString(ref.Root()))
 	return nil
 }

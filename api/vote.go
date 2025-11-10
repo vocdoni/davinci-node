@@ -117,10 +117,10 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
-	if !vote.CensusProof.Valid() {
-		ErrMalformedBody.Withf("invalid census proof").Write(w)
-		return
-	}
+	// if !vote.CensusProof.Valid() {
+	// 	ErrMalformedBody.Withf("invalid census proof").Write(w)
+	// 	return
+	// }
 	if !vote.Ballot.Valid() {
 		ErrMalformedBody.Withf("invalid ballot").Write(w)
 		return
@@ -140,20 +140,25 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// the vote will be accepted, but it is a precondition to accept the vote,
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
-	if ok, err := a.storage.ProcessIsAcceptingVotes(pid.Marshal()); !ok {
+	if ok, err := a.storage.ProcessIsAcceptingVotes(pid); !ok {
 		ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
 		return
 	}
-	// check that the census root is the same as the one in the process
-	if !vote.CensusProof.HasRoot(process.Census.CensusRoot) {
-		ErrInvalidCensusProof.Withf("census root mismatch").Write(w)
-		return
-	}
+	// // check that the census root is the same as the one in the process
+	// if !vote.CensusProof.HasRoot(process.Census.CensusRoot) {
+	// 	ErrInvalidCensusProof.Withf("census root mismatch").Write(w)
+	// 	return
+	// }
 	// verify the census proof accordingly to the census origin
 	switch process.Census.CensusOrigin {
 	case types.CensusOriginMerkleTree:
-		if !a.storage.CensusDB().VerifyProof(&vote.CensusProof) {
-			ErrInvalidCensusProof.Withf("census proof verification failed").Write(w)
+		censusRef, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+		if err != nil {
+			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
+			return
+		}
+		if !censusRef.Tree().Has(common.Address(vote.Address)) {
+			ErrInvalidCensusProof.Withf("address not in census").Write(w)
 			return
 		}
 	case types.CensusOriginCSPEdDSABLS12377:
