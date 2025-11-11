@@ -732,6 +732,8 @@ github.com/vocdoni/davinci-contracts v0.0.0-20251110111811-f75533345ba2 h1:WmLpz
 github.com/vocdoni/davinci-contracts v0.0.0-20251110111811-f75533345ba2/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/davinci-contracts v0.0.0-20251110111845-66a7ae618b6c h1:XxdxL9thtdH/2/vP1a+ki02IaaggK4fI/jRc3UoAjvk=
 github.com/vocdoni/davinci-contracts v0.0.0-20251110111845-66a7ae618b6c/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
+github.com/vocdoni/davinci-contracts v0.0.0-20251111145241-7d5ab76c1563 h1:nQ5dLYRp8XkEfdyiltZYj2wEo2nDDGt4XeZWoZ0JivU=
+github.com/vocdoni/davinci-contracts v0.0.0-20251111145241-7d5ab76c1563/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97 h1:85N0hCD0MxBH7P76m7TJB+6JwxzT2ajxrn5qutemTGs=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97/go.mod h1:BOS7k/ifqwicL1CgLiq1NylPnMLCuNRBHU2HHHtnWOE=
 github.com/vocdoni/gnark-no-assert v0.0.0-20251027185305-5927e3d455cc h1:aYpdRW5R++Kzj9mgkNHRIjr1NhdI85jHKR0xLMOMxEA=
