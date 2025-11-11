@@ -9,6 +9,7 @@ import (
 
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
+	"github.com/consensys/gnark/backend/solidity"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
@@ -87,13 +88,14 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	c.Logf("running %d proving iterations", iterations)
 
+	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 	var proof groth16.Proof
 
 	// loop over proving
 	for i := 0; i < iterations; i++ {
 		// prove using ProveWithWitness which supports GPU acceleration
 		now = time.Now()
-		proof, err = prover.ProveWithWitness(circuits.StateTransitionCurve, ccs, pk, w)
+		proof, err = prover.ProveWithWitness(circuits.StateTransitionCurve, ccs, pk, w, opts)
 		c.Assert(err, qt.IsNil, qt.Commentf("prove iteration %d", i+1))
 		c.Logf("iteration %d: proving took %s", i+1, time.Since(now).String())
 	}
