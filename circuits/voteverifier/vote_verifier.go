@@ -228,7 +228,7 @@ func (c *VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
 	if err != nil {
 		circuits.FrontendError(api, "failed to create BN254 verifier", err)
 	}
-	validProof, err := verifier.ProofIsValid(c.CircomVerificationKey, c.CircomProof,
+	validProof, err := verifier.IsValidProof(c.CircomVerificationKey, c.CircomProof,
 		witness, groth16.WithCompleteArithmetic())
 	if err != nil {
 		circuits.FrontendError(api, "failed to verify circom proof", err)

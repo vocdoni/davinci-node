@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
-	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto"
@@ -24,7 +22,6 @@ type VoteVerifierInputs struct {
 	EncryptedBallot *elgamal.Ballot
 	CensusOrigin    types.CensusOrigin
 	CSPProof        csp.CSPProof
-	CensusSiblings  [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]
 }
 
 func (vi *VoteVerifierInputs) FromProcessBallot(process *types.Process, b *storage.Ballot) error {

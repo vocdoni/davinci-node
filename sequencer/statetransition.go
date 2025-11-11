@@ -19,6 +19,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/prover/debug"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -240,7 +241,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
-	if verifyErr := VerifyProof(circuits.StateTransitionCurve, s.stVk, proof, assignments); err != nil {
+	if verifyErr := debug.VerifyProof(circuits.StateTransitionCurve, s.stVk, proof, assignments); err != nil {
 		log.Warnf("proof verification failed: %w", verifyErr)
 	} else {
 		log.Info("proof verification succeeded")

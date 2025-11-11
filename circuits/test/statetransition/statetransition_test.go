@@ -57,7 +57,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// Use centralized testing ProcessID for consistent caching
 	processID := types.TestProcessID
-	_, placeholder, assignments := StateTransitionInputsForTest(t, processID, 3)
+	_, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTree, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 
 	// compile circuit

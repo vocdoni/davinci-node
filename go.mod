@@ -2,15 +2,13 @@ module github.com/vocdoni/davinci-node
 
 go 1.25.1
 
-replace github.com/consensys/gnark => github.com/vocdoni/gnark-no-assert v0.0.0-20251105001744-3b4f0421cf3e
-
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/consensys/gnark v0.13.0
+	github.com/consensys/gnark v0.14.1-0.20251111105516-b53af634876c
 	github.com/consensys/gnark-crypto v0.19.2
 	github.com/crate-crypto/go-eth-kzg v1.4.0
 	github.com/ethereum/go-ethereum v1.16.7
@@ -31,13 +29,13 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
-	github.com/vocdoni/census3-bigquery v0.0.0-20251027173954-b1fea8ebf0d3
-	github.com/vocdoni/davinci-contracts v0.0.0-20251107190420-1f0c3b269397
+	github.com/vocdoni/census3-bigquery v0.0.0-20251105171026-578f5ece9970
+	github.com/vocdoni/davinci-contracts v0.0.0-20251111155746-fa31365afc59
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
 	github.com/vocdoni/lean-imt-go v0.0.0-20251105170711-67328b0a2698
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/mod v0.29.0
-	golang.org/x/sync v0.17.0
+	golang.org/x/sync v0.18.0
 )
 
 require (
@@ -256,7 +254,7 @@ require (
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
-	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
