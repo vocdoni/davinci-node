@@ -332,7 +332,7 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 
 		// Retry on current endpoint
 		var res any
-		for retry := 0; retry < defaultRetries; retry++ {
+		for retry := range defaultRetries {
 			res, err = fn(endpoint)
 			if err == nil {
 				// Success! Log if we had to switch endpoints

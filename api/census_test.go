@@ -282,7 +282,7 @@ func TestCensusAPI(t *testing.T) {
 		// Note: Siblings can be nil/empty for a single-element tree
 		c.Assert(proof.Weight, qt.Not(qt.IsNil))
 		c.Assert(proof.Weight.MathBigInt().Uint64(), qt.Equals, uint64(100))
-		c.Assert(proof.CensusOrigin, qt.Equals, types.CensusOriginMerkleTree)
+		c.Assert(proof.CensusOrigin, qt.Equals, types.CensusOriginMerkleTreeOffchainStaticV1)
 
 		// Verify proof is valid
 		isValid := stg.CensusDB().VerifyProof(&proof)

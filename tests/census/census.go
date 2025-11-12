@@ -29,7 +29,7 @@ func CensusProofsForCircuitTest(votes []state.Vote, origin types.CensusOrigin, p
 	merkleProofs := [types.VotesPerBatch]imtcircuit.MerkleProof{}
 	cspProofs := [types.VotesPerBatch]csp.CSPProof{}
 	switch origin {
-	case types.CensusOriginMerkleTree:
+	case types.CensusOriginMerkleTreeOffchainStaticV1:
 		// generate the census merkle tree and set the census root
 		census, err := CensusMerkleTreeForTest(votes)
 		if err != nil {
@@ -73,7 +73,7 @@ func CensusProofsForCircuitTest(votes []state.Vote, origin types.CensusOrigin, p
 					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to generate census proof: %w", err)
 				}
 				// convert to gnark csp proof
-				gnarkCSPProof, err := csp.CensusProofToCSPProof(types.CensusOriginCSPEdDSABN254.CurveID(), cspProof)
+				gnarkCSPProof, err := csp.CensusProofToCSPProof(types.CensusOriginCSPEdDSABN254V1.CurveID(), cspProof)
 				if err != nil {
 					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to convert census proof to gnark proof: %w", err)
 				}

@@ -9,6 +9,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/vocdoni/davinci-node/crypto/ecc/bn254"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestNewCiphertext(t *testing.T) {
@@ -190,7 +191,7 @@ func TestBallotMarshalCBOR(t *testing.T) {
 		k := big.NewInt(789)
 
 		ballot := NewBallot(curve)
-		ballot, err = ballot.Encrypt([8]*big.Int{msg, msg, msg, msg, msg, msg, msg, msg}, publicKey, k)
+		ballot, err = ballot.Encrypt([types.FieldsPerBallot]*big.Int{msg, msg, msg, msg, msg, msg, msg, msg}, publicKey, k)
 		c.Assert(err, qt.IsNil)
 
 		// Test marshaling
@@ -232,7 +233,7 @@ func TestBallotMarshalJSON(t *testing.T) {
 
 		ballot := NewBallot(curve)
 		ballot, err = ballot.Encrypt(
-			[8]*big.Int{msg, msg, msg, msg, msg, msg, msg, msg},
+			[types.FieldsPerBallot]*big.Int{msg, msg, msg, msg, msg, msg, msg, msg},
 			publicKey,
 			k,
 		)

@@ -193,7 +193,7 @@ func (pm *ProcessMonitor) ImportCensus(ctx context.Context, process *types.Proce
 
 	var ref *censusdb.CensusRef
 	switch process.Census.CensusOrigin {
-	case types.CensusOriginMerkleTree:
+	case types.CensusOriginMerkleTreeOffchainStaticV1:
 		// Check if the URI is a valid URL
 		if u, err := url.Parse(uri); err != nil || u.Scheme == "" || u.Host == "" {
 			return fmt.Errorf("invalid URL: %s", uri)

@@ -22,9 +22,7 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-const (
-	failbackMaxValue = 2 << 24 // 2^24
-)
+const maxValue = 2 << 24 // 2^24
 
 // finalizer is responsible for finalizing processes.
 type finalizer struct {
@@ -276,10 +274,6 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	}
 
 	// Decrypt the accumulators
-	maxValue := process.BallotMode.MaxValue.MathBigInt().Uint64() * process.Census.MaxVotes.MathBigInt().Uint64()
-	if maxValue == 0 {
-		maxValue = failbackMaxValue
-	}
 	startTime := time.Now()
 	addAccumulator := [types.FieldsPerBallot]*big.Int{}
 	addAccumulatorsEncrypted := [types.FieldsPerBallot]elgamal.Ciphertext{}

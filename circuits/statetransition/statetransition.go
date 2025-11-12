@@ -424,7 +424,7 @@ func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API) {
 		isRealProof := cmp.IsLess(api, i, c.NumNewVotes)
 		// check if the proof is valid only if the census origin is MerkleTree
 		// and the current vote inputs are from a valid vote.
-		isMerkleTreeCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(types.CensusOriginMerkleTree)))
+		isMerkleTreeCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(types.CensusOriginMerkleTreeOffchainStaticV1)))
 		shouldBeValid := api.And(isRealProof, isMerkleTreeCensus)
 
 		// check that calculated leaf is equal to the one in the proof
@@ -459,7 +459,7 @@ func (c StateTransitionCircuit) censusKey(api frontend.API, address frontend.Var
 }
 
 func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API) {
-	censusOrigin := types.CensusOriginCSPEdDSABN254
+	censusOrigin := types.CensusOriginCSPEdDSABN254V1
 	curveID := censusOrigin.CurveID()
 	for i := range types.VotesPerBatch {
 		vote := c.Votes[i]

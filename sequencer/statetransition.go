@@ -399,7 +399,7 @@ func (s *Sequencer) processCensusProofs(
 	merkleProofs := [types.VotesPerBatch]imtcircuit.MerkleProof{}
 	cspProofs := [types.VotesPerBatch]csp.CSPProof{}
 	switch process.Census.CensusOrigin {
-	case types.CensusOriginMerkleTree:
+	case types.CensusOriginMerkleTreeOffchainStaticV1:
 		// load the census from the storage
 		censusRef, err := s.stg.CensusDB().LoadByRoot(process.Census.CensusRoot)
 		if err != nil {
@@ -425,8 +425,9 @@ func (s *Sequencer) processCensusProofs(
 			}
 			cspProofs[i] = statetransition.DummyCSPProof()
 		}
-	case types.CensusOriginCSPEdDSABLS12377, types.CensusOriginCSPEdDSABN254:
+	case types.CensusOriginCSPEdDSABLS12377V1, types.CensusOriginCSPEdDSABN254V1:
 		// iterate over the votes to get the CSP proofs
+		root = process.Census.CensusRoot.BigInt().MathBigInt()
 		for i := range types.VotesPerBatch {
 			if i < len(votes) {
 				proof, err := csp.CensusProofToCSPProof(process.Census.CensusOrigin.CurveID(), censusProofs[i])

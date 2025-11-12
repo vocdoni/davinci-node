@@ -149,7 +149,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	// verify the census proof accordingly to the census origin
 	switch process.Census.CensusOrigin {
-	case types.CensusOriginMerkleTree:
+	case types.CensusOriginMerkleTreeOffchainStaticV1:
 		censusRef, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
 		if err != nil {
 			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
@@ -159,7 +159,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			ErrInvalidCensusProof.Withf("address not in census").Write(w)
 			return
 		}
-	case types.CensusOriginCSPEdDSABLS12377, types.CensusOriginCSPEdDSABN254:
+	case types.CensusOriginCSPEdDSABLS12377V1, types.CensusOriginCSPEdDSABN254V1:
 		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {
 			ErrInvalidCensusProof.Withf("census proof verification failed").WithErr(err).Write(w)
 			return

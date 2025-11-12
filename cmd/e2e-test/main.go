@@ -447,7 +447,7 @@ func createProcess(
 		Signature:  signature,
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 		},
 	}
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
@@ -478,9 +478,8 @@ func createProcess(
 		BallotMode:     &ballotMode,
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
-			MaxVotes:     new(types.BigInt).SetUint64(1000),
 			CensusURI:    "https://example.com/census",
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 		},
 	}
 	// Create process in the contracts

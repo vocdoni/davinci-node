@@ -48,7 +48,7 @@ func TestStateTransitionCircuit(t *testing.T) {
 	now := time.Now()
 	// Use centralized testing ProcessID for consistent caching
 	processID := types.TestProcessID
-	_, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTree, 3)
+	_, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 	// proving
 	now = time.Now()
@@ -72,7 +72,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// Use centralized testing ProcessID for consistent caching
 	processID := types.TestProcessID
-	testResults, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTree, 3)
+	testResults, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 
 	// compile circuit

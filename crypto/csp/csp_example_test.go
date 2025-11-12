@@ -11,7 +11,7 @@ import (
 
 func TestExampleCSP(t *testing.T) {
 	// Example usage of the CSP interface
-	origin := types.CensusOriginCSPEdDSABLS12377
+	origin := types.CensusOriginCSPEdDSABLS12377V1
 	seed := []byte("example_seed")
 
 	// Create a new CSP with the specified origin and seed

@@ -725,10 +725,10 @@ github.com/vbatts/tar-split v0.11.5 h1:3bHCTIheBm1qFTcgh9oPu+nNBtX+XJIupG/vacinC
 github.com/vbatts/tar-split v0.11.5/go.mod h1:yZbwRsSeGjusneWgA781EKej9HF8vme8okylkAeNKLk=
 github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5 h1:wtUK5E131x07zdxnAGRIt2wl5BzwmfoXZ1V4s+kPQc8=
 github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5/go.mod h1:SUsNx5GJJunlEMBo6ETTmys88B4bkTgqNV5N1jN3iic=
-github.com/vocdoni/census3-bigquery v0.0.0-20251105171026-578f5ece9970 h1:n7WB3njT9Jmj7qZaedccMBvMr1taxVbc2GY11+6j07c=
-github.com/vocdoni/census3-bigquery v0.0.0-20251105171026-578f5ece9970/go.mod h1:nFclhwrRkB1NyeiJ7n5k9pyiwX+AZUtln2hAtKKU/jo=
-github.com/vocdoni/davinci-contracts v0.0.0-20251112134747-d2ec626946a8 h1:nyRtGFN9lNLXB/3vM0DDsk+USWlyDZEEaHti/LyhZds=
-github.com/vocdoni/davinci-contracts v0.0.0-20251112134747-d2ec626946a8/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
+github.com/vocdoni/census3-bigquery v0.0.0-20251112165448-954d4ae0620f h1:MVscbYkKj01Mbdbx49bSbE9ulhYxWou3dGj3oMv4ph4=
+github.com/vocdoni/census3-bigquery v0.0.0-20251112165448-954d4ae0620f/go.mod h1:LfS9R+0Y2jkrgw/z1of8p2gtXzLAy3RpLx2jNdCkraI=
+github.com/vocdoni/davinci-contracts v0.0.0-20251112182724-1564e00e0592 h1:rY/IvK5kABkiz/VWZYvNOPnmhb64RgpTF2AEbsR/GnM=
+github.com/vocdoni/davinci-contracts v0.0.0-20251112182724-1564e00e0592/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97 h1:85N0hCD0MxBH7P76m7TJB+6JwxzT2ajxrn5qutemTGs=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97/go.mod h1:BOS7k/ifqwicL1CgLiq1NylPnMLCuNRBHU2HHHtnWOE=
 github.com/vocdoni/lean-imt-go v0.0.0-20251105170711-67328b0a2698 h1:E0F9+VVaAbFtjE+A7fScFGfGObNOZmzct/B5SQj6RQ0=

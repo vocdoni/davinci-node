@@ -66,7 +66,7 @@ func TestCircuitCompile(t *testing.T) {
 }
 
 func TestCircuitProve(t *testing.T) {
-	s := newMockState(t, types.CensusOriginMerkleTree)
+	s := newMockState(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	{
 		witness := newMockTransitionWithVotes(t, s,
 			newMockVote(s, 1, 10), // add vote 1
@@ -105,7 +105,7 @@ func TestCircuitCalculateAggregatorWitnessCompile(t *testing.T) {
 }
 
 func TestCircuitCalculateAggregatorWitnessProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTree)
+	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitCalculateAggregatorWitness{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -125,7 +125,7 @@ func TestCircuitAggregatorProofCompile(t *testing.T) {
 }
 
 func TestCircuitAggregatorProofProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTree)
+	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitAggregatorProof{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -145,7 +145,7 @@ func TestCircuitBallotsCompile(t *testing.T) {
 }
 
 func TestCircuitBallotsProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTree)
+	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitBallots{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -165,7 +165,7 @@ func TestCircuitMerkleProofsCompile(t *testing.T) {
 }
 
 func TestCircuitMerkleProofsProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTree)
+	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitMerkleProofs{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -185,7 +185,7 @@ func TestCircuitMerkleTransitionsCompile(t *testing.T) {
 }
 
 func TestCircuitMerkleTransitionsProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTree)
+	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitMerkleTransitions{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -207,7 +207,7 @@ func TestCircuitLeafHashesCompile(t *testing.T) {
 }
 
 func TestCircuitLeafHashesProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTree)
+	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitLeafHashes{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -233,7 +233,7 @@ func TestCircuitReencryptBallotsCompile(t *testing.T) {
 func TestCircuitReencryptBallotsProve(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	witness := newMockWitness(t, types.CensusOriginMerkleTree)
+	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitReencryptBallots{
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -259,7 +259,7 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	t.Run("MerkleTree", func(t *testing.T) {
-		witness := newMockWitness(t, types.CensusOriginMerkleTree)
+		witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 
 		testCircuitProve(t, &CircuitCensusProofs{
 			*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
@@ -267,7 +267,7 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 	})
 
 	t.Run("CSPEdDSABN254", func(t *testing.T) {
-		witness := newMockWitness(t, types.CensusOriginCSPEdDSABN254)
+		witness := newMockWitness(t, types.CensusOriginCSPEdDSABN254V1)
 
 		testCircuitProve(t, &CircuitCensusProofs{
 			*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),

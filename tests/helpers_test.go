@@ -82,17 +82,17 @@ func isCSPCensus() bool {
 
 func testCensusOrigin() types.CensusOrigin {
 	if isCSPCensus() {
-		return types.CensusOriginCSPEdDSABN254
+		return types.CensusOriginCSPEdDSABN254V1
 	} else {
-		return types.CensusOriginMerkleTree
+		return types.CensusOriginMerkleTreeOffchainStaticV1
 	}
 }
 
 func testWrongCensusOrigin() types.CensusOrigin {
 	if isCSPCensus() {
-		return types.CensusOriginMerkleTree
+		return types.CensusOriginMerkleTreeOffchainStaticV1
 	} else {
-		return types.CensusOriginCSPEdDSABN254
+		return types.CensusOriginCSPEdDSABN254V1
 	}
 }
 
@@ -490,13 +490,13 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 	}
 
 	if isCSPCensus() {
-		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABLS12377, []byte(testLocalCSPSeed))
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(testLocalCSPSeed))
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to create CSP: %w", err)
 		}
 		root := eddsaCSP.CensusRoot()
 		if root == nil {
-			return nil, "", nil, fmt.Errorf("census root is nil")
+			return nil, "http://myowncsp.test", nil, fmt.Errorf("census root is nil")
 		}
 		return root.Root, "", signers, nil
 	} else {
@@ -510,7 +510,7 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 
 func generateCensusProof(cli *client.HTTPclient, root, pid, key []byte) (*types.CensusProof, error) {
 	if isCSPCensus() {
-		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABLS12377, []byte(testLocalCSPSeed))
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(testLocalCSPSeed))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CSP: %w", err)
 		}
@@ -615,7 +615,7 @@ func createProcessInContracts(
 	}
 
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
-		Status:         0,
+		Status:         types.ProcessStatusReady,
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKey,
 		StateRoot:      stateRoot.BigInt(),
@@ -625,7 +625,6 @@ func createProcessInContracts(
 		BallotMode:     ballotMode,
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
-			MaxVotes:     new(types.BigInt).SetUint64(1000),
 			CensusURI:    censusURI,
 			CensusOrigin: censusOrigin,
 		},

@@ -27,7 +27,7 @@ type cspProofCircuit struct {
 }
 
 func (c *cspProofCircuit) Define(api frontend.API) error {
-	api.AssertIsEqual(c.Proof.IsValidEmulated(api, types.CensusOriginCSPEdDSABLS12377.CurveID(), c.CensusRoot, c.ProcessID, c.Address), 1)
+	api.AssertIsEqual(c.Proof.IsValidEmulated(api, types.CensusOriginCSPEdDSABLS12377V1.CurveID(), c.CensusRoot, c.ProcessID, c.Address), 1)
 	return nil
 }
 
@@ -35,7 +35,7 @@ func TestCSPProofCircuit(t *testing.T) {
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
 
-	csp, err := New(types.CensusOriginCSPEdDSABLS12377, nil)
+	csp, err := New(types.CensusOriginCSPEdDSABLS12377V1, nil)
 	c.Assert(err, qt.IsNil)
 
 	orgAddress := common.Address(util.RandomBytes(20))
@@ -50,7 +50,7 @@ func TestCSPProofCircuit(t *testing.T) {
 	proof, err := csp.GenerateProof(processID, userAddress)
 	c.Assert(err, qt.IsNil)
 
-	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABLS12377.CurveID(), proof)
+	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABLS12377V1.CurveID(), proof)
 	c.Assert(err, qt.IsNil)
 
 	hexPID := types.HexBytes(processID.Marshal())

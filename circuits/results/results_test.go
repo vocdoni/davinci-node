@@ -38,7 +38,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	// Random inputs for the state (processID and censusRoot)
 	processID, err := rand.Int(rand.Reader, circuits.ResultsVerifierCurve.ScalarField())
 	c.Assert(err, qt.IsNil)
-	censusOrigin := types.CensusOriginMerkleTree
+	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
 	ballotMode := circuits.MockBallotMode()
 
 	// Generate a random ElGamal key pair

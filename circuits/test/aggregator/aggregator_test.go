@@ -24,7 +24,7 @@ func TestAggregatorCircuit(t *testing.T) {
 	now := time.Now()
 	// Use centralized testing ProcessID for consistent caching
 	processID := types.TestProcessID
-	_, placeholder, assignments := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTree, 3)
+	_, placeholder, assignments := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation tooks %s", time.Since(now).String())
 	// proving
 	now = time.Now()

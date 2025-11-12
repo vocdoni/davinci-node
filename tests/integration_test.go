@@ -36,7 +36,6 @@ func TestIntegration(t *testing.T) {
 		encryptionKey *types.EncryptionKey
 		ballotMode    *types.BallotMode
 		signers       []*ethereum.Signer
-		proofs        []*types.CensusProof
 		censusRoot    []byte
 		censusURI     string
 		// participants  []*api.CensusParticipant
@@ -141,22 +140,6 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 
-	if isCSPCensus() {
-		c.Run("create census proofs", func(c *qt.C) {
-			// Generate proof for first participant
-			proofs = make([]*types.CensusProof, numBallots)
-			for i := range signers {
-				addr := signers[i].Address().Bytes()
-				proofs[i], err = generateCensusProof(cli, censusRoot, pid.Marshal(), addr)
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
-				c.Assert(proofs[i], qt.Not(qt.IsNil))
-			}
-			// Check the first proof key is the same as the participant key and signer address
-			c.Assert(proofs[0].Address.String(), qt.DeepEquals, signers[0].Address().String())
-			c.Assert(string(proofs[0].Address), qt.DeepEquals, string(signers[0].Address().Bytes()))
-		})
-	}
-
 	// Store the voteIDs returned from the API to check their status later
 	var voteIDs []types.HexBytes
 	var ks []*big.Int
@@ -168,6 +151,12 @@ func TestIntegration(t *testing.T) {
 			k := util.RandomBigInt(big.NewInt(100000000), big.NewInt(9999999999999999))
 			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
+			if isCSPCensus() {
+				censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
+				c.Assert(censusProof, qt.Not(qt.IsNil))
+				vote.CensusProof = *censusProof
+			}
 			// Make the request to cast the vote
 			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
