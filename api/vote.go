@@ -26,7 +26,7 @@ import (
 func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	// Get the processID and voteID from the URL
 	processIDHex := chi.URLParam(r, ProcessURLParam)
-	voteIDHex := chi.URLParam(r, VoteStatusVoteIDParam)
+	voteIDHex := chi.URLParam(r, VoteIDURLParam)
 
 	processID, err := hex.DecodeString(util.TrimHex(processIDHex))
 	if err != nil {
@@ -70,7 +70,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	processID := new(types.ProcessID).SetBytes(processIDBytes)
 
 	// Get the address
-	address, err := types.HexStringToHexBytes(chi.URLParam(r, VoteByAddressAddressParam))
+	address, err := types.HexStringToHexBytes(chi.URLParam(r, AddressURLParam))
 	if err != nil {
 		ErrMalformedAddress.Write(w)
 		return

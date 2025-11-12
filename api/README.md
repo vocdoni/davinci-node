@@ -10,7 +10,6 @@ This document describes the HTTP API endpoints for the Vocdoni Z Sandbox API ser
 - [Endpoints](#endpoints)
   - [Health Check](#health-check)
   - [Process Management](#process-management)
-  - [Census Management](#census-management)
   - [Vote Management](#vote-management)
   - [Vote Status](#vote-status)
   - [Ballot Proof Information](#ballot-proof-information)
@@ -128,8 +127,8 @@ where `processId` is the hexadecimal string (without `0x` prefix) of the process
 
 The `censusOrigin` specifies the origin type of the census used in the request. This attribute allows the API to determine how the census data should be processed or verified.
 It can be:
- - `1` –> CensusOriginMerkleTree: Indicates that the census is derived from a Merkle Tree structure. This is typically used when the census data is represented as cryptographic proofs for membership verification.
- - `2` -> CensusOriginCSP: Indicates that the census is provided by a Credential Service Providers (CSP). This origin is commonly used when the census data is managed by an external trusted provider.
+ - `1` –> CensusOriginMerkleTreeOffchainStaticV1: Indicates that the census is derived from a Merkle Tree structure. This is typically used when the census data is represented as cryptographic proofs for membership verification.
+ - `2` -> CensusOriginCSPEdDSABN254V1: Indicates that the census is provided by a Credential Service Providers (CSP). This origin is commonly used when the census data is managed by an external trusted provider.
 
 
 
@@ -137,8 +136,11 @@ It can be:
 ```json
 {
   "processId": "hexBytes",
-  "censusOrigin": "number",
-  "censusRoot": "hexBytes",
+  "census": {
+    "censusOrigin": "number",
+    "censusRoot": "hexBytes",
+    "censusURI": "url"
+  },
   "ballotMode": {
     "numFields": "number",
     "maxValue": "bigintStr",
@@ -337,151 +339,26 @@ Gets information about an existing voting process. It must exist in the smart co
 - 40007: Process not found
 - 50002: Internal server error
 
-### Census Management
+#### GET /processes/{processId}/participants/{address}
 
-#### POST /censuses
+Gets information about a census member of a process.
 
-Creates a new census.
+**URL Parameters**:
+- processId: Process ID in hexadecimal format
 
 **Response Body**:
 ```json
 {
-  "census": "uuid"
-}
-```
-
-**Errors**:
-- 50002: Internal server error
-
-#### POST /censuses/{censusId}/participants
-
-Adds participants to an existing census.
-
-**URL Parameters**:
-- censusId: Census UUID
-
-**Request Body**:
-```json
-{
-  "participants": [
-    {
-      "key": "hexBytes", // if more than 20 bytes, it is hashed and truncated
-      "weight": "bigintStr" // optional, defaults to 1
-    }
-  ]
-}
-```
-
-**Response**: Empty response with HTTP 200 OK status
-
-**Errors**:
-- 40004: Malformed JSON body
-- 40010: Invalid census ID
-- 40011: Census not found
-- 50002: Internal server error
-
-#### GET /censuses/{censusId}/participants
-
-Gets the list of participants in a census.
-
-**URL Parameters**:
-- censusId: Census UUID
-
-**Response Body**:
-```json
-{
-  "participants": [
-    {
-      "key": "hexBytes",
-      "weight": "bigintStr"
-    }
-  ]
-}
-```
-
-**Errors**:
-- 40004: Malformed JSON body
-- 40010: Invalid census ID
-- 50002: Internal server error
-
-#### GET /censuses/{censusId}/root
-
-Gets the Merkle root of a census.
-
-**URL Parameters**:
-- censusId: Census UUID
-
-**Response Body**:
-```json
-{
-  "root": "hexBytes"
-}
-```
-
-**Errors**:
-- 40010: Invalid census ID
-- 50002: Internal server error
-
-#### GET /censuses/{censusId}/size
-
-Gets the number of participants in a census.
-
-**URL Parameters**:
-- censusId: Census UUID or census merkle root (hex encoded)
-
-**Response Body**:
-```json
-{
-  "size": "number"
-}
-```
-
-**Errors**:
-- 40010: Invalid census ID
-- 50002: Internal server error
-
-#### DELETE /censuses/{censusId}
-
-Deletes a census.
-
-**URL Parameters**:
-- censusId: Census UUID
-
-**Response**: Empty response with HTTP 200 OK status
-
-**Errors**:
-- 40010: Invalid census ID
-- 50002: Internal server error
-
-#### GET /censuses/{censusRoot}/proof
-
-Gets a Merkle proof for a participant in a census.
-
-**URL Parameters**:
-- censusRoot: Census merkle root (hex encoded)
-
-**Query Parameters**:
-- key: Participant key (hex encoded)
-
-**Response Body**:
-```json
-{
-  "root": "hexBytes",
-  "address": "hexBytes",
-  "weight": "bigintStr",
-  "censusOrigin": 1,        // 1 for merkle proofs, 2 for csp proofs
-  "value": "hexBytes",      // merkle proof: the weight encoded to hexBytes
-  "siblings": "hexBytes",   // merkle proof: encoded siblings path to find the leaf
-  "processId": "hexBytes",  // csp proof: the process id signed with the address
-  "publicKey": "hexBytes",  // csp proof: the public key of the csp
-  "signature": "hexBytes",  // csp proof: the signature that proofs that the voter is in the census
+  "key": "hexBytes",
+  "weight": "bigintStr"
 }
 ```
 
 **Errors**:
 - 40001: Resource not found
-- 40004: Malformed body (invalid key)
-- 40010: Invalid census ID
+- 40004: Malformed parameter
+- 40006: Malformed process ID
+- 40007: Process not found
 - 50002: Internal server error
 
 ### Vote Management

@@ -783,7 +783,7 @@ func checkVoteStatus(cli *client.HTTPclient, pid *types.ProcessID, voteIDs []typ
 		statusEndpoint := api.EndpointWithParam(
 			api.EndpointWithParam(api.VoteStatusEndpoint,
 				api.ProcessURLParam, pid.String()),
-			api.VoteStatusVoteIDParam, voteID.String())
+			api.VoteIDURLParam, voteID.String())
 
 		// Make the request to get the vote status
 		body, statusCode, err := cli.Request("GET", nil, nil, statusEndpoint)

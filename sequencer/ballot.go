@@ -88,7 +88,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 		}
 
 		log.Infow("processing ballot",
-			"address", ballot.Address.String(),
+			"address", hex.EncodeToString(ballot.Address.Bytes()),
 			"queued", s.stg.TotalPendingBallots(),
 			"voteID", hex.EncodeToString(ballot.VoteID),
 			"processID", fmt.Sprintf("%x", ballot.ProcessID),

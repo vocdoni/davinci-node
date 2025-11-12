@@ -149,6 +149,8 @@ func (a *API) registerHandlers() {
 	a.router.Get(ProcessEndpoint, a.process)
 	log.Infow("register handler", "endpoint", ProcessesEndpoint, "method", "GET")
 	a.router.Get(ProcessesEndpoint, a.processList)
+	log.Infow("register handler", "endpoint", CensusParticipantEndpoint, "method", "GET")
+	a.router.Get(CensusParticipantEndpoint, a.processParticipant)
 
 	// metadata endpoints
 	log.Infow("register handler", "endpoint", MetadataSetEndpoint, "method", "POST")
@@ -163,22 +165,6 @@ func (a *API) registerHandlers() {
 	a.router.Get(VoteStatusEndpoint, a.voteStatus)
 	log.Infow("register handler", "endpoint", VoteByAddressEndpoint, "method", "GET")
 	a.router.Get(VoteByAddressEndpoint, a.voteByAddress)
-
-	// census endpoints
-	log.Infow("register handler", "endpoint", NewCensusEndpoint, "method", "POST")
-	a.router.Post(NewCensusEndpoint, a.newCensus)
-	log.Infow("register handler", "endpoint", AddCensusParticipantsEndpoint, "method", "POST")
-	a.router.Post(AddCensusParticipantsEndpoint, a.addCensusParticipants)
-	log.Infow("register handler", "endpoint", GetCensusParticipantsEndpoint, "method", "GET")
-	a.router.Get(GetCensusParticipantsEndpoint, a.getCensusParticipants)
-	log.Infow("register handler", "endpoint", GetCensusRootEndpoint, "method", "GET")
-	a.router.Get(GetCensusRootEndpoint, a.getCensusRoot)
-	log.Infow("register handler", "endpoint", GetCensusSizeEndpoint, "method", "GET")
-	a.router.Get(GetCensusSizeEndpoint, a.getCensusSize)
-	log.Infow("register handler", "endpoint", DeleteCensusEndpoint, "method", "DELETE")
-	a.router.Delete(DeleteCensusEndpoint, a.deleteCensus)
-	log.Infow("register handler", "endpoint", GetCensusProofEndpoint, "method", "GET", "parameters", "key")
-	a.router.Get(GetCensusProofEndpoint, a.getCensusProof)
 
 	// sequencer workers stats endpoint - available even without worker mode
 	log.Infow("register handler", "endpoint", SequencerWorkersEndpoint, "method", "GET")

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -197,4 +198,61 @@ func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpWriteJSON(w, metadata)
+}
+
+// processParticipant retrieves information about a participant in a voting
+// process
+// GET /processes/{processId}/participants/{address}
+func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
+	// Unmarshal the process ID from URL parameter
+	pidBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, ProcessURLParam)))
+	if err != nil {
+		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
+		return
+	}
+
+	pid := new(types.ProcessID)
+	if err := pid.Unmarshal(pidBytes); err != nil {
+		ErrMalformedProcessID.Withf("could not unmarshal process ID: %v", err).Write(w)
+		return
+	}
+
+	// Load the process from storage
+	process, err := a.storage.Process(pid)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			ErrProcessNotFound.Withf("could not retrieve process: %v", err).Write(w)
+			return
+		}
+		ErrGenericInternalServerError.Withf("could not retrieve process: %v", err).Write(w)
+		return
+	}
+
+	// Unmarshal the participant address from URL parameter
+	addressStr := chi.URLParam(r, AddressURLParam)
+	address := common.HexToAddress(addressStr)
+	if address == (common.Address{}) {
+		ErrMalformedParam.Withf("invalid participant address: %s", addressStr).Write(w)
+		return
+	}
+
+	// Retrieve the participant info
+	census, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
+		return
+	}
+
+	// Get the participant weight
+	weight, ok := census.Tree().GetWeight(address)
+	if !ok {
+		ErrResourceNotFound.Withf("participant not found in census: %s", address.String()).Write(w)
+		return
+	}
+
+	// Write the response
+	httpWriteJSON(w, CensusParticipant{
+		Key:    types.HexBytes(address.Bytes()),
+		Weight: (*types.BigInt)(weight),
+	})
 }

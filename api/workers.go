@@ -55,7 +55,7 @@ func (a *API) startWorkersAPI(conf APIConfig) error {
 		log.Infow("worker API enabled",
 			"sequencerUUID", a.sequencerUUID.String(),
 			"sequencerAddr", a.sequencerSigner.Address().Hex(),
-			"workersEndpoint", EndpointWithParam(WorkersEndpoint, SequencerUUIDParam, a.sequencerUUID.String()))
+			"workersEndpoint", EndpointWithParam(WorkersEndpoint, SequencerUUIDURLParam, a.sequencerUUID.String()))
 	}
 	return nil
 }
