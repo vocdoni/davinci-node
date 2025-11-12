@@ -339,6 +339,8 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	}
 }
 
+// VerifyBlobs builds the blob from the state transition data and verifies
+// its KZG commitment using the provided evaluation point and result.
 func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	// Build blob and verify evaluation
 	//
@@ -415,6 +417,10 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	api.AssertIsEqual(circuit.NumOverwritten, overwrittenCount)
 }
 
+// VerifyMerkleCensusProofs verifies the Merkle proofs of the votes in the
+// batch. It verifies the Merkle proof of each vote using its Verify function
+// and that the leaf is correct, but the result is only asserted if the census
+// origin is MerkleTree and the vote is real.
 func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API) {
 	for i := range types.VotesPerBatch {
 		vote := c.Votes[i]
@@ -442,6 +448,9 @@ func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API) {
 	}
 }
 
+// VerifyCSPCensusProofs verifies the CSP proofs of the votes in the batch.
+// It verifies the CSP proof of each vote using its IsValid function but the
+// result is only asserted if the census origin is CSP and the vote is real.
 func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API) {
 	censusOrigin := types.CensusOriginCSPEdDSABN254V1
 	curveID := censusOrigin.CurveID()

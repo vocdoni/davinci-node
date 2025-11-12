@@ -10,6 +10,8 @@ import (
 	imt "github.com/vocdoni/lean-imt-go/circuit"
 )
 
+// DummyMerkleProof function returns a dummy Merkle proof to fill the vote
+// verifier inputs when the census origin is not MerkleTreeXXX.
 func DummyMerkleProof() imt.MerkleProof {
 	// generate dummy siblings for each voter to fill dummy merkle proofs
 	dummySiblings := [imt.MaxCensusDepth]frontend.Variable{}
