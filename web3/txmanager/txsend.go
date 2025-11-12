@@ -312,13 +312,16 @@ func (tm *TxManager) rebuildRegularTx(
 		return nil, fmt.Errorf("failed to get tip cap: %w", err)
 	}
 	// Estimate gas for the transaction
-	gasLimit := tm.EstimateGas(ctx, ethereum.CallMsg{
+	gasLimit, err := tm.EstimateGas(ctx, ethereum.CallMsg{
 		From:      tm.signer.Address(),
 		To:        &ptx.To,
 		GasTipCap: tipCap,
 		GasFeeCap: newGasPrice,
 		Data:      ptx.Data,
 	}, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate gas: %w", err)
+	}
 	// Create new transaction with same parameters but higher fees
 	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
 		ChainID:   tm.config.ChainID,
@@ -351,7 +354,7 @@ func (tm *TxManager) rebuildBlobTx(
 		return nil, fmt.Errorf("failed to get tip cap: %w", err)
 	}
 	// Estimate gas for the blob transaction
-	gasLimit := tm.EstimateGas(ctx, ethereum.CallMsg{
+	gasLimit, err := tm.EstimateGas(ctx, ethereum.CallMsg{
 		From:          tm.signer.Address(),
 		To:            &ptx.To,
 		GasTipCap:     tipCap,
@@ -360,6 +363,9 @@ func (tm *TxManager) rebuildBlobTx(
 		BlobHashes:    ptx.BlobSidecar.BlobHashes(),
 		BlobGasFeeCap: newBlobFee,
 	}, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate gas: %w", err)
+	}
 	// Build the replacement blob transaction with higher fees
 	blobTx := gtypes.NewTx(&gtypes.BlobTx{
 		ChainID:    uint256.NewInt(tm.config.ChainID.Uint64()),
@@ -395,13 +401,16 @@ func (tm *TxManager) cancelTx(ctx context.Context, ptx *PendingTransaction) erro
 	}
 	selfAddress := tm.signer.Address()
 	// Estimate gas for the cancel transaction
-	gasLimit := tm.EstimateGas(ctx, ethereum.CallMsg{
+	gasLimit, err := tm.EstimateGas(ctx, ethereum.CallMsg{
 		From:      selfAddress,
 		To:        &selfAddress,
 		Data:      []byte{},
 		GasFeeCap: gasPrice,
 		GasTipCap: tipCap,
 	}, tm.config.GasEstimateOpts, DefaultCancelGasFallback)
+	if err != nil {
+		return fmt.Errorf("failed to estimate gas: %w", err)
+	}
 	// Create cancel transaction
 	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
 		ChainID:   tm.config.ChainID,
@@ -499,6 +508,9 @@ func (tm *TxManager) recoverTxFromNonceGap(
 			log.Warnw("failed to send transaction after nonce recovery",
 				"error", sendErr,
 				"attempt", attempt+1)
+			if isPermanentError(err) {
+				return nil, fmt.Errorf("permanent error sending transaction after nonce recovery: %w", sendErr)
+			}
 			continue
 		}
 		// Success

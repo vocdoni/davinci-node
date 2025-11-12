@@ -150,8 +150,15 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		if processState.ContainsVoteID(b.VoteID) {
 			log.Debugw("skipping ballot with existing vote ID",
 				"voteID", b.VoteID.String(),
-				"processID", fmt.Sprintf("%x", pid),
-			)
+				"processID", pid.String())
+			// If the ballot is already in the state, mark it as failed
+			if err := s.stg.MarkVerifiedBallotsFailed(b.VoteID); err != nil {
+				log.Warnw("failed to mark ballot as failed",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+				)
+			}
 			continue
 		}
 

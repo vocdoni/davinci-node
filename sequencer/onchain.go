@@ -105,6 +105,9 @@ func (s *Sequencer) processTransitionOnChain() {
 		// send the proof to the contract with the public witness
 		if err := s.pushTransitionToContract([]byte(pid), solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
 			log.Errorw(err, "failed to push to contract")
+			if err := s.stg.MarkStateTransitionBatchFailed(batchID, pid); err != nil {
+				log.Errorw(err, "failed to mark state transition batch as failed")
+			}
 			return true // Continue to next process ID
 		}
 		// update the process state with the new root hash and the vote counts atomically

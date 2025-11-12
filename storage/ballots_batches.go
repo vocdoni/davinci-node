@@ -2,7 +2,6 @@ package storage
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -17,7 +16,12 @@ import (
 func (s *Storage) PushAggregatorBatch(abb *AggregatorBallotBatch) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+	return s.pushAggregatorBatch(abb)
+}
 
+// pushAggregatorBatch is an internal helper to push an aggregated ballot batch
+// to the aggregator queue. It assumes the caller already holds the globalLock.
+func (s *Storage) pushAggregatorBatch(abb *AggregatorBallotBatch) error {
 	val, err := EncodeArtifact(abb)
 	if err != nil {
 		return fmt.Errorf("encode batch: %w", err)
@@ -109,8 +113,8 @@ func (s *Storage) MarkAggregatorBatchFailed(key []byte) error {
 		currentStatus, err := s.voteIDStatusUnsafe(agg.ProcessID, ballot.VoteID)
 		if err != nil {
 			log.Warnw("could not get vote ID status during batch failure",
-				"processID", fmt.Sprintf("%x", agg.ProcessID),
-				"voteID", hex.EncodeToString(ballot.VoteID),
+				"processID", agg.ProcessID.String(),
+				"voteID", ballot.VoteID.String(),
 				"error", err.Error())
 			// Continue processing as the ballot might still be valid
 			validAggregatedCount++
@@ -119,8 +123,8 @@ func (s *Storage) MarkAggregatorBatchFailed(key []byte) error {
 			validAggregatedCount++
 		} else {
 			log.Warnw("vote ID is not in aggregated status during batch failure",
-				"processID", fmt.Sprintf("%x", agg.ProcessID),
-				"voteID", hex.EncodeToString(ballot.VoteID),
+				"processID", agg.ProcessID.String(),
+				"voteID", ballot.VoteID.String(),
 				"currentStatus", VoteIDStatusName(currentStatus))
 		}
 
@@ -142,7 +146,7 @@ func (s *Storage) MarkAggregatorBatchFailed(key []byte) error {
 		}); err != nil {
 			log.Warnw("failed to update process stats after batch failure",
 				"error", err.Error(),
-				"processID", fmt.Sprintf("%x", agg.ProcessID),
+				"processID", agg.ProcessID.String(),
 				"validAggregatedCount", validAggregatedCount,
 				"totalBatchSize", len(agg.Ballots),
 			)
@@ -234,6 +238,13 @@ func (s *Storage) PendingAggregatorBatch(processID []byte) (*AggregatorBallotBat
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
+	return s.pendingAggregatorBatch(processID)
+}
+
+// pendingAggregatorBatch is an internal helper to retrieve a pending
+// aggregator batch for a given processID. It assumes the caller already
+// holds the globalLock.
+func (s *Storage) pendingAggregatorBatch(processID []byte) (*AggregatorBallotBatch, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, pendingAggregBatchPrefix)
 	var chosenVal []byte
 	if err := pr.Iterate(processID, func(_, v []byte) bool {
@@ -507,6 +518,42 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 		)
 	}
 
+	return nil
+}
+
+// MarkStateTransitionBatchFailed marks a state transition batch as failed,
+// sets all ballots in the batch to error status, removes the reservation,
+// and deletes the batch from the state transition queue. This is typically
+// called when the state transition processing fails or is not valid.
+func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+
+	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
+	rawBatch, err := pr.Get(key)
+	if err != nil {
+		if errors.Is(err, db.ErrKeyNotFound) {
+			return nil
+		}
+		return fmt.Errorf("get state transition batch: %w", err)
+	}
+	var stb StateTransitionBatch
+	if err := DecodeArtifact(rawBatch, &stb); err != nil {
+		return fmt.Errorf("decode state transition batch: %w", err)
+	}
+
+	// Remove the state transition batch any way
+	defer func() {
+		if err := s.removeStateTransitionBatch(key); err != nil {
+			log.Errorw(err, "failed to remove failed state transition batch")
+		}
+	}()
+
+	for _, v := range stb.Ballots {
+		if err := s.setVoteIDStatus(pid, v.VoteID, VoteIDStatusError); err != nil {
+			log.Warnw("failed to set vote ID status to failed", "error", err.Error())
+		}
+	}
 	return nil
 }
 
