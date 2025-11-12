@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
 // applyGasMultiplier applies the gas multiplier to a base fee value.
@@ -199,32 +200,29 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 	// ABI-encode call data
 	data, err := contractABI.Pack(method, args...)
 	if err != nil {
-		return nil, err
-	}
-
-	// Estimate execution gas, include blob hashes so any contract logic that
-	// references them (e.g. checks) isn't under-estimated.
-	gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
-		From:       c.AccountAddress(),
-		To:         &to,
-		Data:       data,
-		BlobHashes: blobsSidecar.BlobHashes(),
-	})
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to encode ABI: %w", err)
 	}
 
 	// Fee building
 	// Tip suggestion (EIP-1559)
 	tipCap, err := c.cli.SuggestGasTipCap(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get tip cap: %w", err)
 	}
+	// Estimate execution gas, include blob hashes so any contract logic that
+	// references them (e.g. checks) isn't under-estimated.
+	gas := c.txManager.EstimateGas(ctx, ethereum.CallMsg{
+		From:       c.AccountAddress(),
+		To:         &to,
+		GasTipCap:  tipCap,
+		Data:       data,
+		BlobHashes: blobsSidecar.BlobHashes(),
+	}, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
 
 	// Base fee for *execution gas* from latest block
 	h, err := c.cli.HeaderByNumber(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get latest block: %w", err)
 	}
 	baseFee := h.BaseFee // can be nil on pre-London, but not on mainnet today
 
@@ -267,7 +265,7 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 
 	signedTx, err := types.SignNewTx((*ecdsa.PrivateKey)(c.signer), types.NewCancunSigner(cID), inner)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to sign new tx: %w", err)
 	}
 	return signedTx, nil
 }
