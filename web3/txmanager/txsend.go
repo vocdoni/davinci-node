@@ -62,9 +62,15 @@ func (tm *TxManager) SendTx(
 			"error", err)
 	}
 	// Use our tracked nonce instead of pending nonce
-	nonce := tm.nextNonce
+	nonce, err := tm.cli.PendingNonceAt(ctx, tm.signer.Address())
+	if err != nil {
+		log.Warnw("failed to get pending nonce, using the our last next nonce",
+			"error", err,
+			"ourNextNonce", tm.nextNonce)
+		nonce = tm.nextNonce
+	}
 	// Build transaction with our nonce
-	tx, err := txBuilder(tm.nextNonce)
+	tx, err := txBuilder(nonce)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build transaction: %w", err)
 	}
