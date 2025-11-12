@@ -158,12 +158,6 @@ func (s *Sequencer) processPendingTransitions() {
 			"blobHash", blobHashes[0].String(),
 		)
 
-		p := proof.(*groth16_bn254.Proof)
-		commitments := make([]string, len(p.Commitments))
-		for i, c := range p.Commitments {
-			commitments[i] = c.String()
-		}
-
 		if err := s.stg.SetPendingTx(storage.StateTransitionTx, batch.ProcessID); err != nil {
 			log.Warnw("failed to mark process as having pending tx",
 				"error", err,
@@ -241,7 +235,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
-	if verifyErr := debug.VerifyProof(circuits.StateTransitionCurve, s.stVk, proof, assignments); err != nil {
+	if verifyErr := debug.VerifyProofForDebug(circuits.StateTransitionCurve, s.stVk, proof, assignments); err != nil {
 		log.Warnf("proof verification failed: %w", verifyErr)
 	} else {
 		log.Info("proof verification succeeded")
