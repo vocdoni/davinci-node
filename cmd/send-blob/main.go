@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
@@ -57,11 +59,15 @@ func main() {
 	} else {
 		to = common.HexToAddress(*toStr)
 	}
-
+	dataHex, err := os.ReadFile("blob.hex")
+	if err != nil {
+		panic(err)
+	}
+	data := common.FromHex(strings.TrimSpace(string(dataHex)))
 	// 2) Build blobs
 	blobs := make([][]byte, *numBlobs)
 	for i := range blobs {
-		b := RandomBlob()
+		b := data
 		blobs[i] = b
 	}
 
