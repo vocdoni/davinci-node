@@ -86,7 +86,7 @@ func (tm *TxManager) EstimateGas(
 	msg ethereum.CallMsg,
 	opts *GasEstimateOpts,
 	floorGasLimit uint64,
-) uint64 {
+) (uint64, error) {
 	// Validate configuration
 	if opts == nil {
 		opts = DefaultGasEstimateOpts
@@ -113,15 +113,18 @@ func (tm *TxManager) EstimateGas(
 	// Try normal gas estimation
 	gas, err := tm.cli.EstimateGas(internalCtx, msg)
 	if err == nil {
-		return tm.applySafetyMargin(gas, floorGasLimit, opts)
+		return tm.applySafetyMargin(gas, floorGasLimit, opts), nil
 	}
 	// Retry estimation a few times if it fails
 	for range opts.Retries {
 		time.Sleep(opts.Backoff)
 		gas, err = tm.cli.EstimateGas(internalCtx, msg)
 		if err == nil {
-			return tm.applySafetyMargin(gas, floorGasLimit, opts)
+			return tm.applySafetyMargin(gas, floorGasLimit, opts), nil
 		}
+	}
+	if isPermanentError(err) {
+		return 0, fmt.Errorf("estimateGas failed with permanent error, not retrying: %w", err)
 	}
 	log.Warnw("estimateGas failed, falling back to binary search", "error", err)
 	// Try a lightweight binary search with eth_call
@@ -146,12 +149,12 @@ func (tm *TxManager) EstimateGas(
 		}
 		// Check boundaries first (low and high)
 		if succeeds(low) {
-			return tm.applySafetyMargin(low, floorGasLimit, opts)
+			return tm.applySafetyMargin(low, floorGasLimit, opts), nil
 		}
 		if !succeeds(high) {
 			log.Warnw("gas estimation binary search failed (revert or logic error)",
 				"fallback", opts.Fallback)
-			return opts.Fallback
+			return opts.Fallback, nil
 		}
 		// Binary search between low and high
 		for low+1000 < high {
@@ -165,13 +168,13 @@ func (tm *TxManager) EstimateGas(
 		// Store result in cache
 		tm.storeGasHint(msg, high)
 		// Return result with safety margin
-		return tm.applySafetyMargin(high, floorGasLimit, opts)
+		return tm.applySafetyMargin(high, floorGasLimit, opts), nil
 	}
 
 	// Absolute fallback
 	log.Warnw("all gas estimation methods failed, using fallback",
 		"fallback", opts.Fallback)
-	return opts.Fallback
+	return opts.Fallback, nil
 }
 
 // applySafetyMargin adds a safety buffer and clamps to limits

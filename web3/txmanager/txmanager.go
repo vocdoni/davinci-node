@@ -198,13 +198,16 @@ func (tm *TxManager) BuildDynamicFeeTx(
 	// Cap gas fee (baseFee * 2 + tipCap)
 	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
 	// Estimate gas
-	gas := tm.EstimateGas(ctx, ethereum.CallMsg{
+	gas, err := tm.EstimateGas(ctx, ethereum.CallMsg{
 		From:      tm.signer.Address(),
 		To:        &to,
 		Data:      data,
 		GasFeeCap: gasFeeCap,
 		GasTipCap: tipCap,
 	}, tm.config.GasEstimateOpts, DefaultCancelGasFallback)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate gas: %w", err)
+	}
 	// Create transaction
 	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
 		ChainID:   tm.config.ChainID,

@@ -193,7 +193,7 @@ func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, input
 				"blobCount", len(blobsSidecar.Blobs))
 		}
 	}
-	log.Infow("state transition submitted",
+	log.Infow("state transition submitted, wait to be mined",
 		"processID", processID.String())
 	return txID, txHash, err
 }
