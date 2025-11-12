@@ -82,9 +82,17 @@ func isCSPCensus() bool {
 
 func testCensusOrigin() types.CensusOrigin {
 	if isCSPCensus() {
-		return types.CensusOriginCSPEdDSABLS12377
+		return types.CensusOriginCSPEdDSABN254
 	} else {
 		return types.CensusOriginMerkleTree
+	}
+}
+
+func testWrongCensusOrigin() types.CensusOrigin {
+	if isCSPCensus() {
+		return types.CensusOriginMerkleTree
+	} else {
+		return types.CensusOriginCSPEdDSABN254
 	}
 }
 
@@ -706,16 +714,16 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 	}
 	// return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID: wasmResult.ProcessID,
-		CensusProof: types.CensusProof{
-			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
-		},
+		ProcessID:        wasmResult.ProcessID,
 		Address:          wasmInputs.Address,
 		VoteID:           wasmResult.VoteID,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
+		CensusProof: types.CensusProof{
+			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
+		},
 	}, nil
 }
 

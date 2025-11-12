@@ -173,6 +173,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 			Address:         b.Address,
 			Weight:          b.VoterWeight,
 			EncryptedBallot: b.EncryptedBallot,
+			CensusProof:     b.CensusProof,
 		})
 	}
 

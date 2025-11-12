@@ -223,5 +223,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		Address:         b.Address,
 		Proof:           proof.(*groth16_bls12377.Proof),
 		InputsHash:      inputHash,
+		CensusProof:     b.CensusProof,
 	}, nil
 }

@@ -58,6 +58,7 @@ type VerifiedBallot struct {
 	Address         *big.Int                `json:"address"`
 	InputsHash      *big.Int                `json:"inputsHash"`
 	Proof           *groth16_bls12377.Proof `json:"proof"`
+	CensusProof     *types.CensusProof      `json:"censusProof"`
 }
 
 // Ballot is the struct that contains the information of a ballot. It includes
@@ -138,10 +139,11 @@ func (b *Ballot) String() string {
 // which has been verified and aggregated in a batch by the sequencer. It
 // includes the address and the encrypted ballot.
 type AggregatorBallot struct {
-	VoteID          types.HexBytes  `json:"voteId"`
-	Address         *big.Int        `json:"address"`
-	Weight          *big.Int        `json:"weight"`
-	EncryptedBallot *elgamal.Ballot `json:"encryptedBallot"`
+	VoteID          types.HexBytes     `json:"voteId"`
+	Address         *big.Int           `json:"address"`
+	Weight          *big.Int           `json:"weight"`
+	EncryptedBallot *elgamal.Ballot    `json:"encryptedBallot"`
+	CensusProof     *types.CensusProof `json:"censusProof"`
 }
 
 // AggregatorBallotBatch is the struct that contains the information of a
