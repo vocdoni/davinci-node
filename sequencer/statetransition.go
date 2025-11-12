@@ -370,7 +370,7 @@ func (s *Sequencer) stateBatchToWitness(
 	}
 
 	// generate the state transition vote witness
-	proofWitness, err := statetransition.GenerateWitness(processState, censusRoot, censusProofs, kSeed)
+	proofWitness, _, err := statetransition.GenerateWitness(processState, censusRoot, censusProofs, kSeed)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate witness: %w", err)
 	}

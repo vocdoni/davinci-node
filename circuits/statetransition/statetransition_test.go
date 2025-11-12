@@ -308,7 +308,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vot
 		t.Fatal(err)
 	}
 
-	witness, err := statetransition.GenerateWitness(
+	witness, _, err := statetransition.GenerateWitness(
 		s,
 		new(types.BigInt).SetBigInt(censusRoot),
 		censusProofs,

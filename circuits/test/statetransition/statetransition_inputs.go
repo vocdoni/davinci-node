@@ -28,8 +28,9 @@ import (
 // StateTransitionTestResults struct includes relevant data after StateTransitionCircuit
 // inputs generation
 type StateTransitionTestResults struct {
-	Process circuits.Process[*big.Int]
-	Votes   []state.Vote
+	Process      circuits.Process[*big.Int]
+	Votes        []state.Vote
+	PublicInputs *statetransition.PublicInputs
 }
 
 // StateTransitionInputsForTest returns the StateTransitionTestResults, the placeholder
@@ -147,7 +148,7 @@ func StateTransitionInputsForTest(
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("generate census proofs for test"))
 
-	witness, err := statetransition.GenerateWitness(
+	witness, publicInputs, err := statetransition.GenerateWitness(
 		s,
 		new(types.BigInt).SetBigInt(censusRoot),
 		censusProofs,
@@ -165,8 +166,9 @@ func StateTransitionInputsForTest(
 
 	circuitPlaceholder.AggregatorVK = fixedVk
 	return &StateTransitionTestResults{
-		Process: aggInputs.Process,
-		Votes:   aggInputs.Votes,
+		Process:      aggInputs.Process,
+		Votes:        aggInputs.Votes,
+		PublicInputs: publicInputs,
 	}, circuitPlaceholder, witness
 }
 
