@@ -32,6 +32,10 @@ type StateTransitionCircuit struct {
 	NumNewVotes    frontend.Variable `gnark:",public"`
 	NumOverwritten frontend.Variable `gnark:",public"`
 
+	// Census related stuff
+	CensusRoot   frontend.Variable `gnark:",public"`
+	CensusProofs CensusProofs
+
 	// KZG commitment to the blob
 	BlobEvaluationPointZ  frontend.Variable                     `gnark:",public"`
 	BlobEvaluationResultY emulated.Element[emulated.BLS12381Fr] `gnark:",public"`
@@ -46,10 +50,6 @@ type StateTransitionCircuit struct {
 	ProcessProofs ProcessProofs
 	VotesProofs   VotesProofs
 	ResultsProofs ResultsProofs
-
-	// Census related stuff
-	CensusRoot   frontend.Variable `gnark:",public"`
-	CensusProofs CensusProofs
 
 	// Private recursive proof inputs
 	AggregatorProof groth16.Proof[sw_bw6761.G1Affine, sw_bw6761.G2Affine]

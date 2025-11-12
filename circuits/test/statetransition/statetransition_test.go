@@ -62,8 +62,8 @@ func TestStateTransitionCircuit(t *testing.T) {
 func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
-	if os.Getenv("RUN_CIRCUIT_BENCHMARK") == "" || os.Getenv("RUN_CIRCUIT_BENCHMARK") == falseString {
-		t.Skip("skipping full circuit tests...")
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
+		t.Skip("skipping circuit tests...")
 	}
 	c := qt.New(t)
 	// inputs generation
@@ -254,7 +254,7 @@ func isDockerAvailable() bool {
 // abiEncodeInputs encodes a [10]*big.Int array to ABI format (10 × 32 bytes)
 func abiEncodeInputs(inputs [10]*big.Int) ([]byte, error) {
 	result := make([]byte, 0, 320) // 10 × 32 bytes
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		// Pad to 32 bytes, big-endian
 		b := inputs[i].Bytes()
 		padded := make([]byte, 32)
