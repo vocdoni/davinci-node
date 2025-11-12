@@ -29,13 +29,12 @@ import (
 // PrintProofForDebug prints the Groth16 proof components for debugging
 // purposes.
 func PrintProofForDebug(proof groth16.Proof) {
-	switch proof.(type) {
+	switch proof := proof.(type) {
 	case *groth16_bn254.Proof:
-		g16proof, _ := proof.(*groth16_bn254.Proof)
-		log.Infow("proof.Ar", "x", g16proof.Ar.X.String(), "y", g16proof.Ar.Y.String())
-		log.Infow("proof.Bs", "x.a1", g16proof.Bs.X.A1.String(), "x.a0", g16proof.Bs.X.A0.String(),
-			"y.a1", g16proof.Bs.Y.A1.String(), "y.a0", g16proof.Bs.Y.A0.String())
-		log.Infow("proof.Krs", "x", g16proof.Krs.X.String(), "y", g16proof.Krs.Y.String())
+		log.Infow("proof.Ar", "x", proof.Ar.X.String(), "y", proof.Ar.Y.String())
+		log.Infow("proof.Bs", "x.a1", proof.Bs.X.A1.String(), "x.a0", proof.Bs.X.A0.String(),
+			"y.a1", proof.Bs.Y.A1.String(), "y.a0", proof.Bs.Y.A0.String())
+		log.Infow("proof.Krs", "x", proof.Krs.X.String(), "y", proof.Krs.Y.String())
 	default:
 		log.Warnw("PrintProofForDebug: unsupported proof type",
 			"type", fmt.Sprintf("%T", proof))

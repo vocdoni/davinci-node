@@ -1,8 +1,6 @@
 package statetransition
 
 import (
-	"fmt"
-
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
@@ -442,20 +440,6 @@ func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API) {
 		// assert the validity of the proof only if it should be valid
 		api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
 	}
-}
-
-func (c StateTransitionCircuit) censusKey(api frontend.API, address frontend.Variable) (frontend.Variable, error) {
-	// convert user address to bytes to swap the endianness
-	bAddress, err := utils.VarToU8(api, address)
-	if err != nil {
-		return 0, fmt.Errorf("failed to convert address emulated element to bytes: %w", err)
-	}
-	// swap the endianness of the address to le to be used in the census proof
-	key, err := utils.U8ToVar(api, bAddress[:types.CensusKeyMaxLen])
-	if err != nil {
-		return 0, fmt.Errorf("failed to convert address bytes to var: %w", err)
-	}
-	return key, nil
 }
 
 func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API) {

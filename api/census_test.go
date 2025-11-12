@@ -34,7 +34,11 @@ func TestCensusAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	kv, err := metadb.New(db.TypePebble, tempDir)
 	c.Assert(err, qt.IsNil)
-	defer kv.Close()
+	defer func() {
+		if err := kv.Close(); err != nil {
+			c.Logf("error found: %s", err.Error())
+		}
+	}()
 
 	// Create storage
 	stg := storage.New(kv)

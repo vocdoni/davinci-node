@@ -70,11 +70,6 @@ type Services struct {
 	Contracts *web3.Contracts
 }
 
-func boolEnvVar(name string) bool {
-	enabled := os.Getenv(name)
-	return enabled == "1" || enabled == "true" || enabled == "TRUE"
-}
-
 func isCSPCensus() bool {
 	cspCensusEnvVar := os.Getenv(cspCensusEnvVarName)
 	return strings.ToLower(cspCensusEnvVar) == "true" || cspCensusEnvVar == "1"
@@ -633,37 +628,6 @@ func createProcessInContracts(
 		return nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	return pid, contracts.WaitTxByHash(*txHash, time.Second*15)
-}
-
-func waitUntilProcessStarts(
-	contracts *web3.Contracts,
-	pid *types.ProcessID,
-	timeout time.Duration,
-) error {
-	// Wait for the process to be in the expected status
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for process to start")
-		case <-ticker.C:
-			process, err := contracts.Process(pid.Marshal())
-			if err != nil {
-				log.Warnw("failed to get process", "error", err)
-				continue
-			}
-			if process == nil {
-				log.Warnw("process not found", "processID", pid.String())
-				continue
-			}
-			if process.Status == types.ProcessStatusReady && time.Now().After(process.StartTime) {
-				return nil
-			}
-		}
-	}
 }
 
 func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {

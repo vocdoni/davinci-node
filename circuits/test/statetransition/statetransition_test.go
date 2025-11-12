@@ -114,7 +114,10 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("create temp dir"))
 	defer func() {
 		if !t.Failed() {
-			os.RemoveAll(dir) // Clean up if test passes
+			// Clean up if test passes
+			if err := os.RemoveAll(dir); err != nil {
+				log.Printf("warning: failed to remove temp dir %s: %v", dir, err)
+			}
 		}
 	}()
 
@@ -125,7 +128,9 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("create vk.sol file"))
 	err = vk.ExportSolidity(vkFile)
 	c.Assert(err, qt.IsNil, qt.Commentf("export vk to solidity"))
-	vkFile.Close()
+	if err := vkFile.Close(); err != nil {
+		log.Printf("warning: failed to close vk.sol file: %v", err)
+	}
 
 	// Convert proof to Solidity format
 	solProof := davinci_solidity.Groth16CommitmentProof{}
@@ -290,7 +295,11 @@ func verifySolidityProof(c *qt.C, buildDir string, proof *davinci_solidity.Groth
 	}
 
 	sim := simulated.NewBackend(alloc, simulated.WithBlockGasLimit(10_000_000))
-	defer sim.Close()
+	defer func() {
+		if err := sim.Close(); err != nil {
+			log.Printf("warning: failed to close simulated backend: %v", err)
+		}
+	}()
 
 	// Read the compiled ABI and bytecode from Docker compilation output
 	abiBytes, err := os.ReadFile(filepath.Join(buildDir, "Verifier.abi"))

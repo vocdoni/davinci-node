@@ -204,7 +204,11 @@ func freePort() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer l.Close()
+	defer func() {
+		if err := l.Close(); err != nil {
+			log.Printf("Warning: failed to close listener: %v", err)
+		}
+	}()
 
 	return l.Addr().(*net.TCPAddr).Port, nil
 }

@@ -203,7 +203,14 @@ func (pm *ProcessMonitor) ImportCensus(ctx context.Context, process *types.Proce
 		if err != nil {
 			return fmt.Errorf("failed to download census merkle tree dump from %s: %w", process.Census.CensusURI, err)
 		}
-		defer dumpRes.Body.Close()
+		defer func() {
+			if err := dumpRes.Body.Close(); err != nil {
+				log.Warnw("failed to close census merkle tree dump response body",
+					"pid", process.ID.String(),
+					"uri", uri,
+					"err", err.Error())
+			}
+		}()
 
 		if dumpRes.StatusCode != http.StatusOK {
 			return fmt.Errorf("failed to download census merkle tree dump from %s: status code %d", uri, dumpRes.StatusCode)

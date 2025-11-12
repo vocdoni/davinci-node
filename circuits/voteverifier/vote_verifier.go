@@ -62,7 +62,6 @@ import (
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
 	address "github.com/vocdoni/gnark-crypto-primitives/emulated/ecdsa"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -87,26 +86,6 @@ type VerifyVoteCircuit struct {
 	// The ballot proof is passed as private inputs
 	CircomProof           groth16.Proof[sw_bn254.G1Affine, sw_bn254.G2Affine]
 	CircomVerificationKey groth16.VerifyingKey[sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl] `gnark:"-"`
-}
-
-// censusKey function converts the user address and weight to the current
-// compiler field as variables to be used in the census proof. The address is
-// converted to bytes and then to a variable to truncate it to 20 bytes. The
-// weight is directly converted to a variable.
-func (c *VerifyVoteCircuit) censusKey(api frontend.API) (
-	frontend.Variable, error,
-) {
-	// convert user address to bytes to swap the endianness
-	bAddress, err := utils.ElemToU8(api, c.Vote.Address)
-	if err != nil {
-		return 0, fmt.Errorf("failed to convert address emulated element to bytes: %w", err)
-	}
-	// swap the endianness of the address to le to be used in the census proof
-	key, err := utils.U8ToVar(api, bAddress[:types.CensusKeyMaxLen])
-	if err != nil {
-		return 0, fmt.Errorf("failed to convert address bytes to var: %w", err)
-	}
-	return key, nil
 }
 
 // circomHash circuit method calculates the hash of the public-private inputs
