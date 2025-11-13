@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	gtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	ethSigner "github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/web3/rpc"
@@ -186,45 +187,11 @@ func (tm *TxManager) BuildDynamicFeeTx(
 	data []byte,
 	nonce uint64,
 ) (*gtypes.Transaction, error) {
-	// Get gas price and tip
-	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tip cap: %w", err)
-	}
-	baseFee, err := tm.cli.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get base fee: %w", err)
-	}
-	// Cap gas fee (baseFee * 2 + tipCap)
-	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
-	// Estimate gas
-	gas, err := tm.EstimateGas(ctx, ethereum.CallMsg{
-		From:      tm.signer.Address(),
-		To:        &to,
-		Data:      data,
-		GasFeeCap: gasFeeCap,
-		GasTipCap: tipCap,
-	}, tm.config.GasEstimateOpts, DefaultCancelGasFallback)
-	if err != nil {
-		return nil, fmt.Errorf("failed to estimate gas: %w", err)
-	}
-	// Create transaction
-	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
-		ChainID:   tm.config.ChainID,
-		Nonce:     nonce,
-		GasTipCap: tipCap,
-		GasFeeCap: gasFeeCap,
-		Gas:       gas,
-		To:        &to,
-		Value:     big.NewInt(0),
-		Data:      data,
-	})
-	// Sign transaction
-	signed, err := tm.signTx(tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign transaction: %w", err)
-	}
-	return signed, nil
+	return tm.buildTx(ctx, &PendingTransaction{
+		To:    to,
+		Data:  data,
+		Nonce: nonce,
+	}, nil, nil)
 }
 
 // CheckTxStatusByHash checks the status of a transaction given its ID. Returns
@@ -327,6 +294,87 @@ func (tm *TxManager) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(err
 	}
 	// If no callback is provided, run synchronously
 	return waitFn()
+}
+
+// buildTx builds and signs a transaction based on the provided pending
+// transaction details, gas fee cap, and blob fee. It estimates gas,
+// constructs the appropriate transaction type (standard or blob), and
+// signs it. If no gas fee cap is provided, it calculates one based on
+// current network conditions.
+func (tm *TxManager) buildTx(
+	ctx context.Context,
+	ptx *PendingTransaction,
+	gasFeeCap *big.Int,
+	blobFee *big.Int,
+) (*gtypes.Transaction, error) {
+	// Get gas price and tip
+	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tip cap: %w", err)
+	}
+	// If no gas fee cap provided, calculate it
+	if gasFeeCap == nil {
+		baseFee, err := tm.cli.SuggestGasPrice(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get base fee: %w", err)
+		}
+		// Cap gas fee (baseFee * 2 + tipCap)
+		gasFeeCap = new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
+	}
+	// Initialize call message for gas estimation
+	estimateMsg := ethereum.CallMsg{
+		From:      tm.signer.Address(),
+		To:        &ptx.To,
+		GasTipCap: tipCap,
+		GasFeeCap: gasFeeCap,
+		Data:      ptx.Data,
+	}
+	// Include blob parameters if applicable
+	if blobFee != nil {
+		estimateMsg.BlobHashes = ptx.BlobSidecar.BlobHashes()
+		estimateMsg.BlobGasFeeCap = blobFee
+	}
+	// Estimate gas for the transaction
+	gasLimit, err := tm.EstimateGas(ctx, estimateMsg, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate gas: %w", err)
+	}
+
+	var tx *gtypes.Transaction
+	if blobFee != nil {
+		// Build blob transaction
+		tx = gtypes.NewTx(&gtypes.BlobTx{
+			ChainID:    uint256.NewInt(tm.config.ChainID.Uint64()),
+			Nonce:      ptx.Nonce,
+			GasTipCap:  uint256.MustFromBig(tipCap),
+			GasFeeCap:  uint256.MustFromBig(gasFeeCap),
+			Gas:        gasLimit,
+			To:         ptx.To,
+			Value:      uint256.MustFromBig(ptx.Value),
+			Data:       ptx.Data,
+			BlobFeeCap: uint256.MustFromBig(blobFee),
+			BlobHashes: ptx.BlobSidecar.BlobHashes(),
+			Sidecar:    ptx.BlobSidecar,
+		})
+	} else {
+		// Build standard dynamic fee transaction
+		tx = gtypes.NewTx(&gtypes.DynamicFeeTx{
+			ChainID:   tm.config.ChainID,
+			Nonce:     ptx.Nonce,
+			GasTipCap: tipCap,
+			GasFeeCap: gasFeeCap,
+			Gas:       gasLimit,
+			To:        &ptx.To,
+			Value:     ptx.Value,
+			Data:      ptx.Data,
+		})
+	}
+	// Sign transaction
+	signed, err := tm.signTx(tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign transaction: %w", err)
+	}
+	return signed, nil
 }
 
 // txReceipt fetches the transaction receipt for a given transaction hash. It

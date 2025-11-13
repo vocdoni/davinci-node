@@ -7,10 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	gtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/holiman/uint256"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -267,11 +265,11 @@ func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) err
 			return fmt.Errorf("blob transaction stuck without recovery option")
 		}
 		// Rebuild blob transaction with higher fees
-		if newTx, err = tm.rebuildBlobTx(ctx, ptx, newGasPrice, newBlobFee); err != nil {
+		if newTx, err = tm.buildTx(ctx, ptx, newGasPrice, newBlobFee); err != nil {
 			return fmt.Errorf("cannot rebuild blob transaction: %w", err)
 		}
 	case false:
-		if newTx, err = tm.rebuildRegularTx(ctx, ptx, newGasPrice); err != nil {
+		if newTx, err = tm.buildTx(ctx, ptx, newGasPrice, nil); err != nil {
 			return fmt.Errorf("failed to rebuild transaction: %w", err)
 		}
 	}
@@ -303,93 +301,6 @@ func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) err
 	return nil
 }
 
-// rebuildRegularTx rebuilds a regular transaction with new gas price. It does
-// not modify the original transaction parameters except for the gas price. It
-// returns the new signed transaction or an error if it fails getting the tip
-// cap or signing.
-func (tm *TxManager) rebuildRegularTx(
-	ctx context.Context,
-	ptx *PendingTransaction,
-	newGasPrice *big.Int,
-) (*gtypes.Transaction, error) {
-	// Get gas tip cap
-	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tip cap: %w", err)
-	}
-	// Estimate gas for the transaction
-	gasLimit, err := tm.EstimateGas(ctx, ethereum.CallMsg{
-		From:      tm.signer.Address(),
-		To:        &ptx.To,
-		GasTipCap: tipCap,
-		GasFeeCap: newGasPrice,
-		Data:      ptx.Data,
-	}, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to estimate gas: %w", err)
-	}
-	// Create new transaction with same parameters but higher fees
-	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
-		ChainID:   tm.config.ChainID,
-		Nonce:     ptx.Nonce,
-		GasTipCap: tipCap,
-		GasFeeCap: newGasPrice,
-		Gas:       gasLimit,
-		To:        &ptx.To,
-		Value:     ptx.Value,
-		Data:      ptx.Data,
-	})
-	// Sign transaction
-	return tm.signTx(tx)
-}
-
-// rebuildBlobTx rebuilds a blob transaction with higher fees. This requires
-// the original sidecar to be stored via TrackBlobTxWithSidecar.
-func (tm *TxManager) rebuildBlobTx(
-	ctx context.Context,
-	ptx *PendingTransaction,
-	newGasPrice *big.Int,
-	newBlobFee *big.Int,
-) (*gtypes.Transaction, error) {
-	if ptx.BlobSidecar == nil {
-		return nil, fmt.Errorf("blob sidecar not available for rebuilding")
-	}
-	// Get gas tip cap
-	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tip cap: %w", err)
-	}
-	// Estimate gas for the blob transaction
-	gasLimit, err := tm.EstimateGas(ctx, ethereum.CallMsg{
-		From:          tm.signer.Address(),
-		To:            &ptx.To,
-		GasTipCap:     tipCap,
-		GasFeeCap:     newGasPrice,
-		Data:          ptx.Data,
-		BlobHashes:    ptx.BlobSidecar.BlobHashes(),
-		BlobGasFeeCap: newBlobFee,
-	}, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to estimate gas: %w", err)
-	}
-	// Build the replacement blob transaction with higher fees
-	blobTx := gtypes.NewTx(&gtypes.BlobTx{
-		ChainID:    uint256.NewInt(tm.config.ChainID.Uint64()),
-		Nonce:      ptx.Nonce,
-		GasTipCap:  uint256.MustFromBig(tipCap),
-		GasFeeCap:  uint256.MustFromBig(newGasPrice),
-		Gas:        gasLimit,
-		To:         ptx.To,
-		Value:      uint256.MustFromBig(ptx.Value),
-		Data:       ptx.Data,
-		BlobFeeCap: uint256.MustFromBig(newBlobFee),
-		BlobHashes: ptx.BlobSidecar.BlobHashes(),
-		Sidecar:    ptx.BlobSidecar,
-	})
-	// Create and sign the transaction
-	return tm.signTx(blobTx)
-}
-
 // cancelTx sends a 0-value transaction to self with higher fees to cancel a
 // regular transaction.
 // NOTE: This does NOT work for blob transactions. Blob txs can only be
@@ -400,36 +311,13 @@ func (tm *TxManager) cancelTx(ctx context.Context, ptx *PendingTransaction) erro
 	}
 	// Calculate cancellation gas price (2x original)
 	gasPrice := new(big.Int).Mul(ptx.OriginalGasPrice, big.NewInt(2))
-	// Get tip cap
-	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get tip cap: %w", err)
-	}
-	selfAddress := tm.signer.Address()
-	// Estimate gas for the cancel transaction
-	gasLimit, err := tm.EstimateGas(ctx, ethereum.CallMsg{
-		From:      selfAddress,
-		To:        &selfAddress,
-		Data:      []byte{},
-		GasFeeCap: gasPrice,
-		GasTipCap: tipCap,
-	}, tm.config.GasEstimateOpts, DefaultCancelGasFallback)
-	if err != nil {
-		return fmt.Errorf("failed to estimate gas: %w", err)
-	}
-	// Create cancel transaction
-	tx := gtypes.NewTx(&gtypes.DynamicFeeTx{
-		ChainID:   tm.config.ChainID,
-		Nonce:     ptx.Nonce,
-		GasTipCap: tipCap,
-		GasFeeCap: gasPrice,
-		Gas:       gasLimit,
-		To:        &selfAddress,
-		Value:     big.NewInt(0),
-		Data:      []byte{},
-	})
-	// Sign transaction
-	signed, err := tm.signTx(tx)
+	// Build and sign cancellation transaction
+	signed, err := tm.buildTx(ctx, &PendingTransaction{
+		Nonce: ptx.Nonce,
+		To:    tm.signer.Address(),
+		Value: big.NewInt(0),
+		Data:  []byte{},
+	}, gasPrice, nil)
 	if err != nil {
 		return fmt.Errorf("failed to sign cancel tx: %w", err)
 	}
