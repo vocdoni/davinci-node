@@ -155,6 +155,7 @@ type AggregatorBallotBatch struct {
 	ProcessID types.HexBytes        `json:"processId"`
 	Proof     *groth16_bw6761.Proof `json:"proof"`
 	Ballots   []*AggregatorBallot   `json:"ballots"`
+	Attempts  int                   `json:"attempts"`
 }
 
 // StateTransitionBatch is the struct that contains the information of a
