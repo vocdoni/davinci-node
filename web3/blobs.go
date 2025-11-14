@@ -205,12 +205,15 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 
 	// Estimate execution gas, include blob hashes so any contract logic that
 	// references them (e.g. checks) isn't under-estimated.
-	gas := c.txManager.EstimateGas(ctx, ethereum.CallMsg{
+	gas, err := c.txManager.EstimateGas(ctx, ethereum.CallMsg{
 		From:       c.AccountAddress(),
 		To:         &to,
 		Data:       data,
 		BlobHashes: blobsSidecar.BlobHashes(),
 	}, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate gas: %w", err)
+	}
 
 	// Fee building
 	// Tip suggestion (EIP-1559)
