@@ -222,7 +222,7 @@ func isValidStatusTransition(from, to int) bool {
 		VoteIDStatusPending:    {VoteIDStatusVerified},
 		VoteIDStatusVerified:   {VoteIDStatusAggregated},
 		VoteIDStatusAggregated: {VoteIDStatusProcessed},
-		VoteIDStatusProcessed:  {VoteIDStatusSettled},
+		VoteIDStatusProcessed:  {VoteIDStatusSettled, VoteIDStatusAggregated}, // Allow rollback to aggregated
 	}
 
 	allowedNext, exists := validTransitions[from]

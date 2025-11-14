@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -9,8 +10,13 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
+
+// MaxStateTransitionAttempts defines the maximum number of attempts to process
+// a state transition batch before marking it as failed.
+const MaxStateTransitionAttempts = 5
 
 // PushAggregatorBatch pushes an aggregated ballot batch to the aggregator queue.
 func (s *Storage) PushAggregatorBatch(abb *AggregatorBallotBatch) error {
@@ -262,6 +268,28 @@ func (s *Storage) pendingAggregatorBatch(processID []byte) (*AggregatorBallotBat
 		return nil, fmt.Errorf("decode pending agg batch: %w", err)
 	}
 	return &batch, nil
+}
+
+// releasePendingAggregatorBatch removes the pending aggregator batch for
+// a given processID. It is used after the batch has been successfully or
+// unsuccessfully processed and it needs to be retried again.
+func (s *Storage) releasePendingAggregatorBatch(processID []byte) error {
+	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
+	var chosenKey []byte
+	if err := wTx.Iterate(processID, func(k, _ []byte) bool {
+		chosenKey = k
+		return false
+	}); err != nil {
+		return fmt.Errorf("iterate pending agg batches: %w", err)
+	}
+	if chosenKey == nil {
+		return ErrNotFound
+	}
+	finalKey := append(slices.Clone(processID), chosenKey...)
+	if err := wTx.Delete(finalKey); err != nil {
+		return fmt.Errorf("delete pending agg batch: %w", err)
+	}
+	return wTx.Commit()
 }
 
 // MarkAggregatorBatchDone called after processing aggregator batch. For simplicity,
@@ -547,13 +575,72 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 		if err := s.removeStateTransitionBatch(key); err != nil {
 			log.Errorw(err, "failed to remove failed state transition batch")
 		}
+		// Release pending tx
+		if err := s.prunePendingTx(StateTransitionTx, pid); err != nil {
+			log.Warnw("failed to release pending tx",
+				"error", err,
+				"processID", hex.EncodeToString(pid))
+		}
 	}()
 
+	if pendingBatch, err := s.pendingAggregatorBatch(pid); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("failed to get pending aggregator batch: %w", err)
+	} else if pendingBatch != nil {
+		// Release pending aggregator batch to be able to reprocess it
+		if err := s.releasePendingAggregatorBatch(pid); err != nil {
+			return fmt.Errorf("failed to release pending aggregator batch: %w", err)
+		}
+
+		// Increment attempts counter and check if max attempts reached
+		pendingBatch.Attempts++
+		if pendingBatch.Attempts >= MaxStateTransitionAttempts {
+			log.Warnw("maximum state transition attempts reached for pending aggregator batch",
+				"processID", hex.EncodeToString(pid),
+				"attempts", pendingBatch.Attempts)
+			// Mark all ballots in the batch as error
+			for _, v := range stb.Ballots {
+				if err := s.setVoteIDStatus(pid, v.VoteID, VoteIDStatusError); err != nil {
+					log.Warnw("failed to set vote ID status to failed", "error", err.Error())
+				}
+			}
+			return nil
+		}
+
+		// Check if votes were already processed in the state (maybe by another
+		// sequencer)
+		votesAlreadyProcessed := false
+		currentState, err := state.New(s.StateDB(), stb.ProcessID.BigInt().MathBigInt())
+		if err := currentState.SetRootAsBigInt(stb.Inputs.RootHashBefore); err != nil {
+			return fmt.Errorf("failed to set state root for process %s: %w", stb.ProcessID.String(), err)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to load state for process %s: %w", stb.ProcessID.String(), err)
+		}
+		for _, v := range stb.Ballots {
+			if currentState.ContainsVoteID(v.VoteID) {
+				votesAlreadyProcessed = true
+				break
+			}
+		}
+		// If votes were not processed, re-push the pending aggregator batch to
+		// retry the state transition
+		if !votesAlreadyProcessed {
+			if err := s.pushAggregatorBatch(pendingBatch); err != nil {
+				return fmt.Errorf("failed to recover pending aggregator batch: %w", err)
+			}
+			return nil
+		}
+	}
+	// If there is not pending batch or some of their votes are already in the
+	// state we cannot re-push the batch, we need to mark the votes as failed.
 	for _, v := range stb.Ballots {
 		if err := s.setVoteIDStatus(pid, v.VoteID, VoteIDStatusError); err != nil {
 			log.Warnw("failed to set vote ID status to failed", "error", err.Error())
 		}
 	}
+	log.Warnw("batch can not be recovered after state transition failure",
+		"processID", hex.EncodeToString(pid),
+		"batchID", hex.EncodeToString(key))
 	return nil
 }
 

@@ -110,17 +110,7 @@ func (s *Sequencer) processTransitionOnChain() {
 			}
 			return true // Continue to next process ID
 		}
-		// update the process state with the new root hash and the vote counts atomically
-		if err := s.stg.UpdateProcess(pid, func(p *types.Process) error {
-			p.StateRoot = (*types.BigInt)(batch.Inputs.RootHashAfter)
-			p.VoteCount = new(types.BigInt).Add(p.VoteCount, new(types.BigInt).SetInt(batch.Inputs.NumNewVotes))
-			p.VoteOverwrittenCount = new(types.BigInt).Add(p.VoteOverwrittenCount, new(types.BigInt).SetInt(batch.Inputs.NumOverwritten))
-			return nil
-		}); err != nil {
-			log.Errorw(err, "failed to update process data")
-			return true // Continue to next process ID
-		}
-		log.Infow("process state root updated",
+		log.Infow("process state transition pushed",
 			"pid", fmt.Sprintf("%x", pid),
 			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
 			"rootHashAfter", batch.Inputs.RootHashAfter.String())

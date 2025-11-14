@@ -56,6 +56,12 @@ func (s *Storage) HasPendingTx(txType PendingTxType, processID []byte) bool {
 func (s *Storage) PrunePendingTx(txType PendingTxType, processID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+	return s.prunePendingTx(txType, processID)
+}
+
+// prunePendingTx removes the pending transaction marker for a process. It
+// should be called with appropriate locking to ensure thread safety.
+func (s *Storage) prunePendingTx(txType PendingTxType, processID []byte) error {
 	prefix := append(pendingTxPrefix, txType...)
 	return s.deleteArtifact(prefix, processID)
 }
