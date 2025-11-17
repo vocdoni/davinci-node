@@ -143,7 +143,7 @@ func ServeCensusMerkleTreeForTest(ctx context.Context, votes []state.Vote) (*big
 		return nil, "", fmt.Errorf("error generating census merkle tree: %w", err)
 	}
 	// dump the census merkle tree to assets for external use
-	dump, err := census.Dump()
+	dump, err := census.DumpAll()
 	if err != nil {
 		return nil, "", fmt.Errorf("error dumping census merkle tree: %w", err)
 	}
