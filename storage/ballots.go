@@ -114,20 +114,31 @@ func (s *Storage) RemovePendingBallotsByProcess(pid []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	// get every vote ID for the process
+	// Collect vote IDs that belong to this process
 	votesToRemove := []types.HexBytes{}
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
-		// Make a copy of the key to avoid slice reuse issues from the iterator
-		keyCopy := make([]byte, len(k))
-		copy(keyCopy, k)
-		votesToRemove = append(votesToRemove, keyCopy)
+		// Decode the ballot to check its ProcessID
+		var ballot Ballot
+		if err := DecodeArtifact(v, &ballot); err != nil {
+			log.Warnw("failed to decode ballot during cleanup",
+				"key", hex.EncodeToString(k),
+				"error", err)
+			return true // Continue iteration
+		}
+
+		// Only collect ballots that belong to the target process
+		if bytes.Equal(ballot.ProcessID, pid) {
+			keyCopy := make([]byte, len(k))
+			copy(keyCopy, k)
+			votesToRemove = append(votesToRemove, keyCopy)
+		}
 		return true
 	}); err != nil {
 		return fmt.Errorf("iterate ballots: %w", err)
 	}
 
-	// iterate over the vote IDs to remove them and release their vote ID locks
+	// Remove the ballots and release their vote ID locks
 	for _, voteID := range votesToRemove {
 		if err := s.removePendingBallot(pid, voteID); err != nil {
 			return err
