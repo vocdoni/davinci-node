@@ -9,11 +9,13 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/spf13/pflag"
 
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/web3"
+	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
 const (
@@ -50,6 +52,17 @@ func main() {
 	}
 	from := contracts.AccountAddress()
 
+	// Init transaction manager
+	txmCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	txm, err := txmanager.New(txmCtx, contracts.Web3Pool(), contracts.Client(), contracts.Signer(),
+		txmanager.DefaultConfig(contracts.ChainID))
+	if err != nil {
+		log.Fatalf("failed to create transaction manager: %w", err)
+	}
+	txm.Start(txmCtx)
+	contracts.SetTxManager(txm)
+
 	// Destination address
 	var to common.Address
 	if *toStr == "" {
@@ -65,7 +78,13 @@ func main() {
 		blobs[i] = b
 	}
 
-	sidecar, _, err := web3.BuildBlobsSidecar(blobs)
+	var sidecar *types.BlobTxSidecar
+	switch contracts.ChainID {
+	case params.SepoliaChainConfig.ChainID.Uint64():
+		sidecar, _, err = web3.BuildBlobsSidecar(blobs)
+	default: // mainnet, for example
+		sidecar, _, err = web3.BuildBlobsSidecarV0(blobs)
+	}
 	if err != nil {
 		log.Fatalf("build sidecar: %v", err)
 	}
@@ -74,9 +93,40 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	tx, commitments, err := contracts.SendBlobTx(ctx, to, sidecar)
-	if err != nil {
-		log.Fatalf("send blob tx: %v", err)
+	mockStateTransition := func() *types.Transaction {
+		// Prepare the ABI for packing the data
+		processABI, err := contracts.ProcessRegistryABI()
+		if err != nil {
+			log.Fatal("failed to get process registry ABI: %w", err)
+		}
+
+		tx, err := contracts.NewEIP4844Transaction(ctx, to, processABI, "submitStateTransition",
+			[]any{[32]byte{0x1}, []byte{0x1}, []byte{0x1}}, sidecar)
+		if err != nil {
+			log.Fatalf("failed to build blob tx: %v", err)
+		}
+		return tx
+	}
+
+	tx := mockStateTransition()
+
+	log.Infow("sending blob tx",
+		"Nonce", tx.Nonce(),
+		"BlobGas", tx.BlobGas(),
+		"BlobGasFeeCap", tx.BlobGasFeeCap(),
+		"Gas", tx.Gas(),
+		"GasFeeCap", tx.GasFeeCap(),
+		"GasTipCap", tx.GasTipCap(),
+		"size", tx.Size(),
+	)
+
+	// Broadcast
+	if err := contracts.Client().SendTransaction(ctx, tx); err != nil {
+		log.Fatalf("send blobs tx: %v", err)
+	}
+	commitments := [][]byte{}
+	for _, c := range sidecar.Commitments {
+		commitments = append(commitments, c[:])
 	}
 	log.Infow("blob tx sent", "hash", tx.Hash().Hex(), "from", from.Hex(), "to", to.Hex())
 

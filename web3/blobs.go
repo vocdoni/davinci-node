@@ -1,7 +1,6 @@
 package web3
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
@@ -48,103 +47,6 @@ func applyGasMultiplier(baseFee *big.Int, multiplier float64) *big.Int {
 		"result", resultInt.String())
 
 	return resultInt
-}
-
-// SendBlobTx builds, signs and broadcasts an EIP-4844 (type-3) tx.
-//   - `to` MUST be non-nil per EIP-4844.
-//   - `blobs` are raw 131072-byte blobs (4096 * 32).
-func (c *Contracts) SendBlobTx(
-	ctx context.Context,
-	to common.Address,
-	sidecar *types.BlobTxSidecar,
-) (*types.Transaction, [][]byte, error) {
-	if c.signer == nil {
-		return nil, nil, fmt.Errorf("no private key set")
-	}
-	if sidecar == nil {
-		return nil, nil, fmt.Errorf("no blob sidecar provided")
-	}
-	if len(sidecar.Blobs) == 0 {
-		return nil, nil, fmt.Errorf("no blobs provided")
-	}
-	if bytes.Equal(to[:], common.Address{}.Bytes()) {
-		return nil, nil, fmt.Errorf("invalid recipient address")
-	}
-
-	// get nonce and chainID
-	auth, err := c.authTransactOpts()
-	if err != nil {
-		return nil, nil, err
-	}
-	from := c.signer.Address()
-	nonce := auth.Nonce.Uint64()
-
-	// Fee caps (exec gas)
-	tipCap, err := c.cli.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("tip cap: %w", err)
-	}
-	baseFee, err := c.cli.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("base gas fee: %w", err)
-	}
-	// Apply gas multiplier: (baseFee * 2 + tipCap) * multiplier
-	baseGasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
-	gasFeeCap := applyGasMultiplier(baseGasFeeCap, c.GasMultiplier)
-
-	// Blob gas cap
-	blobBaseFee, err := c.cli.BlobBaseFee(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("blob base fee: %w", err)
-	}
-	// Apply gas multiplier: (blobBaseFee * 2) * multiplier
-	baseBlobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
-	blobFeeCap := applyGasMultiplier(baseBlobFeeCap, c.GasMultiplier)
-
-	// Estimate execution gas (must include blob fields)
-	call := ethereum.CallMsg{
-		From:      from,
-		To:        &to,
-		GasFeeCap: gasFeeCap, // 1559
-		GasTipCap: tipCap,    // 1559
-		// Data:       calldata,            // ABI-encoded if calling a contract
-		BlobGasFeeCap: blobFeeCap,           // <= REQUIRED for 4844
-		BlobHashes:    sidecar.BlobHashes(), // <= REQUIRED for 4844
-	}
-	gasLimit, err := c.cli.EstimateGas(ctx, call)
-	if err != nil {
-		return nil, nil, fmt.Errorf("estimate gas for blobs tx: %w", err)
-	}
-
-	// Create & sign blob tx
-	txData := &types.BlobTx{
-		ChainID:    uint256.NewInt(c.ChainID),
-		Nonce:      nonce,
-		GasTipCap:  uint256.MustFromBig(tipCap),
-		GasFeeCap:  uint256.MustFromBig(gasFeeCap),
-		Gas:        gasLimit,
-		To:         to,
-		BlobFeeCap: uint256.MustFromBig(blobFeeCap),
-		BlobHashes: sidecar.BlobHashes(),
-		Sidecar:    sidecar,
-	}
-
-	unsigned := types.NewTx(txData)
-	signer := types.NewCancunSigner(new(big.Int).SetUint64(c.ChainID))
-	signed, err := types.SignTx(unsigned, signer, (*ecdsa.PrivateKey)(c.signer))
-	if err != nil {
-		return nil, nil, fmt.Errorf("sign blobs tx: %w", err)
-	}
-
-	// Broadcast
-	if err := c.cli.SendTransaction(ctx, signed); err != nil {
-		return nil, nil, fmt.Errorf("send blobs tx: %w", err)
-	}
-	commitments := [][]byte{}
-	for _, c := range sidecar.Commitments {
-		commitments = append(commitments, c[:])
-	}
-	return signed, commitments, nil
 }
 
 // NewEIP4844Transaction method creates and signs a new EIP-4844 (type-3)
@@ -265,6 +167,52 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 		return nil, fmt.Errorf("failed to sign new tx: %w", err)
 	}
 	return signedTx, nil
+}
+
+// BuildBlobsSidecarV0 converts raw blobs -> commitments/proofs using crate-crypto.
+// Returns a geth Sidecar (types.BlobTxSidecar with Version=0) and versioned blob hashes.
+func BuildBlobsSidecarV0(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error) {
+	if len(raw) == 0 {
+		return nil, nil, fmt.Errorf("no blobs")
+	}
+	ctx, err := kzg4844.NewContext4096Secure()
+	if err != nil {
+		return nil, nil, fmt.Errorf("kzg ctx: %w", err)
+	}
+
+	blobs := make([]gethkzg.Blob, len(raw))
+	comms := make([]gethkzg.Commitment, len(raw))
+	proofs := make([]gethkzg.Proof, len(raw))
+
+	for i, b := range raw {
+		if len(b) != params.BlobTxFieldElementsPerBlob*params.BlobTxBytesPerFieldElement {
+			return nil, nil, fmt.Errorf("blob %d wrong size: got %d", i, len(b))
+		}
+		// cast []byte -> crate blob then to geth blob bytes
+		var crateBlob kzg4844.Blob
+		copy(crateBlob[:], b)
+
+		commit, err := ctx.BlobToKZGCommitment(&crateBlob, 0)
+		if err != nil {
+			return nil, nil, fmt.Errorf("commitment %d: %w", i, err)
+		}
+		proof, err := ctx.ComputeBlobKZGProof(&crateBlob, commit, 0)
+		if err != nil {
+			return nil, nil, fmt.Errorf("proof %d: %w", i, err)
+		}
+
+		// convert to geth types
+		copy(blobs[i][:], b)
+		copy(comms[i][:], commit[:])
+		copy(proofs[i][:], proof[:])
+	}
+
+	sc := &types.BlobTxSidecar{
+		Blobs:       blobs,
+		Commitments: comms,
+		Proofs:      proofs,
+	}
+	return sc, sc.BlobHashes(), nil
 }
 
 // BuildBlobsSidecar converts raw blobs -> commitments/cell proofs using crate-crypto.
