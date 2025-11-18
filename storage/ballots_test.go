@@ -97,7 +97,7 @@ func TestBallotQueue_RemoveBallot(t *testing.T) {
 	c.Assert(status, qt.Equals, VoteIDStatusError)
 }
 
-func TestBallotQueue_RemovePendingBallotsByProcess_RemovesAllPendingCurrently(t *testing.T) {
+func TestBallotQueue_RemovePendingBallotsByProcess_OnlyRemovesTargetProcess(t *testing.T) {
 	c := qt.New(t)
 	stg := newTestStorage(t)
 	defer stg.Close()
@@ -112,14 +112,32 @@ func TestBallotQueue_RemovePendingBallotsByProcess_RemovesAllPendingCurrently(t 
 	c.Assert(stg.PushPendingBallot(mkBallot(pid1, ids[1])), qt.IsNil)
 	c.Assert(stg.PushPendingBallot(mkBallot(pid2, ids[2])), qt.IsNil)
 
-	// remove pending ballots "by process" (but currently removes all)
+	// remove pending ballots for pid1 only
 	err := stg.RemovePendingBallotsByProcess(pid1)
 	c.Assert(err, qt.IsNil)
 
-	// no pending should remain
-	_, _, err = stg.NextPendingBallot()
-	c.Assert(errors.Is(err, ErrNoMoreElements), qt.IsTrue)
-	c.Assert(stg.CountPendingBallots(), qt.Equals, 0)
+	// pid2's ballot should still remain
+	c.Assert(stg.CountPendingBallots(), qt.Equals, 1)
+
+	// verify the remaining ballot belongs to pid2
+	ballot, _, err := stg.NextPendingBallot()
+	c.Assert(err, qt.IsNil)
+	c.Assert([]byte(ballot.ProcessID), qt.DeepEquals, pid2)
+	c.Assert([]byte(ballot.VoteID), qt.DeepEquals, ids[2])
+
+	// verify pid1's ballots still have pending status (removePendingBallot doesn't change status)
+	status1, err := stg.VoteIDStatus(pid1, ids[0])
+	c.Assert(err, qt.IsNil)
+	c.Assert(status1, qt.Equals, VoteIDStatusPending)
+
+	status2, err := stg.VoteIDStatus(pid1, ids[1])
+	c.Assert(err, qt.IsNil)
+	c.Assert(status2, qt.Equals, VoteIDStatusPending)
+
+	// verify pid2's ballot still has pending status
+	status, err := stg.VoteIDStatus(pid2, ids[2])
+	c.Assert(err, qt.IsNil)
+	c.Assert(status, qt.Equals, VoteIDStatusPending)
 }
 
 func TestBallotQueue_ReleaseBallotReservation(t *testing.T) {
