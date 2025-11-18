@@ -236,16 +236,10 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 	maxFee := applyGasMultiplier(baseMaxFee, c.GasMultiplier)
 
 	// Base fee for *blob gas* (separate market). Use RPC eth_blobBaseFee.
-	// NOTE: go-ethereum doesn't have a typed helper; call raw RPC:
-	var blobBaseFeeHex string
-	ethclient, err := c.cli.EthClient()
+	blobBaseFee, err := c.cli.BlobBaseFee(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("cannot get eth client: %w", err)
+		return nil, fmt.Errorf("blob base fee: %w", err)
 	}
-	if err := ethclient.Client().CallContext(ctx, &blobBaseFeeHex, "eth_blobBaseFee"); err != nil {
-		return nil, fmt.Errorf("eth_blobBaseFee: %w", err)
-	}
-	blobBaseFee, _ := new(big.Int).SetString(strings.TrimPrefix(blobBaseFeeHex, "0x"), 16)
 	// Apply gas multiplier: (blobBaseFee * 2) * multiplier
 	baseBlobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
 	blobFeeCap := applyGasMultiplier(baseBlobFeeCap, c.GasMultiplier)
