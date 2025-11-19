@@ -163,8 +163,14 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 			}
 		}
 
-		// Release nullifier lock
+		// Release vote ID lock
 		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+
+		// Release address lock
+		s.releaseAddress(ballot.ProcessID, ballot.Address)
+
+		// Clean up voteID to address mapping
+		s.voteIDToAddress.Delete(ballot.VoteID.String())
 
 		return true
 	}); err != nil {
@@ -464,7 +470,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 // pending ballots and check their ProcessID field.
 func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
-	var keysToDelete [][]byte
+	var ballotsToDelete []*Ballot
 
 	// Collect all ballots that belong to this process
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
@@ -475,30 +481,32 @@ func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
 		}
 
 		if bytes.Equal(ballot.ProcessID, processID) {
-			// Make copies to avoid slice reuse issues
-			keyCopy := make([]byte, len(k))
-			copy(keyCopy, k)
-			keysToDelete = append(keysToDelete, keyCopy)
+			ballotsToDelete = append(ballotsToDelete, &ballot)
 		}
 		return true
 	}); err != nil {
 		return fmt.Errorf("iterate pending ballots: %w", err)
 	}
 
-	// Delete ballots and their reservations
-	for _, key := range keysToDelete {
+	// Delete ballots, their reservations, and release locks
+	for _, ballot := range ballotsToDelete {
 		// Delete reservation if exists
-		if err := s.deleteArtifact(ballotReservationPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
-			log.Warnw("failed to delete pending ballot reservation", "key", hex.EncodeToString(key), "error", err)
+		if err := s.deleteArtifact(ballotReservationPrefix, ballot.VoteID); err != nil && !errors.Is(err, ErrNotFound) {
+			log.Warnw("failed to delete pending ballot reservation", "voteID", hex.EncodeToString(ballot.VoteID), "error", err)
 		}
 
 		// Delete ballot
-		if err := s.deleteArtifact(ballotPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
-			log.Warnw("failed to delete pending ballot", "key", hex.EncodeToString(key), "error", err)
+		if err := s.deleteArtifact(ballotPrefix, ballot.VoteID); err != nil && !errors.Is(err, ErrNotFound) {
+			log.Warnw("failed to delete pending ballot", "voteID", hex.EncodeToString(ballot.VoteID), "error", err)
 		}
+
+		// Release locks
+		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseAddress(ballot.ProcessID, ballot.Address)
+		s.voteIDToAddress.Delete(ballot.VoteID.String())
 	}
 
-	log.Debugw("cleaned pending ballots", "processID", fmt.Sprintf("%x", processID), "count", len(keysToDelete))
+	log.Debugw("cleaned pending ballots", "processID", fmt.Sprintf("%x", processID), "count", len(ballotsToDelete))
 	return nil
 }
 
@@ -506,7 +514,12 @@ func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
 // Verified ballots are efficiently accessible using processID prefix.
 func (s *Storage) cleanVerifiedBallotsForProcess(processID []byte) error {
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
-	var keysToDelete [][]byte
+
+	type ballotToDelete struct {
+		key    []byte
+		ballot *VerifiedBallot
+	}
+	var ballotsToDelete []ballotToDelete
 
 	// Iterate with processID prefix for efficiency
 	if err := rd.Iterate(processID, func(k, v []byte) bool {
@@ -515,29 +528,47 @@ func (s *Storage) cleanVerifiedBallotsForProcess(processID []byte) error {
 			k = append(processID, k...)
 		}
 
-		// Always delete the ballot
-		keyCopy := make([]byte, len(k))
-		copy(keyCopy, k)
-		keysToDelete = append(keysToDelete, keyCopy)
+		// Decode ballot to get address for lock release
+		var ballot VerifiedBallot
+		if err := DecodeArtifact(v, &ballot); err != nil {
+			log.Warnw("failed to decode verified ballot during cleanup",
+				"key", hex.EncodeToString(k),
+				"error", err)
+			// Still add to deletion list even if we can't decode
+			keyCopy := make([]byte, len(k))
+			copy(keyCopy, k)
+			ballotsToDelete = append(ballotsToDelete, ballotToDelete{key: keyCopy, ballot: nil})
+		} else {
+			keyCopy := make([]byte, len(k))
+			copy(keyCopy, k)
+			ballotsToDelete = append(ballotsToDelete, ballotToDelete{key: keyCopy, ballot: &ballot})
+		}
 		return true
 	}); err != nil {
 		return fmt.Errorf("iterate verified ballots: %w", err)
 	}
 
-	// Delete ballots and their reservations
-	for _, key := range keysToDelete {
+	// Delete ballots, their reservations, and release locks
+	for _, item := range ballotsToDelete {
 		// Delete reservation if exists
-		if err := s.deleteArtifact(verifiedBallotReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
-			log.Warnw("failed to delete verified ballot reservation", "key", hex.EncodeToString(key), "error", err)
+		if err := s.deleteArtifact(verifiedBallotReservPrefix, item.key); err != nil && !errors.Is(err, ErrNotFound) {
+			log.Warnw("failed to delete verified ballot reservation", "key", hex.EncodeToString(item.key), "error", err)
 		}
 
 		// Delete ballot
-		if err := s.deleteArtifact(verifiedBallotPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
-			log.Warnw("failed to delete verified ballot", "key", hex.EncodeToString(key), "error", err)
+		if err := s.deleteArtifact(verifiedBallotPrefix, item.key); err != nil && !errors.Is(err, ErrNotFound) {
+			log.Warnw("failed to delete verified ballot", "key", hex.EncodeToString(item.key), "error", err)
+		}
+
+		// Release locks if we successfully decoded the ballot
+		if item.ballot != nil {
+			s.releaseVoteID(item.ballot.VoteID.BigInt().MathBigInt())
+			s.releaseAddress(item.ballot.ProcessID, item.ballot.Address)
+			s.voteIDToAddress.Delete(item.ballot.VoteID.String())
 		}
 	}
 
-	log.Debugw("cleaned verified ballots", "processID", fmt.Sprintf("%x", processID), "count", len(keysToDelete))
+	log.Debugw("cleaned verified ballots", "processID", fmt.Sprintf("%x", processID), "count", len(ballotsToDelete))
 	return nil
 }
 

@@ -45,25 +45,49 @@ func (s *Storage) Ballot(voteID []byte) (*Ballot, error) {
 func (s *Storage) PushPendingBallot(b *Ballot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+
 	// Check if the ballot is already processing
 	if processing := s.IsVoteIDProcessing(b.VoteID.BigInt().MathBigInt()); processing {
 		return ErrNullifierProcessing
 	}
 
+	// Atomically lock the address BEFORE writing to database
+	// This uses LoadOrStore to ensure only one request succeeds
+	if !s.lockAddress(b.ProcessID, b.Address) {
+		return ErrAddressProcessing
+	}
+
+	// Lock the ballot nullifier to prevent overwrites until processing is done
+	s.lockVoteID(b.VoteID.BigInt().MathBigInt())
+
+	// Now write to database
 	val, err := EncodeArtifact(b)
 	if err != nil {
+		// Release locks on error
+		s.releaseVoteID(b.VoteID.BigInt().MathBigInt())
+		s.releaseAddress(b.ProcessID, b.Address)
 		return fmt.Errorf("encode ballot: %w", err)
 	}
+
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotPrefix)
 	if _, err := wTx.Get(b.VoteID); err == nil {
 		wTx.Discard()
+		// Release locks on error
+		s.releaseVoteID(b.VoteID.BigInt().MathBigInt())
+		s.releaseAddress(b.ProcessID, b.Address)
 		return ErroBallotAlreadyExists
 	}
 	if err := wTx.Set(b.VoteID, val); err != nil {
 		wTx.Discard()
+		// Release locks on error
+		s.releaseVoteID(b.VoteID.BigInt().MathBigInt())
+		s.releaseAddress(b.ProcessID, b.Address)
 		return err
 	}
 	if err := wTx.Commit(); err != nil {
+		// Release locks on error
+		s.releaseVoteID(b.VoteID.BigInt().MathBigInt())
+		s.releaseAddress(b.ProcessID, b.Address)
 		return err
 	}
 
@@ -78,8 +102,11 @@ func (s *Storage) PushPendingBallot(b *Ballot) error {
 		)
 	}
 
-	// Lock the ballot nullifier to prevent overwrites until processing is done.
-	s.lockVoteID(b.VoteID.BigInt().MathBigInt())
+	// Store the voteID to address mapping for later release
+	s.voteIDToAddress.Store(b.VoteID.String(), addressInfo{
+		ProcessID: b.ProcessID,
+		Address:   b.Address,
+	})
 
 	// Set vote ID status to pending
 	return s.setVoteIDStatus(b.ProcessID, b.VoteID, VoteIDStatusPending)
@@ -101,10 +128,33 @@ func (s *Storage) NextPendingBallot() (*Ballot, []byte, error) {
 func (s *Storage) RemovePendingBallot(processID, voteID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
+
+	// Get the ballot first to extract address for lock release (without acquiring lock again)
+	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
+	val, err := pr.Get(voteID)
+	var ballot *Ballot
+	if err == nil {
+		ballot = new(Ballot)
+		if err := DecodeArtifact(val, ballot); err != nil {
+			log.Warnw("could not decode ballot for lock release during removal",
+				"voteID", hex.EncodeToString(voteID),
+				"error", err.Error())
+			ballot = nil
+		}
+	}
+
 	// remove the ballot stuff
 	if err := s.removePendingBallot(processID, voteID); err != nil {
 		return err
 	}
+
+	// Release locks if we got the ballot
+	if ballot != nil {
+		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseAddress(ballot.ProcessID, ballot.Address)
+		s.voteIDToAddress.Delete(ballot.VoteID.String())
+	}
+
 	// Update vote ID status to error
 	return s.setVoteIDStatus(processID, voteID, VoteIDStatusError)
 }
@@ -114,8 +164,8 @@ func (s *Storage) RemovePendingBallotsByProcess(pid []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	// Collect vote IDs that belong to this process
-	votesToRemove := []types.HexBytes{}
+	// Collect ballots (not just vote IDs) that belong to this process
+	ballotsToRemove := []*Ballot{}
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
 		// Decode the ballot to check its ProcessID
@@ -129,21 +179,23 @@ func (s *Storage) RemovePendingBallotsByProcess(pid []byte) error {
 
 		// Only collect ballots that belong to the target process
 		if bytes.Equal(ballot.ProcessID, pid) {
-			keyCopy := make([]byte, len(k))
-			copy(keyCopy, k)
-			votesToRemove = append(votesToRemove, keyCopy)
+			ballotsToRemove = append(ballotsToRemove, &ballot)
 		}
 		return true
 	}); err != nil {
 		return fmt.Errorf("iterate ballots: %w", err)
 	}
 
-	// Remove the ballots and release their vote ID locks
-	for _, voteID := range votesToRemove {
-		if err := s.removePendingBallot(pid, voteID); err != nil {
+	// Remove the ballots and release their locks
+	for _, ballot := range ballotsToRemove {
+		if err := s.removePendingBallot(pid, ballot.VoteID); err != nil {
 			return err
 		}
-		s.releaseVoteID(voteID.BigInt().MathBigInt())
+		// Release both vote ID and address locks
+		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseAddress(ballot.ProcessID, ballot.Address)
+		// Clean up voteID to address mapping
+		s.voteIDToAddress.Delete(ballot.VoteID.String())
 	}
 	return nil
 }
@@ -338,9 +390,14 @@ func (s *Storage) RemoveVerifiedBallotsByProcess(processID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	votesToRemove := []types.HexBytes{}
+	type ballotToRemove struct {
+		key    []byte
+		ballot *VerifiedBallot
+	}
+	ballotsToRemove := []ballotToRemove{}
+
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
-	if err := rd.Iterate(processID, func(k, _ []byte) bool {
+	if err := rd.Iterate(processID, func(k, v []byte) bool {
 		// Ensure we work on a stable copy of the key (iterator may reuse the slice)
 		keyCopy := make([]byte, len(k))
 		copy(keyCopy, k)
@@ -348,15 +405,34 @@ func (s *Storage) RemoveVerifiedBallotsByProcess(processID []byte) error {
 		if len(keyCopy) < len(processID) || !bytes.Equal(keyCopy[:len(processID)], processID) {
 			keyCopy = append(processID, keyCopy...)
 		}
-		votesToRemove = append(votesToRemove, keyCopy)
+
+		// Decode the ballot to get address for lock release
+		var ballot VerifiedBallot
+		if err := DecodeArtifact(v, &ballot); err != nil {
+			log.Warnw("failed to decode verified ballot during removal",
+				"key", hex.EncodeToString(keyCopy),
+				"error", err)
+			// Still add to removal list even if we can't decode
+			ballotsToRemove = append(ballotsToRemove, ballotToRemove{key: keyCopy, ballot: nil})
+		} else {
+			ballotsToRemove = append(ballotsToRemove, ballotToRemove{key: keyCopy, ballot: &ballot})
+		}
 		return true
 	}); err != nil {
-		log.Warnw("failed to count verified ballots", "error", err.Error())
+		log.Warnw("failed to iterate verified ballots", "error", err.Error())
 	}
-	// iterate over all keys to remove the reservation and the verified ballot
-	for _, k := range votesToRemove {
-		if err := s.removeVerifiedBallot(k); err != nil {
+
+	// iterate over all keys to remove the reservation, the verified ballot, and release locks
+	for _, item := range ballotsToRemove {
+		if err := s.removeVerifiedBallot(item.key); err != nil {
 			return err
+		}
+
+		// Release locks if we successfully decoded the ballot
+		if item.ballot != nil {
+			s.releaseVoteID(item.ballot.VoteID.BigInt().MathBigInt())
+			s.releaseAddress(item.ballot.ProcessID, item.ballot.Address)
+			s.voteIDToAddress.Delete(item.ballot.VoteID.String())
 		}
 	}
 	// TODO: check if we need to update process stats here
@@ -365,15 +441,16 @@ func (s *Storage) RemoveVerifiedBallotsByProcess(processID []byte) error {
 
 // MarkVerifiedBallotsDone removes the reservation and the verified ballots.
 // It removes the verified ballots from the verified ballots queue and deletes
-// their reservations. It also releases the vote ID locks since processing is
-// complete and the ballots have been successfully aggregated.
+// their reservations. It also releases the vote ID and address locks since
+// processing is complete and the ballots have been successfully aggregated.
+// This allows overwrites from the same address.
 func (s *Storage) MarkVerifiedBallotsDone(keys ...[]byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	// Iterate over all keys to remove the reservation and the verified ballot
 	for _, k := range keys {
-		// Get the ballot to extract vote ID before removing
+		// Get the ballot to extract vote ID and address before removing
 		ballot := new(VerifiedBallot)
 		if err := s.getArtifact(verifiedBallotPrefix, k, ballot); err != nil {
 			if !errors.Is(err, ErrNotFound) {
@@ -384,8 +461,13 @@ func (s *Storage) MarkVerifiedBallotsDone(keys ...[]byte) error {
 			// Continue even if ballot not found - still try to remove
 		} else {
 			// Release the vote ID lock since processing is complete
-			// This allows new votes from the same address (with different vote IDs)
 			s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+
+			// Release the address lock to allow overwrites from the same address
+			s.releaseAddress(ballot.ProcessID, ballot.Address)
+
+			// Clean up voteID to address mapping
+			s.voteIDToAddress.Delete(ballot.VoteID.String())
 		}
 
 		if err := s.removeVerifiedBallot(k); err != nil {
@@ -448,8 +530,14 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 			return fmt.Errorf("remove verified ballot: %w", err)
 		}
 
-		// Release nullifier lock
+		// Release vote ID lock
 		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+
+		// Release address lock
+		s.releaseAddress(ballot.ProcessID, ballot.Address)
+
+		// Clean up voteID to address mapping
+		s.voteIDToAddress.Delete(ballot.VoteID.String())
 	}
 
 	// Update process stats for each process (only for ballots that were actually verified)

@@ -78,6 +78,7 @@ var (
 	ErrNotFound            = errors.New("not found")
 	ErrNoMoreElements      = errors.New("no more elements")
 	ErrNullifierProcessing = errors.New("nullifier is being processed")
+	ErrAddressProcessing   = errors.New("address is already processing a vote")
 
 	// Prefixes
 	ballotPrefix                = []byte("b/")
@@ -107,17 +108,25 @@ type reservationRecord struct {
 	Timestamp int64
 }
 
+// addressInfo stores the mapping from voteID to address for lock management
+type addressInfo struct {
+	ProcessID []byte
+	Address   *big.Int
+}
+
 // Storage manages artifacts in various stages with reservations.
 type Storage struct {
-	db                db.Database
-	ctx               context.Context
-	cancel            context.CancelFunc
-	censusDB          *census.CensusDB
-	stateDB           db.Database
-	globalLock        sync.Mutex              // Lock for global operations
-	workersLock       sync.Mutex              // Lock for worker-related operations
-	cache             *lru.Cache[string, any] // Cache for artifacts
-	processingVoteIDs sync.Map                // Map to track voteIDs being processed
+	db                  db.Database
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	censusDB            *census.CensusDB
+	stateDB             db.Database
+	globalLock          sync.Mutex              // Lock for global operations
+	workersLock         sync.Mutex              // Lock for worker-related operations
+	cache               *lru.Cache[string, any] // Cache for artifacts
+	processingVoteIDs   sync.Map                // Map to track voteIDs being processed
+	processingAddresses sync.Map                // Map to track addresses being processed: "processID:address" → struct{}
+	voteIDToAddress     sync.Map                // Map from voteID string → addressInfo for lock release
 }
 
 // New creates a new Storage instance.
@@ -421,13 +430,18 @@ func (s *Storage) recoverNullifiers() error {
 	var outerErr error
 	verifiedBallotsReader := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	if err := verifiedBallotsReader.Iterate(nil, func(k, v []byte) bool {
-		// Decode the verified ballot to extract voteIDs
+		// Decode the verified ballot to extract voteIDs and addresses
 		vb := &VerifiedBallot{}
 		if err := DecodeArtifact(v, vb); err != nil {
 			outerErr = fmt.Errorf("failed to decode verified ballot: %w", err)
 			return false
 		}
 		s.lockVoteID(vb.VoteID.BigInt().MathBigInt())
+		s.lockAddress(vb.ProcessID, vb.Address)
+		s.voteIDToAddress.Store(vb.VoteID.String(), addressInfo{
+			ProcessID: vb.ProcessID,
+			Address:   vb.Address,
+		})
 		return true // Continue iterating
 	}); err != nil {
 		return fmt.Errorf("failed to iterate verified ballots: %w", err)
@@ -440,14 +454,20 @@ func (s *Storage) recoverNullifiers() error {
 	// Recover nullifiers from aggregated batches
 	aggregatedBallotsReader := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	if err := aggregatedBallotsReader.Iterate(nil, func(k, v []byte) bool {
-		// Decode the aggregated ballot batch to extract voteIDs
+		// Decode the aggregated ballot batch to extract voteIDs and addresses
 		abb := &AggregatorBallotBatch{}
 		if err := DecodeArtifact(v, abb); err != nil {
 			outerErr = fmt.Errorf("failed to decode aggregated ballot batch: %w", err)
 			return false // Stop iterating on error
 		}
+		// ProcessID is at the batch level, not per ballot
 		for _, ballot := range abb.Ballots {
 			s.lockVoteID(ballot.VoteID.BigInt().MathBigInt())
+			s.lockAddress(abb.ProcessID, ballot.Address)
+			s.voteIDToAddress.Store(ballot.VoteID.String(), addressInfo{
+				ProcessID: abb.ProcessID,
+				Address:   ballot.Address,
+			})
 		}
 		return true // Continue iterating
 	}); err != nil {
@@ -472,4 +492,19 @@ func (s *Storage) IsVoteIDProcessing(bigVoteID *big.Int) bool {
 // releaseVoteID releases a voteID after processing is complete or failed.
 func (s *Storage) releaseVoteID(bigVoteID *big.Int) {
 	s.processingVoteIDs.Delete(bigVoteID.String())
+}
+
+// lockAddress attempts to lock an address to prevent concurrent processing.
+// Returns true if the lock was acquired, false if the address is already locked.
+// The key format is "processID:address" to scope locks per process.
+func (s *Storage) lockAddress(processID []byte, address *big.Int) bool {
+	key := string(processID) + ":" + address.String()
+	_, loaded := s.processingAddresses.LoadOrStore(key, struct{}{})
+	return !loaded // true if we stored (not loaded), false if already existed
+}
+
+// releaseAddress releases an address after processing is complete or failed.
+func (s *Storage) releaseAddress(processID []byte, address *big.Int) {
+	key := string(processID) + ":" + address.String()
+	s.processingAddresses.Delete(key)
 }
