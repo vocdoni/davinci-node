@@ -14,6 +14,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
+	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
@@ -21,7 +22,6 @@ import (
 	aggregatortest "github.com/vocdoni/davinci-node/circuits/test/aggregator"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/state"
-	testcensus "github.com/vocdoni/davinci-node/tests/census"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -141,7 +141,7 @@ func StateTransitionInputsForTest(
 	c.Assert(err, qt.IsNil, qt.Commentf("end batch"))
 
 	// add census data to witness
-	censusRoot, censusProofs, err := testcensus.CensusProofsForCircuitTest(
+	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(
 		aggInputs.Votes,
 		types.CensusOrigin(aggInputs.Process.CensusOrigin.Uint64()),
 		new(types.ProcessID).SetBytes(aggInputs.Process.ID.Bytes()),

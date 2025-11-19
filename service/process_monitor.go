@@ -2,17 +2,13 @@ package service
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo/memdb"
-	"github.com/vocdoni/census3-bigquery/censusdb"
+	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -21,11 +17,12 @@ import (
 // ProcessMonitor is a service that monitors new voting processes or process
 // updates and update them in the local storage.
 type ProcessMonitor struct {
-	contracts ContractsService
-	storage   *storage.Storage
-	interval  time.Duration
-	mu        sync.Mutex
-	cancel    context.CancelFunc
+	contracts        ContractsService
+	storage          *storage.Storage
+	censusDownloader *census.CensusImporter
+	interval         time.Duration
+	mu               sync.Mutex
+	cancel           context.CancelFunc
 }
 
 // ContractsService defines the interface for web3 contract operations.
@@ -46,9 +43,10 @@ func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, interva
 		stg = storage.New(kv)
 	}
 	return &ProcessMonitor{
-		contracts: contracts,
-		storage:   stg,
-		interval:  interval,
+		contracts:        contracts,
+		storage:          stg,
+		censusDownloader: census.NewCensusImporter(stg),
+		interval:         interval,
 	}
 }
 
@@ -114,7 +112,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				continue
 			}
 			// download the census if needed
-			if err := pm.ImportCensus(ctx, process); err != nil {
+			if err := pm.censusDownloader.ImportCensus(ctx, process.Census); err != nil {
 				log.Warnw("failed to download census for new process",
 					"pid", process.ID.String(),
 					"censusOrigin", process.Census.CensusOrigin.String(),
@@ -169,70 +167,4 @@ func (pm *ProcessMonitor) monitorProcesses(
 			}
 		}
 	}
-}
-
-// ImportCensus downloads and imports the census from the given URI based on
-// its origin:
-//   - For CensusOriginMerkleTree, it expects a URL pointing to a JSON dump of
-//     the census merkle tree, downloads it, and imports it into the census DB
-//     by its census root.
-//
-// It returns an error if the download or import fails.
-//
-// TODO: Think about if this function should be here or in another package
-// based on the final implementation of census downloading and importing by
-// census origin.
-func (pm *ProcessMonitor) ImportCensus(ctx context.Context, process *types.Process) error {
-	origin := process.Census.CensusOrigin
-	uri := process.Census.CensusURI
-
-	log.Debugw("downloading census",
-		"pid", process.ID.String(),
-		"origin", process.Census.CensusOrigin.String(),
-		"uri", uri)
-
-	var ref *censusdb.CensusRef
-	switch process.Census.CensusOrigin {
-	case types.CensusOriginMerkleTreeOffchainStaticV1:
-		// Check if the URI is a valid URL
-		if u, err := url.Parse(uri); err != nil || u.Scheme == "" || u.Host == "" {
-			return fmt.Errorf("invalid URL: %s", uri)
-		}
-		// Download json dump from URI
-		dumpRes, err := http.Get(process.Census.CensusURI)
-		if err != nil {
-			return fmt.Errorf("failed to download census merkle tree dump from %s: %w", process.Census.CensusURI, err)
-		}
-		defer func() {
-			if err := dumpRes.Body.Close(); err != nil {
-				log.Warnw("failed to close census merkle tree dump response body",
-					"pid", process.ID.String(),
-					"uri", uri,
-					"err", err.Error())
-			}
-		}()
-
-		if dumpRes.StatusCode != http.StatusOK {
-			return fmt.Errorf("failed to download census merkle tree dump from %s: status code %d", uri, dumpRes.StatusCode)
-		}
-		// Decode the JSON as census merkle tree dump
-		dump, err := io.ReadAll(dumpRes.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read census merkle tree dump from %s: %w", uri, err)
-		}
-
-		// Import the census merkle tree dump into the census DB
-		if ref, err = pm.storage.CensusDB().Import(dump); err != nil {
-			return fmt.Errorf("failed to import census merkle tree dump from %s: %w", uri, err)
-		}
-	default:
-		return fmt.Errorf("unsupported census origin: %s", origin.String())
-	}
-	log.Infow("census imported",
-		"pid", process.ID.String(),
-		"origin", origin.String(),
-		"uri", uri,
-		"length", ref.Size(),
-		"root", hex.EncodeToString(ref.Root()))
-	return nil
 }

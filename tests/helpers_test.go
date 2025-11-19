@@ -16,8 +16,11 @@ import (
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/rs/zerolog"
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
+	c3config "github.com/vocdoni/census3-bigquery/config"
+	c3service "github.com/vocdoni/census3-bigquery/service"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
+	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
@@ -32,7 +35,6 @@ import (
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/tests/census"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
@@ -60,11 +62,17 @@ const (
 	cspCensusEnvVarName               = "CSP_CENSUS"                             // environment variable name to select between csp or merkle tree census (by default merkle tree)
 )
 
-var defaultBatchTimeWindow = 120 * time.Second // default batch time window for sequencer
+var (
+	defaultBatchTimeWindow = 120 * time.Second // default batch time window for sequencer
+	defaultAPIPort         = util.RandomInt(40000, 60000)
+	defaultCensus3Port     = util.RandomInt(40000, 60000)
+	defaultCensus3URL      = fmt.Sprintf("http://localhost:%d", defaultCensus3Port)
+)
 
 // Services struct holds all test services
 type Services struct {
 	API       *service.APIService
+	Census3   *c3service.Service
 	Sequencer *sequencer.Sequencer
 	Storage   *storage.Storage
 	Contracts *web3.Contracts
@@ -102,9 +110,7 @@ func setupAPI(
 	banRules *workers.WorkerBanRules,
 	web3Conf config.DavinciWeb3Config,
 ) (*service.APIService, error) {
-	tmpPort := util.RandomInt(40000, 60000)
-
-	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", web3Conf, false)
+	api := service.NewAPI(db, "127.0.0.1", defaultAPIPort, "test", web3Conf, false)
 	api.SetWorkerConfig(workerSeed, workerTokenExpiration, workerTimeout, banRules)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
@@ -113,6 +119,37 @@ func setupAPI(
 	// Wait for the HTTP server to start
 	time.Sleep(500 * time.Millisecond)
 	return api, nil
+}
+
+// setupCensusService creates and starts a new census3-bigquery service for
+// testing.
+func setupCensusService() (*c3service.Service, func(), error) {
+	// create temp dir for census3-bigquery
+	tempDir, err := os.MkdirTemp("", "census3-bigquery-test-")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create temp dir for census3-bigquery: %w", err)
+	}
+
+	srv, err := c3service.New(&c3config.Config{
+		APIPort:       defaultCensus3Port,
+		DataDir:       tempDir,
+		MaxCensusSize: 1000000,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create census3-bigquery service: %w", err)
+	}
+
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Errorw(err, "census3-bigquery service exited with error")
+		}
+	}()
+	return srv, func() {
+		srv.Stop()
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Warnw("failed to remove census3-bigquery temp dir", "error", err)
+		}
+	}, nil
 }
 
 // setupWeb3 sets up the web3 contracts for testing. It deploys the contracts
@@ -396,6 +433,11 @@ func NewTestService(
 	workerTimeout time.Duration,
 	banRules *workers.WorkerBanRules,
 ) (*Services, func(), error) {
+	// Initialize census3 service
+	c3srv, c3cleanup, err := setupCensusService()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to setup census3 service: %w", err)
+	}
 	// Initialize the web3 contracts
 	contracts, web3Cleanup, err := setupWeb3(ctx)
 	if err != nil {
@@ -410,6 +452,7 @@ func NewTestService(
 	stg := storage.New(kv)
 
 	services := &Services{
+		Census3:   c3srv,
 		Storage:   stg,
 		Contracts: contracts,
 	}
@@ -462,6 +505,7 @@ func NewTestService(
 		pm.Stop()
 		vp.Stop()
 		stg.Close()
+		c3cleanup()
 		web3Cleanup()
 	}
 
@@ -495,11 +539,12 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 		}
 		return root.Root, "", signers, nil
 	} else {
-		censusRoot, censusURI, err := census.ServeCensusMerkleTreeForTest(ctx, votes)
+		// censusRoot, censusURI, err := census.ServeCensusMerkleTreeForTest(ctx, votes)
+		censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, votes, defaultCensus3URL)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 		}
-		return censusRoot.Bytes(), censusURI, signers, nil
+		return censusRoot.Bytes(), defaultCensus3URL + censusURI, signers, nil
 	}
 }
 

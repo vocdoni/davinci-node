@@ -17,6 +17,7 @@ import (
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
+	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
@@ -28,7 +29,6 @@ import (
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/tests/census"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
@@ -378,7 +378,7 @@ func createCensus(ctx context.Context, size int, weight uint64) ([]byte, string,
 			Weight:  new(big.Int).SetUint64(weight),
 		})
 	}
-	censusRoot, censusURI, err := census.ServeCensusMerkleTreeForTest(ctx, votes)
+	censusRoot, censusURI, err := censustest.ServeCensusIMTForTest(ctx, votes)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 	}
