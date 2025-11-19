@@ -126,6 +126,21 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		return nil
 	}
 
+	// Defensive check: ensure no duplicate addresses in pulled batch
+	// This should never happen due to PullVerifiedBallots deduplication,
+	// but we add this as a safety net to catch any potential bugs
+	addressSeen := make(map[string]bool)
+	for _, b := range ballots {
+		addr := b.Address.String()
+		if addressSeen[addr] {
+			log.Warnw("CRITICAL: duplicate address detected in aggregation batch",
+				"address", addr,
+				"processID", fmt.Sprintf("%x", pid))
+			return fmt.Errorf("duplicate address in batch: %s", addr)
+		}
+		addressSeen[addr] = true
+	}
+
 	log.Debugw("aggregating ballots",
 		"processID", fmt.Sprintf("%x", pid),
 		"ballotCount", len(ballots),
