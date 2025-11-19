@@ -510,6 +510,7 @@ func createProcess(
 			return nil, nil, fmt.Errorf("process creation timeout: %v", processCtx.Err())
 		}
 	}
+	time.Sleep(5 * time.Second) // wait a bit more to ensure everything is set up
 	return pid, encryptionKeys, nil
 }
 

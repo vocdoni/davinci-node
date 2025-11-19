@@ -365,13 +365,29 @@ func (s *Storage) RemoveVerifiedBallotsByProcess(processID []byte) error {
 
 // MarkVerifiedBallotsDone removes the reservation and the verified ballots.
 // It removes the verified ballots from the verified ballots queue and deletes
-// their reservations.
+// their reservations. It also releases the vote ID locks since processing is
+// complete and the ballots have been successfully aggregated.
 func (s *Storage) MarkVerifiedBallotsDone(keys ...[]byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	// Iterate over all keys to remove the reservation and the verified ballot
 	for _, k := range keys {
+		// Get the ballot to extract vote ID before removing
+		ballot := new(VerifiedBallot)
+		if err := s.getArtifact(verifiedBallotPrefix, k, ballot); err != nil {
+			if !errors.Is(err, ErrNotFound) {
+				log.Warnw("could not get verified ballot during done marking",
+					"key", hex.EncodeToString(k),
+					"error", err.Error())
+			}
+			// Continue even if ballot not found - still try to remove
+		} else {
+			// Release the vote ID lock since processing is complete
+			// This allows new votes from the same address (with different vote IDs)
+			s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		}
+
 		if err := s.removeVerifiedBallot(k); err != nil {
 			return err
 		}
