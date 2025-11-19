@@ -224,7 +224,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// push the ballot to the sequencer storage queue to be verified, aggregated
-	// and published
+	// and published. The address locking is handled atomically inside PushPendingBallot
 	if err := a.storage.PushPendingBallot(ballot); err != nil {
 		switch {
 		case errors.Is(err, storage.ErroBallotAlreadyExists):
@@ -232,6 +232,9 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			return
 		case errors.Is(err, storage.ErrNullifierProcessing):
 			ErrBallotAlreadyProcessing.Write(w)
+			return
+		case errors.Is(err, storage.ErrAddressProcessing):
+			ErrAddressAlreadyProcessing.Write(w)
 			return
 		default:
 			ErrGenericInternalServerError.Withf("could not push ballot: %v", err).Write(w)

@@ -126,8 +126,8 @@ func TestVoteIDLockReleaseOnFailure(t *testing.T) {
 		qt.Commentf("Vote ID lock should be released after failure"))
 }
 
-// TestNoDuplicateAddressesInBatch verifies that PullVerifiedBallots
-// prevents multiple ballots with the same address from being in the same batch
+// TestNoDuplicateAddressesInBatch verifies that the address locking prevents
+// multiple ballots from the same address from being submitted simultaneously
 func TestNoDuplicateAddressesInBatch(t *testing.T) {
 	c := qt.New(t)
 	stg := newTestStorage(t)
@@ -152,47 +152,41 @@ func TestNoDuplicateAddressesInBatch(t *testing.T) {
 		Address:   new(big.Int).SetBytes(address), // Same address
 	}
 
-	// Push both ballots
+	// Push first ballot - should succeed
 	c.Assert(stg.PushPendingBallot(ballot1), qt.IsNil)
-	c.Assert(stg.PushPendingBallot(ballot2), qt.IsNil)
 
-	// Process both to verified
-	for i := 0; i < 2; i++ {
-		_, key, err := stg.NextPendingBallot()
-		c.Assert(err, qt.IsNil)
+	// Try to push second ballot from same address - should fail with ErrAddressProcessing
+	err := stg.PushPendingBallot(ballot2)
+	c.Assert(err, qt.Equals, ErrAddressProcessing,
+		qt.Commentf("Should reject second ballot from same address while first is processing"))
 
-		var voteID []byte
-		if i == 0 {
-			voteID = voteID1
-		} else {
-			voteID = voteID2
-		}
+	// Process first ballot through to aggregation
+	_, key, err := stg.NextPendingBallot()
+	c.Assert(err, qt.IsNil)
 
-		verifiedBallot := &VerifiedBallot{
-			ProcessID: types.HexBytes(pid),
-			VoteID:    types.HexBytes(voteID),
-			Address:   new(big.Int).SetBytes(address),
-		}
-		c.Assert(stg.MarkBallotVerified(key, verifiedBallot), qt.IsNil)
+	verifiedBallot := &VerifiedBallot{
+		ProcessID: types.HexBytes(pid),
+		VoteID:    types.HexBytes(voteID1),
+		Address:   new(big.Int).SetBytes(address),
 	}
+	c.Assert(stg.MarkBallotVerified(key, verifiedBallot), qt.IsNil)
 
-	// Both should be in verified queue
-	c.Assert(stg.CountVerifiedBallots(pid), qt.Equals, 2)
-
-	// Pull verified ballots - should only get ONE due to address deduplication
+	// Pull and mark done (simulating aggregation)
 	vbs, keys, err := stg.PullVerifiedBallots(pid, 10)
 	c.Assert(err, qt.IsNil)
-	c.Assert(len(vbs), qt.Equals, 1,
-		qt.Commentf("Should only pull one ballot per address per batch"))
-
-	// Verify the address is the expected one
-	c.Assert(vbs[0].Address.Bytes(), qt.DeepEquals, address)
-
-	// After marking done, the other ballot should still be available
+	c.Assert(len(vbs), qt.Equals, 1)
 	c.Assert(stg.MarkVerifiedBallotsDone(keys...), qt.IsNil)
 
-	// Second ballot should now be available for next batch
-	c.Assert(stg.CountVerifiedBallots(pid), qt.Equals, 1)
+	// Now second ballot should be accepted (overwrite scenario)
+	// Note: We need to create a fresh ballot object since the previous push attempt
+	// may have left some state
+	ballot2Fresh := &Ballot{
+		ProcessID: types.HexBytes(pid),
+		VoteID:    types.HexBytes(voteID2),
+		Address:   new(big.Int).SetBytes(address),
+	}
+	c.Assert(stg.PushPendingBallot(ballot2Fresh), qt.IsNil,
+		qt.Commentf("Should allow overwrite after first ballot is aggregated"))
 }
 
 // TestMultipleOverwrites verifies that multiple overwrites work correctly

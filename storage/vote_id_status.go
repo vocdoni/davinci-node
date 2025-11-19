@@ -92,6 +92,9 @@ func (s *Storage) markVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
 		if err := wTx.Set(key, status); err != nil {
 			return fmt.Errorf("failed to mark vote ID settled: %w", err)
 		}
+
+		// Note: Address locks are released earlier in MarkVerifiedBallotsDone
+		// to allow overwrites after aggregation, not after settlement
 	}
 
 	return wTx.Commit()
