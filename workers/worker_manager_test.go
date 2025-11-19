@@ -514,7 +514,7 @@ func TestWorkerManagerConcurrency(t *testing.T) {
 	c := qt.New(t)
 
 	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	wm.Start(ctx)
