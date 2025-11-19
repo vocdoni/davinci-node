@@ -29,6 +29,8 @@ type ContractsService interface {
 	MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error)
 	MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error)
 	CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error)
+	Process(processID []byte) (*types.Process, error)
+	RegisterKnownProcess(processID string)
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
@@ -55,6 +57,11 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 
 	if pm.cancel != nil {
 		return fmt.Errorf("service already running")
+	}
+
+	// Initialize known processes from storage before starting monitors
+	if err := pm.initializeKnownProcesses(); err != nil {
+		return fmt.Errorf("failed to initialize known processes: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -91,6 +98,110 @@ func (pm *ProcessMonitor) Stop() {
 		pm.cancel()
 		pm.cancel = nil
 	}
+}
+
+// initializeKnownProcesses loads all existing process IDs from storage and
+// registers them in the contracts' knownProcesses map. This ensures that after
+// a restart, state transition events for existing processes are not filtered out.
+// It also syncs active processes from the blockchain to catch up on any missed
+// state transitions.
+func (pm *ProcessMonitor) initializeKnownProcesses() error {
+	// Get all process IDs from storage
+	pids, err := pm.storage.ListProcesses()
+	if err != nil {
+		return fmt.Errorf("failed to list processes: %w", err)
+	}
+
+	// Register each process ID in the contracts' knownProcesses map
+	for _, pid := range pids {
+		processID := fmt.Sprintf("%x", pid)
+		pm.contracts.RegisterKnownProcess(processID)
+	}
+
+	log.Infow("initialized known processes from storage", "count", len(pids))
+
+	// Sync active processes from blockchain to catch up on missed state transitions
+	if err := pm.syncActiveProcessesFromBlockchain(); err != nil {
+		log.Warnw("failed to sync processes from blockchain", "error", err)
+		// Don't fail startup - log warning and continue
+	}
+
+	return nil
+}
+
+// syncActiveProcessesFromBlockchain fetches current state from blockchain for
+// all processes that are accepting votes. This ensures that after a restart,
+// any missed state transitions are reflected in local storage.
+func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
+	pids, err := pm.storage.ListProcesses()
+	if err != nil {
+		return fmt.Errorf("failed to list processes: %w", err)
+	}
+
+	syncCount := 0
+	for _, pid := range pids {
+		// Check if process is accepting votes
+		isAccepting, err := pm.storage.ProcessIsAcceptingVotes(pid)
+		if err != nil || !isAccepting {
+			continue
+		}
+
+		// Fetch current state from blockchain
+		blockchainProcess, err := pm.contracts.Process(pid)
+		if err != nil {
+			log.Warnw("failed to fetch process from blockchain during sync",
+				"pid", fmt.Sprintf("%x", pid), "error", err)
+			continue
+		}
+
+		// Fetch from local storage
+		localProcess, err := pm.storage.Process(new(types.ProcessID).SetBytes(pid))
+		if err != nil {
+			log.Warnw("failed to fetch process from storage during sync",
+				"pid", fmt.Sprintf("%x", pid), "error", err)
+			continue
+		}
+
+		// Compare and update if different
+		needsUpdate := false
+		if !localProcess.StateRoot.Equal(blockchainProcess.StateRoot) {
+			needsUpdate = true
+		}
+		if !localProcess.VoteCount.Equal(blockchainProcess.VoteCount) {
+			needsUpdate = true
+		}
+		if !localProcess.VoteOverwrittenCount.Equal(blockchainProcess.VoteOverwrittenCount) {
+			needsUpdate = true
+		}
+
+		if needsUpdate {
+			// Use ProcessUpdateCallbackSetStateRoot to set absolute values from blockchain
+			if err := pm.storage.UpdateProcess(pid,
+				storage.ProcessUpdateCallbackSetStateRoot(
+					blockchainProcess.StateRoot,
+					blockchainProcess.VoteCount,
+					blockchainProcess.VoteOverwrittenCount,
+				)); err != nil {
+				log.Warnw("failed to sync process from blockchain",
+					"pid", fmt.Sprintf("%x", pid), "error", err)
+				continue
+			}
+
+			log.Infow("synced process from blockchain",
+				"pid", fmt.Sprintf("%x", pid),
+				"stateRoot", blockchainProcess.StateRoot.String(),
+				"voteCount", blockchainProcess.VoteCount.String(),
+				"overwrittenCount", blockchainProcess.VoteOverwrittenCount.String())
+			syncCount++
+		}
+	}
+
+	if syncCount > 0 {
+		log.Infow("blockchain sync completed",
+			"syncedProcesses", syncCount,
+			"totalProcesses", len(pids))
+	}
+	return nil
 }
 
 func (pm *ProcessMonitor) monitorProcesses(

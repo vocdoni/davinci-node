@@ -309,23 +309,36 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 				return
 			case <-ticker.C:
 				end := c.CurrentBlock()
-				if end <= c.lastWatchProcessBlock {
+				// Use dedicated cursor for process creation events to avoid race conditions
+				c.watchBlockMutex.RLock()
+				start := c.lastWatchProcessCreationBlock
+				c.watchBlockMutex.RUnlock()
+				if end <= start {
 					continue
 				}
 				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, End: &end, Context: ctxQuery}, nil, nil)
+				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil, nil)
 				cancel()
 				if err != nil || iter == nil {
 					log.Debugw("failed to filter process created, retrying", "err", err)
 					continue
 				}
-				c.lastWatchProcessBlock = end
+				// Update cursor after successful query
+				c.watchBlockMutex.Lock()
+				c.lastWatchProcessCreationBlock = end
+				c.watchBlockMutex.Unlock()
 				for iter.Next() {
 					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
-					if _, exists := c.knownProcesses[processID]; exists {
+					// Thread-safe check and update of knownProcesses map
+					c.knownProcessesMutex.RLock()
+					_, exists := c.knownProcesses[processID]
+					c.knownProcessesMutex.RUnlock()
+					if exists {
 						continue
 					}
+					c.knownProcessesMutex.Lock()
 					c.knownProcesses[processID] = struct{}{}
+					c.knownProcessesMutex.Unlock()
 					process, err := c.Process(iter.Event.ProcessId[:])
 					if err != nil {
 						log.Errorw(err, "failed to get process while monitoring process creation")
@@ -355,20 +368,31 @@ func (c *Contracts) MonitorProcessStatusChanges(ctx context.Context, interval ti
 				return
 			case <-ticker.C:
 				end := c.CurrentBlock()
-				if end <= c.lastWatchProcessBlock {
+				// Use dedicated cursor for status change events to avoid race conditions
+				c.watchBlockMutex.RLock()
+				start := c.lastWatchProcessStatusBlock
+				c.watchBlockMutex.RUnlock()
+				if end <= start {
 					continue
 				}
 				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessStatusChanged(&bind.FilterOpts{Start: c.lastWatchProcessBlock, End: &end, Context: ctxQuery}, nil)
+				iter, err := c.processes.FilterProcessStatusChanged(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil)
 				cancel()
 				if err != nil || iter == nil {
 					log.Debugw("failed to filter process finalized, retrying", "err", err)
 					continue
 				}
-				c.lastWatchProcessBlock = end
+				// Update cursor after successful query
+				c.watchBlockMutex.Lock()
+				c.lastWatchProcessStatusBlock = end
+				c.watchBlockMutex.Unlock()
 				for iter.Next() {
 					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
-					if _, exists := c.knownProcesses[processID]; !exists {
+					// Thread-safe check of knownProcesses map
+					c.knownProcessesMutex.RLock()
+					_, exists := c.knownProcesses[processID]
+					c.knownProcessesMutex.RUnlock()
+					if !exists {
 						continue
 					}
 					process, err := c.Process(iter.Event.ProcessId[:])
@@ -405,20 +429,31 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 				return
 			case <-ticker.C:
 				end := c.CurrentBlock()
-				if end <= c.lastWatchProcessBlock {
+				// Use dedicated cursor for state root events to prevent concurrent
+				// monitors from interfering with each other's block tracking.
+				c.watchBlockMutex.RLock()
+				start := c.lastWatchProcessStateRootBlock
+				c.watchBlockMutex.RUnlock()
+				if end <= start {
 					continue
 				}
 				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessStateRootUpdated(&bind.FilterOpts{Start: c.lastWatchProcessBlock, End: &end, Context: ctxQuery}, nil, nil)
+				iter, err := c.processes.FilterProcessStateRootUpdated(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil, nil)
 				cancel()
 				if err != nil || iter == nil {
 					log.Debugw("failed to filter process finalized, retrying", "err", err)
 					continue
 				}
-				c.lastWatchProcessBlock = end
+				c.watchBlockMutex.Lock()
+				c.lastWatchProcessStateRootBlock = end
+				c.watchBlockMutex.Unlock()
 				for iter.Next() {
 					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
-					if _, exists := c.knownProcesses[processID]; !exists {
+					// Check if process is registered in knownProcesses map
+					c.knownProcessesMutex.RLock()
+					_, exists := c.knownProcesses[processID]
+					c.knownProcessesMutex.RUnlock()
+					if !exists {
 						continue
 					}
 					process, err := c.Process(iter.Event.ProcessId[:])

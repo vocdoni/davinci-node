@@ -75,10 +75,14 @@ type Contracts struct {
 	currentBlockLastUpdate time.Time
 	currentBlockMutex      sync.Mutex
 
-	knownProcesses        map[string]struct{}
-	lastWatchProcessBlock uint64
-	knownOrganizations    map[string]struct{}
-	lastWatchOrgBlock     uint64
+	knownProcesses                 map[string]struct{}
+	knownProcessesMutex            sync.RWMutex
+	lastWatchProcessCreationBlock  uint64
+	lastWatchProcessStatusBlock    uint64
+	lastWatchProcessStateRootBlock uint64
+	watchBlockMutex                sync.RWMutex
+	knownOrganizations             map[string]struct{}
+	lastWatchOrgBlock              uint64
 
 	// Transaction manager for nonce management and stuck transaction recovery
 	txManager *txmanager.TxManager
@@ -141,17 +145,19 @@ func New(web3rpcs []string, web3cApi string, gasMultiplier float64) (*Contracts,
 	}
 
 	return &Contracts{
-		ChainID:                  *chainID,
-		web3pool:                 w3pool,
-		cli:                      cli,
-		Web3ConsensusAPIEndpoint: web3cApi,
-		GasMultiplier:            gasMultiplier,
-		knownProcesses:           make(map[string]struct{}),
-		knownOrganizations:       make(map[string]struct{}),
-		lastWatchProcessBlock:    uint64(startBlock),
-		lastWatchOrgBlock:        uint64(startBlock),
-		currentBlock:             lastBlock,
-		currentBlockLastUpdate:   time.Now(),
+		ChainID:                        *chainID,
+		web3pool:                       w3pool,
+		cli:                            cli,
+		Web3ConsensusAPIEndpoint:       web3cApi,
+		GasMultiplier:                  gasMultiplier,
+		knownProcesses:                 make(map[string]struct{}),
+		knownOrganizations:             make(map[string]struct{}),
+		lastWatchProcessCreationBlock:  uint64(startBlock),
+		lastWatchProcessStatusBlock:    uint64(startBlock),
+		lastWatchProcessStateRootBlock: uint64(startBlock),
+		lastWatchOrgBlock:              uint64(startBlock),
+		currentBlock:                   lastBlock,
+		currentBlockLastUpdate:         time.Now(),
 	}, nil
 }
 
@@ -637,4 +643,13 @@ func (c *Contracts) OrganizationRegistryAddress() (string, error) {
 		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
 	}
 	return npbindings.GetContractAddress(npbindings.OrganizationRegistryContract, chainName), nil
+}
+
+// RegisterKnownProcess adds a process ID to the knownProcesses map.
+// This is used during initialization to register processes that were
+// created before the monitor started, ensuring their events are not filtered out.
+func (c *Contracts) RegisterKnownProcess(processID string) {
+	c.knownProcessesMutex.Lock()
+	defer c.knownProcessesMutex.Unlock()
+	c.knownProcesses[processID] = struct{}{}
 }

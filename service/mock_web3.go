@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -79,4 +80,20 @@ func (m *MockContracts) WaitTxByHash(hash common.Hash, timeout time.Duration, cb
 
 func (m *MockContracts) WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error {
 	return nil
+}
+
+func (m *MockContracts) Process(processID []byte) (*types.Process, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, proc := range m.processes {
+		if string(proc.ID) == string(processID) {
+			return proc, nil
+		}
+	}
+	return nil, fmt.Errorf("process not found")
+}
+
+func (m *MockContracts) RegisterKnownProcess(processID string) {
+	// No-op for mock
 }
