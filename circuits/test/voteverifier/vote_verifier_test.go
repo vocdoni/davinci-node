@@ -59,7 +59,7 @@ func TestVerifyCSPVoteCircuit(t *testing.T) {
 			PubKey:  s.PublicKey,
 			Address: s.Address(),
 		},
-	}, processID, types.CensusOriginCSPEdDSABLS12377V1)
+	}, processID, types.CensusOriginCSPEdDSABN254V1)
 	// generate proof
 	assert := test.NewAssert(t)
 	now := time.Now()

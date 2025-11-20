@@ -75,7 +75,7 @@ func VoteVerifierInputHash(
 	encryptedBallot *elgamal.Ballot,
 	censusOrigin types.CensusOrigin,
 ) (*big.Int, error) {
-	hashInputs := make([]*big.Int, 0, 8+len(encryptedBallot.BigInts()))
+	hashInputs := []*big.Int{}
 	hashInputs = append(hashInputs, processID)
 	hashInputs = append(hashInputs, censusOrigin.BigInt().MathBigInt())
 	hashInputs = append(hashInputs, ballotMode.Serialize()...)

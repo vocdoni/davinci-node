@@ -13,6 +13,9 @@ import (
 	imtcensus "github.com/vocdoni/lean-imt-go/census"
 )
 
+// CensusIMTForTest creates a CensusIMT instance for testing purposes including
+// the provided votes as census participants. It returns the initialized
+// CensusIMT or an error if the process fails.
 func CensusIMTForTest(votes []state.Vote) (*imtcensus.CensusIMT, error) {
 	// generate the census with voters information
 	votersData := map[*big.Int]*big.Int{}

@@ -135,6 +135,13 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// overwrite census origin with the process one to avoid inconsistencies
 	// and check the census proof with it
 	vote.CensusProof.CensusOrigin = process.Census.CensusOrigin
+	// validate the census origin
+	if !vote.CensusProof.CensusOrigin.Valid() {
+		ErrMalformedBody.Withf("invalid process census origin").Write(w)
+		log.Errorf("invalid process census origin: %s", vote.ProcessID.String())
+		return
+	}
+	// validate the census proof
 	if !vote.CensusProof.Valid() {
 		ErrMalformedBody.Withf("invalid census proof").Write(w)
 		return

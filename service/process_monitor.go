@@ -222,7 +222,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
-			// download the census if needed
+			// download and import the process census if needed
 			if err := pm.censusDownloader.ImportCensus(ctx, process.Census); err != nil {
 				log.Warnw("failed to download census for new process",
 					"pid", process.ID.String(),

@@ -73,7 +73,7 @@ func VoteVerifierInputsForTest(
 			finalProcessID = voterProof.ProcessID
 		}
 		addresses = append(addresses, voterProof.Address)
-		weights = append(weights, big.NewInt(int64(circuits.MockWeight)))
+		weights = append(weights, big.NewInt(circuits.MockWeight))
 		voteIDs = append(voteIDs, voterProof.VoteID)
 		ballots = append(ballots, *voterProof.Ballot)
 		// sign the inputs hash with the private key
@@ -87,7 +87,7 @@ func VoteVerifierInputsForTest(
 			encryptionKey,
 			voterProof.Address,
 			voterProof.VoteID,
-			big.NewInt(int64(circuits.MockWeight)),
+			big.NewInt(circuits.MockWeight),
 			voterProof.Ballot.FromTEtoRTE(),
 			censusOrigin,
 		)

@@ -35,6 +35,7 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 
 	switch census.CensusOrigin {
 	case types.CensusOriginMerkleTreeOffchainStaticV1:
+		// Use JSON dump importer for Merkle Tree censuses
 		if err := downloadAndImportJSON(
 			d.storage,
 			census.CensusURI,
