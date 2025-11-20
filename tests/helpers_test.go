@@ -539,12 +539,11 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 		}
 		return root.Root, "", signers, nil
 	} else {
-		// censusRoot, censusURI, err := census.ServeCensusMerkleTreeForTest(ctx, votes)
 		censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, votes, defaultCensus3URL)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 		}
-		return censusRoot.Bytes(), defaultCensus3URL + censusURI, signers, nil
+		return censusRoot.Bytes(), censusURI, signers, nil
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/ethereum/go-ethereum/common"
 	c3api "github.com/vocdoni/census3-bigquery/api"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -27,7 +28,7 @@ func NewCensus3MerkleTreeForTest(ctx context.Context, votes []state.Vote, c3url 
 	participants := []c3api.CensusParticipant{}
 	for _, v := range votes {
 		participants = append(participants, c3api.CensusParticipant{
-			Key:    v.Address.Bytes(),
+			Key:    common.BigToAddress(v.Address).Bytes(),
 			Weight: new(types.BigInt).SetBigInt(v.Weight),
 		})
 	}
@@ -43,9 +44,13 @@ func NewCensus3MerkleTreeForTest(ctx context.Context, votes []state.Vote, c3url 
 	if size != len(participants) {
 		return nil, "", fmt.Errorf("census size mismatch: expected %d, got %d", len(participants), size)
 	}
-	log.Printf("census %s created.\turi=%s\troot=%s\tsize=%d", censusId, uri, root.String(), size)
+	censusURI, err := url.JoinPath(c3url, uri)
+	if err != nil {
+		return nil, "", fmt.Errorf("error creating census URI: %w", err)
+	}
+	log.Printf("census %s created from '%s' with root '%s' and size of %d", censusId, uri, root.String(), size)
 	// return the census root and uri
-	return root, uri, nil
+	return root, censusURI, nil
 }
 
 func c3NewCensus(c3url string) (string, error) {
