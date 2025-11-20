@@ -30,7 +30,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/census3-bigquery v0.0.0-20251119154922-d23bf34adc2e
-	github.com/vocdoni/davinci-contracts v0.0.25-0.20251120082902-e1205aec053d
+	github.com/vocdoni/davinci-contracts v0.0.25-0.20251120194345-ddd51f7f97d6
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
 	github.com/vocdoni/lean-imt-go v0.0.0-20251119104748-5543d73007a1
 	go.mongodb.org/mongo-driver v1.17.6

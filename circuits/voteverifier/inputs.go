@@ -19,6 +19,7 @@ type VoteVerifierInputs struct {
 	EncryptionKey   circuits.EncryptionKey[*big.Int]
 	Address         *big.Int
 	VoteID          types.HexBytes
+	UserWeight      *big.Int
 	EncryptedBallot *elgamal.Ballot
 	CensusOrigin    types.CensusOrigin
 	CSPProof        csp.CSPProof
@@ -38,6 +39,7 @@ func (vi *VoteVerifierInputs) FromProcessBallot(process *types.Process, b *stora
 	vi.EncryptionKey = circuits.EncryptionKeyToCircuit(*process.EncryptionKey)
 	vi.Address = b.Address
 	vi.VoteID = b.VoteID
+	vi.UserWeight = b.VoterWeight
 	vi.EncryptedBallot = b.EncryptedBallot
 	return nil
 }
@@ -50,6 +52,7 @@ func (vi *VoteVerifierInputs) Serialize() []*big.Int {
 	inputs = append(inputs, vi.EncryptionKey.Serialize()...)
 	inputs = append(inputs, vi.Address)
 	inputs = append(inputs, vi.VoteID.BigInt().MathBigInt())
+	inputs = append(inputs, vi.UserWeight)
 	inputs = append(inputs, vi.EncryptedBallot.BigInts()...)
 	return inputs
 }
@@ -68,6 +71,7 @@ func VoteVerifierInputHash(
 	encryptionKey circuits.EncryptionKey[*big.Int],
 	address *big.Int,
 	voteID types.HexBytes,
+	userWeight *big.Int,
 	encryptedBallot *elgamal.Ballot,
 	censusOrigin types.CensusOrigin,
 ) (*big.Int, error) {
@@ -78,6 +82,7 @@ func VoteVerifierInputHash(
 	hashInputs = append(hashInputs, encryptionKey.Serialize()...)
 	hashInputs = append(hashInputs, address)
 	hashInputs = append(hashInputs, voteID.BigInt().MathBigInt())
+	hashInputs = append(hashInputs, userWeight)
 	hashInputs = append(hashInputs, encryptedBallot.BigInts()...)
 
 	inputHash, err := mimc7.Hash(hashInputs, nil)

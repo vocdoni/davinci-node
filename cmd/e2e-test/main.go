@@ -521,7 +521,7 @@ func createVote(
 		},
 		K:           (*types.BigInt)(k),
 		BallotMode:  bm,
-		Weight:      (*types.BigInt)(new(big.Int).SetUint64(circuits.MockWeight)),
+		Weight:      new(types.BigInt).SetInt(circuits.MockWeight),
 		FieldValues: fields,
 	}
 
@@ -564,6 +564,9 @@ func createVote(
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 		VoteID:           wasmResult.VoteID,
+		CensusProof: types.CensusProof{
+			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
+		},
 	}, nil
 }
 

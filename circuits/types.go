@@ -339,8 +339,10 @@ type Vote[T any] struct {
 
 func (v Vote[T]) ToEmulated(api frontend.API) EmulatedVote[sw_bn254.ScalarField] {
 	return EmulatedVote[sw_bn254.ScalarField]{
-		Ballot:  v.Ballot.ToEmulatedBallot(api),
-		Address: *varToEmulatedElementBN254(api, v.Address),
+		Ballot:     v.Ballot.ToEmulatedBallot(api),
+		Address:    *varToEmulatedElementBN254(api, v.Address),
+		VoteID:     *varToEmulatedElementBN254(api, v.VoteID),
+		UserWeight: *varToEmulatedElementBN254(api, v.UserWeight),
 	}
 }
 
@@ -353,6 +355,7 @@ func (v Vote[T]) SerializeAsVars() []frontend.Variable {
 	list := []frontend.Variable{}
 	list = append(list, v.Address)
 	list = append(list, v.VoteID)
+	list = append(list, v.UserWeight)
 	list = append(list, v.Ballot.SerializeVars()...)
 	return list
 }
@@ -525,11 +528,13 @@ type EmulatedVote[F emulated.FieldParams] struct {
 //
 //	EmulatedVote.Address
 //	EmulatedVote.VoteID
+//	EmulatedVote.UserWeight
 //	EmulatedVote.Ballot
 func (z *EmulatedVote[F]) Serialize() []emulated.Element[F] {
 	list := []emulated.Element[F]{}
 	list = append(list, z.Address)
 	list = append(list, z.VoteID)
+	list = append(list, z.UserWeight)
 	list = append(list, z.Ballot.Serialize()...)
 	return list
 }

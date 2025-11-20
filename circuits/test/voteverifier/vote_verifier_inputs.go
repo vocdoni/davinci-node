@@ -87,6 +87,7 @@ func VoteVerifierInputsForTest(
 			encryptionKey,
 			voterProof.Address,
 			voterProof.VoteID,
+			big.NewInt(int64(circuits.MockWeight)),
 			voterProof.Ballot.FromTEtoRTE(),
 			censusOrigin,
 		)
@@ -102,9 +103,10 @@ func VoteVerifierInputsForTest(
 			InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 			// circom inputs
 			Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-				Address: emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
-				VoteID:  emulated.ValueOf[sw_bn254.ScalarField](voterProof.VoteID.BigInt().MathBigInt()),
-				Ballot:  *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
+				Address:    emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
+				VoteID:     emulated.ValueOf[sw_bn254.ScalarField](voterProof.VoteID.BigInt().MathBigInt()),
+				UserWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
+				Ballot:     *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
 			},
 			UserWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
 			Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{

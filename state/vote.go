@@ -20,14 +20,15 @@ type Vote struct {
 }
 
 // SerializeBigInts returns
-//
-//	vote.Address
-//	vote.VoteID
-//	vote.Ballot
+//   - vote.Address
+//   - vote.VoteID
+//   - vote.UserWeight
+//   - vote.Ballot
 func (v *Vote) SerializeBigInts() []*big.Int {
 	list := []*big.Int{}
 	list = append(list, v.Address)
 	list = append(list, v.VoteID.BigInt().MathBigInt())
+	list = append(list, v.Weight)
 	list = append(list, v.Ballot.BigInts()...)
 	return list
 }
