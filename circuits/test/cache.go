@@ -249,6 +249,9 @@ func (c *CircuitCache) SaveData(cacheKey string, data CacheableData) error {
 
 // LoadData loads cacheable data from the cache
 func (c *CircuitCache) LoadData(cacheKey string, data CacheableData) error {
+	if disabled := os.Getenv("DISABLED_CACHE"); disabled == "1" || disabled == "true" {
+		return fmt.Errorf("cache is disabled via DISABLED_CACHE environment variable")
+	}
 	return data.ReadFromCache(c.baseDir, cacheKey)
 }
 

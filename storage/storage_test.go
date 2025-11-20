@@ -33,9 +33,8 @@ func createTestProcess(pid *types.ProcessID) *types.Process {
 			MinValueSum: new(types.BigInt).SetUint64(0),
 		},
 		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 			CensusRoot:   make([]byte, 32),
-			MaxVotes:     new(types.BigInt).SetUint64(1000),
 			CensusURI:    "http://example.com/census",
 		},
 	}

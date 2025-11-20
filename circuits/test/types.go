@@ -21,6 +21,7 @@ type VoteVerifierTestResults struct {
 	InputsHashes     []*big.Int
 	EncryptionPubKey circuits.EncryptionKey[*big.Int]
 	Addresses        []*big.Int
+	Weights          []*big.Int
 	ProcessID        *big.Int
 	CensusOrigin     types.CensusOrigin
 	CensusRoot       *big.Int

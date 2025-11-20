@@ -17,6 +17,7 @@ import (
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
+	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
@@ -26,6 +27,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -44,6 +46,7 @@ const (
 var (
 	defaultSequencerEndpoint = fmt.Sprintf("http://%s:%d", defaultSequencerHost, defaultSequencerPort)
 
+	mockedWeight     = uint64(circuits.MockWeight)
 	mockedBallotMode = types.BallotMode{
 		NumFields:      circuits.MockNumFields,
 		UniqueValues:   circuits.MockUniqueValues == 1,
@@ -198,7 +201,7 @@ func main() {
 	log.Infow("organization ready", "address", organizationAddr.Hex())
 
 	// Create a new census with numBallot participants
-	censusRoot, signers, err := createCensus(cli, *voteCount)
+	censusRoot, censusURI, signers, err := createCensus(testCtx, *voteCount, mockedWeight)
 	if err != nil {
 		log.Errorw(err, "failed to create census")
 	}
@@ -207,7 +210,7 @@ func main() {
 		"participants", len(signers))
 
 	// Create a new process with mocked ballot mode
-	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, censusRoot, mockedBallotMode)
+	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, censusRoot, censusURI, mockedBallotMode)
 	if err != nil {
 		log.Errorw(err, "failed to create process")
 		return
@@ -225,12 +228,9 @@ func main() {
 		log.Infow("vote created", "vote", vote)
 
 		// Generate a census proof for each participant
-		vote.CensusProof, err = generateCensusProof(cli, censusRoot, vote.Address)
-		if err != nil {
-			log.Errorw(err, "failed to generate census proof")
-			return
+		vote.CensusProof = types.CensusProof{
+			Weight: new(types.BigInt).SetUint64(mockedWeight),
 		}
-		log.Infow("census proof generated", "proof", vote.CensusProof)
 
 		// Send the vote to the sequencer
 		voteID, err := sendVote(cli, vote)
@@ -363,61 +363,26 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	return orgAddr, nil
 }
 
-func createCensus(cli *client.HTTPclient, size int) ([]byte, []*ethereum.Signer, error) {
-	// Request a new census
-	body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewCensusEndpoint)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to request new census: %v", err)
-	} else if code != http.StatusOK {
-		return nil, nil, fmt.Errorf("failed to request new census, status code: %d", code)
-	}
-
-	// Decode census response
-	var resp api.NewCensus
-	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&resp); err != nil {
-		return nil, nil, fmt.Errorf("failed to decode census response: %v", err)
-	}
-
+func createCensus(ctx context.Context, size int, weight uint64) ([]byte, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
-	censusParticipants := api.CensusParticipants{Participants: []*api.CensusParticipant{}}
+	votes := []state.Vote{}
 	for range size {
 		signer, err := ethereum.NewSigner()
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create signer: %v", err)
+			return nil, "", nil, fmt.Errorf("failed to generate signer: %w", err)
 		}
-		censusParticipants.Participants = append(censusParticipants.Participants, &api.CensusParticipant{
-			Key:    signer.Address().Bytes(),
-			Weight: new(types.BigInt).SetUint64(circuits.MockWeight),
-		})
 		signers = append(signers, signer)
+		votes = append(votes, state.Vote{
+			Address: signer.Address().Big(),
+			Weight:  new(big.Int).SetUint64(weight),
+		})
 	}
-
-	// Add participants to census
-	addEnpoint := api.EndpointWithParam(api.AddCensusParticipantsEndpoint, api.CensusURLParam, resp.Census.String())
-	_, code, err = cli.Request(http.MethodPost, censusParticipants, nil, addEnpoint)
+	censusRoot, censusURI, err := censustest.ServeCensusIMTForTest(ctx, votes)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to add participants to census: %v", err)
-	} else if code != http.StatusOK {
-		return nil, nil, fmt.Errorf("failed to add participants to census, status code: %d", code)
+		return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 	}
-
-	// Get census root
-	getRootEnpoint := api.EndpointWithParam(api.GetCensusRootEndpoint, api.CensusURLParam, resp.Census.String())
-	body, code, err = cli.Request(http.MethodGet, nil, nil, getRootEnpoint)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get census root: %v", err)
-	} else if code != http.StatusOK {
-		return nil, nil, fmt.Errorf("failed to get census root, status code: %d", code)
-	}
-
-	// Decode census root
-	var rootResp types.CensusRoot
-	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&rootResp); err != nil {
-		return nil, nil, fmt.Errorf("failed to decode census root response: %v", err)
-	}
-
-	return rootResp.Root, signers, nil
+	return censusRoot.Bytes(), censusURI, signers, nil
 }
 
 func createProcess(
@@ -425,6 +390,7 @@ func createProcess(
 	contracts *web3.Contracts,
 	cli *client.HTTPclient,
 	censusRoot []byte,
+	censusURI string,
 	ballotMode types.BallotMode,
 ) (*types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
@@ -442,11 +408,14 @@ func createProcess(
 
 	// Make the request to create the process
 	process := &types.ProcessSetup{
-		ProcessID:    processId.Marshal(),
-		CensusRoot:   censusRoot,
-		BallotMode:   &ballotMode,
-		Signature:    signature,
-		CensusOrigin: types.CensusOriginMerkleTree,
+		ProcessID:  processId.Marshal(),
+		BallotMode: &ballotMode,
+		Signature:  signature,
+		Census: &types.Census{
+			CensusRoot:   censusRoot,
+			CensusURI:    censusURI,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
+		},
 	}
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
 	if err != nil {
@@ -476,9 +445,8 @@ func createProcess(
 		BallotMode:     &ballotMode,
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
-			MaxVotes:     new(types.BigInt).SetUint64(1000),
-			CensusURI:    "https://example.com/census",
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusURI:    censusURI,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 		},
 	}
 	// Create process in the contracts
@@ -594,25 +562,6 @@ func createVote(
 		Signature:        signature.Bytes(),
 		VoteID:           wasmResult.VoteID,
 	}, nil
-}
-
-func generateCensusProof(cli *client.HTTPclient, root []byte, key []byte) (types.CensusProof, error) {
-	// Get proof for the key
-	getProofEnpoint := api.EndpointWithParam(api.GetCensusProofEndpoint, api.CensusURLParam, hex.EncodeToString(root))
-	body, code, err := cli.Request(http.MethodGet, nil, []string{"key", hex.EncodeToString(key)}, getProofEnpoint)
-	if err != nil {
-		return types.CensusProof{}, fmt.Errorf("failed to get census proof: %v", err)
-	} else if code != http.StatusOK {
-		return types.CensusProof{}, fmt.Errorf("failed to get census proof, status code: %d", code)
-	}
-
-	// Decode proof response
-	var proof types.CensusProof
-	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&proof); err != nil {
-		return types.CensusProof{}, fmt.Errorf("failed to decode census proof response: %v", err)
-	}
-
-	return proof, nil
 }
 
 func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {

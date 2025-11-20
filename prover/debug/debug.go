@@ -8,6 +8,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
+	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
@@ -20,9 +21,37 @@ import (
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	teststatetransition "github.com/vocdoni/davinci-node/circuits/test/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
+
+// PrintProofForDebug prints the Groth16 proof components for debugging
+// purposes.
+func PrintProofForDebug(proof groth16.Proof) {
+	switch proof := proof.(type) {
+	case *groth16_bn254.Proof:
+		log.Infow("proof.Ar", "x", proof.Ar.X.String(), "y", proof.Ar.Y.String())
+		log.Infow("proof.Bs", "x.a1", proof.Bs.X.A1.String(), "x.a0", proof.Bs.X.A0.String(),
+			"y.a1", proof.Bs.Y.A1.String(), "y.a0", proof.Bs.Y.A0.String())
+		log.Infow("proof.Krs", "x", proof.Krs.X.String(), "y", proof.Krs.Y.String())
+	default:
+		log.Warnw("PrintProofForDebug: unsupported proof type",
+			"type", fmt.Sprintf("%T", proof))
+	}
+}
+
+// VerifyProofForDebug verifies a Groth16 proof against a verifying key and
+// a circuit assignment for debugging purposes.
+func VerifyProofForDebug(curve ecc.ID, vk groth16.VerifyingKey, proof groth16.Proof, assignment frontend.Circuit) error {
+	// Create a witness from the circuit
+	witness, err := frontend.NewWitness(assignment, curve.ScalarField())
+	if err != nil {
+		return fmt.Errorf("failed to create witness: %w", err)
+	}
+	// Verify the proof
+	return groth16.Verify(proof, vk, witness)
+}
 
 // NewDebugProver creates a prover that runs test.IsSolved before normal proving.
 // This is used in test environments to debug circuit execution.

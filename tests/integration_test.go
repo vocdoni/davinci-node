@@ -24,6 +24,9 @@ func TestIntegration(t *testing.T) {
 	// Setup
 	ctx := t.Context()
 
+	censusCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	_, port := services.API.HostPort()
 	cli, err := NewTestClient(port)
 	c.Assert(err, qt.IsNil)
@@ -33,14 +36,15 @@ func TestIntegration(t *testing.T) {
 		encryptionKey *types.EncryptionKey
 		ballotMode    *types.BallotMode
 		signers       []*ethereum.Signer
-		proofs        []*types.CensusProof
 		censusRoot    []byte
-		participants  []*api.CensusParticipant
+		censusURI     string
+		// participants  []*api.CensusParticipant
 	)
 
 	c.Run("create process", func(c *qt.C) {
 		// Create census with numBallot participants
-		censusRoot, participants, signers, err = createCensus(cli, numBallots)
+		// censusRoot, participants, signers, err = createCensus(cli, numBallots)
+		censusRoot, censusURI, signers, err = createCensus(censusCtx, numBallots)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 		ballotMode = &types.BallotMode{
 			NumFields:      circuits.MockNumFields,
@@ -58,19 +62,21 @@ func TestIntegration(t *testing.T) {
 			// but only if we are not using a CSP census
 			{
 				// create a different censusRoot for testing
-				root2, _, _, err := createCensus(cli, numBallots*2)
+				root2, root2URI, _, err := createCensus(censusCtx, numBallots*2)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
-				// createProcessInSequencer should be idempotent, but there was a bug in this. Test it's fixed
-				pid1, encryptionKey1, stateRoot1, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2, ballotMode)
+				// createProcessInSequencer should be idempotent, but there was
+				// a bug in this, test it's fixed
+				pid1, encryptionKey1, stateRoot1, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2URI, root2, ballotMode)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
-				pid2, encryptionKey2, stateRoot2, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2, ballotMode)
+				pid2, encryptionKey2, stateRoot2, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2URI, root2, ballotMode)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 				c.Assert(pid2.String(), qt.Equals, pid1.String())
 				c.Assert(encryptionKey2, qt.DeepEquals, encryptionKey1)
 				c.Assert(stateRoot2.String(), qt.Equals, stateRoot1.String())
-				// a subsequent call to create process, same processID but with different censusRoot
-				// should return the same encryptionKey but yield a different stateRoot.
-				pid3, encryptionKey3, stateRoot3, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), censusRoot, ballotMode)
+				// a subsequent call to create process, same processID but with
+				// different censusOrigin should return the same encryptionKey
+				// but yield a different stateRoot
+				pid3, encryptionKey3, stateRoot3, err := createProcessInSequencer(services.Contracts, cli, testWrongCensusOrigin(), root2URI, root2, ballotMode)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 				c.Assert(pid3.String(), qt.Equals, pid1.String())
 				c.Assert(encryptionKey3, qt.DeepEquals, encryptionKey1)
@@ -78,19 +84,20 @@ func TestIntegration(t *testing.T) {
 					qt.Commentf("sequencer is returning the same state root although process parameters changed"))
 			}
 		}
-		// this final call is the good one, with the real censusRoot, should return the correct stateRoot and encryptionKey that
-		// we'll use to create process in contracts
+		// this final call is the good one, with the real censusRoot, should
+		// return the correct stateRoot and encryptionKey that we'll use to
+		// create process in contracts
 		var stateRoot *types.HexBytes
-		pid, encryptionKey, stateRoot, err = createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), censusRoot, ballotMode)
+		pid, encryptionKey, stateRoot, err = createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), censusURI, censusRoot, ballotMode)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts
-		pid2, err := createProcessInContracts(services.Contracts, testCensusOrigin(), censusRoot, ballotMode, encryptionKey, stateRoot)
+		pid2, err := createProcessInContracts(services.Contracts, testCensusOrigin(), censusURI, censusRoot, ballotMode, encryptionKey, stateRoot)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 
-		// create a timeout for the process creation, if it is greater than the test timeout
-		// use the test timeout
+		// create a timeout for the process creation, if it is greater than the
+		// test timeout use the test timeout
 		createProcessTimeout := time.Minute * 2
 		if timeout, hasDeadline := t.Deadline(); hasDeadline {
 			remainingTime := time.Until(timeout)
@@ -133,19 +140,6 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 
-	c.Run("create census proofs", func(c *qt.C) {
-		// Generate proof for first participant
-		proofs = make([]*types.CensusProof, numBallots)
-		for i := range participants {
-			proofs[i], err = generateCensusProof(cli, censusRoot, pid.Marshal(), participants[i].Key)
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
-			c.Assert(proofs[i], qt.Not(qt.IsNil))
-		}
-		// Check the first proof key is the same as the participant key and signer address
-		c.Assert(proofs[0].Address.String(), qt.DeepEquals, participants[0].Key.String())
-		c.Assert(string(proofs[0].Address), qt.DeepEquals, string(signers[0].Address().Bytes()))
-	})
-
 	// Store the voteIDs returned from the API to check their status later
 	var voteIDs []types.HexBytes
 	var ks []*big.Int
@@ -157,11 +151,12 @@ func TestIntegration(t *testing.T) {
 			k := util.RandomBigInt(big.NewInt(100000000), big.NewInt(9999999999999999))
 			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
-			// generate census proof for first participant
-			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
-			c.Assert(censusProof, qt.Not(qt.IsNil))
-			vote.CensusProof = *censusProof
+			if isCSPCensus() {
+				censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
+				c.Assert(censusProof, qt.Not(qt.IsNil))
+				vote.CensusProof = *censusProof
+			}
 			// Make the request to cast the vote
 			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
@@ -187,19 +182,21 @@ func TestIntegration(t *testing.T) {
 		body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 		c.Assert(err, qt.IsNil)
 		c.Assert(status, qt.Equals, 400)
-		c.Assert(string(body), qt.Contains, api.ErrMalformedBody.Withf("invalid census proof").Error())
+		c.Assert(string(body), qt.Contains, api.ErrInvalidCensusProof.Error())
 	})
 
 	c.Run("try to overwrite valid votes", func(c *qt.C) {
 		for i := range signers {
-			// generate a vote for the first participant
+			// generate a vote for the participant
 			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], ks[i])
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
-			// generate census proof for first participant
-			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
-			c.Assert(censusProof, qt.Not(qt.IsNil))
-			vote.CensusProof = *censusProof
+			// generate census proof for the participant
+			if isCSPCensus() {
+				censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
+				c.Assert(censusProof, qt.Not(qt.IsNil))
+				vote.CensusProof = *censusProof
+			}
 			// Make the request to cast the vote
 			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
@@ -273,14 +270,16 @@ func TestIntegration(t *testing.T) {
 	c.Run("overwrite valid votes", func(c *qt.C) {
 		count := 0
 		for i := range signers {
-			// generate a vote for the first participant
+			// generate a vote for the participant
 			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], nil)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
-			// generate census proof for first participant
-			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
-			c.Assert(censusProof, qt.Not(qt.IsNil))
-			vote.CensusProof = *censusProof
+			// generate census proof for the participant
+			if isCSPCensus() {
+				censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
+				c.Assert(censusProof, qt.Not(qt.IsNil))
+				vote.CensusProof = *censusProof
+			}
 			// Make the request to cast the vote
 			_, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)
@@ -363,11 +362,13 @@ func TestIntegration(t *testing.T) {
 			// generate a vote for the first participant
 			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], nil)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
-			// generate census proof for first participant
-			censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
-			c.Assert(censusProof, qt.Not(qt.IsNil))
-			vote.CensusProof = *censusProof
+			// generate census proof for the participant
+			if isCSPCensus() {
+				censusProof, err := generateCensusProof(cli, censusRoot, pid.Marshal(), signers[i].Address().Bytes())
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
+				c.Assert(censusProof, qt.Not(qt.IsNil))
+				vote.CensusProof = *censusProof
+			}
 			// Make the request to cast the vote
 			body, status, err := cli.Request("POST", vote, nil, api.VotesEndpoint)
 			c.Assert(err, qt.IsNil)

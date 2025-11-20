@@ -22,9 +22,7 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-const (
-	failbackMaxValue = 2 << 24 // 2^24
-)
+const maxValue = 2 << 24 // 2^24
 
 // finalizer is responsible for finalizing processes.
 type finalizer struct {
@@ -164,8 +162,7 @@ func (f *finalizer) finalizeEnded() {
 		log.Errorw(err, "could not list ended processes")
 		return
 	}
-	for _, pidBytes := range pids {
-		processID := new(types.ProcessID).SetBytes(pidBytes)
+	for _, processID := range pids {
 		// Skip invalid processes (thread-safe check)
 		if _, isInvalid := f.invalidProcesses.Load(processID.String()); isInvalid {
 			continue
@@ -277,10 +274,6 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	}
 
 	// Decrypt the accumulators
-	maxValue := process.BallotMode.MaxValue.MathBigInt().Uint64() * process.Census.MaxVotes.MathBigInt().Uint64()
-	if maxValue == 0 {
-		maxValue = failbackMaxValue
-	}
 	startTime := time.Now()
 	addAccumulator := [types.FieldsPerBallot]*big.Int{}
 	addAccumulatorsEncrypted := [types.FieldsPerBallot]elgamal.Ciphertext{}
@@ -393,7 +386,8 @@ func (f *finalizer) setProcessResults(pid types.HexBytes, res *storage.VerifiedR
 	}
 
 	// Update the process atomically to avoid race conditions
-	if err := f.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackFinalization(results)); err != nil {
+	processID := new(types.ProcessID).SetBytes(pid)
+	if err := f.stg.UpdateProcess(processID, storage.ProcessUpdateCallbackFinalization(results)); err != nil {
 		return fmt.Errorf("could not update process %s with results: %w", pid.String(), err)
 	}
 

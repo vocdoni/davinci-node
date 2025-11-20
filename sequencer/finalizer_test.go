@@ -124,14 +124,10 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 		},
 		Census: &types.Census{
 			CensusRoot:   make([]byte, 32),
-			MaxVotes:     &types.BigInt{},
 			CensusURI:    "http://example.com/census",
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 		},
 	}
-
-	// Set BigInt values
-	process.Census.MaxVotes.SetUint64(1000)
 
 	// Store the process
 	err = stg.NewProcess(process)
@@ -146,7 +142,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 
 	// Setup state with test data
 	process.StateRoot = setupTestState(t, stateDB, pid, pubKey, process.StateRoot.MathBigInt(), addValue, subValue)
-	err = stg.UpdateProcess(pid.Marshal(), func(p *types.Process) error {
+	err = stg.UpdateProcess(pid, func(p *types.Process) error {
 		p.StateRoot = process.StateRoot
 		return nil
 	})

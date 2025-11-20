@@ -88,7 +88,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 		}
 
 		log.Infow("processing ballot",
-			"address", ballot.Address.String(),
+			"address", hex.EncodeToString(ballot.Address.Bytes()),
 			"queued", s.stg.TotalPendingBallots(),
 			"voteID", hex.EncodeToString(ballot.VoteID),
 			"processID", fmt.Sprintf("%x", ballot.ProcessID),
@@ -182,12 +182,9 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 			ID:            emulated.ValueOf[sw_bn254.ScalarField](inputs.ProcessID),
 			CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusOrigin.BigInt().MathBigInt()),
-			CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusRoot),
 			EncryptionKey: inputs.EncryptionKey.BigIntsToEmulatedElementBN254(),
 			BallotMode:    inputs.BallotMode.BigIntsToEmulatedElementBN254(),
 		},
-		CensusSiblings: inputs.CensusSiblings,
-		CSPProof:       inputs.CSPProof,
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),
@@ -213,7 +210,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	log.Infow("ballot verified",
 		"pid", pid.String(),
 		"voteID", hex.EncodeToString(b.VoteID),
-		"address", b.Address.String(),
+		"address", hex.EncodeToString(b.Address.Bytes()),
 		"took", time.Since(startTime).String(),
 	)
 
@@ -226,5 +223,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		Address:         b.Address,
 		Proof:           proof.(*groth16_bls12377.Proof),
 		InputsHash:      inputHash,
+		CensusProof:     b.CensusProof,
 	}, nil
 }

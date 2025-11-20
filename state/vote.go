@@ -15,16 +15,19 @@ type Vote struct {
 	Address           *big.Int
 	VoteID            types.HexBytes
 	Ballot            *elgamal.Ballot
+	Weight            *big.Int
 	ReencryptedBallot *elgamal.Ballot // Reencrypted ballot for the state transition circuit
 }
 
 // SerializeBigInts returns
 //
 //	vote.Address
+//	vote.VoteID
 //	vote.Ballot
 func (v *Vote) SerializeBigInts() []*big.Int {
 	list := []*big.Int{}
 	list = append(list, v.Address)
+	list = append(list, v.VoteID.BigInt().MathBigInt())
 	list = append(list, v.Ballot.BigInts()...)
 	return list
 }

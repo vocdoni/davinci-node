@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -59,15 +58,9 @@ func (s *Storage) NewProcess(process *types.Process) error {
 			"pid", pid.String(), "err", err.Error())
 	}
 
-	censusRoot, err := process.BigCensusRoot()
-	if err != nil {
-		return fmt.Errorf("failed to get census root: %w", err)
-	}
-
 	// Initialize the process state to store the process data
 	if err := pState.Initialize(
 		process.Census.CensusOrigin.BigInt().MathBigInt(),
-		censusRoot.MathBigInt(),
 		circuits.BallotModeToCircuit(process.BallotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey),
 	); err != nil {
@@ -86,20 +79,21 @@ func (s *Storage) NewProcess(process *types.Process) error {
 // UpdateProcess performs an atomic read-modify-write operation on a process.
 // The updateFunc is called with the current process state and can modify it.
 // This ensures no race conditions between concurrent process updates.
-func (s *Storage) UpdateProcess(pid []byte, updateFunc ...func(*types.Process) error) error {
+func (s *Storage) UpdateProcess(pid *types.ProcessID, updateFunc ...func(*types.Process) error) error {
 	if pid == nil {
 		return fmt.Errorf("nil process ID")
 	}
 	if len(updateFunc) == 0 {
 		return fmt.Errorf("no update function provided")
 	}
+	bpid := pid.Marshal()
 
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	// Read current state
 	p := &types.Process{}
-	if err := s.getArtifact(processPrefix, pid, p); err != nil {
+	if err := s.getArtifact(processPrefix, bpid, p); err != nil {
 		return fmt.Errorf("failed to get process for update: %w", err)
 	}
 
@@ -111,7 +105,7 @@ func (s *Storage) UpdateProcess(pid []byte, updateFunc ...func(*types.Process) e
 	}
 
 	// Write back atomically
-	if err := s.setArtifact(processPrefix, pid, p); err != nil {
+	if err := s.setArtifact(processPrefix, bpid, p); err != nil {
 		return fmt.Errorf("failed to save updated process: %w", err)
 	}
 
@@ -120,7 +114,7 @@ func (s *Storage) UpdateProcess(pid []byte, updateFunc ...func(*types.Process) e
 
 // ListProcesses returns the list of process IDs stored in the storage (by
 // SetProcessMetadata) as a list of byte slices.
-func (s *Storage) ListProcesses() ([][]byte, error) {
+func (s *Storage) ListProcesses() ([]*types.ProcessID, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -128,7 +122,11 @@ func (s *Storage) ListProcesses() ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pids, nil
+	processIDs := make([]*types.ProcessID, len(pids))
+	for i, pid := range pids {
+		processIDs[i] = new(types.ProcessID).SetBytes(pid)
+	}
+	return processIDs, nil
 }
 
 // SetMetadata stores the metadata into the storage.
@@ -178,29 +176,28 @@ func (s *Storage) Metadata(hash []byte) (*types.Metadata, error) {
 
 // ProcessIsAcceptingVotes checks if the process is ready to accept votes,
 // which means that the process is in the "Ready" state.
-func (s *Storage) ProcessIsAcceptingVotes(pid []byte) (bool, error) {
+func (s *Storage) ProcessIsAcceptingVotes(pid *types.ProcessID) (bool, error) {
 	// Get the process from storage
-	processID := new(types.ProcessID).SetBytes(pid)
-	stgProcess, err := s.Process(processID)
+	stgProcess, err := s.Process(pid)
 	if err != nil {
-		return false, fmt.Errorf("failed to get process %x: %w", pid, err)
+		return false, fmt.Errorf("failed to get process %x: %w", pid.Marshal(), err)
 	}
 	// Basic checks
 	if stgProcess.StateRoot == nil {
-		return false, fmt.Errorf("process %x has no state root", pid)
+		return false, fmt.Errorf("process %x has no state root", pid.Marshal())
 	}
 	if stgProcess.StartTime.Add(stgProcess.Duration).Before(time.Now()) {
-		return false, fmt.Errorf("process %x has expired", pid)
+		return false, fmt.Errorf("process %x has expired", pid.Marshal())
 	}
 	if stgProcess.Status != types.ProcessStatusReady {
-		return false, fmt.Errorf("process %x status: %s", pid, stgProcess.Status)
+		return false, fmt.Errorf("process %x status: %s", pid.Marshal(), stgProcess.Status)
 	}
 	return true, nil
 }
 
 // ListProcessWithEncryptionKeys returns a list of process IDs that have
 // encryption keys stored.
-func (s *Storage) ListProcessWithEncryptionKeys() ([][]byte, error) {
+func (s *Storage) ListProcessWithEncryptionKeys() ([]*types.ProcessID, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -208,12 +205,16 @@ func (s *Storage) ListProcessWithEncryptionKeys() ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pids, nil
+	processIDs := make([]*types.ProcessID, len(pids))
+	for i, pid := range pids {
+		processIDs[i] = new(types.ProcessID).SetBytes(pid)
+	}
+	return processIDs, nil
 }
 
 // ListEndedProcessWithEncryptionKeys returns the list of process IDs that are
 // ended and have their encryption keys stored in the storage.
-func (s *Storage) ListEndedProcessWithEncryptionKeys() ([][]byte, error) {
+func (s *Storage) ListEndedProcessWithEncryptionKeys() ([]*types.ProcessID, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -224,7 +225,7 @@ func (s *Storage) ListEndedProcessWithEncryptionKeys() ([][]byte, error) {
 	}
 
 	// Filter the processes to only include those that are ended.
-	var endedPids [][]byte
+	var endedPids []*types.ProcessID
 	for _, pid := range pids {
 		p := new(types.Process)
 		if err := s.getArtifact(processPrefix, pid, p); err != nil {
@@ -236,7 +237,7 @@ func (s *Storage) ListEndedProcessWithEncryptionKeys() ([][]byte, error) {
 		if p.Status != types.ProcessStatusEnded {
 			continue // Skip if process is not ended
 		}
-		endedPids = append(endedPids, pid)
+		endedPids = append(endedPids, new(types.ProcessID).SetBytes(pid))
 	}
 	return endedPids, nil
 }
@@ -302,7 +303,7 @@ func (s *Storage) checkAndUpdateEndedProcesses() {
 	}
 
 	for _, pid := range pids {
-		p, err := s.Process(new(types.ProcessID).SetBytes(pid))
+		p, err := s.Process(pid)
 		if err != nil {
 			log.Errorw(err, "failed to retrieve process for monitoring")
 			continue
@@ -320,9 +321,10 @@ func (s *Storage) checkAndUpdateEndedProcesses() {
 					log.Errorw(err, "failed to update process status to ended")
 					continue
 				}
-				log.Infow("process status updated to ended", "pid", hex.EncodeToString(pid))
-				if err := s.cleanupEndedProcess(pid); err != nil {
-					log.Errorw(err, "failed to cleanup ended process "+hex.EncodeToString(pid))
+				log.Infow("process status updated to ended", "pid", pid.String())
+				// Cleanup ended process data
+				if err := s.cleanupEndedProcess(pid.Marshal()); err != nil {
+					log.Errorw(err, "failed to cleanup ended process "+pid.String())
 				}
 			}
 		}

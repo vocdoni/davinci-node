@@ -26,7 +26,7 @@ import (
 func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	// Get the processID and voteID from the URL
 	processIDHex := chi.URLParam(r, ProcessURLParam)
-	voteIDHex := chi.URLParam(r, VoteStatusVoteIDParam)
+	voteIDHex := chi.URLParam(r, VoteIDURLParam)
 
 	processID, err := hex.DecodeString(util.TrimHex(processIDHex))
 	if err != nil {
@@ -70,7 +70,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	processID := new(types.ProcessID).SetBytes(processIDBytes)
 
 	// Get the address
-	address, err := types.HexStringToHexBytes(chi.URLParam(r, VoteByAddressAddressParam))
+	address, err := types.HexStringToHexBytes(chi.URLParam(r, AddressURLParam))
 	if err != nil {
 		ErrMalformedAddress.Write(w)
 		return
@@ -117,10 +117,6 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
-	if !vote.CensusProof.Valid() {
-		ErrMalformedBody.Withf("invalid census proof").Write(w)
-		return
-	}
 	if !vote.Ballot.Valid() {
 		ErrMalformedBody.Withf("invalid ballot").Write(w)
 		return
@@ -136,32 +132,41 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrResourceNotFound.Withf("could not get process: %v", err).Write(w)
 		return
 	}
+	// overwrite census origin with the process one to avoid inconsistencies
+	// and check the census proof with it
+	vote.CensusProof.CensusOrigin = process.Census.CensusOrigin
+	if !vote.CensusProof.Valid() {
+		ErrMalformedBody.Withf("invalid census proof").Write(w)
+		return
+	}
 	// check that the process is ready to accept votes, it does not mean that
 	// the vote will be accepted, but it is a precondition to accept the vote,
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
-	if ok, err := a.storage.ProcessIsAcceptingVotes(pid.Marshal()); !ok {
+	if ok, err := a.storage.ProcessIsAcceptingVotes(pid); !ok {
 		ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
-		return
-	}
-	// check that the census root is the same as the one in the process
-	if !vote.CensusProof.HasRoot(process.Census.CensusRoot) {
-		ErrInvalidCensusProof.Withf("census root mismatch").Write(w)
 		return
 	}
 	// verify the census proof accordingly to the census origin
 	switch process.Census.CensusOrigin {
-	case types.CensusOriginMerkleTree:
-		if !a.storage.CensusDB().VerifyProof(&vote.CensusProof) {
-			ErrInvalidCensusProof.Withf("census proof verification failed").Write(w)
+	case types.CensusOriginMerkleTreeOffchainStaticV1:
+		censusRef, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+		if err != nil {
+			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
 			return
 		}
-	case types.CensusOriginCSPEdDSABLS12377:
+		if !censusRef.Tree().Has(common.Address(vote.Address)) {
+			ErrInvalidCensusProof.Withf("address not in census").Write(w)
+			return
+		}
+	case types.CensusOriginCSPEdDSABLS12377V1, types.CensusOriginCSPEdDSABN254V1:
 		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {
 			ErrInvalidCensusProof.Withf("census proof verification failed").WithErr(err).Write(w)
 			return
 		}
 	default:
+		ErrInvalidCensusProof.Withf("unsupported census origin").Write(w)
+		return
 	}
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := ballotproof.BallotInputsHash(

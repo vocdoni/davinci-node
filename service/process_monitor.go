@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo/memdb"
+	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -16,11 +17,12 @@ import (
 // ProcessMonitor is a service that monitors new voting processes or process
 // updates and update them in the local storage.
 type ProcessMonitor struct {
-	contracts ContractsService
-	storage   *storage.Storage
-	interval  time.Duration
-	mu        sync.Mutex
-	cancel    context.CancelFunc
+	contracts        ContractsService
+	storage          *storage.Storage
+	censusDownloader *census.CensusImporter
+	interval         time.Duration
+	mu               sync.Mutex
+	cancel           context.CancelFunc
 }
 
 // ContractsService defines the interface for web3 contract operations.
@@ -43,9 +45,10 @@ func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, interva
 		stg = storage.New(kv)
 	}
 	return &ProcessMonitor{
-		contracts: contracts,
-		storage:   stg,
-		interval:  interval,
+		contracts:        contracts,
+		storage:          stg,
+		censusDownloader: census.NewCensusImporter(stg),
+		interval:         interval,
 	}
 }
 
@@ -147,7 +150,7 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		}
 
 		// Fetch current state from blockchain
-		blockchainProcess, err := pm.contracts.Process(pid)
+		blockchainProcess, err := pm.contracts.Process(pid.Marshal())
 		if err != nil {
 			log.Warnw("failed to fetch process from blockchain during sync",
 				"pid", fmt.Sprintf("%x", pid), "error", err)
@@ -155,7 +158,7 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		}
 
 		// Fetch from local storage
-		localProcess, err := pm.storage.Process(new(types.ProcessID).SetBytes(pid))
+		localProcess, err := pm.storage.Process(pid)
 		if err != nil {
 			log.Warnw("failed to fetch process from storage during sync",
 				"pid", fmt.Sprintf("%x", pid), "error", err)
@@ -219,19 +222,35 @@ func (pm *ProcessMonitor) monitorProcesses(
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
+			// download the census if needed
+			if err := pm.censusDownloader.ImportCensus(ctx, process.Census); err != nil {
+				log.Warnw("failed to download census for new process",
+					"pid", process.ID.String(),
+					"censusOrigin", process.Census.CensusOrigin.String(),
+					"censusURI", process.Census.CensusURI,
+					"err", err.Error())
+			}
 			// if it does not exist, create a new one
 			log.Debugw("new process found", "pid", process.ID.String())
 			if err := pm.storage.NewProcess(process); err != nil {
-				log.Warnw("failed to store new process", "pid", process.ID.String(), "err", err.Error())
+				log.Warnw("failed to store new process",
+					"pid", process.ID.String(),
+					"err", err.Error())
 			}
 			// initialize the state for the process
 			log.Debugw("process state created", "pid", process.ID.String())
 		case process := <-changedStatusProcChan:
-			log.Debugw("process changed status", "pid", process.ID.String(),
-				"old", process.OldStatus.String(), "new", process.NewStatus.String())
-			if err := pm.storage.UpdateProcess(process.ID, storage.ProcessUpdateCallbackSetStatus(process.Status)); err != nil {
+			log.Debugw("process changed status",
+				"pid", process.ID.String(),
+				"old", process.OldStatus.String(),
+				"new", process.NewStatus.String())
+			if err := pm.storage.UpdateProcess(
+				new(types.ProcessID).SetBytes(process.ID),
+				storage.ProcessUpdateCallbackSetStatus(process.Status),
+			); err != nil {
 				log.Warnw("failed to update process status",
-					"pid", process.ID.String(), "err", err.Error())
+					"pid", process.ID.String(),
+					"err", err.Error())
 			}
 			if process.Status == types.ProcessStatusResults {
 				if err := pm.storage.CleanProcessStaleVotes(process.ID); err != nil {
@@ -240,15 +259,22 @@ func (pm *ProcessMonitor) monitorProcesses(
 				}
 			}
 		case process := <-stateTransitionChan:
-			log.Debugw("process state root changed", "pid", process.ID.String(),
+			log.Debugw("process state root changed",
+				"pid", process.ID.String(),
 				"stateRoot", process.NewStateRoot.String(),
 				"voteCount", process.NewVoteCount.String(),
 				"voteOverwrittenCount", process.NewVoteOverwrittenCount.String())
-			if err := pm.storage.UpdateProcess(process.ID,
-				storage.ProcessUpdateCallbackSetStateRoot(process.NewStateRoot,
-					process.NewVoteCount, process.NewVoteOverwrittenCount)); err != nil {
+			if err := pm.storage.UpdateProcess(
+				new(types.ProcessID).SetBytes(process.ID),
+				storage.ProcessUpdateCallbackSetStateRoot(
+					process.NewStateRoot,
+					process.NewVoteCount,
+					process.NewVoteOverwrittenCount,
+				),
+			); err != nil {
 				log.Warnw("failed to update process state root",
-					"pid", process.ID.String(), "err", err.Error())
+					"pid", process.ID.String(),
+					"err", err.Error())
 			}
 		}
 	}

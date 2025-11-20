@@ -25,7 +25,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/storage/census"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -82,14 +81,6 @@ func TestDebugVoteVerifier(t *testing.T) {
 	inputHash, err := mimc7.Hash(hashInputs, nil)
 	c.Assert(err, qt.IsNil)
 
-	siblings, err := census.BigIntSiblings(vote.CensusProof.Siblings)
-	c.Assert(err, qt.IsNil)
-
-	emulatedSiblings := [types.CensusTreeMaxLevels]emulated.Element[sw_bn254.ScalarField]{}
-	for i, s := range circuits.BigIntArrayToN(siblings, types.CensusTreeMaxLevels) {
-		emulatedSiblings[i] = emulated.ValueOf[sw_bn254.ScalarField](s)
-	}
-
 	signature := new(ethereum.ECDSASignature).SetBytes(vote.Signature)
 	c.Assert(signature, qt.IsNotNil)
 	signatureOk, pubkey := signature.VerifyBLS12377(vote.BallotInputsHash.MathBigInt(), common.BytesToAddress(vote.Address))
@@ -119,12 +110,11 @@ func TestDebugVoteVerifier(t *testing.T) {
 		},
 		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Weight.MathBigInt()),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-			ID:            emulated.ValueOf[sw_bn254.ScalarField](processID),
-			CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](root),
+			ID: emulated.ValueOf[sw_bn254.ScalarField](processID),
+			// CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](root),
 			EncryptionKey: encryptionKey.BigIntsToEmulatedElementBN254(),
 			BallotMode:    ballotMode.BigIntsToEmulatedElementBN254(),
 		},
-		CensusSiblings: emulatedSiblings,
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),
