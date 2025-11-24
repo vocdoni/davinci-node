@@ -289,10 +289,11 @@ func main() {
 }
 
 type localService struct {
-	sequencer      *service.SequencerService
-	processMonitor *service.ProcessMonitor
-	storage        *storage.Storage
-	api            *service.APIService
+	sequencer        *service.SequencerService
+	censusDownloader *service.CensusDownloader
+	processMonitor   *service.ProcessMonitor
+	storage          *storage.Storage
+	api              *service.APIService
 }
 
 func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, network string) error {
@@ -300,8 +301,18 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 	s.storage = storage.New(memdb.New())
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
+	// Start census downloader
+	s.censusDownloader = service.NewCensusDownloader(contracts, s.storage, service.CensusDownloaderConfig{
+		Interval:   time.Second * 5,
+		Attempts:   5,
+		Expiration: time.Minute * 30,
+		Cooldown:   time.Second * 10,
+	})
+	if err := s.censusDownloader.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start census downloader: %w", err)
+	}
 	// Monitor new processes from the contracts
-	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, time.Second*2)
+	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, s.censusDownloader, time.Second*2)
 	if err := s.processMonitor.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
@@ -332,6 +343,9 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 func (s *localService) Stop() {
 	if s.sequencer != nil {
 		s.sequencer.Stop()
+	}
+	if s.censusDownloader != nil {
+		s.censusDownloader.Stop()
 	}
 	if s.processMonitor != nil {
 		s.processMonitor.Stop()

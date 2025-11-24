@@ -31,8 +31,9 @@ func TestExampleCSP(t *testing.T) {
 	}
 	// Random Ethereum address for the voter
 	voterAddress := common.BytesToAddress(util.RandomBytes(20))
+	userWeight := new(types.BigInt).SetInt(42)
 	// Generate a census proof for the voter
-	proof, err := csp.GenerateProof(processID, voterAddress)
+	proof, err := csp.GenerateProof(processID, voterAddress, userWeight)
 	if err != nil {
 		t.Fatalf("Error generating proof: %v", err)
 	}

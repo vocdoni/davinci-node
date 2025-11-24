@@ -38,7 +38,6 @@ func TestIntegration(t *testing.T) {
 		signers       []*ethereum.Signer
 		censusRoot    []byte
 		censusURI     string
-		// participants  []*api.CensusParticipant
 	)
 
 	c.Run("create process", func(c *qt.C) {

@@ -76,9 +76,8 @@ type VerifyVoteCircuit struct {
 	// variables should be hashed in the same order as they are defined here.
 
 	// User public inputs
-	Vote       circuits.EmulatedVote[sw_bn254.ScalarField]
-	Process    circuits.Process[emulated.Element[sw_bn254.ScalarField]]
-	UserWeight emulated.Element[sw_bn254.ScalarField]
+	Vote    circuits.EmulatedVote[sw_bn254.ScalarField]
+	Process circuits.Process[emulated.Element[sw_bn254.ScalarField]]
 	// The following variables are private inputs and they are used to verify
 	// the user identity ownership
 	PublicKey ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]
@@ -98,7 +97,7 @@ func (c *VerifyVoteCircuit) circomHash(api frontend.API) emulated.Element[sw_bn2
 	if err != nil {
 		circuits.FrontendError(api, "failed to create emulated MiMC hash function: ", err)
 	}
-	if err := hFn.Write(circuits.CircomInputs(api, c.Process, c.Vote, c.UserWeight)...); err != nil {
+	if err := hFn.Write(circuits.CircomInputs(api, c.Process, c.Vote)...); err != nil {
 		circuits.FrontendError(api, "failed to hash circom inputs", err)
 	}
 	return hFn.Sum()

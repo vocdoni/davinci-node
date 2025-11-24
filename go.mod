@@ -29,10 +29,10 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
-	github.com/vocdoni/census3-bigquery v0.0.0-20251119154922-d23bf34adc2e
-	github.com/vocdoni/davinci-contracts v0.0.25-0.20251120194345-ddd51f7f97d6
+	github.com/vocdoni/census3-bigquery v0.0.0-20251124154146-3e7dea4dc650
+	github.com/vocdoni/davinci-contracts v0.0.25-0.20251124160643-5de36e69ad23
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
-	github.com/vocdoni/lean-imt-go v0.0.0-20251119104748-5543d73007a1
+	github.com/vocdoni/lean-imt-go v0.0.0-20251119114338-d122df6d979d
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/mod v0.30.0
 	golang.org/x/sync v0.18.0
@@ -223,7 +223,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.67.3 // indirect
+	github.com/prometheus/common v0.67.4 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/r3labs/sse v0.0.0-20210224172625-26fe804710bc // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
@@ -287,7 +287,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.44.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect

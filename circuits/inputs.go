@@ -23,12 +23,10 @@ const BallotProofNPubInputs = 1
 func CircomInputs(api frontend.API,
 	process Process[emulated.Element[sw_bn254.ScalarField]],
 	vote EmulatedVote[sw_bn254.ScalarField],
-	userWeight emulated.Element[sw_bn254.ScalarField],
 ) []emulated.Element[sw_bn254.ScalarField] {
 	inputs := []emulated.Element[sw_bn254.ScalarField]{}
 	inputs = append(inputs, process.SerializeForBallotProof(api)...)
 	inputs = append(inputs, vote.SerializeForBallotProof(api)...)
-	inputs = append(inputs, userWeight)
 
 	return inputs
 }

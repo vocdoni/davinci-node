@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo/memdb"
-	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -19,7 +18,7 @@ import (
 type ProcessMonitor struct {
 	contracts        ContractsService
 	storage          *storage.Storage
-	censusDownloader *census.CensusImporter
+	censusDownloader *CensusDownloader
 	interval         time.Duration
 	mu               sync.Mutex
 	cancel           context.CancelFunc
@@ -39,7 +38,7 @@ type ContractsService interface {
 }
 
 // NewProcessMonitor creates a new ProcessMonitor service. If storage is nil, it uses a memory storage.
-func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, interval time.Duration) *ProcessMonitor {
+func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, censusDownloader *CensusDownloader, interval time.Duration) *ProcessMonitor {
 	if stg == nil {
 		kv := memdb.New()
 		stg = storage.New(kv)
@@ -47,7 +46,7 @@ func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, interva
 	return &ProcessMonitor{
 		contracts:        contracts,
 		storage:          stg,
-		censusDownloader: census.NewCensusImporter(stg),
+		censusDownloader: censusDownloader,
 		interval:         interval,
 	}
 }
@@ -223,13 +222,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				continue
 			}
 			// download and import the process census if needed
-			if err := pm.censusDownloader.ImportCensus(ctx, process.Census); err != nil {
-				log.Warnw("failed to download census for new process",
-					"pid", process.ID.String(),
-					"censusOrigin", process.Census.CensusOrigin.String(),
-					"censusURI", process.Census.CensusURI,
-					"err", err.Error())
-			}
+			pm.censusDownloader.DownloadQueue <- process.Census
 			// if it does not exist, create a new one
 			log.Debugw("new process found", "pid", process.ID.String())
 			if err := pm.storage.NewProcess(process); err != nil {

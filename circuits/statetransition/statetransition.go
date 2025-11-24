@@ -431,11 +431,10 @@ func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API) {
 		shouldBeValid := api.And(isRealProof, isMerkleTreeCensus)
 
 		// check that calculated leaf is equal to the one in the proof
-		leaf := imt.PackLeaf(api, vote.Address, vote.UserWeight)
+		leaf := imt.PackLeaf(api, vote.Address, vote.VoteWeight)
 		isLeafEqual := api.IsZero(api.Cmp(leaf, c.CensusProofs.MerkleProofs[i].Leaf))
 		// assert leaf equality only if the proof should be valid
 		api.AssertIsEqual(api.Select(shouldBeValid, isLeafEqual, 1), 1)
-
 		// verify the census proof using the lean imt circuit
 		isValid, err := c.CensusProofs.MerkleProofs[i].Verify(api, c.CensusRoot)
 		if err != nil {
@@ -459,7 +458,7 @@ func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API) {
 		// only verify the proof if i < NumNewVotes (to discard dummy proofs)
 		isRealProof := cmp.IsLess(api, i, c.NumNewVotes)
 		// verify the CSP proof
-		isValidProof := cspProof.IsValid(api, curveID, c.CensusRoot, c.Process.ID, vote.Address)
+		isValidProof := cspProof.IsValid(api, curveID, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
 		// check if the census origin is CSP
 		isCSPCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(censusOrigin)))
 		// the proof should be valid only if it's a real proof and the census origin is CSP

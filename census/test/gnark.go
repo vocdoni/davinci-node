@@ -71,7 +71,7 @@ func CensusProofsForCircuitTest(
 			if i < len(votes) {
 				// generate csp proof for the voter address
 				addr := common.BytesToAddress(votes[i].Address.Bytes())
-				cspProof, err := eddsaCSP.GenerateProof(pid, addr)
+				cspProof, err := eddsaCSP.GenerateProof(pid, addr, new(types.BigInt).SetBigInt(votes[i].Weight))
 				if err != nil {
 					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to generate census proof: %w", err)
 				}

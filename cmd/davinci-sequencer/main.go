@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"path"
 	"syscall"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 
@@ -26,12 +27,13 @@ import (
 
 // Services holds all the running services
 type Services struct {
-	Contracts  *web3.Contracts
-	TxManager  *txmanager.TxManager
-	Storage    *storage.Storage
-	ProcessMon *service.ProcessMonitor
-	API        *service.APIService
-	Sequencer  *service.SequencerService
+	Contracts        *web3.Contracts
+	TxManager        *txmanager.TxManager
+	Storage          *storage.Storage
+	CensusDownloader *service.CensusDownloader
+	ProcessMon       *service.ProcessMonitor
+	API              *service.APIService
+	Sequencer        *service.SequencerService
 }
 
 func main() {
@@ -222,9 +224,21 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		"account", services.Contracts.AccountAddress().Hex(),
 		"gasMultiplier", services.Contracts.GasMultiplier)
 
+	// Start census downloader
+	log.Info("starting census downloader")
+	services.CensusDownloader = service.NewCensusDownloader(services.Contracts, services.Storage, service.CensusDownloaderConfig{
+		Interval:   time.Second * 5,
+		Attempts:   5,
+		Expiration: time.Minute * 30,
+		Cooldown:   time.Second * 10,
+	})
+	if err := services.CensusDownloader.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start census downloader: %w", err)
+	}
+
 	// Start process monitor
 	log.Info("starting process monitor")
-	services.ProcessMon = service.NewProcessMonitor(services.Contracts, services.Storage, monitorInterval)
+	services.ProcessMon = service.NewProcessMonitor(services.Contracts, services.Storage, services.CensusDownloader, monitorInterval)
 	if err := services.ProcessMon.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}
@@ -284,6 +298,9 @@ func shutdownServices(services *Services) {
 	}
 	if services.API != nil {
 		services.API.Stop()
+	}
+	if services.CensusDownloader != nil {
+		services.CensusDownloader.Stop()
 	}
 	if services.ProcessMon != nil {
 		services.ProcessMon.Stop()

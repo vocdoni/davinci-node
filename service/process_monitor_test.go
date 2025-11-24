@@ -24,8 +24,16 @@ func TestProcessMonitor(t *testing.T) {
 	// Setup mock web3 contracts
 	contracts := NewMockContracts()
 
+	// Setup census downloader
+	censusDownloader := NewCensusDownloader(contracts, store, CensusDownloaderConfig{
+		Interval:   5 * time.Second,
+		Cooldown:   5 * time.Second,
+		Expiration: 30 * time.Minute,
+		Attempts:   5,
+	})
+
 	// Create process monitor
-	monitor := NewProcessMonitor(contracts, store, time.Second)
+	monitor := NewProcessMonitor(contracts, store, censusDownloader, time.Second)
 
 	// Start monitoring in background
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

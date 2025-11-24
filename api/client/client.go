@@ -149,10 +149,11 @@ func (c *HTTPclient) Request(method string, jsonBody any, params []string, urlPa
 		"type", method,
 		"url", u.String(),
 		"body", func() string {
-			if len(body) > 512 {
-				return string(body[:512]) + "..."
+			strBody := string(body)
+			if len(strBody) > 512 {
+				return strBody[:512] + "..."
 			}
-			return strings.ReplaceAll(string(body), "\"", "")
+			return strings.ReplaceAll(strBody, "\"", "")
 		}(),
 	)
 

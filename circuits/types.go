@@ -334,7 +334,7 @@ type Vote[T any] struct {
 	Ballot     Ballot
 	VoteID     T
 	Address    T
-	UserWeight T
+	VoteWeight T
 }
 
 func (v Vote[T]) ToEmulated(api frontend.API) EmulatedVote[sw_bn254.ScalarField] {
@@ -342,7 +342,7 @@ func (v Vote[T]) ToEmulated(api frontend.API) EmulatedVote[sw_bn254.ScalarField]
 		Ballot:     v.Ballot.ToEmulatedBallot(api),
 		Address:    *varToEmulatedElementBN254(api, v.Address),
 		VoteID:     *varToEmulatedElementBN254(api, v.VoteID),
-		UserWeight: *varToEmulatedElementBN254(api, v.UserWeight),
+		VoteWeight: *varToEmulatedElementBN254(api, v.VoteWeight),
 	}
 }
 
@@ -355,7 +355,7 @@ func (v Vote[T]) SerializeAsVars() []frontend.Variable {
 	list := []frontend.Variable{}
 	list = append(list, v.Address)
 	list = append(list, v.VoteID)
-	list = append(list, v.UserWeight)
+	list = append(list, v.VoteWeight)
 	list = append(list, v.Ballot.SerializeVars()...)
 	return list
 }
@@ -521,7 +521,7 @@ type EmulatedVote[F emulated.FieldParams] struct {
 	Address    emulated.Element[F]
 	VoteID     emulated.Element[F]
 	Ballot     EmulatedBallot[F]
-	UserWeight emulated.Element[F]
+	VoteWeight emulated.Element[F]
 }
 
 // Serialize returns a slice with the vote parameters in order
@@ -534,16 +534,17 @@ func (z *EmulatedVote[F]) Serialize() []emulated.Element[F] {
 	list := []emulated.Element[F]{}
 	list = append(list, z.Address)
 	list = append(list, z.VoteID)
-	list = append(list, z.UserWeight)
+	list = append(list, z.VoteWeight)
 	list = append(list, z.Ballot.Serialize()...)
 	return list
 }
 
 // SerializeForBallotProof returns a slice with the vote parameters in order
 //
-//	EmulatedVote.Address
-//	EmulatedVote.VoteID
-//	EmulatedVote.Ballot (in Twisted Edwards format)
+//		EmulatedVote.Address
+//		EmulatedVote.VoteID
+//		EmulatedVote.Ballot (in Twisted Edwards format)
+//	 EmulatedVote.UserWeight
 func (zt *EmulatedVote[F]) SerializeForBallotProof(api frontend.API) []emulated.Element[sw_bn254.ScalarField] {
 	z, ok := any(zt).(*EmulatedVote[sw_bn254.ScalarField])
 	if !ok {
@@ -553,6 +554,7 @@ func (zt *EmulatedVote[F]) SerializeForBallotProof(api frontend.API) []emulated.
 	list = append(list, z.Address)
 	list = append(list, z.VoteID)
 	list = append(list, z.Ballot.SerializeAsTE(api)...)
+	list = append(list, z.VoteWeight)
 	return list
 }
 

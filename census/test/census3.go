@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 	"net/http"
 	"net/url"
 
 	"github.com/ethereum/go-ethereum/common"
 	c3api "github.com/vocdoni/census3-bigquery/api"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -23,7 +23,7 @@ func NewCensus3MerkleTreeForTest(ctx context.Context, votes []state.Vote, c3url 
 	if err != nil {
 		return nil, "", fmt.Errorf("census3 service error creating census: %w", err)
 	}
-	log.Printf("created new census in census3 service with ID: %s", censusId)
+	log.Infow("new census created in census3 service", "id", censusId)
 	// add participants from votes provided
 	participants := []c3api.CensusParticipant{}
 	for _, v := range votes {
@@ -36,7 +36,7 @@ func NewCensus3MerkleTreeForTest(ctx context.Context, votes []state.Vote, c3url 
 		return nil, "", fmt.Errorf("census3 service error adding participants: %w", err)
 	}
 	// get census info: root, size, uri
-	root, size, uri, err := c3GetCensusInfo(c3url, censusId)
+	root, size, uri, err := c3PublishCensus(c3url, censusId)
 	if err != nil {
 		return nil, "", fmt.Errorf("census3 service error getting info: %w", err)
 	}
@@ -48,7 +48,12 @@ func NewCensus3MerkleTreeForTest(ctx context.Context, votes []state.Vote, c3url 
 	if err != nil {
 		return nil, "", fmt.Errorf("error creating census URI: %w", err)
 	}
-	log.Printf("census %s created from '%s' with root '%s' and size of %d", censusId, uri, root.String(), size)
+	log.Infow("census published in census3 service",
+		"id", censusId,
+		"root", root.String(),
+		"size", size,
+		"uri", censusURI,
+	)
 	// return the census root and uri
 	return root, censusURI, nil
 }
@@ -66,7 +71,7 @@ func c3NewCensus(c3url string) (string, error) {
 	}
 	defer func() {
 		if err := newCensusRes.Body.Close(); err != nil {
-			log.Printf("Warning: failed to close new census response body: %v", err)
+			log.Errorw(err, "error closing new census response body")
 		}
 	}()
 	if newCensusRes.StatusCode != http.StatusOK {
@@ -98,83 +103,34 @@ func c3AddParticipants(c3url, censusID string, participants []c3api.CensusPartic
 	}
 	defer func() {
 		if err := participantsRes.Body.Close(); err != nil {
-			log.Printf("Warning: failed to close participants response body: %v", err)
+			log.Errorw(err, "error closing participants response body")
 		}
 	}()
 	if participantsRes.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(participantsRes.Body, 1024))
-		log.Printf("Response body: %s", string(body))
-		return fmt.Errorf("unexpected status code adding participants: %d", participantsRes.StatusCode)
+		return fmt.Errorf("unexpected status code adding participants: %d - %s", participantsRes.StatusCode, string(body))
 	}
 	return nil
 }
 
-func c3GetCensusInfo(c3url, censusId string) (*big.Int, int, string, error) {
-	// get the census size to ensure participants were added making a GET
-	// request to /censuses/{censusID}/size
-	sizeURL, err := url.JoinPath(c3url, "/censuses/", censusId, "/size")
+func c3PublishCensus(c3url, censusId string) (*big.Int, int, string, error) {
+	// publish the census making a POST request to /censuses/{censusID}/publish
+	publishURL, err := url.JoinPath(c3url, "/censuses/", censusId, "/publish")
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("error creating size URL: %w", err)
 	}
-	sizeRes, err := http.Get(sizeURL)
+	res, err := http.Post(publishURL, "plain/text", nil)
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("error getting census size: %w", err)
 	}
 	defer func() {
-		if err := sizeRes.Body.Close(); err != nil {
-			log.Printf("Warning: failed to close size response body: %v", err)
+		if err := res.Body.Close(); err != nil {
+			log.Errorw(err, "error closing publish census response body")
 		}
 	}()
-	if sizeRes.StatusCode != http.StatusOK {
-		return nil, 0, "", fmt.Errorf("unexpected status code getting census size: %d", sizeRes.StatusCode)
+	var publishRes c3api.PublishCensusResponse
+	if err := json.NewDecoder(res.Body).Decode(&publishRes); err != nil {
+		return nil, 0, "", fmt.Errorf("error decoding publish census response: %w", err)
 	}
-	var sizeResp c3api.CensusSizeResponse
-	if err := json.NewDecoder(sizeRes.Body).Decode(&sizeResp); err != nil {
-		return nil, 0, "", fmt.Errorf("error decoding census size response: %w", err)
-	}
-
-	// get the census root making a GET request to /censuses/{censusID}/root
-	rootURL, err := url.JoinPath(c3url, "/censuses/", censusId, "/root")
-	if err != nil {
-		return nil, 0, "", fmt.Errorf("error creating root URL: %w", err)
-	}
-	rootRes, err := http.Get(rootURL)
-	if err != nil {
-		return nil, 0, "", fmt.Errorf("error getting census root: %w", err)
-	}
-	defer func() {
-		if err := rootRes.Body.Close(); err != nil {
-			log.Printf("Warning: failed to close root response body: %v", err)
-		}
-	}()
-	if rootRes.StatusCode != http.StatusOK {
-		return nil, 0, "", fmt.Errorf("unexpected status code getting census root: %d", rootRes.StatusCode)
-	}
-	var rootResp c3api.CensusRootResponse
-	if err := json.NewDecoder(rootRes.Body).Decode(&rootResp); err != nil {
-		return nil, 0, "", fmt.Errorf("error decoding census root response: %w", err)
-	}
-
-	// get the census URI making a GET request to /censuses/{censusID}/uri
-	uriURL, err := url.JoinPath(c3url, "/censuses/", censusId, "/uri")
-	if err != nil {
-		return nil, 0, "", fmt.Errorf("error creating uri URL: %w", err)
-	}
-	uriRes, err := http.Get(uriURL)
-	if err != nil {
-		return nil, 0, "", fmt.Errorf("error getting census uri: %w", err)
-	}
-	defer func() {
-		if err := uriRes.Body.Close(); err != nil {
-			log.Printf("Warning: failed to close uri response body: %v", err)
-		}
-	}()
-	if uriRes.StatusCode != http.StatusOK {
-		return nil, 0, "", fmt.Errorf("unexpected status code getting census uri: %d", uriRes.StatusCode)
-	}
-	var uriResp c3api.CensusURIResponse
-	if err := json.NewDecoder(uriRes.Body).Decode(&uriResp); err != nil {
-		return nil, 0, "", fmt.Errorf("error decoding census uri response: %w", err)
-	}
-	return rootResp.Root.BigInt().MathBigInt(), sizeResp.Size, uriResp.URI, nil
+	return publishRes.Root.BigInt().MathBigInt(), publishRes.Size, publishRes.CensusURI, nil
 }
