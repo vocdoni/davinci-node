@@ -7,14 +7,14 @@ import (
 	"os"
 	"testing"
 
-	goethkzg "github.com/crate-crypto/go-eth-kzg"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/util"
 )
 
 func TestBarycentricEvalGo(t *testing.T) {
 	// Create blob with direct values (these ARE the polynomial evaluations)
-	blob := &goethkzg.Blob{}
+	blob := &gethkzg.Blob{}
 	for i := 0; i < 20; i++ {
 		big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
 	}
@@ -27,7 +27,7 @@ func TestBarycentricEvalGo(t *testing.T) {
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
-	_, claim, _ := ComputeProof(blob, z)
+	_, claim, _ := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 	want := new(big.Int).SetBytes(claim[:])
 
 	// Evaluate using the barycentric formula
@@ -55,7 +55,7 @@ func TestBarycentricEvalGoBlobData1(t *testing.T) {
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
-	_, claim, _ := ComputeProof(blob, z)
+	_, claim, _ := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 	want := new(big.Int).SetBytes(claim[:])
 
 	// Evaluate
@@ -81,7 +81,7 @@ func TestBarycentricEvalGoBlobData2(t *testing.T) {
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
-	_, claim, _ := ComputeProof(blob, z)
+	_, claim, _ := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 	want := new(big.Int).SetBytes(claim[:])
 
 	// Evaluate
@@ -90,8 +90,8 @@ func TestBarycentricEvalGoBlobData2(t *testing.T) {
 	qt.Assert(c, want.Cmp(got), qt.Equals, 0, qt.Commentf("Expected and got values should match"))
 }
 
-func hexStrToBlob(hexStr string) (*goethkzg.Blob, error) {
-	var blob goethkzg.Blob
+func hexStrToBlob(hexStr string) (*gethkzg.Blob, error) {
+	var blob gethkzg.Blob
 	byts, err := hexStrToBytes(hexStr)
 	if err != nil {
 		return nil, err

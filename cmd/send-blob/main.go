@@ -9,8 +9,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	gethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/spf13/pflag"
 
 	"github.com/vocdoni/davinci-node/log"
@@ -78,12 +78,12 @@ func main() {
 		blobs[i] = b
 	}
 
-	var sidecar *types.BlobTxSidecar
+	var sidecar *gethtypes.BlobTxSidecar
 	switch contracts.ChainID {
-	case params.SepoliaChainConfig.ChainID.Uint64():
-		sidecar, _, err = web3.BuildBlobsSidecar(blobs)
+	case gethparams.SepoliaChainConfig.ChainID.Uint64():
+		sidecar, err = web3.ComputeBlobTxSidecar(gethtypes.BlobSidecarVersion1, blobs)
 	default: // mainnet, for example
-		sidecar, _, err = web3.BuildBlobsSidecarV0(blobs)
+		sidecar, err = web3.ComputeBlobTxSidecar(gethtypes.BlobSidecarVersion0, blobs)
 	}
 	if err != nil {
 		log.Fatalf("build sidecar: %v", err)
@@ -93,7 +93,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	mockStateTransition := func() *types.Transaction {
+	mockStateTransition := func() *gethtypes.Transaction {
 		// Prepare the ABI for packing the data
 		processABI, err := contracts.ProcessRegistryABI()
 		if err != nil {
@@ -172,10 +172,10 @@ func preview(b []byte, n int) string {
 }
 
 func RandomBlob() []byte {
-	const feSize = params.BlobTxBytesPerFieldElement              // 32
-	out := make([]byte, params.BlobTxFieldElementsPerBlob*feSize) // 131072
+	const feSize = gethparams.BlobTxBytesPerFieldElement              // 32
+	out := make([]byte, gethparams.BlobTxFieldElementsPerBlob*feSize) // 131072
 	var el fr.Element
-	for i := 0; i < params.BlobTxFieldElementsPerBlob; i++ {
+	for i := 0; i < gethparams.BlobTxFieldElementsPerBlob; i++ {
 		el.MustSetRandom()                             // uses crypto/rand.Reader
 		copy(out[i*feSize:(i+1)*feSize], el.Marshal()) // big-endian canonical bytes
 	}

@@ -16,7 +16,7 @@ import (
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	gtypes "github.com/ethereum/go-ethereum/core/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
@@ -443,7 +443,7 @@ func (c *Contracts) SimulateContractCall(
 	contractAddr common.Address,
 	contractABI *abi.ABI,
 	method string,
-	blobsSidecar *gtypes.BlobTxSidecar,
+	blobsSidecar *gethtypes.BlobTxSidecar,
 	args ...any,
 ) error {
 	if contractABI == nil {

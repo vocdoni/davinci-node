@@ -137,21 +137,14 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 
 		// Get blob sidecar and hash
-		blobSidecar, blobHashes, err := blobData.TxSidecar()
-		if err != nil {
-			log.Errorw(err, "failed to get blob sidecar")
-			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
-				log.Errorw(err, "failed to mark ballot batch as failed")
-			}
-			return true // Continue to next process ID
-		}
+		blobSidecar := blobData.TxSidecar()
 
 		log.Infow("state transition proof generated",
 			"took", time.Since(startTime).String(),
 			"pid", processID.String(),
 			"rootHashBefore", root.String(),
 			"rootHashAfter", rootHashAfter.String(),
-			"blobHash", blobHashes[0].String(),
+			"blobHash", blobSidecar.BlobHashes()[0].String(),
 		)
 
 		p := proof.(*groth16_bn254.Proof)
@@ -187,7 +180,7 @@ func (s *Sequencer) processPendingTransitions() {
 				BlobCommitment:       blobData.Commitment,
 				BlobProof:            blobData.OpeningProof,
 			},
-			BlobVersionHash: blobHashes[0],
+			BlobVersionHash: blobSidecar.BlobHashes()[0],
 			BlobSidecar:     blobSidecar,
 		}); err != nil {
 			log.Errorw(err, "failed to push state transition batch")

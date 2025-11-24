@@ -7,7 +7,7 @@ import (
 
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 
-	ethereumtypes "github.com/ethereum/go-ethereum/core/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/solidity"
 	"github.com/vocdoni/davinci-node/storage"
@@ -132,7 +132,7 @@ func (s *Sequencer) pushTransitionToContract(
 	processID types.HexBytes,
 	proof *solidity.Groth16CommitmentProof,
 	inputs storage.StateTransitionBatchProofInputs,
-	blobSidecar *ethereumtypes.BlobTxSidecar,
+	blobSidecar *gethtypes.BlobTxSidecar,
 ) error {
 	var pid32 [32]byte
 	copy(pid32[:], processID)
@@ -158,9 +158,9 @@ func (s *Sequencer) pushTransitionToContract(
 	// Cell proofs are verified during their generation in ComputeCellsAndKZGProofs.
 	if s.contracts.SupportBlobTxs() {
 		// Verify sidecar version and structure
-		if blobSidecar.Version != ethereumtypes.BlobSidecarVersion1 {
+		if blobSidecar.Version != gethtypes.BlobSidecarVersion1 {
 			return fmt.Errorf("unexpected blob sidecar version: got %d, expected %d",
-				blobSidecar.Version, ethereumtypes.BlobSidecarVersion1)
+				blobSidecar.Version, gethtypes.BlobSidecarVersion1)
 		}
 		// Verify we have the correct number of cell proofs (128 per blob)
 		expectedProofs := len(blobSidecar.Blobs) * gethkzg.CellProofsPerBlob

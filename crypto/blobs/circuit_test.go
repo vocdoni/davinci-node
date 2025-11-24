@@ -14,7 +14,7 @@ import (
 	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/test"
-	goethkzg "github.com/crate-crypto/go-eth-kzg"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
@@ -65,7 +65,7 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Compute KZG proof
-	_, claim, err := ComputeProof(blob, z)
+	_, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 	c.Assert(err, qt.IsNil)
 	y := new(big.Int).SetBytes(claim[:])
 
@@ -97,7 +97,7 @@ func TestProgressiveElementsNative(t *testing.T) {
 		fmt.Printf("\n=== Testing with %d elements ===\n", count)
 
 		// Create blob with 'count' elements
-		blob := &goethkzg.Blob{}
+		blob := &gethkzg.Blob{}
 		for i := 0; i < count; i++ {
 			val := big.NewInt(int64(i + 1))
 			valHash, err := poseidon.MultiPoseidon(val) // Ensure the cell is processed by Poseidon
@@ -112,7 +112,7 @@ func TestProgressiveElementsNative(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Compute KZG proof
-		_, claim, err := ComputeProof(blob, z)
+		_, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 		c.Assert(err, qt.IsNil)
 		y := new(big.Int).SetBytes(claim[:])
 
@@ -143,7 +143,7 @@ func TestCircuitFullProving(t *testing.T) {
 	}
 
 	// Create test data
-	blob := &goethkzg.Blob{}
+	blob := &gethkzg.Blob{}
 	for i := range 50 {
 		val := big.NewInt(int64(i + 1))
 		valHash, err := poseidon.MultiPoseidon(val) // Ensure the cell is processed by Poseidon
@@ -156,8 +156,8 @@ func TestCircuitFullProving(t *testing.T) {
 	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
 	c.Assert(err, qt.IsNil)
 
-	// Compute KZG proof using go-eth-kzg
-	_, claim, err := ComputeProof(blob, z)
+	// Compute KZG proof
+	_, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 	c.Assert(err, qt.IsNil)
 	y := new(big.Int).SetBytes(claim[:])
 
@@ -167,7 +167,7 @@ func TestCircuitFullProving(t *testing.T) {
 		Y: emulated.ValueOf[FE](y),
 	}
 
-	// Fill blob data from kzg4844.Blob
+	// Fill blob data from gethkzg.Blob
 	for i := 0; i < 4096; i++ {
 		cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
 		witness.Blob[i] = cell

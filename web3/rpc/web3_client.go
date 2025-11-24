@@ -9,7 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/vocdoni/davinci-node/log"
@@ -121,7 +121,7 @@ func (c *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64,
 // the chainID of the Client instance. It returns an error if the chainID is not
 // found in the pool or if the method fails. Required by the bind.ContractBackend
 // interface.
-func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]gethtypes.Log, error) {
 	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, filterLogsTimeout)
 		defer cancel()
@@ -130,14 +130,14 @@ func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]
 	if err != nil {
 		return nil, err
 	}
-	return res.([]types.Log), nil
+	return res.([]gethtypes.Log), nil
 }
 
 // HeaderByNumber method wraps the HeaderByNumber method from the ethclient.Client
 // for the chainID of the Client instance. It returns an error if the chainID is
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
-func (c *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+func (c *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*gethtypes.Header, error) {
 	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
@@ -146,7 +146,7 @@ func (c *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.He
 	if err != nil {
 		return nil, err
 	}
-	return res.(*types.Header), err
+	return res.(*gethtypes.Header), err
 }
 
 // PendingNonceAt method wraps the PendingNonceAt method from the
@@ -185,7 +185,7 @@ func (c *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 // for the chainID of the Client instance. It returns an error if the chainID is
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
-func (c *Client) SendTransaction(ctx context.Context, tx *types.Transaction) error {
+func (c *Client) SendTransaction(ctx context.Context, tx *gethtypes.Transaction) error {
 	_, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
@@ -215,7 +215,7 @@ func (c *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]b
 // if the chainID is not found in the pool or if the method fails. Required by
 // the bind.ContractBackend interface.
 func (c *Client) SubscribeFilterLogs(ctx context.Context,
-	query ethereum.FilterQuery, ch chan<- types.Log,
+	query ethereum.FilterQuery, ch chan<- gethtypes.Log,
 ) (ethereum.Subscription, error) {
 	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
