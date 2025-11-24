@@ -6,6 +6,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"strings"
 	"syscall/js"
 
@@ -52,6 +53,20 @@ func FromHexBytes(v js.Value) (types.HexBytes, error) {
 		return types.HexBytes{}, fmt.Errorf("value provided is not a valid hex string")
 	}
 	return hexValue, nil
+}
+
+// FromBigInt converts a JavaScript value to a types.BigInt type. It expects a
+// string that represents a big integer value. If the value is not a valid big
+// integer string, it returns an error.
+func FromBigInt(v js.Value) (*types.BigInt, error) {
+	if v.Type() != js.TypeString {
+		return nil, fmt.Errorf("value provided is not a string")
+	}
+	nativeBigInt, ok := new(big.Int).SetString(v.String(), 10)
+	if !ok {
+		return nil, fmt.Errorf("value provided is not a valid big.Int string")
+	}
+	return new(types.BigInt).SetBigInt(nativeBigInt), nil
 }
 
 // JSResult creates a JavaScript object with data and/or error fields,
