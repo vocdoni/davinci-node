@@ -12,13 +12,23 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+// CensusDownloaderConfig holds the configuration for the CensusDownloader. It
+// includes:
+//   - CleanUpInterval: time duration between cleanup checks for pending
+//     censuses.
+//   - Expiration: time duration after which a pending census is considered
+//     expired (completed or failed).
+//   - Cooldown: time duration to wait before retrying a failed census download.
+//   - Attempts: maximum number of attempts to download and import a census.
 type CensusDownloaderConfig struct {
-	Interval   time.Duration
-	Expiration time.Duration
-	Cooldown   time.Duration
-	Attempts   int
+	CleanUpInterval time.Duration
+	Expiration      time.Duration
+	Cooldown        time.Duration
+	Attempts        int
 }
 
+// downloadStatus holds the status of a census download attempt. It is for
+// internal use by the CensusDownloader.
 type downloadStatus struct {
 	census      *types.Census
 	complete    bool
@@ -27,6 +37,9 @@ type downloadStatus struct {
 	lastUpdated time.Time
 }
 
+// CensusDownloader is responsible for downloading and importing censuses
+// asynchronously. It maintains a queue of censuses to download and tracks
+// the status of each download attempt.
 type CensusDownloader struct {
 	DownloadQueue   chan *types.Census
 	config          CensusDownloaderConfig
@@ -39,7 +52,13 @@ type CensusDownloader struct {
 	mu              sync.RWMutex
 }
 
-func NewCensusDownloader(contracts ContractsService, stg *storage.Storage, config CensusDownloaderConfig) *CensusDownloader {
+// NewCensusDownloader creates a new CensusDownloader instance with the given
+// ContractsService, Storage, and configuration.
+func NewCensusDownloader(
+	contracts ContractsService,
+	stg *storage.Storage,
+	config CensusDownloaderConfig,
+) *CensusDownloader {
 	return &CensusDownloader{
 		DownloadQueue: make(chan *types.Census),
 		contracts:     contracts,
@@ -49,11 +68,14 @@ func NewCensusDownloader(contracts ContractsService, stg *storage.Storage, confi
 	}
 }
 
+// Start begins the CensusDownloader's processing loop. It listens for new
+// censuses to download from the DownloadQueue channel and processes them
+// asynchronously. If the context is canceled, the downloader stops processing.
 func (cd *CensusDownloader) Start(ctx context.Context) error {
 	cd.ctx, cd.cancel = context.WithCancel(ctx)
 
 	go func() {
-		cleanUpTicker := time.NewTicker(cd.config.Interval)
+		cleanUpTicker := time.NewTicker(cd.config.CleanUpInterval)
 		defer cleanUpTicker.Stop()
 		for {
 			select {
@@ -82,12 +104,15 @@ func (cd *CensusDownloader) Start(ctx context.Context) error {
 	return nil
 }
 
+// Stop stops the CensusDownloader's processing loop by canceling its context.
 func (cd *CensusDownloader) Stop() {
 	if cd.cancel != nil {
 		cd.cancel()
 	}
 }
 
+// cleanUpPendingCensuses removes expired pending censuses from the internal
+// tracking map.
 func (cd *CensusDownloader) cleanUpPendingCensuses() {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
@@ -100,6 +125,10 @@ func (cd *CensusDownloader) cleanUpPendingCensuses() {
 	}
 }
 
+// processCensusDownload attempts to download and import the given census. It
+// retries the download and import process up to the configured number of
+// attempts. After each attempt, it updates the status of the census in the
+// internal tracking map.
 func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census *types.Census) error {
 	log.Infow("starting census download",
 		"root", census.CensusRoot.String(),
@@ -129,6 +158,8 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census *t
 	return nil
 }
 
+// addPendingCensus adds a census to the internal tracking map of pending
+// censuses.
 func (cd *CensusDownloader) addPendingCensus(census *types.Census) {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
@@ -145,6 +176,9 @@ func (cd *CensusDownloader) addPendingCensus(census *types.Census) {
 	}
 }
 
+// updatePendingCensusStatus updates the status of a pending census download
+// attempt. It returns true if the census was found and updated, false
+// otherwise.
 func (cd *CensusDownloader) updatePendingCensusStatus(census *types.Census, err error) bool {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
@@ -161,6 +195,8 @@ func (cd *CensusDownloader) updatePendingCensusStatus(census *types.Census, err 
 	return true
 }
 
+// IsCensusPending checks if a census is currently pending download or import.
+// It returns true if the census is pending, false otherwise.
 func (cd *CensusDownloader) IsCensusPending(census *types.Census) bool {
 	cd.mu.RLock()
 	defer cd.mu.RUnlock()

@@ -303,10 +303,10 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 	sequencer.NewProcessMonitorInterval = time.Second * 5
 	// Start census downloader
 	s.censusDownloader = service.NewCensusDownloader(contracts, s.storage, service.CensusDownloaderConfig{
-		Interval:   time.Second * 5,
-		Attempts:   5,
-		Expiration: time.Minute * 30,
-		Cooldown:   time.Second * 10,
+		CleanUpInterval: time.Second * 5,
+		Attempts:        5,
+		Expiration:      time.Minute * 30,
+		Cooldown:        time.Second * 10,
 	})
 	if err := s.censusDownloader.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start census downloader: %w", err)

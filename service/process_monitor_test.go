@@ -29,10 +29,10 @@ func TestProcessMonitor(t *testing.T) {
 
 	// Setup census downloader
 	censusDownloader := NewCensusDownloader(contracts, store, CensusDownloaderConfig{
-		Interval:   5 * time.Second,
-		Cooldown:   5 * time.Second,
-		Expiration: 30 * time.Minute,
-		Attempts:   5,
+		CleanUpInterval: 5 * time.Second,
+		Cooldown:        5 * time.Second,
+		Expiration:      30 * time.Minute,
+		Attempts:        5,
 	})
 	c.Assert(censusDownloader.Start(ctx), qt.IsNil)
 	c.Cleanup(censusDownloader.Stop)

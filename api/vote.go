@@ -138,7 +138,6 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// validate the census origin
 	if !vote.CensusProof.CensusOrigin.Valid() {
 		ErrMalformedBody.Withf("invalid process census origin").Write(w)
-		log.Errorf("invalid process census origin: %s", vote.ProcessID.String())
 		return
 	}
 	// validate the census proof
