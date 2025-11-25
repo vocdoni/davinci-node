@@ -17,6 +17,9 @@ import (
 func TestProcessMonitor(t *testing.T) {
 	c := qt.New(t)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	// Setup storage
 	store := storage.New(memdb.New())
 	defer store.Close()
@@ -31,16 +34,14 @@ func TestProcessMonitor(t *testing.T) {
 		Expiration: 30 * time.Minute,
 		Attempts:   5,
 	})
+	c.Assert(censusDownloader.Start(ctx), qt.IsNil)
+	c.Cleanup(censusDownloader.Stop)
 
 	// Create process monitor
-	monitor := NewProcessMonitor(contracts, store, censusDownloader, time.Second)
+	monitor := NewProcessMonitor(contracts, store, censusDownloader, time.Second*2)
 
 	// Start monitoring in background
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	err := monitor.Start(ctx)
-	c.Assert(err, qt.IsNil)
+	c.Assert(monitor.Start(ctx), qt.IsNil)
 	defer monitor.Stop()
 
 	// Create a new encryption key for the process
