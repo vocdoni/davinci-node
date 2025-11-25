@@ -373,7 +373,7 @@ Register a new vote for a voting process.
   "censusProof": {
     "root": "hexBytes",
     "address": "hexBytes",
-    "weight": "bigintStr",    // always required
+    "weight": "bigintStr",
     "censusOrigin": 1,        // 1 for merkle proofs, 2 for csp proofs
     "processId": "hexBytes",  // csp proof: the process id signed with the address
     "publicKey": "hexBytes",  // csp proof: the public key of the csp
@@ -403,6 +403,7 @@ Register a new vote for a voting process.
   "publicKey": "hexBytes",
   "signature": "hexBytes",
   "voteId": "hexBytes",
+  "voteWeight": "bigintStr"
 }
 ```
 

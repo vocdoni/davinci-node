@@ -174,11 +174,11 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address: emulated.ValueOf[sw_bn254.ScalarField](b.Address),
-			VoteID:  emulated.ValueOf[sw_bn254.ScalarField](b.VoteID.BigInt().MathBigInt()),
-			Ballot:  *b.EncryptedBallot.ToGnarkEmulatedBN254(),
+			Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
+			VoteID:     emulated.ValueOf[sw_bn254.ScalarField](b.VoteID.BigInt().MathBigInt()),
+			VoteWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
+			Ballot:     *b.EncryptedBallot.ToGnarkEmulatedBN254(),
 		},
-		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 			ID:            emulated.ValueOf[sw_bn254.ScalarField](inputs.ProcessID),
 			CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusOrigin.BigInt().MathBigInt()),

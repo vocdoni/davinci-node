@@ -13,9 +13,20 @@ import (
 	imtcircuit "github.com/vocdoni/lean-imt-go/circuit"
 )
 
+// fixed seed for CSP testing
 const testCSPSeed = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
 
-func CensusProofsForCircuitTest(votes []state.Vote, origin types.CensusOrigin, pid *types.ProcessID) (*big.Int, statetransition.CensusProofs, error) {
+// CensusProofsForCircuitTest generates the census proofs required for the
+// state transition circuit tests based on the provided votes and census
+// origin. It returns the census root, the generated census proofs ready to
+// be used in the statetransition circuit, and an error if the process fails.
+// It supports both Merkle tree and CSP-based by initializing a CSP instance
+// or generating a Merkle tree census as needed.
+func CensusProofsForCircuitTest(
+	votes []state.Vote,
+	origin types.CensusOrigin,
+	pid *types.ProcessID,
+) (*big.Int, statetransition.CensusProofs, error) {
 	log.Printf("generating testing census with '%s' origin", origin.String())
 	var root *big.Int
 	merkleProofs := [types.VotesPerBatch]imtcircuit.MerkleProof{}
@@ -60,7 +71,7 @@ func CensusProofsForCircuitTest(votes []state.Vote, origin types.CensusOrigin, p
 			if i < len(votes) {
 				// generate csp proof for the voter address
 				addr := common.BytesToAddress(votes[i].Address.Bytes())
-				cspProof, err := eddsaCSP.GenerateProof(pid, addr)
+				cspProof, err := eddsaCSP.GenerateProof(pid, addr, new(types.BigInt).SetBigInt(votes[i].Weight))
 				if err != nil {
 					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to generate census proof: %w", err)
 				}

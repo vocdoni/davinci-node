@@ -71,11 +71,12 @@ var (
 
 // Services struct holds all test services
 type Services struct {
-	API       *service.APIService
-	Census3   *c3service.Service
-	Sequencer *sequencer.Sequencer
-	Storage   *storage.Storage
-	Contracts *web3.Contracts
+	API              *service.APIService
+	Census3          *c3service.Service
+	Sequencer        *sequencer.Sequencer
+	CensusDownloader *service.CensusDownloader
+	Storage          *storage.Storage
+	Contracts        *web3.Contracts
 }
 
 func isCSPCensus() bool {
@@ -476,9 +477,24 @@ func NewTestService(
 		log.Info("Debug prover is disabled in non-testing context")
 	}
 
+	// Start census downloader
+	cd := service.NewCensusDownloader(contracts, services.Storage, service.CensusDownloaderConfig{
+		CleanUpInterval: time.Second * 5,
+		Expiration:      time.Minute * 30,
+		Cooldown:        time.Second * 10,
+		Attempts:        5,
+	})
+	if err := cd.Start(ctx); err != nil {
+		vp.Stop()
+		web3Cleanup()
+		return nil, nil, fmt.Errorf("failed to start census downloader: %w", err)
+	}
+	services.CensusDownloader = cd
+
 	// Start process monitor
-	pm := service.NewProcessMonitor(contracts, stg, time.Second*2)
+	pm := service.NewProcessMonitor(contracts, stg, cd, time.Second*2)
 	if err := pm.Start(ctx); err != nil {
+		cd.Stop()
 		vp.Stop()
 		web3Cleanup() // Clean up web3 if process monitor fails to start
 		return nil, nil, fmt.Errorf("failed to start process monitor: %w", err)
@@ -493,6 +509,7 @@ func NewTestService(
 	api, err := setupAPI(ctx, stg, workerSecret, workerTokenExpiration, workerTimeout, banRules, web3Conf)
 	if err != nil {
 		pm.Stop()
+		cd.Stop()
 		vp.Stop()
 		web3Cleanup() // Clean up web3 if API fails to start
 		return nil, nil, fmt.Errorf("failed to setup API: %w", err)
@@ -502,6 +519,7 @@ func NewTestService(
 	// Create a combined cleanup function
 	cleanup := func() {
 		api.Stop()
+		cd.Stop()
 		pm.Stop()
 		vp.Stop()
 		stg.Close()
@@ -539,27 +557,26 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 		}
 		return root.Root, "", signers, nil
 	} else {
-		// censusRoot, censusURI, err := census.ServeCensusMerkleTreeForTest(ctx, votes)
 		censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, votes, defaultCensus3URL)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 		}
-		return censusRoot.Bytes(), defaultCensus3URL + censusURI, signers, nil
+		return censusRoot.Bytes(), censusURI, signers, nil
 	}
 }
 
 func generateCensusProof(cli *client.HTTPclient, root, pid, key []byte) (*types.CensusProof, error) {
 	if isCSPCensus() {
+		weight := new(types.BigInt).SetUint64(circuits.MockWeight)
 		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(testLocalCSPSeed))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CSP: %w", err)
 		}
 		processID := new(types.ProcessID).SetBytes(pid)
-		cspProof, err := eddsaCSP.GenerateProof(processID, common.BytesToAddress(key))
+		cspProof, err := eddsaCSP.GenerateProof(processID, common.BytesToAddress(key), weight)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate CSP proof: %w", err)
 		}
-		cspProof.Weight = new(types.BigInt).SetUint64(circuits.MockWeight)
 		return cspProof, nil
 	}
 	return nil, nil
@@ -685,6 +702,8 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 			return api.Vote{}, fmt.Errorf("failed to generate random k: %w", err)
 		}
 	}
+	// set voter weight
+	voterWeight := new(types.BigInt).SetInt(circuits.MockWeight)
 	// compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:       address.Bytes(),
@@ -692,7 +711,7 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 		EncryptionKey: []*types.BigInt{encKey.X, encKey.Y},
 		K:             new(types.BigInt).SetBigInt(k),
 		BallotMode:    bm,
-		Weight:        new(types.BigInt).SetInt(circuits.MockWeight),
+		Weight:        voterWeight,
 		FieldValues:   fields,
 	}
 	// generate the inputs for the ballot proof circuit
@@ -729,9 +748,7 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
-		CensusProof: types.CensusProof{
-			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
-		},
+		VoterWeight:      voterWeight,
 	}, nil
 }
 

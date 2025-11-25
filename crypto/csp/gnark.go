@@ -31,7 +31,7 @@ type CSPProof struct {
 func (proof *CSPProof) IsValidEmulated(
 	api frontend.API,
 	curveID ecc_twedwards.ID,
-	censusRoot, processID, address emulated.Element[sw_bn254.ScalarField],
+	censusRoot, processID, address, weight emulated.Element[sw_bn254.ScalarField],
 ) frontend.Variable {
 	// check if the census root matches the expected one
 	validPubKey, err := proof.isEmulatedPubKeyValid(api, censusRoot)
@@ -40,7 +40,7 @@ func (proof *CSPProof) IsValidEmulated(
 		return 0
 	}
 	// recompute the message hash with the process ID and address
-	msg := emulatedSignatureMessage(api, processID, address)
+	msg := emulatedSignatureMessage(api, processID, address, weight)
 	// inititialize the twistededwards curve
 	curve, err := twistededwards.NewEdCurve(api, curveID)
 	if err != nil {
@@ -65,7 +65,7 @@ func (proof *CSPProof) IsValidEmulated(
 func (proof *CSPProof) IsValid(
 	api frontend.API,
 	curveID ecc_twedwards.ID,
-	censusRoot, processID, address frontend.Variable,
+	censusRoot, processID, address, weight frontend.Variable,
 ) frontend.Variable {
 	// check if the census root matches the expected one
 	validPubKey, err := proof.isPubKeyValid(api, censusRoot)
@@ -74,7 +74,7 @@ func (proof *CSPProof) IsValid(
 		return 0
 	}
 	// recompute the message hash with the process ID and address
-	msg := signatureMessage(api, processID, address)
+	msg := signatureMessage(api, processID, address, weight)
 	// inititialize the twistededwards curve
 	curve, err := twistededwards.NewEdCurve(api, curveID)
 	if err != nil {
@@ -138,13 +138,13 @@ func (proof *CSPProof) isPubKeyValid(
 // It uses the MiMC7 hash function to compute the hash of the process ID and
 // address and then packs the result into a frontend variable of the circuit
 // curve.
-func emulatedSignatureMessage(api frontend.API, processID, address emulated.Element[sw_bn254.ScalarField]) frontend.Variable {
+func emulatedSignatureMessage(api frontend.API, processID, address, weight emulated.Element[sw_bn254.ScalarField]) frontend.Variable {
 	msgHasher, err := emumimc7.NewMiMC(api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create mimc7 hash function for message", err)
 		return 0
 	}
-	if err := msgHasher.Write(processID, address); err != nil {
+	if err := msgHasher.Write(processID, address, weight); err != nil {
 		circuits.FrontendError(api, "failed to write process ID and address to message hasher", err)
 		return 0
 	}
@@ -156,13 +156,13 @@ func emulatedSignatureMessage(api frontend.API, processID, address emulated.Elem
 	return msg
 }
 
-func signatureMessage(api frontend.API, processID, address frontend.Variable) frontend.Variable {
+func signatureMessage(api frontend.API, processID, address, weight frontend.Variable) frontend.Variable {
 	msgHasher, err := mimc7.NewMiMC(api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create mimc7 hash function for message", err)
 		return 0
 	}
-	if err := msgHasher.Write(processID, address); err != nil {
+	if err := msgHasher.Write(processID, address, weight); err != nil {
 		circuits.FrontendError(api, "failed to write process ID and address to message hasher", err)
 		return 0
 	}

@@ -40,6 +40,9 @@ func (format JSONFormat) String() string {
 	}
 }
 
+// downloadAndImportJSON downloads the census merkle tree dump from the
+// specified targetURL and imports it into the census DB based on the
+// expectedRoot. It returns an error if the download or import fails.
 func downloadAndImportJSON(
 	stg *storage.Storage,
 	targetURL string,

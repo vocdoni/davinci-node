@@ -109,7 +109,7 @@ func (s *Sequencer) processPendingTransitions() {
 		)
 
 		// Reencrypt the votes with a new k
-		reencryptedVotes, censusProofs, kSeed, err := s.reencryptVotes(processID, batch.Ballots)
+		reencryptedVotes, kSeed, err := s.reencryptVotes(processID, batch.Ballots)
 		if err != nil {
 			log.Errorw(err, "failed to reencrypt votes")
 			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
@@ -118,7 +118,11 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 
-		// Get the census proofs for the current batch
+		// Get the circuit-ready census proofs for the current batch
+		censusProofs := make([]*types.CensusProof, len(batch.Ballots))
+		for i, b := range batch.Ballots {
+			censusProofs[i] = b.CensusProof
+		}
 		censusRoot, circuitCensusProofs, err := s.processCensusProofs(processID, reencryptedVotes, censusProofs)
 		if err != nil {
 			log.Errorw(err, "failed to get census proofs")
@@ -127,7 +131,7 @@ func (s *Sequencer) processPendingTransitions() {
 
 		// Process the batch inner proof and votes to get the proof of the
 		// state transition
-		censusRoot, proof, blobData, err := s.processStateTransitionBatch(
+		proof, blobData, err := s.processStateTransitionBatch(
 			processID,
 			processState,
 			censusRoot,
@@ -228,12 +232,12 @@ func (s *Sequencer) processStateTransitionBatch(
 	votes []*state.Vote,
 	kSeed *types.BigInt,
 	innerProof groth16.Proof,
-) (*types.BigInt, groth16.Proof, *blobs.BlobEvalData, error) {
+) (groth16.Proof, *blobs.BlobEvalData, error) {
 	startTime := time.Now()
 	// generate the state transition assignments from the batch and the blob data
 	assignments, blobData, err := s.stateBatchToWitness(processState, votes, censusRoot, censusProofs, kSeed, innerProof)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to generate assignments: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate assignments: %w", err)
 	}
 	log.Debugw("state transition assignments ready for proof generation", "took", time.Since(startTime).String())
 
@@ -243,9 +247,9 @@ func (s *Sequencer) processStateTransitionBatch(
 	// Generate the proof
 	proof, err := s.prover(circuits.StateTransitionCurve, s.stCcs, s.stPk, assignments, opts)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
-	return censusRoot, proof, blobData, nil
+	return proof, blobData, nil
 }
 
 func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, error) {
@@ -304,27 +308,26 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	return processState, nil
 }
 
-func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, []*types.CensusProof, *types.BigInt, error) {
+func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
 	// generate a initial k to reencrypt the ballots
 	kSeed, err := elgamal.RandK()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to generate random k: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate random k: %w", err)
 	}
 	// get encryption key from the storage
 	encryptionKey, _, err := s.stg.EncryptionKeys(pid)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get encryption key: %w", err)
+		return nil, nil, fmt.Errorf("failed to get encryption key: %w", err)
 	}
 	// iterate over the votes, reencrypting each time the zero ballot with the
 	// current k, adding it to the encrypted ballot
 	reencryptedVotes := make([]*state.Vote, len(votes))
-	proofs := make([]*types.CensusProof, len(votes))
 	lastK := new(big.Int).Set(kSeed)
 	for i, v := range votes {
 		var reencryptedBallot *elgamal.Ballot
 		reencryptedBallot, lastK, err = v.EncryptedBallot.Reencrypt(encryptionKey, lastK)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to reencrypt ballot: %w", err)
+			return nil, nil, fmt.Errorf("failed to reencrypt ballot: %w", err)
 		}
 		// sum the encrypted zero ballot with the original ballot
 		reencryptedVotes[i] = &state.Vote{
@@ -334,10 +337,9 @@ func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.Aggreg
 			Weight:            v.Weight,
 			ReencryptedBallot: reencryptedBallot,
 		}
-		proofs[i] = v.CensusProof
 	}
 	log.Infow("votes reencrypted", "processID", pid.String(), "voteCount", len(reencryptedVotes))
-	return reencryptedVotes, proofs, new(types.BigInt).SetBigInt(kSeed), nil
+	return reencryptedVotes, new(types.BigInt).SetBigInt(kSeed), nil
 }
 
 func (s *Sequencer) stateBatchToWitness(

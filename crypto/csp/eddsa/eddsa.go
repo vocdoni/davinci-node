@@ -126,6 +126,7 @@ func (c *EdDSA) CensusRoot() *types.CensusRoot {
 func (c *EdDSA) GenerateProof(
 	processID *types.ProcessID,
 	address common.Address,
+	weight *types.BigInt,
 ) (*types.CensusProof, error) {
 	if c.signer == nil {
 		return nil, fmt.Errorf("csp is not initialized")
@@ -136,9 +137,12 @@ func (c *EdDSA) GenerateProof(
 	if address == (common.Address{}) {
 		return nil, fmt.Errorf("invalid address")
 	}
+	if weight == nil || weight.LessThanOrEqual(new(types.BigInt).SetInt(0)) {
+		return nil, fmt.Errorf("invalid weight")
+	}
 	// sign the message composed by the process ID and address using the hash
 	// function and the private key of the CSP
-	message, err := signatureMessage(c.curve, processID.Marshal(), address.Bytes())
+	message, err := signatureMessage(c.curve, processID.Marshal(), address.Bytes(), weight)
 	if err != nil {
 		return nil, fmt.Errorf("error composing signature message: %w", err)
 	}
@@ -154,6 +158,7 @@ func (c *EdDSA) GenerateProof(
 		CensusOrigin: c.CensusOrigin(),
 		Root:         censusRoot,
 		Address:      address.Bytes(),
+		Weight:       weight,
 		ProcessID:    processID.Marshal(),
 		PublicKey:    c.signer.Public().Bytes(),
 		Signature:    signature,
@@ -178,7 +183,7 @@ func (c *EdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("error getting public key from census proof: %w", err)
 	}
 	// recompute the signature message
-	message, err := signatureMessage(c.curve, proof.ProcessID, proof.Address)
+	message, err := signatureMessage(c.curve, proof.ProcessID, proof.Address, proof.Weight)
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
@@ -256,7 +261,7 @@ func pubKeyPointToCensusRoot(
 // signatureMessage composes the message to be signed by the CSP. The message
 // is the concatenation of the process ID and address, both converted to field
 // elements suitable for the circuit.
-func signatureMessage(curve twistededwards.ID, pid, address types.HexBytes) ([]byte, error) {
+func signatureMessage(curve twistededwards.ID, pid, address types.HexBytes, weight *types.BigInt) ([]byte, error) {
 	if len(pid) == 0 || len(address) == 0 {
 		return nil, fmt.Errorf("process ID and address must not be empty")
 	}
@@ -266,6 +271,7 @@ func signatureMessage(curve twistededwards.ID, pid, address types.HexBytes) ([]b
 	res, err := mimc7.Hash([]*big.Int{
 		pid.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
 		address.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
+		weight.ToFF(bn254.ID.ScalarField()).MathBigInt(),
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error hashing signature message: %w", err)

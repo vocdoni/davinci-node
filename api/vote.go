@@ -135,6 +135,12 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// overwrite census origin with the process one to avoid inconsistencies
 	// and check the census proof with it
 	vote.CensusProof.CensusOrigin = process.Census.CensusOrigin
+	// validate the census origin
+	if !vote.CensusProof.CensusOrigin.Valid() {
+		ErrMalformedBody.Withf("invalid process census origin").Write(w)
+		return
+	}
+	// validate the census proof
 	if !vote.CensusProof.Valid() {
 		ErrMalformedBody.Withf("invalid census proof").Write(w)
 		return
@@ -176,7 +182,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		vote.Address,
 		vote.VoteID.BigInt(),
 		vote.Ballot.FromTEtoRTE(),
-		vote.CensusProof.Weight,
+		vote.VoterWeight,
 	)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not calculate ballot inputs hash: %v", err).Write(w)
@@ -216,7 +222,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// Create the ballot object
 	ballot := &storage.Ballot{
 		ProcessID:   vote.ProcessID,
-		VoterWeight: vote.CensusProof.Weight.MathBigInt(),
+		VoterWeight: vote.VoterWeight.MathBigInt(),
 		// convert the ballot from TE (circom) to RTE (gnark)
 		EncryptedBallot:  vote.Ballot.FromTEtoRTE(),
 		Address:          vote.Address.BigInt().MathBigInt(),

@@ -87,11 +87,12 @@ async function main() {
   const privKey = "50df49d9d1175d49808602d12bf945ba3f55d90146882fbc5d54078f204f5005372143904f3fd452767581fd55b4c27aedacdd7b70d14f374b7c9f341c0f9a5300";
   const processId = "00000539f39fd6e51aad88f6f4ce6ab8827279cfffb922660000000000000000";
   const address = "0e9eA11b92F119aEce01990b68d85227a41AA627";
+  const weight = "10";
   // Call CSP functions
   try {
     const cspRoot = global.DavinciCrypto.cspCensusRoot(censusOrigin, privKey);
     console.log('CSP Census Root:', cspRoot.data);
-    const signResult = global.DavinciCrypto.cspSign(censusOrigin, privKey, processId, address);
+    const signResult = global.DavinciCrypto.cspSign(censusOrigin, privKey, processId, address, weight);
     const cspProof = signResult.data;
     console.log('CSP Census Proof:', cspProof);
     const verifyResult = global.DavinciCrypto.cspVerify(JSON.stringify(cspProof));

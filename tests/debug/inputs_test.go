@@ -108,7 +108,6 @@ func TestDebugVoteVerifier(t *testing.T) {
 			Address: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Address.BigInt().MathBigInt()),
 			Ballot:  *rteBallot.ToGnarkEmulatedBN254(),
 		},
-		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](vote.CensusProof.Weight.MathBigInt()),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 			ID: emulated.ValueOf[sw_bn254.ScalarField](processID),
 			// CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](root),

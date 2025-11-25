@@ -73,7 +73,7 @@ func VoteVerifierInputsForTest(
 			finalProcessID = voterProof.ProcessID
 		}
 		addresses = append(addresses, voterProof.Address)
-		weights = append(weights, big.NewInt(int64(circuits.MockWeight)))
+		weights = append(weights, big.NewInt(circuits.MockWeight))
 		voteIDs = append(voteIDs, voterProof.VoteID)
 		ballots = append(ballots, *voterProof.Ballot)
 		// sign the inputs hash with the private key
@@ -87,6 +87,7 @@ func VoteVerifierInputsForTest(
 			encryptionKey,
 			voterProof.Address,
 			voterProof.VoteID,
+			big.NewInt(circuits.MockWeight),
 			voterProof.Ballot.FromTEtoRTE(),
 			censusOrigin,
 		)
@@ -102,11 +103,11 @@ func VoteVerifierInputsForTest(
 			InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 			// circom inputs
 			Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-				Address: emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
-				VoteID:  emulated.ValueOf[sw_bn254.ScalarField](voterProof.VoteID.BigInt().MathBigInt()),
-				Ballot:  *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
+				Address:    emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
+				VoteID:     emulated.ValueOf[sw_bn254.ScalarField](voterProof.VoteID.BigInt().MathBigInt()),
+				VoteWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
+				Ballot:     *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
 			},
-			UserWeight: emulated.ValueOf[sw_bn254.ScalarField](circuits.MockWeight),
 			Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 				ID:            emulated.ValueOf[sw_bn254.ScalarField](voterProof.ProcessID),
 				CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](censusOrigin.BigInt().MathBigInt()),

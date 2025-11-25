@@ -41,6 +41,7 @@ const (
 	defaultCAPI          = "https://ethereum-sepolia-beacon-api.publicnode.com"
 	defaultSequencerHost = "0.0.0.0"
 	defaultSequencerPort = 8080
+	defaultCensus3URL    = "https://c3-dev.davinci.vote"
 )
 
 var (
@@ -71,6 +72,7 @@ func main() {
 		resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", "", " results zk verifier smart contract address")
 		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
+		census3URL                       = flag.String("census3URL", defaultCensus3URL, "census3 endpoint")
 		voteCount                        = flag.Int("voteCount", 10, "number of votes to cast")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
@@ -201,9 +203,10 @@ func main() {
 	log.Infow("organization ready", "address", organizationAddr.Hex())
 
 	// Create a new census with numBallot participants
-	censusRoot, censusURI, signers, err := createCensus(testCtx, *voteCount, mockedWeight)
+	censusRoot, censusURI, signers, err := createCensus(testCtx, *voteCount, mockedWeight, *census3URL)
 	if err != nil {
 		log.Errorw(err, "failed to create census")
+		return
 	}
 	log.Infow("census created",
 		"root", hex.EncodeToString(censusRoot),
@@ -286,10 +289,11 @@ func main() {
 }
 
 type localService struct {
-	sequencer      *service.SequencerService
-	processMonitor *service.ProcessMonitor
-	storage        *storage.Storage
-	api            *service.APIService
+	sequencer        *service.SequencerService
+	censusDownloader *service.CensusDownloader
+	processMonitor   *service.ProcessMonitor
+	storage          *storage.Storage
+	api              *service.APIService
 }
 
 func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, network string) error {
@@ -297,8 +301,18 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 	s.storage = storage.New(memdb.New())
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
+	// Start census downloader
+	s.censusDownloader = service.NewCensusDownloader(contracts, s.storage, service.CensusDownloaderConfig{
+		CleanUpInterval: time.Second * 5,
+		Attempts:        5,
+		Expiration:      time.Minute * 30,
+		Cooldown:        time.Second * 10,
+	})
+	if err := s.censusDownloader.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start census downloader: %w", err)
+	}
 	// Monitor new processes from the contracts
-	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, time.Second*2)
+	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, s.censusDownloader, time.Second*2)
 	if err := s.processMonitor.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
@@ -329,6 +343,9 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 func (s *localService) Stop() {
 	if s.sequencer != nil {
 		s.sequencer.Stop()
+	}
+	if s.censusDownloader != nil {
+		s.censusDownloader.Stop()
 	}
 	if s.processMonitor != nil {
 		s.processMonitor.Stop()
@@ -363,7 +380,7 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	return orgAddr, nil
 }
 
-func createCensus(ctx context.Context, size int, weight uint64) ([]byte, string, []*ethereum.Signer, error) {
+func createCensus(ctx context.Context, size int, weight uint64, c3URL string) ([]byte, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
 	votes := []state.Vote{}
@@ -378,7 +395,7 @@ func createCensus(ctx context.Context, size int, weight uint64) ([]byte, string,
 			Weight:  new(big.Int).SetUint64(weight),
 		})
 	}
-	censusRoot, censusURI, err := censustest.ServeCensusIMTForTest(ctx, votes)
+	censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, votes, c3URL)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 	}
@@ -518,7 +535,7 @@ func createVote(
 		},
 		K:           (*types.BigInt)(k),
 		BallotMode:  bm,
-		Weight:      (*types.BigInt)(new(big.Int).SetUint64(circuits.MockWeight)),
+		Weight:      new(types.BigInt).SetInt(circuits.MockWeight),
 		FieldValues: fields,
 	}
 
@@ -561,6 +578,9 @@ func createVote(
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 		VoteID:           wasmResult.VoteID,
+		CensusProof: types.CensusProof{
+			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
+		},
 	}, nil
 }
 
