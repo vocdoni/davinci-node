@@ -8,7 +8,7 @@ import (
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
-	gtypes "github.com/ethereum/go-ethereum/core/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
@@ -138,7 +138,7 @@ func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, inputs []byte, blobsSidecar *gtypes.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
+func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, inputs []byte, blobsSidecar *gethtypes.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
 	// Copy processID into a fixed-size array to match the contract's expected
 	// type
 	var pid [32]byte
@@ -152,8 +152,8 @@ func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, input
 	}
 
 	// Use transaction manager for automatic nonce management
-	var sentTx *gtypes.Transaction
-	txID, txHash, err := c.txManager.SendTx(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+	var sentTx *gethtypes.Transaction
+	txID, txHash, err := c.txManager.SendTx(ctx, func(nonce uint64) (*gethtypes.Transaction, error) {
 		internalCtx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 		defer cancel()
 		// Build the transaction based on whether blobs are provided
@@ -205,7 +205,7 @@ func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, input
 func (c *Contracts) SetProcessTransition(
 	processID types.HexBytes,
 	proof, inputs []byte,
-	blobsSidecar *gtypes.BlobTxSidecar,
+	blobsSidecar *gethtypes.BlobTxSidecar,
 	timeout time.Duration,
 	callback ...func(error),
 ) error {
@@ -245,7 +245,7 @@ func (c *Contracts) sendProcessResults(processID types.HexBytes, proof, inputs [
 		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}
 	// Use transaction manager for automatic nonce management
-	return c.txManager.SendTx(ctx, func(nonce uint64) (*gtypes.Transaction, error) {
+	return c.txManager.SendTx(ctx, func(nonce uint64) (*gethtypes.Transaction, error) {
 		internalCtx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 		defer cancel()
 		// Results are always regular transactions (no blobs)

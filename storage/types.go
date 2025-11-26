@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
@@ -184,8 +184,8 @@ type StateTransitionBatchProofInputs struct {
 	NumOverwritten       int                `json:"numOverwritten"`
 	BlobEvaluationPointZ *big.Int           `json:"blobEvaluationPointZ"`
 	BlobEvaluationPointY [4]*big.Int        `json:"blobEvaluationPointY"`
-	BlobCommitment       kzg4844.Commitment `json:"blobCommitment"`
-	BlobProof            kzg4844.Proof      `json:"blobProof"`
+	BlobCommitment       gethkzg.Commitment `json:"blobCommitment"`
+	BlobProof            gethkzg.Proof      `json:"blobProof"`
 }
 
 // ABIEncode packs the four fields as a single static uint256[4] blob:

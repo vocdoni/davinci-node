@@ -8,7 +8,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
-	goethkzg "github.com/crate-crypto/go-eth-kzg"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 )
 
 // Embedded test data files
@@ -43,16 +43,7 @@ func (c *kzgVerifyCircuit) Define(api frontend.API) error {
 	return VerifyKZGProof(api, commitment, proof, c.Z, c.Y)
 }
 
-// kzgContext holds the KZG context for proof generation
-var kzgTestContext *goethkzg.Context
-
-func init() {
-	var err error
-	kzgTestContext, err = goethkzg.NewContext4096Secure()
-	if err != nil {
-		panic("failed to initialize KZG context for tests")
-	}
-}
+// Note: gethkzg doesn't require a context, uses direct functions
 
 // TestData contains precomputed valid KZG proof data for testing
 type TestData struct {
@@ -69,7 +60,7 @@ type TestData struct {
 // generateValidKZGData creates a valid KZG commitment and proof for testing
 func generateValidKZGData(seed int64) TestData {
 	// Create a simple blob with deterministic data based on seed
-	blob := &goethkzg.Blob{}
+	blob := &gethkzg.Blob{}
 	for i := range 50 {
 		val := big.NewInt(seed + int64(i))
 		valBytes := make([]byte, 32)
@@ -78,17 +69,17 @@ func generateValidKZGData(seed int64) TestData {
 	}
 
 	// Generate commitment
-	commitment, err := kzgTestContext.BlobToKZGCommitment(blob, 0)
+	commitment, err := gethkzg.BlobToCommitment(blob)
 	if err != nil {
 		panic(fmt.Sprintf("failed to generate commitment: %v", err))
 	}
 
 	// Generate evaluation point Z (use a simple deterministic value)
 	z := big.NewInt(seed * 12345)
-	zScalar := bigIntToScalar(z)
+	zPoint := BigIntToPoint(z)
 
 	// Compute KZG proof
-	proof, claim, err := kzgTestContext.ComputeKZGProof(blob, zScalar, 0)
+	proof, claim, err := gethkzg.ComputeProof(blob, zPoint)
 	if err != nil {
 		panic(fmt.Sprintf("failed to compute KZG proof: %v", err))
 	}
@@ -177,18 +168,9 @@ func (td TestData) ToPublicWitness() kzgVerifyCircuit {
 	}
 }
 
-// bigIntToScalar converts a big.Int to a goethkzg.Scalar
-func bigIntToScalar(x *big.Int) goethkzg.Scalar {
-	var scalar goethkzg.Scalar
-	be := make([]byte, 32)
-	x.FillBytes(be)
-	copy(scalar[:], be[:])
-	return scalar
-}
-
 // hexStrToBlob converts a hex string to a blob
-func hexStrToBlob(hexStr string) (*goethkzg.Blob, error) {
-	var blob goethkzg.Blob
+func hexStrToBlob(hexStr string) (*gethkzg.Blob, error) {
+	var blob gethkzg.Blob
 	byts, err := hexStrToBytes(hexStr)
 	if err != nil {
 		return nil, err
@@ -235,11 +217,11 @@ func hexCharToNibble(c byte) byte {
 }
 
 // GetBlobData1 returns the first embedded test blob data
-func GetBlobData1() (*goethkzg.Blob, error) {
+func GetBlobData1() (*gethkzg.Blob, error) {
 	return hexStrToBlob(blobData1Hex)
 }
 
 // GetBlobData2 returns the second embedded test blob data
-func GetBlobData2() (*goethkzg.Blob, error) {
+func GetBlobData2() (*gethkzg.Blob, error) {
 	return hexStrToBlob(blobData2Hex)
 }

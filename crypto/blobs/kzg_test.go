@@ -10,18 +10,17 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
-	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
 )
 
+const falseStr = "false"
+
 // TestKZGVerifyBasic tests basic KZG verification with valid proof data.
 func TestKZGVerifyBasic(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
-
-	std.RegisterHints()
 
 	testData := ValidTestData1()
 	witness := testData.ToCircuitWitness()
@@ -35,11 +34,9 @@ func TestKZGVerifyBasic(t *testing.T) {
 
 // TestKZGVerifyMultipleCases tests KZG verification with different valid test cases.
 func TestKZGVerifyMultipleCases(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
-
-	std.RegisterHints()
 
 	testCases := []struct {
 		name string
@@ -64,11 +61,9 @@ func TestKZGVerifyMultipleCases(t *testing.T) {
 
 // TestKZGVerifyProgressive tests the circuit with increasing complexity.
 func TestKZGVerifyProgressive(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
-
-	std.RegisterHints()
 
 	testSeeds := []int{10, 100, 1000}
 
@@ -88,11 +83,9 @@ func TestKZGVerifyProgressive(t *testing.T) {
 
 // TestKZGVerifyInvalid tests that the circuit rejects invalid proofs.
 func TestKZGVerifyInvalid(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
-
-	std.RegisterHints()
 
 	testData := InvalidTestData()
 	witness := testData.ToCircuitWitness()
@@ -120,11 +113,9 @@ func TestKZGVerifyInvalid(t *testing.T) {
 func TestKZGVerifyFullProving(t *testing.T) {
 	c := qt.New(t)
 
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
-
-	std.RegisterHints()
 
 	testData := ValidTestData1()
 	witness := testData.ToCircuitWitness()
@@ -160,7 +151,6 @@ func TestKZGVerifyFullProving(t *testing.T) {
 // TestKZGVerifyConstraintCount compiles the circuit and reports constraint count.
 func TestKZGVerifyConstraintCount(t *testing.T) {
 	c := qt.New(t)
-	std.RegisterHints()
 
 	fmt.Println("\n=== KZG Verify Circuit Constraint Analysis ===")
 
@@ -179,8 +169,6 @@ func TestKZGVerifyConstraintCount(t *testing.T) {
 
 // BenchmarkKZGVerifyCircuit benchmarks the circuit solving performance.
 func BenchmarkKZGVerifyCircuit(b *testing.B) {
-	std.RegisterHints()
-
 	testData := ValidTestData1()
 	witness := testData.ToCircuitWitness()
 

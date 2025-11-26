@@ -10,34 +10,20 @@ import (
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/emulated"
-	goethkzg "github.com/crate-crypto/go-eth-kzg"
-	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
+	gethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// kzgContext holds the KZG context for proof generation
-var kzgContext *goethkzg.Context
-
-func init() {
-	var err error
-	kzgContext, err = goethkzg.NewContext4096Secure()
-	if err != nil {
-		panic(fmt.Sprintf("failed to initialize KZG context: %v", err))
-	}
-}
-
-// FieldElementsPerBlob defines the number of field elements per blob
-const FieldElementsPerBlob = 4096
-
-// BytesPerFieldElement defines the number of bytes per field element
-const BytesPerFieldElement = 32
-
-// CompressedG1Size is the number of bytes needed to represent a group element in G1 when compressed (on BLS12-381).
-const CompressedG1Size = 48
+const (
+	// Number of field elements stored in a single data blob
+	FieldElementsPerBlob = gethparams.BlobTxFieldElementsPerBlob
+	// Size in bytes of a field element
+	BytesPerFieldElement = gethparams.BlobTxBytesPerFieldElement
+)
 
 // BN254 scalar-field modulus
 var pBN = bn254.ID.ScalarField()
@@ -53,42 +39,35 @@ type BlobEvalData struct {
 		Y    emulated.Element[FE]
 		Blob [N]frontend.Variable // values within bn254 field
 	}
-	Commitment [CompressedG1Size]byte
+	Commitment gethkzg.Commitment
 	Z          *big.Int
 	Y          *big.Int
 	Ylimbs     [4]*big.Int
-	Blob       goethkzg.Blob
+	Blob       gethkzg.Blob
 	// Opening proof for point-evaluation precompile (integrity check)
-	OpeningProof [CompressedG1Size]byte
+	OpeningProof gethkzg.Proof
 	// Cell proofs for EIP-7594 (Fusaka upgrade)
-	// Each blob has CellsPerExtBlob (128) cell proofs
-	CellProofs [goethkzg.CellsPerExtBlob]goethkzg.KZGProof
+	// Each blob has CellProofsPerBlob (128) cell proofs
+	CellProofs [gethkzg.CellProofsPerBlob]gethkzg.Proof
 }
 
 // Set initializes the BlobEvalData with the given blob, claim, and evaluation point z.
 // Computes the KZG cell proofs (EIP-7594) and sets the relevant fields.
 // It returns itself for chaining.
-func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, error) {
-	// Set commitment first
-	commitment, err := BlobToCommitment(blob)
+func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error) {
+	commitment, cellProofs, err := ComputeCommitmentAndCellProofs(blob)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to compute: %w", err)
 	}
 	b.Commitment = commitment
+	copy(b.CellProofs[:], cellProofs)
 
 	// Compute the point evaluation proof to get the claim (y value) and OpeningProof
-	openingProof, claim, err := ComputeProof(blob, z)
+	openingProof, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 	if err != nil {
 		return nil, err
 	}
 	b.OpeningProof = openingProof
-
-	// Compute cell proofs for EIP-7594 (Fusaka upgrade)
-	_, cellProofs, err := kzgContext.ComputeCellsAndKZGProofs(blob, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compute cell KZG proofs: %w", err)
-	}
-	b.CellProofs = cellProofs
 
 	// Set evaluation point (y)
 	b.Y = new(big.Int).SetBytes(claim[:])
@@ -125,33 +104,15 @@ func (b *BlobEvalData) Set(blob *goethkzg.Blob, z *big.Int) (*BlobEvalData, erro
 	return b, err
 }
 
-// TxSidecar converts the KZG blob, commitment, and cell proofs into a geth Sidecar format.
+// TxSidecar returns a BlobTxSidecar with a single KZG blob, commitment, and 128 cell proofs.
 // Returns a Version 1 sidecar with cell proofs for EIP-7594 (Fusaka upgrade).
-func (b *BlobEvalData) TxSidecar() (*gethtypes.BlobTxSidecar, []common.Hash, error) {
-	// Convert to geth types - create slices with exactly 1 element each
-	blobs := make([]gethkzg.Blob, 1)
-	comms := make([]gethkzg.Commitment, 1)
-
-	// For Version 1 sidecar, we need all cell proofs (128 per blob)
-	proofs := make([]gethkzg.Proof, goethkzg.CellsPerExtBlob)
-
-	copy(blobs[0][:], b.Blob[:])
-	copy(comms[0][:], b.Commitment[:])
-
-	// Copy all cell proofs
-	for i := range b.CellProofs {
-		copy(proofs[i][:], b.CellProofs[i][:])
-	}
-
-	// Create Version 1 sidecar with cell proofs
-	sc := gethtypes.NewBlobTxSidecar(
+func (b *BlobEvalData) TxSidecar() *gethtypes.BlobTxSidecar {
+	return gethtypes.NewBlobTxSidecar(
 		gethtypes.BlobSidecarVersion1,
-		blobs,
-		comms,
-		proofs,
+		[]gethkzg.Blob{b.Blob},
+		[]gethkzg.Commitment{b.Commitment},
+		b.CellProofs[:],
 	)
-
-	return sc, sc.BlobHashes(), nil
 }
 
 // String returns a string representation of the blob data.
@@ -168,51 +129,14 @@ func (b *BlobEvalData) String() string {
 
 // HashV1 calculates the 'versioned blob hash' of a commitment.
 func (b *BlobEvalData) HashV1() (vh [32]byte) {
-	return CalcBlobHashV1(new(big.Int).SetBytes(b.Commitment[:]))
-}
-
-// CalcBlobHashV1 calculates the 'versioned blob hash' of a commitment.
-func CalcBlobHashV1(commitment *big.Int) (vh [32]byte) {
-	if commitment == nil {
-		return vh
-	}
-	hasher := sha256.New()
-	hasher.Write(commitment.Bytes())
-	hasher.Sum(vh[:0])
-	vh[0] = 0x01 // version
-	return vh
-}
-
-// ComputeProof computes the KZG proof for a given blob and evaluation point z.
-func ComputeProof(blob *goethkzg.Blob, z *big.Int) (goethkzg.KZGProof, goethkzg.Scalar, error) {
-	// Convert z to a goethkzg.Scalar
-	zScalar := BigIntToScalar(z)
-
-	// Compute the KZG proof (numGoRoutines = 0 for auto)
-	proof, claim, err := kzgContext.ComputeKZGProof(blob, zScalar, 0)
-	if err != nil {
-		return goethkzg.KZGProof{}, goethkzg.Scalar{}, err
-	}
-
-	return proof, claim, nil
-}
-
-// BlobToCommitment converts a blob to its KZG commitment.
-func BlobToCommitment(blob *goethkzg.Blob) (goethkzg.KZGCommitment, error) {
-	// Compute the commitment from the blob (numGoRoutines = 0 for auto)
-	commitment, err := kzgContext.BlobToKZGCommitment(blob, 0)
-	if err != nil {
-		return goethkzg.KZGCommitment{}, err
-	}
-
-	return commitment, nil
+	return gethkzg.CalcBlobHashV1(sha256.New(), &b.Commitment)
 }
 
 // ComputeEvaluationPoint computes evaluation point z using Poseidon hash.
 // z = PoseidonHash(processId, rootHashBefore, batchNum, blob_hash)
 // We hash the entire blob first to avoid exceeding MultiPoseidon's 256 input limit
 // This function ensures z never equals any of the 4096 omega roots of unity to avoid division by zero
-func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, blob *goethkzg.Blob) (z *big.Int, err error) {
+func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, blob *gethkzg.Blob) (z *big.Int, err error) {
 	// First, compute a hash of the entire blob by processing it in chunks
 	// MultiPoseidon has a limit of 256 inputs, but we have 4096 blob elements
 	var blobHash *big.Int
@@ -305,12 +229,37 @@ func CalculateMaxVotesPerBlob() int {
 	return availableCells / cellsPerVote
 }
 
-// BigIntToScalar converts a big.Int to a goethkzg.Scalar.
-func BigIntToScalar(x *big.Int) goethkzg.Scalar {
-	var scalar goethkzg.Scalar
-	// Convert big.Int to big-endian byte array
-	be := make([]byte, 32)
-	x.FillBytes(be)
-	copy(scalar[:], be[:])
-	return scalar
+// ComputeCommitmentAndProof calculates the commitment and blob proof of the passed blob, using geth kzg4844.
+// This can be used to construct a Version 0 BlobTxSidecar.
+func ComputeCommitmentAndProof(blob *gethkzg.Blob) (gethkzg.Commitment, gethkzg.Proof, error) {
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	if err != nil {
+		return gethkzg.Commitment{}, gethkzg.Proof{}, fmt.Errorf("commitment: %w", err)
+	}
+	proof, err := gethkzg.ComputeBlobProof(blob, commitment)
+	if err != nil {
+		return gethkzg.Commitment{}, gethkzg.Proof{}, fmt.Errorf("blob proof: %w", err)
+	}
+	return commitment, proof, nil
+}
+
+// ComputeCommitmentAndCellProofs calculates the commitment and cell proofs of the passed blob, using geth kzg4844.
+// This can be used to construct a Version 1 BlobTxSidecar.
+func ComputeCommitmentAndCellProofs(blob *gethkzg.Blob) (gethkzg.Commitment, []gethkzg.Proof, error) {
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	if err != nil {
+		return gethkzg.Commitment{}, nil, fmt.Errorf("commitment: %w", err)
+	}
+	proofs, err := gethkzg.ComputeCellProofs(blob)
+	if err != nil {
+		return gethkzg.Commitment{}, nil, fmt.Errorf("cell proofs: %w", err)
+	}
+	return commitment, proofs, nil
+}
+
+// BigIntToPoint converts a big.Int to a gethkzg.Point (big-endian byte array)
+func BigIntToPoint(x *big.Int) gethkzg.Point {
+	var point gethkzg.Point
+	x.FillBytes(point[:])
+	return point
 }

@@ -11,16 +11,15 @@ import (
 	"strconv"
 	"strings"
 
-	kzg4844 "github.com/crate-crypto/go-eth-kzg"
-
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844" // for the struct types
-	"github.com/ethereum/go-ethereum/params"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
+	gethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
@@ -58,8 +57,8 @@ func (c *Contracts) NewEIP4844Transaction(
 	contractABI *abi.ABI,
 	method string,
 	args []any,
-	blobsSidecar *types.BlobTxSidecar,
-) (*types.Transaction, error) {
+	blobsSidecar *gethtypes.BlobTxSidecar,
+) (*gethtypes.Transaction, error) {
 	// Nonce
 	nonce, err := c.cli.PendingNonceAt(ctx, c.AccountAddress())
 	if err != nil {
@@ -83,9 +82,9 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 	contractABI *abi.ABI,
 	method string,
 	args []any,
-	blobsSidecar *types.BlobTxSidecar,
+	blobsSidecar *gethtypes.BlobTxSidecar,
 	nonce uint64,
-) (*types.Transaction, error) {
+) (*gethtypes.Transaction, error) {
 	if contractABI == nil {
 		return nil, fmt.Errorf("nil contract ABI")
 	}
@@ -148,7 +147,7 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 
 	// Build & sign the blob transaction
 	cID := new(big.Int).SetUint64(c.ChainID)
-	inner := &types.BlobTx{
+	inner := &gethtypes.BlobTx{
 		ChainID:    uint256.MustFromBig(cID),
 		Nonce:      nonce, // Use provided nonce
 		GasTipCap:  uint256.MustFromBig(tipCap),
@@ -162,113 +161,65 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 		Sidecar:    blobsSidecar, // attach sidecar for gossip
 	}
 
-	signedTx, err := types.SignNewTx((*ecdsa.PrivateKey)(c.signer), types.NewCancunSigner(cID), inner)
+	signedTx, err := gethtypes.SignNewTx((*ecdsa.PrivateKey)(c.signer), gethtypes.NewCancunSigner(cID), inner)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign new tx: %w", err)
 	}
 	return signedTx, nil
 }
 
-// BuildBlobsSidecarV0 converts raw blobs -> commitments/proofs using crate-crypto.
-// Returns a geth Sidecar (types.BlobTxSidecar with Version=0) and versioned blob hashes.
-func BuildBlobsSidecarV0(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error) {
-	if len(raw) == 0 {
-		return nil, nil, fmt.Errorf("no blobs")
-	}
-	ctx, err := kzg4844.NewContext4096Secure()
-	if err != nil {
-		return nil, nil, fmt.Errorf("kzg ctx: %w", err)
+// ComputeBlobTxSidecar calculates commitments and proofs of N passed blobs, using geth kzg4844.
+// Returns a BlobTxSidecar with either 128*N cell proofs or N blob proofs depending on the passed version.
+func ComputeBlobTxSidecar(version byte, raw [][]byte) (*gethtypes.BlobTxSidecar, error) {
+	n := len(raw)
+	if n == 0 {
+		return nil, fmt.Errorf("no blobs")
 	}
 
-	blobs := make([]gethkzg.Blob, len(raw))
-	comms := make([]gethkzg.Commitment, len(raw))
-	proofs := make([]gethkzg.Proof, len(raw))
-
-	for i, b := range raw {
-		if len(b) != params.BlobTxFieldElementsPerBlob*params.BlobTxBytesPerFieldElement {
-			return nil, nil, fmt.Errorf("blob %d wrong size: got %d", i, len(b))
-		}
-		// cast []byte -> crate blob then to geth blob bytes
-		var crateBlob kzg4844.Blob
-		copy(crateBlob[:], b)
-
-		commit, err := ctx.BlobToKZGCommitment(&crateBlob, 0)
-		if err != nil {
-			return nil, nil, fmt.Errorf("commitment %d: %w", i, err)
-		}
-		proof, err := ctx.ComputeBlobKZGProof(&crateBlob, commit, 0)
-		if err != nil {
-			return nil, nil, fmt.Errorf("proof %d: %w", i, err)
-		}
-
-		// convert to geth types
-		copy(blobs[i][:], b)
-		copy(comms[i][:], commit[:])
-		copy(proofs[i][:], proof[:])
+	var proofs []gethkzg.Proof
+	switch version {
+	case gethtypes.BlobSidecarVersion0:
+		proofs = make([]gethkzg.Proof, n)
+	case gethtypes.BlobSidecarVersion1:
+		proofs = make([]gethkzg.Proof, n*gethkzg.CellProofsPerBlob)
+	default:
+		return nil, fmt.Errorf("unsupported sidecar version %d", version)
 	}
-
-	sc := &types.BlobTxSidecar{
-		Blobs:       blobs,
-		Commitments: comms,
-		Proofs:      proofs,
-	}
-	return sc, sc.BlobHashes(), nil
-}
-
-// BuildBlobsSidecar converts raw blobs -> commitments/cell proofs using crate-crypto.
-// Returns a geth Sidecar (types.BlobTxSidecar) with Version 1 cell proofs and versioned blob hashes.
-// This function creates Version 1 sidecars with cell proofs for EIP-7594 (Fusaka upgrade).
-func BuildBlobsSidecar(raw [][]byte) (*types.BlobTxSidecar, []common.Hash, error) {
-	if len(raw) == 0 {
-		return nil, nil, fmt.Errorf("no blobs")
-	}
-	ctx, err := kzg4844.NewContext4096Secure()
-	if err != nil {
-		return nil, nil, fmt.Errorf("kzg ctx: %w", err)
-	}
-
-	blobs := make([]gethkzg.Blob, len(raw))
-	comms := make([]gethkzg.Commitment, len(raw))
-	proofs := make([]gethkzg.Proof, len(raw)*kzg4844.CellsPerExtBlob)
-
-	for i, b := range raw {
-		if len(b) != params.BlobTxFieldElementsPerBlob*params.BlobTxBytesPerFieldElement {
-			return nil, nil, fmt.Errorf("blob %d wrong size: got %d", i, len(b))
-		}
-		// cast []byte -> crate blob then to geth blob bytes
-		var crateBlob kzg4844.Blob
-		copy(crateBlob[:], b)
-
-		commit, err := ctx.BlobToKZGCommitment(&crateBlob, 0)
-		if err != nil {
-			return nil, nil, fmt.Errorf("commitment %d: %w", i, err)
-		}
-
-		// Compute cell proofs for EIP-7594 (Fusaka upgrade)
-		_, cellProofs, err := ctx.ComputeCellsAndKZGProofs(&crateBlob, 0)
-		if err != nil {
-			return nil, nil, fmt.Errorf("cell proofs %d: %w", i, err)
-		}
-
-		// convert to geth types
-		copy(blobs[i][:], b)
-		copy(comms[i][:], commit[:])
-
-		// Copy all cell proofs for this blob
-		for j := range cellProofs {
-			copy(proofs[i*kzg4844.CellsPerExtBlob+j][:], cellProofs[j][:])
-		}
-	}
-
-	// Create Version 1 sidecar directly with cell proofs
-	sc := types.NewBlobTxSidecar(
-		types.BlobSidecarVersion1,
-		blobs,
-		comms,
+	sidecar := gethtypes.NewBlobTxSidecar(
+		version,
+		make([]gethkzg.Blob, n),
+		make([]gethkzg.Commitment, n),
 		proofs,
 	)
 
-	return sc, sc.BlobHashes(), nil
+	for i, b := range raw {
+		if len(b) != gethparams.BlobTxFieldElementsPerBlob*gethparams.BlobTxBytesPerFieldElement {
+			return nil, fmt.Errorf("blob %d wrong size: got %d", i, len(b))
+		}
+
+		sidecar.Blobs[i] = gethkzg.Blob(b)
+
+		switch version {
+		case gethtypes.BlobSidecarVersion0:
+			commitment, proof, err := blobs.ComputeCommitmentAndProof(&sidecar.Blobs[i])
+			if err != nil {
+				return nil, fmt.Errorf("compute %d: %w", i, err)
+			}
+			sidecar.Commitments[i] = commitment
+			sidecar.Proofs[i] = proof
+		case gethtypes.BlobSidecarVersion1:
+			commitment, cellProofs, err := blobs.ComputeCommitmentAndCellProofs(&sidecar.Blobs[i])
+			if err != nil {
+				return nil, fmt.Errorf("compute %d: %w", i, err)
+			}
+			sidecar.Commitments[i] = commitment
+			copy(sidecar.Proofs[(i)*gethkzg.CellProofsPerBlob:(i+1)*gethkzg.CellProofsPerBlob], cellProofs)
+		default:
+			return nil, fmt.Errorf("unsupported sidecar version %d", version)
+		}
+	}
+
+	return sidecar, nil
 }
 
 // BlobByCommitment gets the blob bytes matching `commitmentHex` (0x...) for tx `txHash`
