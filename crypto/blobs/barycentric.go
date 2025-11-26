@@ -8,7 +8,7 @@ import (
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 )
 
-// EvaluateBlobBarycentric evaluates a polynomial in evaluation form using the barycentric formula.
+// EvaluateBarycentricNative evaluates a polynomial in evaluation form using the barycentric formula.
 // It has been implemented in Go to match the circuit logic and to debug potential issues.
 // This function computes the barycentric evaluation of a KZG blob at a given evaluation point z.
 //
@@ -20,7 +20,7 @@ import (
 //   - dᵢ are the blob data values (polynomial evaluations at domain points)
 //   - ωᵢ are the roots of unity forming the evaluation domain
 //   - z is the evaluation point
-func EvaluateBlobBarycentricNativeGo(blob *gethkzg.Blob, z *big.Int, debug bool) (*big.Int, error) {
+func EvaluateBarycentricNative(blob *gethkzg.Blob, z *big.Int, debug bool) (*big.Int, error) {
 	if len(blob) != 32*4096 {
 		return nil, fmt.Errorf("blob length is %d, want 131072", len(blob))
 	}
