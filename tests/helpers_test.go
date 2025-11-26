@@ -748,7 +748,6 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 		BallotProof:      circomProof,
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
-		VoterWeight:      voterWeight,
 	}, nil
 }
 

@@ -400,10 +400,10 @@ Register a new vote for a voting process.
     "protocol": "string"
   },
   "ballotInputsHash": "bigintStr",
+  "address": "hexBytes",
   "publicKey": "hexBytes",
   "signature": "hexBytes",
-  "voteId": "hexBytes",
-  "voteWeight": "bigintStr"
+  "voteId": "hexBytes"
 }
 ```
 

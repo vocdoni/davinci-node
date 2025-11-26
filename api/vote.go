@@ -153,7 +153,9 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
 		return
 	}
-	// verify the census proof accordingly to the census origin
+	// verify the census proof accordingly to the census origin and get the
+	// voter weight
+	var voterWeight *types.BigInt
 	switch process.Census.CensusOrigin {
 	case types.CensusOriginMerkleTreeOffchainStaticV1:
 		censusRef, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
@@ -161,15 +163,18 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
 			return
 		}
-		if !censusRef.Tree().Has(common.Address(vote.Address)) {
+		weight, exists := censusRef.Tree().GetWeight(common.BytesToAddress(vote.Address))
+		if !exists {
 			ErrInvalidCensusProof.Withf("address not in census").Write(w)
 			return
 		}
+		voterWeight = new(types.BigInt).SetBigInt(weight)
 	case types.CensusOriginCSPEdDSABLS12377V1, types.CensusOriginCSPEdDSABN254V1:
 		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {
 			ErrInvalidCensusProof.Withf("census proof verification failed").WithErr(err).Write(w)
 			return
 		}
+		voterWeight = vote.CensusProof.Weight
 	default:
 		ErrInvalidCensusProof.Withf("unsupported census origin").Write(w)
 		return
@@ -182,7 +187,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		vote.Address,
 		vote.VoteID.BigInt(),
 		vote.Ballot.FromTEtoRTE(),
-		vote.VoterWeight,
+		voterWeight,
 	)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not calculate ballot inputs hash: %v", err).Write(w)
@@ -222,7 +227,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// Create the ballot object
 	ballot := &storage.Ballot{
 		ProcessID:   vote.ProcessID,
-		VoterWeight: vote.VoterWeight.MathBigInt(),
+		VoterWeight: voterWeight.MathBigInt(),
 		// convert the ballot from TE (circom) to RTE (gnark)
 		EncryptedBallot:  vote.Ballot.FromTEtoRTE(),
 		Address:          vote.Address.BigInt().MathBigInt(),

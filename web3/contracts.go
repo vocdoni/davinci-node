@@ -247,6 +247,10 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 		}
 		addresses.ProcessRegistry = common.HexToAddress(processRegistryAddr)
 	}
+	log.Debugw("loading contracts",
+		"chainID", c.ChainID,
+		"organizationRegistry", addresses.OrganizationRegistry.Hex(),
+		"processRegistry", addresses.ProcessRegistry.Hex())
 
 	organizations, err := npbindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
 	if err != nil {
