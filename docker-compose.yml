@@ -55,7 +55,7 @@ services:
       - prod-test
 
   watchtower:
-    image: containrrr/watchtower
+    image: nickfedor/watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 --label-enable --include-stopped --revive-stopped
