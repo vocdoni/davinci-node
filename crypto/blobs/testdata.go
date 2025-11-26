@@ -1,6 +1,7 @@
-package kzg
+package blobs
 
 import (
+	_ "embed"
 	"fmt"
 	"math/big"
 
@@ -9,6 +10,14 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	goethkzg "github.com/crate-crypto/go-eth-kzg"
 )
+
+// Embedded test data files
+//
+//go:embed testdata/blobdata1.txt
+var blobData1Hex string
+
+//go:embed testdata/blobdata2.txt
+var blobData2Hex string
 
 // kzgVerifyCircuit is the test circuit that verifies a KZG opening proof.
 // It uses the exported KZG library functions.
@@ -175,4 +184,62 @@ func bigIntToScalar(x *big.Int) goethkzg.Scalar {
 	x.FillBytes(be)
 	copy(scalar[:], be[:])
 	return scalar
+}
+
+// hexStrToBlob converts a hex string to a blob
+func hexStrToBlob(hexStr string) (*goethkzg.Blob, error) {
+	var blob goethkzg.Blob
+	byts, err := hexStrToBytes(hexStr)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(blob) != len(byts) {
+		return nil, fmt.Errorf("blob does not have the correct length, %d", len(byts))
+	}
+	copy(blob[:], byts)
+	return &blob, nil
+}
+
+// hexStrToBytes converts a hex string to bytes
+func hexStrToBytes(hexStr string) ([]byte, error) {
+	// Remove any whitespace/newlines
+	cleaned := ""
+	for _, c := range hexStr {
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
+			cleaned += string(c)
+		}
+	}
+
+	result := make([]byte, len(cleaned)/2)
+	for i := 0; i < len(result); i++ {
+		high := hexCharToNibble(cleaned[i*2])
+		low := hexCharToNibble(cleaned[i*2+1])
+		result[i] = (high << 4) | low
+	}
+	return result, nil
+}
+
+// hexCharToNibble converts a hex character to its nibble value
+func hexCharToNibble(c byte) byte {
+	if c >= '0' && c <= '9' {
+		return c - '0'
+	}
+	if c >= 'a' && c <= 'f' {
+		return c - 'a' + 10
+	}
+	if c >= 'A' && c <= 'F' {
+		return c - 'A' + 10
+	}
+	return 0
+}
+
+// GetBlobData1 returns the first embedded test blob data
+func GetBlobData1() (*goethkzg.Blob, error) {
+	return hexStrToBlob(blobData1Hex)
+}
+
+// GetBlobData2 returns the second embedded test blob data
+func GetBlobData2() (*goethkzg.Blob, error) {
+	return hexStrToBlob(blobData2Hex)
 }

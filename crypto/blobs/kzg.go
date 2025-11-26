@@ -1,4 +1,4 @@
-package kzg
+package blobs
 
 import (
 	"bytes"

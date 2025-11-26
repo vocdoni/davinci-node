@@ -47,15 +47,10 @@ func (c *blobEvalCircuitNative) Define(api frontend.API) error {
 	return VerifyBlobEvaluationNative(api, c.Z, &c.Y, c.Blob)
 }
 
-func TestCircuitWithActualDataBlob(t *testing.T) {
+func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
 	c := qt.New(t)
 
-	data, err := os.ReadFile("testdata/blobdata1.txt")
-	if err != nil {
-		// skip test
-		t.Skipf("blobdata1.txt not found, skipping test: %v", err)
-	}
-	blob, err := hexStrToBlob(string(data))
+	blob, err := GetBlobData1()
 	c.Assert(err, qt.IsNil)
 
 	// Compute evaluation point
@@ -87,7 +82,7 @@ func TestCircuitWithActualDataBlob(t *testing.T) {
 }
 
 // TestProgressiveElementsNative tests the circuit with increasing number of elements
-func TestProgressiveElementsNative(t *testing.T) {
+func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 	std.RegisterHints()
 	c := qt.New(t)
 
@@ -135,7 +130,7 @@ func TestProgressiveElementsNative(t *testing.T) {
 	}
 }
 
-func TestCircuitFullProving(t *testing.T) {
+func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 	c := qt.New(t)
 
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {

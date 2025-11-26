@@ -20,7 +20,7 @@ import (
 //   - dᵢ are the blob data values (polynomial evaluations at domain points)
 //   - ωᵢ are the roots of unity forming the evaluation domain
 //   - z is the evaluation point
-func EvaluateBlobBarycentricNativeGo(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.Int, error) {
+func EvaluateBarycentricNative(blob *goethkzg.Blob, z *big.Int, debug bool) (*big.Int, error) {
 	if len(blob) != 32*4096 {
 		return nil, fmt.Errorf("blob length is %d, want 131072", len(blob))
 	}
