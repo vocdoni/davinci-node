@@ -12,7 +12,6 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
 )
 
@@ -102,11 +101,10 @@ func (ss *SequencerService) logActiveProcessStats() {
 	activeProcessCount := 0
 
 	// Iterate through active processes using the sequencer's process ID map
-	for _, pid := range ss.Sequencer.ActiveProcessIDs() {
-		processID := new(types.ProcessID).SetBytes(pid)
+	for _, processID := range ss.Sequencer.ActiveProcessIDs() {
 		process, err := ss.storage.Process(processID)
 		if err != nil {
-			log.Warnw("failed to get process for stats", "processID", fmt.Sprintf("%x", pid), "error", err)
+			log.Warnw("failed to get process for stats", "processID", processID.String(), "error", err)
 			continue
 		}
 

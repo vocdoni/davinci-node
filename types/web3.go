@@ -50,7 +50,7 @@ type CensusRootChange struct {
 // root modifications. It includes optional fields for each type of change and
 // the process ID.
 type ProcessWithChanges struct {
-	ProcessID HexBytes
+	ProcessID ProcessID
 	*StatusChange
 	*StateRootChange
 	*MaxVotersChange

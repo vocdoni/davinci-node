@@ -8,7 +8,6 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
@@ -42,7 +41,7 @@ var (
 // State represents a state tree
 type State struct {
 	tree      *arbo.Tree
-	processID *big.Int
+	processID types.ProcessID
 	db        db.Database
 	dbTx      db.WriteTx
 
@@ -81,11 +80,16 @@ type VotesProofs struct {
 }
 
 // New creates or opens a State stored in the passed database.
-// The processId is used as a prefix for the keys in the database.
-func New(db db.Database, processId *big.Int) (*State, error) {
+// The processID is used as a prefix for the keys in the database.
+func New(db db.Database, processID types.ProcessID) (*State, error) {
 	// the process ID must be in the scalar field of the circuit curve
-	processId = crypto.BigToFF(circuits.StateTransitionCurve.ScalarField(), processId)
-	pdb := prefixeddb.NewPrefixedDatabase(db, processId.Bytes())
+	processID.ToFF(circuits.StateTransitionCurve.ScalarField())
+
+	if !processID.IsValid() {
+		return nil, fmt.Errorf("processID is not valid")
+	}
+
+	pdb := prefixeddb.NewPrefixedDatabase(db, processID.Bytes())
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     pdb,
 		MaxLevels:    types.StateTreeMaxLevels,
@@ -97,7 +101,7 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 	return &State{
 		db:        pdb,
 		tree:      tree,
-		processID: processId,
+		processID: processID,
 	}, nil
 }
 
@@ -107,7 +111,7 @@ func New(db db.Database, processId *big.Int) (*State, error) {
 // found in the database or if the root cannot be set.
 // The root provided is formatted to the arbo format before being set in the
 // state tree.
-func LoadOnRoot(db db.Database, processId, root *big.Int) (*State, error) {
+func LoadOnRoot(db db.Database, processId types.ProcessID, root *big.Int) (*State, error) {
 	state, err := New(db, processId)
 	if err != nil {
 		return nil, fmt.Errorf("could not open state: %v", err)
@@ -120,7 +124,7 @@ func LoadOnRoot(db db.Database, processId, root *big.Int) (*State, error) {
 
 // RootExists checks if the provided root exists in the tree for the given
 // processId. Returns nil if the root exists, or an error if it does not.
-func RootExists(db db.Database, processId, root *big.Int) error {
+func RootExists(db db.Database, processId types.ProcessID, root *big.Int) error {
 	state, err := New(db, processId)
 	if err != nil {
 		return fmt.Errorf("could not open state: %v", err)
@@ -135,7 +139,7 @@ func RootExists(db db.Database, processId, root *big.Int) error {
 // initializing a state with the passed parameters. It uses an ephemereal
 // tree, nothing is written down to storage.
 func CalculateInitialRoot(
-	processID *big.Int,
+	processID types.ProcessID,
 	censusOrigin *big.Int,
 	ballotMode *types.BallotMode,
 	publicKey ecc.Point,
@@ -175,7 +179,7 @@ func (o *State) Initialize(
 	if _, _, err := o.tree.GetBigInt(KeyProcessID); err == nil {
 		return ErrStateAlreadyInitialized
 	}
-	if err := o.tree.AddBigInt(KeyProcessID, o.processID); err != nil {
+	if err := o.tree.AddBigInt(KeyProcessID, o.processID.MathBigInt()); err != nil {
 		return fmt.Errorf("could not set process ID: %w", err)
 	}
 	if err := o.tree.AddBigInt(KeyBallotMode, ballotMode.Serialize()...); err != nil {

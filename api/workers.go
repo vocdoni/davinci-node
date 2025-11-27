@@ -16,7 +16,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
@@ -251,7 +250,7 @@ func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
 	log.Infow("assigned job to worker",
 		"voteID", voteIDStr,
 		"worker", workerAddr.Hex(),
-		"processID", hex.EncodeToString(ballot.ProcessID))
+		"processID", ballot.ProcessID.String())
 
 	// Return ballot
 	data, err := storage.EncodeArtifact(ballot)
@@ -321,7 +320,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the process for the ballot to obtain the public inputs
-	process, err := a.storage.Process(new(types.ProcessID).SetBytes(ballot.ProcessID))
+	process, err := a.storage.Process(ballot.ProcessID)
 	if err != nil {
 		log.Warnw("failed to get process for ballot",
 			"error", err.Error(),

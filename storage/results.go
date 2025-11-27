@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // PushVerifiedResults stores the verified results for a given processID.
@@ -33,14 +34,14 @@ func (s *Storage) PushVerifiedResults(res *VerifiedResults) error {
 	defer wTx.Discard()
 
 	// check if the processID already exists
-	if _, err := wTx.Get(res.ProcessID); err == nil {
+	if _, err := wTx.Get(res.ProcessID.Bytes()); err == nil {
 		// raise an error if the processID already exists
 		return fmt.Errorf("verified results for processID %x already exists", res.ProcessID)
 	}
 
 	// set the key-value pair in the write transaction using the processID as
 	// the key
-	if err := wTx.Set(res.ProcessID, val); err != nil {
+	if err := wTx.Set(res.ProcessID.Bytes(), val); err != nil {
 		return err
 	}
 
@@ -74,14 +75,14 @@ func (s *Storage) NextVerifiedResults() (*VerifiedResults, error) {
 	}
 
 	log.Debugw("retrieved verified results from storage",
-		"processID", hex.EncodeToString(res.ProcessID))
+		"processID", res.ProcessID.String())
 
 	// Return the verified results
 	return &res, nil
 }
 
 // MarkVerifiedResultsDone marks the results for a given processID as verified.
-func (s *Storage) MarkVerifiedResultsDone(processID []byte) error {
+func (s *Storage) MarkVerifiedResultsDone(processID types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -89,7 +90,7 @@ func (s *Storage) MarkVerifiedResultsDone(processID []byte) error {
 	tx := s.db.WriteTx()
 	pr := prefixeddb.NewPrefixedWriteTx(tx, verifiedResultPrefix)
 	// remove the value for the given processID
-	if err := pr.Delete(processID); err != nil {
+	if err := pr.Delete(processID.Bytes()); err != nil {
 		if errors.Is(err, arbo.ErrKeyNotFound) {
 			return nil
 		}
@@ -102,11 +103,11 @@ func (s *Storage) MarkVerifiedResultsDone(processID []byte) error {
 // HasVerifiedResults checks if verified results exist for a given processID.
 // This is used to prevent re-generation of results that have already been
 // generated but may have failed to upload to the contract.
-func (s *Storage) HasVerifiedResults(processID []byte) bool {
+func (s *Storage) HasVerifiedResults(processID types.ProcessID) bool {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	pr := prefixeddb.NewPrefixedReader(s.db, verifiedResultPrefix)
-	_, err := pr.Get(processID)
+	_, err := pr.Get(processID.Bytes())
 	return err == nil
 }

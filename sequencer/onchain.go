@@ -60,9 +60,9 @@ func (s *Sequencer) startOnchainProcessor() error {
 // uploaded on-chain for each registered process ID.
 func (s *Sequencer) processTransitionOnChain() {
 	// process each registered process ID
-	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
+	s.pids.ForEach(func(processID types.ProcessID, _ time.Time) bool {
 		// get a batch ready for uploading on-chain
-		batch, batchID, err := s.stg.NextStateTransitionBatch(pid)
+		batch, batchID, err := s.stg.NextStateTransitionBatch(processID)
 		if err != nil {
 			if err != storage.ErrNoMoreElements {
 				log.Errorw(err, "failed to get next state transition batch")
@@ -70,19 +70,19 @@ func (s *Sequencer) processTransitionOnChain() {
 			return true // Continue to next process ID
 		}
 		log.Infow("state transition batch ready for on-chain upload",
-			"pid", fmt.Sprintf("%x", pid),
+			"pid", processID.String(),
 			"batchID", fmt.Sprintf("%x", batchID))
 
 		// check the remote state root matches the local one
-		remoteStateRoot, err := s.contracts.StateRoot(pid)
+		remoteStateRoot, err := s.contracts.StateRoot(processID)
 		if err != nil || remoteStateRoot == nil {
-			log.Errorw(err, "failed to get remote state root for: "+fmt.Sprintf("%x", pid))
+			log.Errorw(err, "failed to get remote state root for: "+processID.String())
 			return true // Continue to next process ID
 		}
 		thisStateRoot := batch.Inputs.RootHashBefore
 		if remoteStateRoot.MathBigInt().Cmp(thisStateRoot) != 0 {
-			log.Errorw(fmt.Errorf("state root mismatch for processId %s: local %s != remote %s",
-				fmt.Sprintf("%x", pid), thisStateRoot.String(), remoteStateRoot.String()), "could not push state transition to contract")
+			log.Errorw(fmt.Errorf("state root mismatch for processID %s: local %s != remote %s",
+				processID.String(), thisStateRoot.String(), remoteStateRoot.String()), "could not push state transition to contract")
 			// Mark the batch as outdated so we don't process it again
 			// and a new one will be generated with the correct root
 			if err := s.stg.MarkStateTransitionBatchOutdated(batchID); err != nil {
@@ -100,24 +100,24 @@ func (s *Sequencer) processTransitionOnChain() {
 		}
 
 		// send the proof to the contract with the public witness
-		if err := s.pushTransitionToContract(pid, batchID, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
+		if err := s.pushTransitionToContract(processID, batchID, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
 			log.Errorw(err, "failed to push to contract")
-			if err := s.stg.MarkStateTransitionBatchFailed(batchID, pid); err != nil {
+			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
 				log.Errorw(err, "failed to mark state transition batch as failed")
 			}
 			return true // Continue to next process ID
 		}
 		log.Infow("process state transition pushed",
-			"pid", fmt.Sprintf("%x", pid),
+			"pid", processID.String(),
 			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
 			"rootHashAfter", batch.Inputs.RootHashAfter.String())
 		// mark the batch as done
-		if err := s.stg.MarkStateTransitionBatchDone(batchID, pid); err != nil {
+		if err := s.stg.MarkStateTransitionBatchDone(batchID, processID); err != nil {
 			log.Errorw(err, "failed to mark state transition batch as done")
 			return true // Continue to next process ID
 		}
 		// update the last update time by re-adding the process ID
-		s.pids.Add(pid) // This will update the timestamp
+		s.pids.Add(processID) // This will update the timestamp
 
 		return true // Continue to next process ID
 	})
@@ -126,15 +126,12 @@ func (s *Sequencer) processTransitionOnChain() {
 // pushTransitionToContract pushes the given state transition proof and inputs
 // to the smart contract for the given process ID.
 func (s *Sequencer) pushTransitionToContract(
-	processID types.HexBytes,
+	processID types.ProcessID,
 	batchID []byte,
 	proof *solidity.Groth16CommitmentProof,
 	inputs storage.StateTransitionBatchProofInputs,
 	blobSidecar *types.BlobTxSidecar,
 ) error {
-	var pid32 [32]byte
-	copy(pid32[:], processID)
-
 	abiProof, err := proof.ABIEncode()
 	if err != nil {
 		return fmt.Errorf("failed to encode proof: %w", err)
@@ -180,7 +177,7 @@ func (s *Sequencer) pushTransitionToContract(
 		s.contracts.ContractABIs.ProcessRegistry,
 		"submitStateTransition",
 		blobSidecar,
-		pid32,
+		processID,
 		abiProof,
 		abiInputs,
 	); err != nil {
@@ -210,29 +207,29 @@ func (s *Sequencer) pushTransitionToContract(
 // pushStateTransitionCallback returns a callback function to be called when
 // the state transition transaction is mined or fails. It handles logging and
 // recovery of pending state transitions.
-func (s *Sequencer) pushStateTransitionCallback(pid types.HexBytes, batchID []byte) func(err error) {
+func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batchID []byte) func(err error) {
 	return func(err error) {
 		defer func() {
 			// Remove the pending tx mark
-			if err := s.stg.PrunePendingTx(storage.StateTransitionTx, pid); err != nil {
+			if err := s.stg.PrunePendingTx(storage.StateTransitionTx, processID); err != nil {
 				log.Warnw("failed to release pending tx",
 					"error", err,
-					"processID", pid.String())
+					"processID", processID.String())
 			}
-			log.Infow("pending tx released", "pid", pid.String())
+			log.Infow("pending tx released", "pid", processID.String())
 		}()
 		// If there was an error, log it and mark the batch as failed
 		if err != nil {
-			log.Errorf("failed to wait for state transition of %s: %s", pid.String(), err)
+			log.Errorf("failed to wait for state transition of %s: %s", processID.String(), err)
 			// Use MarkStateTransitionBatchFailed for consistent recovery logic
-			if err := s.stg.MarkStateTransitionBatchFailed(batchID, pid); err != nil {
+			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
 				log.Warnw("failed to mark state transition batch as failed after callback error",
 					"error", err,
-					"processID", pid.String())
+					"processID", processID.String())
 			}
 			return
 		}
-		log.Infow("state transition pushed to contract", "pid", pid.String())
+		log.Infow("state transition pushed to contract", "pid", processID.String())
 	}
 }
 
@@ -284,15 +281,13 @@ func (s *Sequencer) processResultsOnChain() {
 			"strInputs", res.Inputs.String())
 		// Simulate tx to the contract to check if it will fail and get the root
 		// cause of the failure if it does
-		var pid32 [32]byte
-		copy(pid32[:], res.ProcessID)
 		if err := s.contracts.SimulateContractCall(
 			s.ctx,
 			s.contracts.ContractsAddresses.ProcessRegistry,
 			s.contracts.ContractABIs.ProcessRegistry,
 			"setProcessResults",
 			nil, // No blob sidecar for regular contract calls
-			pid32,
+			res.ProcessID,
 			abiProof,
 			abiInputs,
 		); err != nil {

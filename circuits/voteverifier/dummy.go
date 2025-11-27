@@ -62,7 +62,16 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 			EncryptionKey: circuits.EncryptionKey[emulated.Element[sw_bn254.ScalarField]]{
 				PubKey: [2]emulated.Element[sw_bn254.ScalarField]{dummyEmulatedBN254, dummyEmulatedBN254},
 			},
-			BallotMode: circuits.MockBallotModeEmulated(),
+			BallotMode: circuits.BallotMode[emulated.Element[sw_bn254.ScalarField]]{
+				NumFields:      dummyEmulatedBN254,
+				UniqueValues:   dummyEmulatedBN254,
+				MaxValue:       dummyEmulatedBN254,
+				MinValue:       dummyEmulatedBN254,
+				MaxValueSum:    dummyEmulatedBN254,
+				MinValueSum:    dummyEmulatedBN254,
+				CostExponent:   dummyEmulatedBN254,
+				CostFromWeight: dummyEmulatedBN254,
+			},
 		},
 		PublicKey: ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: dummyEmulatedSecp256k1Fp,

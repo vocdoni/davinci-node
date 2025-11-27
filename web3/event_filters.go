@@ -26,7 +26,7 @@ func (c *Contracts) ProcessStatusFilter(ctx context.Context, start, end uint64, 
 	}
 	for iter.Next() {
 		ch <- &types.ProcessWithChanges{
-			ProcessID: iter.Event.ProcessId[:],
+			ProcessID: iter.Event.ProcessId,
 			StatusChange: &types.StatusChange{
 				OldStatus: types.ProcessStatus(iter.Event.OldStatus),
 				NewStatus: types.ProcessStatus(iter.Event.NewStatus),
@@ -44,7 +44,7 @@ func (c *Contracts) ProcessStateRootFilter(ctx context.Context, start, end uint6
 	}
 	for iter.Next() {
 		ch <- &types.ProcessWithChanges{
-			ProcessID: iter.Event.ProcessId[:],
+			ProcessID: iter.Event.ProcessId,
 			StateRootChange: &types.StateRootChange{
 				OldStateRoot:             new(types.BigInt).SetBigInt(iter.Event.OldStateRoot),
 				NewStateRoot:             new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
@@ -65,7 +65,7 @@ func (c *Contracts) ProcessMaxVotersFilter(ctx context.Context, start, end uint6
 	}
 	for iter.Next() {
 		ch <- &types.ProcessWithChanges{
-			ProcessID: iter.Event.ProcessId[:],
+			ProcessID: iter.Event.ProcessId,
 			MaxVotersChange: &types.MaxVotersChange{
 				NewMaxVoters: new(types.BigInt).SetBigInt(iter.Event.MaxVoters),
 			},
@@ -82,7 +82,7 @@ func (c *Contracts) ProcessCensusRootFilter(ctx context.Context, start, end uint
 	}
 	for iter.Next() {
 		ch <- &types.ProcessWithChanges{
-			ProcessID: iter.Event.ProcessId[:],
+			ProcessID: iter.Event.ProcessId,
 			CensusRootChange: &types.CensusRootChange{
 				NewCensusRoot: iter.Event.CensusRoot[:],
 				NewCensusURI:  iter.Event.CensusURI,

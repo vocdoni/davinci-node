@@ -218,13 +218,12 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 			log.Warnw("failed to get process for registration", "processID", fmt.Sprintf("%x", pid), "error", err)
 			continue
 		}
-		bpid := pid.Marshal()
-		if s.ExistsProcessID(bpid) && proc.Status != types.ProcessStatusReady {
-			s.DelProcessID(bpid) // Unregister if the process
+		if s.ExistsProcessID(pid) && proc.Status != types.ProcessStatusReady {
+			s.DelProcessID(pid) // Unregister if the process
 			continue
 		}
-		if ParticipateInAllProcesses && !s.ExistsProcessID(bpid) && proc.Status == types.ProcessStatusReady {
-			s.AddProcessID(bpid)
+		if ParticipateInAllProcesses && !s.ExistsProcessID(pid) && proc.Status == types.ProcessStatusReady {
+			s.AddProcessID(pid)
 		}
 	}
 }
@@ -235,7 +234,7 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 //
 // Parameters:
 //   - pid: The process ID to register
-func (s *Sequencer) AddProcessID(pid []byte) {
+func (s *Sequencer) AddProcessID(pid types.ProcessID) {
 	if s.pids.Add(pid) {
 		log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
 	}
@@ -246,14 +245,14 @@ func (s *Sequencer) AddProcessID(pid []byte) {
 //
 // Parameters:
 //   - pid: The process ID to unregister
-func (s *Sequencer) DelProcessID(pid []byte) {
+func (s *Sequencer) DelProcessID(pid types.ProcessID) {
 	if s.pids.Remove(pid) {
 		log.Infow("process ID unregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
 	}
 }
 
 // ExistsProcessID checks if a process ID is registered with the sequencer.
-func (s *Sequencer) ExistsProcessID(pid []byte) bool {
+func (s *Sequencer) ExistsProcessID(pid types.ProcessID) bool {
 	return s.pids.Exists(pid)
 }
 
@@ -265,7 +264,7 @@ func (s *Sequencer) SetBatchTimeWindow(window time.Duration) {
 
 // ActiveProcessIDs returns a list of process IDs that are currently being tracked
 // by the sequencer.
-func (s *Sequencer) ActiveProcessIDs() [][]byte {
+func (s *Sequencer) ActiveProcessIDs() []types.ProcessID {
 	return s.pids.List()
 }
 

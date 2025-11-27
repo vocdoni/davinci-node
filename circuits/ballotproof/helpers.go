@@ -23,7 +23,7 @@ import (
 //   - ballot mode is converted to circuit ballot mode
 //   - ballot is converted to twisted edwards form
 func BallotInputsHash(
-	processID types.HexBytes,
+	processID types.ProcessID,
 	ballotMode *types.BallotMode,
 	encryptionKey ecc.Point,
 	address types.HexBytes,

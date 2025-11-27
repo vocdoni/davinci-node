@@ -2,7 +2,6 @@ package sequencer
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -195,19 +194,15 @@ func (s *Sequencer) processWorkerJob() error {
 	log.Debugw("processing worker job", "voteID", fmt.Sprintf("%x", ballot.VoteID))
 
 	// Ensure the Process exists in local storage - fetch from master if needed
-	pid := new(types.ProcessID)
-	if err := pid.Unmarshal(ballot.ProcessID); err != nil {
-		return fmt.Errorf("failed to unmarshal process ID: %w", err)
-	}
 
 	// Check if process exists locally
-	_, err = s.stg.Process(pid)
+	_, err = s.stg.Process(ballot.ProcessID)
 	if err != nil {
 		log.Debugw("process not found locally, fetching from master",
 			"processID", fmt.Sprintf("%x", ballot.ProcessID))
 
 		// Fetch process from master
-		if err := s.fetchProcessFromMaster(pid); err != nil {
+		if err := s.fetchProcessFromMaster(ballot.ProcessID); err != nil {
 			return fmt.Errorf("failed to fetch process from master: %w", err)
 		}
 	}
@@ -226,10 +221,9 @@ func (s *Sequencer) processWorkerJob() error {
 }
 
 // fetchProcessFromMaster fetches process information from the master and stores it locally
-func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
+func (s *Sequencer) fetchProcessFromMaster(processID types.ProcessID) error {
 	// Construct process endpoint URL using the defined API routes
-	processIDHex := hex.EncodeToString(pid.Marshal())
-	uri := api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, processIDHex)
+	uri := api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, processID.String())
 	seqUrl := fmt.Sprintf("%s%s", s.sequencerURL, uri)
 
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -256,7 +250,7 @@ func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
 	}
 
 	log.Debugw("fetched and stored process from master",
-		"processID", processIDHex,
+		"processID", processID.String(),
 		"ballotMode", process.BallotMode.String())
 
 	return nil
