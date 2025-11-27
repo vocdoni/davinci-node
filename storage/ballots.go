@@ -125,7 +125,7 @@ func (s *Storage) NextPendingBallot() (*Ballot, []byte, error) {
 }
 
 // RemovePendingBallot removes a ballot from the pending queue and its reservation.
-func (s *Storage) RemovePendingBallot(processID, voteID []byte) error {
+func (s *Storage) RemovePendingBallot(processID types.ProcessID, voteID []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -160,7 +160,7 @@ func (s *Storage) RemovePendingBallot(processID, voteID []byte) error {
 }
 
 // RemovePendingBallotsByProcess removes all pending ballots for a given process ID.
-func (s *Storage) RemovePendingBallotsByProcess(pid []byte) error {
+func (s *Storage) RemovePendingBallotsByProcess(pid types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -178,7 +178,7 @@ func (s *Storage) RemovePendingBallotsByProcess(pid []byte) error {
 		}
 
 		// Only collect ballots that belong to the target process
-		if bytes.Equal(ballot.ProcessID, pid) {
+		if ballot.ProcessID == pid {
 			ballotsToRemove = append(ballotsToRemove, &ballot)
 		}
 		return true
@@ -259,7 +259,7 @@ func (s *Storage) MarkBallotVerified(voteID []byte, vb *VerifiedBallot) error {
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedBallotPrefix)
 	// key with processID as prefix + unique portion from original key
-	combKey := append(slices.Clone(vb.ProcessID), voteID...)
+	combKey := append(vb.ProcessID.Bytes(), voteID...)
 	if err := wTx.Set(combKey, val); err != nil {
 		wTx.Discard()
 		return err
@@ -285,7 +285,7 @@ func (s *Storage) MarkBallotVerified(voteID []byte, vb *VerifiedBallot) error {
 // given processID and creates reservations for them. The numFields parameter is
 // used to limit the number of results. If no ballots are available, returns
 // ErrNotFound.
-func (s *Storage) PullVerifiedBallots(processID []byte, numFields int) ([]*VerifiedBallot, [][]byte, error) {
+func (s *Storage) PullVerifiedBallots(processID types.ProcessID, numFields int) ([]*VerifiedBallot, [][]byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -295,19 +295,20 @@ func (s *Storage) PullVerifiedBallots(processID []byte, numFields int) ([]*Verif
 
 	// Map to track unique addresses
 	addrMap := make(map[string]struct{})
+	pidBytes := processID.Bytes()
 
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	var res []*VerifiedBallot
 	var keys [][]byte
-	if err := rd.Iterate(processID, func(k, v []byte) bool {
+	if err := rd.Iterate(pidBytes, func(k, v []byte) bool {
 		// Check if we've already reached the maximum count
 		if len(res) >= numFields {
 			return false
 		}
 
 		// Append the processID prefix to the key if missing (depends on the database implementation)
-		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
-			k = append(processID, k...)
+		if len(k) < len(pidBytes) || !bytes.Equal(k[:len(pidBytes)], pidBytes) {
+			k = append(pidBytes, k...)
 		}
 
 		// Skip if already reserved
@@ -375,16 +376,16 @@ func (s *Storage) ReleaseVerifiedBallotReservations(keys [][]byte) error {
 
 // CountVerifiedBallots returns the number of verified ballots for a given
 // processID which are not reserved.
-func (s *Storage) CountVerifiedBallots(processID []byte) int {
+func (s *Storage) CountVerifiedBallots(processID types.ProcessID) int {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-
+	pidBytes := processID.Bytes()
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 	count := 0
-	if err := rd.Iterate(processID, func(k, _ []byte) bool {
+	if err := rd.Iterate(pidBytes, func(k, _ []byte) bool {
 		// Append the processID prefix to the key if missing (depends on the database implementation)
-		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
-			k = append(processID, k...)
+		if len(k) < len(pidBytes) || !bytes.Equal(k[:len(pidBytes)], pidBytes) {
+			k = append(pidBytes, k...)
 		}
 		// Skip if already reserved
 		if s.isReserved(verifiedBallotReservPrefix, k) {
@@ -400,7 +401,7 @@ func (s *Storage) CountVerifiedBallots(processID []byte) int {
 
 // RemoveVerifiedBallotsByProcess removes all verified ballots for a given
 // processID.
-func (s *Storage) RemoveVerifiedBallotsByProcess(processID []byte) error {
+func (s *Storage) RemoveVerifiedBallotsByProcess(processID types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -409,15 +410,15 @@ func (s *Storage) RemoveVerifiedBallotsByProcess(processID []byte) error {
 		ballot *VerifiedBallot
 	}
 	ballotsToRemove := []ballotToRemove{}
-
+	pidBytes := processID.Bytes()
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
-	if err := rd.Iterate(processID, func(k, v []byte) bool {
+	if err := rd.Iterate(pidBytes, func(k, v []byte) bool {
 		// Ensure we work on a stable copy of the key (iterator may reuse the slice)
 		keyCopy := make([]byte, len(k))
 		copy(keyCopy, k)
 		// Append the processID prefix to the key if missing (depends on the database implementation)
-		if len(keyCopy) < len(processID) || !bytes.Equal(keyCopy[:len(processID)], processID) {
-			keyCopy = append(processID, keyCopy...)
+		if len(keyCopy) < len(pidBytes) || !bytes.Equal(keyCopy[:len(pidBytes)], pidBytes) {
+			keyCopy = append(pidBytes, keyCopy...)
 		}
 
 		// Decode the ballot to get address for lock release
@@ -500,7 +501,7 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 	defer s.globalLock.Unlock()
 
 	// Group ballots by processID for efficient stats updates
-	processBallots := make(map[string][]VerifiedBallot)
+	processBallots := make(map[types.ProcessID][]VerifiedBallot)
 
 	// Iterate over all keys
 	for _, k := range keys {
@@ -530,8 +531,7 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 			// Still remove the ballot from verified queue but don't update counters
 		} else {
 			// Only count ballots that were actually in verified status
-			processKey := string(ballot.ProcessID)
-			processBallots[processKey] = append(processBallots[processKey], *ballot)
+			processBallots[ballot.ProcessID] = append(processBallots[ballot.ProcessID], *ballot)
 		}
 
 		// Mark the vote ID as error
@@ -555,8 +555,7 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 	}
 
 	// Update process stats for each process (only for ballots that were actually verified)
-	for processKey, ballots := range processBallots {
-		processID := []byte(processKey)
+	for processID, ballots := range processBallots {
 		ballotCount := len(ballots)
 
 		if ballotCount > 0 {
@@ -567,7 +566,7 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 			}); err != nil {
 				log.Warnw("failed to update process stats after marking verified ballots as failed",
 					"error", err.Error(),
-					"processID", fmt.Sprintf("%x", processID),
+					"processID", processID.String(),
 					"ballotCount", ballotCount,
 				)
 			}
@@ -628,7 +627,7 @@ func (s *Storage) nextPendingBallot() (*Ballot, []byte, error) {
 
 // removePendingBallot is an internal helper to remove a ballot from the pending queue.
 // It assumes the caller already holds the globalLock.
-func (s *Storage) removePendingBallot(pid, voteID []byte) error {
+func (s *Storage) removePendingBallot(pid types.ProcessID, voteID []byte) error {
 	// remove reservation
 	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("error deleting reservation: %w", err)

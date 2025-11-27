@@ -24,16 +24,13 @@ import (
 // GET /votes/{processId}/voteId/{voteId}
 func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	// Get the processID and voteID from the URL
-	processIDHex := chi.URLParam(r, ProcessURLParam)
-	voteIDHex := chi.URLParam(r, VoteIDURLParam)
-
-	processID, err := hex.DecodeString(util.TrimHex(processIDHex))
+	processID, err := types.HexStringToProcessID(chi.URLParam(r, ProcessURLParam))
 	if err != nil {
 		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
 		return
 	}
 
-	voteID, err := hex.DecodeString(util.TrimHex(voteIDHex))
+	voteID, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, VoteIDURLParam)))
 	if err != nil {
 		ErrMalformedBody.Withf("could not decode vote ID: %v", err).Write(w)
 		return
@@ -61,12 +58,11 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 // GET /votes/{processId}/address/{address}
 func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	// Get the processID
-	processIDBytes, err := types.HexStringToHexBytes(chi.URLParam(r, ProcessURLParam))
+	processID, err := types.HexStringToProcessID(chi.URLParam(r, ProcessURLParam))
 	if err != nil {
 		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
 		return
 	}
-	processID := new(types.ProcessID).SetBytes(processIDBytes)
 
 	// Get the address
 	address, err := types.HexStringToHexBytes(chi.URLParam(r, AddressURLParam))
@@ -76,7 +72,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Open the state for the process
-	s, err := state.New(a.storage.StateDB(), processID.BigInt())
+	s, err := state.New(a.storage.StateDB(), processID)
 	if err != nil {
 		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
 		return
@@ -121,12 +117,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// get the process from the storage
-	pid := new(types.ProcessID)
-	if err := pid.Unmarshal(vote.ProcessID); err != nil {
-		ErrMalformedBody.Withf("could not decode process id: %v", err).Write(w)
-		return
-	}
-	process, err := a.storage.Process(pid)
+	process, err := a.storage.Process(vote.ProcessID)
 	if err != nil {
 		ErrResourceNotFound.Withf("could not get process: %v", err).Write(w)
 		return
@@ -148,7 +139,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// the vote will be accepted, but it is a precondition to accept the vote,
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
-	if ok, err := a.storage.ProcessIsAcceptingVotes(pid); !ok {
+	if ok, err := a.storage.ProcessIsAcceptingVotes(vote.ProcessID); !ok {
 		if err != nil {
 			ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
 			return
@@ -159,13 +150,13 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// check if the address has already voted, to determine if the vote is an
 	// overwrite or a new vote, if so check if the process has reached max
 	// voters
-	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), process.ID, process.StateRoot, vote.Address.BigInt())
+	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), *process.ID, process.StateRoot, vote.Address.BigInt())
 	if err != nil {
 		ErrGenericInternalServerError.Withf("error checking if address has voted: %v", err).Write(w)
 		return
 	}
 	if !isOverwrite {
-		if maxVotersReached, err := a.storage.ProcessMaxVotersReached(pid); err != nil {
+		if maxVotersReached, err := a.storage.ProcessMaxVotersReached(vote.ProcessID); err != nil {
 			ErrGenericInternalServerError.Withf("could not check max voters: %v", err).Write(w)
 			return
 		} else if maxVotersReached {

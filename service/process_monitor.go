@@ -30,8 +30,8 @@ type ContractsService interface {
 	MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
 	ProcessChangesFilters() []types.Web3FilterFn
 	MonitorProcessChanges(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
-	CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error)
-	Process(processID []byte) (*types.Process, error)
+	CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error)
+	Process(processID types.ProcessID) (*types.Process, error)
 	RegisterKnownProcess(processID string)
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
@@ -146,7 +146,7 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		}
 
 		// Fetch current state from blockchain
-		blockchainProcess, err := pm.contracts.Process(pid.Marshal())
+		blockchainProcess, err := pm.contracts.Process(pid)
 		if err != nil {
 			log.Warnw("failed to fetch process from blockchain during sync",
 				"pid", pid.String(), "error", err)
@@ -215,7 +215,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 			return
 		case process := <-newProcChan:
 			// Skip if the process already exists
-			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
+			if _, err := pm.storage.Process(*process.ID); err == nil {
 				continue
 			}
 			log.Debugw("new process found", "pid", process.ID.String())
@@ -252,44 +252,41 @@ func (pm *ProcessMonitor) monitorProcesses(
 				processSetup()
 			}
 		case update := <-updatedProcChan:
-			// decode pid
-			pid := new(types.ProcessID).SetBytes(update.ProcessID)
-
 			// determine the type of update
 			switch {
 			case update.StatusChange != nil:
 				// process status change
 				log.Debugw("process changed status",
-					"pid", pid.String(),
+					"pid", update.ProcessID.String(),
 					"old", update.OldStatus.String(),
 					"new", update.NewStatus.String())
-				if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStatus(
+				if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
 					update.NewStatus,
 				)); err != nil {
 					log.Warnw("failed to update process status",
-						"pid", pid.String(),
+						"pid", update.ProcessID.String(),
 						"err", err.Error())
 				}
 				if update.NewStatus == types.ProcessStatusResults {
-					if err := pm.storage.CleanProcessStaleVotes(pid.Marshal()); err != nil {
+					if err := pm.storage.CleanProcessStaleVotes(update.ProcessID); err != nil {
 						log.Warnw("failed to clean stale votes after process finalization",
-							"pid", pid.String(), "err", err.Error())
+							"pid", update.ProcessID.String(), "err", err.Error())
 					}
 				}
 			case update.StateRootChange != nil:
 				// process state root change
 				log.Debugw("process state root changed",
-					"pid", pid.String(),
+					"pid", update.ProcessID.String(),
 					"newStateRoot", update.NewStateRoot.String(),
 					"newVotersCount", update.NewVotersCount.String(),
 					"newOverwrittenVotesCount", update.NewOverwrittenVotesCount.String())
-				if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStateRoot(
+				if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStateRoot(
 					update.NewStateRoot,
 					update.NewVotersCount,
 					update.NewOverwrittenVotesCount,
 				)); err != nil {
 					log.Warnw("failed to update process state root",
-						"pid", pid.String(),
+						"pid", update.ProcessID.String(),
 						"err", err.Error())
 				}
 				// Notify StateSync service for blob fetching and state reconstruction (non-blocking)
@@ -300,27 +297,27 @@ func (pm *ProcessMonitor) monitorProcesses(
 			case update.MaxVotersChange != nil:
 				// process max voters change
 				log.Debugw("process max voters changed",
-					"pid", pid.String(),
+					"pid", update.ProcessID.String(),
 					"newMaxVoters", update.NewMaxVoters.String())
-				if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetMaxVoters(
+				if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetMaxVoters(
 					update.NewMaxVoters,
 				)); err != nil {
 					log.Warnw("failed to update process max voters",
-						"pid", pid.String(),
+						"pid", update.ProcessID.String(),
 						"err", err.Error())
 				}
 			case update.CensusRootChange != nil:
 				// fetch the process to get the current census info
-				process, err := pm.storage.Process(pid)
+				process, err := pm.storage.Process(update.ProcessID)
 				if err != nil {
 					log.Warnw("received update for unknown process",
-						"pid", pid.String(),
+						"pid", update.ProcessID.String(),
 						"err", err.Error())
 					continue
 				}
 				// process census root change
 				log.Debugw("process census root or/and URI changed",
-					"pid", pid.String(),
+					"pid", update.ProcessID.String(),
 					"newCensusRoot", update.NewCensusRoot.String(),
 					"newCensusURI", update.NewCensusURI)
 				newCensus := &types.Census{
@@ -334,26 +331,26 @@ func (pm *ProcessMonitor) monitorProcesses(
 				pm.censusDownloader.OnCensusDownloaded(newCensus, ctx, func(err error) {
 					if err != nil {
 						log.Warnw("failed to download updated census for process",
-							"pid", pid.String(),
+							"pid", update.ProcessID.String(),
 							"censusRoot", update.NewCensusRoot.String(),
 							"err", err.Error())
 						return
 					}
 					log.Debugw("new process census downloaded",
-						"pid", pid.String(),
+						"pid", update.ProcessID.String(),
 						"newCensusRoot", update.NewCensusRoot.String(),
 						"newCensusURI", update.NewCensusURI)
 					// update process census info in storage
-					if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetCensusRoot(
+					if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetCensusRoot(
 						update.NewCensusRoot,
 						update.NewCensusURI,
 					)); err != nil {
 						log.Warnw("failed to update process census root",
-							"pid", pid.String(),
+							"pid", update.ProcessID.String(),
 							"err", err.Error())
 					}
 					log.Infow("process census updated",
-						"pid", pid.String(),
+						"pid", update.ProcessID.String(),
 						"censusRoot", update.NewCensusRoot.String(),
 						"censusURI", update.NewCensusURI)
 				})

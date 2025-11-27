@@ -51,7 +51,7 @@ type EncryptionKeys struct {
 // one used by the verifier circuit and verified by the aggregator circuit.
 type VerifiedBallot struct {
 	VoteID          types.HexBytes          `json:"voteId"`
-	ProcessID       types.HexBytes          `json:"processId"`
+	ProcessID       types.ProcessID         `json:"processId"`
 	VoterWeight     *big.Int                `json:"voterWeight"`
 	EncryptedBallot *elgamal.Ballot         `json:"encryptedBallot"`
 	Address         *big.Int                `json:"address"`
@@ -68,7 +68,7 @@ type VerifiedBallot struct {
 // the census proof, which proves that the voter is in the census; and the
 // public key of the voter, a compressed ECDSA public key.
 type Ballot struct {
-	ProcessID        types.HexBytes                                        `json:"processId"`
+	ProcessID        types.ProcessID                                       `json:"processId"`
 	VoterWeight      *big.Int                                              `json:"voterWeight"`
 	EncryptedBallot  *elgamal.Ballot                                       `json:"encryptedBallot"`
 	Address          *big.Int                                              `json:"address"`
@@ -85,7 +85,7 @@ type Ballot struct {
 // that comes from a third-party library (gnark) and it should be checked by
 // the library itself.
 func (b *Ballot) Valid() bool {
-	if b.ProcessID == nil || b.VoterWeight == nil || b.Address == nil ||
+	if !b.ProcessID.IsValid() || b.VoterWeight == nil || b.Address == nil ||
 		b.BallotInputsHash == nil || b.EncryptedBallot == nil ||
 		b.Signature == nil ||
 		b.PubKey == nil {
@@ -106,7 +106,7 @@ func (b *Ballot) Valid() bool {
 func (b *Ballot) String() string {
 	s := strings.Builder{}
 	s.WriteString("Ballot{")
-	if b.ProcessID != nil {
+	if b.ProcessID.IsValid() {
 		s.WriteString("ProcessID: " + b.ProcessID.String() + ", ")
 	}
 	if b.VoterWeight != nil {
@@ -151,7 +151,7 @@ type AggregatorBallot struct {
 // proof should be in the BW6-761 curve, which is the one used by the
 // aggregator circuit and verified by the statetransition circuit.
 type AggregatorBallotBatch struct {
-	ProcessID       types.HexBytes        `json:"processId"`
+	ProcessID       types.ProcessID       `json:"processId"`
 	Proof           *groth16_bw6761.Proof `json:"proof"`
 	Ballots         []*AggregatorBallot   `json:"ballots"`
 	Attempts        int                   `json:"attempts"`
@@ -164,7 +164,7 @@ type AggregatorBallotBatch struct {
 // in the BN254 curve, which is the one used to verify the transition by the
 // smart contract.
 type StateTransitionBatch struct {
-	ProcessID       types.HexBytes                  `json:"processId"`
+	ProcessID       types.ProcessID                 `json:"processId"`
 	Proof           *groth16_bn254.Proof            `json:"proof"`
 	Ballots         []*AggregatorBallot             `json:"ballots"`
 	Inputs          StateTransitionBatchProofInputs `json:"inputs"`
@@ -232,7 +232,7 @@ func (s *StateTransitionBatchProofInputs) String() string {
 // of a process which has been verified by the sequencer. It includes the
 // process ID, the proof of the results and the inputs of the proof.
 type VerifiedResults struct {
-	ProcessID types.HexBytes             `json:"processId"`
+	ProcessID types.ProcessID            `json:"processId"`
 	Proof     *groth16_bn254.Proof       `json:"proof"`
 	Inputs    ResultsVerifierProofInputs `json:"inputs"`
 }

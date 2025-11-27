@@ -82,7 +82,7 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 	}
 
 	// Compute evaluation point z from commitment and blob
-	z, err := blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, commitment)
+	z, err := blobs.ComputeEvaluationPoint(st.processID.MathBigInt(), st.rootHashBefore, commitment)
 	if err != nil {
 		return nil, err
 	}
