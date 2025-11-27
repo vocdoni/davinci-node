@@ -180,19 +180,47 @@ func (s *Storage) ProcessIsAcceptingVotes(pid *types.ProcessID) (bool, error) {
 	// Get the process from storage
 	stgProcess, err := s.Process(pid)
 	if err != nil {
-		return false, fmt.Errorf("failed to get process %x: %w", pid.Marshal(), err)
+		return false, fmt.Errorf("failed to get process %s: %w", pid.String(), err)
 	}
-	// Basic checks
+	// Check that the process has a state root
 	if stgProcess.StateRoot == nil {
-		return false, fmt.Errorf("process %x has no state root", pid.Marshal())
+		return false, fmt.Errorf("process %s has no state root", pid.String())
 	}
+	// Check if process has expired
 	if stgProcess.StartTime.Add(stgProcess.Duration).Before(time.Now()) {
-		return false, fmt.Errorf("process %x has expired", pid.Marshal())
+		return false, fmt.Errorf("process %s has expired", pid.String())
 	}
+	// Check if process is in ready state
 	if stgProcess.Status != types.ProcessStatusReady {
-		return false, fmt.Errorf("process %x status: %s", pid.Marshal(), stgProcess.Status)
+		return false, fmt.Errorf("process %s status: %s", pid.String(), stgProcess.Status)
 	}
 	return true, nil
+}
+
+// ProcessMaxVotersReached checks if the process has reached its maximum
+// number of voters based on the process ID provided.
+func (s *Storage) ProcessMaxVotersReached(pid *types.ProcessID) (bool, error) {
+	// Get the process from storage
+	p, err := s.Process(pid)
+	if err != nil {
+		return false, fmt.Errorf("failed to get process %s: %w", pid.String(), err)
+	}
+	return s.processMaxVotersReached(p)
+}
+
+// processMaxVotersReached checks if the process has reached its maximum
+// number of voters based on the process data provided. It is a helper function
+// used internally by ProcessMaxVotersReached and other storage package methods.
+func (s *Storage) processMaxVotersReached(p *types.Process) (bool, error) {
+	maxVoters := p.MaxVoters.MathBigInt().Uint64()
+	if maxVoters == 0 {
+		return false, fmt.Errorf("process %s has no max voters set", p.ID.String())
+	}
+	// If VotersCount is nil, it means no voters have been counted yet.
+	if p.VotersCount == nil {
+		return false, nil
+	}
+	return p.VotersCount.MathBigInt().Uint64() >= maxVoters, nil
 }
 
 // ListProcessWithEncryptionKeys returns a list of process IDs that have

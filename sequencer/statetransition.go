@@ -283,7 +283,7 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 		if err := st.RootExists(onchainStateRoot.MathBigInt()); err != nil {
 			return nil, fmt.Errorf("on-chain state root does not exist in local state: %w", err)
 		}
-		if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStateRoot(onchainStateRoot, nil, nil)); err != nil {
+		if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStateRoot(onchainStateRoot, nil, nil, nil)); err != nil {
 			return nil, fmt.Errorf("failed to update process state root: %w", err)
 		}
 		log.Warnw("local state root mismatch, updated local state root to match on-chain",

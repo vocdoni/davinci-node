@@ -45,6 +45,7 @@ var (
 	ErrProcessNotAcceptingVotes = Error{Code: 40020, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("process is not accepting votes")}
 	ErrInvalidContractVersion   = Error{Code: 40021, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("not supported contract version")}
 	ErrAddressAlreadyProcessing = Error{Code: 40028, HTTPstatus: http.StatusConflict, Err: fmt.Errorf("address already has a vote being processed")}
+	ErrProcessMaxVotesReached   = Error{Code: 40029, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("process has reached the maximum number of votes allowed")}
 	// Worker errors
 	ErrWorkerNotAvailable     = Error{Code: 40022, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("worker not available")}
 	ErrMalformedWorkerInfo    = Error{Code: 40023, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed worker info")}

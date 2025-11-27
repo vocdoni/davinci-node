@@ -181,6 +181,7 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 			if err := pm.storage.UpdateProcess(pid,
 				storage.ProcessUpdateCallbackSetStateRoot(
 					blockchainProcess.StateRoot,
+					blockchainProcess.MaxVoters,
 					blockchainProcess.VotersCount,
 					blockchainProcess.OverwrittenVotesCount,
 				)); err != nil {
@@ -261,6 +262,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				new(types.ProcessID).SetBytes(process.ID),
 				storage.ProcessUpdateCallbackSetStateRoot(
 					process.NewStateRoot,
+					process.MaxVoters,
 					process.VotersCountCount,
 					process.NewOverwrittenVotesCount,
 				),

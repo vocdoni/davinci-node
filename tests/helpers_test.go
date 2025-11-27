@@ -668,6 +668,7 @@ func createProcessInContracts(
 	ballotMode *types.BallotMode,
 	encryptionKey *types.EncryptionKey,
 	stateRoot *types.HexBytes,
+	maxVotes int,
 	duration ...time.Duration,
 ) (*types.ProcessID, error) {
 	finalDuration := time.Hour
@@ -682,6 +683,7 @@ func createProcessInContracts(
 		StateRoot:      stateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       finalDuration,
+		MaxVotes:       types.NewInt(maxVotes),
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode:     ballotMode,
 		Census: &types.Census{

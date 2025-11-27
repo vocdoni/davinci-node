@@ -150,7 +150,11 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
 	if ok, err := a.storage.ProcessIsAcceptingVotes(pid); !ok {
-		ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
+		if err != nil {
+			ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
+			return
+		}
+		ErrProcessNotAcceptingVotes.Write(w)
 		return
 	}
 	// verify the census proof accordingly to the census origin and get the

@@ -90,7 +90,7 @@ func TestIntegration(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts
-		pid2, err := createProcessInContracts(services.Contracts, testCensusOrigin(), censusURI, censusRoot, ballotMode, encryptionKey, stateRoot)
+		pid2, err := createProcessInContracts(services.Contracts, testCensusOrigin(), censusURI, censusRoot, ballotMode, encryptionKey, stateRoot, numBallots)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(pid2.String(), qt.Equals, pid.String())
 

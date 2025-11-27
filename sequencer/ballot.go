@@ -149,7 +149,12 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
-
+	// Ensure the process is accepting votes
+	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(pid); err != nil {
+		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
+	} else if !isAcceptingVotes {
+		return nil, fmt.Errorf("process is not accepting votes")
+	}
 	log.Debugw("preparing ballot inputs", "pid", pid.String())
 	// Transform process data to circuit types
 	inputs := new(voteverifier.VoteVerifierInputs)
