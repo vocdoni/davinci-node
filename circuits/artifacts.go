@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,15 +29,7 @@ import (
 // artifacts are not found there, they will be downloaded and stored. It can be
 // set to a different path if needed from other packages. Defaults to the
 // env var DAVINCI_ARTIFACTS_DIR or the user home directory.
-var (
-	BaseDir     string
-	copyBufPool = sync.Pool{
-		New: func() any {
-			buf := make([]byte, 1<<20) // 1MiB default copy buffer
-			return &buf
-		},
-	}
-)
+var BaseDir string
 
 func init() {
 	if BaseDir == "" {
@@ -241,53 +232,44 @@ func (ca *CircuitArtifacts) RawVerifyingKey() []byte {
 }
 
 func load(hash []byte) ([]byte, error) {
-	// Ensure base dir exists.
-	if err := os.MkdirAll(BaseDir, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("error creating the base directory: %w", err)
+	// check if BaseDir exists and create it if it does not
+	if _, err := os.Stat(BaseDir); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(BaseDir, os.ModePerm); err != nil {
+				return nil, fmt.Errorf("error creating the base directory: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("error checking the base directory: %w", err)
+		}
 	}
-
+	// append the name to the base directory and check if the file exists
 	path := filepath.Join(BaseDir, hex.EncodeToString(hash))
-
-	// Open file; return nil if it doesn't exist.
-	fd, err := os.Open(path)
-	if err != nil {
+	if _, err := os.Stat(path); err != nil {
+		// if the file does not exists return nil content and nil error, but if
+		// the error is not a not exists error, return the error
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("error opening file %s: %w", path, err)
+		return nil, fmt.Errorf("error checking file %s: %w", path, err)
 	}
-	defer func() {
-		if err := fd.Close(); err != nil {
-			log.Warnw("error closing file", "error", err, "path", path)
-		}
-	}()
-
-	// Preallocate buffer close to file size to reduce growth copies
-	info, err := fd.Stat()
+	// if it exists, read the content of the file and return it
+	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("error stating file %s: %w", path, err)
-	}
-
-	hasher := sha256.New()
-	var buf bytes.Buffer
-	if size := info.Size(); size > 0 {
-		buf.Grow(int(size))
-	}
-
-	// Single pass: copy file into buffer while hashing. Use pooled copy buffer to reduce allocations.
-	tee := io.TeeReader(fd, hasher)
-	copyBuf := copyBufPool.Get().(*[]byte)
-	defer copyBufPool.Put(copyBuf)
-	if _, err := io.CopyBuffer(&buf, tee, *copyBuf); err != nil {
+		if err == os.ErrNotExist {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("error reading file %s: %w", path, err)
 	}
 
+	// check if the hash of the content matches the expected hash
+	hasher := sha256.New()
+	hasher.Write(content)
 	fileHash := hasher.Sum(nil)
 	if !bytes.Equal(fileHash, hash) {
 		return nil, fmt.Errorf("hash mismatch for file %s: expected %x, got %x", path, hash, fileHash)
 	}
 
-	return buf.Bytes(), nil
+	return content, nil
 }
 
 // progressReader wraps an io.Reader and keeps track of the total bytes read.
