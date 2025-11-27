@@ -122,14 +122,14 @@ func (c *EdDSA) CensusRoot() *types.CensusRoot {
 // error if the EdDSA signer is not initialized, the process ID or address
 // provided are not valid, or something fails during signature process.
 func (c *EdDSA) GenerateProof(
-	processID *types.ProcessID,
+	processID types.ProcessID,
 	address common.Address,
 	weight *types.BigInt,
 ) (*types.CensusProof, error) {
 	if c.signer == nil {
 		return nil, fmt.Errorf("csp is not initialized")
 	}
-	if processID == nil || !processID.IsValid() {
+	if !processID.IsValid() {
 		return nil, fmt.Errorf("invalid process ID")
 	}
 	if address == (common.Address{}) {
@@ -140,7 +140,7 @@ func (c *EdDSA) GenerateProof(
 	}
 	// sign the message composed by the process ID and address using the hash
 	// function and the private key of the CSP
-	message, err := signatureMessage(c.curve, processID.Marshal(), address.Bytes(), weight)
+	message, err := signatureMessage(c.curve, processID, address.Bytes(), weight)
 	if err != nil {
 		return nil, fmt.Errorf("error composing signature message: %w", err)
 	}
@@ -157,7 +157,7 @@ func (c *EdDSA) GenerateProof(
 		Root:         censusRoot,
 		Address:      address.Bytes(),
 		Weight:       weight,
-		ProcessID:    processID.Marshal(),
+		ProcessID:    &processID,
 		PublicKey:    c.signer.Public().Bytes(),
 		Signature:    signature,
 	}, nil
@@ -172,6 +172,9 @@ func (c *EdDSA) VerifyProof(proof *types.CensusProof) error {
 	if proof == nil {
 		return fmt.Errorf("proof is nil")
 	}
+	if proof.ProcessID == nil {
+		return fmt.Errorf("process ID is nil")
+	}
 	if proof.CensusOrigin != c.CensusOrigin() {
 		return fmt.Errorf("proof origin mismatch: expected %s, got %s", c.CensusOrigin(), proof.CensusOrigin)
 	}
@@ -181,7 +184,7 @@ func (c *EdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("error getting public key from census proof: %w", err)
 	}
 	// recompute the signature message
-	message, err := signatureMessage(c.curve, proof.ProcessID, proof.Address, proof.Weight)
+	message, err := signatureMessage(c.curve, *proof.ProcessID, proof.Address, proof.Weight)
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
@@ -253,15 +256,18 @@ func pubKeyPointToCensusRoot(
 // signatureMessage composes the message to be signed by the CSP. The message
 // is the concatenation of the process ID and address, both converted to field
 // elements suitable for the circuit.
-func signatureMessage(curve twistededwards.ID, pid, address types.HexBytes, weight *types.BigInt) ([]byte, error) {
-	if len(pid) == 0 || len(address) == 0 {
-		return nil, fmt.Errorf("process ID and address must not be empty")
+func signatureMessage(curve twistededwards.ID, processID types.ProcessID, address types.HexBytes, weight *types.BigInt) ([]byte, error) {
+	if !processID.IsValid() {
+		return nil, fmt.Errorf("invalid process ID")
+	}
+	if len(address) == 0 {
+		return nil, fmt.Errorf("address must not be empty")
 	}
 	// Hash the process ID and address to create a message suitable for signing
 	// using the mimc7 hash function. Ensure that the process ID and address
 	// are converted to field elements for the curve.
 	res, err := mimc7.Hash([]*big.Int{
-		pid.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
+		processID.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
 		address.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
 		weight.ToFF(bn254.ID.ScalarField()).MathBigInt(),
 	}, nil)

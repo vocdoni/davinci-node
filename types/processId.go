@@ -1,122 +1,132 @@
 package types
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
+	"github.com/vocdoni/davinci-node/crypto"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 // ProcessID is the type to identify a voting process. It is composed of:
-// - Address (20 bytes)
-// - Version keccak(chainID + contractAddress) (4 bytes)
-// - Nonce (8 bytes)
-// TODO: change to []byte wrapper, it will simplify the code and SetBytes() can be removed
-type ProcessID struct {
-	Address common.Address // 20 bytes
-	Version []byte         // first 4 bytes of keccak(chainID + contractAddress)
-	Nonce   uint64         // 8 bytes big-endian
+//   - Address (20 bytes)
+//   - Version keccak(chainID + contractAddress) (4 bytes)
+//   - Nonce (8 bytes, big-endian)
+type ProcessID [ProcessIDLen]byte
+
+// ProcessIDLen is the length in bytes of a ProcessID
+const ProcessIDLen = 32
+
+// NewProcessID builds a ProcessID using the passed params.
+func NewProcessID(addr common.Address, version [4]byte, nonce uint64) ProcessID {
+	var pid ProcessID
+	copy(pid[0:20], addr.Bytes())
+	copy(pid[20:24], version[:])
+	binary.BigEndian.PutUint64(pid[24:32], nonce)
+	return pid
 }
 
-// SetBytes decodes bytes to ProcessId and returns the pointer to the ProcessId.
-// This method is useful for chaining calls. However it does not return an error, so it should be used with caution.
-// If the data is invalid, it will return a new ProcessId with zero values.
-func (p *ProcessID) SetBytes(data []byte) *ProcessID {
-	if err := p.Unmarshal(data); err != nil {
-		return &ProcessID{
-			Version: make([]byte, 4),
-			Address: common.Address{},
-			Nonce:   0,
-		}
+// ParseProcessIDHex parses a ProcessID from a hex string.
+// It accepts optional "0x" prefix and requires exactly 32 bytes (64 hex chars).
+func ParseProcessIDHex(s string) (ProcessID, error) {
+	s = util.TrimHex(s) // strips 0x if present
+
+	if len(s) != ProcessIDLen*2 {
+		return ProcessID{}, fmt.Errorf("invalid process ID hex length %d, want %d", len(s), ProcessIDLen*2)
 	}
-	return p
+
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return ProcessID{}, fmt.Errorf("could not decode hex string: %w", err)
+	}
+
+	var pid ProcessID
+	if err := pid.UnmarshalBinary(b); err != nil {
+		return ProcessID{}, err
+	}
+	return pid, nil
 }
+
+func ProcessIDFromBytes(data []byte) (ProcessID, error) {
+	var processID ProcessID
+	if err := processID.UnmarshalBinary(data); err != nil {
+		return ProcessID{}, err
+	}
+	return processID, nil
+}
+
+func ProcessIDFromBigInt(bi *big.Int) (ProcessID, error) {
+	if bi == nil {
+		return ProcessID{}, fmt.Errorf("nil big.Int")
+	}
+	var processID ProcessID
+	bi.FillBytes(processID[:])
+	return processID, nil
+}
+
+func (p ProcessID) Address() common.Address { return common.BytesToAddress(p[0:20]) }
+func (p ProcessID) Version() [4]byte        { var v [4]byte; copy(v[:], p[20:24]); return v }
+func (p ProcessID) Nonce() uint64           { return binary.BigEndian.Uint64(p[24:32]) }
 
 // IsValid checks if the ProcessID is valid.
-// A valid ProcessID must have a non-zero Address, Version, and Nonce
-func (p *ProcessID) IsValid() bool {
-	return p != nil && !bytes.Equal(p.Version, make([]byte, 4)) && !bytes.Equal(p.Address.Bytes(), common.Address{}.Bytes())
-}
-
-// BigInt returns a BigInt representation of the ProcessId.
-func (p *ProcessID) BigInt() *big.Int {
-	if p == nil {
-		return nil
+// A valid ProcessID must have a non-zero Address and Version
+func (p ProcessID) IsValid() bool {
+	if p.Address().Cmp(common.Address{}) == 0 ||
+		p.Version() == [4]byte{} {
+		return false
 	}
-	return new(big.Int).SetBytes(p.Marshal())
+	return true
 }
 
-// Marshal encodes ProcessId to bytes:
-//
-//	Address (20 bytes) | Version (4 bytes) | Nonce (8 bytes)
-func (p *ProcessID) Marshal() []byte {
-	version := make([]byte, 4)
-	copy(version, p.Version)
-	nonce := make([]byte, 8)
-	binary.BigEndian.PutUint64(nonce, p.Nonce)
+// MathBigInt returns a *math/big.Int representation of the ProcessId.
+func (p ProcessID) MathBigInt() *big.Int { return new(big.Int).SetBytes(p[:]) }
 
-	var id bytes.Buffer
-	id.Write(p.Address.Bytes()[:20])
-	id.Write(version)
-	id.Write(nonce[:8])
-	return id.Bytes()
-}
+// BigInt returns a types.BigInt representation of the ProcessId.
+func (p ProcessID) BigInt() *BigInt { return NewInt(0).SetBytes(p[:]) }
 
-// UnMarshal decodes bytes to ProcessId.
-func (p *ProcessID) Unmarshal(data []byte) error {
-	if len(data) != 32 {
-		return fmt.Errorf("invalid ProcessID length: %d", len(data))
-	}
-	p.Address = common.BytesToAddress(data[:20])
-	p.Version = data[20:24]
-	p.Nonce = binary.BigEndian.Uint64(data[24:32])
-	return nil
-}
+// Bytes returns a slice view of the underlying array.
+func (p ProcessID) Bytes() []byte { return p[:] }
+
+// String returns a human readable representation of process ID
+func (p ProcessID) String() string { return hex.EncodeToString(p[:]) }
 
 // MarshalBinary implements the BinaryMarshaler interface
-func (p *ProcessID) MarshalBinary() (data []byte, err error) {
-	return p.Marshal(), nil
-}
+func (p ProcessID) MarshalBinary() (data []byte, err error) { return p[:], nil }
 
 // UnmarshalBinary implements the BinaryMarshaler interface
 func (p *ProcessID) UnmarshalBinary(data []byte) error {
-	return p.Unmarshal(data)
+	if len(data) != ProcessIDLen {
+		return fmt.Errorf("invalid ProcessID length: %d", len(data))
+	}
+	copy(p[:], data)
+	return nil
 }
 
-// String returns a human readable representation of process ID
-func (p *ProcessID) String() string {
-	return hex.EncodeToString(p.Marshal())
-}
-
-// HasVersion checks if the ProcessID version matches the given version
-func (p *ProcessID) HasVersion(version []byte) bool {
-	return bytes.Equal(p.Version, version)
-}
-
-// TestProcessID is a deterministic ProcessID used for testing purposes.
-// All circuit tests should use this ProcessID to ensure consistent caching
-// and proof reuse between tests.
-var TestProcessID = &ProcessID{
-	Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
-	Version: []byte{0x00, 0x00, 0x00, 0x01},
-	Nonce:   1,
+// ToFF returns the finite field representation of the ProcessID.
+// It uses the curve scalar field to represent the ProcessID.
+func (p *ProcessID) ToFF(baseField *big.Int) ProcessID {
+	bi := crypto.BigToFF(baseField, p.MathBigInt())
+	bi.FillBytes(p[:])
+	return *p
 }
 
 // ProcessIDVersion computes the version for a ProcessID. It is defined as the
-// first 4 bytes of the Keccak-256 hash of the concatenation of the chain ID
+// last 4 bytes of the Keccak-256 hash of the concatenation of the chain ID
 // (4 bytes big-endian) and the contract address (20 bytes).
-func ProcessIDVersion(chainID uint32, contractAddr common.Address) []byte {
+func ProcessIDVersion(chainID uint32, contractAddr common.Address) [4]byte {
 	var buf [24]byte
 	// chainId: 4 bytes big-endian
 	binary.BigEndian.PutUint32(buf[0:4], chainID)
 	// address: 20 raw bytes
 	copy(buf[4:], contractAddr.Bytes())
 	// Keccak-256 (Ethereum's legacy Keccak, not NIST SHA3)
-	sum := crypto.Keccak256(buf[:])
+	sum := ethcrypto.Keccak256(buf[:])
 	// Take the last 4 bytes (least-significant 32 bits) as the version
-	return sum[len(sum)-4:]
+	var v [4]byte
+	copy(v[:], sum[len(sum)-4:]) // last 4 bytes
+	return v
 }

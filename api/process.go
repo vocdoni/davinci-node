@@ -27,8 +27,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Unmarshal the process ID
-	pid := new(types.ProcessID).SetBytes(p.ProcessID)
-	if !pid.IsValid() {
+	if !p.ProcessID.IsValid() {
 		ErrMalformedProcessID.With("invalid process ID").Write(w)
 		return
 	}
@@ -40,13 +39,13 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate the process ID version
-	if !pid.HasVersion(a.processIDsVersion) {
-		ErrInvalidContractVersion.Withf("%x", pid.Version).Write(w)
+	if p.ProcessID.Version() != a.processIDsVersion {
+		ErrInvalidContractVersion.Withf("%x", p.ProcessID.Version()).Write(w)
 		return
 	}
 
 	// Extract the address from the signature
-	signedMessage := fmt.Sprintf(types.NewProcessMessageToSign, pid.String())
+	signedMessage := fmt.Sprintf(types.NewProcessMessageToSign, p.ProcessID.String())
 	address, err := ethereum.AddrFromSignature([]byte(signedMessage), new(ethereum.ECDSASignature).SetBytes(p.Signature))
 	if err != nil {
 		ErrInvalidSignature.Withf("could not extract address from signature: %v", err).Write(w)
@@ -60,7 +59,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch the elgamal key from storage
-	publicKey, _, err := a.storage.FetchOrGenerateEncryptionKeys(pid)
+	publicKey, _, err := a.storage.FetchOrGenerateEncryptionKeys(p.ProcessID)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not fetch or generate encryption keys: %v", err).Write(w)
 		return
@@ -69,7 +68,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// Prepare inputs for the state ready for the state transition circuit:
 	// - the census root must be encoded according to the arbo format
 	root, err := state.CalculateInitialRoot(
-		pid.BigInt(),
+		p.ProcessID,
 		p.Census.CensusOrigin.BigInt().MathBigInt(),
 		p.BallotMode,
 		publicKey)
@@ -81,7 +80,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// Create the process response
 	x, y := publicKey.Point()
 	pr := &types.ProcessSetupResponse{
-		ProcessID:        pid.Marshal(),
+		ProcessID:        &p.ProcessID,
 		EncryptionPubKey: [2]*types.BigInt{(*types.BigInt)(x), (*types.BigInt)(y)},
 		StateRoot:        root.Bytes(),
 		BallotMode:       p.BallotMode,
@@ -93,7 +92,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		"censusOrigin", p.Census.CensusOrigin.String(),
 		"censusRoot", p.Census.CensusRoot.String(),
 		"censusURI", p.Census.CensusURI,
-		"processId", pid.String(),
+		"processId", p.ProcessID.String(),
 		"pubKeyX", pr.EncryptionPubKey[0].String(),
 		"pubKeyY", pr.EncryptionPubKey[1].String(),
 		"stateRoot", pr.StateRoot.String(),
@@ -105,25 +104,20 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 // GET /processes/{processId}
 func (a *API) process(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal the process ID
-	pidBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, ProcessURLParam)))
+	processID, err := types.ParseProcessIDHex(chi.URLParam(r, ProcessURLParam))
 	if err != nil {
-		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
-		return
-	}
-	pid := new(types.ProcessID)
-	if err := pid.Unmarshal(pidBytes); err != nil {
-		ErrMalformedProcessID.Withf("could not unmarshal process ID: %v", err).Write(w)
+		ErrMalformedProcessID.Withf("could not parse process ID: %v", err).Write(w)
 		return
 	}
 
 	// Retrieve the process
-	proc, err := a.storage.Process(pid)
+	proc, err := a.storage.Process(processID)
 	if err != nil {
 		ErrProcessNotFound.Withf("could not retrieve process: %v", err).Write(w)
 		return
 	}
 
-	isAcceptingVotes, _ := a.storage.ProcessIsAcceptingVotes(pid)
+	isAcceptingVotes, _ := a.storage.ProcessIsAcceptingVotes(processID)
 	// Write the response
 	httpWriteJSON(w, &ProcessResponse{
 		Process:          *proc,
@@ -140,12 +134,8 @@ func (a *API) processList(w http.ResponseWriter, r *http.Request) {
 		ErrGenericInternalServerError.Withf("could not retrieve processes: %v", err).Write(w)
 		return
 	}
-	processList := ProcessList{}
-	for _, p := range processes {
-		processList.Processes = append(processList.Processes, p.Marshal())
-	}
 	// Write the response
-	httpWriteJSON(w, &processList)
+	httpWriteJSON(w, &ProcessList{Processes: processes})
 }
 
 // setMetadata sets the metadata for a voting process
@@ -204,20 +194,14 @@ func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 // GET /processes/{processId}/participants/{address}
 func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal the process ID from URL parameter
-	pidBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, ProcessURLParam)))
+	processID, err := types.ParseProcessIDHex(chi.URLParam(r, ProcessURLParam))
 	if err != nil {
-		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
-		return
-	}
-
-	pid := new(types.ProcessID)
-	if err := pid.Unmarshal(pidBytes); err != nil {
-		ErrMalformedProcessID.Withf("could not unmarshal process ID: %v", err).Write(w)
+		ErrMalformedProcessID.Withf("could not parse process ID: %v", err).Write(w)
 		return
 	}
 
 	// Load the process from storage
-	process, err := a.storage.Process(pid)
+	process, err := a.storage.Process(processID)
 	if err != nil {
 		if err == storage.ErrNotFound {
 			ErrProcessNotFound.Withf("could not retrieve process: %v", err).Write(w)

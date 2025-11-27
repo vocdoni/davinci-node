@@ -48,7 +48,7 @@ func (s *Sequencer) startStateTransitionProcessor() error {
 
 func (s *Sequencer) processPendingTransitions() {
 	// Process each registered process ID
-	s.pids.ForEach(func(pid []byte, _ time.Time) bool {
+	s.pids.ForEach(func(pid types.ProcessID, _ time.Time) bool {
 		// Check if there is a batch ready for processing
 		batch, batchID, err := s.stg.NextAggregatorBatch(pid)
 		if err != nil {
@@ -73,16 +73,13 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 
-		// Decode process ID and load metadata
-		processID := new(types.ProcessID).SetBytes(batch.ProcessID)
-
 		// Lock the processor to avoid concurrent workloads
 		s.workInProgressLock.Lock()
 		defer s.workInProgressLock.Unlock()
 		startTime := time.Now()
 
 		// Initialize the process state
-		processState, err := s.latestProcessState(processID)
+		processState, err := s.latestProcessState(batch.ProcessID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
 			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
@@ -102,13 +99,13 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 
 		log.Debugw("state transition ready for processing",
-			"processID", processID.String(),
+			"processID", batch.ProcessID.String(),
 			"ballotCount", len(batch.Ballots),
 			"rootHashBefore", root.String(),
 		)
 
 		// Reencrypt the votes with a new k
-		reencryptedVotes, kSeed, err := s.reencryptVotes(processID, batch.Ballots)
+		reencryptedVotes, kSeed, err := s.reencryptVotes(batch.ProcessID, batch.Ballots)
 		if err != nil {
 			log.Errorw(err, "failed to reencrypt votes")
 			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
@@ -122,7 +119,7 @@ func (s *Sequencer) processPendingTransitions() {
 		for i, b := range batch.Ballots {
 			censusProofs[i] = b.CensusProof
 		}
-		censusRoot, circuitCensusProofs, err := s.processCensusProofs(processID, reencryptedVotes, censusProofs)
+		censusRoot, circuitCensusProofs, err := s.processCensusProofs(batch.ProcessID, reencryptedVotes, censusProofs)
 		if err != nil {
 			log.Errorw(err, "failed to get census proofs")
 			return true // Continue to next process ID
@@ -160,7 +157,7 @@ func (s *Sequencer) processPendingTransitions() {
 
 		log.Infow("state transition proof generated",
 			"took", time.Since(startTime).String(),
-			"pid", processID.String(),
+			"pid", batch.ProcessID.String(),
 			"rootHashBefore", root.String(),
 			"rootHashAfter", rootHashAfter.String(),
 			"blobHash", blobSidecar.BlobHashes()[0].String(),
@@ -169,7 +166,7 @@ func (s *Sequencer) processPendingTransitions() {
 		if err := s.stg.SetPendingTx(storage.StateTransitionTx, batch.ProcessID); err != nil {
 			log.Warnw("failed to mark process as having pending tx",
 				"error", err,
-				"processID", fmt.Sprintf("%x", processID))
+				"processID", batch.ProcessID.String())
 		}
 		if err := s.stg.MarkAggregatorBatchPending(batch); err != nil {
 			log.Errorw(err, "failed to mark aggregator batch as pending, it will not be retried")
@@ -239,7 +236,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	return proof, blobData, nil
 }
 
-func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
+func (s *Sequencer) reencryptVotes(pid types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
 	// generate a initial k to reencrypt the ballots
 	kSeed, err := elgamal.RandK()
 	if err != nil {
@@ -319,7 +316,7 @@ func (s *Sequencer) stateBatchToWitness(
 }
 
 func (s *Sequencer) processCensusProofs(
-	pid *types.ProcessID,
+	pid types.ProcessID,
 	votes []*state.Vote,
 	censusProofs []*types.CensusProof,
 ) (*types.BigInt, *statetransition.CensusProofs, error) {

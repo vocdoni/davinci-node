@@ -16,7 +16,7 @@ type CensusParticipant struct {
 // Vote is the struct to represent a vote in the system. It will be provided by
 // the user to cast a vote in a process.
 type Vote struct {
-	ProcessID        types.HexBytes           `json:"processId"`
+	ProcessID        types.ProcessID          `json:"processId"`
 	CensusProof      types.CensusProof        `json:"censusProof"`
 	Ballot           *elgamal.Ballot          `json:"ballot"`
 	BallotProof      *circomgnark.CircomProof `json:"ballotProof"`
@@ -97,7 +97,7 @@ type SetMetadataResponse struct {
 
 // ProcessList is the response returned by the process list endpoint.
 type ProcessList struct {
-	Processes []types.HexBytes `json:"processes"`
+	Processes []types.ProcessID `json:"processes"`
 }
 
 type ProcessResponse struct {
