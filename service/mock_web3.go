@@ -65,19 +65,19 @@ func (m *MockContracts) MonitorProcessChanges(
 	return m.chanPWC, nil
 }
 
-func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
+func (m *MockContracts) CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	pid := types.ProcessID{
-		Address: process.OrganizationId,
-		Nonce:   uint64(len(m.processes)),
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
-	process.ID = pid.Marshal()
+	pid := types.NewProcessID(
+		process.OrganizationId,
+		[4]byte{0x00, 0x00, 0x00, 0x01},
+		uint64(len(m.processes)),
+	)
+	process.ID = &pid
 	m.processes = append(m.processes, process)
 	hash := common.HexToHash("0x1234567890")
-	return &pid, &hash, nil
+	return pid, &hash, nil
 }
 
 func (m *MockContracts) AccountAddress() common.Address {
@@ -92,12 +92,12 @@ func (m *MockContracts) WaitTxByID(id []byte, timeout time.Duration, cb ...func(
 	return nil
 }
 
-func (m *MockContracts) Process(processID []byte) (*types.Process, error) {
+func (m *MockContracts) Process(processID types.ProcessID) (*types.Process, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	for _, proc := range m.processes {
-		if string(proc.ID) == string(processID) {
+		if *proc.ID == processID {
 			return proc, nil
 		}
 	}

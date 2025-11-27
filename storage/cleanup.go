@@ -26,7 +26,7 @@ import (
 //
 // Important: This method does NOT clean process metadata, encryption keys,
 // or statistics as they serve as historical records.
-func (s *Storage) cleanupEndedProcess(processID []byte) error {
+func (s *Storage) cleanupEndedProcess(processID types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -109,7 +109,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 		keys       [][]byte
 		validCount int
 	}
-	processBallots := make(map[string]*processCleanup)
+	processBallots := make(map[types.ProcessID]*processCleanup)
 
 	// Collect all verified ballots
 	if err := rd.Iterate(nil, func(k, v []byte) bool {
@@ -121,9 +121,8 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 			return true
 		}
 
-		processKey := string(ballot.ProcessID)
-		if processBallots[processKey] == nil {
-			processBallots[processKey] = &processCleanup{
+		if processBallots[ballot.ProcessID] == nil {
+			processBallots[ballot.ProcessID] = &processCleanup{
 				keys:       [][]byte{},
 				validCount: 0,
 			}
@@ -132,7 +131,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 		// Make a copy of the key
 		keyCopy := make([]byte, len(k))
 		copy(keyCopy, k)
-		processBallots[processKey].keys = append(processBallots[processKey].keys, keyCopy)
+		processBallots[ballot.ProcessID].keys = append(processBallots[ballot.ProcessID].keys, keyCopy)
 
 		// Check current status to determine if we should count it for stats
 		currentStatus, err := s.voteIDStatusUnsafe(ballot.ProcessID, ballot.VoteID)
@@ -142,9 +141,9 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 				"voteID", hex.EncodeToString(ballot.VoteID),
 				"error", err.Error())
 			// Count it anyway as it might still be valid
-			processBallots[processKey].validCount++
+			processBallots[ballot.ProcessID].validCount++
 		} else if currentStatus == VoteIDStatusVerified {
-			processBallots[processKey].validCount++
+			processBallots[ballot.ProcessID].validCount++
 		} else {
 			log.Warnw("vote ID is not in verified status during cleanup",
 				"processID", fmt.Sprintf("%x", ballot.ProcessID),
@@ -178,9 +177,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 
 	// Delete all ballots and their reservations
 	totalCleaned := 0
-	for processKey, cleanup := range processBallots {
-		processID := []byte(processKey)
-
+	for processID, cleanup := range processBallots {
 		for _, key := range cleanup.keys {
 			// Delete reservation if exists
 			if err := s.deleteArtifact(verifiedBallotReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
@@ -228,7 +225,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 		keys       [][]byte
 		validCount int
 	}
-	processBatches := make(map[string]*processCleanup)
+	processBatches := make(map[types.ProcessID]*processCleanup)
 
 	// Collect all aggregated batches
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
@@ -240,9 +237,8 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 			return true
 		}
 
-		processKey := string(batch.ProcessID)
-		if processBatches[processKey] == nil {
-			processBatches[processKey] = &processCleanup{
+		if processBatches[batch.ProcessID] == nil {
+			processBatches[batch.ProcessID] = &processCleanup{
 				keys:       [][]byte{},
 				validCount: 0,
 			}
@@ -251,7 +247,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 		// Make a copy of the key
 		keyCopy := make([]byte, len(k))
 		copy(keyCopy, k)
-		processBatches[processKey].keys = append(processBatches[processKey].keys, keyCopy)
+		processBatches[batch.ProcessID].keys = append(processBatches[batch.ProcessID].keys, keyCopy)
 
 		// Process each ballot in the batch
 		for _, ballot := range batch.Ballots {
@@ -263,9 +259,9 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 					"voteID", hex.EncodeToString(ballot.VoteID),
 					"error", err.Error())
 				// Count it anyway as it might still be valid
-				processBatches[processKey].validCount++
+				processBatches[batch.ProcessID].validCount++
 			} else if currentStatus == VoteIDStatusAggregated {
-				processBatches[processKey].validCount++
+				processBatches[batch.ProcessID].validCount++
 			} else {
 				log.Warnw("vote ID is not in aggregated status during cleanup",
 					"processID", fmt.Sprintf("%x", batch.ProcessID),
@@ -294,9 +290,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 
 	// Delete all batches and their reservations
 	totalCleaned := 0
-	for processKey, cleanup := range processBatches {
-		processID := []byte(processKey)
-
+	for processID, cleanup := range processBatches {
 		for _, key := range cleanup.keys {
 			// Delete reservation if exists
 			if err := s.deleteArtifact(aggregBatchReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
@@ -345,7 +339,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 		keys            [][]byte
 		validBatchCount int
 	}
-	processTransitions := make(map[string]*processCleanup)
+	processTransitions := make(map[types.ProcessID]*processCleanup)
 
 	// Collect all state transitions
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
@@ -357,9 +351,8 @@ func (s *Storage) cleanAllStateTransitions() error {
 			return true
 		}
 
-		processKey := string(stb.ProcessID)
-		if processTransitions[processKey] == nil {
-			processTransitions[processKey] = &processCleanup{
+		if processTransitions[stb.ProcessID] == nil {
+			processTransitions[stb.ProcessID] = &processCleanup{
 				keys:            [][]byte{},
 				validBatchCount: 0,
 			}
@@ -368,7 +361,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 		// Make a copy of the key
 		keyCopy := make([]byte, len(k))
 		copy(keyCopy, k)
-		processTransitions[processKey].keys = append(processTransitions[processKey].keys, keyCopy)
+		processTransitions[stb.ProcessID].keys = append(processTransitions[stb.ProcessID].keys, keyCopy)
 
 		// Check if this batch should be counted (check first ballot status)
 		batchIsValid := false
@@ -392,7 +385,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 		}
 
 		if batchIsValid {
-			processTransitions[processKey].validBatchCount++
+			processTransitions[stb.ProcessID].validBatchCount++
 		}
 
 		// Process each ballot in the batch
@@ -429,9 +422,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 
 	// Delete all state transitions and their reservations
 	totalCleaned := 0
-	for processKey, cleanup := range processTransitions {
-		processID := []byte(processKey)
-
+	for processID, cleanup := range processTransitions {
 		for _, key := range cleanup.keys {
 			// Delete reservation if exists
 			if err := s.deleteArtifact(stateTransitionReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
@@ -471,7 +462,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 // cleanPendingBallotsForProcess removes all pending ballots for a given processID.
 // Since pending ballots are keyed by voteID only, we must iterate through all
 // pending ballots and check their ProcessID field.
-func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
+func (s *Storage) cleanPendingBallotsForProcess(processID types.ProcessID) error {
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	var ballotsToDelete []*Ballot
 
@@ -483,7 +474,7 @@ func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
 			return true
 		}
 
-		if bytes.Equal(ballot.ProcessID, processID) {
+		if ballot.ProcessID == processID {
 			ballotsToDelete = append(ballotsToDelete, &ballot)
 		}
 		return true
@@ -516,7 +507,7 @@ func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
 
 // cleanVerifiedBallotsForProcess removes all verified ballots for a given processID.
 // Verified ballots are efficiently accessible using processID prefix.
-func (s *Storage) cleanVerifiedBallotsForProcess(processID []byte) error {
+func (s *Storage) cleanVerifiedBallotsForProcess(processID types.ProcessID) error {
 	rd := prefixeddb.NewPrefixedReader(s.db, verifiedBallotPrefix)
 
 	type ballotToDelete struct {
@@ -526,10 +517,10 @@ func (s *Storage) cleanVerifiedBallotsForProcess(processID []byte) error {
 	var ballotsToDelete []ballotToDelete
 
 	// Iterate with processID prefix for efficiency
-	if err := rd.Iterate(processID, func(k, v []byte) bool {
+	if err := rd.Iterate(processID.Bytes(), func(k, v []byte) bool {
 		// Ensure key has processID prefix
-		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
-			k = append(processID, k...)
+		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID.Bytes()) {
+			k = append(processID.Bytes(), k...)
 		}
 
 		// Decode ballot to get address for lock release
@@ -579,15 +570,15 @@ func (s *Storage) cleanVerifiedBallotsForProcess(processID []byte) error {
 }
 
 // cleanAggregatorBatchesForProcess removes all aggregator batches for a given processID.
-func (s *Storage) cleanAggregatorBatchesForProcess(processID []byte) error {
+func (s *Storage) cleanAggregatorBatchesForProcess(processID types.ProcessID) error {
 	pr := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	var keysToDelete [][]byte
 
 	// Iterate with processID prefix
-	if err := pr.Iterate(processID, func(k, v []byte) bool {
+	if err := pr.Iterate(processID.Bytes(), func(k, v []byte) bool {
 		// Ensure key has processID prefix
-		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
-			k = append(processID, k...)
+		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID.Bytes()) {
+			k = append(processID.Bytes(), k...)
 		}
 
 		keyCopy := make([]byte, len(k))
@@ -617,15 +608,15 @@ func (s *Storage) cleanAggregatorBatchesForProcess(processID []byte) error {
 }
 
 // cleanStateTransitionsForProcess removes all state transitions for a given processID.
-func (s *Storage) cleanStateTransitionsForProcess(processID []byte) error {
+func (s *Storage) cleanStateTransitionsForProcess(processID types.ProcessID) error {
 	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
 	var keysToDelete [][]byte
 
 	// Iterate with processID prefix
-	if err := pr.Iterate(processID, func(k, v []byte) bool {
+	if err := pr.Iterate(processID.Bytes(), func(k, v []byte) bool {
 		// Ensure key has processID prefix
-		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
-			k = append(processID, k...)
+		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID.Bytes()) {
+			k = append(processID.Bytes(), k...)
 		}
 
 		keyCopy := make([]byte, len(k))

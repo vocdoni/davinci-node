@@ -18,7 +18,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 )
 
@@ -146,18 +145,17 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 
 	// Get the process metadata
-	pid := new(types.ProcessID).SetBytes(b.ProcessID)
-	process, err := s.stg.Process(pid)
+	process, err := s.stg.Process(b.ProcessID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
 	// Ensure the process is accepting votes
-	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(pid); err != nil {
+	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(b.ProcessID); err != nil {
 		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
 	} else if !isAcceptingVotes {
 		return nil, fmt.Errorf("process is not accepting votes")
 	}
-	log.Debugw("preparing ballot inputs", "pid", pid.String())
+	log.Debugw("preparing ballot inputs", "pid", b.ProcessID.String())
 	// Transform process data to circuit types
 	inputs := new(voteverifier.VoteVerifierInputs)
 	if err := inputs.FromProcessBallot(process, b); err != nil {
@@ -204,7 +202,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 
 	log.Debugw("vote verifier inputs ready",
-		"processID", pid.String(),
+		"processID", b.ProcessID.String(),
 		"voteID", b.VoteID.String(),
 		"address", b.Address.String(),
 		"inputsHash", inputHash.String(),
@@ -215,7 +213,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		params.AggregatorCurve.ScalarField(),
 		params.VoteVerifierCurve.ScalarField(),
 	)
-	log.Debugw("generating vote verification proof...", "pid", pid.String(), "voteID", hex.EncodeToString(b.VoteID))
+	log.Debugw("generating vote verification proof...", "pid", b.ProcessID.String(), "voteID", hex.EncodeToString(b.VoteID))
 	proof, err := s.prover(params.VoteVerifierCurve, s.vvCcs, s.vvPk, &assignment, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
@@ -241,7 +239,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 
 	log.Infow("vote verification proof generated",
-		"pid", pid.String(),
+		"pid", b.ProcessID.String(),
 		"voteID", hex.EncodeToString(b.VoteID),
 		"address", hex.EncodeToString(b.Address.Bytes()),
 		"took", time.Since(startTime).String(),

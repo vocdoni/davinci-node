@@ -26,7 +26,7 @@ const testCSPSeed = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
 func CensusProofsForCircuitTest(
 	votes []state.Vote,
 	origin types.CensusOrigin,
-	pid *types.ProcessID,
+	pid types.ProcessID,
 ) (*big.Int, statetransition.CensusProofs, error) {
 	log.Printf("generating testing census with '%s' origin", origin.String())
 	var root *big.Int

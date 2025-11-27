@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/hex"
 	"io"
 	"net/http"
 	"regexp"
@@ -12,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/util"
 )
 
 // DisabledLogging is a global flag to disable logging middleware
@@ -155,7 +153,7 @@ func loggingMiddlewareWithConfig(config LoggingConfig) func(http.Handler) http.H
 // its version against the provided currentVersion. If they don't match, it
 // responds with 404 Not Found. If the path does not contain a processID
 // parameter, it simply calls the next handler.
-func skipUnknownProcessIDMiddleware(currentVersion []byte) func(http.Handler) http.Handler {
+func skipUnknownProcessIDMiddleware(currentVersion [4]byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if the route contains a process id
@@ -164,25 +162,20 @@ func skipUnknownProcessIDMiddleware(currentVersion []byte) func(http.Handler) ht
 				next.ServeHTTP(w, r)
 				return
 			}
-			// Decode the process id from hex string
-			pidBytes, err := hex.DecodeString(util.TrimHex(pidStr))
+
+			pid, err := types.HexStringToProcessID(pidStr)
 			if err != nil {
-				ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
+				ErrMalformedProcessID.Withf("could not parse process ID: %v", err).Write(w)
 				return
 			}
-			// Unmarshal the process id
-			pid := new(types.ProcessID)
-			if err := pid.Unmarshal(pidBytes); err != nil {
-				ErrMalformedProcessID.Withf("could not unmarshal process ID: %v", err).Write(w)
-				return
-			}
+
 			// Check if the process id is valid
 			if !pid.IsValid() {
 				ErrMalformedProcessID.Withf("invalid process ID: %s", pidStr).Write(w)
 				return
 			}
 			// Check if the version matches the current expected version
-			if !pid.HasVersion(currentVersion) {
+			if pid.Version() != currentVersion {
 				http.NotFound(w, r)
 				return
 			}

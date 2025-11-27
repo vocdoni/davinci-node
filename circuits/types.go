@@ -2,6 +2,7 @@ package circuits
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"math/big"
 
@@ -646,6 +647,18 @@ func NextK(api frontend.API, k frontend.Variable) frontend.Variable {
 	return kHasher.Sum()
 }
 
+// RandK function generates a random k value for encryption,
+// inside the scalar field of the BallotProof curve
+func RandK() (*big.Int, error) {
+	kBytes := make([]byte, 20)
+	_, err := rand.Read(kBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random k: %v", err)
+	}
+	k := new(big.Int).SetBytes(kBytes)
+	return crypto.BigToFF(BallotProofCurve.ScalarField(), k), nil
+}
+
 func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.Element[sw_bn254.ScalarField] {
 	elem, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, v)
 	if err != nil {
@@ -662,16 +675,15 @@ func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.
 // field, then hashes them using iden3 mimc7. The resulting vote ID is a hex byte
 // array. If something goes wrong during the hashing process, it returns an
 // error.
-func VoteID(processID *types.ProcessID, address common.Address, k *types.BigInt) (*types.BigInt, error) {
+func VoteID(processID types.ProcessID, address common.Address, k *types.BigInt) (*types.BigInt, error) {
 	if !processID.IsValid() || address.Cmp(common.Address{}) == 0 || k == nil {
 		return nil, fmt.Errorf("a valid processID, address and k is required")
 	}
 	// encode the process ID and address to hex bytes
 	hexAddress := types.HexBytes(address.Bytes())
-	hexProcessID := types.HexBytes(processID.Marshal())
 	// safe address, processID and k
 	ffAddress := hexAddress.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ffProcessID := hexProcessID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	ffK := k.ToFF(params.BallotProofCurve.ScalarField())
 	// calculate the vote ID hash using mimc7
 	hash, err := iden3mimc7.Hash([]*big.Int{

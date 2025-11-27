@@ -15,10 +15,10 @@ import (
 
 // CreateProcess creates a new process in the ProcessRegistry contract.
 // It returns the process ID and the transaction hash.
-func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
+func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error) {
 	txOpts, err := c.authTransactOpts()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create transact options: %w", err)
+		return types.ProcessID{}, nil, fmt.Errorf("failed to create transact options: %w", err)
 	}
 
 	// get the next process ID from the contract before creating the process to
@@ -27,10 +27,8 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 	defer cancel()
 	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx}, c.AccountAddress())
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get next process ID: %w", err)
+		return types.ProcessID{}, nil, fmt.Errorf("failed to get next process ID: %w", err)
 	}
-	pidDecoded := &types.ProcessID{}
-	pidDecoded.SetBytes(pid[:])
 
 	p := process2ContractProcess(process)
 	tx, err := c.processes.NewProcess(
@@ -46,22 +44,19 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 		p.LatestStateRoot,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create process: %w", err)
+		return types.ProcessID{}, nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	hash := tx.Hash()
-	return pidDecoded, &hash, nil
+	return types.ProcessID(pid), &hash, nil
 }
 
 // Process returns the process with the given ID from the ProcessRegistry
 // contract.
-func (c *Contracts) Process(processID []byte) (*types.Process, error) {
-	var pid [32]byte
-	copy(pid[:], processID)
-
+func (c *Contracts) Process(processID types.ProcessID) (*types.Process, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
-	p, err := c.processes.GetProcess(&bind.CallOpts{Context: ctx}, pid)
+	p, err := c.processes.GetProcess(&bind.CallOpts{Context: ctx}, processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
@@ -70,32 +65,31 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	process.ID = processID
+	process.ID = &processID
 	return process, nil
 }
 
 // NextProcessID returns the next process ID that will be created in the
 // ProcessRegistry contract for the given address.
-func (c *Contracts) NextProcessID(address common.Address) (*types.ProcessID, error) {
+func (c *Contracts) NextProcessID(address common.Address) (types.ProcessID, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
 	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx}, address)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get next process ID: %w", err)
+		return types.ProcessID{}, fmt.Errorf("failed to get next process ID: %w", err)
 	}
-	pidDecoded := &types.ProcessID{}
-	pidDecoded.SetBytes(pid[:])
-	if !pidDecoded.IsValid() {
-		return nil, fmt.Errorf("invalid process ID: %s", pidDecoded.String())
+	processID := types.ProcessID(pid)
+	if !processID.IsValid() {
+		return types.ProcessID{}, fmt.Errorf("invalid process ID: %s", processID.String())
 	}
-	return pidDecoded, nil
+	return processID, nil
 }
 
 // StateRoot returns the state root of the process with the given ID. It
 // returns an error if the process does not exist or if there is an issue with
 // the contract call.
-func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
+func (c *Contracts) StateRoot(processID types.ProcessID) (*types.BigInt, error) {
 	process, err := c.Process(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
@@ -108,11 +102,7 @@ func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, inputs []byte, blobsSidecar *types.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
-	// Copy processID into a fixed-size array to match the contract's expected
-	// type
-	var pid [32]byte
-	copy(pid[:], processID)
+func (c *Contracts) sendProcessTransition(processID types.ProcessID, proof, inputs []byte, blobsSidecar *types.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
 	// Prepare the ABI for packing the data
@@ -129,7 +119,7 @@ func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, input
 		// Build the transaction based on whether blobs are provided
 		switch blobsSidecar {
 		case nil: // Regular transaction
-			data, err := processABI.Pack("submitStateTransition", pid, proof, inputs)
+			data, err := processABI.Pack("submitStateTransition", processID, proof, inputs)
 			if err != nil {
 				return nil, fmt.Errorf("failed to pack data: %w", err)
 			}
@@ -142,7 +132,7 @@ func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, input
 				c.ContractsAddresses.ProcessRegistry,
 				processABI,
 				"submitStateTransition",
-				[]any{pid, proof, inputs},
+				[]any{processID, proof, inputs},
 				blobsSidecar,
 				nonce,
 			)
@@ -173,7 +163,7 @@ func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, input
 // is reached, it calls the optional callback with the result of the operation.
 // It returns an error if the submission fails.
 func (c *Contracts) SetProcessTransition(
-	processID types.HexBytes,
+	processID types.ProcessID,
 	proof, inputs []byte,
 	blobsSidecar *types.BlobTxSidecar,
 	timeout time.Duration,
@@ -193,15 +183,11 @@ func (c *Contracts) SetProcessTransition(
 // sendProcessResults sets the results of the process with the given ID in the
 // ProcessRegistry contract. It returns the transaction ID and hash of the
 // results submission, or an error if the submission fails.
-func (c *Contracts) sendProcessResults(processID types.HexBytes, proof, inputs []byte) (types.HexBytes, *common.Hash, error) {
+func (c *Contracts) sendProcessResults(processID types.ProcessID, proof, inputs []byte) (types.HexBytes, *common.Hash, error) {
 	// If the transaction manager is not available, return an error
 	if c.txManager == nil {
 		return nil, nil, fmt.Errorf("transaction manager not initialized")
 	}
-	// Copy processID into a fixed-size array to match the contract's expected
-	// type
-	var pid [32]byte
-	copy(pid[:], processID)
 	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
 	// Prepare the ABI for packing the data
@@ -210,7 +196,7 @@ func (c *Contracts) sendProcessResults(processID types.HexBytes, proof, inputs [
 		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
 	}
 	// Pack the data for the setProcessResults function
-	data, err := processABI.Pack("setProcessResults", pid, proof, inputs)
+	data, err := processABI.Pack("setProcessResults", processID, proof, inputs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}
@@ -228,7 +214,7 @@ func (c *Contracts) sendProcessResults(processID types.HexBytes, proof, inputs [
 // mined or the timeout is reached, it calls the optional callback with the
 // result of the operation. It returns an error if the submission fails.
 func (c *Contracts) SetProcessResults(
-	processID types.HexBytes,
+	processID types.ProcessID,
 	proof, inputs []byte,
 	timeout time.Duration, callback ...func(error),
 ) error {
@@ -246,9 +232,7 @@ func (c *Contracts) SetProcessResults(
 // SetProcessStatus sets the status of the process with the given ID in the
 // ProcessRegistry contract. It returns the transaction hash of the status
 // update, or an error if the update fails.
-func (c *Contracts) SetProcessStatus(processID types.HexBytes, status types.ProcessStatus) (*common.Hash, error) {
-	var pid [32]byte
-	copy(pid[:], processID)
+func (c *Contracts) SetProcessStatus(processID types.ProcessID, status types.ProcessStatus) (*common.Hash, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 	autOpts, err := c.authTransactOpts()
@@ -256,7 +240,7 @@ func (c *Contracts) SetProcessStatus(processID types.HexBytes, status types.Proc
 		return nil, fmt.Errorf("failed to create transact options: %w", err)
 	}
 	autOpts.Context = ctx
-	tx, err := c.processes.SetProcessStatus(autOpts, pid, uint8(status))
+	tx, err := c.processes.SetProcessStatus(autOpts, processID, uint8(status))
 	if err != nil {
 		return nil, fmt.Errorf("failed to set process status: %w", err)
 	}
@@ -267,9 +251,7 @@ func (c *Contracts) SetProcessStatus(processID types.HexBytes, status types.Proc
 // SetProcessMaxVoters sets the maximum number of voters for the process with
 // the given ID in the ProcessRegistry contract. It returns the transaction
 // hash of the update, or an error if the update fails.
-func (c *Contracts) SetProcessMaxVoters(processID types.HexBytes, maxVoters *types.BigInt) (*common.Hash, error) {
-	var pid [32]byte
-	copy(pid[:], processID)
+func (c *Contracts) SetProcessMaxVoters(processID types.ProcessID, maxVoters *types.BigInt) (*common.Hash, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 	autOpts, err := c.authTransactOpts()
@@ -277,7 +259,7 @@ func (c *Contracts) SetProcessMaxVoters(processID types.HexBytes, maxVoters *typ
 		return nil, fmt.Errorf("failed to create transact options: %w", err)
 	}
 	autOpts.Context = ctx
-	tx, err := c.processes.SetProcessMaxVoters(autOpts, pid, maxVoters.MathBigInt())
+	tx, err := c.processes.SetProcessMaxVoters(autOpts, processID, maxVoters.MathBigInt())
 	if err != nil {
 		return nil, fmt.Errorf("failed to set process max voters: %w", err)
 	}
@@ -288,9 +270,7 @@ func (c *Contracts) SetProcessMaxVoters(processID types.HexBytes, maxVoters *typ
 // SetProcessCensus sets the census of the process with the given ID in the
 // ProcessRegistry contract. It returns the transaction hash of the census
 // update, or an error if the update fails.
-func (c *Contracts) SetProcessCensus(processID types.HexBytes, census types.Census) (*common.Hash, error) {
-	var pid [32]byte
-	copy(pid[:], processID)
+func (c *Contracts) SetProcessCensus(processID types.ProcessID, census types.Census) (*common.Hash, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 	autOpts, err := c.authTransactOpts()
@@ -301,7 +281,7 @@ func (c *Contracts) SetProcessCensus(processID types.HexBytes, census types.Cens
 
 	var newCensusRoot [32]byte
 	copy(newCensusRoot[:], census.CensusRoot)
-	tx, err := c.processes.SetProcessCensus(autOpts, pid, npbindings.IProcessRegistryCensus{
+	tx, err := c.processes.SetProcessCensus(autOpts, processID, npbindings.IProcessRegistryCensus{
 		CensusRoot:   newCensusRoot,
 		CensusURI:    census.CensusURI,
 		CensusOrigin: uint8(census.CensusOrigin),
@@ -358,7 +338,7 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 					c.knownProcessesMutex.Lock()
 					c.knownProcesses[processID] = struct{}{}
 					c.knownProcessesMutex.Unlock()
-					process, err := c.Process(iter.Event.ProcessId[:])
+					process, err := c.Process(iter.Event.ProcessId)
 					if err != nil {
 						log.Errorw(err, "failed to get process while monitoring process creation")
 						continue

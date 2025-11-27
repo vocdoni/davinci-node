@@ -156,7 +156,7 @@ func (m *Metadata) String() string {
 }
 
 type Process struct {
-	ID                    HexBytes              `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
+	ID                    *ProcessID            `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
 	Status                ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
 	OrganizationId        common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
 	EncryptionKey         *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
@@ -237,7 +237,7 @@ func (o *OrganizationInfo) String() string {
 
 // ProcessSetup is the struct to create a new voting process
 type ProcessSetup struct {
-	ProcessID  HexBytes    `json:"processId"`
+	ProcessID  ProcessID   `json:"processId"`
 	Census     *Census     `json:"census"`
 	BallotMode *BallotMode `json:"ballotMode"`
 	Signature  HexBytes    `json:"signature"`
@@ -245,7 +245,7 @@ type ProcessSetup struct {
 
 // ProcessSetupResponse represents the response of a voting process
 type ProcessSetupResponse struct {
-	ProcessID        HexBytes    `json:"processId,omitempty"`
+	ProcessID        *ProcessID  `json:"processId,omitempty"`
 	EncryptionPubKey [2]*BigInt  `json:"encryptionPubKey,omitempty"`
 	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
 	BallotMode       *BallotMode `json:"ballotMode,omitempty"`

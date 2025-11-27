@@ -8,6 +8,7 @@ import (
 
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // Vote ID status constants
@@ -34,7 +35,7 @@ var voteIDStatusNames = map[int]string{
 
 // VoteIDStatus returns the status of a vote ID for a given processID and voteID.
 // Returns ErrNotFound if the vote ID status doesn't exist.
-func (s *Storage) VoteIDStatus(processID, voteID []byte) (int, error) {
+func (s *Storage) VoteIDStatus(processID types.ProcessID, voteID []byte) (int, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	return s.voteIDStatusUnsafe(processID, voteID)
@@ -42,7 +43,7 @@ func (s *Storage) VoteIDStatus(processID, voteID []byte) (int, error) {
 
 // voteIDStatusUnsafe returns the status of a vote ID without acquiring locks.
 // This method assumes the caller already holds the globalLock.
-func (s *Storage) voteIDStatusUnsafe(processID, voteID []byte) (int, error) {
+func (s *Storage) voteIDStatusUnsafe(processID types.ProcessID, voteID []byte) (int, error) {
 	// Create the composite key: processID/voteID
 	key := createVoteIDStatusKey(processID, voteID)
 
@@ -72,7 +73,7 @@ func VoteIDStatusName(status int) string {
 
 // MarkVoteIDsSettled marks a list of vote IDs as settled for a given processID.
 // This function is called after a state transition batch is confirmed on the blockchain.
-func (s *Storage) MarkVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
+func (s *Storage) MarkVoteIDsSettled(processID types.ProcessID, voteIDs [][]byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	return s.markVoteIDsSettled(processID, voteIDs)
@@ -80,7 +81,7 @@ func (s *Storage) MarkVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
 
 // markVoteIDsSettledUnsafe marks a list of vote IDs as settled without acquiring locks.
 // This method assumes the caller already holds the globalLock.
-func (s *Storage) markVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
+func (s *Storage) markVoteIDsSettled(processID types.ProcessID, voteIDs [][]byte) error {
 	// Use a transaction for better atomicity
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), voteIDStatusPrefix)
 	defer wTx.Discard()
@@ -103,7 +104,7 @@ func (s *Storage) markVoteIDsSettled(processID []byte, voteIDs [][]byte) error {
 // MarkProcessVoteIDsTimeout marks all unsettled vote IDs for a process as timeout.
 // This is called when a process ends to indicate that votes were not processed
 // due to process termination, but preserves the vote ID records for voter queries.
-func (s *Storage) MarkProcessVoteIDsTimeout(processID []byte) (int, error) {
+func (s *Storage) MarkProcessVoteIDsTimeout(processID types.ProcessID) (int, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	return s.markProcessVoteIDsTimeout(processID)
@@ -111,7 +112,7 @@ func (s *Storage) MarkProcessVoteIDsTimeout(processID []byte) (int, error) {
 
 // markProcessVoteIDsTimeoutUnsafe marks all unsettled vote IDs for a process as timeout
 // without acquiring locks. This method assumes the caller already holds the globalLock.
-func (s *Storage) markProcessVoteIDsTimeout(processID []byte) (int, error) {
+func (s *Storage) markProcessVoteIDsTimeout(processID types.ProcessID) (int, error) {
 	prefixedDB := prefixeddb.NewPrefixedDatabase(s.db, voteIDStatusPrefix)
 	wTx := prefixedDB.WriteTx()
 	defer wTx.Discard()
@@ -119,9 +120,9 @@ func (s *Storage) markProcessVoteIDsTimeout(processID []byte) (int, error) {
 	var updatedCount int
 
 	// Iterate through all vote IDs for this process
-	if err := prefixedDB.Iterate(processID, func(k, v []byte) bool {
+	if err := prefixedDB.Iterate(processID.Bytes(), func(k, v []byte) bool {
 		// Create the full key
-		fullKey := append(processID, k...)
+		fullKey := append(processID.Bytes(), k...)
 
 		// Get current status
 		currentStatus, err := bytesToInt(v)
@@ -158,7 +159,7 @@ func (s *Storage) markProcessVoteIDsTimeout(processID []byte) (int, error) {
 // It enforces status transition rules to prevent invalid state changes:
 // - SETTLED status is final and cannot be changed
 // - Status transitions must follow the valid progression
-func (s *Storage) setVoteIDStatus(processID, voteID []byte, status int) error {
+func (s *Storage) setVoteIDStatus(processID types.ProcessID, voteID []byte, status int) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), voteIDStatusPrefix)
 	defer wTx.Discard()
 
@@ -243,8 +244,8 @@ func isValidStatusTransition(from, to int) bool {
 }
 
 // Helper function to create a composite key for vote ID status
-func createVoteIDStatusKey(processID, voteID []byte) []byte {
-	return slices.Concat(processID, voteID)
+func createVoteIDStatusKey(processID types.ProcessID, voteID []byte) []byte {
+	return slices.Concat(processID.Bytes(), voteID)
 }
 
 // Helper function to convert int to bytes
