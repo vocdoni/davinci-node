@@ -9,6 +9,7 @@ import (
 	gecdsa "github.com/consensys/gnark-crypto/ecc/secp256k1/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // Signer represents an ECDSA private key for signing Ethereum messages. It is
@@ -20,6 +21,12 @@ type Signer ecdsa.PrivateKey
 // Address returns the Ethereum address derived from the public key of the signer.
 func (s *Signer) Address() common.Address {
 	return ethcrypto.PubkeyToAddress(s.PublicKey)
+}
+
+// HexPrivateKey returns the hex-encoded representation of the ECDSA private
+// key.
+func (s *Signer) HexPrivateKey() types.HexBytes {
+	return types.HexBytes(ethcrypto.FromECDSA((*ecdsa.PrivateKey)(s)))
 }
 
 // Sign signs a message using the ECDSA private key and returns the signature.

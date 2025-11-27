@@ -544,6 +544,10 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 			Address: signer.Address().Big(),
 			Weight:  big.NewInt(circuits.MockWeight),
 		})
+		privKey := signer.HexPrivateKey()
+		log.Infow("new voter created",
+			"address", signer.Address(),
+			"privKey", privKey.String())
 	}
 
 	if isCSPCensus() {
