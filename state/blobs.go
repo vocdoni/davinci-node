@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 )
 
 // BlobData represents the structured data extracted from a blob
@@ -165,8 +166,9 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 			return nil, err
 		}
 
-		// Convert voteID back to StateKeyMaxLen-byte array
+		// Convert voteID back to byte array
 		voteIDBytes := make([]byte, types.StateKeyMaxLen)
+		voteID = util.TruncateToLowerBits(voteID, types.StateKeyMaxLen*8) // avoid panics in FillBytes
 		voteID.FillBytes(voteIDBytes)
 
 		vote := &Vote{
