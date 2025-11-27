@@ -8,6 +8,8 @@ const (
 	CensusKeyMaxLen = 20
 	// StateKeyMaxLen is the maximum length of a state key in bytes.
 	StateKeyMaxLen = StateTreeMaxLevels / 8
+	// VoteIDLen is the length of the vote ID in bytes (this must match circom circuit)
+	VoteIDLen = 20
 	// FieldsPerBallot is the number of fields in a ballot.
 	FieldsPerBallot = 8
 	// MaxValuePerBallotField is the maximum value per field in a ballot.

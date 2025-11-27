@@ -35,10 +35,7 @@ func (b *BallotProofInputs) VoteID() (*types.BigInt, error) {
 	if b == nil {
 		return nil, fmt.Errorf("ballot proof inputs cannot be nil")
 	}
-	pid := new(types.ProcessID).SetBytes(b.ProcessID)
-	address := new(common.Address)
-	address.SetBytes([]byte(b.Address))
-	return VoteID(*pid, *address, b.K)
+	return circuits.VoteID(new(types.ProcessID).SetBytes(b.ProcessID), common.BytesToAddress(b.Address), b.K)
 }
 
 // VoteIDForSign returns the vote ID in a format suitable for signing and

@@ -9,10 +9,14 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	tweds "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/math/emulated"
+	"github.com/ethereum/go-ethereum/common"
+	iden3mimc7 "github.com/iden3/go-iden3-crypto/mimc7"
+
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	emu_tweds "github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
@@ -647,4 +651,35 @@ func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.
 		panic(err)
 	}
 	return elem
+}
+
+// VoteID calculates the vote ID, which is the mimc7 hash of:
+// the process ID, voter's address and a secret value k.
+// This is truncated to the least significant 64 bits.
+// The vote ID is used to identify a vote in the system. The
+// function transforms the inputs to safe values of ballot proof curve scalar
+// field, then hashes them using iden3 mimc7. The resulting vote ID is a hex byte
+// array. If something goes wrong during the hashing process, it returns an
+// error.
+func VoteID(processID *types.ProcessID, address common.Address, k *types.BigInt) (*types.BigInt, error) {
+	if !processID.IsValid() || address.Cmp(common.Address{}) == 0 || k == nil {
+		return nil, fmt.Errorf("a valid processID, address and k is required")
+	}
+	// encode the process ID and address to hex bytes
+	hexAddress := types.HexBytes(address.Bytes())
+	hexProcessID := types.HexBytes(processID.Marshal())
+	// safe address, processID and k
+	ffAddress := hexAddress.BigInt().ToFF(BallotProofCurve.ScalarField())
+	ffProcessID := hexProcessID.BigInt().ToFF(BallotProofCurve.ScalarField())
+	ffK := k.ToFF(BallotProofCurve.ScalarField())
+	// calculate the vote ID hash using mimc7
+	hash, err := iden3mimc7.Hash([]*big.Int{
+		ffProcessID.MathBigInt(), // process id
+		ffAddress.MathBigInt(),   // address
+		ffK.MathBigInt(),         // k
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error hashing vote ID inputs: %v", err.Error())
+	}
+	return new(types.BigInt).SetBigInt(util.TruncateToLowerBits(hash, types.VoteIDLen*8)), nil
 }
