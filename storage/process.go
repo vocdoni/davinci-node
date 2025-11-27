@@ -180,19 +180,54 @@ func (s *Storage) ProcessIsAcceptingVotes(pid *types.ProcessID) (bool, error) {
 	// Get the process from storage
 	stgProcess, err := s.Process(pid)
 	if err != nil {
-		return false, fmt.Errorf("failed to get process %x: %w", pid.Marshal(), err)
+		return false, fmt.Errorf("failed to get process %s: %w", pid.String(), err)
 	}
-	// Basic checks
+	// Check that the process has a state root
 	if stgProcess.StateRoot == nil {
-		return false, fmt.Errorf("process %x has no state root", pid.Marshal())
+		return false, fmt.Errorf("process %s has no state root", pid.String())
 	}
+	// Check if process has expired
 	if stgProcess.StartTime.Add(stgProcess.Duration).Before(time.Now()) {
-		return false, fmt.Errorf("process %x has expired", pid.Marshal())
+		return false, fmt.Errorf("process %s has expired", pid.String())
 	}
+	// Check if process is in ready state
 	if stgProcess.Status != types.ProcessStatusReady {
-		return false, fmt.Errorf("process %x status: %s", pid.Marshal(), stgProcess.Status)
+		return false, fmt.Errorf("process %s status: %s", pid.String(), stgProcess.Status)
+	}
+	// Check if max votes reached
+	if maxVotesOverflow, err := s.processMaxVotesReached(stgProcess); err != nil {
+		return false, fmt.Errorf("failed to check max votes for process %s: %w", pid.String(), err)
+	} else if maxVotesOverflow {
+		return false, nil
 	}
 	return true, nil
+}
+
+// ProcessMaxVotesReached checks if the process has reached its maximum
+// number of votes based on the process ID provided.
+func (s *Storage) ProcessMaxVotesReached(pid *types.ProcessID) (bool, error) {
+	// Get the process from storage
+	p, err := s.Process(pid)
+	if err != nil {
+		return false, fmt.Errorf("failed to get process %s: %w", pid.String(), err)
+	}
+	return s.processMaxVotesReached(p)
+}
+
+// processMaxVotesReached checks if the process has reached its maximum
+// number of votes based on the process data provided. It is a helper function
+// used internally by ProcessMaxVotesReached and other storage package methods.
+func (s *Storage) processMaxVotesReached(p *types.Process) (bool, error) {
+	maxVotes := p.MaxVotes.MathBigInt().Uint64()
+	if maxVotes == 0 {
+		return false, fmt.Errorf("process %s has no max votes set", p.ID.String())
+	}
+	// If VoteCount is nil, it means no votes have been cast yet.
+	if p.VoteCount == nil {
+		return false, nil
+	}
+	voteCount := p.VoteCount.MathBigInt().Uint64() + types.VotesPerBatch
+	return voteCount >= maxVotes, nil
 }
 
 // ListProcessWithEncryptionKeys returns a list of process IDs that have

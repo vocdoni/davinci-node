@@ -170,6 +170,7 @@ type Process struct {
 	VoteCount            *BigInt               `json:"voteCount"                cbor:"12,keyasint,omitempty"`
 	VoteOverwrittenCount *BigInt               `json:"voteOverwrittenCount"     cbor:"13,keyasint,omitempty"`
 	SequencerStats       SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
+	MaxVotes             *BigInt               `json:"maxVotes,omitempty"       cbor:"17,keyasint,omitempty"`
 }
 
 // BigCensusRoot returns the BigInt representation of the census root of the

@@ -23,6 +23,7 @@ type contractProcess struct {
 	LatestStateRoot      *big.Int
 	StartTime            *big.Int
 	Duration             *big.Int
+	MaxVotes             *big.Int
 	MetadataURI          string
 	BallotMode           npbindings.IProcessRegistryBallotMode
 	Census               npbindings.IProcessRegistryCensus
@@ -56,6 +57,7 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 		p.Status,
 		p.StartTime,
 		p.Duration,
+		p.MaxVotes,
 		p.BallotMode,
 		p.Census,
 		p.MetadataURI,
@@ -90,6 +92,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		LatestStateRoot:      p.LatestStateRoot,
 		StartTime:            p.StartTime,
 		Duration:             p.Duration,
+		MaxVotes:             p.MaxVotes,
 		MetadataURI:          p.MetadataURI,
 		BallotMode:           p.BallotMode,
 		Census:               p.Census,
@@ -576,6 +579,7 @@ func contractProcess2Process(p *contractProcess) (*types.Process, error) {
 		StateRoot:            (*types.BigInt)(p.LatestStateRoot),
 		StartTime:            time.Unix(int64(p.StartTime.Uint64()), 0),
 		Duration:             time.Duration(p.Duration.Uint64()) * time.Second,
+		MaxVotes:             (*types.BigInt)(p.MaxVotes),
 		MetadataURI:          p.MetadataURI,
 		BallotMode:           &mode,
 		Census:               &census,
@@ -598,6 +602,7 @@ func process2ContractProcess(p *types.Process) contractProcess {
 	prp.LatestStateRoot = p.StateRoot.MathBigInt()
 	prp.StartTime = big.NewInt(p.StartTime.Unix())
 	prp.Duration = big.NewInt(int64(p.Duration.Seconds()))
+	prp.MaxVotes = p.MaxVotes.MathBigInt()
 	prp.MetadataURI = p.MetadataURI
 
 	prp.BallotMode = npbindings.IProcessRegistryBallotMode{
