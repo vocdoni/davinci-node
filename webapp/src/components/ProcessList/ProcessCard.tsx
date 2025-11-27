@@ -432,8 +432,8 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                   <GridItem>
                     <VStack align="start" spacing={2}>
                       <HexField label="Organization" value={process.organizationId} fieldName="orgId" />
-                      <CompactField label="Total Votes" value={process.voteCount} />
-                      <CompactField label="Vote Changes" value={process.voteOverwrittenCount} />
+                      <CompactField label="Total Voters" value={process.votersCount} />
+                      <CompactField label="Vote Changes" value={process.overwrittenVotesCount} />
                       <CompactField label="Start Time" value={formatDate(process.startTime)} />
                     </VStack>
                   </GridItem>

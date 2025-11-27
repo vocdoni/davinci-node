@@ -211,10 +211,10 @@ func TestMarkStateTransitionOutdated(t *testing.T) {
 		ProcessID: processID,
 		Ballots:   ballots,
 		Inputs: StateTransitionBatchProofInputs{
-			RootHashBefore: big.NewInt(12345),
-			RootHashAfter:  big.NewInt(67890),
-			NumNewVotes:    3,
-			NumOverwritten: 0,
+			RootHashBefore:        big.NewInt(12345),
+			RootHashAfter:         big.NewInt(67890),
+			VotersCount:           3,
+			OverwrittenVotesCount: 0,
 		},
 	}
 
@@ -300,10 +300,10 @@ func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 		ProcessID: processID,
 		Ballots:   ballots,
 		Inputs: StateTransitionBatchProofInputs{
-			RootHashBefore: big.NewInt(11111),
-			RootHashAfter:  big.NewInt(22222),
-			NumNewVotes:    2,
-			NumOverwritten: 0,
+			RootHashBefore:        big.NewInt(11111),
+			RootHashAfter:         big.NewInt(22222),
+			VotersCount:           2,
+			OverwrittenVotesCount: 0,
 		},
 	}
 
@@ -311,10 +311,10 @@ func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 		ProcessID: processID,
 		Ballots:   ballots,
 		Inputs: StateTransitionBatchProofInputs{
-			RootHashBefore: big.NewInt(33333),
-			RootHashAfter:  big.NewInt(44444),
-			NumNewVotes:    2,
-			NumOverwritten: 0,
+			RootHashBefore:        big.NewInt(33333),
+			RootHashAfter:         big.NewInt(44444),
+			VotersCount:           2,
+			OverwrittenVotesCount: 0,
 		},
 	}
 

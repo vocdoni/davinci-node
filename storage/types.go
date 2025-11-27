@@ -175,23 +175,23 @@ type StateTransitionBatch struct {
 
 // StateTransitionBatchProofInputs is the struct that contains the inputs
 // of the proof of the state transition batch. It includes the root hash
-// before and after the transition, the number of new votes and the number
+// before and after the transition, the number of voters and the number
 // of overwrites.
 type StateTransitionBatchProofInputs struct {
-	RootHashBefore       *big.Int           `json:"rootHashBefore"`
-	RootHashAfter        *big.Int           `json:"rootHashAfter"`
-	NumNewVotes          int                `json:"numNewVotes"`
-	NumOverwritten       int                `json:"numOverwritten"`
-	CensusRoot           *big.Int           `json:"censusRoot"`
-	BlobEvaluationPointZ *big.Int           `json:"blobEvaluationPointZ"`
-	BlobEvaluationPointY [4]*big.Int        `json:"blobEvaluationPointY"`
-	BlobCommitment       gethkzg.Commitment `json:"blobCommitment"`
-	BlobProof            gethkzg.Proof      `json:"blobProof"`
+	RootHashBefore        *big.Int           `json:"rootHashBefore"`
+	RootHashAfter         *big.Int           `json:"rootHashAfter"`
+	VotersCount           int                `json:"votersCount"`
+	OverwrittenVotesCount int                `json:"overwrittenVotesCount"`
+	CensusRoot            *big.Int           `json:"censusRoot"`
+	BlobEvaluationPointZ  *big.Int           `json:"blobEvaluationPointZ"`
+	BlobEvaluationPointY  [4]*big.Int        `json:"blobEvaluationPointY"`
+	BlobCommitment        gethkzg.Commitment `json:"blobCommitment"`
+	BlobProof             gethkzg.Proof      `json:"blobProof"`
 }
 
 // ABIEncode packs the fields as a single static uint256[10] blob:
 //
-//		[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten, censusRoot,
+//		[ rootHashBefore, rootHashAfter, votersCount, overwrittenVotesCount, censusRoot,
 //	      blobEvaluationPointZ, blobEvaluationPointY[0], blobEvaluationPointY[1],
 //	      blobEvaluationPointY[2], blobEvaluationPointY[3], blobCommitment, blobProof ]
 //
@@ -202,8 +202,8 @@ func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
 	arr := [10]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
-		big.NewInt(int64(s.NumNewVotes)),
-		big.NewInt(int64(s.NumOverwritten)),
+		big.NewInt(int64(s.VotersCount)),
+		big.NewInt(int64(s.OverwrittenVotesCount)),
 		s.CensusRoot,
 		s.BlobEvaluationPointZ,    // Z is on bn254, so we don't need limbs
 		s.BlobEvaluationPointY[0], // Y is on bls12-381, so we need all 4 limbs

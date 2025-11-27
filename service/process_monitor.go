@@ -169,10 +169,10 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		if !localProcess.StateRoot.Equal(blockchainProcess.StateRoot) {
 			needsUpdate = true
 		}
-		if !localProcess.VoteCount.Equal(blockchainProcess.VoteCount) {
+		if !localProcess.VotersCount.Equal(blockchainProcess.VotersCount) {
 			needsUpdate = true
 		}
-		if !localProcess.VoteOverwrittenCount.Equal(blockchainProcess.VoteOverwrittenCount) {
+		if !localProcess.OverwrittenVotesCount.Equal(blockchainProcess.OverwrittenVotesCount) {
 			needsUpdate = true
 		}
 
@@ -181,8 +181,8 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 			if err := pm.storage.UpdateProcess(pid,
 				storage.ProcessUpdateCallbackSetStateRoot(
 					blockchainProcess.StateRoot,
-					blockchainProcess.VoteCount,
-					blockchainProcess.VoteOverwrittenCount,
+					blockchainProcess.VotersCount,
+					blockchainProcess.OverwrittenVotesCount,
 				)); err != nil {
 				log.Warnw("failed to sync process from blockchain",
 					"pid", fmt.Sprintf("%x", pid), "error", err)
@@ -192,8 +192,8 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 			log.Infow("synced process from blockchain",
 				"pid", fmt.Sprintf("%x", pid),
 				"stateRoot", blockchainProcess.StateRoot.String(),
-				"voteCount", blockchainProcess.VoteCount.String(),
-				"overwrittenCount", blockchainProcess.VoteOverwrittenCount.String())
+				"votersCount", blockchainProcess.VotersCount.String(),
+				"overwrittenVotesCount", blockchainProcess.OverwrittenVotesCount.String())
 			syncCount++
 		}
 	}
@@ -254,15 +254,15 @@ func (pm *ProcessMonitor) monitorProcesses(
 		case process := <-stateTransitionChan:
 			log.Debugw("process state root changed",
 				"pid", process.ID.String(),
-				"stateRoot", process.NewStateRoot.String(),
-				"voteCount", process.NewVoteCount.String(),
-				"voteOverwrittenCount", process.NewVoteOverwrittenCount.String())
+				"newStateRoot", process.NewStateRoot.String(),
+				"votersCountCount", process.VotersCountCount.String(),
+				"newOverwrittenVotesCount", process.NewOverwrittenVotesCount.String())
 			if err := pm.storage.UpdateProcess(
 				new(types.ProcessID).SetBytes(process.ID),
 				storage.ProcessUpdateCallbackSetStateRoot(
 					process.NewStateRoot,
-					process.NewVoteCount,
-					process.NewVoteOverwrittenCount,
+					process.VotersCountCount,
+					process.NewOverwrittenVotesCount,
 				),
 			); err != nil {
 				log.Warnw("failed to update process state root",

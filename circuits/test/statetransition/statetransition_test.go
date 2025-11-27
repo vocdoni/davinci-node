@@ -156,8 +156,8 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	var inputArray [10]*big.Int
 	inputArray[0] = publicInputs.RootHashBefore
 	inputArray[1] = publicInputs.RootHashAfter
-	inputArray[2] = publicInputs.NumNewVotes
-	inputArray[3] = publicInputs.NumOverwritten
+	inputArray[2] = publicInputs.VotersCount
+	inputArray[3] = publicInputs.OverwrittenVotesCount
 	inputArray[4] = publicInputs.CensusRoot
 	inputArray[5] = publicInputs.BlobEvaluationPointZ
 	inputArray[6] = publicInputs.BlobEvaluationPointY[0]
@@ -167,27 +167,27 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// Create a simplified struct for JSON export (using string representation for KZG types)
 	type PublicInputsJSON struct {
-		RootHashBefore       *big.Int    `json:"rootHashBefore"`
-		RootHashAfter        *big.Int    `json:"rootHashAfter"`
-		NumNewVotes          *big.Int    `json:"numNewVotes"`
-		NumOverwritten       *big.Int    `json:"numOverwritten"`
-		CensusRoot           *big.Int    `json:"censusRoot"`
-		BlobEvaluationPointZ *big.Int    `json:"blobEvaluationPointZ"`
-		BlobEvaluationPointY [4]*big.Int `json:"blobEvaluationPointY"`
-		BlobCommitment       string      `json:"blobCommitment"`
-		BlobProof            string      `json:"blobProof"`
+		RootHashBefore        *big.Int    `json:"rootHashBefore"`
+		RootHashAfter         *big.Int    `json:"rootHashAfter"`
+		VotersCount           *big.Int    `json:"votersCount"`
+		OverwrittenVotesCount *big.Int    `json:"overwrittenVotesCount"`
+		CensusRoot            *big.Int    `json:"censusRoot"`
+		BlobEvaluationPointZ  *big.Int    `json:"blobEvaluationPointZ"`
+		BlobEvaluationPointY  [4]*big.Int `json:"blobEvaluationPointY"`
+		BlobCommitment        string      `json:"blobCommitment"`
+		BlobProof             string      `json:"blobProof"`
 	}
 
 	inputsForJSON := PublicInputsJSON{
-		RootHashBefore:       publicInputs.RootHashBefore,
-		RootHashAfter:        publicInputs.RootHashAfter,
-		NumNewVotes:          publicInputs.NumNewVotes,
-		NumOverwritten:       publicInputs.NumOverwritten,
-		CensusRoot:           publicInputs.CensusRoot,
-		BlobEvaluationPointZ: publicInputs.BlobEvaluationPointZ,
-		BlobEvaluationPointY: publicInputs.BlobEvaluationPointY,
-		BlobCommitment:       fmt.Sprintf("0x%x", publicInputs.BlobCommitment),
-		BlobProof:            fmt.Sprintf("0x%x", publicInputs.BlobProof),
+		RootHashBefore:        publicInputs.RootHashBefore,
+		RootHashAfter:         publicInputs.RootHashAfter,
+		VotersCount:           publicInputs.VotersCount,
+		OverwrittenVotesCount: publicInputs.OverwrittenVotesCount,
+		CensusRoot:            publicInputs.CensusRoot,
+		BlobEvaluationPointZ:  publicInputs.BlobEvaluationPointZ,
+		BlobEvaluationPointY:  publicInputs.BlobEvaluationPointY,
+		BlobCommitment:        fmt.Sprintf("0x%x", publicInputs.BlobCommitment),
+		BlobProof:             fmt.Sprintf("0x%x", publicInputs.BlobProof),
 	}
 
 	// Save inputs as JSON

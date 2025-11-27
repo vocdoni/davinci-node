@@ -44,16 +44,16 @@ type State struct {
 	db        db.Database
 	dbTx      db.WriteTx
 
-	oldResultsAdd      *elgamal.Ballot
-	oldResultsSub      *elgamal.Ballot
-	newResultsAdd      *elgamal.Ballot
-	newResultsSub      *elgamal.Ballot
-	ballotSum          *elgamal.Ballot
-	overwrittenSum     *elgamal.Ballot
-	overwrittenBallots []*elgamal.Ballot
-	ballotCount        int
-	overwrittenCount   int
-	votes              []*Vote
+	oldResultsAdd         *elgamal.Ballot
+	oldResultsSub         *elgamal.Ballot
+	newResultsAdd         *elgamal.Ballot
+	newResultsSub         *elgamal.Ballot
+	allBallotsSum         *elgamal.Ballot
+	overwrittenSum        *elgamal.Ballot
+	overwrittenBallots    []*elgamal.Ballot
+	votersCount           int
+	overwrittenVotesCount int
+	votes                 []*Vote
 
 	// Transition Witness
 	rootHashBefore *big.Int
@@ -211,10 +211,10 @@ func (o *State) StartBatch() error {
 	o.oldResultsSub = elgamal.NewBallot(Curve)
 	o.newResultsAdd = elgamal.NewBallot(Curve)
 	o.newResultsSub = elgamal.NewBallot(Curve)
-	o.ballotSum = elgamal.NewBallot(Curve)
+	o.allBallotsSum = elgamal.NewBallot(Curve)
 	o.overwrittenSum = elgamal.NewBallot(Curve)
-	o.ballotCount = 0
-	o.overwrittenCount = 0
+	o.votersCount = 0
+	o.overwrittenVotesCount = 0
 	o.overwrittenBallots = []*elgamal.Ballot{}
 	o.votes = []*Vote{}
 	return nil
@@ -276,7 +276,7 @@ func (o *State) EndBatch() error {
 	if !ok {
 		return fmt.Errorf("resultsAdd not found in state")
 	}
-	o.newResultsAdd = o.newResultsAdd.Add(o.oldResultsAdd, o.ballotSum)
+	o.newResultsAdd = o.newResultsAdd.Add(o.oldResultsAdd, o.allBallotsSum)
 	o.votesProofs.ResultsAdd, err = ArboTransitionFromAddOrUpdate(o,
 		KeyResultsAdd, o.newResultsAdd.BigInts()...)
 	if err != nil {
@@ -333,9 +333,10 @@ func (o *State) RootExists(root *big.Int) error {
 	return o.tree.RootExists(BigIntToBytes(root))
 }
 
-// BallotCount returns the number of ballots added in the current batch.
-func (o *State) BallotCount() int {
-	return o.ballotCount
+// VotersCount returns the number of voters participating in the current batch,
+// i.e. either casting their first vote or overwriting a previous one.
+func (o *State) VotersCount() int {
+	return o.votersCount
 }
 
 // OldResultsAdd returns the old results add ballot of the current batch.
@@ -358,10 +359,10 @@ func (o *State) NewResultsSub() *elgamal.Ballot {
 	return o.newResultsSub
 }
 
-// OverwrittenCount returns the number of ballots overwritten in the current
+// OverwrittenVotesCount returns the number of ballots overwritten in the current
 // batch.
-func (o *State) OverwrittenCount() int {
-	return o.overwrittenCount
+func (o *State) OverwrittenVotesCount() int {
+	return o.overwrittenVotesCount
 }
 
 // Votes returns the votes added in the current batch.

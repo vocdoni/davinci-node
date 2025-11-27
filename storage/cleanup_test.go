@@ -235,7 +235,7 @@ func TestCleanAllPending(t *testing.T) {
 			Inputs: StateTransitionBatchProofInputs{
 				RootHashBefore: big.NewInt(1),
 				RootHashAfter:  big.NewInt(2),
-				NumNewVotes:    2,
+				VotersCount:    2,
 			},
 		}
 
@@ -247,7 +247,7 @@ func TestCleanAllPending(t *testing.T) {
 			Inputs: StateTransitionBatchProofInputs{
 				RootHashBefore: big.NewInt(1),
 				RootHashAfter:  big.NewInt(2),
-				NumNewVotes:    1,
+				VotersCount:    1,
 			},
 		}
 
@@ -324,7 +324,7 @@ func TestCleanAllPending(t *testing.T) {
 			Inputs: StateTransitionBatchProofInputs{
 				RootHashBefore: big.NewInt(1),
 				RootHashAfter:  big.NewInt(2),
-				NumNewVotes:    1,
+				VotersCount:    1,
 			},
 		}
 		err = s.PushStateTransitionBatch(stb)
