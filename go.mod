@@ -10,7 +10,6 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/consensys/gnark v0.14.1-0.20251111105516-b53af634876c
 	github.com/consensys/gnark-crypto v0.19.2
-	github.com/crate-crypto/go-eth-kzg v1.4.0
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/frankban/quicktest v1.14.6
 	github.com/fxamacker/cbor/v2 v2.9.0
@@ -94,6 +93,7 @@ require (
 	github.com/containerd/typeurl/v2 v2.1.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
+	github.com/crate-crypto/go-eth-kzg v1.4.0 // indirect
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dchest/blake512 v1.0.0 // indirect

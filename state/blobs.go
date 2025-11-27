@@ -5,7 +5,8 @@ import (
 	"math/big"
 	"unsafe"
 
-	kzg4844 "github.com/crate-crypto/go-eth-kzg"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
+
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
@@ -26,11 +27,7 @@ type BlobData struct {
 //  2. ResultsSub (types.FieldsPerBallot * 4 coordinates)
 //  3. Votes sequentially until voteID = 0x0 (sentinel):
 //     Each vote: voteID + address + reencryptedBallot coordinates
-func (st *State) BuildKZGCommitment() (
-	blobData *blobs.BlobEvalData,
-	err error,
-) {
-	blob := &kzg4844.Blob{}
+func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 	var cells [blobs.FieldElementsPerBlob][blobs.BytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) {
@@ -72,6 +69,7 @@ func (st *State) BuildKZGCommitment() (
 
 	// Convert 2D cell array to flat blob format
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement)
+	blob := new(gethkzg.Blob)
 	for i := range blobs.FieldElementsPerBlob {
 		start := i * blobs.BytesPerFieldElement
 		end := start + blobs.BytesPerFieldElement
@@ -81,20 +79,20 @@ func (st *State) BuildKZGCommitment() (
 	// Find valid evaluation point z
 	z, err := blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, blob)
 	if err != nil {
-		return blobData, err
+		return nil, err
 	}
 
-	blobData, err = new(blobs.BlobEvalData).Set(blob, z)
+	blobData, err := new(blobs.BlobEvalData).Set(blob, z)
 	if err != nil {
 		err = fmt.Errorf("set blob eval data failed: %w", err)
-		return blobData, err
+		return nil, err
 	}
 
 	return blobData, err
 }
 
 // ParseBlobData extracts vote and results data from a blob
-func ParseBlobData(blob *kzg4844.Blob) (*BlobData, error) {
+func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 	coordsPerBallot := types.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
 
 	data := &BlobData{

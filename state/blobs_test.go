@@ -1,11 +1,13 @@
 package state
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"math/big"
 	"testing"
 
-	kzg4844 "github.com/crate-crypto/go-eth-kzg"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
+
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
@@ -189,7 +191,6 @@ func TestBlobStateTransition(t *testing.T) {
 	// Store blobs and roots for each transition
 	type TransitionData struct {
 		Blob     *blobs.BlobEvalData
-		Proof    kzg4844.KZGProof
 		Root     *big.Int
 		Votes    []*Vote
 		BatchNum uint64
@@ -228,7 +229,6 @@ func TestBlobStateTransition(t *testing.T) {
 		// Store the first cell proof for compatibility with the test structure.
 		transitions[i] = TransitionData{
 			Blob:     blob,
-			Proof:    blob.CellProofs[0],
 			Root:     root,
 			Votes:    votes,
 			BatchNum: batchNum,
@@ -244,10 +244,9 @@ func TestBlobStateTransition(t *testing.T) {
 	// Verify KZG commitment for first transition
 	t.Run("VerifyKZGCommitment_First", func(t *testing.T) {
 		firstTransition := transitions[0]
-		_, hash, err := firstTransition.Blob.TxSidecar()
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get tx sidecar for first transition"))
-		verifyKZGCommitment(t, &firstTransition.Blob.Blob, new(big.Int).SetBytes(firstTransition.Blob.Commitment[:]),
-			firstTransition.Proof, firstTransition.Blob.Z, firstTransition.Blob.Y, hash[0])
+		verifyKZGCommitment(t, &firstTransition.Blob.Blob, &firstTransition.Blob.Commitment,
+			firstTransition.Blob.Z, firstTransition.Blob.Y, firstTransition.Blob.TxSidecar().BlobHashes()[0])
 	})
 
 	// Verify blob structure for last transition
@@ -259,10 +258,9 @@ func TestBlobStateTransition(t *testing.T) {
 	// Verify KZG commitment for last transition
 	t.Run("VerifyKZGCommitment_Last", func(t *testing.T) {
 		lastTransition := transitions[numTransitions-1]
-		_, hash, err := lastTransition.Blob.TxSidecar()
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get tx sidecar for last transition"))
-		verifyKZGCommitment(t, &lastTransition.Blob.Blob, new(big.Int).SetBytes(lastTransition.Blob.Commitment[:]),
-			lastTransition.Proof, lastTransition.Blob.Z, lastTransition.Blob.Y, hash[0])
+		verifyKZGCommitment(t, &lastTransition.Blob.Blob, &lastTransition.Blob.Commitment,
+			lastTransition.Blob.Z, lastTransition.Blob.Y, lastTransition.Blob.TxSidecar().BlobHashes()[0])
 	})
 
 	// Test state restoration for first transition
@@ -440,7 +438,7 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 	return votes
 }
 
-func verifyBlobStructureBasic(t *testing.T, blob *kzg4844.Blob, votes []*Vote) {
+func verifyBlobStructureBasic(t *testing.T, blob *gethkzg.Blob, votes []*Vote) {
 	c := qt.New(t)
 	// Parse blob data
 	blobData, err := ParseBlobData(blob)
@@ -480,16 +478,16 @@ func verifyBlobStructureBasic(t *testing.T, blob *kzg4844.Blob, votes []*Vote) {
 	c.Assert(len(blobData.ResultsSub), qt.Equals, 32, qt.Commentf("Expected 32 ResultsSub coordinates, got %d", len(blobData.ResultsSub)))
 }
 
-func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit *big.Int, proof kzg4844.KZGProof, z, y *big.Int, versionedHash [32]byte) {
+func verifyKZGCommitment(t *testing.T, blob *gethkzg.Blob, commit *gethkzg.Commitment, z, y *big.Int, versionedHash [32]byte) {
 	c := qt.New(t)
 	// Verify commitment can be regenerated from blob
-	recomputedCommit, err := blobs.BlobToCommitment(blob)
+	recomputedCommit, err := gethkzg.BlobToCommitment(blob)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to recompute commitment"))
 
-	c.Assert(string(commit.Bytes()), qt.Equals, string(recomputedCommit[:]), qt.Commentf("Commitment mismatch"))
+	c.Assert(commit, qt.DeepEquals, &recomputedCommit, qt.Commentf("Commitment mismatch"))
 
 	// Verify versioned hash format using the same method as the implementation
-	expectedVersionedHash := blobs.CalcBlobHashV1(commit)
+	expectedVersionedHash := gethkzg.CalcBlobHashV1(sha256.New(), commit)
 
 	c.Assert(versionedHash, qt.Equals, expectedVersionedHash, qt.Commentf("Versioned hash mismatch"))
 
@@ -498,14 +496,14 @@ func verifyKZGCommitment(t *testing.T, blob *kzg4844.Blob, commit *big.Int, proo
 	c.Assert(z.Cmp(maxZ) <= 0, qt.IsTrue, qt.Commentf("z value exceeds 250-bit range"))
 
 	// Verify y value by computing point evaluation separately (just for verification)
-	_, claim, err := blobs.ComputeProof(blob, z)
+	_, claim, err := gethkzg.ComputeProof(blob, blobs.BigIntToPoint(z))
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to compute point evaluation"))
 
 	recomputedY := new(big.Int).SetBytes(claim[:])
 	c.Assert(y.Cmp(recomputedY), qt.Equals, 0, qt.Commentf("KZG evaluation (y value) mismatch"))
 }
 
-func restoreStateFromBlob(t *testing.T, blob *kzg4844.Blob, processID *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
+func restoreStateFromBlob(t *testing.T, blob *gethkzg.Blob, processID *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
 	c := qt.New(t)
 	// Parse blob data
 	blobData, err := ParseBlobData(blob)
@@ -584,7 +582,7 @@ func TestBlobDataParsing(t *testing.T) {
 		t.Run(fmt.Sprintf("ParseVotes_%d", numVotes), func(t *testing.T) {
 			c := qt.New(t)
 			// Create a test blob with known data
-			blob := &kzg4844.Blob{}
+			blob := &gethkzg.Blob{}
 
 			// This would normally populate the blob with test data
 			// For now, we'll test the parsing logic with empty data

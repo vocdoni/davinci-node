@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	gtypes "github.com/ethereum/go-ethereum/core/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -44,7 +44,7 @@ func isPermanentError(err error) bool {
 // returns the transaction ID or an error.
 func (tm *TxManager) SendTx(
 	ctx context.Context,
-	txBuilder func(nonce uint64) (*gtypes.Transaction, error),
+	txBuilder func(nonce uint64) (*gethtypes.Transaction, error),
 ) (types.HexBytes, *common.Hash, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
@@ -105,10 +105,10 @@ func (tm *TxManager) SendTx(
 // TrackBlobTxWithSidecar tracks a blob transaction with its sidecar for
 // potential recovery. This should be called immediately after sending a blob
 // transaction if recovery is desired.
-func (tm *TxManager) TrackBlobTxWithSidecar(tx *gtypes.Transaction, sidecar *gtypes.BlobTxSidecar) error {
+func (tm *TxManager) TrackBlobTxWithSidecar(tx *gethtypes.Transaction, sidecar *gethtypes.BlobTxSidecar) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	if tx.Type() != gtypes.BlobTxType {
+	if tx.Type() != gethtypes.BlobTxType {
 		return fmt.Errorf("transaction is not a blob transaction")
 	}
 	// Check if transaction is already tracked
@@ -128,7 +128,7 @@ func (tm *TxManager) TrackBlobTxWithSidecar(tx *gtypes.Transaction, sidecar *gty
 // trackTx adds a transaction to the pending list for tracking and potential
 // recovery. It extracts necessary information from the transaction and stores
 // it in the pending transactions map.
-func (tm *TxManager) trackTx(id []byte, tx *gtypes.Transaction) {
+func (tm *TxManager) trackTx(id []byte, tx *gethtypes.Transaction) {
 	ptx := &PendingTransaction{
 		ID:               id,
 		Hash:             tx.Hash(),
@@ -141,7 +141,7 @@ func (tm *TxManager) trackTx(id []byte, tx *gtypes.Transaction) {
 	}
 	// Determine transaction type and extract fee information
 	switch tx.Type() {
-	case gtypes.BlobTxType:
+	case gethtypes.BlobTxType:
 		ptx.IsBlob = true
 		// For blob transactions, extract fee cap from transaction
 		ptx.OriginalGasPrice = tx.GasFeeCap()
@@ -156,9 +156,9 @@ func (tm *TxManager) trackTx(id []byte, tx *gtypes.Transaction) {
 		log.Debugw("tracking blob transaction (sidecar not stored - recovery not possible)",
 			"nonce", tx.Nonce(),
 			"blobCount", len(tx.BlobHashes()))
-	case gtypes.DynamicFeeTxType:
+	case gethtypes.DynamicFeeTxType:
 		ptx.OriginalGasPrice = tx.GasFeeCap()
-	case gtypes.LegacyTxType:
+	case gethtypes.LegacyTxType:
 		ptx.OriginalGasPrice = tx.GasPrice()
 	}
 	tm.pendingTxs[tx.Nonce()] = ptx
@@ -250,7 +250,7 @@ func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) err
 	if newGasPrice.Cmp(tm.config.MaxGasPriceGwei) > 0 {
 		newGasPrice = new(big.Int).Set(tm.config.MaxGasPriceGwei)
 	}
-	var newTx *gtypes.Transaction
+	var newTx *gethtypes.Transaction
 	switch ptx.IsBlob {
 	case true:
 		// For blob transactions, also increase blob gas fee
@@ -344,7 +344,7 @@ func (tm *TxManager) cancelTx(ctx context.Context, ptx *PendingTransaction) erro
 func (tm *TxManager) recoverTxFromNonceGap(
 	ctx context.Context,
 	id []byte,
-	txBuilder func(nonce uint64) (*gtypes.Transaction, error),
+	txBuilder func(nonce uint64) (*gethtypes.Transaction, error),
 ) (*common.Hash, error) {
 	// Get actual on-chain nonce
 	onChainNonce, err := tm.lastOnChainNonce(ctx)

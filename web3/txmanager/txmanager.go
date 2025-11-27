@@ -11,7 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	gtypes "github.com/ethereum/go-ethereum/core/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	ethSigner "github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -88,7 +88,7 @@ type PendingTransaction struct {
 	// BlobHashes store the hashes of the blobs associated with the transaction.
 	BlobHashes []common.Hash
 	// BlobSidecar stores the sidecar for rebuilding blob transactions.
-	BlobSidecar *gtypes.BlobTxSidecar
+	BlobSidecar *gethtypes.BlobTxSidecar
 	// LastError stores the last error encountered for this transaction.
 	// Used to categorize failures as permanent or temporary.
 	LastError error
@@ -186,7 +186,7 @@ func (tm *TxManager) BuildDynamicFeeTx(
 	to common.Address,
 	data []byte,
 	nonce uint64,
-) (*gtypes.Transaction, error) {
+) (*gethtypes.Transaction, error) {
 	return tm.buildTx(ctx, &PendingTransaction{
 		To:    to,
 		Data:  data,
@@ -306,7 +306,7 @@ func (tm *TxManager) buildTx(
 	ptx *PendingTransaction,
 	gasFeeCap *big.Int,
 	blobFee *big.Int,
-) (*gtypes.Transaction, error) {
+) (*gethtypes.Transaction, error) {
 	// Get gas price and tip
 	tipCap, err := tm.cli.SuggestGasTipCap(ctx)
 	if err != nil {
@@ -340,10 +340,10 @@ func (tm *TxManager) buildTx(
 		return nil, fmt.Errorf("failed to estimate gas: %w", err)
 	}
 
-	var tx *gtypes.Transaction
+	var tx *gethtypes.Transaction
 	if blobFee != nil {
 		// Build blob transaction
-		tx = gtypes.NewTx(&gtypes.BlobTx{
+		tx = gethtypes.NewTx(&gethtypes.BlobTx{
 			ChainID:    uint256.NewInt(tm.config.ChainID.Uint64()),
 			Nonce:      ptx.Nonce,
 			GasTipCap:  uint256.MustFromBig(tipCap),
@@ -358,7 +358,7 @@ func (tm *TxManager) buildTx(
 		})
 	} else {
 		// Build standard dynamic fee transaction
-		tx = gtypes.NewTx(&gtypes.DynamicFeeTx{
+		tx = gethtypes.NewTx(&gethtypes.DynamicFeeTx{
 			ChainID:   tm.config.ChainID,
 			Nonce:     ptx.Nonce,
 			GasTipCap: tipCap,
@@ -379,7 +379,7 @@ func (tm *TxManager) buildTx(
 
 // txReceipt fetches the transaction receipt for a given transaction hash. It
 // returns the receipt and any error encountered.
-func (tm *TxManager) txReceipt(ctx context.Context, hash common.Hash) (*gtypes.Receipt, error) {
+func (tm *TxManager) txReceipt(ctx context.Context, hash common.Hash) (*gethtypes.Receipt, error) {
 	ethcli, err := tm.cli.EthClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get eth client: %w", err)
@@ -394,9 +394,9 @@ func (tm *TxManager) txReceipt(ctx context.Context, hash common.Hash) (*gtypes.R
 }
 
 // signTx signs a transaction with the configured signer
-func (tm *TxManager) signTx(tx *gtypes.Transaction) (*gtypes.Transaction, error) {
-	signer := gtypes.NewCancunSigner(tm.config.ChainID)
-	signed, err := gtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
+func (tm *TxManager) signTx(tx *gethtypes.Transaction) (*gethtypes.Transaction, error) {
+	signer := gethtypes.NewCancunSigner(tm.config.ChainID)
+	signed, err := gethtypes.SignTx(tx, signer, (*ecdsa.PrivateKey)(tm.signer))
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}
