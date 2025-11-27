@@ -64,6 +64,7 @@ services:
       - sequencer
     profiles:
       - prod
+      - dev
 
 volumes:
   run:
