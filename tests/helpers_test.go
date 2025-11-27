@@ -888,26 +888,26 @@ func checkVoteStatus(cli *client.HTTPclient, pid *types.ProcessID, voteIDs []typ
 	return allExpectedStatus, failed, nil
 }
 
-func publishedVotes(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
+func votersCount(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid.Marshal())
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)
 	}
-	if process == nil || process.VoteCount == nil {
+	if process == nil || process.VotersCount == nil {
 		return 0, nil
 	}
-	return int(process.VoteCount.MathBigInt().Int64()), nil
+	return int(process.VotersCount.MathBigInt().Int64()), nil
 }
 
-func publishedOverwriteVotes(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
+func overwrittenVotesCount(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid.Marshal())
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)
 	}
-	if process == nil || process.VoteOverwrittenCount == nil {
+	if process == nil || process.OverwrittenVotesCount == nil {
 		return 0, nil
 	}
-	return int(process.VoteOverwrittenCount.MathBigInt().Int64()), nil
+	return int(process.OverwrittenVotesCount.MathBigInt().Int64()), nil
 }
 
 func finishProcessOnContract(contracts *web3.Contracts, pid *types.ProcessID) error {

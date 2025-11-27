@@ -18,7 +18,7 @@ import (
 )
 
 func TestIntegration(t *testing.T) {
-	numBallots := 5
+	numVoters := 5
 	c := qt.New(t)
 
 	// Setup
@@ -41,9 +41,8 @@ func TestIntegration(t *testing.T) {
 	)
 
 	c.Run("create process", func(c *qt.C) {
-		// Create census with numBallot participants
-		// censusRoot, participants, signers, err = createCensus(cli, numBallots)
-		censusRoot, censusURI, signers, err = createCensus(censusCtx, numBallots)
+		// Create census with numVoters participants
+		censusRoot, censusURI, signers, err = createCensus(censusCtx, numVoters)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 		ballotMode = &types.BallotMode{
 			NumFields:      circuits.MockNumFields,
@@ -61,7 +60,7 @@ func TestIntegration(t *testing.T) {
 			// but only if we are not using a CSP census
 			{
 				// create a different censusRoot for testing
-				root2, root2URI, _, err := createCensus(censusCtx, numBallots*2)
+				root2, root2URI, _, err := createCensus(censusCtx, numVoters*2)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 				// createProcessInSequencer should be idempotent, but there was
 				// a bug in this, test it's fixed
@@ -144,7 +143,7 @@ func TestIntegration(t *testing.T) {
 	var ks []*big.Int
 
 	c.Run("create votes", func(c *qt.C) {
-		count := 0
+		c.Assert(len(signers), qt.Equals, numVoters)
 		for i := range signers {
 			// generate a vote for the first participant
 			k := util.RandomBigInt(big.NewInt(100000000), big.NewInt(9999999999999999))
@@ -164,15 +163,13 @@ func TestIntegration(t *testing.T) {
 			// Save the voteID for status checks
 			voteIDs = append(voteIDs, vote.VoteID)
 			ks = append(ks, k)
-			count++
 		}
-		c.Assert(count, qt.Equals, numBallots)
 		// Wait for the vote to be registered
-		t.Logf("Waiting for %d votes to be registered and aggregated", count)
+		t.Logf("Waiting for %d votes to be registered and aggregated", numVoters)
 	})
 
-	c.Assert(ks, qt.HasLen, numBallots)
-	c.Assert(voteIDs, qt.HasLen, numBallots)
+	c.Assert(ks, qt.HasLen, numVoters)
+	c.Assert(voteIDs, qt.HasLen, numVoters)
 
 	c.Run("create invalid votes", func(c *qt.C) {
 		vote, err := createVoteFromInvalidVoter(pid, ballotMode, encryptionKey)
@@ -251,9 +248,9 @@ func TestIntegration(t *testing.T) {
 						t.Fatalf("Some votes failed to be settled: %v", hexFailed)
 					}
 				}
-				published, err := publishedVotes(services.Contracts, pid)
+				votersCount, err := votersCount(services.Contracts, pid)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published votes from contract"))
-				if published < numBallots {
+				if votersCount < numVoters {
 					continue
 				}
 				break SettledVotesLoop
@@ -267,7 +264,7 @@ func TestIntegration(t *testing.T) {
 	processedVotes := []api.Vote{}
 	voteIDs = []types.HexBytes{}
 	c.Run("overwrite valid votes", func(c *qt.C) {
-		count := 0
+		c.Assert(len(signers), qt.Equals, numVoters)
 		for i := range signers {
 			// generate a vote for the participant
 			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], nil)
@@ -288,11 +285,9 @@ func TestIntegration(t *testing.T) {
 			// Save the voteID for status checks
 			voteIDs = append(voteIDs, vote.VoteID)
 			processedVotes = append(processedVotes, vote)
-			count++
 		}
-		c.Assert(count, qt.Equals, numBallots)
 		// Wait for the vote to be registered
-		t.Logf("Waiting for %d votes to be registered and aggregated", count)
+		t.Logf("Waiting for %d votes to be registered and aggregated", numVoters)
 	})
 
 	c.Run("wait for process overwrite votes", func(c *qt.C) {
@@ -315,9 +310,9 @@ func TestIntegration(t *testing.T) {
 						t.Fatalf("Some overwrite votes failed to be processed: %v", hexFailed)
 					}
 				}
-				publishedOverwrite, err := publishedOverwriteVotes(services.Contracts, pid)
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published overwrite votes from contract"))
-				if publishedOverwrite < numBallots {
+				overwrittenVotes, err := overwrittenVotesCount(services.Contracts, pid)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get count of overwritten votes from contract"))
+				if overwrittenVotes < numVoters {
 					continue
 				}
 				break ResultsLoop2

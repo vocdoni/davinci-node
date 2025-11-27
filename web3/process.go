@@ -17,18 +17,18 @@ import (
 // contractProcess is a mirror of the on-chain process tuple constructed
 // with the auto-generated bindings.
 type contractProcess struct {
-	Status               uint8
-	OrganizationId       common.Address
-	EncryptionKey        npbindings.IProcessRegistryEncryptionKey
-	LatestStateRoot      *big.Int
-	StartTime            *big.Int
-	Duration             *big.Int
-	MetadataURI          string
-	BallotMode           npbindings.IProcessRegistryBallotMode
-	Census               npbindings.IProcessRegistryCensus
-	VoteCount            *big.Int
-	VoteOverwrittenCount *big.Int
-	Result               []*big.Int
+	Status                uint8
+	OrganizationId        common.Address
+	EncryptionKey         npbindings.IProcessRegistryEncryptionKey
+	LatestStateRoot       *big.Int
+	StartTime             *big.Int
+	Duration              *big.Int
+	MetadataURI           string
+	BallotMode            npbindings.IProcessRegistryBallotMode
+	Census                npbindings.IProcessRegistryCensus
+	VotersCount           *big.Int
+	OverwrittenVotesCount *big.Int
+	Result                []*big.Int
 }
 
 // CreateProcess creates a new process in the ProcessRegistry contract.
@@ -84,18 +84,18 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 	}
 
 	process, err := contractProcess2Process(&contractProcess{
-		Status:               p.Status,
-		OrganizationId:       p.OrganizationId,
-		EncryptionKey:        p.EncryptionKey,
-		LatestStateRoot:      p.LatestStateRoot,
-		StartTime:            p.StartTime,
-		Duration:             p.Duration,
-		MetadataURI:          p.MetadataURI,
-		BallotMode:           p.BallotMode,
-		Census:               p.Census,
-		VoteCount:            p.VoteCount,
-		VoteOverwrittenCount: p.VoteOverwriteCount,
-		Result:               p.Result,
+		Status:                p.Status,
+		OrganizationId:        p.OrganizationId,
+		EncryptionKey:         p.EncryptionKey,
+		LatestStateRoot:       p.LatestStateRoot,
+		StartTime:             p.StartTime,
+		Duration:              p.Duration,
+		MetadataURI:           p.MetadataURI,
+		BallotMode:            p.BallotMode,
+		Census:                p.Census,
+		VotersCount:           p.VotersCount,
+		OverwrittenVotesCount: p.OverwrittenVotesCount,
+		Result:                p.Result,
 	})
 	if err != nil {
 		return nil, err
@@ -414,7 +414,7 @@ func (c *Contracts) MonitorProcessStatusChanges(ctx context.Context, interval ti
 
 // MonitorProcessStateRootChange monitors the state root changes in processes
 // by polling the ProcessRegistry contract every interval. It returns a channel
-// that emits processes with the new state root, vote count, and vote
+// that emits processes with the new state root, voters count, and vote
 // overwritten count.
 func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error) {
 	updatedProcChan := make(chan *types.ProcessWithStateRootChange)
@@ -463,10 +463,10 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 					}
 
 					updatedProcChan <- &types.ProcessWithStateRootChange{
-						Process:                 process,
-						NewStateRoot:            new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
-						NewVoteCount:            process.VoteCount,
-						NewVoteOverwrittenCount: process.VoteOverwrittenCount,
+						Process:                  process,
+						NewStateRoot:             new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
+						VotersCountCount:         process.VotersCount,
+						NewOverwrittenVotesCount: process.OverwrittenVotesCount,
 					}
 				}
 			}
@@ -573,15 +573,15 @@ func contractProcess2Process(p *contractProcess) (*types.Process, error) {
 			X: (*types.BigInt)(p.EncryptionKey.X),
 			Y: (*types.BigInt)(p.EncryptionKey.Y),
 		},
-		StateRoot:            (*types.BigInt)(p.LatestStateRoot),
-		StartTime:            time.Unix(int64(p.StartTime.Uint64()), 0),
-		Duration:             time.Duration(p.Duration.Uint64()) * time.Second,
-		MetadataURI:          p.MetadataURI,
-		BallotMode:           &mode,
-		Census:               &census,
-		VoteCount:            (*types.BigInt)(p.VoteCount),
-		VoteOverwrittenCount: (*types.BigInt)(p.VoteOverwrittenCount),
-		Result:               results,
+		StateRoot:             (*types.BigInt)(p.LatestStateRoot),
+		StartTime:             time.Unix(int64(p.StartTime.Uint64()), 0),
+		Duration:              time.Duration(p.Duration.Uint64()) * time.Second,
+		MetadataURI:           p.MetadataURI,
+		BallotMode:            &mode,
+		Census:                &census,
+		VotersCount:           (*types.BigInt)(p.VotersCount),
+		OverwrittenVotesCount: (*types.BigInt)(p.OverwrittenVotesCount),
+		Result:                results,
 	}, nil
 }
 
@@ -614,8 +614,8 @@ func process2ContractProcess(p *types.Process) contractProcess {
 	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
 	prp.Census.CensusOrigin = uint8(p.Census.CensusOrigin)
 	prp.Census.CensusURI = p.Census.CensusURI
-	prp.VoteCount = p.VoteCount.MathBigInt()
-	prp.VoteOverwrittenCount = p.VoteOverwrittenCount.MathBigInt()
+	prp.VotersCount = p.VotersCount.MathBigInt()
+	prp.OverwrittenVotesCount = p.OverwrittenVotesCount.MathBigInt()
 	if p.Result != nil {
 		prp.Result = make([]*big.Int, len(p.Result))
 		for i, r := range p.Result {

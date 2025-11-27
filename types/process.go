@@ -155,21 +155,21 @@ func (m *Metadata) String() string {
 }
 
 type Process struct {
-	ID                   HexBytes              `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
-	Status               ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
-	OrganizationId       common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
-	EncryptionKey        *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
-	StateRoot            *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
-	Result               []*BigInt             `json:"result"                   cbor:"5,keyasint,omitempty"`
-	StartTime            time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
-	Duration             time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
-	MetadataURI          string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
-	BallotMode           *BallotMode           `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
-	Census               *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
-	Metadata             *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
-	VoteCount            *BigInt               `json:"voteCount"                cbor:"12,keyasint,omitempty"`
-	VoteOverwrittenCount *BigInt               `json:"voteOverwrittenCount"     cbor:"13,keyasint,omitempty"`
-	SequencerStats       SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
+	ID                    HexBytes              `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
+	Status                ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
+	OrganizationId        common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
+	EncryptionKey         *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
+	StateRoot             *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
+	Result                []*BigInt             `json:"result"                   cbor:"5,keyasint,omitempty"`
+	StartTime             time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
+	Duration              time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
+	MetadataURI           string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
+	BallotMode            *BallotMode           `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
+	Census                *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
+	Metadata              *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
+	VotersCount           *BigInt               `json:"votersCount"        cbor:"12,keyasint,omitempty"`
+	OverwrittenVotesCount *BigInt               `json:"overwrittenVotesCount"    cbor:"13,keyasint,omitempty"`
+	SequencerStats        SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
 // BigCensusRoot returns the BigInt representation of the census root of the
@@ -191,12 +191,12 @@ type ProcessWithStatusChange struct {
 }
 
 // ProcessWithStateRootChange extends types.Process to add NewStateRoot,
-// NewVoteCount, and NewVoteOverwrittenCount fields
+// VotersCountCount, and NewOverwrittenVotesCount fields
 type ProcessWithStateRootChange struct {
 	*Process
-	NewStateRoot            *BigInt
-	NewVoteCount            *BigInt
-	NewVoteOverwrittenCount *BigInt
+	NewStateRoot             *BigInt
+	VotersCountCount         *BigInt
+	NewOverwrittenVotesCount *BigInt
 }
 
 type SequencerProcessStats struct {

@@ -51,10 +51,10 @@ func (o *State) AddVote(v *Vote) error {
 		}
 		o.overwrittenSum.Add(o.overwrittenSum, oldVote)
 		o.overwrittenBallots = append(o.overwrittenBallots, oldVote)
-		o.overwrittenCount++
+		o.overwrittenVotesCount++
 	}
-	o.ballotSum.Add(o.ballotSum, v.ReencryptedBallot)
-	o.ballotCount++
+	o.allBallotsSum.Add(o.allBallotsSum, v.ReencryptedBallot)
+	o.votersCount++
 
 	o.votes = append(o.votes, v)
 	return nil

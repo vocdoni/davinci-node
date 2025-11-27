@@ -425,7 +425,7 @@ func aggregatorWitnessHashForTest(o *state.State) (*big.Int, error) {
 	// calculate final hash
 	finalHashInputs := []*big.Int{}
 	for i := range types.VotesPerBatch {
-		if i < o.BallotCount() {
+		if i < o.VotersCount() {
 			finalHashInputs = append(finalHashInputs, hashes[i])
 		} else {
 			finalHashInputs = append(finalHashInputs, big.NewInt(1))
@@ -442,8 +442,8 @@ func aggregatorWitnessHashForTest(o *state.State) (*big.Int, error) {
 func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
 	t.Log("public: RootHashBefore", util.PrettyHex(witness.RootHashBefore))
 	t.Log("public: RootHashAfter", util.PrettyHex(witness.RootHashAfter))
-	t.Log("public: NumVotes", util.PrettyHex(witness.NumNewVotes))
-	t.Log("public: NumOverwritten", util.PrettyHex(witness.NumOverwritten))
+	t.Log("public: VotersCount", util.PrettyHex(witness.VotersCount))
+	t.Log("public: OverwrittenVotesCount", util.PrettyHex(witness.OverwrittenVotesCount))
 	for name, mts := range map[string][types.VotesPerBatch]merkleproof.MerkleTransition{
 		"Ballot": witness.VotesProofs.Ballot,
 	} {

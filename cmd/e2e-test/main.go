@@ -73,7 +73,7 @@ func main() {
 		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
 		census3URL                       = flag.String("census3URL", defaultCensus3URL, "census3 endpoint")
-		voteCount                        = flag.Int("voteCount", 10, "number of votes to cast")
+		numVoters                        = flag.Int("numVoters", 10, "number of voters that will cast a vote")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
 	)
@@ -203,7 +203,7 @@ func main() {
 	log.Infow("organization ready", "address", organizationAddr.Hex())
 
 	// Create a new census with numBallot participants
-	censusRoot, censusURI, signers, err := createCensus(testCtx, *voteCount, mockedWeight, *census3URL)
+	censusRoot, censusURI, signers, err := createCensus(testCtx, *numVoters, mockedWeight, *census3URL)
 	if err != nil {
 		log.Errorw(err, "failed to create census")
 		return
@@ -244,7 +244,7 @@ func main() {
 		log.Infow("vote sent",
 			"voteID", voteID.String(),
 			"currentVote", i+1,
-			"totalVotes", *voteCount)
+			"totalVoters", *numVoters)
 
 		// Wait the voteSleepTime before sending the next vote
 		time.Sleep(*voteSleepTime)
@@ -252,20 +252,20 @@ func main() {
 
 	// Wait for the votes to be registered in the smart contract
 	log.Info("all votes sent, waiting for votes to be registered in smart contract...")
-	newVotesCh := make(chan int)
-	newVotesCtx, cancel := context.WithCancel(testCtx)
+	votersCountCh := make(chan int)
+	votersCountCtx, cancel := context.WithCancel(testCtx)
 	defer cancel()
 	go func() {
-		for newVoteCount := range newVotesCh {
-			log.Infow("vote count registered in smart contract", "voteCount", newVoteCount)
-			// Check if the vote count is equal to the number of votes sent
-			if newVoteCount >= *voteCount {
+		for votersCount := range votersCountCh {
+			log.Infow("voters count registered in smart contract", "votersCount", votersCount)
+			// Check if the voters count is equal to the number of voters we created
+			if votersCount >= *numVoters {
 				cancel()
 				break
 			}
 		}
 	}()
-	if err := listenSmartContractVotesCount(newVotesCtx, contracts, pid, newVotesCh); err != nil {
+	if err := listenSmartContractVotersCount(votersCountCtx, contracts, pid, votersCountCh); err != nil {
 		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 		return
 	}
@@ -595,19 +595,19 @@ func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
 	return vote.VoteID, nil
 }
 
-func listenSmartContractVotesCount(
+func listenSmartContractVotersCount(
 	ctx context.Context,
 	contracts *web3.Contracts,
 	pid *types.ProcessID,
-	newVotes chan int,
+	votersCountCh chan int,
 ) error {
 	ticker := time.NewTicker(time.Second * 30)
-	lastVotesCount := -1
+	lastVotersCount := -1
 	for {
 		select {
 		case <-ctx.Done():
 			if ctx.Err() == context.Canceled {
-				close(newVotes)
+				close(votersCountCh)
 				return nil
 			}
 			return fmt.Errorf("process creation timeout: %v", ctx.Err())
@@ -619,15 +619,15 @@ func listenSmartContractVotesCount(
 			if process == nil {
 				return fmt.Errorf("process not found")
 			}
-			// Get the vote count from the process
-			var newVotesCount int
-			if process.VoteCount != nil {
-				newVotesCount = int(process.VoteCount.MathBigInt().Int64())
-				log.Debugw("new vote count", "pid", pid.String(), "newVotesCount", newVotesCount)
+			// Get the voters count from the process
+			var votersCount int
+			if process.VotersCount != nil {
+				votersCount = int(process.VotersCount.MathBigInt().Int64())
+				log.Debugw("new voters count", "pid", pid.String(), "VotersCount", votersCount)
 			}
-			if newVotesCount > lastVotesCount {
-				lastVotesCount = newVotesCount
-				newVotes <- newVotesCount
+			if votersCount > lastVotersCount {
+				lastVotersCount = votersCount
+				votersCountCh <- votersCount
 			}
 		}
 	}
