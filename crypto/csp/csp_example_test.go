@@ -45,3 +45,18 @@ func TestExampleCSP(t *testing.T) {
 	}
 	t.Log("Census proof verified successfully")
 }
+
+func TestCensusRootLenght(t *testing.T) {
+	origin := types.CensusOriginCSPEdDSABN254V1
+
+	for range 10000 {
+		csp, err := New(origin, nil)
+		if err != nil {
+			t.Fatalf("Error creating CSP: %v", err)
+		}
+		root := csp.CensusRoot().Root
+		if len(root) != types.CensusRootLength {
+			t.Errorf("Census root length is not 32 bytes: %d", len(root))
+		}
+	}
+}

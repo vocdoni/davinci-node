@@ -38,6 +38,10 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 		); err != nil {
 			return fmt.Errorf("failed to import census from JSON dump: %w", err)
 		}
+	case types.CensusOriginCSPEdDSABN254V1, types.CensusOriginCSPEdDSABLS12377V1:
+		// CSP-based census importers do not require downloading, as the
+		// census data is managed by the CSP itself.
+		return nil
 	default:
 		return fmt.Errorf("unsupported census origin: %s", census.CensusOrigin.String())
 	}

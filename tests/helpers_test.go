@@ -557,9 +557,9 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 		}
 		root := eddsaCSP.CensusRoot()
 		if root == nil {
-			return nil, "http://myowncsp.test", nil, fmt.Errorf("census root is nil")
+			return nil, "", nil, fmt.Errorf("census root is nil")
 		}
-		return root.Root, "", signers, nil
+		return root.Root, "http://myowncsp.test", signers, nil
 	} else {
 		censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, votes, defaultCensus3URL)
 		if err != nil {

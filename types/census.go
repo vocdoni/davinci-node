@@ -24,6 +24,9 @@ const (
 	CensusOriginNameCSPEdDSABN254V1            = "csp_eddsa_bn254_v1"
 	// Unused names
 	CensusOriginNameCSPEdDSABLS12377V1 = "csp_eddsa_bls12377_v1"
+
+	// CensusRootLength defines the length in bytes of the census root.
+	CensusRootLength = 32
 )
 
 var supportedCensusOrigins = map[CensusOrigin]string{
@@ -66,26 +69,11 @@ func (co CensusOrigin) BigInt() *BigInt {
 	return (*BigInt)(new(big.Int).SetUint64(uint64(co)))
 }
 
-// Number of bytes in the census root
-const CensusRootLength = 32
-
 // NormalizedCensusRoot function ensures that the census root is always of a
 // fixed length. If its length is not CensusRootLength, it truncates or pads
 // it accordingly.
 func NormalizedCensusRoot(original HexBytes) HexBytes {
-	if len(original) > CensusRootLength {
-		// If the original is longer than the allowed length, truncate it
-		return original[:CensusRootLength]
-	}
-	if diff := CensusRootLength - len(original); diff > 0 {
-		// If the original is shorter than the allowed length, pad it with
-		// zeros at the end
-		padded := make(HexBytes, CensusRootLength)
-		copy(padded, original)
-		return padded
-	}
-	// If the original is already the correct length, return it as is
-	return original
+	return original.LeftPad(CensusRootLength)
 }
 
 // Census represents the census used in a voting process. It includes the

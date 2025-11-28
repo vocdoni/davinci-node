@@ -83,3 +83,17 @@ func TestGenerateVerifyProof(t *testing.T) {
 		c.Assert(err, qt.IsNotNil)
 	})
 }
+
+func TestCensusRootLengthAndValue(t *testing.T) {
+	c := qt.New(t)
+
+	for range 1000 {
+		csp, err := CSP(twistededwards.BN254)
+		c.Assert(err, qt.IsNil)
+		root := csp.CensusRoot().Root
+		c.Assert(len(root), qt.Equals, types.CensusRootLength)
+		rawRoot, err := pubKeyPointToCensusRoot(csp.curve, csp.signer.Public())
+		c.Assert(err, qt.IsNil)
+		c.Assert(rawRoot.BigInt().String(), qt.Equals, root.BigInt().String())
+	}
+}

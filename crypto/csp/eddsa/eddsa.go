@@ -112,7 +112,7 @@ func (c *EdDSA) CensusRoot() *types.CensusRoot {
 		return nil
 	}
 	return &types.CensusRoot{
-		Root: censusRoot,
+		Root: types.NormalizedCensusRoot(censusRoot),
 	}
 }
 
