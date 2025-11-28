@@ -20,6 +20,9 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+// CensusRootLength defines the length in bytes of the census root.
+const CensusRootLength = 32
+
 // EdDSA struct implements the CSP interface for the EdDSA over multiple
 // curves.
 type EdDSA struct {
@@ -112,7 +115,7 @@ func (c *EdDSA) CensusRoot() *types.CensusRoot {
 		return nil
 	}
 	return &types.CensusRoot{
-		Root: censusRoot,
+		Root: censusRoot.LeftPad(CensusRootLength),
 	}
 }
 
