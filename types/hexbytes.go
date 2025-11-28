@@ -36,14 +36,11 @@ func (b HexBytes) MarshalJSON() ([]byte, error) {
 // Adding leading zeros does not change the value represented by the HexBytes.
 func (b HexBytes) LeftPad(n int) HexBytes {
 	if len(b) >= n {
-		// return a copy to avoid aliasing if you care about that
 		out := make(HexBytes, len(b))
 		copy(out, b)
 		return out
 	}
-
 	out := make(HexBytes, n)
-	// copy b to the end, leaving leading zeros
 	copy(out[n-len(b):], b)
 	return out
 }

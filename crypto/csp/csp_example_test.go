@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/vocdoni/davinci-node/crypto/csp/eddsa"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
@@ -56,7 +55,7 @@ func TestCensusRootLenght(t *testing.T) {
 			t.Fatalf("Error creating CSP: %v", err)
 		}
 		root := csp.CensusRoot().Root
-		if len(root) != eddsa.CensusRootLength {
+		if len(root) != types.CensusRootLength {
 			t.Errorf("Census root length is not 32 bytes: %d", len(root))
 		}
 	}
