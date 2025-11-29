@@ -8,6 +8,7 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -53,13 +54,12 @@ func (o *State) AddVote(v *Vote) error {
 	if len(o.votes) >= types.VotesPerBatch {
 		return fmt.Errorf("too many votes for this batch")
 	}
+	if keyIsBelowReservedOffset(v.Address) {
+		return fmt.Errorf("vote address %d is below the reserved offset", v.Address)
+	}
 	// if address exists, it's a vote overwrite, need to count the overwritten
 	// vote so it's later added to circuit.ResultsSub
-	if _, value, err := o.tree.GetBigInt(v.Address); err == nil {
-		oldVote, err := elgamal.NewBallot(Curve).SetBigInts(value)
-		if err != nil {
-			return err
-		}
+	if oldVote, err := o.EncryptedBallot(v.Address); err == nil {
 		o.overwrittenSum.Add(o.overwrittenSum, oldVote)
 		o.overwrittenVotesCount++
 		v.OverwrittenBallot = oldVote
@@ -75,6 +75,9 @@ func (o *State) AddVote(v *Vote) error {
 
 // EncryptedBallot returns the ballot associated with a address
 func (o *State) EncryptedBallot(address *big.Int) (*elgamal.Ballot, error) {
+	if keyIsBelowReservedOffset(address) {
+		return nil, fmt.Errorf("vote address %d is below the reserved offset", address)
+	}
 	_, value, err := o.tree.GetBigInt(address)
 	if err != nil {
 		// Wrap arbo.ErrKeyNotFound to a specific error
@@ -91,8 +94,12 @@ func (o *State) EncryptedBallot(address *big.Int) (*elgamal.Ballot, error) {
 }
 
 // ContainsVoteID checks if the state contains a vote ID
-func (o *State) ContainsVoteID(voteID types.HexBytes) bool {
-	_, _, err := o.tree.GetBigInt(voteID.BigInt().MathBigInt())
+func (o *State) ContainsVoteID(voteID *big.Int) bool {
+	if keyIsBelowReservedOffset(voteID) {
+		log.Errorf("voteID %d is below the reserved offset", voteID)
+		return false
+	}
+	_, _, err := o.tree.GetBigInt(voteID)
 	return err == nil
 }
 

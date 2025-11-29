@@ -27,12 +27,14 @@ var (
 )
 
 var (
-	KeyProcessID     = new(big.Int).SetBytes([]byte{0x00})
-	KeyBallotMode    = new(big.Int).SetBytes([]byte{0x02})
-	KeyEncryptionKey = new(big.Int).SetBytes([]byte{0x03})
-	KeyResultsAdd    = new(big.Int).SetBytes([]byte{0x04})
-	KeyResultsSub    = new(big.Int).SetBytes([]byte{0x05})
-	KeyCensusOrigin  = new(big.Int).SetBytes([]byte{0x06})
+	KeyProcessID     = big.NewInt(circuits.KeyProcessID)
+	KeyBallotMode    = big.NewInt(circuits.KeyBallotMode)
+	KeyEncryptionKey = big.NewInt(circuits.KeyEncryptionKey)
+	KeyResultsAdd    = big.NewInt(circuits.KeyResultsAdd)
+	KeyResultsSub    = big.NewInt(circuits.KeyResultsSub)
+	KeyCensusOrigin  = big.NewInt(circuits.KeyCensusOrigin)
+
+	ReservedKeysOffset = big.NewInt(circuits.ReservedKeysOffset)
 
 	ErrStateAlreadyInitialized = fmt.Errorf("state already initialized")
 )
@@ -524,4 +526,9 @@ func (o *State) ProcessProofs() ProcessProofs {
 // VotesProofs returns a pointer to the votes proofs for the state.
 func (o *State) VotesProofs() VotesProofs {
 	return o.votesProofs
+}
+
+// keyIsBelowReservedOffset returns true when passed key is below the ReservedKeysOffset
+func keyIsBelowReservedOffset(key *big.Int) bool {
+	return key.Cmp(ReservedKeysOffset) == -1
 }

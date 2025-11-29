@@ -202,7 +202,7 @@ func TestBlobStateTransition(t *testing.T) {
 		batchNum := uint64(i + 1)
 
 		// Create test votes for this transition (different votes each time)
-		votes := createTestVotesWithOffset(t, publicKey, 3, i*1000)
+		votes := createTestVotesWithOffset(t, publicKey, 3, i+1000)
 
 		// Perform batch operation on original state
 		err = originalState.StartBatch()
@@ -388,7 +388,7 @@ func TestBlobStateTransition(t *testing.T) {
 }
 
 func createTestVotes(t *testing.T, publicKey ecc.Point, numVotes int) []*Vote {
-	return createTestVotesWithOffset(t, publicKey, numVotes, 0)
+	return createTestVotesWithOffset(t, publicKey, numVotes, circuits.ReservedKeysOffset)
 }
 
 func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, offset int) []*Vote {

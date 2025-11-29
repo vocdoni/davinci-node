@@ -174,7 +174,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	var transformErr error
 	for i, b := range ballots {
 		// if the vote ID already exists in the state, skip it
-		if processState.ContainsVoteID(b.VoteID) {
+		if processState.ContainsVoteID(b.VoteID.BigInt().MathBigInt()) {
 			log.Debugw("skipping ballot with existing vote ID",
 				"voteID", b.VoteID.String(),
 				"processID", pid.String())
