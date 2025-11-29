@@ -170,9 +170,9 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 		voteID.FillBytes(voteIDBytes)
 
 		vote := &Vote{
-			Address: address,
-			VoteID:  voteIDBytes,
-			Ballot:  ballot,
+			Address:           address,
+			VoteID:            voteIDBytes,
+			ReencryptedBallot: ballot,
 		}
 		data.Votes = append(data.Votes, vote)
 
@@ -189,10 +189,6 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 func (st *State) ApplyBlobToState(blobData *BlobData) error {
 	// Add votes directly to the state tree without batch processing
 	for _, vote := range blobData.Votes {
-		// For votes parsed from blob, we need to set ReencryptedBallot to the same as Ballot
-		// since we don't store the reencrypted version separately in the blob
-		vote.ReencryptedBallot = vote.Ballot
-
 		// Add or update the vote ballot in the tree
 		_, _, err := st.tree.GetBigInt(vote.Address)
 		if err != nil {
