@@ -617,7 +617,7 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 			return fmt.Errorf("failed to load state for process %s: %w", stb.ProcessID.String(), err)
 		}
 		for _, v := range stb.Ballots {
-			if currentState.ContainsVoteID(v.VoteID) {
+			if currentState.ContainsVoteID(v.VoteID.BigInt().MathBigInt()) {
 				votesAlreadyProcessed = true
 				break
 			}

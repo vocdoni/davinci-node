@@ -190,31 +190,29 @@ func (st *State) ApplyBlobToState(blobData *BlobData) error {
 	// Add votes directly to the state tree without batch processing
 	for _, vote := range blobData.Votes {
 		// Add or update the vote ballot in the tree
-		_, _, err := st.tree.GetBigInt(vote.Address)
-		if err != nil {
+		if _, err := st.EncryptedBallot(vote.Address); err != nil {
 			// Key doesn't exist, add it
 			if err := st.tree.AddBigInt(vote.Address, vote.ReencryptedBallot.BigInts()...); err != nil {
-				return fmt.Errorf("failed to add vote to tree: %w", err)
+				return fmt.Errorf("failed to add vote with address %d to tree: %w", vote.Address, err)
 			}
 		} else {
 			// Key exists, update it
 			if err := st.tree.UpdateBigInt(vote.Address, vote.ReencryptedBallot.BigInts()...); err != nil {
-				return fmt.Errorf("failed to update vote in tree: %w", err)
+				return fmt.Errorf("failed to update vote with address %d in tree: %w", vote.Address, err)
 			}
 		}
 
 		// Add or update the vote ID in the tree
 		voteIDKey := vote.VoteID.BigInt().MathBigInt()
-		_, _, err = st.tree.GetBigInt(voteIDKey)
-		if err != nil {
+		if !st.ContainsVoteID(voteIDKey) {
 			// Key doesn't exist, add it
 			if err := st.tree.AddBigInt(voteIDKey, VoteIDKeyValue); err != nil {
-				return fmt.Errorf("failed to add vote ID to tree: %w", err)
+				return fmt.Errorf("failed to add vote ID %d to tree: %w", voteIDKey, err)
 			}
 		} else {
 			// Key exists, update it
 			if err := st.tree.UpdateBigInt(voteIDKey, VoteIDKeyValue); err != nil {
-				return fmt.Errorf("failed to update vote ID in tree: %w", err)
+				return fmt.Errorf("failed to update vote ID %d in tree: %w", voteIDKey, err)
 			}
 		}
 	}

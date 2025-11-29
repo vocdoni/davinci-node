@@ -22,6 +22,17 @@ import (
 const (
 	BallotModeSerializedLen    = 8
 	EncryptionKeySerializedLen = 2
+
+	KeyProcessID     = 0x00
+	KeyBallotMode    = 0x02
+	KeyEncryptionKey = 0x03
+	KeyResultsAdd    = 0x04
+	KeyResultsSub    = 0x05
+	KeyCensusOrigin  = 0x06
+
+	// ReservedKeysOffset is used to prevent collisions in edge cases
+	// where a VoteID or Address is near zero (e.g. in badly designed tests)
+	ReservedKeysOffset = 0x10
 )
 
 // BallotMode is a struct that contains the common inputs for all the voters.
