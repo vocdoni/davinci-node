@@ -3,6 +3,7 @@ package statetransition
 import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std"
+	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/cmp"
@@ -37,6 +38,8 @@ type StateTransitionCircuit struct {
 	// KZG commitment to the blob
 	BlobEvaluationPointZ  frontend.Variable                     `gnark:",public"`
 	BlobEvaluationResultY emulated.Element[emulated.BLS12381Fr] `gnark:",public"`
+	BlobCommitment        *sw_bls12381.G1Affine                 `gnark:",public"`
+	BlobProof             *sw_bls12381.G1Affine                 `gnark:",public"`
 
 	// Private data inputs
 	Process       circuits.Process[frontend.Variable]
@@ -388,7 +391,13 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 		blob[i] = 0
 	}
 	// Verify blob baricentric evaluation (z and y are public inputs)
-	if err := blobs.VerifyBlobEvaluationNative(api, circuit.BlobEvaluationPointZ, &circuit.BlobEvaluationResultY, blob); err != nil {
+	if err := blobs.VerifyFullBlobEvaluationBN254(
+		api,
+		circuit.BlobEvaluationPointZ,
+		&circuit.BlobEvaluationResultY,
+		blob,
+		circuit.BlobCommitment,
+		circuit.BlobProof); err != nil {
 		circuits.FrontendError(api, "failed to verify blob evaluation: ", err)
 		return
 	}

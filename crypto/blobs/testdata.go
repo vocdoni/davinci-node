@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
@@ -43,10 +44,38 @@ func (c *kzgVerifyCircuit) Define(api frontend.API) error {
 	return VerifyKZGProof(api, commitment, proof, c.Z, c.Y)
 }
 
-// Note: gethkzg doesn't require a context, uses direct functions
+// blobEvalCircuitBarycentricOnly tests ONLY barycentric evaluation without KZG verification.
+// This circuit does NOT verify the KZG commitment or proof.
+type blobEvalCircuitBarycentricOnly struct {
+	Z    emulated.Element[FE] `gnark:",public"`
+	Y    emulated.Element[FE] `gnark:",public"`
+	Blob [N]emulated.Element[FE]
+}
+
+func (c *blobEvalCircuitBarycentricOnly) Define(api frontend.API) error {
+	std.RegisterHints()
+	return VerifyBarycentricEvaluation(api, &c.Z, &c.Y, c.Blob)
+}
+
+// blobEvalCircuitBN254 defines the required fields for COMPLETE blob verification
+// including barycentric evaluation AND KZG commitment/proof verification.
+// This uses native BN254 scalar field variables for the blob data and emulated BLS12-381
+// field elements for the evaluation result Y.
+type blobEvalCircuitBN254 struct {
+	Z          frontend.Variable    `gnark:",public"`
+	Y          emulated.Element[FE] `gnark:",public"` // emulated BLS12-381 Fr
+	Blob       [N]frontend.Variable // native BN254 variables
+	Commitment sw_bls12381.G1Affine `gnark:",public"` // BLS12-381 G1 point
+	Proof      sw_bls12381.G1Affine `gnark:",public"` // BLS12-381 G1 point
+}
+
+func (c *blobEvalCircuitBN254) Define(api frontend.API) error {
+	std.RegisterHints()
+	return VerifyFullBlobEvaluationBN254(api, c.Z, &c.Y, c.Blob, &c.Commitment, &c.Proof)
+}
 
 // TestData contains precomputed valid KZG proof data for testing
-type TestData struct {
+type testData struct {
 	// Commitment as 48-byte compressed G1 point (3 × 16-byte limbs)
 	CommitmentLimbs [3]*big.Int
 	// Proof as 48-byte compressed G1 point (3 × 16-byte limbs)
@@ -58,7 +87,7 @@ type TestData struct {
 }
 
 // generateValidKZGData creates a valid KZG commitment and proof for testing
-func generateValidKZGData(seed int64) TestData {
+func generateValidKZGData(seed int64) testData {
 	// Create a simple blob with deterministic data based on seed
 	blob := &gethkzg.Blob{}
 	for i := range 50 {
@@ -87,7 +116,7 @@ func generateValidKZGData(seed int64) TestData {
 	// Extract Y from claim
 	y := new(big.Int).SetBytes(claim[:])
 
-	return TestData{
+	return testData{
 		CommitmentLimbs: bytesToLimbs(commitment[:]),
 		ProofLimbs:      bytesToLimbs(proof[:]),
 		Z:               z,
@@ -96,17 +125,17 @@ func generateValidKZGData(seed int64) TestData {
 }
 
 // ValidTestData1 returns a valid KZG proof test case
-func ValidTestData1() TestData {
+func ValidTestData1() testData {
 	return generateValidKZGData(1)
 }
 
 // ValidTestData2 returns another valid KZG proof test case with different values
-func ValidTestData2() TestData {
+func ValidTestData2() testData {
 	return generateValidKZGData(2)
 }
 
 // InvalidTestData returns test data with an invalid proof
-func InvalidTestData() TestData {
+func InvalidTestData() testData {
 	// Start with valid data
 	validData := generateValidKZGData(999)
 
@@ -117,7 +146,7 @@ func InvalidTestData() TestData {
 }
 
 // ProgressiveTestData generates test data for progressive complexity tests
-func ProgressiveTestData(seed int) TestData {
+func ProgressiveTestData(seed int) testData {
 	return generateValidKZGData(int64(seed))
 }
 
@@ -137,8 +166,8 @@ func bytesToLimbs(b []byte) [3]*big.Int {
 	return limbs
 }
 
-// ToCircuitWitness converts TestData to circuit witness format
-func (td TestData) ToCircuitWitness() kzgVerifyCircuit {
+// ToCircuitWitness converts testData to circuit witness format
+func (td testData) ToCircuitWitness() kzgVerifyCircuit {
 	return kzgVerifyCircuit{
 		CommitmentCompressed: [3]frontend.Variable{
 			td.CommitmentLimbs[0],
@@ -155,8 +184,8 @@ func (td TestData) ToCircuitWitness() kzgVerifyCircuit {
 	}
 }
 
-// ToPublicWitness converts TestData to public witness (commitment, Z, Y only)
-func (td TestData) ToPublicWitness() kzgVerifyCircuit {
+// ToPublicWitness converts testData to public witness (commitment, Z, Y only)
+func (td testData) ToPublicWitness() kzgVerifyCircuit {
 	return kzgVerifyCircuit{
 		CommitmentCompressed: [3]frontend.Variable{
 			td.CommitmentLimbs[0],

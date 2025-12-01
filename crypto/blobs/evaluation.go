@@ -27,32 +27,38 @@
 package blobs
 
 import (
+	"fmt"
 	"math/big"
 
+	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
+	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 )
 
 const (
-	N    = 1 << 12 // 4096 evaluation points
-	logN = 12
+	N = 1 << 12 // 4096 evaluation points
 )
 
 // FE is type modulus for BLS12‑381 Fr.
 type FE = emulated.BLS12381Fr
 
-// VerifyBlobEvaluation performs the blob evaluation verification logic.
-// This function can be imported and used by any other circuit that needs
-// to verify blob evaluations.
+// VerifyBarycentricEvaluation performs the barycentric evaluation verification.
+//
+// IMPORTANT: This function does NOT verify the KZG commitment or proof.
+// It only checks that Y = P(Z) where P is the polynomial interpolating the blob data.
+// For full KZG verification including commitment and proof, use VerifyBlobEvaluationBN254.
+//
+// This function can be imported and used by circuits that only need to verify
+// the polynomial evaluation without the cryptographic commitment.
 //
 // Parameters:
 //   - api: The frontend API for circuit operations
-//   - z: The evaluation point Z
-//   - y: The claimed evaluation result Y
-//   - blob: The blob data (4096 elements)
-//
-// Returns an error if the verification constraints cannot be satisfied.
-func VerifyBlobEvaluation(
+//   - z: The evaluation point Z (BLS12-381 Fr)
+//   - y: The claimed evaluation result Y (BLS12-381 Fr)
+//   - blob: The blob data (4096 BLS12-381 Fr elements)
+func VerifyBarycentricEvaluation(
 	api frontend.API,
 	z *emulated.Element[FE],
 	y *emulated.Element[FE],
@@ -122,13 +128,30 @@ func VerifyBlobEvaluation(
 	return nil
 }
 
-// VerifyBlobEvaluationNative is a bn254 native‑input wrapper,
-// cheap equality check, then delegate.
-func VerifyBlobEvaluationNative(
+// VerifyFullBlobEvaluationBN254 performs COMPLETE blob verification including:
+// 1. Barycentric evaluation: Y = P(Z) where P interpolates the blob
+// 2. KZG commitment verification: proves the commitment matches the blob
+// 3. KZG opening proof verification: proves Y is the correct evaluation at Z
+//
+// This is the FULL verification function that should be used in production circuits.
+// It accepts native BN254 inputs and converts them to emulated BLS12-381 field elements.
+//
+// Parameters:
+//   - api: The frontend API for circuit operations
+//   - z: The evaluation point Z (native BN254 scalar)
+//   - y: The claimed evaluation result Y (emulated BLS12-381 Fr)
+//   - blob: The blob data (4096 native BN254 scalars)
+//   - commitment: The KZG commitment to the blob (BLS12-381 G1 point)
+//   - proof: The KZG opening proof (BLS12-381 G1 point)
+//
+// Returns an error if any verification step fails.
+func VerifyFullBlobEvaluationBN254(
 	api frontend.API,
-	zNat frontend.Variable, // BN254
-	y *emulated.Element[FE], // emulated
-	blobNat [N]frontend.Variable, // BN254
+	z frontend.Variable, // BN254
+	y *emulated.Element[FE], // emulated BLS12-381 Fr
+	blob [N]frontend.Variable, // BN254
+	commitment *sw_bls12381.G1Affine, // BLS12-381 G1 point
+	proof *sw_bls12381.G1Affine, // BLS12-381 G1 point
 ) error {
 	fr, err := emulated.NewField[FE](api)
 	if err != nil {
@@ -138,25 +161,30 @@ func VerifyBlobEvaluationNative(
 	// convert all native scalars => emulated via the hint
 	var blobEmu [N]emulated.Element[FE]
 	for i := range N {
-		e, err := hintNativeToEmu(api, fr, blobNat[i])
+		e, err := hintNativeToEmu(api, fr, blob[i])
 		if err != nil {
 			return err
 		}
 		blobEmu[i] = *e
 		// soundness: verify that the native input matches the emulated one created by the hint
-		api.AssertIsEqual(emulatedToNative(api, &blobEmu[i]), blobNat[i])
+		api.AssertIsEqual(emulatedToNative(api, &blobEmu[i]), blob[i])
 	}
 
 	// convert the native evaluation point Z => emulated
-	zEmu, err := hintNativeToEmu(api, fr, zNat)
+	zEmu, err := hintNativeToEmu(api, fr, z)
 	if err != nil {
 		return err
 	}
-	// soundness: verify that the native input matches the emulated one created by the hint
-	api.AssertIsEqual(emulatedToNative(api, zEmu), zNat)
+	// verify that the native input matches the emulated one created by the hint
+	api.AssertIsEqual(emulatedToNative(api, zEmu), z)
 
-	// delegate to the original emulated verifier
-	return VerifyBlobEvaluation(api, zEmu, y, blobEmu)
+	// Verify the barycentric evaluation (does NOT check KZG commitment/proof)
+	if err := VerifyBarycentricEvaluation(api, zEmu, y, blobEmu); err != nil {
+		return err
+	}
+
+	// Verify the KZG opening proof (checks commitment and proof are valid)
+	return VerifyKZGProof(api, commitment, proof, *zEmu, *y)
 }
 
 // emulatedToNative converts an emulated element to a native BN254 variable.
@@ -174,4 +202,41 @@ func emulatedToNative(api frontend.API, e *emulated.Element[FE]) frontend.Variab
 		acc = api.Add(acc, api.Mul(limb, pow))
 	}
 	return acc
+}
+
+// KZGToCircuitInputs converts geth-kzg types to Gnark circuit-compatible types.
+//
+// Parameters:
+//   - commitment: 48-byte compressed BLS12-381 G1 point from gethkzg.BlobToCommitment
+//   - proof: 48-byte compressed BLS12-381 G1 point from gethkzg.ComputeProof
+//   - claim: 32-byte BLS12-381 Fr element (Y value) from gethkzg.ComputeProof
+//
+// Returns:
+//   - commitmentPoint: sw_bls12381.G1Affine point for witness assignment
+//   - proofPoint: sw_bls12381.G1Affine point for witness assignment
+//   - y: The claim value as a big.Int for emulated.ValueOf[FE]
+func KZGToCircuitInputs(
+	commitment gethkzg.Commitment,
+	proof gethkzg.Proof,
+	claim gethkzg.Claim,
+) (commitmentPoint sw_bls12381.G1Affine, proofPoint sw_bls12381.G1Affine, y *big.Int, err error) {
+	// Import the gnark-crypto bls12381 package for unmarshaling
+	var commitmentCrypto, proofCrypto bls12381.G1Affine
+
+	// Unmarshal commitment from compressed bytes
+	if _, err = commitmentCrypto.SetBytes(commitment[:]); err != nil {
+		return commitmentPoint, proofPoint, nil, fmt.Errorf("failed to unmarshal commitment: %w", err)
+	}
+	commitmentPoint = sw_bls12381.NewG1Affine(commitmentCrypto)
+
+	// Unmarshal proof from compressed bytes
+	if _, err = proofCrypto.SetBytes(proof[:]); err != nil {
+		return commitmentPoint, proofPoint, nil, fmt.Errorf("failed to unmarshal proof: %w", err)
+	}
+	proofPoint = sw_bls12381.NewG1Affine(proofCrypto)
+
+	// Convert claim (32 bytes) to big.Int
+	y = new(big.Int).SetBytes(claim[:])
+
+	return commitmentPoint, proofPoint, y, nil
 }

@@ -9,6 +9,7 @@ import (
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
@@ -35,9 +36,11 @@ var pBLS = bls12381.ID.ScalarField()
 // It is useful for preparing data for zk-SNARK proving and Ethereum transactions.
 type BlobEvalData struct {
 	ForGnark struct {
-		Z    frontend.Variable // value within bn254 field
-		Y    emulated.Element[FE]
-		Blob [N]frontend.Variable // values within bn254 field
+		Z            frontend.Variable // value within bn254 field
+		Y            emulated.Element[FE]
+		Blob         [N]frontend.Variable // values within bn254 field
+		OpeningProof sw_bls12381.G1Affine
+		Commitment   sw_bls12381.G1Affine
 	}
 	Commitment gethkzg.Commitment
 	Z          *big.Int
@@ -69,9 +72,15 @@ func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error
 	}
 	b.OpeningProof = openingProof
 
+	// Convert KZG inputs to gnark format
+	b.ForGnark.Commitment, b.ForGnark.OpeningProof, b.Y, err = KZGToCircuitInputs(b.Commitment, b.OpeningProof, claim)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert KZG inputs: %w", err)
+	}
+
 	// Set evaluation point (y)
-	b.Y = new(big.Int).SetBytes(claim[:])
 	b.ForGnark.Y = emulated.ValueOf[FE](b.Y)
+
 	// Extract limbs as big.Int
 	// Note that we cannot access b.ForGnark.Y.Limbs because the decomposicion is performed async while witness processing
 	Ylimbs, err := format.SplitYForBn254FromBLS12381(b.Y)
