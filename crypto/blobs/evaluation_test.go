@@ -28,10 +28,13 @@ func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
 	blob, err := GetBlobData1()
 	c.Assert(err, qt.IsNil)
 
-	// Compute evaluation point
+	// Compute commitment first, then evaluation point
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	c.Assert(err, qt.IsNil)
+
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), commitment)
 	c.Assert(err, qt.IsNil)
 
 	// Compute KZG proof to get Y value
@@ -75,17 +78,18 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 			valHash.FillBytes(blob[i*32 : (i+1)*32])
 		}
 
+		// Compute commitment first
+		commitment, err := gethkzg.BlobToCommitment(blob)
+		c.Assert(err, qt.IsNil)
+
 		// Compute evaluation point
 		processID := util.RandomBytes(31)
 		rootHashBefore := util.RandomBytes(31)
-		z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
+		z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), commitment)
 		c.Assert(err, qt.IsNil)
 
 		// Compute KZG proof
 		proof, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
-		c.Assert(err, qt.IsNil)
-
-		commitment, err := gethkzg.BlobToCommitment(blob)
 		c.Assert(err, qt.IsNil)
 
 		// Convert geth-kzg types to circuit inputs using the helper function
@@ -129,16 +133,17 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 		valHash.FillBytes(blob[i*32 : (i+1)*32])
 	}
 
+	// Compute commitment first
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	c.Assert(err, qt.IsNil)
+
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), commitment)
 	c.Assert(err, qt.IsNil)
 
 	// Compute KZG proof
 	proof, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
-	c.Assert(err, qt.IsNil)
-
-	commitment, err := gethkzg.BlobToCommitment(blob)
 	c.Assert(err, qt.IsNil)
 
 	// Convert geth-kzg types to circuit inputs using the helper function
@@ -202,10 +207,13 @@ func TestBlobEvalDataTransform(t *testing.T) {
 		valHash.FillBytes(blob[i*32 : (i+1)*32])
 	}
 
-	// Compute evaluation point
+	// Compute commitment first, then evaluation point
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	c.Assert(err, qt.IsNil)
+
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), commitment)
 	c.Assert(err, qt.IsNil)
 
 	// Initialize BlobEvalData and perform transformation
@@ -262,10 +270,13 @@ func TestBlobEvalDataTransformWithActualData(t *testing.T) {
 	blob, err := GetBlobData1()
 	c.Assert(err, qt.IsNil)
 
-	// Compute evaluation point
+	// Compute commitment first, then evaluation point
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	c.Assert(err, qt.IsNil)
+
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), commitment)
 	c.Assert(err, qt.IsNil)
 
 	// Initialize BlobEvalData and perform transformation

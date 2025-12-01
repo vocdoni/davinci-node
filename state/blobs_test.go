@@ -395,7 +395,7 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 	c := qt.New(t)
 	votes := make([]*Vote, numVotes)
 
-	for i := 0; i < numVotes; i++ {
+	for i := range numVotes {
 		// Create vote address with offset to ensure uniqueness across transitions
 		address := big.NewInt(int64(1000 + offset + i))
 
@@ -491,9 +491,10 @@ func verifyKZGCommitment(t *testing.T, blob *gethkzg.Blob, commit *gethkzg.Commi
 
 	c.Assert(versionedHash, qt.Equals, expectedVersionedHash, qt.Commentf("Versioned hash mismatch"))
 
-	// Verify z is within 250-bit range
-	maxZ := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1))
-	c.Assert(z.Cmp(maxZ) <= 0, qt.IsTrue, qt.Commentf("z value exceeds 250-bit range"))
+	// Verify z is within BN254 scalar field
+	bn254Modulus := new(big.Int)
+	bn254Modulus.SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
+	c.Assert(z.Cmp(bn254Modulus) < 0, qt.IsTrue, qt.Commentf("z value exceeds BN254 scalar field"))
 
 	// Verify y value by computing point evaluation separately (just for verification)
 	_, claim, err := gethkzg.ComputeProof(blob, blobs.BigIntToPoint(z))
