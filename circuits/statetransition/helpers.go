@@ -15,14 +15,12 @@ import (
 // in their original format (not Gnark format). This is useful for tests and
 // for creating the storage.StateTransitionBatchProofInputs.
 type PublicInputs struct {
-	RootHashBefore       *big.Int
-	RootHashAfter        *big.Int
-	NumNewVotes          *big.Int
-	NumOverwritten       *big.Int
-	CensusRoot           *big.Int
-	BlobCommitmentLimbs  [3]*big.Int
-	BlobProofLimbs       [3]*big.Int
-	BlobEvaluationPointY [4]*big.Int
+	RootHashBefore      *big.Int
+	RootHashAfter       *big.Int
+	NumNewVotes         *big.Int
+	NumOverwritten      *big.Int
+	CensusRoot          *big.Int
+	BlobCommitmentLimbs [3]*big.Int
 }
 
 // GenerateWitness generates the witness for the state transition circuit
@@ -44,9 +42,11 @@ func GenerateWitness(
 
 	// Include the k used for re-encryption
 	witness.ReencryptionK = kSeed.MathBigInt()
+
 	// RootHashBefore
 	witness.RootHashBefore = o.RootHashBefore()
 
+	// Process info
 	witness.Process.ID = o.Process().ID
 	witness.Process.CensusOrigin = o.Process().CensusOrigin
 	witness.Process.BallotMode = circuits.BallotMode[frontend.Variable]{
@@ -139,7 +139,6 @@ func GenerateWitness(
 	witness.BlobEvaluationResultY = blobData.ForGnark.Y
 
 	// Create public inputs in original format
-	// Convert frontend.Variable to *big.Int properly
 	var numNewVotes, numOverwritten *big.Int
 
 	// Handle NumNewVotes conversion
@@ -163,14 +162,12 @@ func GenerateWitness(
 	}
 
 	publicInputs := &PublicInputs{
-		RootHashBefore:       o.RootHashBefore(),
-		RootHashAfter:        witness.RootHashAfter.(*big.Int),
-		NumNewVotes:          numNewVotes,
-		NumOverwritten:       numOverwritten,
-		CensusRoot:           censusRoot.MathBigInt(),
-		BlobCommitmentLimbs:  blobData.CommitmentLimbs,
-		BlobProofLimbs:       blobData.ProofLimbs,
-		BlobEvaluationPointY: blobData.Ylimbs,
+		RootHashBefore:      o.RootHashBefore(),
+		RootHashAfter:       witness.RootHashAfter.(*big.Int),
+		NumNewVotes:         numNewVotes,
+		NumOverwritten:      numOverwritten,
+		CensusRoot:          censusRoot.MathBigInt(),
+		BlobCommitmentLimbs: blobData.CommitmentLimbs,
 	}
 
 	return witness, publicInputs, nil

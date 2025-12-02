@@ -177,30 +177,25 @@ type StateTransitionBatch struct {
 // before and after the transition, the number of new votes and the number
 // of overwrites.
 type StateTransitionBatchProofInputs struct {
-	RootHashBefore       *big.Int    `json:"rootHashBefore"`
-	RootHashAfter        *big.Int    `json:"rootHashAfter"`
-	NumNewVotes          int         `json:"numNewVotes"`
-	NumOverwritten       int         `json:"numOverwritten"`
-	CensusRoot           *big.Int    `json:"censusRoot"`
-	BlobCommitmentLimbs  [3]*big.Int `json:"blobCommitmentLimbs"`
-	BlobProofLimbs       [3]*big.Int `json:"blobProofLimbs"`
-	BlobEvaluationPointY [4]*big.Int `json:"blobEvaluationPointY"`
+	RootHashBefore      *big.Int    `json:"rootHashBefore"`
+	RootHashAfter       *big.Int    `json:"rootHashAfter"`
+	NumNewVotes         int         `json:"numNewVotes"`
+	NumOverwritten      int         `json:"numOverwritten"`
+	CensusRoot          *big.Int    `json:"censusRoot"`
+	BlobCommitmentLimbs [3]*big.Int `json:"blobCommitmentLimbs"`
 }
 
-// ABIEncode packs the fields as a single static uint256[15] blob:
+// ABIEncode packs the fields as a single static uint256[8] blob:
 //
 //	[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten, censusRoot,
-//	  blobCommitmentLimbs[0], blobCommitmentLimbs[1], blobCommitmentLimbs[2],
-//	  blobProofLimbs[0], blobProofLimbs[1], blobProofLimbs[2],
-//	  blobEvaluationPointY[0], blobEvaluationPointY[1],
-//	  blobEvaluationPointY[2], blobEvaluationPointY[3] ]
+//	  blobCommitmentLimbs[0], blobCommitmentLimbs[1], blobCommitmentLimbs[2] ]
 //
 // where the first five elements are the root hashes, counts and the census root,
-// the next three elements are the blob commitment limbs (3 × 16 bytes),
-// the next three elements are the blob proof limbs (3 × 16 bytes),
-// and the last four elements are the blob evaluation point Y limbs.
+// and the next three elements are the blob commitment limbs (3 × 16 bytes).
+// Note: BlobProofLimbs and BlobEvaluationPointY are now private witness values
+// and are verified in-circuit, so they are not included in the public inputs.
 func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
-	arr := [15]*big.Int{
+	arr := [8]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
 		big.NewInt(int64(s.NumNewVotes)),
@@ -209,15 +204,8 @@ func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
 		s.BlobCommitmentLimbs[0],
 		s.BlobCommitmentLimbs[1],
 		s.BlobCommitmentLimbs[2],
-		s.BlobProofLimbs[0],
-		s.BlobProofLimbs[1],
-		s.BlobProofLimbs[2],
-		s.BlobEvaluationPointY[0], // Y is on bls12-381, so we need all 4 limbs
-		s.BlobEvaluationPointY[1],
-		s.BlobEvaluationPointY[2],
-		s.BlobEvaluationPointY[3],
 	}
-	arrType, err := abi.NewType("uint256[15]", "", nil)
+	arrType, err := abi.NewType("uint256[8]", "", nil)
 	if err != nil {
 		return nil, err
 	}

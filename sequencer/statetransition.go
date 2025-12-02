@@ -132,7 +132,6 @@ func (s *Sequencer) processPendingTransitions() {
 		// Process the batch inner proof and votes to get the proof of the
 		// state transition
 		proof, blobData, err := s.processStateTransitionBatch(
-			processID,
 			processState,
 			censusRoot,
 			*circuitCensusProofs,
@@ -186,14 +185,12 @@ func (s *Sequencer) processPendingTransitions() {
 			Proof:     proof.(*groth16_bn254.Proof),
 			Ballots:   batch.Ballots,
 			Inputs: storage.StateTransitionBatchProofInputs{
-				RootHashBefore:       processState.RootHashBefore(),
-				RootHashAfter:        rootHashAfter,
-				NumNewVotes:          processState.BallotCount(),
-				NumOverwritten:       processState.OverwrittenCount(),
-				CensusRoot:           censusRoot.MathBigInt(),
-				BlobCommitmentLimbs:  blobData.CommitmentLimbs,
-				BlobProofLimbs:       blobData.ProofLimbs,
-				BlobEvaluationPointY: blobData.Ylimbs,
+				RootHashBefore:      processState.RootHashBefore(),
+				RootHashAfter:       rootHashAfter,
+				NumNewVotes:         processState.BallotCount(),
+				NumOverwritten:      processState.OverwrittenCount(),
+				CensusRoot:          censusRoot.MathBigInt(),
+				BlobCommitmentLimbs: blobData.CommitmentLimbs,
 			},
 			BlobVersionHash: blobSidecar.BlobHashes()[0],
 			BlobSidecar:     blobSidecar,
@@ -217,7 +214,6 @@ func (s *Sequencer) processPendingTransitions() {
 }
 
 func (s *Sequencer) processStateTransitionBatch(
-	processID *types.ProcessID,
 	processState *state.State,
 	censusRoot *types.BigInt,
 	censusProofs statetransition.CensusProofs,

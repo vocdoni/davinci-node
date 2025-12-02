@@ -152,42 +152,34 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	// Get public inputs from test results
 	publicInputs := testResults.PublicInputs
 
-	// Convert to array of 10 big.Ints for Solidity
-	var inputArray [10]*big.Int
+	// Convert to array of 8 big.Ints for Solidity (matching StateTransitionBatchProofInputs)
+	var inputArray [8]*big.Int
 	inputArray[0] = publicInputs.RootHashBefore
 	inputArray[1] = publicInputs.RootHashAfter
 	inputArray[2] = publicInputs.NumNewVotes
 	inputArray[3] = publicInputs.NumOverwritten
 	inputArray[4] = publicInputs.CensusRoot
-	inputArray[5] = publicInputs.BlobEvaluationPointZ
-	inputArray[6] = publicInputs.BlobEvaluationPointY[0]
-	inputArray[7] = publicInputs.BlobEvaluationPointY[1]
-	inputArray[8] = publicInputs.BlobEvaluationPointY[2]
-	inputArray[9] = publicInputs.BlobEvaluationPointY[3]
+	inputArray[5] = publicInputs.BlobCommitmentLimbs[0]
+	inputArray[6] = publicInputs.BlobCommitmentLimbs[1]
+	inputArray[7] = publicInputs.BlobCommitmentLimbs[2]
 
-	// Create a simplified struct for JSON export (using string representation for KZG types)
+	// Create a simplified struct for JSON export
 	type PublicInputsJSON struct {
-		RootHashBefore       *big.Int    `json:"rootHashBefore"`
-		RootHashAfter        *big.Int    `json:"rootHashAfter"`
-		NumNewVotes          *big.Int    `json:"numNewVotes"`
-		NumOverwritten       *big.Int    `json:"numOverwritten"`
-		CensusRoot           *big.Int    `json:"censusRoot"`
-		BlobEvaluationPointZ *big.Int    `json:"blobEvaluationPointZ"`
-		BlobEvaluationPointY [4]*big.Int `json:"blobEvaluationPointY"`
-		BlobCommitment       string      `json:"blobCommitment"`
-		BlobProof            string      `json:"blobProof"`
+		RootHashBefore      *big.Int    `json:"rootHashBefore"`
+		RootHashAfter       *big.Int    `json:"rootHashAfter"`
+		NumNewVotes         *big.Int    `json:"numNewVotes"`
+		NumOverwritten      *big.Int    `json:"numOverwritten"`
+		CensusRoot          *big.Int    `json:"censusRoot"`
+		BlobCommitmentLimbs [3]*big.Int `json:"blobCommitmentLimbs"`
 	}
 
 	inputsForJSON := PublicInputsJSON{
-		RootHashBefore:       publicInputs.RootHashBefore,
-		RootHashAfter:        publicInputs.RootHashAfter,
-		NumNewVotes:          publicInputs.NumNewVotes,
-		NumOverwritten:       publicInputs.NumOverwritten,
-		CensusRoot:           publicInputs.CensusRoot,
-		BlobEvaluationPointZ: publicInputs.BlobEvaluationPointZ,
-		BlobEvaluationPointY: publicInputs.BlobEvaluationPointY,
-		BlobCommitment:       fmt.Sprintf("0x%x", publicInputs.BlobCommitment),
-		BlobProof:            fmt.Sprintf("0x%x", publicInputs.BlobProof),
+		RootHashBefore:      publicInputs.RootHashBefore,
+		RootHashAfter:       publicInputs.RootHashAfter,
+		NumNewVotes:         publicInputs.NumNewVotes,
+		NumOverwritten:      publicInputs.NumOverwritten,
+		CensusRoot:          publicInputs.CensusRoot,
+		BlobCommitmentLimbs: publicInputs.BlobCommitmentLimbs,
 	}
 
 	// Save inputs as JSON
@@ -196,7 +188,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	err = os.WriteFile(filepath.Join(dir, "inputs.json"), inputsJSON, 0o644)
 	c.Assert(err, qt.IsNil, qt.Commentf("write inputs.json"))
 
-	// Save inputs as ABI encoded (first 10 values only - what Solidity expects)
+	// Save inputs as ABI encoded (all 8 values - what Solidity expects)
 	abiInputs, err := abiEncodeInputs(inputArray)
 	c.Assert(err, qt.IsNil, qt.Commentf("ABI encode inputs"))
 	err = os.WriteFile(filepath.Join(dir, "inputs.abi"), abiInputs, 0o644)
@@ -209,7 +201,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// Check if Docker is available
 	if !isDockerAvailable() {
-		c.Logf("⚠ Docker not available, skipping Solidity verification")
+		c.Logf("Docker not available, skipping Solidity verification")
 		c.Logf("  To test Solidity verification, install Docker and run again")
 		return
 	}
@@ -256,10 +248,10 @@ func isDockerAvailable() bool {
 	return cmd.Run() == nil
 }
 
-// abiEncodeInputs encodes a [10]*big.Int array to ABI format (10 × 32 bytes)
-func abiEncodeInputs(inputs [10]*big.Int) ([]byte, error) {
-	result := make([]byte, 0, 320) // 10 × 32 bytes
-	for i := range 10 {
+// abiEncodeInputs encodes a [8]*big.Int array to ABI format (8 × 32 bytes)
+func abiEncodeInputs(inputs [8]*big.Int) ([]byte, error) {
+	result := make([]byte, 0, 256) // 8 × 32 bytes
+	for i := range 8 {
 		// Pad to 32 bytes, big-endian
 		b := inputs[i].Bytes()
 		padded := make([]byte, 32)
@@ -271,7 +263,7 @@ func abiEncodeInputs(inputs [10]*big.Int) ([]byte, error) {
 
 // verifySolidityProof deploys the contract and verifies the proof on SimulatedBackend
 // This function uses direct ABI parsing without needing abigen-generated bindings
-func verifySolidityProof(c *qt.C, buildDir string, proof *davinci_solidity.Groth16CommitmentProof, inputs [10]*big.Int) bool {
+func verifySolidityProof(c *qt.C, buildDir string, proof *davinci_solidity.Groth16CommitmentProof, inputs [8]*big.Int) bool {
 	// Setup SimulatedBackend
 	privKey, err := crypto.GenerateKey()
 	if err != nil {

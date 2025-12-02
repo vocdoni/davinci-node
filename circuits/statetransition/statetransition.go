@@ -30,14 +30,17 @@ type StateTransitionCircuit struct {
 	NumNewVotes    frontend.Variable `gnark:",public"`
 	NumOverwritten frontend.Variable `gnark:",public"`
 
-	// Census related stuff
-	CensusRoot   frontend.Variable `gnark:",public"`
+	// Census root
+	CensusRoot frontend.Variable `gnark:",public"`
+	// Private census inclusion proofs
 	CensusProofs CensusProofs
 
-	// KZG commitment to the blob (as 3 × 16-byte limbs)
-	BlobCommitmentLimbs   [3]frontend.Variable                  `gnark:",public"`
-	BlobProofLimbs        [3]frontend.Variable                  `gnark:",public"`
-	BlobEvaluationResultY emulated.Element[emulated.BLS12381Fr] `gnark:",public"`
+	// KZG commitment to the blob (as 3 x 16-byte limbs)
+	BlobCommitmentLimbs [3]frontend.Variable `gnark:",public"`
+
+	// Private KZG proof and evaluation result (verified in-circuit)
+	BlobProofLimbs        [3]frontend.Variable
+	BlobEvaluationResultY emulated.Element[emulated.BLS12381Fr]
 
 	// Private data inputs
 	Process       circuits.Process[frontend.Variable]
@@ -120,6 +123,7 @@ func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	// votes reencryption and ballots
 	circuit.VerifyReencryptedVotes(api)
 	circuit.VerifyBallots(api)
+	// verify the blob commitment
 	circuit.VerifyBlobs(api)
 	return nil
 }

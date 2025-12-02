@@ -23,6 +23,9 @@ import (
 
 // TestBlobEvaluationCircuitWithActualData tests ONLY barycentric evaluation with actual blob data.
 func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+		t.Skip("skipping circuit tests...")
+	}
 	c := qt.New(t)
 
 	blob, err := GetBlobData1()
@@ -61,6 +64,9 @@ func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
 
 // TestProgressiveElementsNative tests the circuit with increasing number of elements
 func TestBlobEvaluationCircuitProgressive(t *testing.T) {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+		t.Skip("skipping circuit tests...")
+	}
 	std.RegisterHints()
 	c := qt.New(t)
 
@@ -205,6 +211,9 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 // TestBlobEvalDataTransform tests that BlobEvalData.Set() correctly transforms
 // geth-kzg data into Gnark circuit-compatible format.
 func TestBlobEvalDataTransform(t *testing.T) {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+		t.Skip("skipping circuit tests...")
+	}
 	c := qt.New(t)
 
 	// Create test blob with deterministic data
