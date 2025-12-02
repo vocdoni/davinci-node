@@ -174,21 +174,22 @@ type StateTransitionBatch struct {
 
 // StateTransitionBatchProofInputs is the struct that contains the inputs
 // of the proof of the state transition batch. It includes the root hash
-// before and after the transition, the number of new votes and the number
+// before and after the transition, the number of voters and the number
 // of overwrites.
 type StateTransitionBatchProofInputs struct {
-	RootHashBefore      *big.Int    `json:"rootHashBefore"`
-	RootHashAfter       *big.Int    `json:"rootHashAfter"`
-	NumNewVotes         int         `json:"numNewVotes"`
-	NumOverwritten      int         `json:"numOverwritten"`
-	CensusRoot          *big.Int    `json:"censusRoot"`
-	BlobCommitmentLimbs [3]*big.Int `json:"blobCommitmentLimbs"`
+	RootHashBefore        *big.Int    `json:"rootHashBefore"`
+	RootHashAfter         *big.Int    `json:"rootHashAfter"`
+	VotersCount           int         `json:"votersCount"`
+	OverwrittenVotesCount int         `json:"overwrittenVotesCount"`
+	CensusRoot            *big.Int    `json:"censusRoot"`
+	BlobCommitmentLimbs   [3]*big.Int `json:"blobCommitmentLimbs"`
 }
 
 // ABIEncode packs the fields as a single static uint256[8] blob:
 //
-//	[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten, censusRoot,
-//	  blobCommitmentLimbs[0], blobCommitmentLimbs[1], blobCommitmentLimbs[2] ]
+//		[ rootHashBefore, rootHashAfter, votersCount, overwrittenVotesCount, censusRoot,
+//	      blobEvaluationPointZ, blobEvaluationPointY[0], blobEvaluationPointY[1],
+//	      blobEvaluationPointY[2], blobEvaluationPointY[3], blobCommitment, blobProof ]
 //
 // where the first five elements are the root hashes, counts and the census root,
 // and the next three elements are the blob commitment limbs (3 × 16 bytes).
@@ -198,8 +199,8 @@ func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
 	arr := [8]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
-		big.NewInt(int64(s.NumNewVotes)),
-		big.NewInt(int64(s.NumOverwritten)),
+		big.NewInt(int64(s.VotersCount)),
+		big.NewInt(int64(s.OverwrittenVotesCount)),
 		s.CensusRoot,
 		s.BlobCommitmentLimbs[0],
 		s.BlobCommitmentLimbs[1],

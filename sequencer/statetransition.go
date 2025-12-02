@@ -185,12 +185,12 @@ func (s *Sequencer) processPendingTransitions() {
 			Proof:     proof.(*groth16_bn254.Proof),
 			Ballots:   batch.Ballots,
 			Inputs: storage.StateTransitionBatchProofInputs{
-				RootHashBefore:      processState.RootHashBefore(),
-				RootHashAfter:       rootHashAfter,
-				NumNewVotes:         processState.BallotCount(),
-				NumOverwritten:      processState.OverwrittenCount(),
-				CensusRoot:          censusRoot.MathBigInt(),
-				BlobCommitmentLimbs: blobData.CommitmentLimbs,
+				RootHashBefore:        processState.RootHashBefore(),
+				RootHashAfter:         rootHashAfter,
+				VotersCount:           processState.VotersCount(),
+				OverwrittenVotesCount: processState.OverwrittenVotesCount(),
+				CensusRoot:            censusRoot.MathBigInt(),
+				BlobCommitmentLimbs:   blobData.CommitmentLimbs,
 			},
 			BlobVersionHash: blobSidecar.BlobHashes()[0],
 			BlobSidecar:     blobSidecar,
@@ -278,7 +278,7 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 		if err := st.RootExists(onchainStateRoot.MathBigInt()); err != nil {
 			return nil, fmt.Errorf("on-chain state root does not exist in local state: %w", err)
 		}
-		if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackStateRoot(onchainStateRoot, nil, nil)); err != nil {
+		if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStateRoot(onchainStateRoot, nil, nil)); err != nil {
 			return nil, fmt.Errorf("failed to update process state root: %w", err)
 		}
 		log.Warnw("local state root mismatch, updated local state root to match on-chain",
@@ -326,7 +326,7 @@ func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.Aggreg
 			ReencryptedBallot: reencryptedBallot,
 		}
 	}
-	log.Infow("votes reencrypted", "processID", pid.String(), "voteCount", len(reencryptedVotes))
+	log.Infow("votes reencrypted", "processID", pid.String(), "len(votes)", len(reencryptedVotes))
 	return reencryptedVotes, new(types.BigInt).SetBigInt(kSeed), nil
 }
 

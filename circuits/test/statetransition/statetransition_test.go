@@ -156,8 +156,8 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	var inputArray [8]*big.Int
 	inputArray[0] = publicInputs.RootHashBefore
 	inputArray[1] = publicInputs.RootHashAfter
-	inputArray[2] = publicInputs.NumNewVotes
-	inputArray[3] = publicInputs.NumOverwritten
+	inputArray[2] = publicInputs.VotersCount
+	inputArray[3] = publicInputs.OverwrittenVotesCount
 	inputArray[4] = publicInputs.CensusRoot
 	inputArray[5] = publicInputs.BlobCommitmentLimbs[0]
 	inputArray[6] = publicInputs.BlobCommitmentLimbs[1]
@@ -165,21 +165,21 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// Create a simplified struct for JSON export
 	type PublicInputsJSON struct {
-		RootHashBefore      *big.Int    `json:"rootHashBefore"`
-		RootHashAfter       *big.Int    `json:"rootHashAfter"`
-		NumNewVotes         *big.Int    `json:"numNewVotes"`
-		NumOverwritten      *big.Int    `json:"numOverwritten"`
-		CensusRoot          *big.Int    `json:"censusRoot"`
-		BlobCommitmentLimbs [3]*big.Int `json:"blobCommitmentLimbs"`
+		RootHashBefore        *big.Int    `json:"rootHashBefore"`
+		RootHashAfter         *big.Int    `json:"rootHashAfter"`
+		VotersCount           *big.Int    `json:"votersCount"`
+		OverwrittenVotesCount *big.Int    `json:"overwrittenVotesCount"`
+		CensusRoot            *big.Int    `json:"censusRoot"`
+		BlobCommitmentLimbs   [3]*big.Int `json:"blobCommitmentLimbs"`
 	}
 
 	inputsForJSON := PublicInputsJSON{
-		RootHashBefore:      publicInputs.RootHashBefore,
-		RootHashAfter:       publicInputs.RootHashAfter,
-		NumNewVotes:         publicInputs.NumNewVotes,
-		NumOverwritten:      publicInputs.NumOverwritten,
-		CensusRoot:          publicInputs.CensusRoot,
-		BlobCommitmentLimbs: publicInputs.BlobCommitmentLimbs,
+		RootHashBefore:        publicInputs.RootHashBefore,
+		RootHashAfter:         publicInputs.RootHashAfter,
+		VotersCount:           publicInputs.VotersCount,
+		OverwrittenVotesCount: publicInputs.OverwrittenVotesCount,
+		CensusRoot:            publicInputs.CensusRoot,
+		BlobCommitmentLimbs:   publicInputs.BlobCommitmentLimbs,
 	}
 
 	// Save inputs as JSON

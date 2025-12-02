@@ -15,12 +15,12 @@ import (
 // in their original format (not Gnark format). This is useful for tests and
 // for creating the storage.StateTransitionBatchProofInputs.
 type PublicInputs struct {
-	RootHashBefore      *big.Int
-	RootHashAfter       *big.Int
-	NumNewVotes         *big.Int
-	NumOverwritten      *big.Int
-	CensusRoot          *big.Int
-	BlobCommitmentLimbs [3]*big.Int
+	RootHashBefore        *big.Int
+	RootHashAfter         *big.Int
+	VotersCount           *big.Int
+	OverwrittenVotesCount *big.Int
+	CensusRoot            *big.Int
+	BlobCommitmentLimbs   [3]*big.Int
 }
 
 // GenerateWitness generates the witness for the state transition circuit
@@ -63,8 +63,8 @@ func GenerateWitness(
 	witness.Process.EncryptionKey.PubKey[1] = o.Process().EncryptionKey.PubKey[1]
 
 	// update stats
-	witness.NumNewVotes = o.BallotCount()
-	witness.NumOverwritten = o.OverwrittenCount()
+	witness.VotersCount = o.VotersCount()
+	witness.OverwrittenVotesCount = o.OverwrittenVotesCount()
 
 	for i, v := range o.PaddedVotes() {
 		witness.Votes[i].Ballot = *v.Ballot.ToGnark()
@@ -139,35 +139,36 @@ func GenerateWitness(
 	witness.BlobEvaluationResultY = blobData.ForGnark.Y
 
 	// Create public inputs in original format
-	var numNewVotes, numOverwritten *big.Int
+	// Convert frontend.Variable to *big.Int properly
+	var votersCount, overwrittenVotesCount *big.Int
 
-	// Handle NumNewVotes conversion
-	switch v := witness.NumNewVotes.(type) {
+	// Handle VotersCount conversion
+	switch v := witness.VotersCount.(type) {
 	case *big.Int:
-		numNewVotes = v
+		votersCount = v
 	case int:
-		numNewVotes = big.NewInt(int64(v))
+		votersCount = big.NewInt(int64(v))
 	default:
-		return nil, nil, fmt.Errorf("unexpected type for NumNewVotes: %T", v)
+		return nil, nil, fmt.Errorf("unexpected type for VotersCount: %T", v)
 	}
 
-	// Handle NumOverwritten conversion
-	switch v := witness.NumOverwritten.(type) {
+	// Handle OverwrittenVotesCount conversion
+	switch v := witness.OverwrittenVotesCount.(type) {
 	case *big.Int:
-		numOverwritten = v
+		overwrittenVotesCount = v
 	case int:
-		numOverwritten = big.NewInt(int64(v))
+		overwrittenVotesCount = big.NewInt(int64(v))
 	default:
-		return nil, nil, fmt.Errorf("unexpected type for NumOverwritten: %T", v)
+		return nil, nil, fmt.Errorf("unexpected type for OverwrittenVotesCount: %T", v)
 	}
 
 	publicInputs := &PublicInputs{
-		RootHashBefore:      o.RootHashBefore(),
-		RootHashAfter:       witness.RootHashAfter.(*big.Int),
-		NumNewVotes:         numNewVotes,
-		NumOverwritten:      numOverwritten,
-		CensusRoot:          censusRoot.MathBigInt(),
-		BlobCommitmentLimbs: blobData.CommitmentLimbs,
+		RootHashBefore:        o.RootHashBefore(),
+		RootHashAfter:         witness.RootHashAfter.(*big.Int),
+		VotersCount:           votersCount,
+		OverwrittenVotesCount: overwrittenVotesCount,
+		CensusRoot:            censusRoot.MathBigInt(),
+		BlobCommitmentLimbs:   blobData.CommitmentLimbs,
 	}
 
 	return witness, publicInputs, nil

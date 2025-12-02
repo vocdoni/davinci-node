@@ -25,10 +25,10 @@ var HashFn = poseidon.MultiHash
 
 type StateTransitionCircuit struct {
 	// Public inputs
-	RootHashBefore frontend.Variable `gnark:",public"`
-	RootHashAfter  frontend.Variable `gnark:",public"`
-	NumNewVotes    frontend.Variable `gnark:",public"`
-	NumOverwritten frontend.Variable `gnark:",public"`
+	RootHashBefore        frontend.Variable `gnark:",public"`
+	RootHashAfter         frontend.Variable `gnark:",public"`
+	VotersCount           frontend.Variable `gnark:",public"`
+	OverwrittenVotesCount frontend.Variable `gnark:",public"`
 
 	// Census root
 	CensusRoot frontend.Variable `gnark:",public"`
@@ -190,14 +190,14 @@ func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API) (gr
 	// the witness should be a bw6761 element, and it should include the
 	// number of valid votes as public input
 	witness := groth16.Witness[sw_bw6761.ScalarField]{
-		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(c.NumNewVotes)},
+		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(c.VotersCount)},
 	}
 	// iterate over votes inputs to select between valid hashes and dummy ones
 	hashes := []frontend.Variable{}
 	for i := range types.VotesPerBatch {
-		isValid := cmp.IsLess(api, i, c.NumNewVotes)
 		inputsHash := c.proofInputsHash(api, i)
-		hashes = append(hashes, api.Select(isValid, inputsHash, 1))
+		dummyProofInputsHash := 1
+		hashes = append(hashes, api.Select(c.IsIndexOfRealVote(api, i), inputsHash, dummyProofInputsHash))
 	}
 	// hash the inputs hashes to get the final witness
 	hFn, err := mimc7.NewMiMC(api)
@@ -241,7 +241,6 @@ func (circuit StateTransitionCircuit) VerifyAggregatorProof(api frontend.API) {
 func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
 	lastK := frontend.Variable(circuit.ReencryptionK)
 	for i, v := range circuit.Votes {
-		isValid := cmp.IsLess(api, i, circuit.NumNewVotes)
 		var err error
 		var reencryptedBallot *circuits.Ballot
 		reencryptedBallot, lastK, err = v.Ballot.Reencrypt(api, circuit.Process.EncryptionKey, lastK)
@@ -250,7 +249,7 @@ func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
 			return
 		}
 		isEqual := v.ReencryptedBallot.IsEqual(api, reencryptedBallot)
-		api.AssertIsEqual(api.Select(isValid, isEqual, 1), 1)
+		api.AssertIsEqual(api.Select(circuit.IsIndexOfRealVote(api, i), isEqual, 1), 1)
 	}
 }
 
@@ -406,26 +405,34 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	}
 }
 
-// VerifyBallots counts the ballots using homomorphic encryption and checks
-// that the number of ballots is equal to the number of new votes and
-// overwritten votes. It uses the Ballot structure to count the ballots.
+// VerifyBallots sums the ballots using homomorphic encryption and checks
+// that the count of all ballots is equal to VotersCount,
+// as well as the count of overwritten ballots equals OverwrittenVotesCount.
+// It uses the Ballot structure to sum the ballots.
 func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
-	ballotSum, overwrittenSum, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
-	var ballotCount, overwrittenCount frontend.Variable = 0, 0
-	// Sum ballots and count new and overwritten
+	sumOfAllBallots, sumOfOverwrittenBallots, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
+	var votersCount, overwrittenVotesCount frontend.Variable = 0, 0
+
+	// Sum all casted ballots (both new and overwrites),
+	// Sum all overwritten ballots (to add to ResultsSub)
+	// Count how many voters participated in this batch
+	// Count how many votes were overwritten
 	for i, b := range circuit.VotesProofs.Ballot {
-		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].ReencryptedBallot, zero))
-		overwrittenSum.Add(api, overwrittenSum, circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
-		ballotCount = api.Add(ballotCount, b.IsInsertOrUpdate(api))
-		overwrittenCount = api.Add(overwrittenCount, b.IsUpdate(api))
+		sumOfAllBallots.Add(api, sumOfAllBallots,
+			circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].ReencryptedBallot, zero))
+		sumOfOverwrittenBallots.Add(api, sumOfOverwrittenBallots,
+			circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
+		votersCount = api.Add(votersCount, b.IsInsertOrUpdate(api))
+		overwrittenVotesCount = api.Add(overwrittenVotesCount, b.IsUpdate(api))
 	}
+
 	// Assert new results are equal to old results plus ballot sums
 	circuit.Results.NewResultsAdd.AssertIsEqual(api,
-		circuits.NewBallot().Add(api, &circuit.Results.OldResultsAdd, ballotSum))
+		circuits.NewBallot().Add(api, &circuit.Results.OldResultsAdd, sumOfAllBallots))
 	circuit.Results.NewResultsSub.AssertIsEqual(api,
-		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, overwrittenSum))
-	api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
-	api.AssertIsEqual(circuit.NumOverwritten, overwrittenCount)
+		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, sumOfOverwrittenBallots))
+	api.AssertIsEqual(circuit.VotersCount, votersCount)
+	api.AssertIsEqual(circuit.OverwrittenVotesCount, overwrittenVotesCount)
 }
 
 // VerifyMerkleCensusProofs verifies the Merkle proofs of the votes in the
@@ -435,12 +442,10 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API) {
 	for i := range types.VotesPerBatch {
 		vote := c.Votes[i]
-		// only verify the proof if i < NumNewVotes (to discard dummy proofs)
-		isRealProof := cmp.IsLess(api, i, c.NumNewVotes)
 		// check if the proof is valid only if the census origin is MerkleTree
 		// and the current vote inputs are from a valid vote.
 		isMerkleTreeCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(types.CensusOriginMerkleTreeOffchainStaticV1)))
-		shouldBeValid := api.And(isRealProof, isMerkleTreeCensus)
+		shouldBeValid := api.And(c.IsIndexOfRealVote(api, i), isMerkleTreeCensus)
 
 		// check that calculated leaf is equal to the one in the proof
 		leaf := imt.PackLeaf(api, vote.Address, vote.VoteWeight)
@@ -467,17 +472,21 @@ func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API) {
 	for i := range types.VotesPerBatch {
 		vote := c.Votes[i]
 		cspProof := c.CensusProofs.CSPProofs[i]
-		// only verify the proof if i < NumNewVotes (to discard dummy proofs)
-		isRealProof := cmp.IsLess(api, i, c.NumNewVotes)
 		// verify the CSP proof
 		isValidProof := cspProof.IsValid(api, curveID, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
 		// check if the census origin is CSP
 		isCSPCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(censusOrigin)))
 		// the proof should be valid only if it's a real proof and the census origin is CSP
-		shouldBeValid := api.And(isRealProof, isCSPCensus)
+		shouldBeValid := api.And(c.IsIndexOfRealVote(api, i), isCSPCensus)
 		// assert the validity of the proof only if it should be valid, using
 		// its value to compare with 1 only when it applies, otherwise compare
 		// with 1 directly (to ignore dummy proofs and non-CSP census origins)
 		api.AssertIsEqual(api.Select(shouldBeValid, isValidProof, 1), 1)
 	}
+}
+
+// IsIndexOfRealVote returns 1 if index corresponds to a real vote (not dummy padding),
+// i.e. index < VotersCount.
+func (c StateTransitionCircuit) IsIndexOfRealVote(api frontend.API, index frontend.Variable) frontend.Variable {
+	return cmp.IsLess(api, index, c.VotersCount)
 }

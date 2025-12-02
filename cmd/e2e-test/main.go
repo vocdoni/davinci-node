@@ -73,7 +73,7 @@ func main() {
 		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
 		census3URL                       = flag.String("census3URL", defaultCensus3URL, "census3 endpoint")
-		voteCount                        = flag.Int("voteCount", 10, "number of votes to cast")
+		votersCount                      = flag.Int64("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
 	)
@@ -203,7 +203,7 @@ func main() {
 	log.Infow("organization ready", "address", organizationAddr.Hex())
 
 	// Create a new census with numBallot participants
-	censusRoot, censusURI, signers, err := createCensus(testCtx, *voteCount, mockedWeight, *census3URL)
+	censusRoot, censusURI, signers, err := createCensus(testCtx, *votersCount, mockedWeight, *census3URL)
 	if err != nil {
 		log.Errorw(err, "failed to create census")
 		return
@@ -244,7 +244,7 @@ func main() {
 		log.Infow("vote sent",
 			"voteID", voteID.String(),
 			"currentVote", i+1,
-			"totalVotes", *voteCount)
+			"totalVoters", *votersCount)
 
 		// Wait the voteSleepTime before sending the next vote
 		time.Sleep(*voteSleepTime)
@@ -252,24 +252,55 @@ func main() {
 
 	// Wait for the votes to be registered in the smart contract
 	log.Info("all votes sent, waiting for votes to be registered in smart contract...")
-	newVotesCh := make(chan int)
-	newVotesCtx, cancel := context.WithCancel(testCtx)
-	defer cancel()
-	go func() {
-		for newVoteCount := range newVotesCh {
-			log.Infow("vote count registered in smart contract", "voteCount", newVoteCount)
-			// Check if the vote count is equal to the number of votes sent
-			if newVoteCount >= *voteCount {
-				cancel()
-				break
-			}
-		}
-	}()
-	if err := listenSmartContractVotesCount(newVotesCtx, contracts, pid, newVotesCh); err != nil {
+
+	if err := waitUntilSmartContractCounts(context.Background(), contracts, pid, *votersCount, 0); err != nil {
 		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 		return
 	}
-	log.Info("all votes registered in smart contract, finishing the process in the smart contract...")
+
+	log.Info("first batch of votes registered in smart contract, will now overwrite half of them")
+	overwriters := signers[:len(signers)/2]
+
+	// Generate votes for each participant and send them to the sequencer
+	for i, signer := range overwriters {
+		// Generate a vote for each participant
+		vote, err := createVote(signer, pid, encryptionKey, &mockedBallotMode)
+		if err != nil {
+			log.Errorw(err, "failed to create vote")
+			return
+		}
+		log.Infow("vote overwrite created", "vote", vote)
+
+		// Generate a census proof for each participant
+		vote.CensusProof = types.CensusProof{
+			Weight: new(types.BigInt).SetUint64(mockedWeight),
+		}
+
+		// Send the vote to the sequencer
+		voteID, err := sendVote(cli, vote)
+		if err != nil {
+			log.Errorw(err, "failed to send vote")
+			return
+		}
+		log.Infow("vote overwrite sent",
+			"voteID", voteID.String(),
+			"currentVote", i+1,
+			"overwritesCount", len(overwriters))
+
+		// Wait the voteSleepTime before sending the next vote
+		time.Sleep(*voteSleepTime)
+	}
+
+	// Wait for the votes to be registered in the smart contract
+	log.Info("all overwrite votes sent, waiting for votes to be registered in smart contract...")
+
+	if err := waitUntilSmartContractCounts(context.Background(), contracts, pid, *votersCount, int64(len(overwriters))); err != nil {
+		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
+		return
+	}
+
+	log.Info("second batch of votes registered, finishing the process in the smart contract...")
+
 	time.Sleep(1 * time.Second)
 	// finish the process in the smart contract
 	if err := finishProcessOnChain(contracts, pid); err != nil {
@@ -380,7 +411,7 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	return orgAddr, nil
 }
 
-func createCensus(ctx context.Context, size int, weight uint64, c3URL string) ([]byte, string, []*ethereum.Signer, error) {
+func createCensus(ctx context.Context, size int64, weight uint64, c3URL string) ([]byte, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
 	votes := []state.Vote{}
@@ -595,19 +626,17 @@ func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
 	return vote.VoteID, nil
 }
 
-func listenSmartContractVotesCount(
+func waitUntilSmartContractCounts(
 	ctx context.Context,
 	contracts *web3.Contracts,
 	pid *types.ProcessID,
-	newVotes chan int,
+	votersCount, overwrittenVotesCount int64,
 ) error {
 	ticker := time.NewTicker(time.Second * 30)
-	lastVotesCount := -1
 	for {
 		select {
 		case <-ctx.Done():
 			if ctx.Err() == context.Canceled {
-				close(newVotes)
 				return nil
 			}
 			return fmt.Errorf("process creation timeout: %v", ctx.Err())
@@ -619,15 +648,15 @@ func listenSmartContractVotesCount(
 			if process == nil {
 				return fmt.Errorf("process not found")
 			}
-			// Get the vote count from the process
-			var newVotesCount int
-			if process.VoteCount != nil {
-				newVotesCount = int(process.VoteCount.MathBigInt().Int64())
-				log.Debugw("new vote count", "pid", pid.String(), "newVotesCount", newVotesCount)
-			}
-			if newVotesCount > lastVotesCount {
-				lastVotesCount = newVotesCount
-				newVotes <- newVotesCount
+			// Get the voters count from the process
+			if process.VotersCount != nil && process.OverwrittenVotesCount != nil {
+				log.Debugw("polled smart contract counters", "pid", pid.String(),
+					"targetVoters", votersCount, "targetOverwritten", overwrittenVotesCount,
+					"votersCount", process.VotersCount, "overwrittenVotesCount", process.OverwrittenVotesCount)
+				if process.VotersCount.MathBigInt().Int64() >= votersCount &&
+					process.OverwrittenVotesCount.MathBigInt().Int64() >= overwrittenVotesCount {
+					return nil
+				}
 			}
 		}
 	}
