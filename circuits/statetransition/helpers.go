@@ -5,7 +5,6 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/state"
@@ -21,10 +20,9 @@ type PublicInputs struct {
 	NumNewVotes          *big.Int
 	NumOverwritten       *big.Int
 	CensusRoot           *big.Int
-	BlobEvaluationPointZ *big.Int
+	BlobCommitmentLimbs  [3]*big.Int
+	BlobProofLimbs       [3]*big.Int
 	BlobEvaluationPointY [4]*big.Int
-	BlobCommitment       kzg4844.Commitment
-	BlobProof            kzg4844.Proof
 }
 
 // GenerateWitness generates the witness for the state transition circuit
@@ -135,7 +133,9 @@ func GenerateWitness(
 		return nil, nil, fmt.Errorf("could not build KZG commitment: %w", err)
 	}
 
-	witness.BlobEvaluationPointZ = blobData.ForGnark.Z
+	// Assign commitment and proof limbs to witness
+	witness.BlobCommitmentLimbs = blobData.ForGnark.CommitmentLimbs
+	witness.BlobProofLimbs = blobData.ForGnark.ProofLimbs
 	witness.BlobEvaluationResultY = blobData.ForGnark.Y
 
 	// Create public inputs in original format
@@ -168,10 +168,9 @@ func GenerateWitness(
 		NumNewVotes:          numNewVotes,
 		NumOverwritten:       numOverwritten,
 		CensusRoot:           censusRoot.MathBigInt(),
-		BlobEvaluationPointZ: blobData.Z,
+		BlobCommitmentLimbs:  blobData.CommitmentLimbs,
+		BlobProofLimbs:       blobData.ProofLimbs,
 		BlobEvaluationPointY: blobData.Ylimbs,
-		BlobCommitment:       blobData.Commitment,
-		BlobProof:            blobData.OpeningProof,
 	}
 
 	return witness, publicInputs, nil

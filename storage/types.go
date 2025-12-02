@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
@@ -178,53 +177,54 @@ type StateTransitionBatch struct {
 // before and after the transition, the number of new votes and the number
 // of overwrites.
 type StateTransitionBatchProofInputs struct {
-	RootHashBefore       *big.Int           `json:"rootHashBefore"`
-	RootHashAfter        *big.Int           `json:"rootHashAfter"`
-	NumNewVotes          int                `json:"numNewVotes"`
-	NumOverwritten       int                `json:"numOverwritten"`
-	CensusRoot           *big.Int           `json:"censusRoot"`
-	BlobEvaluationPointZ *big.Int           `json:"blobEvaluationPointZ"`
-	BlobEvaluationPointY [4]*big.Int        `json:"blobEvaluationPointY"`
-	BlobCommitment       gethkzg.Commitment `json:"blobCommitment"`
-	BlobProof            gethkzg.Proof      `json:"blobProof"`
+	RootHashBefore       *big.Int    `json:"rootHashBefore"`
+	RootHashAfter        *big.Int    `json:"rootHashAfter"`
+	NumNewVotes          int         `json:"numNewVotes"`
+	NumOverwritten       int         `json:"numOverwritten"`
+	CensusRoot           *big.Int    `json:"censusRoot"`
+	BlobCommitmentLimbs  [3]*big.Int `json:"blobCommitmentLimbs"`
+	BlobProofLimbs       [3]*big.Int `json:"blobProofLimbs"`
+	BlobEvaluationPointY [4]*big.Int `json:"blobEvaluationPointY"`
 }
 
-// ABIEncode packs the fields as a single static uint256[10] blob:
+// ABIEncode packs the fields as a single static uint256[15] blob:
 //
-//		[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten, censusRoot,
-//	      blobEvaluationPointZ, blobEvaluationPointY[0], blobEvaluationPointY[1],
-//	      blobEvaluationPointY[2], blobEvaluationPointY[3], blobCommitment, blobProof ]
+//	[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten, censusRoot,
+//	  blobCommitmentLimbs[0], blobCommitmentLimbs[1], blobCommitmentLimbs[2],
+//	  blobProofLimbs[0], blobProofLimbs[1], blobProofLimbs[2],
+//	  blobEvaluationPointY[0], blobEvaluationPointY[1],
+//	  blobEvaluationPointY[2], blobEvaluationPointY[3] ]
 //
-// where the first four elements are the root hashes, counts and the census root,
-// the next five elements are the blob evaluation point (Z and Y limbs), and the
-// last two elements are the blob commitment and proof.
+// where the first five elements are the root hashes, counts and the census root,
+// the next three elements are the blob commitment limbs (3 × 16 bytes),
+// the next three elements are the blob proof limbs (3 × 16 bytes),
+// and the last four elements are the blob evaluation point Y limbs.
 func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
-	arr := [10]*big.Int{
+	arr := [15]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
 		big.NewInt(int64(s.NumNewVotes)),
 		big.NewInt(int64(s.NumOverwritten)),
 		s.CensusRoot,
-		s.BlobEvaluationPointZ,    // Z is on bn254, so we don't need limbs
+		s.BlobCommitmentLimbs[0],
+		s.BlobCommitmentLimbs[1],
+		s.BlobCommitmentLimbs[2],
+		s.BlobProofLimbs[0],
+		s.BlobProofLimbs[1],
+		s.BlobProofLimbs[2],
 		s.BlobEvaluationPointY[0], // Y is on bls12-381, so we need all 4 limbs
 		s.BlobEvaluationPointY[1],
 		s.BlobEvaluationPointY[2],
 		s.BlobEvaluationPointY[3],
 	}
-	arrType, err := abi.NewType("uint256[10]", "", nil)
-	if err != nil {
-		return nil, err
-	}
-	bytesType, err := abi.NewType("bytes", "", nil)
+	arrType, err := abi.NewType("uint256[15]", "", nil)
 	if err != nil {
 		return nil, err
 	}
 	arguments := abi.Arguments{
 		{Type: arrType},
-		{Type: bytesType}, // blobCommitment
-		{Type: bytesType}, // blobProof
 	}
-	return arguments.Pack(arr, s.BlobCommitment[:], s.BlobProof[:])
+	return arguments.Pack(arr)
 }
 
 // String returns a JSON representation of the StateTransitionBatchProofInputs

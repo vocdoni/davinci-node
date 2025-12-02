@@ -3,7 +3,6 @@ package statetransition
 import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/cmp"
@@ -35,11 +34,10 @@ type StateTransitionCircuit struct {
 	CensusRoot   frontend.Variable `gnark:",public"`
 	CensusProofs CensusProofs
 
-	// KZG commitment to the blob
-	BlobEvaluationPointZ  frontend.Variable                     `gnark:",public"`
+	// KZG commitment to the blob (as 3 × 16-byte limbs)
+	BlobCommitmentLimbs   [3]frontend.Variable                  `gnark:",public"`
+	BlobProofLimbs        [3]frontend.Variable                  `gnark:",public"`
 	BlobEvaluationResultY emulated.Element[emulated.BLS12381Fr] `gnark:",public"`
-	BlobCommitment        *sw_bls12381.G1Affine                 `gnark:",public"`
-	BlobProof             *sw_bls12381.G1Affine                 `gnark:",public"`
 
 	// Private data inputs
 	Process       circuits.Process[frontend.Variable]
@@ -390,14 +388,15 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	for i := blobIndex; i < len(blob); i++ {
 		blob[i] = 0
 	}
-	// Verify blob baricentric evaluation (z and y are public inputs)
+	// Verify blob evaluation with in-circuit z computation
 	if err := blobs.VerifyFullBlobEvaluationBN254(
 		api,
-		circuit.BlobEvaluationPointZ,
+		circuit.Process.ID,
+		circuit.RootHashBefore,
+		circuit.BlobCommitmentLimbs,
+		circuit.BlobProofLimbs,
 		&circuit.BlobEvaluationResultY,
-		blob,
-		circuit.BlobCommitment,
-		circuit.BlobProof); err != nil {
+		blob); err != nil {
 		circuits.FrontendError(api, "failed to verify blob evaluation: ", err)
 		return
 	}

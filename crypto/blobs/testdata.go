@@ -61,17 +61,27 @@ func (c *blobEvalCircuitBarycentricOnly) Define(api frontend.API) error {
 // including barycentric evaluation AND KZG commitment/proof verification.
 // This uses native BN254 scalar field variables for the blob data and emulated BLS12-381
 // field elements for the evaluation result Y.
+// The commitment and proof are provided as limbs for in-circuit z computation.
 type blobEvalCircuitBN254 struct {
-	Z          frontend.Variable    `gnark:",public"`
-	Y          emulated.Element[FE] `gnark:",public"` // emulated BLS12-381 Fr
-	Blob       [N]frontend.Variable // native BN254 variables
-	Commitment sw_bls12381.G1Affine `gnark:",public"` // BLS12-381 G1 point
-	Proof      sw_bls12381.G1Affine `gnark:",public"` // BLS12-381 G1 point
+	ProcessID       frontend.Variable    `gnark:",public"`
+	RootHashBefore  frontend.Variable    `gnark:",public"`
+	CommitmentLimbs [3]frontend.Variable `gnark:",public"`
+	ProofLimbs      [3]frontend.Variable `gnark:",public"`
+	Y               emulated.Element[FE] `gnark:",public"` // emulated BLS12-381 Fr
+	Blob            [N]frontend.Variable // native BN254 variables
 }
 
 func (c *blobEvalCircuitBN254) Define(api frontend.API) error {
 	std.RegisterHints()
-	return VerifyFullBlobEvaluationBN254(api, c.Z, &c.Y, c.Blob, &c.Commitment, &c.Proof)
+	return VerifyFullBlobEvaluationBN254(
+		api,
+		c.ProcessID,
+		c.RootHashBefore,
+		c.CommitmentLimbs,
+		c.ProofLimbs,
+		&c.Y,
+		c.Blob,
+	)
 }
 
 // TestData contains precomputed valid KZG proof data for testing

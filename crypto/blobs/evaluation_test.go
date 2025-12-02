@@ -92,16 +92,20 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 		proof, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 		c.Assert(err, qt.IsNil)
 
-		// Convert geth-kzg types to circuit inputs using the helper function
-		commitmentPoint, proofPoint, y, err := KZGToCircuitInputs(commitment, proof, claim)
-		c.Assert(err, qt.IsNil)
+		// Convert claim to Y
+		y := new(big.Int).SetBytes(claim[:])
+
+		// Extract limbs from commitment and proof
+		commitmentLimbs := CommitmentToLimbs(commitment)
+		proofLimbs := ProofToLimbs(proof)
 
 		// Create witness
 		witness := blobEvalCircuitBN254{
-			Z:          z,
-			Y:          emulated.ValueOf[FE](y),
-			Commitment: commitmentPoint,
-			Proof:      proofPoint,
+			ProcessID:       new(big.Int).SetBytes(processID),
+			RootHashBefore:  new(big.Int).SetBytes(rootHashBefore),
+			CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
+			ProofLimbs:      [3]frontend.Variable{proofLimbs[0], proofLimbs[1], proofLimbs[2]},
+			Y:               emulated.ValueOf[FE](y),
 		}
 
 		// Fill blob data
@@ -146,16 +150,20 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 	proof, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
 	c.Assert(err, qt.IsNil)
 
-	// Convert geth-kzg types to circuit inputs using the helper function
-	commitmentPoint, proofPoint, y, err := KZGToCircuitInputs(commitment, proof, claim)
-	c.Assert(err, qt.IsNil)
+	// Convert claim to Y
+	y := new(big.Int).SetBytes(claim[:])
+
+	// Extract limbs from commitment and proof
+	commitmentLimbs := CommitmentToLimbs(commitment)
+	proofLimbs := ProofToLimbs(proof)
 
 	// Create witness
 	witness := blobEvalCircuitBN254{
-		Z:          z,
-		Y:          emulated.ValueOf[FE](y),
-		Commitment: commitmentPoint,
-		Proof:      proofPoint,
+		ProcessID:       new(big.Int).SetBytes(processID),
+		RootHashBefore:  new(big.Int).SetBytes(rootHashBefore),
+		CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
+		ProofLimbs:      [3]frontend.Variable{proofLimbs[0], proofLimbs[1], proofLimbs[2]},
+		Y:               emulated.ValueOf[FE](y),
 	}
 
 	// Fill blob data from gethkzg.Blob
@@ -182,10 +190,11 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 
 	// Verify proof
 	publicWitness := blobEvalCircuitBN254{
-		Z:          witness.Z,
-		Y:          witness.Y,
-		Commitment: witness.Commitment,
-		Proof:      witness.Proof,
+		ProcessID:       witness.ProcessID,
+		RootHashBefore:  witness.RootHashBefore,
+		CommitmentLimbs: witness.CommitmentLimbs,
+		ProofLimbs:      witness.ProofLimbs,
+		Y:               witness.Y,
 	}
 	publicW, err := frontend.NewWitness(&publicWitness, ecc.BN254.ScalarField(), frontend.PublicOnly())
 	c.Assert(err, qt.IsNil)
@@ -249,11 +258,12 @@ func TestBlobEvalDataTransform(t *testing.T) {
 	// Verify the transformation can be used in a circuit
 	// Create witness using the transformed data
 	witness := blobEvalCircuitBN254{
-		Z:          blobData.ForGnark.Z,
-		Y:          blobData.ForGnark.Y,
-		Blob:       blobData.ForGnark.Blob,
-		Commitment: blobData.ForGnark.Commitment,
-		Proof:      blobData.ForGnark.OpeningProof,
+		ProcessID:       new(big.Int).SetBytes(processID),
+		RootHashBefore:  new(big.Int).SetBytes(rootHashBefore),
+		CommitmentLimbs: blobData.ForGnark.CommitmentLimbs,
+		ProofLimbs:      blobData.ForGnark.ProofLimbs,
+		Y:               blobData.ForGnark.Y,
+		Blob:            blobData.ForGnark.Blob,
 	}
 
 	// Test that the circuit accepts this witness

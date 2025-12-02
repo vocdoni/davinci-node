@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
@@ -28,19 +27,19 @@ const (
 // It is useful for preparing data for zk-SNARK proving and Ethereum transactions.
 type BlobEvalData struct {
 	ForGnark struct {
-		Z            frontend.Variable // value within bn254 field
-		Y            emulated.Element[FE]
-		Blob         [N]frontend.Variable // values within bn254 field
-		OpeningProof sw_bls12381.G1Affine
-		Commitment   sw_bls12381.G1Affine
+		CommitmentLimbs [3]frontend.Variable
+		ProofLimbs      [3]frontend.Variable
+		Y               emulated.Element[FE]
+		Blob            [N]frontend.Variable // values within bn254 field
 	}
-	Commitment gethkzg.Commitment
-	Z          *big.Int
-	Y          *big.Int
-	Ylimbs     [4]*big.Int
-	Blob       gethkzg.Blob
-	// Opening proof for point-evaluation precompile (integrity check)
-	OpeningProof gethkzg.Proof
+	Commitment      gethkzg.Commitment
+	CommitmentLimbs [3]*big.Int
+	Z               *big.Int
+	Y               *big.Int
+	Ylimbs          [4]*big.Int
+	Blob            gethkzg.Blob
+	OpeningProof    gethkzg.Proof
+	ProofLimbs      [3]*big.Int
 	// Cell proofs for EIP-7594 (Fusaka upgrade)
 	// Each blob has CellProofsPerBlob (128) cell proofs
 	CellProofs [gethkzg.CellProofsPerBlob]gethkzg.Proof
@@ -64,17 +63,30 @@ func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error
 	}
 	b.OpeningProof = openingProof
 
-	// Convert KZG inputs to gnark format
-	b.ForGnark.Commitment, b.ForGnark.OpeningProof, b.Y, err = KZGToCircuitInputs(b.Commitment, b.OpeningProof, claim)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert KZG inputs: %w", err)
+	// Extract commitment limbs (3 × 16 bytes)
+	b.CommitmentLimbs = CommitmentToLimbs(b.Commitment)
+	b.ForGnark.CommitmentLimbs = [3]frontend.Variable{
+		b.CommitmentLimbs[0],
+		b.CommitmentLimbs[1],
+		b.CommitmentLimbs[2],
 	}
 
-	// Set evaluation point (y)
+	// Extract proof limbs (3 × 16 bytes)
+	b.ProofLimbs = ProofToLimbs(b.OpeningProof)
+	b.ForGnark.ProofLimbs = [3]frontend.Variable{
+		b.ProofLimbs[0],
+		b.ProofLimbs[1],
+		b.ProofLimbs[2],
+	}
+
+	// Convert claim (Y value) to big.Int
+	b.Y = new(big.Int).SetBytes(claim[:])
+
+	// Set evaluation point (y) for Gnark
 	b.ForGnark.Y = emulated.ValueOf[FE](b.Y)
 
-	// Extract limbs as big.Int
-	// Note that we cannot access b.ForGnark.Y.Limbs because the decomposicion is performed async while witness processing
+	// Extract Y limbs as big.Int
+	// Note that we cannot access b.ForGnark.Y.Limbs because the decomposition is performed async while witness processing
 	Ylimbs, err := format.SplitYForBn254FromBLS12381(b.Y)
 	if err != nil {
 		return nil, fmt.Errorf("failed to split Y into limbs: %w", err)
@@ -89,7 +101,6 @@ func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error
 	}
 
 	// Set evaluation point (z)
-	b.ForGnark.Z = z
 	b.Z = new(big.Int).Set(z)
 
 	// Convert blob to gnark circuit format
@@ -133,12 +144,21 @@ func (b *BlobEvalData) HashV1() (vh [32]byte) {
 	return gethkzg.CalcBlobHashV1(sha256.New(), &b.Commitment)
 }
 
-// CommitmentToLimbs splits a 48-byte KZG commitment into 3 × 16-byte limbs for Poseidon hashing.
+// CommitmentToLimbs splits a 48-byte KZG commitment into 3 × 16-byte limbs.
 func CommitmentToLimbs(commitment gethkzg.Commitment) [3]*big.Int {
 	return [3]*big.Int{
 		new(big.Int).SetBytes(commitment[0:16]),
 		new(big.Int).SetBytes(commitment[16:32]),
 		new(big.Int).SetBytes(commitment[32:48]),
+	}
+}
+
+// ProofToLimbs splits a 48-byte KZG proof into 3 × 16-byte limbs.
+func ProofToLimbs(proof gethkzg.Proof) [3]*big.Int {
+	return [3]*big.Int{
+		new(big.Int).SetBytes(proof[0:16]),
+		new(big.Int).SetBytes(proof[16:32]),
+		new(big.Int).SetBytes(proof[32:48]),
 	}
 }
 

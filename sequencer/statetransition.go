@@ -191,10 +191,9 @@ func (s *Sequencer) processPendingTransitions() {
 				NumNewVotes:          processState.BallotCount(),
 				NumOverwritten:       processState.OverwrittenCount(),
 				CensusRoot:           censusRoot.MathBigInt(),
-				BlobEvaluationPointZ: blobData.Z,
+				BlobCommitmentLimbs:  blobData.CommitmentLimbs,
+				BlobProofLimbs:       blobData.ProofLimbs,
 				BlobEvaluationPointY: blobData.Ylimbs,
-				BlobCommitment:       blobData.Commitment,
-				BlobProof:            blobData.OpeningProof,
 			},
 			BlobVersionHash: blobSidecar.BlobHashes()[0],
 			BlobSidecar:     blobSidecar,
@@ -373,7 +372,8 @@ func (s *Sequencer) stateBatchToWitness(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build KZG commitment: %w", err)
 	}
-	proofWitness.BlobEvaluationPointZ = blobData.ForGnark.Z
+	proofWitness.BlobCommitmentLimbs = blobData.ForGnark.CommitmentLimbs
+	proofWitness.BlobProofLimbs = blobData.ForGnark.ProofLimbs
 	proofWitness.BlobEvaluationResultY = blobData.ForGnark.Y
 
 	return proofWitness, blobData, nil

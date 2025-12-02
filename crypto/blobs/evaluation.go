@@ -129,36 +129,53 @@ func VerifyBarycentricEvaluation(
 }
 
 // VerifyFullBlobEvaluationBN254 performs COMPLETE blob verification including:
-// 1. Barycentric evaluation: Y = P(Z) where P interpolates the blob
-// 2. KZG commitment verification: proves the commitment matches the blob
-// 3. KZG opening proof verification: proves Y is the correct evaluation at Z
-//
-// This is the FULL verification function that should be used in production circuits.
-// It accepts native BN254 inputs and converts them to emulated BLS12-381 field elements.
+//  1. In-circuit computation of evaluation point Z from processID, rootHashBefore, and commitment
+//  2. Barycentric evaluation: Y = P(Z) where P interpolates the blob
+//  3. KZG commitment verification: proves the commitment matches the blob
+//  4. KZG opening proof verification: proves Y is the correct evaluation at Z
 //
 // Parameters:
 //   - api: The frontend API for circuit operations
-//   - z: The evaluation point Z (native BN254 scalar)
+//   - processID: The process ID (native BN254 scalar)
+//   - rootHashBefore: The root hash before state transition (native BN254 scalar)
+//   - commitmentLimbs: The KZG commitment as 3 × 16-byte limbs
+//   - proofLimbs: The KZG opening proof as 3 × 16-byte limbs
 //   - y: The claimed evaluation result Y (emulated BLS12-381 Fr)
 //   - blob: The blob data (4096 native BN254 scalars)
-//   - commitment: The KZG commitment to the blob (BLS12-381 G1 point)
-//   - proof: The KZG opening proof (BLS12-381 G1 point)
 //
 // Returns an error if any verification step fails.
 func VerifyFullBlobEvaluationBN254(
 	api frontend.API,
-	z frontend.Variable, // BN254
-	y *emulated.Element[FE], // emulated BLS12-381 Fr
-	blob [N]frontend.Variable, // BN254
-	commitment *sw_bls12381.G1Affine, // BLS12-381 G1 point
-	proof *sw_bls12381.G1Affine, // BLS12-381 G1 point
+	processID frontend.Variable,
+	rootHashBefore frontend.Variable,
+	commitmentLimbs [3]frontend.Variable,
+	proofLimbs [3]frontend.Variable,
+	y *emulated.Element[FE],
+	blob [N]frontend.Variable,
 ) error {
 	fr, err := emulated.NewField[FE](api)
 	if err != nil {
 		return err
 	}
 
-	// convert all native scalars => emulated via the hint
+	// Unmarshal commitment and proof from limbs
+	commitment, err := UnmarshalKZGCommitment(api, commitmentLimbs)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal commitment: %w", err)
+	}
+
+	proof, err := UnmarshalKZGProof(api, proofLimbs)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal proof: %w", err)
+	}
+
+	// Compute evaluation point z in-circuit
+	z, err := ComputeEvaluationPointInCircuit(api, processID, rootHashBefore, commitmentLimbs)
+	if err != nil {
+		return fmt.Errorf("failed to compute evaluation point: %w", err)
+	}
+
+	// Convert all native scalars => emulated via the hint
 	var blobEmu [N]emulated.Element[FE]
 	for i := range N {
 		e, err := hintNativeToEmu(api, fr, blob[i])
@@ -166,11 +183,11 @@ func VerifyFullBlobEvaluationBN254(
 			return err
 		}
 		blobEmu[i] = *e
-		// soundness: verify that the native input matches the emulated one created by the hint
+		// verify that the native input matches the emulated one created by the hint
 		api.AssertIsEqual(emulatedToNative(api, &blobEmu[i]), blob[i])
 	}
 
-	// convert the native evaluation point Z => emulated
+	// Convert the native evaluation point z => emulated
 	zEmu, err := hintNativeToEmu(api, fr, z)
 	if err != nil {
 		return err
@@ -188,10 +205,9 @@ func VerifyFullBlobEvaluationBN254(
 }
 
 // emulatedToNative converts an emulated element to a native BN254 variable.
-// This is used to ensure that the native input matches the emulated output
-// in the circuit, ensuring soundness.
+// This is used to ensure that the native input matches the emulated output.
 func emulatedToNative(api frontend.API, e *emulated.Element[FE]) frontend.Variable {
-	nbBits := FE{}.BitsPerLimb() // 32 in gnark params
+	nbBits := FE{}.BitsPerLimb()
 	acc := frontend.Variable(0)
 	pow := big.NewInt(1)
 
