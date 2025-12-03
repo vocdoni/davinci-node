@@ -163,13 +163,21 @@ func ProofToLimbs(proof gethkzg.Proof) [3]*big.Int {
 }
 
 // ComputeEvaluationPoint computes evaluation point z using Poseidon hash.
-// z = Poseidon(processID | rootHashBefore | C)
+// z = Poseidon(processID | rootHashBefore | C | blob)
 // where C is the KZG commitment split into 3 × 16-byte limbs.
 func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, commitment gethkzg.Commitment) (*big.Int, error) {
 	// Split 48-byte commitment into 3 × 16-byte limbs
 	limbs := CommitmentToLimbs(commitment)
 
-	z, err := poseidon.MultiPoseidon(processID, rootHashBefore, limbs[0], limbs[1], limbs[2])
+	// Prepare inputs: processID, rootHashBefore, 3 commitment limbs
+	inputs := make([]*big.Int, 5)
+	inputs[0] = processID
+	inputs[1] = rootHashBefore
+	inputs[2] = limbs[0]
+	inputs[3] = limbs[1]
+	inputs[4] = limbs[2]
+
+	z, err := poseidon.MultiPoseidon(inputs...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +187,7 @@ func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, commitment gethk
 
 // ComputeEvaluationPointInCircuit computes the evaluation point z in-circuit using Poseidon hash.
 // This is the Gnark circuit version of ComputeEvaluationPoint.
-// z = Poseidon(processID | rootHashBefore | C)
+// z = Poseidon(processID | rootHashBefore | C | blob)
 // where C is the KZG commitment represented as 3 × 16-byte limbs.
 func ComputeEvaluationPointInCircuit(
 	api frontend.API,
@@ -187,7 +195,15 @@ func ComputeEvaluationPointInCircuit(
 	rootHashBefore frontend.Variable,
 	commitmentLimbs [3]frontend.Variable,
 ) (frontend.Variable, error) {
-	z, err := gnarkposeidon.MultiHash(api, processID, rootHashBefore, commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2])
+	// Pre-allocate slice
+	inputs := make([]frontend.Variable, 5)
+	inputs[0] = processID
+	inputs[1] = rootHashBefore
+	inputs[2] = commitmentLimbs[0]
+	inputs[3] = commitmentLimbs[1]
+	inputs[4] = commitmentLimbs[2]
+
+	z, err := gnarkposeidon.MultiHash(api, inputs...)
 	if err != nil {
 		return nil, fmt.Errorf("poseidon hash failed: %w", err)
 	}

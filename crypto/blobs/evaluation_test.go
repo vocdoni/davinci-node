@@ -23,7 +23,7 @@ import (
 
 // TestBlobEvaluationCircuitWithActualData tests ONLY barycentric evaluation with actual blob data.
 func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 	c := qt.New(t)
@@ -64,7 +64,7 @@ func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
 
 // TestProgressiveElementsNative tests the circuit with increasing number of elements
 func TestBlobEvaluationCircuitProgressive(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 	std.RegisterHints()
@@ -130,7 +130,7 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 	c := qt.New(t)
 
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 
@@ -211,7 +211,7 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 // TestBlobEvalDataTransform tests that BlobEvalData.Set() correctly transforms
 // geth-kzg data into Gnark circuit-compatible format.
 func TestBlobEvalDataTransform(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 	c := qt.New(t)
@@ -320,6 +320,5 @@ func TestBlobEvalDataTransformWithActualData(t *testing.T) {
 	c.Assert(len(sidecar.Commitments), qt.Equals, 1)
 
 	// Verify blob hash
-	hash := blobData.HashV1()
-	c.Assert(len(hash), qt.Equals, 32)
+	c.Assert(len(blobData.HashV1()), qt.Equals, 32)
 }

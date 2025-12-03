@@ -40,7 +40,7 @@ func (circuit *testEvaluationPointCircuit) Define(api frontend.API) error {
 // TestComputeEvaluationPointConsistency verifies that both the Go off-circuit
 // and Gnark in-circuit implementations produce the same evaluation point z.
 func TestComputeEvaluationPointConsistency(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 	c := qt.New(t)
@@ -85,7 +85,7 @@ func TestComputeEvaluationPointConsistency(t *testing.T) {
 
 // TestComputeEvaluationPointMultipleCases tests consistency across multiple test cases
 func TestComputeEvaluationPointMultipleCases(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
 	c := qt.New(t)
