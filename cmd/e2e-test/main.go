@@ -358,13 +358,13 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 		return fmt.Errorf("invalid network configuration for %s", network)
 	}
 	c := npbindings.GetAllContractAddresses(network)
-	dconfig := config.DavinciWeb3Config{
+	web3Conf := config.DavinciWeb3Config{
 		ProcessRegistrySmartContract:      c[npbindings.ProcessRegistryContract],
 		OrganizationRegistrySmartContract: c[npbindings.OrganizationRegistryContract],
 		ResultsZKVerifier:                 c[npbindings.ResultsVerifierGroth16Contract],
 		StateTransitionZKVerifier:         c[npbindings.StateTransitionVerifierGroth16Contract],
 	}
-	s.api = service.NewAPI(s.storage, defaultSequencerHost, defaultSequencerPort, network, dconfig, false)
+	s.api = service.NewAPI(s.storage, defaultSequencerHost, defaultSequencerPort, network, web3Conf, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}
