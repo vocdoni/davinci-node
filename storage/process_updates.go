@@ -54,6 +54,17 @@ func ProcessUpdateCallbackSetStateRoot(stateRoot, maxVoters, votersCount, overwr
 	}
 }
 
+// ProcessUpdateCallbackSetMaxVoters returns a function that updates the max
+// voters of a process.
+func ProcessUpdateCallbackSetMaxVoters(maxVoters *types.BigInt) func(*types.Process) error {
+	return func(p *types.Process) error {
+		if maxVoters != nil {
+			p.MaxVoters = maxVoters
+		}
+		return nil
+	}
+}
+
 // ProcessUpdateCallbackLastTransitionDate returns a function that updates the
 // last state transition date
 func ProcessUpdateCallbackLastTransitionDate() func(*types.Process) error {

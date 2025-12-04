@@ -29,6 +29,7 @@ type ContractsService interface {
 	MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
 	MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error)
 	MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error)
+	MonitorProcessMaxVotersChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithMaxVotersChange, error)
 	CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error)
 	Process(processID []byte) (*types.Process, error)
 	RegisterKnownProcess(processID string)
@@ -87,7 +88,13 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start monitor of process state root changes: %w", err)
 	}
 
-	go pm.monitorProcesses(ctx, newProcChan, changedStatusProcChan, stateTransitionChan)
+	maxVotersChangeChan, err := pm.contracts.MonitorProcessMaxVotersChange(ctx, pm.interval)
+	if err != nil {
+		pm.cancel = nil
+		return fmt.Errorf("failed to start monitor of process max voters changes: %w", err)
+	}
+
+	go pm.monitorProcesses(ctx, newProcChan, changedStatusProcChan, stateTransitionChan, maxVotersChangeChan)
 	return nil
 }
 
@@ -212,6 +219,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 	newProcChan <-chan *types.Process,
 	changedStatusProcChan <-chan *types.ProcessWithStatusChange,
 	stateTransitionChan <-chan *types.ProcessWithStateRootChange,
+	maxVotersChangeChan <-chan *types.ProcessWithMaxVotersChange,
 ) {
 	for {
 		select {
@@ -268,6 +276,20 @@ func (pm *ProcessMonitor) monitorProcesses(
 				),
 			); err != nil {
 				log.Warnw("failed to update process state root",
+					"pid", process.ID.String(),
+					"err", err.Error())
+			}
+		case process := <-maxVotersChangeChan:
+			log.Debugw("process max voters changed",
+				"pid", process.ID.String(),
+				"newMaxVoters", process.NewMaxVoters.String())
+			if err := pm.storage.UpdateProcess(
+				new(types.ProcessID).SetBytes(process.ID),
+				storage.ProcessUpdateCallbackSetMaxVoters(
+					process.NewMaxVoters,
+				),
+			); err != nil {
+				log.Warnw("failed to update process max voters",
 					"pid", process.ID.String(),
 					"err", err.Error())
 			}
