@@ -15,6 +15,7 @@ type Vote struct {
 	Address           *big.Int
 	VoteID            types.HexBytes
 	Ballot            *elgamal.Ballot
+	OverwrittenBallot *elgamal.Ballot
 	Weight            *big.Int
 	ReencryptedBallot *elgamal.Ballot // Reencrypted ballot for the state transition circuit
 }
@@ -33,8 +34,9 @@ func (v *Vote) SerializeBigInts() []*big.Int {
 	return list
 }
 
-// AddVote adds a vote to the state
-//   - if address exists, it counts as vote overwrite
+// AddVote adds a vote to the state.
+// If v.Address exists already in the tree, it counts as vote overwrite.
+// Note that this method modifies passed v, sets v.OverwrittenBallot
 func (o *State) AddVote(v *Vote) error {
 	if o.dbTx == nil {
 		return fmt.Errorf("need to StartBatch() first")
@@ -50,8 +52,10 @@ func (o *State) AddVote(v *Vote) error {
 			return err
 		}
 		o.overwrittenSum.Add(o.overwrittenSum, oldVote)
-		o.overwrittenBallots = append(o.overwrittenBallots, oldVote)
 		o.overwrittenVotesCount++
+		v.OverwrittenBallot = oldVote
+	} else {
+		v.OverwrittenBallot = elgamal.NewBallot(Curve)
 	}
 	o.allBallotsSum.Add(o.allBallotsSum, v.ReencryptedBallot)
 	o.votersCount++

@@ -50,7 +50,6 @@ type State struct {
 	newResultsSub         *elgamal.Ballot
 	allBallotsSum         *elgamal.Ballot
 	overwrittenSum        *elgamal.Ballot
-	overwrittenBallots    []*elgamal.Ballot
 	votersCount           int
 	overwrittenVotesCount int
 	votes                 []*Vote
@@ -215,7 +214,6 @@ func (o *State) StartBatch() error {
 	o.overwrittenSum = elgamal.NewBallot(Curve)
 	o.votersCount = 0
 	o.overwrittenVotesCount = 0
-	o.overwrittenBallots = []*elgamal.Ballot{}
 	o.votes = []*Vote{}
 	return nil
 }
@@ -370,15 +368,6 @@ func (o *State) Votes() []*Vote {
 	return o.votes
 }
 
-// OverwrittenBallots returns the overwritten ballots in the current batch.
-func (o *State) OverwrittenBallots() []*elgamal.Ballot {
-	v := slices.Clone(o.overwrittenBallots)
-	for len(v) < types.VotesPerBatch {
-		v = append(v, elgamal.NewBallot(Curve))
-	}
-	return v
-}
-
 // PaddedVotes returns the votes added in the current batch, padded to
 // circuits.VotesPerBatch. The padding is done by adding empty votes with zero
 // values.
@@ -389,6 +378,7 @@ func (o *State) PaddedVotes() []*Vote {
 			Address:           big.NewInt(0),
 			Ballot:            elgamal.NewBallot(Curve),
 			ReencryptedBallot: elgamal.NewBallot(Curve),
+			OverwrittenBallot: elgamal.NewBallot(Curve),
 			Weight:            big.NewInt(0),
 		})
 	}

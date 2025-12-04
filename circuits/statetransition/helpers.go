@@ -74,7 +74,7 @@ func GenerateWitness(
 		witness.Votes[i].Address = v.Address
 		witness.Votes[i].VoteWeight = v.Weight
 		witness.Votes[i].VoteID = v.VoteID.BigInt().MathBigInt()
-		witness.Votes[i].OverwrittenBallot = *o.OverwrittenBallots()[i].ToGnark()
+		witness.Votes[i].OverwrittenBallot = *v.OverwrittenBallot.ToGnark()
 	}
 
 	witness.ProcessProofs = ProcessProofs{}
