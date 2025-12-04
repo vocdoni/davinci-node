@@ -73,8 +73,9 @@ func TestCircuitProve(t *testing.T) {
 			newMockVote(s, 2, 20), // add vote 2
 		)
 		testCircuitProve(t, statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK), witness)
-
-		debugLog(t, witness)
+		if os.Getenv("DEBUG") != "" {
+			debugLog(t, witness)
+		}
 	}
 	{
 		witness := newMockTransitionWithVotes(t, s,
@@ -83,8 +84,9 @@ func TestCircuitProve(t *testing.T) {
 			newMockVote(s, 4, 40),  // add vote 4
 		)
 		testCircuitProve(t, statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK), witness)
-
-		debugLog(t, witness)
+		if os.Getenv("DEBUG") != "" {
+			debugLog(t, witness)
+		}
 	}
 }
 
@@ -93,7 +95,8 @@ type CircuitCalculateAggregatorWitness struct {
 }
 
 func (circuit CircuitCalculateAggregatorWitness) Define(api frontend.API) error {
-	_, err := circuit.CalculateAggregatorWitness(api)
+	mask := circuit.VoteMask(api)
+	_, err := circuit.CalculateAggregatorWitness(api, mask)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 witness: ", err)
 	}
@@ -116,7 +119,8 @@ type CircuitAggregatorProof struct {
 }
 
 func (circuit CircuitAggregatorProof) Define(api frontend.API) error {
-	circuit.VerifyAggregatorProof(api)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyAggregatorProof(api, mask)
 	return nil
 }
 
@@ -190,7 +194,9 @@ func TestCircuitMerkleTransitionsProve(t *testing.T) {
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
 
-	debugLog(t, witness)
+	if os.Getenv("DEBUG") != "" {
+		debugLog(t, witness)
+	}
 }
 
 type CircuitLeafHashes struct {
@@ -212,7 +218,9 @@ func TestCircuitLeafHashesProve(t *testing.T) {
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
 
-	debugLog(t, witness)
+	if os.Getenv("DEBUG") != "" {
+		debugLog(t, witness)
+	}
 }
 
 type CircuitReencryptBallots struct {
@@ -220,7 +228,8 @@ type CircuitReencryptBallots struct {
 }
 
 func (circuit CircuitReencryptBallots) Define(api frontend.API) error {
-	circuit.VerifyReencryptedVotes(api)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyReencryptedVotes(api, mask)
 	return nil
 }
 
@@ -244,8 +253,9 @@ type CircuitCensusProofs struct {
 }
 
 func (circuit CircuitCensusProofs) Define(api frontend.API) error {
-	circuit.VerifyMerkleCensusProofs(api)
-	circuit.VerifyCSPCensusProofs(api)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyMerkleCensusProofs(api, mask)
+	circuit.VerifyCSPCensusProofs(api, mask)
 	return nil
 }
 
