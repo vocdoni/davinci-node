@@ -96,6 +96,12 @@ func (o *State) ContainsVoteID(voteID types.HexBytes) bool {
 	return err == nil
 }
 
+// ContainsAddress checks if the state contains an address
+func (o *State) ContainsAddress(address *types.BigInt) bool {
+	_, _, err := o.tree.GetBigInt(address.MathBigInt())
+	return err == nil
+}
+
 // HasAddressVoted checks if an address has voted in a given process. It opens
 // the state at the process's state root and checks for the address. If found,
 // it returns true, otherwise false. If there's an error opening the state or
@@ -105,6 +111,5 @@ func HasAddressVoted(db db.Database, pid types.HexBytes, stateRoot, address *typ
 	if err != nil {
 		return false, fmt.Errorf("could not open state: %v", err)
 	}
-	_, _, err = s.tree.GetBigInt(address.MathBigInt())
-	return err == nil, nil
+	return s.ContainsAddress(address), nil
 }
