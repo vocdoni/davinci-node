@@ -1,14 +1,23 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 
+	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-var VoteIDKeyValue = big.NewInt(0)
+var (
+	// VoteIDKeyValue is a constant key used to store vote IDs in the state
+	VoteIDKeyValue = big.NewInt(0)
+
+	// ErrNotFound is returned when a key is not found in the state
+	ErrKeyNotFound = fmt.Errorf("not found")
+)
 
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
@@ -68,6 +77,10 @@ func (o *State) AddVote(v *Vote) error {
 func (o *State) EncryptedBallot(address *big.Int) (*elgamal.Ballot, error) {
 	_, value, err := o.tree.GetBigInt(address)
 	if err != nil {
+		// Wrap arbo.ErrKeyNotFound to a specific error
+		if errors.Is(err, arbo.ErrKeyNotFound) {
+			return nil, ErrKeyNotFound
+		}
 		return nil, err
 	}
 	ballot, err := elgamal.NewBallot(Curve).SetBigInts(value)
@@ -81,4 +94,17 @@ func (o *State) EncryptedBallot(address *big.Int) (*elgamal.Ballot, error) {
 func (o *State) ContainsVoteID(voteID types.HexBytes) bool {
 	_, _, err := o.tree.GetBigInt(voteID.BigInt().MathBigInt())
 	return err == nil
+}
+
+// HasAddressVoted checks if an address has voted in a given process. It opens
+// the state at the process's state root and checks for the address. If found,
+// it returns true, otherwise false. If there's an error opening the state or
+// during the check, it returns the error.
+func HasAddressVoted(db db.Database, pid types.HexBytes, stateRoot, address *types.BigInt) (bool, error) {
+	s, err := LoadOnRoot(db, pid.BigInt().MathBigInt(), stateRoot.MathBigInt())
+	if err != nil {
+		return false, fmt.Errorf("could not open state: %v", err)
+	}
+	_, _, err = s.tree.GetBigInt(address.MathBigInt())
+	return err == nil, nil
 }
