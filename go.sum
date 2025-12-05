@@ -155,10 +155,10 @@ github.com/codahale/rfc6979 v0.0.0-20141003034818-6a90f24967eb h1:EDmT6Q9Zs+SbUo
 github.com/codahale/rfc6979 v0.0.0-20141003034818-6a90f24967eb/go.mod h1:ZjrT6AXHbDs86ZSdt/osfBi5qfexBrKUdONk989Wnk4=
 github.com/compose-spec/compose-go/v2 v2.1.3 h1:bD67uqLuL/XgkAK6ir3xZvNLFPxPScEi1KW7R5esrLE=
 github.com/compose-spec/compose-go/v2 v2.1.3/go.mod h1:lFN0DrMxIncJGYAXTfWuajfwj5haBJqrBkarHcnjJKc=
-github.com/consensys/gnark v0.14.1-0.20251111105516-b53af634876c h1:d1/0DLclgci9hXg5NraDRpyaX79ZUjHOj1a8SeW6oFQ=
-github.com/consensys/gnark v0.14.1-0.20251111105516-b53af634876c/go.mod h1:eJLCTvIyGUHbjzUyIMImIy52VllGPqhYvGb6yE4vFOY=
-github.com/consensys/gnark-crypto v0.19.2 h1:qrEAIXq3T4egxqiliFFoNrepkIWVEeIYwt3UL0fvS80=
-github.com/consensys/gnark-crypto v0.19.2/go.mod h1:rT23F0XSZqE0mUA0+pRtnL56IbPxs6gp4CeRsBk4XS0=
+github.com/consensys/gnark v0.14.1-0.20251208223249-9af46fd442f3 h1:Eof9WZ0DaH8EzuK1SbAxMmW77TP54wNYK93QCi/v/0M=
+github.com/consensys/gnark v0.14.1-0.20251208223249-9af46fd442f3/go.mod h1:XBV7LkFSZq5AyQhdEN1Y6ntm/QNdu7lnKNvZnh25O7I=
+github.com/consensys/gnark-crypto v0.19.3-0.20251208215708-a16777bf2020 h1:uoP+3PPLHi0UrIsGDUCvSRnfXUvuuMP05Luu4VV13o8=
+github.com/consensys/gnark-crypto v0.19.3-0.20251208215708-a16777bf2020/go.mod h1:pT4WonCx5JSXCQSnk3HWOGHqABZj3MZpBp4XyM3hqHg=
 github.com/containerd/cgroups v1.1.0 h1:v8rEWFl6EoqHB+swVNjVoCJE8o3jX7e8nqBGPLaDFBM=
 github.com/containerd/cgroups v1.1.0/go.mod h1:6ppBcbh/NOOUU+dMKrykgaBnK9lCIBxHqJDGwsa1mIw=
 github.com/containerd/console v1.0.4 h1:F2g4+oChYvBTsASRTz8NP6iIAi97J3TtSAsLbIFn4ro=
@@ -785,8 +785,8 @@ github.com/vocdoni/census3-bigquery v0.0.0-20251127120211-7a39c5dc9fe9 h1:K5wtKI
 github.com/vocdoni/census3-bigquery v0.0.0-20251127120211-7a39c5dc9fe9/go.mod h1:bKnE5u/ThAlRIXeAijvT3810+7MyfCo7VJmIaxs1MQs=
 github.com/vocdoni/davinci-contracts v0.0.28-1 h1:mfqqRAFlES5/sQ1oEwh698J4+XeZ1IDJXX3uV1wNJ9k=
 github.com/vocdoni/davinci-contracts v0.0.28-1/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
-github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251203172124-5c1b39924159 h1:vXu5cGBWwM2LB79uDIcrX9IzPf/5vJq010VWtTV29Ds=
-github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251203172124-5c1b39924159/go.mod h1:BOS7k/ifqwicL1CgLiq1NylPnMLCuNRBHU2HHHtnWOE=
+github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9 h1:7038Dg5xRnRsK43BEJiPIfFnf7oDrnOU1aYib9c5CAo=
+github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9/go.mod h1:vbpZOw6IYuRzO1gdpuW2+Ppnq/v9cscWGcdWiZ2rWi8=
 github.com/vocdoni/lean-imt-go v0.0.0-20251127115127-d947440cf352 h1:wnzMqqLJjyFKHdjQynj0hU7rxsVKAlqCGnpobLLdOmw=
 github.com/vocdoni/lean-imt-go v0.0.0-20251127115127-d947440cf352/go.mod h1:ec+yxmDwLMfPm6cl9eAc4HGicdyAwKIsh/U45ZTSFFQ=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=

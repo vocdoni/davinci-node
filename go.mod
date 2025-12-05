@@ -8,8 +8,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/consensys/gnark v0.14.1-0.20251111105516-b53af634876c
-	github.com/consensys/gnark-crypto v0.19.2
+	github.com/consensys/gnark v0.14.1-0.20251208223249-9af46fd442f3
+	github.com/consensys/gnark-crypto v0.19.3-0.20251208215708-a16777bf2020
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/frankban/quicktest v1.14.6
 	github.com/fxamacker/cbor/v2 v2.9.0
@@ -30,7 +30,7 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/census3-bigquery v0.0.0-20251127120211-7a39c5dc9fe9
 	github.com/vocdoni/davinci-contracts v0.0.28-1
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251203172124-5c1b39924159
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9
 	github.com/vocdoni/lean-imt-go v0.0.0-20251127115127-d947440cf352
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/mod v0.30.0
