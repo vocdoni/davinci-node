@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/consensys/gnark/logger"
@@ -79,6 +80,41 @@ type Services struct {
 	Contracts        *web3.Contracts
 }
 
+func isDebugTest() bool {
+	return os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false"
+}
+
+func testTimeoutChan(t *testing.T) <-chan time.Time {
+	// Set up timeout based on context deadline
+	var timeoutCh <-chan time.Time
+	deadline, hasDeadline := t.Deadline()
+
+	if hasDeadline {
+		// If context has a deadline, set timeout to 15 seconds before it
+		// to allow for clean shutdown and error reporting
+		remainingTime := time.Until(deadline)
+		timeoutBuffer := 15 * time.Second
+
+		// If we have less than the buffer time left, use half of the remaining time
+		if remainingTime <= timeoutBuffer {
+			timeoutBuffer = remainingTime / 2
+		}
+
+		effectiveTimeout := remainingTime - timeoutBuffer
+		timeoutCh = time.After(effectiveTimeout)
+		t.Logf("Test will timeout in %v (deadline: %v)", effectiveTimeout, deadline)
+	} else {
+		// No deadline set, use a reasonable default
+		timeOut := 20 * time.Minute
+		if isDebugTest() {
+			timeOut = 50 * time.Minute
+		}
+		timeoutCh = time.After(timeOut)
+		t.Logf("No test deadline found, using %s minute default timeout", timeOut.String())
+	}
+	return timeoutCh
+}
+
 func isCSPCensus() bool {
 	cspCensusEnvVar := os.Getenv(cspCensusEnvVarName)
 	return strings.ToLower(cspCensusEnvVar) == "true" || cspCensusEnvVar == "1"
@@ -88,7 +124,7 @@ func testCensusOrigin() types.CensusOrigin {
 	if isCSPCensus() {
 		return types.CensusOriginCSPEdDSABN254V1
 	} else {
-		return types.CensusOriginMerkleTreeOffchainStaticV1
+		return types.CensusOriginMerkleTreeOffchainDynamicV1
 	}
 }
 
@@ -474,7 +510,7 @@ func NewTestService(
 	}
 	services.Sequencer = vp.Sequencer
 
-	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
+	if isDebugTest() {
 		logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 		// Note: Debug prover is disabled when not in testing context
 		log.Info("Debug prover is disabled in non-testing context")
@@ -537,11 +573,11 @@ func NewTestService(
 	return services, cleanup, nil
 }
 
-func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Signer, error) {
+func createCensusWithRandomVoters(ctx context.Context, origin types.CensusOrigin, nVoters int) ([]byte, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
 	votes := []state.Vote{}
-	for range size {
+	for range nVoters {
 		signer, err := ethereum.NewSigner()
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to generate signer: %w", err)
@@ -568,7 +604,40 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 		}
 		return root.Root, "http://myowncsp.test", signers, nil
 	} else {
-		censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, votes, defaultCensus3URL)
+		censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, origin, votes, defaultCensus3URL)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
+		}
+		return censusRoot.Bytes(), censusURI, signers, nil
+	}
+}
+
+func createCensusWithVoters(ctx context.Context, origin types.CensusOrigin, signers ...*ethereum.Signer) ([]byte, string, []*ethereum.Signer, error) {
+	// Generate random participants
+	votes := []state.Vote{}
+	for _, signer := range signers {
+		votes = append(votes, state.Vote{
+			Address: signer.Address().Big(),
+			Weight:  big.NewInt(circuits.MockWeight),
+		})
+		privKey := signer.HexPrivateKey()
+		log.Infow("new voter created",
+			"address", signer.Address(),
+			"privKey", privKey.String())
+	}
+
+	if isCSPCensus() {
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(testLocalCSPSeed))
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("failed to create CSP: %w", err)
+		}
+		root := eddsaCSP.CensusRoot()
+		if root == nil {
+			return nil, "", nil, fmt.Errorf("census root is nil")
+		}
+		return root.Root, "http://myowncsp.test", signers, nil
+	} else {
+		censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, origin, votes, defaultCensus3URL)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 		}
@@ -616,7 +685,6 @@ func createProcessInSequencer(
 	censusURI string,
 	censusRoot []byte,
 	ballotMode *types.BallotMode,
-	numVoters int,
 ) (*types.ProcessID, *types.EncryptionKey, *types.HexBytes, error) {
 	// Get the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
@@ -704,6 +772,18 @@ func createProcessInContracts(
 		return nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	return pid, contracts.WaitTxByHash(*txHash, time.Second*15)
+}
+
+func updateProcessCensusInContracts(
+	contracts *web3.Contracts,
+	pid *types.ProcessID,
+	census types.Census,
+) error {
+	txHash, err := contracts.SetProcessCensus(pid.Marshal(), census)
+	if err != nil {
+		return fmt.Errorf("failed to update process census: %w", err)
+	}
+	return contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
 func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
