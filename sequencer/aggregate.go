@@ -90,7 +90,7 @@ func (s *Sequencer) processAndUpdateBatch(pid types.HexBytes) bool {
 	if err := s.aggregateBatch(pid); err != nil {
 		log.Warnw("failed to aggregate batch",
 			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", pid))
+			"processID", pid.String())
 		return true // Continue to next process ID
 	}
 
@@ -116,12 +116,27 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		return fmt.Errorf("process ID cannot be empty")
 	}
 
+	// Ensure the process is accepting votes
+	processID := new(types.ProcessID).SetBytes(pid)
+	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(processID); err != nil {
+		return fmt.Errorf("failed to check if process is accepting votes: %w", err)
+	} else if !isAcceptingVotes {
+		return fmt.Errorf("process '%s' is not accepting votes", processID.String())
+	}
+
+	// Check if the process has reached max voters
+	maxVotersReached, err := s.stg.ProcessMaxVotersReached(processID)
+	if err != nil {
+		return fmt.Errorf("failed to check if process max voters reached: %w", err)
+	}
+
 	// Pull verified ballots from storage
 	ballots, keys, err := s.stg.PullVerifiedBallots(pid, types.VotesPerBatch)
 	if err != nil {
 		return fmt.Errorf("failed to pull verified ballots: %w", err)
 	}
 
+	// If no ballots were pulled, nothing to do
 	if len(ballots) == 0 {
 		return nil
 	}
@@ -133,18 +148,14 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	for _, b := range ballots {
 		addr := b.Address.String()
 		if addressSeen[addr] {
-			log.Warnw("CRITICAL: duplicate address detected in aggregation batch",
-				"address", addr,
-				"processID", fmt.Sprintf("%x", pid))
-			return fmt.Errorf("duplicate address in batch: %s", addr)
+			return fmt.Errorf("duplicate address in batch of process %s: %s", processID.String(), addr)
 		}
 		addressSeen[addr] = true
 	}
 
 	log.Debugw("aggregating ballots",
-		"processID", fmt.Sprintf("%x", pid),
-		"ballotCount", len(ballots),
-	)
+		"processID", pid.String(),
+		"ballotCount", len(ballots))
 	startTime := time.Now()
 
 	// Prepare data structures for the aggregator circuit
@@ -158,6 +169,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	if err != nil {
 		return fmt.Errorf("failed to get latest process state: %w", err)
 	}
+
 	// Transform each ballot's proof for the aggregator circuit
 	var transformErr error
 	for i, b := range ballots {
@@ -177,12 +189,32 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 			continue
 		}
 
+		// If the maxVoters is reached, check if the ballot is an overwrite
+		// and skip if not
+		if maxVotersReached && !processState.ContainsAddress(new(types.BigInt).SetBigInt(b.Address)) {
+			log.Debugw("skipping ballot due to max voters reached and not an overwrite",
+				"address", b.Address.String(),
+				"processID", pid.String())
+			// Mark the ballot as failed
+			if err := s.stg.MarkVerifiedBallotsFailed(b.VoteID); err != nil {
+				log.Warnw("failed to mark ballot as failed",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+				)
+			}
+			continue
+		}
+
+		// Transform the proof into the required format
 		proofs[i], transformErr = stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](groth16.Proof(b.Proof))
 		if transformErr != nil {
 			return fmt.Errorf("failed to transform proof for recursion (ballot %s): %w", b.VoteID.String(), transformErr)
 		}
+		// Transform and collect the input hash for the proof
 		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](b.InputsHash)
 		proofsInputsHashInputs = append(proofsInputsHashInputs, b.InputsHash)
+		// Prepare the aggregator ballot entry
 		aggBallots = append(aggBallots, &storage.AggregatorBallot{
 			VoteID:          b.VoteID,
 			Address:         b.Address,
@@ -224,7 +256,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 			if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
 				log.Warnw("failed to mark ballot batch as failed",
 					"error", err.Error(),
-					"processID", fmt.Sprintf("%x", pid))
+					"processID", pid.String())
 			}
 			return fmt.Errorf("failed to fill with dummy proofs: %w", err)
 		}
@@ -246,16 +278,15 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
 			log.Warnw("failed to mark ballot batch as failed",
 				"error", err.Error(),
-				"processID", fmt.Sprintf("%x", pid))
+				"processID", pid.String())
 		}
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)
 	}
 
 	log.Infow("aggregate proof generated",
 		"took", time.Since(startTime).String(),
-		"processID", fmt.Sprintf("%x", pid),
-		"ballots", len(ballots),
-	)
+		"processID", pid.String(),
+		"ballots", len(ballots))
 
 	// Store the aggregated batch
 	abb := storage.AggregatorBallotBatch{
@@ -274,7 +305,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
 			log.Warnw("failed to mark ballot batch as failed",
 				"error", err.Error(),
-				"processID", fmt.Sprintf("%x", pid))
+				"processID", pid.String())
 		}
 		return fmt.Errorf("failed to mark verified ballots as done: %w", err)
 	}

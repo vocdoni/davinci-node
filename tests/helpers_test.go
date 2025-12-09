@@ -63,7 +63,7 @@ const (
 )
 
 var (
-	defaultBatchTimeWindow = 120 * time.Second // default batch time window for sequencer
+	defaultBatchTimeWindow = 45 * time.Second // default batch time window for sequencer
 	defaultAPIPort         = util.RandomInt(40000, 60000)
 	defaultCensus3Port     = util.RandomInt(40000, 60000)
 	defaultCensus3URL      = fmt.Sprintf("http://localhost:%d", defaultCensus3Port)
@@ -461,15 +461,12 @@ func NewTestService(
 	// Start sequencer service
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
-	vp := service.NewSequencer(stg, contracts, time.Second*30, nil)
+	vp := service.NewSequencer(stg, contracts, defaultBatchTimeWindow, nil)
 	if err := vp.Start(ctx); err != nil {
 		web3Cleanup() // Clean up web3 if sequencer fails to start
 		return nil, nil, fmt.Errorf("failed to start sequencer: %w", err)
 	}
 	services.Sequencer = vp.Sequencer
-
-	// Start sequencer batch time window
-	services.Sequencer.SetBatchTimeWindow(defaultBatchTimeWindow)
 
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
 		logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
@@ -569,7 +566,7 @@ func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Si
 	}
 }
 
-func generateCensusProof(cli *client.HTTPclient, root, pid, key []byte) (*types.CensusProof, error) {
+func generateCensusProof(pid, key []byte) (*types.CensusProof, error) {
 	if isCSPCensus() {
 		weight := new(types.BigInt).SetUint64(circuits.MockWeight)
 		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(testLocalCSPSeed))
@@ -609,6 +606,7 @@ func createProcessInSequencer(
 	censusURI string,
 	censusRoot []byte,
 	ballotMode *types.BallotMode,
+	numVoters int,
 ) (*types.ProcessID, *types.EncryptionKey, *types.HexBytes, error) {
 	// Get the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
@@ -668,6 +666,7 @@ func createProcessInContracts(
 	ballotMode *types.BallotMode,
 	encryptionKey *types.EncryptionKey,
 	stateRoot *types.HexBytes,
+	numVoters int,
 	duration ...time.Duration,
 ) (*types.ProcessID, error) {
 	finalDuration := time.Hour
@@ -682,6 +681,7 @@ func createProcessInContracts(
 		StateRoot:      stateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       finalDuration,
+		MaxVoters:      types.NewInt(numVoters),
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode:     ballotMode,
 		Census: &types.Census{
@@ -886,6 +886,26 @@ func checkVoteStatus(cli *client.HTTPclient, pid *types.ProcessID, voteIDs []typ
 	}
 
 	return allExpectedStatus, failed, nil
+}
+
+func updateMaxVoters(
+	contracts *web3.Contracts,
+	pid *types.ProcessID,
+	numVoters int,
+) error {
+	currentProcess, err := contracts.Process(pid.Marshal())
+	if err != nil {
+		return fmt.Errorf("failed to get current process: %w", err)
+	}
+	currentMaxVoters := currentProcess.MaxVoters.MathBigInt().Int64()
+	if numVoters < int(currentMaxVoters) {
+		return fmt.Errorf("new max voters (%d) is less than current max voters (%d)", numVoters, currentMaxVoters)
+	}
+	txHash, err := contracts.SetProcessMaxVoters(pid.Marshal(), types.NewInt(numVoters))
+	if err != nil {
+		return fmt.Errorf("failed to set process max voters: %w", err)
+	}
+	return contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
 func votersCount(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {

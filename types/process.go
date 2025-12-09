@@ -169,6 +169,7 @@ type Process struct {
 	Metadata              *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
 	VotersCount           *BigInt               `json:"votersCount"        cbor:"12,keyasint,omitempty"`
 	OverwrittenVotesCount *BigInt               `json:"overwrittenVotesCount"    cbor:"13,keyasint,omitempty"`
+	MaxVoters             *BigInt               `json:"maxVoters"                cbor:"14,keyasint,omitempty"`
 	SequencerStats        SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
@@ -194,9 +195,16 @@ type ProcessWithStatusChange struct {
 // VotersCountCount, and NewOverwrittenVotesCount fields
 type ProcessWithStateRootChange struct {
 	*Process
+	NewMaxVoters             *BigInt
 	NewStateRoot             *BigInt
 	VotersCountCount         *BigInt
 	NewOverwrittenVotesCount *BigInt
+}
+
+// ProcessWithMaxVotersChange extends types.Process to add NewMaxVoters field
+type ProcessWithMaxVotersChange struct {
+	*Process
+	NewMaxVoters *BigInt
 }
 
 type SequencerProcessStats struct {

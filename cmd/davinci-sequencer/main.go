@@ -249,14 +249,14 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		return nil, fmt.Errorf("invalid network configuration for %s", cfg.Web3.Network)
 	}
 	contracts := npbindings.GetAllContractAddresses(cfg.Web3.Network)
-	dconfig := config.DavinciWeb3Config{
+	web3Conf := config.DavinciWeb3Config{
 		ProcessRegistrySmartContract:      contracts[npbindings.ProcessRegistryContract],
 		OrganizationRegistrySmartContract: contracts[npbindings.OrganizationRegistryContract],
 		ResultsZKVerifier:                 contracts[npbindings.ResultsVerifierGroth16Contract],
 		StateTransitionZKVerifier:         contracts[npbindings.StateTransitionVerifierGroth16Contract],
 	}
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
-	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network, dconfig, cfg.Log.DisableAPI)
+	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network, web3Conf, cfg.Log.DisableAPI)
 
 	// Configure worker API if enabled
 	if cfg.API.SequencerWorkersSeed != "" {
