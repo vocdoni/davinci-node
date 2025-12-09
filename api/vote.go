@@ -161,7 +161,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// voters
 	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), process.ID, process.StateRoot, vote.Address.BigInt())
 	if err != nil {
-		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
+		ErrGenericInternalServerError.Withf("error checking if address has voted: %v", err).Write(w)
 		return
 	}
 	if !isOverwrite {
