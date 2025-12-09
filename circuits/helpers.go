@@ -16,11 +16,7 @@ import (
 // FrontendError function is an in-circuit function to print an error message
 // and an error trace, making the circuit fail.
 func FrontendError(api frontend.API, msg string, trace error) {
-	err := fmt.Errorf("%s", msg)
-	if err != nil {
-		err = fmt.Errorf("%w: %v", err, trace)
-	}
-	api.Println(err.Error())
+	api.Println(fmt.Errorf("%s: %w", msg, trace))
 	api.AssertIsEqual(1, 0)
 }
 
