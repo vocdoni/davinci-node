@@ -26,8 +26,7 @@ var (
 func TestMain(m *testing.M) {
 	log.Init(log.LogLevelDebug, "stdout", nil)
 	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
-		log.Errorw(err, "failed to download artifacts")
-		return
+		log.Fatalf("failed to download artifacts: %v", err)
 	}
 
 	// create a temp dir
@@ -35,7 +34,7 @@ func TestMain(m *testing.M) {
 	// defer the removal of the temp dir
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
-			log.Warnw("failed to remove temp dir", "dir", tempDir, "error", err)
+			log.Fatalf("failed to remove temp dir (%s): %v", tempDir, err)
 		}
 	}()
 
@@ -46,18 +45,16 @@ func TestMain(m *testing.M) {
 	var cleanup func()
 	services, cleanup, err = NewTestService(ctx, tempDir, testWorkerSeed, testWorkerTokenExpiration, testWorkerTimeout, workers.DefaultWorkerBanRules)
 	if err != nil {
-		log.Errorw(err, "failed to setup test services")
-		return
+		log.Fatalf("failed to setup test services: %v", err)
 	}
 
 	// create organization
 	if orgAddr, err = createOrganization(services.Contracts); err != nil {
-		log.Errorw(err, "failed to create organization")
-		return
+		log.Fatalf("failed to create organization: %v", err)
 	}
 	log.Infof("Organization address: %s", orgAddr.String())
 
 	// Defer cleanup to run after tests complete
 	defer cleanup()
-	os.Exit(m.Run())
+	m.Run()
 }

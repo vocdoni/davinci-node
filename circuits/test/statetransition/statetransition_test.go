@@ -48,7 +48,7 @@ const falseString = "false"
 func TestMain(m *testing.M) {
 	// enable log to see nbConstraints
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
-	os.Exit(m.Run())
+	m.Run()
 }
 
 func testCircuitCompile(t *testing.T, c frontend.Circuit) {
