@@ -213,12 +213,16 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 				if r.Mod.Path != "github.com/vocdoni/davinci-contracts" {
 					continue
 				}
-				versionParts := strings.Split(r.Mod.Version, "-")
-				if len(versionParts) != 3 {
-					return nil, nil, fmt.Errorf("invalid version parts length: expected 3, got %d", len(versionParts))
+				if versionParts := strings.Split(r.Mod.Version, "-"); len(versionParts) == 3 {
+					composeEnv[contractsCommitHashEnvVarName] = versionParts[2]
+					break
 				}
-				composeEnv[contractsCommitHashEnvVarName] = versionParts[2]
-				break
+				if versionParts := strings.Split(r.Mod.Version, "."); len(versionParts) == 3 {
+					composeEnv[contractsCommitHashEnvVarName] = r.Mod.Version
+					break
+				}
+				return nil, nil, fmt.Errorf("cannot parse davinci-contracts version: %s", r.Mod.Version)
+
 			}
 		}
 
