@@ -318,6 +318,34 @@ func (c *Contracts) SetProcessMaxVoters(processID types.HexBytes, maxVoters *typ
 	return &hash, nil
 }
 
+// SetProcessCensus sets the census of the process with the given ID in the
+// ProcessRegistry contract. It returns the transaction hash of the census
+// update, or an error if the update fails.
+func (c *Contracts) SetProcessCensus(processID types.HexBytes, census types.Census) (*common.Hash, error) {
+	var pid [32]byte
+	copy(pid[:], processID)
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	autOpts, err := c.authTransactOpts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transact options: %w", err)
+	}
+	autOpts.Context = ctx
+
+	var newCensusRoot [32]byte
+	copy(newCensusRoot[:], census.CensusRoot)
+	tx, err := c.processes.SetProcessCensus(autOpts, pid, npbindings.IProcessRegistryCensus{
+		CensusRoot:   newCensusRoot,
+		CensusURI:    census.CensusURI,
+		CensusOrigin: uint8(census.CensusOrigin),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to set process census: %w", err)
+	}
+	hash := tx.Hash()
+	return &hash, nil
+}
+
 // MonitorProcessCreation monitors the creation of new processes by polling the
 // ProcessRegistry contract every interval.
 func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
@@ -552,6 +580,64 @@ func (c *Contracts) MonitorProcessMaxVotersChange(ctx context.Context, interval 
 					updatedProcChan <- &types.ProcessWithMaxVotersChange{
 						Process:      process,
 						NewMaxVoters: process.MaxVoters,
+					}
+				}
+			}
+		}
+	}()
+	return updatedProcChan, nil
+}
+
+func (c *Contracts) MonitorProcessCensusRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithCensusRootChange, error) {
+	updatedProcChan := make(chan *types.ProcessWithCensusRootChange)
+	go func() {
+		defer close(updatedProcChan)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Infow("exiting monitor process updates")
+				return
+			case <-ticker.C:
+				end := c.CurrentBlock()
+				// Use dedicated cursor for state root events to prevent concurrent
+				// monitors from interfering with each other's block tracking.
+				c.watchBlockMutex.RLock()
+				start := c.lastWatchProcessStateRootBlock
+				c.watchBlockMutex.RUnlock()
+				if end <= start {
+					continue
+				}
+				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
+				iter, err := c.processes.FilterCensusUpdated(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil)
+				cancel()
+				if err != nil || iter == nil {
+					log.Debugw("failed to filter process finalized, retrying", "err", err)
+					continue
+				}
+				c.watchBlockMutex.Lock()
+				c.lastWatchProcessStateRootBlock = end
+				c.watchBlockMutex.Unlock()
+				for iter.Next() {
+					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
+					// Check if process is registered in knownProcesses map
+					c.knownProcessesMutex.RLock()
+					_, exists := c.knownProcesses[processID]
+					c.knownProcessesMutex.RUnlock()
+					if !exists {
+						continue
+					}
+					process, err := c.Process(iter.Event.ProcessId[:])
+					if err != nil {
+						log.Errorw(err, "failed to get process while monitoring process status changes")
+						continue
+					}
+
+					updatedProcChan <- &types.ProcessWithCensusRootChange{
+						Process:       process,
+						NewCensusRoot: iter.Event.CensusRoot[:],
+						NewCensusURI:  iter.Event.CensusURI,
 					}
 				}
 			}

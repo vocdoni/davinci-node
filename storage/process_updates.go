@@ -65,6 +65,17 @@ func ProcessUpdateCallbackSetMaxVoters(maxVoters *types.BigInt) func(*types.Proc
 	}
 }
 
+// ProcessUpdateCallbackSetCensusRoot returns a function that updates the census
+// root of a process. This function is used when an update over the census root
+// is received from the process monitor.
+func ProcessUpdateCallbackSetCensusRoot(censusRoot types.HexBytes, censusURI string) func(*types.Process) error {
+	return func(p *types.Process) error {
+		p.Census.CensusRoot = censusRoot
+		p.Census.CensusURI = censusURI
+		return nil
+	}
+}
+
 // ProcessUpdateCallbackLastTransitionDate returns a function that updates the
 // last state transition date
 func ProcessUpdateCallbackLastTransitionDate() func(*types.Process) error {

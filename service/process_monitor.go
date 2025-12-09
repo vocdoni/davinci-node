@@ -30,6 +30,7 @@ type ContractsService interface {
 	MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error)
 	MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error)
 	MonitorProcessMaxVotersChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithMaxVotersChange, error)
+	MonitorProcessCensusRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithCensusRootChange, error)
 	CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error)
 	Process(processID []byte) (*types.Process, error)
 	RegisterKnownProcess(processID string)
@@ -94,7 +95,13 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start monitor of process max voters changes: %w", err)
 	}
 
-	go pm.monitorProcesses(ctx, newProcChan, changedStatusProcChan, stateTransitionChan, maxVotersChangeChan)
+	censusRootChangeChan, err := pm.contracts.MonitorProcessCensusRootChange(ctx, pm.interval)
+	if err != nil {
+		pm.cancel = nil
+		return fmt.Errorf("failed to start monitor of process census root changes: %w", err)
+	}
+
+	go pm.monitorProcesses(ctx, newProcChan, changedStatusProcChan, stateTransitionChan, maxVotersChangeChan, censusRootChangeChan)
 	return nil
 }
 
@@ -220,6 +227,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 	changedStatusProcChan <-chan *types.ProcessWithStatusChange,
 	stateTransitionChan <-chan *types.ProcessWithStateRootChange,
 	maxVotersChangeChan <-chan *types.ProcessWithMaxVotersChange,
+	censusRootChangeChan <-chan *types.ProcessWithCensusRootChange,
 ) {
 	for {
 		select {
@@ -293,6 +301,24 @@ func (pm *ProcessMonitor) monitorProcesses(
 					"pid", process.ID.String(),
 					"err", err.Error())
 			}
+		case process := <-censusRootChangeChan:
+			log.Debugw("process census root or/and URI changed",
+				"pid", process.ID.String(),
+				"newCensusRoot", process.NewCensusRoot.String(),
+				"newCensusURI", process.NewCensusURI)
+			if err := pm.storage.UpdateProcess(
+				new(types.ProcessID).SetBytes(process.ID),
+				storage.ProcessUpdateCallbackSetCensusRoot(
+					process.NewCensusRoot,
+					process.NewCensusURI,
+				),
+			); err != nil {
+				log.Warnw("failed to update process census root",
+					"pid", process.ID.String(),
+					"err", err.Error())
+			}
+			// download and import the process new census
+			pm.censusDownloader.DownloadQueue <- process.Census
 		}
 	}
 }
