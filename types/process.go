@@ -173,16 +173,6 @@ type Process struct {
 	SequencerStats        SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
-// BigCensusRoot returns the BigInt representation of the census root of the
-// process. It converts the census root from its original format to a BigInt
-// according to the census origin.
-func (p *Process) BigCensusRoot() (*BigInt, error) {
-	if p.Census == nil {
-		return nil, fmt.Errorf("census is nil")
-	}
-	return processCensusRootToBigInt(p.Census.CensusOrigin, p.Census.CensusRoot)
-}
-
 // ProcessWithStatusChange extends types.Process to add OldStatus and NewStatus
 // fields
 type ProcessWithStatusChange struct {
@@ -205,6 +195,12 @@ type ProcessWithStateRootChange struct {
 type ProcessWithMaxVotersChange struct {
 	*Process
 	NewMaxVoters *BigInt
+}
+
+type ProcessWithCensusRootChange struct {
+	*Process
+	NewCensusRoot HexBytes
+	NewCensusURI  string
 }
 
 type SequencerProcessStats struct {
@@ -265,13 +261,6 @@ type ProcessSetup struct {
 	Census     *Census     `json:"census"`
 	BallotMode *BallotMode `json:"ballotMode"`
 	Signature  HexBytes    `json:"signature"`
-}
-
-// CensusRootBigInt returns the BigInt representation of the census root of the
-// process. It converts the census root from its original format to a BigInt
-// according to the census origin.
-func (p *ProcessSetup) CensusRootBigInt() (*BigInt, error) {
-	return processCensusRootToBigInt(p.Census.CensusOrigin, p.Census.CensusRoot)
 }
 
 // ProcessSetupResponse represents the response of a voting process

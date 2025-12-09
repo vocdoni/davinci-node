@@ -28,8 +28,13 @@ func NewCensusImporter(stg *storage.Storage) *CensusImporter {
 //
 // It returns an error if the download or import fails.
 func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census) error {
-	switch census.CensusOrigin {
-	case types.CensusOriginMerkleTreeOffchainStaticV1:
+	if census == nil {
+		return fmt.Errorf("census is nil")
+	} else if !census.CensusOrigin.Valid() {
+		return fmt.Errorf("invalid census origin: %s", census.CensusOrigin.String())
+	}
+	switch {
+	case census.CensusOrigin.IsMerkleTree():
 		// Use JSON dump importer for Merkle Tree censuses
 		if err := downloadAndImportJSON(
 			d.storage,
@@ -38,7 +43,7 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 		); err != nil {
 			return fmt.Errorf("failed to import census from JSON dump: %w", err)
 		}
-	case types.CensusOriginCSPEdDSABN254V1, types.CensusOriginCSPEdDSABLS12377V1:
+	case census.CensusOrigin.IsCSP():
 		// CSP-based census importers do not require downloading, as the
 		// census data is managed by the CSP itself.
 		return nil

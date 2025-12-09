@@ -176,8 +176,8 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// verify the census proof accordingly to the census origin and get the
 	// voter weight
 	var voterWeight *types.BigInt
-	switch process.Census.CensusOrigin {
-	case types.CensusOriginMerkleTreeOffchainStaticV1:
+	switch {
+	case process.Census.CensusOrigin.IsMerkleTree():
 		censusRef, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
 		if err != nil {
 			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
@@ -189,7 +189,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		voterWeight = new(types.BigInt).SetBigInt(weight)
-	case types.CensusOriginCSPEdDSABLS12377V1, types.CensusOriginCSPEdDSABN254V1:
+	case process.Census.CensusOrigin.IsCSP():
 		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {
 			ErrInvalidCensusProof.Withf("census proof verification failed").WithErr(err).Write(w)
 			return
