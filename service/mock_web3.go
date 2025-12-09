@@ -55,6 +55,10 @@ func (m *MockContracts) MonitorProcessStateRootChange(ctx context.Context, inter
 	return make(chan *types.ProcessWithStateRootChange), nil
 }
 
+func (m *MockContracts) MonitorProcessMaxVotersChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithMaxVotersChange, error) {
+	return make(chan *types.ProcessWithMaxVotersChange), nil
+}
+
 func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

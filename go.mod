@@ -29,8 +29,8 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/census3-bigquery v0.0.0-20251127120211-7a39c5dc9fe9
-	github.com/vocdoni/davinci-contracts v0.0.29-0.20251209132038-b46a70579076
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9
+	github.com/vocdoni/davinci-contracts v0.0.30-0.20251209143423-6e5e075af95b
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20250721114051-04061c85ab97
 	github.com/vocdoni/lean-imt-go v0.0.0-20251127115127-d947440cf352
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/mod v0.30.0

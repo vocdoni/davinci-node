@@ -23,11 +23,12 @@ type contractProcess struct {
 	LatestStateRoot       *big.Int
 	StartTime             *big.Int
 	Duration              *big.Int
+	MaxVoters             *big.Int
+	VotersCount           *big.Int
+	OverwrittenVotesCount *big.Int
 	MetadataURI           string
 	BallotMode            npbindings.IProcessRegistryBallotMode
 	Census                npbindings.IProcessRegistryCensus
-	VotersCount           *big.Int
-	OverwrittenVotesCount *big.Int
 	Result                []*big.Int
 }
 
@@ -56,6 +57,7 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 		p.Status,
 		p.StartTime,
 		p.Duration,
+		p.MaxVoters,
 		p.BallotMode,
 		p.Census,
 		p.MetadataURI,
@@ -90,11 +92,12 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		LatestStateRoot:       p.LatestStateRoot,
 		StartTime:             p.StartTime,
 		Duration:              p.Duration,
+		MaxVoters:             p.MaxVoters,
+		VotersCount:           p.VotersCount,
+		OverwrittenVotesCount: p.OverwrittenVotesCount,
 		MetadataURI:           p.MetadataURI,
 		BallotMode:            p.BallotMode,
 		Census:                p.Census,
-		VotersCount:           p.VotersCount,
-		OverwrittenVotesCount: p.OverwrittenVotesCount,
 		Result:                p.Result,
 	})
 	if err != nil {
@@ -294,6 +297,27 @@ func (c *Contracts) SetProcessStatus(processID types.HexBytes, status types.Proc
 	return &hash, nil
 }
 
+// SetProcessMaxVoters sets the maximum number of voters for the process with
+// the given ID in the ProcessRegistry contract. It returns the transaction
+// hash of the update, or an error if the update fails.
+func (c *Contracts) SetProcessMaxVoters(processID types.HexBytes, maxVoters *types.BigInt) (*common.Hash, error) {
+	var pid [32]byte
+	copy(pid[:], processID)
+	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
+	defer cancel()
+	autOpts, err := c.authTransactOpts()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transact options: %w", err)
+	}
+	autOpts.Context = ctx
+	tx, err := c.processes.SetProcessMaxVoters(autOpts, pid, maxVoters.MathBigInt())
+	if err != nil {
+		return nil, fmt.Errorf("failed to set process max voters: %w", err)
+	}
+	hash := tx.Hash()
+	return &hash, nil
+}
+
 // MonitorProcessCreation monitors the creation of new processes by polling the
 // ProcessRegistry contract every interval.
 func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
@@ -414,8 +438,8 @@ func (c *Contracts) MonitorProcessStatusChanges(ctx context.Context, interval ti
 
 // MonitorProcessStateRootChange monitors the state root changes in processes
 // by polling the ProcessRegistry contract every interval. It returns a channel
-// that emits processes with the new state root, voters count, and vote
-// overwritten count.
+// that emits processes with the new state root, the max voters, voters count,
+// and vote overwritten count.
 func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error) {
 	updatedProcChan := make(chan *types.ProcessWithStateRootChange)
 	go func() {
@@ -464,9 +488,70 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 
 					updatedProcChan <- &types.ProcessWithStateRootChange{
 						Process:                  process,
+						NewMaxVoters:             process.MaxVoters,
 						NewStateRoot:             new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
 						VotersCountCount:         process.VotersCount,
 						NewOverwrittenVotesCount: process.OverwrittenVotesCount,
+					}
+				}
+			}
+		}
+	}()
+	return updatedProcChan, nil
+}
+
+// MonitorProcessMaxVotersChange monitors the max voters changes in processes
+// by polling the ProcessRegistry contract every interval. It returns a channel
+// that emits processes with the new max voters.
+func (c *Contracts) MonitorProcessMaxVotersChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithMaxVotersChange, error) {
+	updatedProcChan := make(chan *types.ProcessWithMaxVotersChange)
+	go func() {
+		defer close(updatedProcChan)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Infow("exiting monitor process updates")
+				return
+			case <-ticker.C:
+				end := c.CurrentBlock()
+				// Use dedicated cursor for state root events to prevent concurrent
+				// monitors from interfering with each other's block tracking.
+				c.watchBlockMutex.RLock()
+				start := c.lastWatchProcessStateRootBlock
+				c.watchBlockMutex.RUnlock()
+				if end <= start {
+					continue
+				}
+				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
+				iter, err := c.processes.FilterProcessMaxVotersChanged(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil)
+				cancel()
+				if err != nil || iter == nil {
+					log.Debugw("failed to filter process finalized, retrying", "err", err)
+					continue
+				}
+				c.watchBlockMutex.Lock()
+				c.lastWatchProcessStateRootBlock = end
+				c.watchBlockMutex.Unlock()
+				for iter.Next() {
+					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
+					// Check if process is registered in knownProcesses map
+					c.knownProcessesMutex.RLock()
+					_, exists := c.knownProcesses[processID]
+					c.knownProcessesMutex.RUnlock()
+					if !exists {
+						continue
+					}
+					process, err := c.Process(iter.Event.ProcessId[:])
+					if err != nil {
+						log.Errorw(err, "failed to get process while monitoring process status changes")
+						continue
+					}
+
+					updatedProcChan <- &types.ProcessWithMaxVotersChange{
+						Process:      process,
+						NewMaxVoters: process.MaxVoters,
 					}
 				}
 			}
@@ -576,11 +661,12 @@ func contractProcess2Process(p *contractProcess) (*types.Process, error) {
 		StateRoot:             (*types.BigInt)(p.LatestStateRoot),
 		StartTime:             time.Unix(int64(p.StartTime.Uint64()), 0),
 		Duration:              time.Duration(p.Duration.Uint64()) * time.Second,
+		MaxVoters:             (*types.BigInt)(p.MaxVoters),
+		VotersCount:           (*types.BigInt)(p.VotersCount),
+		OverwrittenVotesCount: (*types.BigInt)(p.OverwrittenVotesCount),
 		MetadataURI:           p.MetadataURI,
 		BallotMode:            &mode,
 		Census:                &census,
-		VotersCount:           (*types.BigInt)(p.VotersCount),
-		OverwrittenVotesCount: (*types.BigInt)(p.OverwrittenVotesCount),
 		Result:                results,
 	}, nil
 }
@@ -598,6 +684,7 @@ func process2ContractProcess(p *types.Process) contractProcess {
 	prp.LatestStateRoot = p.StateRoot.MathBigInt()
 	prp.StartTime = big.NewInt(p.StartTime.Unix())
 	prp.Duration = big.NewInt(int64(p.Duration.Seconds()))
+	prp.MaxVoters = p.MaxVoters.MathBigInt()
 	prp.MetadataURI = p.MetadataURI
 
 	prp.BallotMode = npbindings.IProcessRegistryBallotMode{

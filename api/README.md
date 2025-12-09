@@ -131,7 +131,6 @@ It can be:
  - `2` -> CensusOriginCSPEdDSABN254V1: Indicates that the census is provided by a Credential Service Providers (CSP). This origin is commonly used when the census data is managed by an external trusted provider.
 
 
-
 **Request Body**:
 ```json
 {
@@ -465,6 +464,7 @@ The status can be one of the following values:
 **Errors**:
 - 40001: Resource not found (vote not found)
 - 40006: Malformed process ID
+- 40029: Process has reached the maximum number of voters allowed
 - 40004: Malformed vote ID
 - 50002: Internal server error
 

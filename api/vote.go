@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
-	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -91,7 +90,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	// Get the ballot by address
 	ballot, err := s.EncryptedBallot(address.BigInt().MathBigInt())
 	if err != nil {
-		if errors.Is(err, arbo.ErrKeyNotFound) {
+		if errors.Is(err, state.ErrKeyNotFound) {
 			ErrResourceNotFound.Write(w)
 			return
 		}
@@ -150,8 +149,29 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
 	if ok, err := a.storage.ProcessIsAcceptingVotes(pid); !ok {
-		ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
+		if err != nil {
+			ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
+			return
+		}
+		ErrProcessNotAcceptingVotes.Write(w)
 		return
+	}
+	// check if the address has already voted, to determine if the vote is an
+	// overwrite or a new vote, if so check if the process has reached max
+	// voters
+	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), process.ID, process.StateRoot, vote.Address.BigInt())
+	if err != nil {
+		ErrGenericInternalServerError.Withf("error checking if address has voted: %v", err).Write(w)
+		return
+	}
+	if !isOverwrite {
+		if maxVotersReached, err := a.storage.ProcessMaxVotersReached(pid); err != nil {
+			ErrGenericInternalServerError.Withf("could not check max voters: %v", err).Write(w)
+			return
+		} else if maxVotersReached {
+			ErrProcessMaxVotersReached.Write(w)
+			return
+		}
 	}
 	// verify the census proof accordingly to the census origin and get the
 	// voter weight

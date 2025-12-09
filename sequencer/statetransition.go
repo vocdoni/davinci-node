@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -238,62 +237,6 @@ func (s *Sequencer) processStateTransitionBatch(
 		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
 	return proof, blobData, nil
-}
-
-func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, error) {
-	// get the process from the storage
-	process, err := s.stg.Process(pid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get process metadata: %w", err)
-	}
-	isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(pid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
-	}
-	if !isAcceptingVotes {
-		return nil, fmt.Errorf("process %x is not accepting votes", pid)
-	}
-
-	st, err := state.New(s.stg.StateDB(), pid.BigInt())
-	if err != nil {
-		return nil, fmt.Errorf("failed to load state: %w", err)
-	}
-
-	if err := st.Initialize(
-		process.Census.CensusOrigin.BigInt().MathBigInt(),
-		circuits.BallotModeToCircuit(process.BallotMode),
-		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),
-	); err != nil && !errors.Is(err, state.ErrStateAlreadyInitialized) {
-		return nil, fmt.Errorf("failed to init state: %w", err)
-	}
-
-	// get the on-chain state root to ensure we are in sync
-	onchainStateRoot, err := s.contracts.StateRoot(pid.Marshal())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get on-chain state root: %w", err)
-	}
-
-	// if the on-chain state root is different from the local one, update it
-	if onchainStateRoot.MathBigInt().Cmp(process.StateRoot.MathBigInt()) != 0 {
-		if err := st.RootExists(onchainStateRoot.MathBigInt()); err != nil {
-			return nil, fmt.Errorf("on-chain state root does not exist in local state: %w", err)
-		}
-		if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStateRoot(onchainStateRoot, nil, nil)); err != nil {
-			return nil, fmt.Errorf("failed to update process state root: %w", err)
-		}
-		log.Warnw("local state root mismatch, updated local state root to match on-chain",
-			"pid", pid.String(),
-			"local", process.StateRoot.String(),
-			"onchain", onchainStateRoot.String(),
-		)
-	}
-
-	// initialize the process state on the given root
-	processState, err := state.LoadOnRoot(s.stg.StateDB(), pid.BigInt(), onchainStateRoot.MathBigInt())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create state: %w", err)
-	}
-	return processState, nil
 }
 
 func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {

@@ -31,10 +31,14 @@ func ProcessUpdateCallbackSetStatus(status types.ProcessStatus) func(*types.Proc
 // ProcessUpdateCallbackSetStateRoot returns a function that updates the state
 // root and voters counts of a process. This function is used when a update over
 // the state root is received from the process monitor.
-func ProcessUpdateCallbackSetStateRoot(stateRoot, votersCount, overwrittenVotesCount *types.BigInt) func(*types.Process) error {
+func ProcessUpdateCallbackSetStateRoot(stateRoot, maxVoters, votersCount, overwrittenVotesCount *types.BigInt) func(*types.Process) error {
 	return func(p *types.Process) error {
 		if p.StateRoot == nil {
 			p.StateRoot = stateRoot
+		}
+		// Update max voters if provided
+		if maxVoters != nil {
+			p.MaxVoters = maxVoters
 		}
 		// Update the process only if the state root is different.
 		if !p.StateRoot.Equal(stateRoot) {
@@ -45,6 +49,17 @@ func ProcessUpdateCallbackSetStateRoot(stateRoot, votersCount, overwrittenVotesC
 			if overwrittenVotesCount != nil {
 				p.OverwrittenVotesCount = overwrittenVotesCount
 			}
+		}
+		return nil
+	}
+}
+
+// ProcessUpdateCallbackSetMaxVoters returns a function that updates the max
+// voters of a process.
+func ProcessUpdateCallbackSetMaxVoters(maxVoters *types.BigInt) func(*types.Process) error {
+	return func(p *types.Process) error {
+		if maxVoters != nil {
+			p.MaxVoters = maxVoters
 		}
 		return nil
 	}

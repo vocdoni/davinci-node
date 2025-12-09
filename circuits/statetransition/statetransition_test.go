@@ -79,8 +79,10 @@ func TestCircuitProve(t *testing.T) {
 	}
 	{
 		witness := newMockTransitionWithVotes(t, s,
-			newMockVote(s, 1, 100), // overwrite vote 1
+			// order here is intentional, at some point we had a bug that was triggered
+			// when vote overwrites were not at the beginning of a state batch
 			newMockVote(s, 3, 30),  // add vote 3
+			newMockVote(s, 1, 100), // overwrite vote 1
 			newMockVote(s, 4, 40),  // add vote 4
 		)
 		testCircuitProve(t, statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK), witness)
