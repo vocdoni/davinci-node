@@ -150,8 +150,7 @@ It can be:
     "maxValueSum": "bigintStr",
     "minValueSum": "bigintStr"
   },
-  "signature": "hexBytes",
-  "maxVoters": "bigintStr",
+  "signature": "hexBytes"
 }
 ```
 
