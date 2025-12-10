@@ -115,7 +115,7 @@ func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	// current state
 	circuit.VerifyMerkleProofs(api, HashFn)
 	// state transition
-	circuit.VerifyMerkleTransitions(api, HashFn)
+	circuit.VerifyMerkleTransitions(api, HashFn, mask)
 	// leaf hashes
 	circuit.VerifyLeafHashes(api, HashFn)
 	// censuses
@@ -123,7 +123,7 @@ func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	circuit.VerifyCSPCensusProofs(api, mask)
 	// votes reencryption and ballots
 	circuit.VerifyReencryptedVotes(api, mask)
-	circuit.VerifyBallots(api)
+	circuit.VerifyBallots(api, mask)
 	// verify the blob commitment
 	circuit.VerifyBlobs(api)
 	return nil
@@ -287,10 +287,19 @@ func (circuit StateTransitionCircuit) VerifyMerkleProofs(api frontend.API, hFn u
 // chain of tree transitions of the commitments, and finally the chain of tree
 // transitions of the results. The order of the transitions is fundamental to
 // achieve the final root hash.
-func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hasher) {
+func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hasher, mask []frontend.Variable) {
 	// verify chain of tree transitions, order here is fundamental.
 	root := circuit.RootHashBefore
 	for i := range circuit.VotesProofs.Ballot {
+		// if the vote is dummy, the transition must be a NOOP (Fnc0=0, Fnc1=0)
+		isDummy := api.Sub(1, mask[i])
+		// Check Ballot proof
+		api.AssertIsEqual(api.Mul(circuit.VotesProofs.Ballot[i].Fnc0, isDummy), 0)
+		api.AssertIsEqual(api.Mul(circuit.VotesProofs.Ballot[i].Fnc1, isDummy), 0)
+		// Check VoteIDs proof
+		api.AssertIsEqual(api.Mul(circuit.VotesProofs.VoteIDs[i].Fnc0, isDummy), 0)
+		api.AssertIsEqual(api.Mul(circuit.VotesProofs.VoteIDs[i].Fnc1, isDummy), 0)
+
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
 		root = circuit.VotesProofs.VoteIDs[i].Verify(api, hFn, root)
 	}
@@ -427,12 +436,15 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 // that the count of all ballots is equal to VotersCount,
 // as well as the count of overwritten ballots equals OverwrittenVotesCount.
 // It uses the Ballot structure to sum the ballots.
-func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
+func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API, mask []frontend.Variable) {
 	sumOfAllBallots, sumOfOverwrittenBallots, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
 	var votersCount, overwrittenVotesCount frontend.Variable = 0, 0
 
 	for i, b := range circuit.VotesProofs.Ballot {
 		isInsertOrUpdate := b.IsInsertOrUpdate(api)
+		// if the vote is dummy, it cannot be an insert or update
+		api.AssertIsEqual(api.Mul(isInsertOrUpdate, api.Sub(1, mask[i])), 0)
+
 		isUpdate := b.IsUpdate(api)
 
 		ballot := circuits.NewBallot().Select(api, isInsertOrUpdate, &circuit.Votes[i].ReencryptedBallot, zero)

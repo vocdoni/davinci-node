@@ -447,7 +447,8 @@ type CircuitBallots struct {
 }
 
 func (circuit CircuitBallots) Define(api frontend.API) error {
-	circuit.VerifyBallots(api)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyBallots(api, mask)
 	return nil
 }
 
@@ -487,7 +488,8 @@ type CircuitMerkleTransitions struct {
 }
 
 func (circuit CircuitMerkleTransitions) Define(api frontend.API) error {
-	circuit.VerifyMerkleTransitions(api, statetransition.HashFn)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyMerkleTransitions(api, statetransition.HashFn, mask)
 	return nil
 }
 
