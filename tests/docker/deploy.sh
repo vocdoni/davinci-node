@@ -47,6 +47,27 @@ else
   git pull --quiet origin "$BRANCH"
 fi
 
+# copy verifier contracts into the cloned repo
+CONFIG_SOURCE_DIR=${CONFIG_SOURCE_DIR:-/opt/davinci/config}
+VERIFIER_SOURCE_DIR=$CONFIG_SOURCE_DIR
+if [ ! -f "${VERIFIER_SOURCE_DIR}/resultsverifier_vkey.sol" ] || [ ! -f "${VERIFIER_SOURCE_DIR}/statetransition_vkey.sol" ]; then
+  SCRIPT_SOURCE=${BASH_SOURCE[0]-$0}
+  SCRIPT_DIR=$(cd "$(dirname "${SCRIPT_SOURCE}")" && pwd)
+  REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
+  ALT_CONFIG_DIR="${REPO_ROOT}/config"
+  if [ -f "${ALT_CONFIG_DIR}/resultsverifier_vkey.sol" ] && [ -f "${ALT_CONFIG_DIR}/statetransition_vkey.sol" ]; then
+    VERIFIER_SOURCE_DIR=$ALT_CONFIG_DIR
+  else
+    echo "❌ Could not find verifier contracts. Checked ${CONFIG_SOURCE_DIR} and ${ALT_CONFIG_DIR}"
+    exit 1
+  fi
+fi
+
+mkdir -p src/verifiers
+cp -f "${VERIFIER_SOURCE_DIR}/resultsverifier_vkey.sol" src/verifiers/
+cp -f "${VERIFIER_SOURCE_DIR}/statetransition_vkey.sol" src/verifiers/
+echo "📄 Verification keys contracts copied to src/verifiers/"
+
 head -n -5 foundry.toml > foundry.tmp && mv foundry.tmp foundry.toml
 
 cp .env.example .env

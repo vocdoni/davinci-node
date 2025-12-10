@@ -10,8 +10,9 @@ RUN apt-get update &&\
     node -v && npm -v && npx -v && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy your deploy script in (and make it executable)
-COPY deploy.sh /deploy.sh
+# Copy deploy script and verifier keys into the image
+COPY tests/docker/deploy.sh /deploy.sh
+COPY config/resultsverifier_vkey.sol config/statetransition_vkey.sol /opt/davinci/config/
 RUN chmod +x /deploy.sh
 
 WORKDIR /

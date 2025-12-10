@@ -26,8 +26,8 @@ services:
   deployer:
     # build from our custom Dockerfile
     build:
-      context: .
-      dockerfile: Dockerfile.deployer
+      context: ../..
+      dockerfile: tests/docker/Dockerfile.deployer
     container_name: deployer
     depends_on:
       - anvil
