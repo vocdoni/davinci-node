@@ -109,7 +109,7 @@ type Vote struct {
 func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	std.RegisterHints()
 	// compute the mask for the valid votes
-	mask := circuit.computeVoteMask(api)
+	mask := circuit.VoteMask(api)
 	// recursive proof
 	circuit.VerifyAggregatorProof(api, mask)
 	// current state
@@ -129,26 +129,21 @@ func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-// computeVoteMask computes a mask where the i-th element is 1 if the vote is
+// VoteMask returns the latch-based mask for real votes.
+// Computes a mask where the i-th element is 1 if the vote is
 // valid and 0 otherwise. It uses a latch logic to avoid expensive comparisons
 // inside the loops.
-func (c StateTransitionCircuit) computeVoteMask(api frontend.API) []frontend.Variable {
+func (c StateTransitionCircuit) VoteMask(api frontend.API) []frontend.Variable {
 	mask := make([]frontend.Variable, types.VotesPerBatch)
 	// if VotersCount > 0, the first vote is valid
 	isReal := api.Sub(1, api.IsZero(c.VotersCount))
-	for i := 0; i < types.VotesPerBatch; i++ {
+	for i := range types.VotesPerBatch {
 		mask[i] = isReal
 		// if VotersCount == i+1, the next vote is invalid
 		isEnd := api.IsZero(api.Sub(c.VotersCount, i+1))
 		isReal = api.Mul(isReal, api.Sub(1, isEnd))
 	}
 	return mask
-}
-
-// VoteMask returns the latch-based mask for real votes, keeping logic shared
-// across subcircuits and tests.
-func (c StateTransitionCircuit) VoteMask(api frontend.API) []frontend.Variable {
-	return c.computeVoteMask(api)
 }
 
 // paddedElement helper function returns an bw6761 curve emulated element with
@@ -440,8 +435,8 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 		isInsertOrUpdate := b.IsInsertOrUpdate(api)
 		isUpdate := b.IsUpdate(api)
 
-		selectedBallot := circuits.NewBallot().Select(api, isInsertOrUpdate, &circuit.Votes[i].ReencryptedBallot, zero)
-		sumOfAllBallots.Add(api, sumOfAllBallots, selectedBallot)
+		ballot := circuits.NewBallot().Select(api, isInsertOrUpdate, &circuit.Votes[i].ReencryptedBallot, zero)
+		sumOfAllBallots.Add(api, sumOfAllBallots, ballot)
 
 		overwrittenBallot := circuits.NewBallot().Select(api, isUpdate, &circuit.Votes[i].OverwrittenBallot, zero)
 		sumOfOverwrittenBallots.Add(api, sumOfOverwrittenBallots, overwrittenBallot)
