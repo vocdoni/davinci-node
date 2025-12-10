@@ -235,3 +235,8 @@ func TruncateMerkleTreeKey(api frontend.API, input frontend.Variable, size int) 
 	reSwappedInput := utils.SwapEndianness(croppedInput)
 	return utils.U8ToVar(api, reSwappedInput)
 }
+
+// AssertDummyIsNoop fails when isDummy is 1 and mp is not a NOOP
+func (mp *MerkleTransition) AssertDummyIsNoop(api frontend.API, isDummy frontend.Variable) {
+	api.AssertIsEqual(api.Select(isDummy, mp.IsNoop(api), 1), 1)
+}

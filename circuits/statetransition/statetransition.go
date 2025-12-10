@@ -293,13 +293,12 @@ func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, 
 	for i := range circuit.VotesProofs.Ballot {
 		// if the vote is dummy, the transition must be a NOOP (Fnc0=0, Fnc1=0)
 		isDummy := api.Sub(1, mask[i])
-		// Check Ballot proof
-		api.AssertIsEqual(api.Mul(circuit.VotesProofs.Ballot[i].Fnc0, isDummy), 0)
-		api.AssertIsEqual(api.Mul(circuit.VotesProofs.Ballot[i].Fnc1, isDummy), 0)
-		// Check VoteIDs proof
-		api.AssertIsEqual(api.Mul(circuit.VotesProofs.VoteIDs[i].Fnc0, isDummy), 0)
-		api.AssertIsEqual(api.Mul(circuit.VotesProofs.VoteIDs[i].Fnc1, isDummy), 0)
 
+		// assert that dummy votes have NOOP transitions
+		circuit.VotesProofs.Ballot[i].AssertDummyIsNoop(api, isDummy)
+		circuit.VotesProofs.VoteIDs[i].AssertDummyIsNoop(api, isDummy)
+
+		// verify transitions
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
 		root = circuit.VotesProofs.VoteIDs[i].Verify(api, hFn, root)
 	}
@@ -442,9 +441,6 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API, mask []fro
 
 	for i, b := range circuit.VotesProofs.Ballot {
 		isInsertOrUpdate := b.IsInsertOrUpdate(api)
-		// if the vote is dummy, it cannot be an insert or update
-		api.AssertIsEqual(api.Mul(isInsertOrUpdate, api.Sub(1, mask[i])), 0)
-
 		isUpdate := b.IsUpdate(api)
 
 		ballot := circuits.NewBallot().Select(api, isInsertOrUpdate, &circuit.Votes[i].ReencryptedBallot, zero)
