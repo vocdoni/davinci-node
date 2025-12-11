@@ -175,7 +175,7 @@ func main() {
 		log.Fatal(err)
 	}
 	// Wait for the sequencer to be ready, make ping request until it responds
-	pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	pingCtx, cancel := context.WithTimeout(testCtx, 2*time.Minute)
 	defer cancel()
 	for isConnected := false; !isConnected; {
 		select {
@@ -253,7 +253,7 @@ func main() {
 	// Wait for the votes to be registered in the smart contract
 	log.Info("all votes sent, waiting for votes to be registered in smart contract...")
 
-	if err := waitUntilSmartContractCounts(context.Background(), contracts, pid, *votersCount, 0); err != nil {
+	if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, 0); err != nil {
 		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 		return
 	}
@@ -294,7 +294,7 @@ func main() {
 	// Wait for the votes to be registered in the smart contract
 	log.Info("all overwrite votes sent, waiting for votes to be registered in smart contract...")
 
-	if err := waitUntilSmartContractCounts(context.Background(), contracts, pid, *votersCount, int64(len(overwriters))); err != nil {
+	if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, int64(len(overwriters))); err != nil {
 		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 		return
 	}

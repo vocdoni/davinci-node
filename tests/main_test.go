@@ -29,7 +29,6 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to download artifacts: %v", err)
 	}
 
-	// create a temp dir
 	tempDir := os.TempDir() + "/davinci-node-test-" + time.Now().Format("20060102150405")
 
 	ctx, cancel := context.WithCancel(context.Background())
