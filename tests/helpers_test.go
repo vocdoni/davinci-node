@@ -566,7 +566,7 @@ func NewTestService(
 		pm.Stop()
 		vp.Stop()
 		stg.Close()
-		go c3cleanup() // TODO: c3cleanup is never returning, fix and reenable
+		c3cleanup()
 		web3Cleanup()
 	}
 

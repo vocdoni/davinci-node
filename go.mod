@@ -28,7 +28,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
-	github.com/vocdoni/census3-bigquery v0.0.0-20251127120211-7a39c5dc9fe9
+	github.com/vocdoni/census3-bigquery v0.0.0-20251211133541-d59901db865b
 	github.com/vocdoni/davinci-contracts v0.0.30-0.20251211103730-83cc7f0b55ef
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9
 	github.com/vocdoni/lean-imt-go v0.0.0-20251127115127-d947440cf352
