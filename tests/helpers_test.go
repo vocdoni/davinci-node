@@ -466,7 +466,8 @@ func NewTestService(
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
 	vp := service.NewSequencer(stg, contracts, defaultBatchTimeWindow, nil)
-	if err := vp.Start(ctx); err != nil {
+	seqCtx, seqCancel := context.WithCancel(ctx)
+	if err := vp.Start(seqCtx); err != nil {
 		web3Cleanup() // Clean up web3 if sequencer fails to start
 		return nil, nil, fmt.Errorf("failed to start sequencer: %w", err)
 	}
@@ -519,6 +520,7 @@ func NewTestService(
 
 	// Create a combined cleanup function
 	cleanup := func() {
+		seqCancel()
 		api.Stop()
 		cd.Stop()
 		pm.Stop()
