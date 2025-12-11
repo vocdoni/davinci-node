@@ -29,14 +29,14 @@ import (
 	"github.com/vocdoni/davinci-node/db/metadb"
 )
 
+const falseStr = "false"
+
 func TestMain(m *testing.M) {
 	dlog.Init(dlog.LogLevelDebug, "stdout", nil)
 	// enable log to see nbConstraints
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	m.Run()
 }
-
-const falseStr = "false"
 
 func testCircuitCompile(t *testing.T, c frontend.Circuit) {
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
@@ -73,8 +73,9 @@ func TestCircuitProve(t *testing.T) {
 			newMockVote(s, 2, 20), // add vote 2
 		)
 		testCircuitProve(t, statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK), witness)
-
-		debugLog(t, witness)
+		if os.Getenv("DEBUG") != "" {
+			debugLog(t, witness)
+		}
 	}
 	{
 		witness := newMockTransitionWithVotes(t, s,
@@ -85,8 +86,9 @@ func TestCircuitProve(t *testing.T) {
 			newMockVote(s, 4, 40),  // add vote 4
 		)
 		testCircuitProve(t, statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK), witness)
-
-		debugLog(t, witness)
+		if os.Getenv("DEBUG") != "" {
+			debugLog(t, witness)
+		}
 	}
 }
 
@@ -95,7 +97,8 @@ type CircuitCalculateAggregatorWitness struct {
 }
 
 func (circuit CircuitCalculateAggregatorWitness) Define(api frontend.API) error {
-	_, err := circuit.CalculateAggregatorWitness(api)
+	mask := circuit.VoteMask(api)
+	_, err := circuit.CalculateAggregatorWitness(api, mask)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 witness: ", err)
 	}
@@ -118,7 +121,8 @@ type CircuitAggregatorProof struct {
 }
 
 func (circuit CircuitAggregatorProof) Define(api frontend.API) error {
-	circuit.VerifyAggregatorProof(api)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyAggregatorProof(api, mask)
 	return nil
 }
 
@@ -138,7 +142,8 @@ type CircuitBallots struct {
 }
 
 func (circuit CircuitBallots) Define(api frontend.API) error {
-	circuit.VerifyBallots(api)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyBallots(api, mask)
 	return nil
 }
 
@@ -178,7 +183,8 @@ type CircuitMerkleTransitions struct {
 }
 
 func (circuit CircuitMerkleTransitions) Define(api frontend.API) error {
-	circuit.VerifyMerkleTransitions(api, statetransition.HashFn)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyMerkleTransitions(api, statetransition.HashFn, mask)
 	return nil
 }
 
@@ -192,7 +198,9 @@ func TestCircuitMerkleTransitionsProve(t *testing.T) {
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
 
-	debugLog(t, witness)
+	if os.Getenv("DEBUG") != "" {
+		debugLog(t, witness)
+	}
 }
 
 type CircuitLeafHashes struct {
@@ -214,7 +222,9 @@ func TestCircuitLeafHashesProve(t *testing.T) {
 		*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
 
-	debugLog(t, witness)
+	if os.Getenv("DEBUG") != "" {
+		debugLog(t, witness)
+	}
 }
 
 type CircuitReencryptBallots struct {
@@ -222,7 +232,8 @@ type CircuitReencryptBallots struct {
 }
 
 func (circuit CircuitReencryptBallots) Define(api frontend.API) error {
-	circuit.VerifyReencryptedVotes(api)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyReencryptedVotes(api, mask)
 	return nil
 }
 
@@ -246,8 +257,9 @@ type CircuitCensusProofs struct {
 }
 
 func (circuit CircuitCensusProofs) Define(api frontend.API) error {
-	circuit.VerifyMerkleCensusProofs(api)
-	circuit.VerifyCSPCensusProofs(api)
+	mask := circuit.VoteMask(api)
+	circuit.VerifyMerkleCensusProofs(api, mask)
+	circuit.VerifyCSPCensusProofs(api, mask)
 	return nil
 }
 
@@ -275,6 +287,40 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 			*statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 		}, witness)
 	})
+}
+
+// TestDummySlot verifies that a "dummy" slot (index >= VotersCount)
+// cannot contain any state transition (Insert/Update).
+func TestDummySlot(t *testing.T) {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
+		t.Skip("skipping circuit tests...")
+	}
+
+	s := newMockState(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+
+	// Create a transition with 2 votes (index 0 and 1)
+	// We will try to "hide" the second vote (index 1) by claiming VotersCount is 1.
+	witness := newMockTransitionWithVotes(t, s,
+		newMockVote(s, 1, 10), // valid vote 1
+		newMockVote(s, 2, 20), // valid vote 2
+	)
+
+	// Hack the witness: reduce VotersCount from 2 to 1.
+	// This makes the vote at index 1 a "dummy" vote according to the circuit logic.
+	// However, the MerkleProof for index 1 is still a valid Insert/Update.
+	witness.VotersCount = 1
+
+	// Assert that the circuit rejects this witness.
+	// The fix in VerifyMerkleTransitions and VerifyBallots should assert that
+	// for dummy slots (mask=0), the operations must be NOOP.
+	assert := test.NewAssert(t)
+	// We expect the prover to FAIL because the constraints are not satisfied.
+	assert.ProverFailed(
+		statetransitiontest.CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
+		witness,
+		test.WithCurves(circuits.StateTransitionCurve),
+		test.WithBackends(backend.GROTH16),
+	)
 }
 
 func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vote) *statetransition.StateTransitionCircuit {

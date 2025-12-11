@@ -230,6 +230,133 @@ Worker nodes are lightweight components that handle zkSNARK proof generation for
 
 > 💡 **Note:** The Ethereum address can be any valid address. It's used for accounting purposes and tracking success/failed jobs, but does not need to own any funds.
 
+## 🧪 Testing
+
+The repository includes a comprehensive test suite covering unit tests, circuit verification, and full integration scenarios.
+
+### Unit & Circuit Tests (Native)
+
+To run the standard unit tests and the integration tests: 
+
+```bash
+go test ./... -timeout=1h
+```
+
+To include the heavy zkSNARK circuit tests (skipped by default):
+
+```bash
+RUN_CIRCUIT_TESTS=1 go test -v ./circuits/... -timeout=1h
+```
+
+### Integration Tests
+
+Integration tests verify the interaction between components (API, Sequencer, Contracts).
+
+```bash
+go test -v ./tests -timeout=1h
+```
+
+> 💡 **Note:** Integration tests require a local environment setup (Docker for Anvil/Deployer). The test runner handles this automatically using Testcontainers.
+
+### Integration Tests with Docker Compose
+
+You can run integration tests in a containerized environment using Docker Compose. This is recommended for CI/CD or ensuring a consistent environment.
+
+```bash
+docker compose --profile test up integration-test
+```
+
+## GPU Prover Support
+
+GPU acceleration can significantly speed up zkSNARK proof generation by leveraging parallel processing. This is beneficial for high-throughput voting processes requiring rapid proof generation.
+
+**Implementation:** Uses [Icicle](https://github.com/ingonyama-zk/icicle) backend via [icicle-gnark](https://github.com/ingonyama-zk/icicle-gnark) wrapper.
+
+**Status:** ⚠️ Experimental - not production-tested. Use at your own risk.
+
+**Supported curves:** BN254, BLS12-377, BLS12-381, BW6-761
+
+### Setup (CUDA-enabled Linux)
+
+1. **Install Icicle backend:**
+   ```bash
+   git clone https://github.com/vocdoni/davinci-node
+   cd davinci-node && go mod tidy
+   # As root:
+   cd ~/go/pkg/mod/github.com/ingonyama-zk/icicle-gnark/v3@v3.2.2/wrappers/golang
+   bash build.sh -curve=all
+   ```
+
+2. **Run with GPU:**
+   ```bash
+   GPU_PROVER=true \
+   LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
+   ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend \
+   go run -tags=icicle ./cmd/davinci-sequencer
+   ```
+
+3. **Test GPU proving:**
+   ```bash
+   RUN_CIRCUIT_BENCHMARK=10 GPU_PROVER=true \
+   LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
+   ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend \
+   go test -v -tags=icicle ./circuits/test/statetransition/ -timeout=1h
+   ```
+
+> 💡 **Note:** Without `-tags=icicle`, the build uses CPU-only proving. GPU support requires the icicle build tag and proper CUDA setup.
+
+### Docker GPU Build
+
+To build the GPU-enabled container:
+
+> ⚠️ **Prerequisite:** You must install the NVIDIA Container Toolkit on your host machine:
+> ```bash
+> sudo apt-get install -y nvidia-container-toolkit
+> sudo nvidia-ctk runtime configure --runtime=docker
+> sudo systemctl restart docker
+> ```
+
+```bash
+docker build -f Dockerfile.cuda -t davinci-sequencer-cuda .
+```
+
+By default, it targets CUDA 12.6. To build for a different CUDA version (e.g., 13.0):
+
+```bash
+docker build -f Dockerfile.cuda --build-arg CUDA_VERSION=13.0.2 -t davinci-sequencer-cuda .
+```
+
+To run the container with GPU support (requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)):
+
+```bash
+docker run --gpus all -p 9090:9090 davinci-sequencer-cuda
+```
+
+### Using Docker Compose
+
+To run the GPU-enabled sequencer using Docker Compose:
+
+```bash
+docker compose --profile gpu up -d sequencer-cuda
+```
+
+You can customize the CUDA version by setting the `CUDA_VERSION` environment variable:
+
+```bash
+CUDA_VERSION=13.0.2 docker compose --profile gpu up -d sequencer-cuda
+```
+
+### Running Integration Tests with GPU
+
+To run the integration tests with GPU support:
+
+```bash
+docker compose --profile test-cuda up integration-test-cuda
+```
+
+> ⚠️ **Note:** The integration tests require the `docker-compose` CLI to be available inside the container, as they spawn sibling containers. The GPU test image includes this dependency.
+
+
 ## 🧑‍🧑‍🧒‍🧒 Run a CSP: Credentials Service Provider
 
 A **Credential Service Provider (CSP)** allows organizations to validate users manually and based off of any arbitrary criteria. Rather than a static census published before-hand, CSP census allows each user to be evaluated for voting eligibility individually, throughout the duration of the voting process.
@@ -345,44 +472,6 @@ Take a look to `davinci-crypto` WebAssembly [here](./cmd/davincicrypto-wasm/READ
 </script>
 ```
 
-## GPU Prover Support
-
-GPU acceleration can significantly speed up zkSNARK proof generation by leveraging parallel processing. This is beneficial for high-throughput voting processes requiring rapid proof generation.
-
-**Implementation:** Uses [Icicle](https://github.com/ingonyama-zk/icicle) backend via [icicle-gnark](https://github.com/ingonyama-zk/icicle-gnark) wrapper.
-
-**Status:** ⚠️ Experimental - not production-tested. Use at your own risk.
-
-**Supported curves:** BN254, BLS12-377, BLS12-381, BW6-761
-
-### Setup (CUDA-enabled Linux)
-
-1. **Install Icicle backend:**
-   ```bash
-   git clone https://github.com/vocdoni/davinci-node
-   cd davinci-node && go mod tidy
-   # As root:
-   cd ~/go/pkg/mod/github.com/ingonyama-zk/icicle-gnark/v3@v3.2.2/wrappers/golang
-   bash build.sh -curve=all
-   ```
-
-2. **Run with GPU:**
-   ```bash
-   GPU_PROVER=true \
-   LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
-   ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend \
-   go run -tags=icicle ./cmd/davinci-sequencer
-   ```
-
-3. **Test GPU proving:**
-   ```bash
-   RUN_CIRCUIT_BENCHMARK=10 GPU_PROVER=true \
-   LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
-   ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend \
-   go test -v -tags=icicle ./circuits/test/statetransition/ -timeout=1h
-   ```
-
-> 💡 **Note:** Without `-tags=icicle`, the build uses CPU-only proving. GPU support requires the icicle build tag and proper CUDA setup.
 
 ## 📚 Additional Resources
 

@@ -27,7 +27,12 @@ func (e Error) MarshalJSON() ([]byte, error) {
 			Err  string `json:"error"`
 			Code int    `json:"code"`
 		}{
-			Err:  e.Err.Error(),
+			Err: func() string {
+				if e.Err == nil {
+					return "(empty)"
+				}
+				return e.Err.Error()
+			}(),
 			Code: e.Code,
 		})
 }

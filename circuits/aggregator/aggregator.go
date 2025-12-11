@@ -9,7 +9,6 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
-	"github.com/consensys/gnark/std/math/cmp"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
@@ -51,8 +50,20 @@ func (c *AggregatorCircuit) checkInputsHash(api frontend.API) {
 func (c *AggregatorCircuit) calculateWitnesses(api frontend.API) []groth16.Witness[sw_bls12377.ScalarField] {
 	// compose the witness for the inputs
 	witnesses := []groth16.Witness[sw_bls12377.ScalarField]{}
-	for i := range len(c.Proofs) {
-		isValid := cmp.IsLess(api, i, c.ValidProofs)
+
+	// Latch logic for isValid:
+	// 'isReal' is 1 if c.ValidProofs > current_index, otherwise 0.
+	// Initialize 'isReal' to 1 if c.ValidProofs > 0, else 0.
+	isReal := api.Sub(1, api.IsZero(c.ValidProofs))
+
+	for i := range len(c.Proofs) { // len(c.Proofs) is types.VotesPerBatch
+		isValid := isReal // Current iteration's validity state
+
+		// Update 'isReal' for the next iteration (i.e., for i+1).
+		// If c.ValidProofs == i+1, then 'isReal' becomes 0 from the next iteration onwards.
+		isEnd := api.IsZero(api.Sub(c.ValidProofs, i+1))
+		isReal = api.Mul(isReal, api.Sub(1, isEnd))
+
 		// create the witness for the proof
 		witness := groth16.Witness[sw_bls12377.ScalarField]{
 			Public: []emulated.Element[sw_bls12377.ScalarField]{

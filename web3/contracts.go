@@ -17,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	vbindings "github.com/vocdoni/davinci-contracts/golang-types/verifiers"
@@ -537,13 +536,29 @@ func (c *Contracts) SimulateContractCall(
 
 // decodeRevert decodes the revert reason from the given data.
 func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
-	var errorName string
-	err := c.ContractABIs.ForEachABI(func(name string, a *abi.ABI) error {
-		for _, e := range a.Errors {
-			sig := strings.TrimPrefix(e.String(), "error ")
-			hash := crypto.Keccak256([]byte(sig))[:4]
-			if bytes.Equal(data, hash) {
-				errorName = sig
+	if len(data) < 4 {
+		return "", fmt.Errorf("no revert data")
+	}
+	selector := data[:4]
+	payload := data[4:]
+
+	// 1) Try custom errors from all loaded ABIs
+	var decoded string
+	err := c.ContractABIs.ForEachABI(func(_ string, a *abi.ABI) error {
+		for name, e := range a.Errors {
+			// e.ID is the 4-byte selector
+			if bytes.Equal(selector, e.ID.Bytes()) {
+				// unpack args if any
+				vals, uerr := e.Inputs.Unpack(payload)
+				if uerr != nil {
+					decoded = name // at least return the name
+					return nil
+				}
+				if len(vals) == 0 {
+					decoded = name
+				} else {
+					decoded = fmt.Sprintf("%s%v", name, vals)
+				}
 				return nil
 			}
 		}
@@ -552,10 +567,16 @@ func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if errorName != "" {
-		return errorName, nil
+	if decoded != "" {
+		return decoded, nil
 	}
-	return "", fmt.Errorf("unknown error selector %s", data.String())
+
+	// 2) Fallback to standard Error(string)/Panic(uint256)
+	if reason, uerr := abi.UnpackRevert(data); uerr == nil {
+		return reason, nil
+	}
+
+	return "", fmt.Errorf("unknown error selector 0x%x", selector)
 }
 
 // ForEachABI calls fn(name, abi) for each non-nil *abi.ABI field.

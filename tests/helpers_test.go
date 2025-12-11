@@ -466,7 +466,9 @@ func NewTestService(
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
 	vp := service.NewSequencer(stg, contracts, defaultBatchTimeWindow, nil)
-	if err := vp.Start(ctx); err != nil {
+	seqCtx, seqCancel := context.WithCancel(ctx)
+	if err := vp.Start(seqCtx); err != nil {
+		seqCancel()
 		web3Cleanup() // Clean up web3 if sequencer fails to start
 		return nil, nil, fmt.Errorf("failed to start sequencer: %w", err)
 	}
@@ -487,6 +489,7 @@ func NewTestService(
 	})
 	if err := cd.Start(ctx); err != nil {
 		vp.Stop()
+		seqCancel()
 		web3Cleanup()
 		return nil, nil, fmt.Errorf("failed to start census downloader: %w", err)
 	}
@@ -497,6 +500,7 @@ func NewTestService(
 	if err := pm.Start(ctx); err != nil {
 		cd.Stop()
 		vp.Stop()
+		seqCancel()
 		web3Cleanup() // Clean up web3 if process monitor fails to start
 		return nil, nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}
@@ -512,6 +516,7 @@ func NewTestService(
 		pm.Stop()
 		cd.Stop()
 		vp.Stop()
+		seqCancel()
 		web3Cleanup() // Clean up web3 if API fails to start
 		return nil, nil, fmt.Errorf("failed to setup API: %w", err)
 	}
@@ -519,12 +524,13 @@ func NewTestService(
 
 	// Create a combined cleanup function
 	cleanup := func() {
+		seqCancel()
 		api.Stop()
 		cd.Stop()
 		pm.Stop()
 		vp.Stop()
 		stg.Close()
-		c3cleanup()
+		go c3cleanup() // TODO: c3cleanup is never returning, fix and reenable
 		web3Cleanup()
 	}
 

@@ -1,29 +1,90 @@
+x-sequencer-common: &sequencer-common
+  env_file: .env
+  environment:
+    - DAVINCI_DATADIR=/app/run
+    - SEQUENCER_API_URL=${SEQUENCER_API_URL:-http://localhost:${DAVINCI_API_PORT:-9090}}
+    - BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io/address}
+  volumes:
+    - run:/app/run
+  ports:
+    - "${DAVINCI_API_PORT:-9090}:${DAVINCI_API_PORT:-9090}"
+  sysctls:
+    net.core.somaxconn: 8128
+  restart: ${RESTART:-unless-stopped}
+  labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.sequencer.rule=PathPrefix(`/`)"
+    - "traefik.http.routers.sequencer.entrypoints=websecure"
+    - "traefik.http.routers.sequencer.tls=true"
+    - "traefik.http.routers.sequencer.tls.certresolver=le"
+    - "traefik.http.services.sequencer.loadbalancer.server.port=${DAVINCI_API_PORT:-9090}"
+    - "traefik.http.routers.sequencer.tls.domains[0].main=${DOMAIN}"
+    - "com.centurylinklabs.watchtower.enable=true"
+
 services:
   sequencer:
     build:
       context: ./
     image: "ghcr.io/vocdoni/davinci-node:${DAVINCI_NODE_TAG:-main}"
-    env_file: .env
+    <<: *sequencer-common
+
+  sequencer-cuda:
+    profiles: ["gpu"]
+    build:
+      context: ./
+      dockerfile: Dockerfile.cuda
+      args:
+        CUDA_VERSION: ${CUDA_VERSION:-12.6.0}
+    image: "ghcr.io/vocdoni/davinci-node:cuda-${DAVINCI_NODE_TAG:-main}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    <<: *sequencer-common
+
+  integration-test-cuda:
+    profiles: ["test-cuda"]
+    build:
+      context: ./
+      dockerfile: Dockerfile.cuda
+      target: builder
+      args:
+        CUDA_VERSION: ${CUDA_VERSION:-12.6.0}
     environment:
-      - DAVINCI_DATADIR=/app/run
-      - SEQUENCER_API_URL=${SEQUENCER_API_URL:-http://localhost:${DAVINCI_API_PORT:-9090}}
-      - BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io/address}
+      - LOG_LEVEL=debug
+      - GPU_PROVER=true
+      - CGO_ENABLED=1
+      - LD_LIBRARY_PATH=/usr/local/lib
+      - ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend
     volumes:
-      - run:/app/run
-    ports:
-      - "${DAVINCI_API_PORT:-9090}:${DAVINCI_API_PORT:-9090}"
-    sysctls:
-      net.core.somaxconn: 8128
-    restart: ${RESTART:-unless-stopped}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.sequencer.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.sequencer.entrypoints=websecure"
-      - "traefik.http.routers.sequencer.tls=true"
-      - "traefik.http.routers.sequencer.tls.certresolver=le"
-      - "traefik.http.services.sequencer.loadbalancer.server.port=${DAVINCI_API_PORT:-9090}"
-      - "traefik.http.routers.sequencer.tls.domains[0].main=${DOMAIN}"
-      - "com.centurylinklabs.watchtower.enable=true"
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: "host"
+    command: go test -v -tags=icicle ./tests
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  integration-test:
+    profiles: ["test"]
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      target: builder
+    environment:
+      - LOG_LEVEL=debug
+      - GPU_PROVER=false
+      - CGO_ENABLED=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: "host"
+    command: go test -v ./tests -timeout=1h
 
   traefik:
     image: traefik:latest

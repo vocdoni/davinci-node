@@ -131,7 +131,6 @@ func (s *Sequencer) processPendingTransitions() {
 		// Process the batch inner proof and votes to get the proof of the
 		// state transition
 		proof, blobData, err := s.processStateTransitionBatch(
-			processID,
 			processState,
 			censusRoot,
 			*circuitCensusProofs,
@@ -190,10 +189,7 @@ func (s *Sequencer) processPendingTransitions() {
 				VotersCount:           processState.VotersCount(),
 				OverwrittenVotesCount: processState.OverwrittenVotesCount(),
 				CensusRoot:            censusRoot.MathBigInt(),
-				BlobEvaluationPointZ:  blobData.Z,
-				BlobEvaluationPointY:  blobData.Ylimbs,
-				BlobCommitment:        blobData.Commitment,
-				BlobProof:             blobData.OpeningProof,
+				BlobCommitmentLimbs:   blobData.CommitmentLimbs,
 			},
 			BlobVersionHash: blobSidecar.BlobHashes()[0],
 			BlobSidecar:     blobSidecar,
@@ -217,7 +213,6 @@ func (s *Sequencer) processPendingTransitions() {
 }
 
 func (s *Sequencer) processStateTransitionBatch(
-	processID *types.ProcessID,
 	processState *state.State,
 	censusRoot *types.BigInt,
 	censusProofs statetransition.CensusProofs,
@@ -316,7 +311,8 @@ func (s *Sequencer) stateBatchToWitness(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build KZG commitment: %w", err)
 	}
-	proofWitness.BlobEvaluationPointZ = blobData.ForGnark.Z
+	proofWitness.BlobCommitmentLimbs = blobData.ForGnark.CommitmentLimbs
+	proofWitness.BlobProofLimbs = blobData.ForGnark.ProofLimbs
 	proofWitness.BlobEvaluationResultY = blobData.ForGnark.Y
 
 	return proofWitness, blobData, nil

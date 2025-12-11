@@ -239,10 +239,16 @@ func (tm *TxManager) WaitTxByHash(hash common.Hash, timeOut time.Duration, cb ..
 		timeout := time.After(timeOut)
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
+		var stop <-chan struct{}
+		if tm.monitorCtx != nil {
+			stop = tm.monitorCtx.Done()
+		}
 		for {
 			select {
 			case <-timeout:
 				return fmt.Errorf("timeout waiting for hash %s", hash.Hex())
+			case <-stop:
+				return fmt.Errorf("tx manager stopped")
 			case <-ticker.C:
 				// Check if the transaction is mined
 				if status, _ := tm.CheckTxStatusByHash(hash); status {
@@ -272,10 +278,16 @@ func (tm *TxManager) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(err
 		timeout := time.After(timeOut)
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
+		var stop <-chan struct{}
+		if tm.monitorCtx != nil {
+			stop = tm.monitorCtx.Done()
+		}
 		for {
 			select {
 			case <-timeout:
 				return fmt.Errorf("timeout waiting for id %s", fmt.Sprintf("%x", id))
+			case <-stop:
+				return fmt.Errorf("tx manager stopped")
 			case <-ticker.C:
 				// Check if the transaction is mined
 				if status, _ := tm.CheckTxStatusByID(id); status {

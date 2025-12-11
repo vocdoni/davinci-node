@@ -137,8 +137,6 @@ func UnmarshalKZGProof(
 //   - proof: The KZG opening proof point (G1)
 //   - z: The evaluation point (BLS12-381 scalar field element)
 //   - y: The claimed value at z (BLS12-381 scalar field element)
-//
-// Returns an error if the proof verification fails.
 func VerifyKZGProof(
 	api frontend.API,
 	commitment *sw_bls12381.G1Affine,
