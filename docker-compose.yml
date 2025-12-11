@@ -75,10 +75,8 @@ services:
     profiles: ["test"]
     build:
       context: ./
-      dockerfile: Dockerfile.cuda
+      dockerfile: Dockerfile
       target: builder
-      args:
-        CUDA_VERSION: ${CUDA_VERSION:-12.6.0}
     environment:
       - LOG_LEVEL=debug
       - GPU_PROVER=false
@@ -86,7 +84,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     network_mode: "host"
-    command: go test -v ./tests
+    command: go test -v ./tests -timeout=1h
 
   traefik:
     image: traefik:latest
