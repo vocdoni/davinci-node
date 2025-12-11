@@ -31,15 +31,8 @@ func TestMain(m *testing.M) {
 
 	// create a temp dir
 	tempDir := os.TempDir() + "/davinci-node-test-" + time.Now().Format("20060102150405")
-	// defer the removal of the temp dir
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			log.Fatalf("failed to remove temp dir (%s): %v", tempDir, err)
-		}
-	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var err error
 	var cleanup func()
@@ -54,7 +47,24 @@ func TestMain(m *testing.M) {
 	}
 	log.Infof("Organization address: %s", orgAddr.String())
 
-	// Defer cleanup to run after tests complete
-	defer cleanup()
-	m.Run()
+	code := m.Run()
+
+	cancel()
+
+	cleanupDone := make(chan struct{})
+	go func() {
+		cleanup()
+		close(cleanupDone)
+	}()
+
+	select {
+	case <-cleanupDone:
+	case <-time.After(30 * time.Second):
+		log.Warn("cleanup timed out, forcing exit")
+	}
+
+	if err := os.RemoveAll(tempDir); err != nil {
+		log.Fatalf("failed to remove temp dir (%s): %v", tempDir, err)
+	}
+	os.Exit(code)
 }
