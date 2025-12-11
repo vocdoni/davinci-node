@@ -7,7 +7,7 @@ A web UI frontend for the Davinci Sequencer service, providing a dashboard to mo
 - **Smart Contract Links**: View and access contract addresses on the block explorer
 - **Process List**: View all active processes with real-time statistics
 - **Process Details**: Expandable details for each process including:
-  - Vote counts and statistics
+  - Voters count and statistics
   - Sequencer performance metrics
   - State transition information
   - Census details

@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
@@ -58,6 +57,7 @@ type VerifiedBallot struct {
 	Address         *big.Int                `json:"address"`
 	InputsHash      *big.Int                `json:"inputsHash"`
 	Proof           *groth16_bls12377.Proof `json:"proof"`
+	CensusProof     *types.CensusProof      `json:"censusProof"`
 }
 
 // Ballot is the struct that contains the information of a ballot. It includes
@@ -87,7 +87,8 @@ type Ballot struct {
 func (b *Ballot) Valid() bool {
 	if b.ProcessID == nil || b.VoterWeight == nil || b.Address == nil ||
 		b.BallotInputsHash == nil || b.EncryptedBallot == nil ||
-		b.Signature == nil || b.CensusProof == nil || b.PubKey == nil {
+		b.Signature == nil ||
+		b.PubKey == nil {
 		log.Debug("ballot is not valid, nil fields")
 		return false
 	}
@@ -97,10 +98,6 @@ func (b *Ballot) Valid() bool {
 	}
 	if !b.Signature.Valid() {
 		log.Debugf("signature is not valid: %s", b.Signature.String())
-		return false
-	}
-	if !b.CensusProof.Valid() {
-		log.Debug("census proof is not valid")
 		return false
 	}
 	return true
@@ -141,9 +138,11 @@ func (b *Ballot) String() string {
 // which has been verified and aggregated in a batch by the sequencer. It
 // includes the address and the encrypted ballot.
 type AggregatorBallot struct {
-	VoteID          types.HexBytes  `json:"voteId"`
-	Address         *big.Int        `json:"address"`
-	EncryptedBallot *elgamal.Ballot `json:"encryptedBallot"`
+	VoteID          types.HexBytes     `json:"voteId"`
+	Address         *big.Int           `json:"address"`
+	Weight          *big.Int           `json:"weight"`
+	EncryptedBallot *elgamal.Ballot    `json:"encryptedBallot"`
+	CensusProof     *types.CensusProof `json:"censusProof"`
 }
 
 // AggregatorBallotBatch is the struct that contains the information of a
@@ -175,54 +174,46 @@ type StateTransitionBatch struct {
 
 // StateTransitionBatchProofInputs is the struct that contains the inputs
 // of the proof of the state transition batch. It includes the root hash
-// before and after the transition, the number of new votes and the number
+// before and after the transition, the number of voters and the number
 // of overwrites.
 type StateTransitionBatchProofInputs struct {
-	RootHashBefore       *big.Int           `json:"rootHashBefore"`
-	RootHashAfter        *big.Int           `json:"rootHashAfter"`
-	NumNewVotes          int                `json:"numNewVotes"`
-	NumOverwritten       int                `json:"numOverwritten"`
-	BlobEvaluationPointZ *big.Int           `json:"blobEvaluationPointZ"`
-	BlobEvaluationPointY [4]*big.Int        `json:"blobEvaluationPointY"`
-	BlobCommitment       gethkzg.Commitment `json:"blobCommitment"`
-	BlobProof            gethkzg.Proof      `json:"blobProof"`
+	RootHashBefore        *big.Int    `json:"rootHashBefore"`
+	RootHashAfter         *big.Int    `json:"rootHashAfter"`
+	VotersCount           int         `json:"votersCount"`
+	OverwrittenVotesCount int         `json:"overwrittenVotesCount"`
+	CensusRoot            *big.Int    `json:"censusRoot"`
+	BlobCommitmentLimbs   [3]*big.Int `json:"blobCommitmentLimbs"`
 }
 
-// ABIEncode packs the four fields as a single static uint256[4] blob:
+// ABIEncode packs the fields as a single static uint256[8] blob:
 //
-//		[ rootHashBefore, rootHashAfter, numNewVotes, numOverwritten,
+//		[ rootHashBefore, rootHashAfter, votersCount, overwrittenVotesCount, censusRoot,
 //	      blobEvaluationPointZ, blobEvaluationPointY[0], blobEvaluationPointY[1],
 //	      blobEvaluationPointY[2], blobEvaluationPointY[3], blobCommitment, blobProof ]
 //
-// where the first four elements are the root hashes and counts, the next five
-// elements are the blob evaluation point (Z and Y limbs), and the last two
-// elements are the blob commitment and proof.
+// where the first five elements are the root hashes, counts and the census root,
+// and the next three elements are the blob commitment limbs (3 × 16 bytes).
+// Note: BlobProofLimbs and BlobEvaluationPointY are now private witness values
+// and are verified in-circuit, so they are not included in the public inputs.
 func (s *StateTransitionBatchProofInputs) ABIEncode() ([]byte, error) {
-	arr := [9]*big.Int{
+	arr := [8]*big.Int{
 		s.RootHashBefore,
 		s.RootHashAfter,
-		big.NewInt(int64(s.NumNewVotes)),
-		big.NewInt(int64(s.NumOverwritten)),
-		s.BlobEvaluationPointZ,    // Z is on bn254, so we don't need limbs
-		s.BlobEvaluationPointY[0], // Y is on bls12-381, so we need all 4 limbs
-		s.BlobEvaluationPointY[1],
-		s.BlobEvaluationPointY[2],
-		s.BlobEvaluationPointY[3],
+		big.NewInt(int64(s.VotersCount)),
+		big.NewInt(int64(s.OverwrittenVotesCount)),
+		s.CensusRoot,
+		s.BlobCommitmentLimbs[0],
+		s.BlobCommitmentLimbs[1],
+		s.BlobCommitmentLimbs[2],
 	}
-	arrType, err := abi.NewType("uint256[9]", "", nil)
-	if err != nil {
-		return nil, err
-	}
-	bytesType, err := abi.NewType("bytes", "", nil)
+	arrType, err := abi.NewType("uint256[8]", "", nil)
 	if err != nil {
 		return nil, err
 	}
 	arguments := abi.Arguments{
 		{Type: arrType},
-		{Type: bytesType}, // blobCommitment
-		{Type: bytesType}, // blobProof
 	}
-	return arguments.Pack(arr, s.BlobCommitment[:], s.BlobProof[:])
+	return arguments.Pack(arr)
 }
 
 // String returns a JSON representation of the StateTransitionBatchProofInputs

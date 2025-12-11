@@ -16,11 +16,14 @@ func TestBarycentricEvaluationBasic(t *testing.T) {
 		big.NewInt(int64(i + 1)).FillBytes(blob[i*32 : (i+1)*32])
 	}
 
-	// Evaluation point z
+	// Compute commitment first, then evaluation point z
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("BlobToCommitment should not return an error"))
+
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
 
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), commitment)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
@@ -40,10 +43,13 @@ func TestBarycentricEvaluationBlobData1(t *testing.T) {
 	blob, err := GetBlobData1()
 	c.Assert(err, qt.IsNil)
 
-	// Evaluation point z
+	// Compute commitment first, then evaluation point z
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	c.Assert(err, qt.IsNil)
+
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), commitment)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile
@@ -61,10 +67,13 @@ func TestBarycentricEvaluationBlobData2(t *testing.T) {
 	blob, err := GetBlobData2()
 	c.Assert(err, qt.IsNil)
 
-	// Evaluation point z
+	// Compute commitment first, then evaluation point z
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	c.Assert(err, qt.IsNil)
+
 	processID := util.RandomBytes(31)
 	rootHashBefore := util.RandomBytes(31)
-	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), blob)
+	z, err := ComputeEvaluationPoint(new(big.Int).SetBytes(processID), new(big.Int).SetBytes(rootHashBefore), commitment)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("ComputeEvaluationPoint should not return an error"))
 
 	// Ground truth from the KZG precompile

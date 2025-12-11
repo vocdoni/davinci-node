@@ -28,7 +28,6 @@ var (
 
 var (
 	KeyProcessID     = new(big.Int).SetBytes([]byte{0x00})
-	KeyCensusRoot    = new(big.Int).SetBytes([]byte{0x01})
 	KeyBallotMode    = new(big.Int).SetBytes([]byte{0x02})
 	KeyEncryptionKey = new(big.Int).SetBytes([]byte{0x03})
 	KeyResultsAdd    = new(big.Int).SetBytes([]byte{0x04})
@@ -45,16 +44,15 @@ type State struct {
 	db        db.Database
 	dbTx      db.WriteTx
 
-	oldResultsAdd      *elgamal.Ballot
-	oldResultsSub      *elgamal.Ballot
-	newResultsAdd      *elgamal.Ballot
-	newResultsSub      *elgamal.Ballot
-	ballotSum          *elgamal.Ballot
-	overwrittenSum     *elgamal.Ballot
-	overwrittenBallots []*elgamal.Ballot
-	ballotCount        int
-	overwrittenCount   int
-	votes              []*Vote
+	oldResultsAdd         *elgamal.Ballot
+	oldResultsSub         *elgamal.Ballot
+	newResultsAdd         *elgamal.Ballot
+	newResultsSub         *elgamal.Ballot
+	allBallotsSum         *elgamal.Ballot
+	overwrittenSum        *elgamal.Ballot
+	votersCount           int
+	overwrittenVotesCount int
+	votes                 []*Vote
 
 	// Transition Witness
 	rootHashBefore *big.Int
@@ -67,7 +65,6 @@ type State struct {
 type ProcessProofs struct {
 	ID            *ArboProof
 	CensusOrigin  *ArboProof
-	CensusRoot    *ArboProof
 	BallotMode    *ArboProof
 	EncryptionKey *ArboProof
 }
@@ -138,7 +135,6 @@ func RootExists(db db.Database, processId, root *big.Int) error {
 func CalculateInitialRoot(
 	processID *big.Int,
 	censusOrigin *big.Int,
-	censusRoot *big.Int,
 	ballotMode *types.BallotMode,
 	publicKey ecc.Point,
 ) (*big.Int, error) {
@@ -157,7 +153,6 @@ func CalculateInitialRoot(
 	// Initialize the state with the census root, ballot mode and the encryption key
 	if err := st.Initialize(
 		censusOrigin,
-		censusRoot,
 		circuits.BallotModeToCircuit(ballotMode),
 		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
 		return nil, fmt.Errorf("could not initialize state: %v", err)
@@ -171,7 +166,6 @@ func CalculateInitialRoot(
 // StartBatch...
 func (o *State) Initialize(
 	censusOrigin *big.Int,
-	censusRoot *big.Int,
 	ballotMode circuits.BallotMode[*big.Int],
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) error {
@@ -181,9 +175,6 @@ func (o *State) Initialize(
 	}
 	if err := o.tree.AddBigInt(KeyProcessID, o.processID); err != nil {
 		return fmt.Errorf("could not set process ID: %w", err)
-	}
-	if err := o.tree.AddBigInt(KeyCensusRoot, censusRoot); err != nil {
-		return fmt.Errorf("could not set census root: %w", err)
 	}
 	if err := o.tree.AddBigInt(KeyBallotMode, ballotMode.Serialize()...); err != nil {
 		return fmt.Errorf("could not set ballot mode: %w", err)
@@ -198,7 +189,7 @@ func (o *State) Initialize(
 		return fmt.Errorf("could not set results sub: %w", err)
 	}
 	if err := o.tree.AddBigInt(KeyCensusOrigin, censusOrigin); err != nil {
-		return err
+		return fmt.Errorf("could not set census origin: %w", err)
 	}
 	return nil
 }
@@ -219,11 +210,10 @@ func (o *State) StartBatch() error {
 	o.oldResultsSub = elgamal.NewBallot(Curve)
 	o.newResultsAdd = elgamal.NewBallot(Curve)
 	o.newResultsSub = elgamal.NewBallot(Curve)
-	o.ballotSum = elgamal.NewBallot(Curve)
+	o.allBallotsSum = elgamal.NewBallot(Curve)
 	o.overwrittenSum = elgamal.NewBallot(Curve)
-	o.ballotCount = 0
-	o.overwrittenCount = 0
-	o.overwrittenBallots = []*elgamal.Ballot{}
+	o.votersCount = 0
+	o.overwrittenVotesCount = 0
 	o.votes = []*Vote{}
 	return nil
 }
@@ -247,9 +237,6 @@ func (o *State) EndBatch() error {
 	}
 	if o.processProofs.CensusOrigin, err = o.GenArboProof(KeyCensusOrigin); err != nil {
 		return fmt.Errorf("could not get CensusOrigin proof: %w", err)
-	}
-	if o.processProofs.CensusRoot, err = o.GenArboProof(KeyCensusRoot); err != nil {
-		return fmt.Errorf("could not get CensusRoot proof: %w", err)
 	}
 	if o.processProofs.BallotMode, err = o.GenArboProof(KeyBallotMode); err != nil {
 		return fmt.Errorf("could not get BallotMode proof: %w", err)
@@ -287,7 +274,7 @@ func (o *State) EndBatch() error {
 	if !ok {
 		return fmt.Errorf("resultsAdd not found in state")
 	}
-	o.newResultsAdd = o.newResultsAdd.Add(o.oldResultsAdd, o.ballotSum)
+	o.newResultsAdd = o.newResultsAdd.Add(o.oldResultsAdd, o.allBallotsSum)
 	o.votesProofs.ResultsAdd, err = ArboTransitionFromAddOrUpdate(o,
 		KeyResultsAdd, o.newResultsAdd.BigInts()...)
 	if err != nil {
@@ -344,9 +331,10 @@ func (o *State) RootExists(root *big.Int) error {
 	return o.tree.RootExists(BigIntToBytes(root))
 }
 
-// BallotCount returns the number of ballots added in the current batch.
-func (o *State) BallotCount() int {
-	return o.ballotCount
+// VotersCount returns the number of voters participating in the current batch,
+// i.e. either casting their first vote or overwriting a previous one.
+func (o *State) VotersCount() int {
+	return o.votersCount
 }
 
 // OldResultsAdd returns the old results add ballot of the current batch.
@@ -369,24 +357,15 @@ func (o *State) NewResultsSub() *elgamal.Ballot {
 	return o.newResultsSub
 }
 
-// OverwrittenCount returns the number of ballots overwritten in the current
+// OverwrittenVotesCount returns the number of ballots overwritten in the current
 // batch.
-func (o *State) OverwrittenCount() int {
-	return o.overwrittenCount
+func (o *State) OverwrittenVotesCount() int {
+	return o.overwrittenVotesCount
 }
 
 // Votes returns the votes added in the current batch.
 func (o *State) Votes() []*Vote {
 	return o.votes
-}
-
-// OverwrittenBallots returns the overwritten ballots in the current batch.
-func (o *State) OverwrittenBallots() []*elgamal.Ballot {
-	v := slices.Clone(o.overwrittenBallots)
-	for len(v) < types.VotesPerBatch {
-		v = append(v, elgamal.NewBallot(Curve))
-	}
-	return v
 }
 
 // PaddedVotes returns the votes added in the current batch, padded to
@@ -399,6 +378,8 @@ func (o *State) PaddedVotes() []*Vote {
 			Address:           big.NewInt(0),
 			Ballot:            elgamal.NewBallot(Curve),
 			ReencryptedBallot: elgamal.NewBallot(Curve),
+			OverwrittenBallot: elgamal.NewBallot(Curve),
+			Weight:            big.NewInt(0),
 		})
 	}
 	return v
@@ -409,7 +390,6 @@ func (o *State) Process() circuits.Process[*big.Int] {
 	return circuits.Process[*big.Int]{
 		ID:            o.ProcessID(),
 		CensusOrigin:  o.CensusOrigin(),
-		CensusRoot:    o.CensusRoot(),
 		BallotMode:    o.BallotMode(),
 		EncryptionKey: o.EncryptionKey(),
 	}
@@ -419,14 +399,12 @@ func (o *State) Process() circuits.Process[*big.Int] {
 //
 //	process.ID
 //	process.CensusOrigin
-//	process.CensusRoot
 //	process.BallotMode
 //	process.EncryptionKey
 func (o *State) ProcessSerializeBigInts() []*big.Int {
 	list := []*big.Int{}
 	list = append(list, o.ProcessID())
 	list = append(list, o.CensusOrigin())
-	list = append(list, o.CensusRoot())
 	list = append(list, o.BallotMode().Serialize()...)
 	list = append(list, o.EncryptionKey().Serialize()...)
 	return list
@@ -449,18 +427,6 @@ func (o *State) CensusOrigin() *big.Int {
 	_, v, err := o.tree.GetBigInt(KeyCensusOrigin)
 	if err != nil {
 		panic(err)
-	}
-	if len(v) == 0 {
-		return big.NewInt(0) // default value if not set
-	}
-	return v[0]
-}
-
-// CensusRoot returns the census root of the state as a big.Int.
-func (o *State) CensusRoot() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyCensusRoot)
-	if err != nil {
-		log.Errorw(err, "failed to get census root from state")
 	}
 	if len(v) == 0 {
 		return big.NewInt(0) // default value if not set

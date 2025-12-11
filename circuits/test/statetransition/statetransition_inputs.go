@@ -14,6 +14,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
+	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
@@ -27,14 +28,20 @@ import (
 // StateTransitionTestResults struct includes relevant data after StateTransitionCircuit
 // inputs generation
 type StateTransitionTestResults struct {
-	Process circuits.Process[*big.Int]
-	Votes   []state.Vote
+	Process      circuits.Process[*big.Int]
+	Votes        []state.Vote
+	PublicInputs *statetransition.PublicInputs
 }
 
 // StateTransitionInputsForTest returns the StateTransitionTestResults, the placeholder
 // and the assignments of a StateTransitionCircuit for the processId provided
 // generating nValidVoters. Uses quicktest assertions instead of returning errors.
-func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nValidVoters int) (
+func StateTransitionInputsForTest(
+	t *testing.T,
+	processId *types.ProcessID,
+	censusOrigin types.CensusOrigin,
+	nValidVoters int,
+) (
 	*StateTransitionTestResults, *statetransition.StateTransitionCircuit, *statetransition.StateTransitionCircuit,
 ) {
 	c := qt.New(t)
@@ -58,7 +65,7 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 
 		// generate aggregator circuit and inputs
 		var agPlaceholder, aggWitness *aggregator.AggregatorCircuit
-		aggInputs, agPlaceholder, aggWitness = aggregatortest.AggregatorInputsForTest(t, processId, nValidVoters)
+		aggInputs, agPlaceholder, aggWitness = aggregatortest.AggregatorInputsForTest(t, processId, censusOrigin, nValidVoters)
 
 		// parse the witness to the circuit
 		fullWitness, err = frontend.NewWitness(aggWitness, circuits.AggregatorCurve.ScalarField())
@@ -114,8 +121,7 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 	// get the encryption key from the aggregator inputs
 	encryptionKey := state.Curve.New().SetPoint(aggInputs.Process.EncryptionKey.PubKey[0], aggInputs.Process.EncryptionKey.PubKey[1])
 	// init final assignments stuff
-	s := newState(c, aggInputs.Process.ID, aggInputs.Process.CensusRoot,
-		circuits.MockBallotMode(), aggInputs.Process.EncryptionKey)
+	s := newState(c, aggInputs.Process.ID, circuits.MockBallotMode(), censusOrigin, aggInputs.Process.EncryptionKey)
 
 	err = s.StartBatch()
 	c.Assert(err, qt.IsNil, qt.Commentf("start batch"))
@@ -134,7 +140,20 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 	err = s.EndBatch()
 	c.Assert(err, qt.IsNil, qt.Commentf("end batch"))
 
-	witness, err := statetransition.GenerateWitness(s, new(types.BigInt).SetBigInt(reencryptionK))
+	// add census data to witness
+	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(
+		aggInputs.Votes,
+		types.CensusOrigin(aggInputs.Process.CensusOrigin.Uint64()),
+		new(types.ProcessID).SetBytes(aggInputs.Process.ID.Bytes()),
+	)
+	c.Assert(err, qt.IsNil, qt.Commentf("generate census proofs for test"))
+
+	witness, publicInputs, err := statetransition.GenerateWitness(
+		s,
+		new(types.BigInt).SetBigInt(censusRoot),
+		censusProofs,
+		new(types.BigInt).SetBigInt(reencryptionK),
+	)
 	c.Assert(err, qt.IsNil, qt.Commentf("generate witness"))
 
 	witness.AggregatorProof = proofInBW6761
@@ -147,12 +166,16 @@ func StateTransitionInputsForTest(t *testing.T, processId *types.ProcessID, nVal
 
 	circuitPlaceholder.AggregatorVK = fixedVk
 	return &StateTransitionTestResults{
-		Process: aggInputs.Process,
-		Votes:   aggInputs.Votes,
+		Process:      aggInputs.Process,
+		Votes:        aggInputs.Votes,
+		PublicInputs: publicInputs,
 	}, circuitPlaceholder, witness
 }
 
-func newState(c *qt.C, processId, censusRoot *big.Int, ballotMode circuits.BallotMode[*big.Int],
+func newState(c *qt.C,
+	processId *big.Int,
+	ballotMode circuits.BallotMode[*big.Int],
+	censusOrigin types.CensusOrigin,
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) *state.State {
 	dir, err := os.MkdirTemp(os.TempDir(), "statetransition")
@@ -165,8 +188,7 @@ func newState(c *qt.C, processId, censusRoot *big.Int, ballotMode circuits.Ballo
 	c.Assert(err, qt.IsNil, qt.Commentf("create state"))
 
 	err = s.Initialize(
-		types.CensusOriginMerkleTree.BigInt().MathBigInt(),
-		censusRoot,
+		censusOrigin.BigInt().MathBigInt(),
 		ballotMode,
 		encryptionKey,
 	)

@@ -22,7 +22,6 @@ func TestBlobDataStructures(t *testing.T) {
 
 	// Test parameters
 	processID := big.NewInt(12345)
-	censusRoot := big.NewInt(67890)
 
 	// Create encryption key pair
 	publicKey, _, err := elgamal.GenerateKey(Curve)
@@ -50,7 +49,7 @@ func TestBlobDataStructures(t *testing.T) {
 	}
 	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
-	err = state.Initialize(types.CensusOriginMerkleTree.BigInt().MathBigInt(), censusRoot, ballotModeCircuit, encryptionKeyCircuit)
+	err = state.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize state"))
 
 	// Create test votes
@@ -158,7 +157,6 @@ func TestBlobDataStructures(t *testing.T) {
 func TestBlobStateTransition(t *testing.T) {
 	c := qt.New(t)
 	processID := big.NewInt(12345)
-	censusRoot := big.NewInt(67890)
 	numTransitions := 5 // Test multiple state transitions
 
 	// Create encryption key pair
@@ -187,7 +185,7 @@ func TestBlobStateTransition(t *testing.T) {
 	}
 	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
-	err = originalState.Initialize(types.CensusOriginMerkleTree.BigInt().MathBigInt(), censusRoot, ballotModeCircuit, encryptionKeyCircuit)
+	err = originalState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize original state"))
 
 	// Store blobs and roots for each transition
@@ -277,8 +275,7 @@ func TestBlobStateTransition(t *testing.T) {
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to close test state"))
 			}
 		}()
-
-		err = testState.Initialize(types.CensusOriginMerkleTree.BigInt().MathBigInt(), censusRoot, ballotModeCircuit, encryptionKeyCircuit)
+		err = testState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize test state"))
 
 		// Apply first transition
@@ -297,7 +294,7 @@ func TestBlobStateTransition(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get expected root"))
 
 		// Now test restoration from blob
-		restoreStateFromBlob(t, &firstTransition.Blob.Blob, processID, censusRoot, *ballotMode, publicKey, expectedRoot)
+		restoreStateFromBlob(t, &firstTransition.Blob.Blob, processID, *ballotMode, publicKey, expectedRoot)
 	})
 
 	// Test state restoration by applying all blobs in sequence
@@ -311,7 +308,7 @@ func TestBlobStateTransition(t *testing.T) {
 			}
 		}()
 
-		err = testState.Initialize(types.CensusOriginMerkleTree.BigInt().MathBigInt(), censusRoot, ballotModeCircuit, encryptionKeyCircuit)
+		err = testState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize test state"))
 
 		// Apply each blob in sequence to restore the cumulative state
@@ -346,7 +343,7 @@ func TestBlobStateTransition(t *testing.T) {
 			}
 		}()
 
-		err = testState.Initialize(types.CensusOriginMerkleTree.BigInt().MathBigInt(), censusRoot, ballotModeCircuit, encryptionKeyCircuit)
+		err = testState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize test state"))
 
 		// Apply all transitions except the last one
@@ -398,7 +395,7 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 	c := qt.New(t)
 	votes := make([]*Vote, numVotes)
 
-	for i := 0; i < numVotes; i++ {
+	for i := range numVotes {
 		// Create vote address with offset to ensure uniqueness across transitions
 		address := big.NewInt(int64(1000 + offset + i))
 
@@ -494,9 +491,10 @@ func verifyKZGCommitment(t *testing.T, blob *gethkzg.Blob, commit *gethkzg.Commi
 
 	c.Assert(versionedHash, qt.Equals, expectedVersionedHash, qt.Commentf("Versioned hash mismatch"))
 
-	// Verify z is within 250-bit range
-	maxZ := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 250), big.NewInt(1))
-	c.Assert(z.Cmp(maxZ) <= 0, qt.IsTrue, qt.Commentf("z value exceeds 250-bit range"))
+	// Verify z is within BN254 scalar field
+	bn254Modulus := new(big.Int)
+	bn254Modulus.SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
+	c.Assert(z.Cmp(bn254Modulus) < 0, qt.IsTrue, qt.Commentf("z value exceeds BN254 scalar field"))
 
 	// Verify y value by computing point evaluation separately (just for verification)
 	_, claim, err := gethkzg.ComputeProof(blob, blobs.BigIntToPoint(z))
@@ -506,7 +504,7 @@ func verifyKZGCommitment(t *testing.T, blob *gethkzg.Blob, commit *gethkzg.Commi
 	c.Assert(y.Cmp(recomputedY), qt.Equals, 0, qt.Commentf("KZG evaluation (y value) mismatch"))
 }
 
-func restoreStateFromBlob(t *testing.T, blob *gethkzg.Blob, processID, censusRoot *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
+func restoreStateFromBlob(t *testing.T, blob *gethkzg.Blob, processID *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
 	c := qt.New(t)
 	// Parse blob data
 	blobData, err := ParseBlobData(blob)
@@ -524,7 +522,7 @@ func restoreStateFromBlob(t *testing.T, blob *gethkzg.Blob, processID, censusRoo
 	// Initialize new state with same parameters
 	ballotModeCircuit := circuits.BallotModeToCircuit(&ballotMode)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(encryptionKey)
-	err = newState.Initialize(types.CensusOriginMerkleTree.BigInt().MathBigInt(), censusRoot, ballotModeCircuit, encryptionKeyCircuit)
+	err = newState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize new state"))
 
 	// Apply blob data to new state

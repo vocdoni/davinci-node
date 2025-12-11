@@ -1,14 +1,11 @@
 package types
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/vocdoni/arbo"
 )
 
 type ProcessStatus uint8
@@ -158,21 +155,22 @@ func (m *Metadata) String() string {
 }
 
 type Process struct {
-	ID                   HexBytes              `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
-	Status               ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
-	OrganizationId       common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
-	EncryptionKey        *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
-	StateRoot            *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
-	Result               []*BigInt             `json:"result"                   cbor:"5,keyasint,omitempty"`
-	StartTime            time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
-	Duration             time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
-	MetadataURI          string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
-	BallotMode           *BallotMode           `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
-	Census               *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
-	Metadata             *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
-	VoteCount            *BigInt               `json:"voteCount"                cbor:"12,keyasint,omitempty"`
-	VoteOverwrittenCount *BigInt               `json:"voteOverwrittenCount"     cbor:"13,keyasint,omitempty"`
-	SequencerStats       SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
+	ID                    HexBytes              `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
+	Status                ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
+	OrganizationId        common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
+	EncryptionKey         *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
+	StateRoot             *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
+	Result                []*BigInt             `json:"result"                   cbor:"5,keyasint,omitempty"`
+	StartTime             time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
+	Duration              time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
+	MetadataURI           string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
+	BallotMode            *BallotMode           `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
+	Census                *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
+	Metadata              *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
+	VotersCount           *BigInt               `json:"votersCount"        cbor:"12,keyasint,omitempty"`
+	OverwrittenVotesCount *BigInt               `json:"overwrittenVotesCount"    cbor:"13,keyasint,omitempty"`
+	MaxVoters             *BigInt               `json:"maxVoters"                cbor:"14,keyasint,omitempty"`
+	SequencerStats        SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
 // BigCensusRoot returns the BigInt representation of the census root of the
@@ -194,12 +192,19 @@ type ProcessWithStatusChange struct {
 }
 
 // ProcessWithStateRootChange extends types.Process to add NewStateRoot,
-// NewVoteCount, and NewVoteOverwrittenCount fields
+// VotersCountCount, and NewOverwrittenVotesCount fields
 type ProcessWithStateRootChange struct {
 	*Process
-	NewStateRoot            *BigInt
-	NewVoteCount            *BigInt
-	NewVoteOverwrittenCount *BigInt
+	NewMaxVoters             *BigInt
+	NewStateRoot             *BigInt
+	VotersCountCount         *BigInt
+	NewOverwrittenVotesCount *BigInt
+}
+
+// ProcessWithMaxVotersChange extends types.Process to add NewMaxVoters field
+type ProcessWithMaxVotersChange struct {
+	*Process
+	NewMaxVoters *BigInt
 }
 
 type SequencerProcessStats struct {
@@ -240,133 +245,6 @@ type EncryptionKey struct {
 	Y *BigInt `json:"y" cbor:"1,keyasint,omitempty"`
 }
 
-// CensusOrigin represents the origin of the census used in a voting process.
-type CensusOrigin uint8
-
-const (
-	CensusOriginUnknown CensusOrigin = iota
-	CensusOriginMerkleTree
-	CensusOriginCSPEdDSABLS12377
-
-	CensusOriginNameUnknown          = "unknown"
-	CensusOriginNameMerkleTree       = "merkle_tree"
-	CensusOriginNameCSPEdDSABLS12377 = "csp_eddsa_bls12377"
-)
-
-// Valid checks if the CensusOrigin is a valid value.
-func (co CensusOrigin) Valid() bool {
-	switch co {
-	case CensusOriginMerkleTree, CensusOriginCSPEdDSABLS12377:
-		return true
-	default:
-		return false
-	}
-}
-
-// String returns a string representation of the CensusOrigin.
-func (co CensusOrigin) String() string {
-	switch co {
-	case CensusOriginMerkleTree:
-		return CensusOriginNameMerkleTree
-	case CensusOriginCSPEdDSABLS12377:
-		return CensusOriginNameCSPEdDSABLS12377
-	default:
-		return CensusOriginNameUnknown
-	}
-}
-
-// BigInt converts the CensusOrigin to a *types.BigInt representation.
-func (co CensusOrigin) BigInt() *BigInt {
-	if !co.Valid() {
-		return nil
-	}
-	return (*BigInt)(new(big.Int).SetUint64(uint64(co)))
-}
-
-// Number of bytes in the census root
-const CensusRootLength = 32
-
-// NormalizedCensusRoot function ensures that the census root is always of a
-// fixed length. If its length is not CensusRootLength, it truncates or pads
-// it accordingly.
-func NormalizedCensusRoot(original HexBytes) HexBytes {
-	if len(original) > CensusRootLength {
-		// If the original is longer than the allowed length, truncate it
-		return original[:CensusRootLength]
-	}
-	if diff := CensusRootLength - len(original); diff > 0 {
-		// If the original is shorter than the allowed length, pad it with
-		// zeros at the end
-		padded := make(HexBytes, CensusRootLength)
-		copy(padded, original)
-		return padded
-	}
-	// If the original is already the correct length, return it as is
-	return original
-}
-
-type Census struct {
-	CensusOrigin CensusOrigin `json:"censusOrigin" cbor:"0,keyasint,omitempty"`
-	MaxVotes     *BigInt      `json:"maxVotes"     cbor:"1,keyasint,omitempty"`
-	CensusRoot   HexBytes     `json:"censusRoot"   cbor:"2,keyasint,omitempty"`
-	CensusURI    string       `json:"censusURI"    cbor:"3,keyasint,omitempty"`
-}
-
-// CensusProof is the struct to represent a proof of inclusion in the census
-// merkle tree. For example, it will be provided by the user to verify that he
-// or she can vote in the process.
-type CensusProof struct {
-	// Generic fields
-	CensusOrigin CensusOrigin `json:"censusOrigin"`
-	Root         HexBytes     `json:"root"`
-	Address      HexBytes     `json:"address"`
-	Weight       *BigInt      `json:"weight,omitempty"`
-	// Merkletree related fields
-	Siblings HexBytes `json:"siblings,omitempty"`
-	Value    HexBytes `json:"value,omitempty"`
-	// CSP related fields
-	ProcessID HexBytes `json:"processId,omitempty"`
-	PublicKey HexBytes `json:"publicKey,omitempty"`
-	Signature HexBytes `json:"signature,omitempty"`
-}
-
-// CensusRoot represents the census root used in a voting process.
-type CensusRoot struct {
-	Root HexBytes `json:"root"`
-}
-
-// Valid checks that the CensusProof is well-formed
-func (cp *CensusProof) Valid() bool {
-	if cp == nil {
-		return false
-	}
-	switch cp.CensusOrigin {
-	case CensusOriginMerkleTree:
-		return cp.Root != nil && cp.Address != nil && cp.Value != nil &&
-			cp.Siblings != nil && cp.Weight != nil
-	case CensusOriginCSPEdDSABLS12377:
-		return cp.Root != nil && cp.Address != nil && cp.ProcessID != nil &&
-			cp.PublicKey != nil && cp.Signature != nil
-	default:
-		return false
-	}
-}
-
-// HasRoot method checks if the CensusProof has the given census root.
-func (cp *CensusProof) HasRoot(censusRoot HexBytes) bool {
-	return bytes.Equal(NormalizedCensusRoot(cp.Root), NormalizedCensusRoot(censusRoot))
-}
-
-// String returns a string representation of the CensusProof
-// in JSON format. It returns an empty string if the JSON marshaling fails.
-func (cp *CensusProof) String() string {
-	data, err := json.Marshal(cp)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
 type OrganizationInfo struct {
 	ID          common.Address `json:"id,omitempty"      cbor:"0,keyasint,omitempty"`
 	Name        string         `json:"name"              cbor:"1,keyasint,omitempty"`
@@ -383,18 +261,17 @@ func (o *OrganizationInfo) String() string {
 
 // ProcessSetup is the struct to create a new voting process
 type ProcessSetup struct {
-	ProcessID    HexBytes     `json:"processId"`
-	CensusOrigin CensusOrigin `json:"censusOrigin"`
-	CensusRoot   HexBytes     `json:"censusRoot"`
-	BallotMode   *BallotMode  `json:"ballotMode"`
-	Signature    HexBytes     `json:"signature"`
+	ProcessID  HexBytes    `json:"processId"`
+	Census     *Census     `json:"census"`
+	BallotMode *BallotMode `json:"ballotMode"`
+	Signature  HexBytes    `json:"signature"`
 }
 
 // CensusRootBigInt returns the BigInt representation of the census root of the
 // process. It converts the census root from its original format to a BigInt
 // according to the census origin.
 func (p *ProcessSetup) CensusRootBigInt() (*BigInt, error) {
-	return processCensusRootToBigInt(p.CensusOrigin, p.CensusRoot)
+	return processCensusRootToBigInt(p.Census.CensusOrigin, p.Census.CensusRoot)
 }
 
 // ProcessSetupResponse represents the response of a voting process
@@ -403,17 +280,4 @@ type ProcessSetupResponse struct {
 	EncryptionPubKey [2]*BigInt  `json:"encryptionPubKey,omitempty"`
 	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
 	BallotMode       *BallotMode `json:"ballotMode,omitempty"`
-}
-
-// processCensusRootToBigInt helper converts the census root from its original
-// format to a BigInt according to the census origin.
-func processCensusRootToBigInt(origin CensusOrigin, root HexBytes) (*BigInt, error) {
-	switch origin {
-	case CensusOriginMerkleTree:
-		return new(BigInt).SetBigInt(arbo.BytesToBigInt(root)), nil
-	case CensusOriginCSPEdDSABLS12377:
-		return root.BigInt(), nil
-	default:
-		return nil, fmt.Errorf("unsupported census origin: %s", origin)
-	}
 }

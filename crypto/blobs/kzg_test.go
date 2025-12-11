@@ -40,7 +40,7 @@ func TestKZGVerifyMultipleCases(t *testing.T) {
 
 	testCases := []struct {
 		name string
-		data TestData
+		data testData
 	}{
 		{"ValidTestData1", ValidTestData1()},
 		{"ValidTestData2", ValidTestData2()},

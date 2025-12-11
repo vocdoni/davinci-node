@@ -20,7 +20,7 @@ const (
 	jsCSPVerify            = "cspVerify"
 	jsCSPCensusRoot        = "cspCensusRoot"
 	ballotProofInputsNArgs = 1 // ballotproof.BallotProofInputs json encoded string
-	cspSignNArgs           = 4 // census origin as uint8 and hex strings with privKey seed, processID and address
+	cspSignNArgs           = 5 // census origin as uint8 and hex strings with privKey seed, processID, address and weight
 	cspVerifyNArgs         = 1 // types.CensusProof json encoded string
 )
 
@@ -111,6 +111,11 @@ func cspSign(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("Invalid address: %v", err))
 	}
 	address := common.Address(bAddress)
+	// decode the weight from the fifth argument
+	weight, err := FromBigInt(args[4])
+	if err != nil {
+		return JSResult(nil, fmt.Errorf("Invalid weight decoding: %v", err))
+	}
 	// initialize the credential service providers with the private key seed
 	// decoded
 	csp, err := csp.New(censusOrigin, privKeySeed)
@@ -118,7 +123,7 @@ func cspSign(args []js.Value) any {
 		return JSResult(nil, fmt.Errorf("CSP cannot be initialized with the provided seed: %w", err))
 	}
 	// generate the census proof with the process ID and address
-	cspProof, err := csp.GenerateProof(processID, address)
+	cspProof, err := csp.GenerateProof(processID, address, weight)
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Error generating census proof: %v", err))
 	}

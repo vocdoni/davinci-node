@@ -17,6 +17,7 @@ import (
 
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
+	"github.com/consensys/gnark/backend/solidity"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
@@ -255,7 +256,7 @@ func main() {
 		log.Fatalf("failed to create statetransition_vkey.sol: %v", err)
 	}
 	buf := bytes.NewBuffer(nil)
-	if err := statetransitionSolidityVk.ExportSolidity(buf); err != nil {
+	if err := statetransitionSolidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
 		log.Fatalf("failed to export vk to Solidity: %v", err)
 	}
 	if _, err := fd.Write(buf.Bytes()); err != nil {
@@ -327,7 +328,7 @@ func main() {
 		log.Fatalf("failed to create resultsverifier_vkey.sol: %v", err)
 	}
 	buf = bytes.NewBuffer(nil)
-	if err := resultsverifierSolidityVk.ExportSolidity(buf); err != nil {
+	if err := resultsverifierSolidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
 		log.Fatalf("failed to export vk to Solidity: %v", err)
 	}
 	if _, err := fd.Write(buf.Bytes()); err != nil {

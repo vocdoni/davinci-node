@@ -90,8 +90,8 @@ export interface Process {
   metadataURI: string
   ballotMode: BallotMode
   census: Census
-  voteCount: string
-  voteOverwrittenCount: string
+  votersCount: string
+  overwrittenVotesCount: string
   isAcceptingVotes: boolean
   sequencerStats: SequencerProcessStats
 }

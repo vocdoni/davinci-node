@@ -61,7 +61,7 @@ func ensureProcess(t *testing.T, stg *Storage, pid []byte) {
 		Status:     types.ProcessStatusReady,
 		BallotMode: bm,
 		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 			CensusRoot:   types.HexBytes(censusRoot),
 		},
 	}

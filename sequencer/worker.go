@@ -123,7 +123,7 @@ func parseSequencerURL(rawURL string) (string, string, error) {
 	// check if raw url matches and the UUID is captured
 	// it should capture only the uuid
 	uuidPattern := `([^/?#]+)(?:/[^?#]*)?(?:\?[^#]*)?$`
-	uriNeedle := fmt.Sprintf("{%s}", api.SequencerUUIDParam)
+	uriNeedle := fmt.Sprintf("{%s}", api.SequencerUUIDURLParam)
 	uuidTemplate := strings.ReplaceAll(api.WorkersEndpoint, uriNeedle, uuidPattern)
 	sequencerUUIDRgx := regexp.MustCompile(uuidTemplate)
 	matches := sequencerUUIDRgx.FindStringSubmatch(rawURL)
@@ -132,7 +132,7 @@ func parseSequencerURL(rawURL string) (string, string, error) {
 	}
 	uuid := matches[1]
 	// split the raw URL by the needle and take the first part as the base path
-	splitter := api.EndpointWithParam(api.WorkersEndpoint, api.SequencerUUIDParam, uuid)
+	splitter := api.EndpointWithParam(api.WorkersEndpoint, api.SequencerUUIDURLParam, uuid)
 	basePath := strings.Split(rawURL, splitter)[0]
 	return basePath, uuid, nil
 }
@@ -264,7 +264,7 @@ func (s *Sequencer) fetchProcessFromMaster(pid *types.ProcessID) error {
 
 // fetchJobFromMaster performs GET request to master
 func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
-	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, s.sequencerUUID)
+	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDURLParam, s.sequencerUUID)
 	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
 	uri = api.EndpointWithParam(uri, api.WorkerTokenQueryParam, s.workerAuthtoken)
 	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
@@ -320,7 +320,7 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 
 // submitJobToMaster performs POST request to master with verified ballot
 func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
-	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDParam, s.sequencerUUID)
+	uri := api.EndpointWithParam(api.WorkerJobEndpoint, api.SequencerUUIDURLParam, s.sequencerUUID)
 	uri = api.EndpointWithParam(uri, api.WorkerAddressQueryParam, s.workerAddress.String())
 	uri = api.EndpointWithParam(uri, api.WorkerNameQueryParam, s.workerName)
 	uri = api.EndpointWithParam(uri, api.WorkerTokenQueryParam, s.workerAuthtoken)

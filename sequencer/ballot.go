@@ -88,7 +88,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 		}
 
 		log.Infow("processing ballot",
-			"address", ballot.Address.String(),
+			"address", hex.EncodeToString(ballot.Address.Bytes()),
 			"queued", s.stg.TotalPendingBallots(),
 			"voteID", hex.EncodeToString(ballot.VoteID),
 			"processID", fmt.Sprintf("%x", ballot.ProcessID),
@@ -149,7 +149,12 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
-
+	// Ensure the process is accepting votes
+	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(pid); err != nil {
+		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
+	} else if !isAcceptingVotes {
+		return nil, fmt.Errorf("process is not accepting votes")
+	}
 	log.Debugw("preparing ballot inputs", "pid", pid.String())
 	// Transform process data to circuit types
 	inputs := new(voteverifier.VoteVerifierInputs)
@@ -174,20 +179,17 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address: emulated.ValueOf[sw_bn254.ScalarField](b.Address),
-			VoteID:  emulated.ValueOf[sw_bn254.ScalarField](b.VoteID.BigInt().MathBigInt()),
-			Ballot:  *b.EncryptedBallot.ToGnarkEmulatedBN254(),
+			Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
+			VoteID:     emulated.ValueOf[sw_bn254.ScalarField](b.VoteID.BigInt().MathBigInt()),
+			VoteWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
+			Ballot:     *b.EncryptedBallot.ToGnarkEmulatedBN254(),
 		},
-		UserWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
 		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
 			ID:            emulated.ValueOf[sw_bn254.ScalarField](inputs.ProcessID),
 			CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusOrigin.BigInt().MathBigInt()),
-			CensusRoot:    emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusRoot),
 			EncryptionKey: inputs.EncryptionKey.BigIntsToEmulatedElementBN254(),
 			BallotMode:    inputs.BallotMode.BigIntsToEmulatedElementBN254(),
 		},
-		CensusSiblings: inputs.CensusSiblings,
-		CSPProof:       inputs.CSPProof,
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),
@@ -213,7 +215,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	log.Infow("ballot verified",
 		"pid", pid.String(),
 		"voteID", hex.EncodeToString(b.VoteID),
-		"address", b.Address.String(),
+		"address", hex.EncodeToString(b.Address.Bytes()),
 		"took", time.Since(startTime).String(),
 	)
 
@@ -226,5 +228,6 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		Address:         b.Address,
 		Proof:           proof.(*groth16_bls12377.Proof),
 		InputsHash:      inputHash,
+		CensusProof:     b.CensusProof,
 	}, nil
 }

@@ -11,7 +11,7 @@ import (
 
 func TestExampleCSP(t *testing.T) {
 	// Example usage of the CSP interface
-	origin := types.CensusOriginCSPEdDSABLS12377
+	origin := types.CensusOriginCSPEdDSABLS12377V1
 	seed := []byte("example_seed")
 
 	// Create a new CSP with the specified origin and seed
@@ -31,8 +31,9 @@ func TestExampleCSP(t *testing.T) {
 	}
 	// Random Ethereum address for the voter
 	voterAddress := common.BytesToAddress(util.RandomBytes(20))
+	userWeight := new(types.BigInt).SetInt(42)
 	// Generate a census proof for the voter
-	proof, err := csp.GenerateProof(processID, voterAddress)
+	proof, err := csp.GenerateProof(processID, voterAddress, userWeight)
 	if err != nil {
 		t.Fatalf("Error generating proof: %v", err)
 	}
@@ -43,4 +44,19 @@ func TestExampleCSP(t *testing.T) {
 		t.Fatalf("Error verifying proof: %v", err)
 	}
 	t.Log("Census proof verified successfully")
+}
+
+func TestCensusRootLenght(t *testing.T) {
+	origin := types.CensusOriginCSPEdDSABN254V1
+
+	for range 10000 {
+		csp, err := New(origin, nil)
+		if err != nil {
+			t.Fatalf("Error creating CSP: %v", err)
+		}
+		root := csp.CensusRoot().Root
+		if len(root) != types.CensusRootLength {
+			t.Errorf("Census root length is not 32 bytes: %d", len(root))
+		}
+	}
 }

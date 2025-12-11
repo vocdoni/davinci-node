@@ -3,7 +3,6 @@ package tests
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -17,8 +16,11 @@ import (
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/rs/zerolog"
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
+	c3config "github.com/vocdoni/census3-bigquery/config"
+	c3service "github.com/vocdoni/census3-bigquery/service"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
+	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
@@ -31,6 +33,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -59,19 +62,21 @@ const (
 	cspCensusEnvVarName               = "CSP_CENSUS"                             // environment variable name to select between csp or merkle tree census (by default merkle tree)
 )
 
-var defaultBatchTimeWindow = 120 * time.Second // default batch time window for sequencer
+var (
+	defaultBatchTimeWindow = 45 * time.Second // default batch time window for sequencer
+	defaultAPIPort         = util.RandomInt(40000, 60000)
+	defaultCensus3Port     = util.RandomInt(40000, 60000)
+	defaultCensus3URL      = fmt.Sprintf("http://localhost:%d", defaultCensus3Port)
+)
 
 // Services struct holds all test services
 type Services struct {
-	API       *service.APIService
-	Sequencer *sequencer.Sequencer
-	Storage   *storage.Storage
-	Contracts *web3.Contracts
-}
-
-func boolEnvVar(name string) bool {
-	enabled := os.Getenv(name)
-	return enabled == "1" || enabled == "true" || enabled == "TRUE"
+	API              *service.APIService
+	Census3          *c3service.Service
+	Sequencer        *sequencer.Sequencer
+	CensusDownloader *service.CensusDownloader
+	Storage          *storage.Storage
+	Contracts        *web3.Contracts
 }
 
 func isCSPCensus() bool {
@@ -81,9 +86,17 @@ func isCSPCensus() bool {
 
 func testCensusOrigin() types.CensusOrigin {
 	if isCSPCensus() {
-		return types.CensusOriginCSPEdDSABLS12377
+		return types.CensusOriginCSPEdDSABN254V1
 	} else {
-		return types.CensusOriginMerkleTree
+		return types.CensusOriginMerkleTreeOffchainStaticV1
+	}
+}
+
+func testWrongCensusOrigin() types.CensusOrigin {
+	if isCSPCensus() {
+		return types.CensusOriginMerkleTreeOffchainStaticV1
+	} else {
+		return types.CensusOriginCSPEdDSABN254V1
 	}
 }
 
@@ -98,9 +111,7 @@ func setupAPI(
 	banRules *workers.WorkerBanRules,
 	web3Conf config.DavinciWeb3Config,
 ) (*service.APIService, error) {
-	tmpPort := util.RandomInt(40000, 60000)
-
-	api := service.NewAPI(db, "127.0.0.1", tmpPort, "test", web3Conf, false)
+	api := service.NewAPI(db, "127.0.0.1", defaultAPIPort, "test", web3Conf, false)
 	api.SetWorkerConfig(workerSeed, workerTokenExpiration, workerTimeout, banRules)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
@@ -109,6 +120,37 @@ func setupAPI(
 	// Wait for the HTTP server to start
 	time.Sleep(500 * time.Millisecond)
 	return api, nil
+}
+
+// setupCensusService creates and starts a new census3-bigquery service for
+// testing.
+func setupCensusService() (*c3service.Service, func(), error) {
+	// create temp dir for census3-bigquery
+	tempDir, err := os.MkdirTemp("", "census3-bigquery-test-")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create temp dir for census3-bigquery: %w", err)
+	}
+
+	srv, err := c3service.New(&c3config.Config{
+		APIPort:       defaultCensus3Port,
+		DataDir:       tempDir,
+		MaxCensusSize: 1000000,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create census3-bigquery service: %w", err)
+	}
+
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Errorw(err, "census3-bigquery service exited with error")
+		}
+	}()
+	return srv, func() {
+		srv.Stop()
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Warnw("failed to remove census3-bigquery temp dir", "error", err)
+		}
+	}, nil
 }
 
 // setupWeb3 sets up the web3 contracts for testing. It deploys the contracts
@@ -171,12 +213,16 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 				if r.Mod.Path != "github.com/vocdoni/davinci-contracts" {
 					continue
 				}
-				versionParts := strings.Split(r.Mod.Version, "-")
-				if len(versionParts) != 3 {
-					return nil, nil, fmt.Errorf("invalid version parts length: expected 3, got %d", len(versionParts))
+				if versionParts := strings.Split(r.Mod.Version, "-"); len(versionParts) == 3 {
+					composeEnv[contractsCommitHashEnvVarName] = versionParts[2]
+					break
 				}
-				composeEnv[contractsCommitHashEnvVarName] = versionParts[2]
-				break
+				if versionParts := strings.Split(r.Mod.Version, "."); len(versionParts) == 3 {
+					composeEnv[contractsCommitHashEnvVarName] = r.Mod.Version
+					break
+				}
+				return nil, nil, fmt.Errorf("cannot parse davinci-contracts version: %s", r.Mod.Version)
+
 			}
 		}
 
@@ -392,6 +438,11 @@ func NewTestService(
 	workerTimeout time.Duration,
 	banRules *workers.WorkerBanRules,
 ) (*Services, func(), error) {
+	// Initialize census3 service
+	c3srv, c3cleanup, err := setupCensusService()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to setup census3 service: %w", err)
+	}
 	// Initialize the web3 contracts
 	contracts, web3Cleanup, err := setupWeb3(ctx)
 	if err != nil {
@@ -406,6 +457,7 @@ func NewTestService(
 	stg := storage.New(kv)
 
 	services := &Services{
+		Census3:   c3srv,
 		Storage:   stg,
 		Contracts: contracts,
 	}
@@ -413,15 +465,14 @@ func NewTestService(
 	// Start sequencer service
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
-	vp := service.NewSequencer(stg, contracts, time.Second*30, nil)
-	if err := vp.Start(ctx); err != nil {
+	vp := service.NewSequencer(stg, contracts, defaultBatchTimeWindow, nil)
+	seqCtx, seqCancel := context.WithCancel(ctx)
+	if err := vp.Start(seqCtx); err != nil {
+		seqCancel()
 		web3Cleanup() // Clean up web3 if sequencer fails to start
 		return nil, nil, fmt.Errorf("failed to start sequencer: %w", err)
 	}
 	services.Sequencer = vp.Sequencer
-
-	// Start sequencer batch time window
-	services.Sequencer.SetBatchTimeWindow(defaultBatchTimeWindow)
 
 	if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
 		logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
@@ -429,10 +480,27 @@ func NewTestService(
 		log.Info("Debug prover is disabled in non-testing context")
 	}
 
-	// Start process monitor
-	pm := service.NewProcessMonitor(contracts, stg, time.Second*2)
-	if err := pm.Start(ctx); err != nil {
+	// Start census downloader
+	cd := service.NewCensusDownloader(contracts, services.Storage, service.CensusDownloaderConfig{
+		CleanUpInterval: time.Second * 5,
+		Expiration:      time.Minute * 30,
+		Cooldown:        time.Second * 10,
+		Attempts:        5,
+	})
+	if err := cd.Start(ctx); err != nil {
 		vp.Stop()
+		seqCancel()
+		web3Cleanup()
+		return nil, nil, fmt.Errorf("failed to start census downloader: %w", err)
+	}
+	services.CensusDownloader = cd
+
+	// Start process monitor
+	pm := service.NewProcessMonitor(contracts, stg, cd, time.Second*2)
+	if err := pm.Start(ctx); err != nil {
+		cd.Stop()
+		vp.Stop()
+		seqCancel()
 		web3Cleanup() // Clean up web3 if process monitor fails to start
 		return nil, nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}
@@ -446,7 +514,9 @@ func NewTestService(
 	api, err := setupAPI(ctx, stg, workerSecret, workerTokenExpiration, workerTimeout, banRules, web3Conf)
 	if err != nil {
 		pm.Stop()
+		cd.Stop()
 		vp.Stop()
+		seqCancel()
 		web3Cleanup() // Clean up web3 if API fails to start
 		return nil, nil, fmt.Errorf("failed to setup API: %w", err)
 	}
@@ -454,118 +524,73 @@ func NewTestService(
 
 	// Create a combined cleanup function
 	cleanup := func() {
+		seqCancel()
 		api.Stop()
+		cd.Stop()
 		pm.Stop()
 		vp.Stop()
 		stg.Close()
+		go c3cleanup() // TODO: c3cleanup is never returning, fix and reenable
 		web3Cleanup()
 	}
 
 	return services, cleanup, nil
 }
 
-func createCensus(cli *client.HTTPclient, size int) ([]byte, []*api.CensusParticipant, []*ethereum.Signer, error) {
+func createCensus(ctx context.Context, size int) ([]byte, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
-	censusParticipants := api.CensusParticipants{Participants: []*api.CensusParticipant{}}
+	votes := []state.Vote{}
 	for range size {
 		signer, err := ethereum.NewSigner()
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to generate signer: %w", err)
+			return nil, "", nil, fmt.Errorf("failed to generate signer: %w", err)
 		}
-		censusParticipants.Participants = append(censusParticipants.Participants, &api.CensusParticipant{
-			Key:    signer.Address().Bytes(),
-			Weight: new(types.BigInt).SetUint64(circuits.MockWeight),
-		})
 		signers = append(signers, signer)
+		votes = append(votes, state.Vote{
+			Address: signer.Address().Big(),
+			Weight:  big.NewInt(circuits.MockWeight),
+		})
+		privKey := signer.HexPrivateKey()
+		log.Infow("new voter created",
+			"address", signer.Address(),
+			"privKey", privKey.String())
 	}
 
 	if isCSPCensus() {
-		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABLS12377, []byte(testLocalCSPSeed))
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(testLocalCSPSeed))
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to create CSP: %w", err)
+			return nil, "", nil, fmt.Errorf("failed to create CSP: %w", err)
 		}
 		root := eddsaCSP.CensusRoot()
 		if root == nil {
-			return nil, nil, nil, fmt.Errorf("census root is nil")
+			return nil, "", nil, fmt.Errorf("census root is nil")
 		}
-		return root.Root, censusParticipants.Participants, signers, nil
+		return root.Root, "http://myowncsp.test", signers, nil
 	} else {
-		// Create a new census in the sequencer
-		body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewCensusEndpoint)
+		censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, votes, defaultCensus3URL)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to create census: %w", err)
+			return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 		}
-		if code != http.StatusOK {
-			return nil, nil, nil, fmt.Errorf("unexpected status code creating census: %d", code)
-		}
-
-		var resp api.NewCensus
-		err = json.NewDecoder(bytes.NewReader(body)).Decode(&resp)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to decode census response: %w", err)
-		}
-		// Add participants to census
-		addEnpoint := api.EndpointWithParam(api.AddCensusParticipantsEndpoint, api.CensusURLParam, resp.Census.String())
-		_, code, err = cli.Request(http.MethodPost, censusParticipants, nil, addEnpoint)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to add census participants: %w", err)
-		}
-		if code != http.StatusOK {
-			return nil, nil, nil, fmt.Errorf("unexpected status code adding participants: %d", code)
-		}
-
-		// Get census root
-		getRootEnpoint := api.EndpointWithParam(api.GetCensusRootEndpoint, api.CensusURLParam, resp.Census.String())
-		body, code, err = cli.Request(http.MethodGet, nil, nil, getRootEnpoint)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to get census root: %w", err)
-		}
-		if code != http.StatusOK {
-			return nil, nil, nil, fmt.Errorf("unexpected status code getting root: %d", code)
-		}
-
-		var rootResp types.CensusRoot
-		err = json.NewDecoder(bytes.NewReader(body)).Decode(&rootResp)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to decode root response: %w", err)
-		}
-		return rootResp.Root, censusParticipants.Participants, signers, nil
+		return censusRoot.Bytes(), censusURI, signers, nil
 	}
 }
 
-func generateCensusProof(cli *client.HTTPclient, root, pid, key []byte) (*types.CensusProof, error) {
+func generateCensusProof(pid, key []byte) (*types.CensusProof, error) {
 	if isCSPCensus() {
-		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABLS12377, []byte(testLocalCSPSeed))
+		weight := new(types.BigInt).SetUint64(circuits.MockWeight)
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(testLocalCSPSeed))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CSP: %w", err)
 		}
 		processID := new(types.ProcessID).SetBytes(pid)
-		cspProof, err := eddsaCSP.GenerateProof(processID, common.BytesToAddress(key))
+		cspProof, err := eddsaCSP.GenerateProof(processID, common.BytesToAddress(key), weight)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate CSP proof: %w", err)
 		}
-		cspProof.Weight = new(types.BigInt).SetUint64(circuits.MockWeight)
 		return cspProof, nil
-	} else {
-		// Get proof for the key
-		getProofEnpoint := api.EndpointWithParam(api.GetCensusProofEndpoint, api.CensusURLParam, hex.EncodeToString(root))
-		body, code, err := cli.Request(http.MethodGet, nil, []string{"key", hex.EncodeToString(key)}, getProofEnpoint)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get census proof: %w", err)
-		}
-		if code != http.StatusOK {
-			return nil, fmt.Errorf("unexpected status code getting proof: %d", code)
-		}
-
-		var proof types.CensusProof
-		err = json.NewDecoder(bytes.NewReader(body)).Decode(&proof)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode proof response: %w", err)
-		}
-
-		return &proof, nil
 	}
+	return nil, nil
 }
 
 func createOrganization(contracts *web3.Contracts) (common.Address, error) {
@@ -588,8 +613,10 @@ func createProcessInSequencer(
 	contracts *web3.Contracts,
 	cli *client.HTTPclient,
 	censusOrigin types.CensusOrigin,
+	censusURI string,
 	censusRoot []byte,
 	ballotMode *types.BallotMode,
+	numVoters int,
 ) (*types.ProcessID, *types.EncryptionKey, *types.HexBytes, error) {
 	// Get the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
@@ -604,11 +631,14 @@ func createProcessInSequencer(
 	}
 
 	process := &types.ProcessSetup{
-		ProcessID:    processID.Marshal(),
-		CensusOrigin: censusOrigin,
-		CensusRoot:   censusRoot,
-		BallotMode:   ballotMode,
-		Signature:    signature,
+		ProcessID: processID.Marshal(),
+		Census: &types.Census{
+			CensusOrigin: censusOrigin,
+			CensusURI:    censusURI,
+			CensusRoot:   censusRoot,
+		},
+		BallotMode: ballotMode,
+		Signature:  signature,
 	}
 
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
@@ -641,10 +671,12 @@ func createProcessInSequencer(
 func createProcessInContracts(
 	contracts *web3.Contracts,
 	censusOrigin types.CensusOrigin,
+	censusURI string,
 	censusRoot []byte,
 	ballotMode *types.BallotMode,
 	encryptionKey *types.EncryptionKey,
 	stateRoot *types.HexBytes,
+	numVoters int,
 	duration ...time.Duration,
 ) (*types.ProcessID, error) {
 	finalDuration := time.Hour
@@ -653,18 +685,18 @@ func createProcessInContracts(
 	}
 
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
-		Status:         0,
+		Status:         types.ProcessStatusReady,
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKey,
 		StateRoot:      stateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       finalDuration,
+		MaxVoters:      types.NewInt(numVoters),
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode:     ballotMode,
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
-			MaxVotes:     new(types.BigInt).SetUint64(1000),
-			CensusURI:    "https://example.com/census",
+			CensusURI:    censusURI,
 			CensusOrigin: censusOrigin,
 		},
 	})
@@ -672,37 +704,6 @@ func createProcessInContracts(
 		return nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	return pid, contracts.WaitTxByHash(*txHash, time.Second*15)
-}
-
-func waitUntilProcessStarts(
-	contracts *web3.Contracts,
-	pid *types.ProcessID,
-	timeout time.Duration,
-) error {
-	// Wait for the process to be in the expected status
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for process to start")
-		case <-ticker.C:
-			process, err := contracts.Process(pid.Marshal())
-			if err != nil {
-				log.Warnw("failed to get process", "error", err)
-				continue
-			}
-			if process == nil {
-				log.Warnw("process not found", "processID", pid.String())
-				continue
-			}
-			if process.Status == types.ProcessStatusReady && time.Now().After(process.StartTime) {
-				return nil
-			}
-		}
-	}
 }
 
 func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
@@ -715,18 +716,17 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 			return api.Vote{}, fmt.Errorf("failed to generate random k: %w", err)
 		}
 	}
+	// set voter weight
+	voterWeight := new(types.BigInt).SetInt(circuits.MockWeight)
 	// compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
-		Address:   address.Bytes(),
-		ProcessID: pid.Marshal(),
-		EncryptionKey: []*types.BigInt{
-			(*types.BigInt)(encKey.X),
-			(*types.BigInt)(encKey.Y),
-		},
-		K:           (*types.BigInt)(k),
-		BallotMode:  bm,
-		Weight:      (*types.BigInt)(new(big.Int).SetUint64(circuits.MockWeight)),
-		FieldValues: fields,
+		Address:       address.Bytes(),
+		ProcessID:     pid.Marshal(),
+		EncryptionKey: []*types.BigInt{encKey.X, encKey.Y},
+		K:             new(types.BigInt).SetBigInt(k),
+		BallotMode:    bm,
+		Weight:        voterWeight,
+		FieldValues:   fields,
 	}
 	// generate the inputs for the ballot proof circuit
 	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
@@ -804,7 +804,7 @@ func createVoteFromInvalidVoter(pid *types.ProcessID, bm *types.BallotMode, encK
 		EncryptionKey: []*types.BigInt{encKey.X, encKey.Y},
 		K:             new(types.BigInt).SetBigInt(k),
 		BallotMode:    bm,
-		Weight:        new(types.BigInt).SetUint64(circuits.MockWeight),
+		Weight:        new(types.BigInt).SetInt(circuits.MockWeight),
 		FieldValues:   randFields[:],
 	}
 	// generate the inputs for the ballot proof circuit
@@ -841,6 +841,9 @@ func createVoteFromInvalidVoter(pid *types.ProcessID, bm *types.BallotMode, encK
 		BallotInputsHash: wasmResult.BallotInputsHash,
 		Signature:        signature.Bytes(),
 		VoteID:           wasmResult.VoteID,
+		CensusProof: types.CensusProof{
+			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
+		},
 	}, nil
 }
 
@@ -855,7 +858,7 @@ func checkVoteStatus(cli *client.HTTPclient, pid *types.ProcessID, voteIDs []typ
 		statusEndpoint := api.EndpointWithParam(
 			api.EndpointWithParam(api.VoteStatusEndpoint,
 				api.ProcessURLParam, pid.String()),
-			api.VoteStatusVoteIDParam, voteID.String())
+			api.VoteIDURLParam, voteID.String())
 
 		// Make the request to get the vote status
 		body, statusCode, err := cli.Request("GET", nil, nil, statusEndpoint)
@@ -895,26 +898,46 @@ func checkVoteStatus(cli *client.HTTPclient, pid *types.ProcessID, voteIDs []typ
 	return allExpectedStatus, failed, nil
 }
 
-func publishedVotes(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
-	process, err := contracts.Process(pid.Marshal())
+func updateMaxVoters(
+	contracts *web3.Contracts,
+	pid *types.ProcessID,
+	numVoters int,
+) error {
+	currentProcess, err := contracts.Process(pid.Marshal())
 	if err != nil {
-		return 0, fmt.Errorf("failed to get process: %w", err)
+		return fmt.Errorf("failed to get current process: %w", err)
 	}
-	if process == nil || process.VoteCount == nil {
-		return 0, nil
+	currentMaxVoters := currentProcess.MaxVoters.MathBigInt().Int64()
+	if numVoters < int(currentMaxVoters) {
+		return fmt.Errorf("new max voters (%d) is less than current max voters (%d)", numVoters, currentMaxVoters)
 	}
-	return int(process.VoteCount.MathBigInt().Int64()), nil
+	txHash, err := contracts.SetProcessMaxVoters(pid.Marshal(), types.NewInt(numVoters))
+	if err != nil {
+		return fmt.Errorf("failed to set process max voters: %w", err)
+	}
+	return contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
-func publishedOverwriteVotes(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
+func votersCount(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid.Marshal())
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)
 	}
-	if process == nil || process.VoteOverwrittenCount == nil {
+	if process == nil || process.VotersCount == nil {
 		return 0, nil
 	}
-	return int(process.VoteOverwrittenCount.MathBigInt().Int64()), nil
+	return int(process.VotersCount.MathBigInt().Int64()), nil
+}
+
+func overwrittenVotesCount(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
+	process, err := contracts.Process(pid.Marshal())
+	if err != nil {
+		return 0, fmt.Errorf("failed to get process: %w", err)
+	}
+	if process == nil || process.OverwrittenVotesCount == nil {
+		return 0, nil
+	}
+	return int(process.OverwrittenVotesCount.MathBigInt().Int64()), nil
 }
 
 func finishProcessOnContract(contracts *web3.Contracts, pid *types.ProcessID) error {

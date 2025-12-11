@@ -11,6 +11,8 @@ import (
 	bls12377_mimc "github.com/consensys/gnark-crypto/ecc/bls12-377/fr/mimc"
 	bls12377_eddsa "github.com/consensys/gnark-crypto/ecc/bls12-377/twistededwards/eddsa"
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
+	bn254_mimc "github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	bn254_eddsa "github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark-crypto/signature"
 	"github.com/ethereum/go-ethereum/common"
@@ -41,6 +43,13 @@ func CSP(curve twistededwards.ID) (*EdDSA, error) {
 		if csp.signer, err = bls12377_eddsa.GenerateKey(rand.Reader); err != nil {
 			return nil, fmt.Errorf("error generating private key: %w", err)
 		}
+	case twistededwards.BN254:
+		csp.curve = twistededwards.BN254
+		csp.hashFn = bn254_mimc.NewMiMC()
+		var err error
+		if csp.signer, err = bn254_eddsa.GenerateKey(rand.Reader); err != nil {
+			return nil, fmt.Errorf("error generating private key: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported curve: %d", curve)
 	}
@@ -63,6 +72,13 @@ func (c *EdDSA) SetSeed(seed []byte) error {
 		if c.signer, err = bls12377_eddsa.GenerateKey(hashSeed); err != nil {
 			return fmt.Errorf("error generating private key: %w", err)
 		}
+	case twistededwards.BN254:
+		// set the hash function and the signer for the BLS12-377 curve
+		var err error
+		hashSeed := bytes.NewReader(mimc7.HashBytes(seed).Bytes())
+		if c.signer, err = bn254_eddsa.GenerateKey(hashSeed); err != nil {
+			return fmt.Errorf("error generating private key: %w", err)
+		}
 	default:
 		return fmt.Errorf("unsupported curve: %d", c.curve)
 	}
@@ -74,7 +90,9 @@ func (c *EdDSA) SetSeed(seed []byte) error {
 func (c *EdDSA) CensusOrigin() types.CensusOrigin {
 	switch c.curve {
 	case twistededwards.BLS12_377:
-		return types.CensusOriginCSPEdDSABLS12377
+		return types.CensusOriginCSPEdDSABLS12377V1
+	case twistededwards.BN254:
+		return types.CensusOriginCSPEdDSABN254V1
 	default:
 		return types.CensusOriginUnknown
 	}
@@ -94,7 +112,7 @@ func (c *EdDSA) CensusRoot() *types.CensusRoot {
 		return nil
 	}
 	return &types.CensusRoot{
-		Root: censusRoot,
+		Root: types.NormalizedCensusRoot(censusRoot),
 	}
 }
 
@@ -108,6 +126,7 @@ func (c *EdDSA) CensusRoot() *types.CensusRoot {
 func (c *EdDSA) GenerateProof(
 	processID *types.ProcessID,
 	address common.Address,
+	weight *types.BigInt,
 ) (*types.CensusProof, error) {
 	if c.signer == nil {
 		return nil, fmt.Errorf("csp is not initialized")
@@ -118,9 +137,12 @@ func (c *EdDSA) GenerateProof(
 	if address == (common.Address{}) {
 		return nil, fmt.Errorf("invalid address")
 	}
+	if weight == nil || weight.LessThanOrEqual(new(types.BigInt).SetInt(0)) {
+		return nil, fmt.Errorf("invalid weight")
+	}
 	// sign the message composed by the process ID and address using the hash
 	// function and the private key of the CSP
-	message, err := signatureMessage(c.curve, processID.Marshal(), address.Bytes())
+	message, err := signatureMessage(c.curve, processID.Marshal(), address.Bytes(), weight)
 	if err != nil {
 		return nil, fmt.Errorf("error composing signature message: %w", err)
 	}
@@ -136,6 +158,7 @@ func (c *EdDSA) GenerateProof(
 		CensusOrigin: c.CensusOrigin(),
 		Root:         censusRoot,
 		Address:      address.Bytes(),
+		Weight:       weight,
 		ProcessID:    processID.Marshal(),
 		PublicKey:    c.signer.Public().Bytes(),
 		Signature:    signature,
@@ -160,7 +183,7 @@ func (c *EdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("error getting public key from census proof: %w", err)
 	}
 	// recompute the signature message
-	message, err := signatureMessage(c.curve, proof.ProcessID, proof.Address)
+	message, err := signatureMessage(c.curve, proof.ProcessID, proof.Address, proof.Weight)
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
@@ -177,8 +200,14 @@ func (c *EdDSA) VerifyProof(proof *types.CensusProof) error {
 // provided acording to its census origin.
 func pubKeyFromCensusProof(proof *types.CensusProof) (signature.PublicKey, error) {
 	switch proof.CensusOrigin {
-	case types.CensusOriginCSPEdDSABLS12377:
+	case types.CensusOriginCSPEdDSABLS12377V1:
 		pubKey := new(bls12377_eddsa.PublicKey)
+		if _, err := pubKey.SetBytes(proof.PublicKey); err != nil {
+			return nil, fmt.Errorf("error unmarshalling public key: %w", err)
+		}
+		return pubKey, nil
+	case types.CensusOriginCSPEdDSABN254V1:
+		pubKey := new(bn254_eddsa.PublicKey)
 		if _, err := pubKey.SetBytes(proof.PublicKey); err != nil {
 			return nil, fmt.Errorf("error unmarshalling public key: %w", err)
 		}
@@ -211,6 +240,19 @@ func pubKeyPointToCensusRoot(
 			return nil, fmt.Errorf("error hashing public key: %w", err)
 		}
 		return hashedPubKey.Bytes(), nil
+	case twistededwards.BN254:
+		pk, ok := pubKey.(*bn254_eddsa.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("invalid public key type: %T", pubKey)
+		}
+		hashedPubKey, err := mimc7.Hash([]*big.Int{
+			pk.A.X.BigInt(new(big.Int)),
+			pk.A.Y.BigInt(new(big.Int)),
+		}, nil)
+		if err != nil {
+			return nil, fmt.Errorf("error hashing public key: %w", err)
+		}
+		return hashedPubKey.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unsupported curve: %d", curve)
 	}
@@ -219,7 +261,7 @@ func pubKeyPointToCensusRoot(
 // signatureMessage composes the message to be signed by the CSP. The message
 // is the concatenation of the process ID and address, both converted to field
 // elements suitable for the circuit.
-func signatureMessage(curve twistededwards.ID, pid, address types.HexBytes) ([]byte, error) {
+func signatureMessage(curve twistededwards.ID, pid, address types.HexBytes, weight *types.BigInt) ([]byte, error) {
 	if len(pid) == 0 || len(address) == 0 {
 		return nil, fmt.Errorf("process ID and address must not be empty")
 	}
@@ -229,6 +271,7 @@ func signatureMessage(curve twistededwards.ID, pid, address types.HexBytes) ([]b
 	res, err := mimc7.Hash([]*big.Int{
 		pid.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
 		address.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
+		weight.ToFF(bn254.ID.ScalarField()).MathBigInt(),
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error hashing signature message: %w", err)
@@ -239,6 +282,9 @@ func signatureMessage(curve twistededwards.ID, pid, address types.HexBytes) ([]b
 	case twistededwards.BLS12_377:
 		// For BLS12-377, we need to convert the message to a field element
 		return msg.BigInt().ToFF(bls12377.ID.ScalarField()).Bytes(), nil
+	case twistededwards.BN254:
+		// For BN254, we need to convert the message to a field element
+		return msg.BigInt().ToFF(bn254.ID.ScalarField()).Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unsupported curve: %d", curve)
 	}

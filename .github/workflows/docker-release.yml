@@ -44,7 +44,5 @@ jobs:
             # platforms: linux/amd64
           push: true     # true to upload image to registry
           tags: |
-            vocdoni/davinci-node:latest,
             vocdoni/davinci-node:${{ steps.vars.outputs.IMAGE_TAG_CLEAN }},
-            ghcr.io/vocdoni/davinci-node:latest,
             ghcr.io/vocdoni/davinci-node:${{ steps.vars.outputs.IMAGE_TAG_CLEAN }},

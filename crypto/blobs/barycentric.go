@@ -67,7 +67,7 @@ func EvaluateBarycentricNative(blob *gethkzg.Blob, z *big.Int, debug bool) (*big
 	}
 
 	// Apply bit-reversal permutation to match go-eth-kzg's expected ordering
-	for i := 0; i < n; i++ {
+	for i := range n {
 		bitRevIndex := bitReverse(i, 12)
 		omega[i] = toBig(domainRoots[bitRevIndex])
 	}
@@ -183,4 +183,16 @@ func EvaluateBarycentricNative(blob *gethkzg.Blob, z *big.Int, debug bool) (*big
 func blobCell(blob *gethkzg.Blob, i int) *big.Int {
 	start := i * 32
 	return new(big.Int).SetBytes(blob[start : start+32])
+}
+
+// bitReverse reverses the bits of n considering log2n bits
+// Bit‑reverses the low log2n bits of n.
+func bitReverse(n, log2n int) int {
+	rev := 0
+	for i := range log2n {
+		if (n>>i)&1 == 1 {
+			rev |= 1 << (log2n - 1 - i)
+		}
+	}
+	return rev
 }

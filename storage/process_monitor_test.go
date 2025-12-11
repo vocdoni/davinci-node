@@ -48,9 +48,8 @@ func TestMonitorEndedProcesses(t *testing.T) {
 			MinValueSum: new(types.BigInt).SetUint64(0),
 		},
 		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 			CensusRoot:   make([]byte, 32),
-			MaxVotes:     new(types.BigInt).SetUint64(1000),
 			CensusURI:    "http://example.com/census",
 		},
 	}
@@ -109,9 +108,8 @@ func TestMonitorEndedProcessesNotYetEnded(t *testing.T) {
 			MinValueSum: new(types.BigInt).SetUint64(0),
 		},
 		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 			CensusRoot:   make([]byte, 32),
-			MaxVotes:     new(types.BigInt).SetUint64(1000),
 			CensusURI:    "http://example.com/census",
 		},
 	}
@@ -170,9 +168,8 @@ func TestMonitorEndedProcessesSkipsAlreadyEnded(t *testing.T) {
 			MinValueSum: new(types.BigInt).SetUint64(0),
 		},
 		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 			CensusRoot:   make([]byte, 32),
-			MaxVotes:     new(types.BigInt).SetUint64(1000),
 			CensusURI:    "http://example.com/census",
 		},
 	}

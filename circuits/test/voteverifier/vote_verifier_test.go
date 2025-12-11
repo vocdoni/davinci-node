@@ -34,7 +34,7 @@ func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 			PubKey:  s.PublicKey,
 			Address: s.Address(),
 		},
-	}, processID, types.CensusOriginMerkleTree)
+	}, processID, types.CensusOriginMerkleTreeOffchainStaticV1)
 	// generate proof
 	assert := test.NewAssert(t)
 	now := time.Now()
@@ -59,7 +59,7 @@ func TestVerifyCSPVoteCircuit(t *testing.T) {
 			PubKey:  s.PublicKey,
 			Address: s.Address(),
 		},
-	}, processID, types.CensusOriginCSPEdDSABLS12377)
+	}, processID, types.CensusOriginCSPEdDSABN254V1)
 	// generate proof
 	assert := test.NewAssert(t)
 	now := time.Now()
@@ -98,7 +98,7 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	}
 	// Use centralized testing ProcessID for consistent caching
 	processID := types.TestProcessID
-	_, placeholder, assignments := VoteVerifierInputsForTest(t, data, processID, types.CensusOriginMerkleTree)
+	_, placeholder, assignments := VoteVerifierInputsForTest(t, data, processID, types.CensusOriginMerkleTreeOffchainStaticV1)
 	assert := test.NewAssert(t)
 	now := time.Now()
 	for _, assignment := range assignments {

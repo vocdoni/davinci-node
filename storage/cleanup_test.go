@@ -53,9 +53,8 @@ func TestCleanAllPending(t *testing.T) {
 				MinValueSum: new(types.BigInt).SetUint64(0),
 			},
 			Census: &types.Census{
-				CensusOrigin: types.CensusOriginMerkleTree,
+				CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 				CensusRoot:   make([]byte, 32),
-				MaxVotes:     new(types.BigInt).SetUint64(1000),
 				CensusURI:    "http://example.com/census",
 			},
 		}
@@ -236,7 +235,7 @@ func TestCleanAllPending(t *testing.T) {
 			Inputs: StateTransitionBatchProofInputs{
 				RootHashBefore: big.NewInt(1),
 				RootHashAfter:  big.NewInt(2),
-				NumNewVotes:    2,
+				VotersCount:    2,
 			},
 		}
 
@@ -248,7 +247,7 @@ func TestCleanAllPending(t *testing.T) {
 			Inputs: StateTransitionBatchProofInputs{
 				RootHashBefore: big.NewInt(1),
 				RootHashAfter:  big.NewInt(2),
-				NumNewVotes:    1,
+				VotersCount:    1,
 			},
 		}
 
@@ -325,7 +324,7 @@ func TestCleanAllPending(t *testing.T) {
 			Inputs: StateTransitionBatchProofInputs{
 				RootHashBefore: big.NewInt(1),
 				RootHashAfter:  big.NewInt(2),
-				NumNewVotes:    1,
+				VotersCount:    1,
 			},
 		}
 		err = s.PushStateTransitionBatch(stb)

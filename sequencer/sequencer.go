@@ -209,17 +209,18 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 	}
 
 	for _, pid := range procesList {
-		proc, err := s.stg.Process(new(types.ProcessID).SetBytes(pid)) // Ensure the process is loaded in storage
+		proc, err := s.stg.Process(pid) // Ensure the process is loaded in storage
 		if err != nil {
 			log.Warnw("failed to get process for registration", "processID", fmt.Sprintf("%x", pid), "error", err)
 			continue
 		}
-		if s.ExistsProcessID(pid) && proc.Status != types.ProcessStatusReady {
-			s.DelProcessID(pid) // Unregister if the process
+		bpid := pid.Marshal()
+		if s.ExistsProcessID(bpid) && proc.Status != types.ProcessStatusReady {
+			s.DelProcessID(bpid) // Unregister if the process
 			continue
 		}
-		if ParticipateInAllProcesses && !s.ExistsProcessID(pid) && proc.Status == types.ProcessStatusReady {
-			s.AddProcessID(pid)
+		if ParticipateInAllProcesses && !s.ExistsProcessID(bpid) && proc.Status == types.ProcessStatusReady {
+			s.AddProcessID(bpid)
 		}
 	}
 }

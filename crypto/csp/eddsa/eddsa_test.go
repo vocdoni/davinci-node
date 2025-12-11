@@ -16,6 +16,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 
 	orgAddress := common.Address(util.RandomBytes(20))
 	userAddress := common.Address(util.RandomBytes(20))
+	userWeight := new(types.BigInt).SetInt(42)
 
 	processID := &types.ProcessID{
 		Address: orgAddress,
@@ -27,21 +28,24 @@ func TestGenerateVerifyProof(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	t.Run("invalid inputs", func(t *testing.T) {
-		_, err := new(EdDSA).GenerateProof(processID, userAddress)
+		_, err := new(EdDSA).GenerateProof(processID, userAddress, userWeight)
 		c.Assert(err, qt.IsNotNil)
 
-		_, err = csp.GenerateProof(nil, userAddress)
+		_, err = csp.GenerateProof(nil, userAddress, userWeight)
 		c.Assert(err, qt.IsNotNil)
 
-		_, err = csp.GenerateProof(&types.ProcessID{}, userAddress)
+		_, err = csp.GenerateProof(&types.ProcessID{}, userAddress, userWeight)
 		c.Assert(err, qt.IsNotNil)
 
-		_, err = csp.GenerateProof(processID, common.Address{})
+		_, err = csp.GenerateProof(processID, common.Address{}, userWeight)
+		c.Assert(err, qt.IsNotNil)
+
+		_, err = csp.GenerateProof(processID, userAddress, nil)
 		c.Assert(err, qt.IsNotNil)
 	})
 
 	t.Run("valid proof generation and verification", func(t *testing.T) {
-		proof, err := csp.GenerateProof(processID, userAddress)
+		proof, err := csp.GenerateProof(processID, userAddress, userWeight)
 		c.Assert(err, qt.IsNil)
 		c.Assert(proof, qt.IsNotNil)
 
@@ -50,7 +54,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 	})
 
 	t.Run("invalid proof pubkey", func(t *testing.T) {
-		proof, err := csp.GenerateProof(processID, userAddress)
+		proof, err := csp.GenerateProof(processID, userAddress, userWeight)
 		c.Assert(err, qt.IsNil)
 		c.Assert(proof, qt.IsNotNil)
 
@@ -60,7 +64,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 	})
 
 	t.Run("invalid proof address", func(t *testing.T) {
-		proof, err := csp.GenerateProof(processID, userAddress)
+		proof, err := csp.GenerateProof(processID, userAddress, userWeight)
 		c.Assert(err, qt.IsNil)
 		c.Assert(proof, qt.IsNotNil)
 
@@ -70,7 +74,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 	})
 
 	t.Run("invalid proof signature", func(t *testing.T) {
-		proof, err := csp.GenerateProof(processID, userAddress)
+		proof, err := csp.GenerateProof(processID, userAddress, userWeight)
 		c.Assert(err, qt.IsNil)
 		c.Assert(proof, qt.IsNotNil)
 
@@ -78,4 +82,18 @@ func TestGenerateVerifyProof(t *testing.T) {
 		err = csp.VerifyProof(proof)
 		c.Assert(err, qt.IsNotNil)
 	})
+}
+
+func TestCensusRootLengthAndValue(t *testing.T) {
+	c := qt.New(t)
+
+	for range 1000 {
+		csp, err := CSP(twistededwards.BN254)
+		c.Assert(err, qt.IsNil)
+		root := csp.CensusRoot().Root
+		c.Assert(len(root), qt.Equals, types.CensusRootLength)
+		rawRoot, err := pubKeyPointToCensusRoot(csp.curve, csp.signer.Public())
+		c.Assert(err, qt.IsNil)
+		c.Assert(rawRoot.BigInt().String(), qt.Equals, root.BigInt().String())
+	}
 }

@@ -31,6 +31,20 @@ func (b HexBytes) MarshalJSON() ([]byte, error) {
 	return enc, nil
 }
 
+// LeftPad returns a new HexBytes padded with leading zeros to the specified
+// length n. If the length of b is already n or greater, it returns a copy of b.
+// Adding leading zeros does not change the value represented by the HexBytes.
+func (b HexBytes) LeftPad(n int) HexBytes {
+	if len(b) >= n {
+		out := make(HexBytes, len(b))
+		copy(out, b)
+		return out
+	}
+	out := make(HexBytes, n)
+	copy(out[n-len(b):], b)
+	return out
+}
+
 func (b *HexBytes) UnmarshalJSON(data []byte) error {
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
 		return fmt.Errorf("invalid JSON string: %q", data)

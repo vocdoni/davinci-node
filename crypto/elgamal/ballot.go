@@ -168,7 +168,7 @@ func (z *Ballot) SetBigInts(list []*big.Int) (*Ballot, error) {
 		return nil, fmt.Errorf("invalid curve type: %s", z.CurveType)
 	}
 	// check if the list has the right length
-	if len(list) != 8*4 {
+	if len(list) != types.FieldsPerBallot*4 {
 		return nil, fmt.Errorf("expected 8*4 BigInts, got %d", len(list))
 	}
 	// compose the ciphertexts

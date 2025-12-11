@@ -5,16 +5,17 @@ import (
 	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
-	"github.com/consensys/gnark/std/math/cmp"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
+	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
+	imt "github.com/vocdoni/lean-imt-go/circuit"
 )
 
 // HashFn is the hash function used in the circuit. It should the equivalent
@@ -23,14 +24,22 @@ var HashFn = poseidon.MultiHash
 
 type StateTransitionCircuit struct {
 	// Public inputs
-	RootHashBefore frontend.Variable `gnark:",public"`
-	RootHashAfter  frontend.Variable `gnark:",public"`
-	NumNewVotes    frontend.Variable `gnark:",public"`
-	NumOverwritten frontend.Variable `gnark:",public"`
+	RootHashBefore        frontend.Variable `gnark:",public"`
+	RootHashAfter         frontend.Variable `gnark:",public"`
+	VotersCount           frontend.Variable `gnark:",public"`
+	OverwrittenVotesCount frontend.Variable `gnark:",public"`
 
-	// KZG commitment to the blob
-	BlobEvaluationPointZ  frontend.Variable                     `gnark:",public"`
-	BlobEvaluationResultY emulated.Element[emulated.BLS12381Fr] `gnark:",public"`
+	// Census root
+	CensusRoot frontend.Variable `gnark:",public"`
+	// Private census inclusion proofs
+	CensusProofs CensusProofs
+
+	// KZG commitment to the blob (as 3 x 16-byte limbs)
+	BlobCommitmentLimbs [3]frontend.Variable `gnark:",public"`
+
+	// Private KZG proof and evaluation result (verified in-circuit)
+	BlobProofLimbs        [3]frontend.Variable
+	BlobEvaluationResultY emulated.Element[emulated.BLS12381Fr]
 
 	// Private data inputs
 	Process       circuits.Process[frontend.Variable]
@@ -62,9 +71,16 @@ type Results struct {
 type ProcessProofs struct {
 	ID            merkleproof.MerkleProof
 	CensusOrigin  merkleproof.MerkleProof
-	CensusRoot    merkleproof.MerkleProof
 	BallotMode    merkleproof.MerkleProof
 	EncryptionKey merkleproof.MerkleProof
+}
+
+// CensusProofs struct contains the Merkle proofs and CSP proofs for the
+// voters of the ballots in the batch. They can be proofs of merkle tree or
+// CSP proofs depending on the census origin.
+type CensusProofs struct {
+	MerkleProofs [types.VotesPerBatch]imt.MerkleProof
+	CSPProofs    [types.VotesPerBatch]csp.CSPProof
 }
 
 // VotesProofs struct contains the Merkle transition proofs for the ballots and
@@ -92,13 +108,42 @@ type Vote struct {
 // Define declares the circuit's constraints
 func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	std.RegisterHints()
-	circuit.VerifyAggregatorProof(api)
-	circuit.VerifyReencryptedVotes(api)
+	// compute the mask for the valid votes
+	mask := circuit.VoteMask(api)
+	// recursive proof
+	circuit.VerifyAggregatorProof(api, mask)
+	// current state
 	circuit.VerifyMerkleProofs(api, HashFn)
-	circuit.VerifyMerkleTransitions(api, HashFn)
+	// state transition
+	circuit.VerifyMerkleTransitions(api, HashFn, mask)
+	// leaf hashes
 	circuit.VerifyLeafHashes(api, HashFn)
-	circuit.VerifyBallots(api)
+	// censuses
+	circuit.VerifyMerkleCensusProofs(api, mask)
+	circuit.VerifyCSPCensusProofs(api, mask)
+	// votes reencryption and ballots
+	circuit.VerifyReencryptedVotes(api, mask)
+	circuit.VerifyBallots(api, mask)
+	// verify the blob commitment
+	circuit.VerifyBlobs(api)
 	return nil
+}
+
+// VoteMask returns the latch-based mask for real votes.
+// Computes a mask where the i-th element is 1 if the vote is
+// valid and 0 otherwise. It uses a latch logic to avoid expensive comparisons
+// inside the loops.
+func (c StateTransitionCircuit) VoteMask(api frontend.API) []frontend.Variable {
+	mask := make([]frontend.Variable, types.VotesPerBatch)
+	// if VotersCount > 0, the first vote is valid
+	isReal := api.Sub(1, api.IsZero(c.VotersCount))
+	for i := range types.VotesPerBatch {
+		mask[i] = isReal
+		// if VotersCount == i+1, the next vote is invalid
+		isEnd := api.IsZero(api.Sub(c.VotersCount, i+1))
+		isReal = api.Mul(isReal, api.Sub(1, isEnd))
+	}
+	return mask
 }
 
 // paddedElement helper function returns an bw6761 curve emulated element with
@@ -159,18 +204,18 @@ func (c StateTransitionCircuit) proofInputsHash(api frontend.API, idx int) front
 // that contains the hash as a emulated element of the bn254 curve. So we need
 // to transform the hash, first to an emulated element of the bn254 curve,
 // and then to an emulated element of the bw6761 curve.
-func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API) (groth16.Witness[sw_bw6761.ScalarField], error) {
+func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API, mask []frontend.Variable) (groth16.Witness[sw_bw6761.ScalarField], error) {
 	// the witness should be a bw6761 element, and it should include the
 	// number of valid votes as public input
 	witness := groth16.Witness[sw_bw6761.ScalarField]{
-		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(c.NumNewVotes)},
+		Public: []emulated.Element[sw_bw6761.ScalarField]{paddedElement(c.VotersCount)},
 	}
 	// iterate over votes inputs to select between valid hashes and dummy ones
 	hashes := []frontend.Variable{}
 	for i := range types.VotesPerBatch {
-		isValid := cmp.IsLess(api, i, c.NumNewVotes)
 		inputsHash := c.proofInputsHash(api, i)
-		hashes = append(hashes, api.Select(isValid, inputsHash, 1))
+		dummyProofInputsHash := 1
+		hashes = append(hashes, api.Select(mask[i], inputsHash, dummyProofInputsHash))
 	}
 	// hash the inputs hashes to get the final witness
 	hFn, err := mimc7.NewMiMC(api)
@@ -189,8 +234,8 @@ func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API) (gr
 // calculated by the CalculateAggregatorWitness function. It uses the
 // groth16 verifier to verify the proof. The proof is verified using the
 // AggregatorVK, which is the verification key of the Aggregator proof.
-func (circuit StateTransitionCircuit) VerifyAggregatorProof(api frontend.API) {
-	witness, err := circuit.CalculateAggregatorWitness(api)
+func (circuit StateTransitionCircuit) VerifyAggregatorProof(api frontend.API, mask []frontend.Variable) {
+	witness, err := circuit.CalculateAggregatorWitness(api, mask)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 witness: ", err)
 	}
@@ -211,10 +256,9 @@ func (circuit StateTransitionCircuit) VerifyAggregatorProof(api frontend.API) {
 // checks if the result is equal to the reencrypted ballot provided as input.
 // To reencrypt the votes, it adds the encrypted zero ballot to the original
 // ballot. The encrypted zero uses the reencryptionK as the randomness.
-func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
+func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API, mask []frontend.Variable) {
 	lastK := frontend.Variable(circuit.ReencryptionK)
 	for i, v := range circuit.Votes {
-		isValid := cmp.IsLess(api, i, circuit.NumNewVotes)
 		var err error
 		var reencryptedBallot *circuits.Ballot
 		reencryptedBallot, lastK, err = v.Ballot.Reencrypt(api, circuit.Process.EncryptionKey, lastK)
@@ -223,7 +267,7 @@ func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
 			return
 		}
 		isEqual := v.ReencryptedBallot.IsEqual(api, reencryptedBallot)
-		api.AssertIsEqual(api.Select(isValid, isEqual, 1), 1)
+		api.AssertIsEqual(api.Select(mask[i], isEqual, 1), 1)
 	}
 }
 
@@ -234,7 +278,6 @@ func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API) {
 func (circuit StateTransitionCircuit) VerifyMerkleProofs(api frontend.API, hFn utils.Hasher) {
 	circuit.ProcessProofs.ID.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.CensusOrigin.Verify(api, hFn, circuit.RootHashBefore)
-	circuit.ProcessProofs.CensusRoot.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.BallotMode.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.EncryptionKey.Verify(api, hFn, circuit.RootHashBefore)
 }
@@ -244,10 +287,18 @@ func (circuit StateTransitionCircuit) VerifyMerkleProofs(api frontend.API, hFn u
 // chain of tree transitions of the commitments, and finally the chain of tree
 // transitions of the results. The order of the transitions is fundamental to
 // achieve the final root hash.
-func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hasher) {
+func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hasher, mask []frontend.Variable) {
 	// verify chain of tree transitions, order here is fundamental.
 	root := circuit.RootHashBefore
 	for i := range circuit.VotesProofs.Ballot {
+		// if the vote is dummy, the transition must be a NOOP (Fnc0=0, Fnc1=0)
+		isDummy := api.Sub(1, mask[i])
+
+		// assert that dummy votes have NOOP transitions
+		circuit.VotesProofs.Ballot[i].AssertDummyIsNoop(api, isDummy)
+		circuit.VotesProofs.VoteIDs[i].AssertDummyIsNoop(api, isDummy)
+
+		// verify transitions
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
 		root = circuit.VotesProofs.VoteIDs[i].Verify(api, hFn, root)
 	}
@@ -269,10 +320,6 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	}
 	if err := circuit.ProcessProofs.CensusOrigin.VerifyLeafHash(api, hFn, circuit.Process.CensusOrigin); err != nil {
 		circuits.FrontendError(api, "failed to verify census origin process proof leaf hash: ", err)
-		return
-	}
-	if err := circuit.ProcessProofs.CensusRoot.VerifyLeafHash(api, hFn, circuit.Process.CensusRoot); err != nil {
-		circuits.FrontendError(api, "failed to verify census root process proof leaf hash: ", err)
 		return
 	}
 	if err := circuit.ProcessProofs.BallotMode.VerifyLeafHash(api, hFn, circuit.Process.BallotMode.Serialize()...); err != nil {
@@ -322,30 +369,9 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	}
 }
 
-// VerifyBallots counts the ballots using homomorphic encryption and checks
-// that the number of ballots is equal to the number of new votes and
-// overwritten votes. It uses the Ballot structure to count the ballots.
-// It also builds the blob and verifies the KZG commitment to the blob.
-func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
-	ballotSum, overwrittenSum, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
-	var ballotCount, overwrittenCount frontend.Variable = 0, 0
-
-	// Sum ballots and count new and overwritten
-	for i, b := range circuit.VotesProofs.Ballot {
-		ballotSum.Add(api, ballotSum, circuits.NewBallot().Select(api, b.IsInsertOrUpdate(api), &circuit.Votes[i].ReencryptedBallot, zero))
-		overwrittenSum.Add(api, overwrittenSum, circuits.NewBallot().Select(api, b.IsUpdate(api), &circuit.Votes[i].OverwrittenBallot, zero))
-		ballotCount = api.Add(ballotCount, b.IsInsertOrUpdate(api))
-		overwrittenCount = api.Add(overwrittenCount, b.IsUpdate(api))
-	}
-
-	// Assert new results are equal to old results plus ballot sums
-	circuit.Results.NewResultsAdd.AssertIsEqual(api,
-		circuits.NewBallot().Add(api, &circuit.Results.OldResultsAdd, ballotSum))
-	circuit.Results.NewResultsSub.AssertIsEqual(api,
-		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, overwrittenSum))
-	api.AssertIsEqual(circuit.NumNewVotes, ballotCount)
-	api.AssertIsEqual(circuit.NumOverwritten, overwrittenCount)
-
+// VerifyBlobs builds the blob from the state transition data and verifies
+// its KZG commitment using the provided evaluation point and result.
+func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	// Build blob and verify evaluation
 	//
 	// The blob is built as follows:
@@ -355,10 +381,8 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	// Each ballot coordinate is represented as a field element (32 bytes).
 	// Each field element is represented as a big-endian byte array.
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement).
-
 	var blob [4096]frontend.Variable
 	blobIndex := 0
-
 	// Append a ballot with a mask: every pushed var is multiplied by mask.
 	appendBallotMasked := func(b circuits.Ballot, mask frontend.Variable) {
 		for _, v := range b.SerializeVars() {
@@ -366,45 +390,124 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 			blobIndex++
 		}
 	}
-
 	// Always include results (no sentinel applies to them)
 	appendBallotMasked(circuit.Results.NewResultsAdd, 1)
 	appendBallotMasked(circuit.Results.NewResultsSub, 1)
-
 	// Votes section with sentinel handling.
 	// keep==1 means "we haven't seen sentinel yet". Once we see voteID==0,
 	// keep becomes 0 and stays 0, zeroing out everything afterwards.
 	keep := frontend.Variable(1)
-
 	for i := range types.VotesPerBatch {
 		voteID := circuit.Votes[i].VoteID
 		isZero := api.IsZero(voteID)  // 1 if voteID==0 else 0
 		notZero := api.Sub(1, isZero) // 1 if voteID!=0 else 0
-
 		// Only write this vote if keep==1 AND voteID!=0
 		writeMask := api.Mul(keep, notZero)
-
-		// voteID and address (masked)
+		// VoteID and address (masked)
 		blob[blobIndex] = api.Mul(writeMask, voteID)
 		blobIndex++
 		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].Address)
 		blobIndex++
-
-		// reencrypted ballot (masked)
+		// Reencrypted ballot (masked)
 		appendBallotMasked(circuit.Votes[i].ReencryptedBallot, writeMask)
-
 		// Update keep for next iterations: once we saw 0, keep→0 forever
 		keep = api.Mul(keep, notZero)
 	}
-
 	// Fill the rest of the blob with zeros
 	for i := blobIndex; i < len(blob); i++ {
 		blob[i] = 0
 	}
-
-	// Verify blob baricentric evaluation (z and y are public inputs)
-	if err := blobs.VerifyBlobEvaluationNative(api, circuit.BlobEvaluationPointZ, &circuit.BlobEvaluationResultY, blob); err != nil {
+	// Verify blob evaluation with in-circuit z computation
+	if err := blobs.VerifyFullBlobEvaluationBN254(
+		api,
+		circuit.Process.ID,
+		circuit.RootHashBefore,
+		circuit.BlobCommitmentLimbs,
+		circuit.BlobProofLimbs,
+		&circuit.BlobEvaluationResultY,
+		blob); err != nil {
 		circuits.FrontendError(api, "failed to verify blob evaluation: ", err)
 		return
+	}
+}
+
+// VerifyBallots sums the ballots using homomorphic encryption and checks
+// that the count of all ballots is equal to VotersCount,
+// as well as the count of overwritten ballots equals OverwrittenVotesCount.
+// It uses the Ballot structure to sum the ballots.
+func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API, mask []frontend.Variable) {
+	sumOfAllBallots, sumOfOverwrittenBallots, zero := circuits.NewBallot(), circuits.NewBallot(), circuits.NewBallot()
+	var votersCount, overwrittenVotesCount frontend.Variable = 0, 0
+
+	for i, b := range circuit.VotesProofs.Ballot {
+		isInsertOrUpdate := b.IsInsertOrUpdate(api)
+		isUpdate := b.IsUpdate(api)
+
+		ballot := circuits.NewBallot().Select(api, isInsertOrUpdate, &circuit.Votes[i].ReencryptedBallot, zero)
+		sumOfAllBallots.Add(api, sumOfAllBallots, ballot)
+
+		overwrittenBallot := circuits.NewBallot().Select(api, isUpdate, &circuit.Votes[i].OverwrittenBallot, zero)
+		sumOfOverwrittenBallots.Add(api, sumOfOverwrittenBallots, overwrittenBallot)
+
+		votersCount = api.Add(votersCount, isInsertOrUpdate)
+		overwrittenVotesCount = api.Add(overwrittenVotesCount, isUpdate)
+	}
+
+	// Assert new results are equal to old results plus ballot sums
+	circuit.Results.NewResultsAdd.AssertIsEqual(api,
+		circuits.NewBallot().Add(api, &circuit.Results.OldResultsAdd, sumOfAllBallots))
+	circuit.Results.NewResultsSub.AssertIsEqual(api,
+		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, sumOfOverwrittenBallots))
+	api.AssertIsEqual(circuit.VotersCount, votersCount)
+	api.AssertIsEqual(circuit.OverwrittenVotesCount, overwrittenVotesCount)
+}
+
+// VerifyCSPCensusProofs verifies the CSP proofs of the votes in the batch.
+// It verifies the CSP proof of each vote using its IsValid function but the
+// result is only asserted if the census origin is CSP and the vote is real.
+func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API, mask []frontend.Variable) {
+	censusOrigin := types.CensusOriginCSPEdDSABN254V1
+	curveID := censusOrigin.CurveID()
+	isCSPCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(censusOrigin)))
+	for i := range types.VotesPerBatch {
+		vote := c.Votes[i]
+		cspProof := c.CensusProofs.CSPProofs[i]
+		// verify the CSP proof
+		isValidProof := cspProof.IsValid(api, curveID, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
+		// check if the census origin is CSP
+		// the proof should be valid only if it's a real proof and the census origin is CSP
+		shouldBeValid := api.And(mask[i], isCSPCensus)
+		// assert the validity of the proof only if it should be valid, using
+		// its value to compare with 1 only when it applies, otherwise compare
+		// with 1 directly (to ignore dummy proofs and non-CSP census origins)
+		api.AssertIsEqual(api.Select(shouldBeValid, isValidProof, 1), 1)
+	}
+}
+
+// VerifyMerkleCensusProofs verifies the Merkle proofs of the votes in the
+// batch. It verifies the Merkle proof of each vote using its Verify function
+// and that the leaf is correct, but the result is only asserted if the census
+// origin is MerkleTree and the vote is real.
+func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API, mask []frontend.Variable) {
+	isMerkleTreeCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(types.CensusOriginMerkleTreeOffchainStaticV1)))
+	for i := range types.VotesPerBatch {
+		vote := c.Votes[i]
+		// check if the proof is valid only if the census origin is MerkleTree
+		// and the current vote inputs are from a valid vote.
+		shouldBeValid := api.And(mask[i], isMerkleTreeCensus)
+
+		// check that calculated leaf is equal to the one in the proof
+		leaf := imt.PackLeaf(api, vote.Address, vote.VoteWeight)
+		isLeafEqual := api.IsZero(api.Cmp(leaf, c.CensusProofs.MerkleProofs[i].Leaf))
+		// assert leaf equality only if the proof should be valid
+		api.AssertIsEqual(api.Select(shouldBeValid, isLeafEqual, 1), 1)
+		// verify the census proof using the lean imt circuit
+		isValid, err := c.CensusProofs.MerkleProofs[i].Verify(api, c.CensusRoot)
+		if err != nil {
+			circuits.FrontendError(api, "failed to verify merkle census proof: ", err)
+			return
+		}
+		// assert the validity of the proof only if it should be valid
+		api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
 	}
 }

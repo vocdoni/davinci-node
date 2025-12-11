@@ -23,6 +23,7 @@ type internalCircuits struct {
 	bVkCircom                   []byte
 	vvCcs, aggCcs, stCcs, rvCcs constraint.ConstraintSystem
 	vvPk, aggPk, stPk, rvPk     groth16.ProvingKey
+	stVk                        groth16.VerifyingKey
 }
 
 // loadInternalCircuitArtifacts loads the internal circuit artifacts for the
@@ -67,6 +68,12 @@ func (s *Sequencer) loadInternalCircuitArtifacts() error {
 	s.rvCcs, s.rvPk, err = loadCircuitArtifacts(results.Artifacts)
 	if err != nil {
 		return fmt.Errorf("failed to load resultsverifier artifacts: %w", err)
+	}
+
+	// Load statetransition verifying key
+	s.stVk, err = statetransition.Artifacts.VerifyingKey()
+	if err != nil {
+		return fmt.Errorf("failed to load statetransition verifying key: %w", err)
 	}
 
 	return nil

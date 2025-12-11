@@ -33,3 +33,6 @@ package circuits
 // |   State    |  BN254				<- native
 // | Transition |  (BW6-761 inside)		<- inner
 // +------------+
+
+// WARNING: The order of the public inputs of the circuits matters and must be
+// consistent across all implementations (circom, gnark, solidity, etc.).

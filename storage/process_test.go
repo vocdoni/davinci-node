@@ -82,9 +82,8 @@ func TestProcess(t *testing.T) {
 			CostFromWeight: false,
 		},
 		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTree,
+			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 			CensusRoot:   make([]byte, 32),
-			MaxVotes:     new(types.BigInt).SetUint64(100),
 			CensusURI:    "https://example.com/census",
 		},
 	}
@@ -102,7 +101,7 @@ func TestProcess(t *testing.T) {
 	processes, err := st.ListProcesses()
 	c.Assert(err, qt.IsNil)
 	c.Assert(len(processes), qt.Equals, 1)
-	c.Assert(processes[0], qt.DeepEquals, processID.Marshal())
+	c.Assert(processes[0].Marshal(), qt.DeepEquals, processID.Marshal())
 
 	// Test 4: Set another process
 	anotherProcessID := types.ProcessID{

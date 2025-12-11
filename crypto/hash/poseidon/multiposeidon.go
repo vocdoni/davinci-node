@@ -11,41 +11,46 @@ import (
 
 // MultiPoseidon computes the Poseidon hash of a variable number of big.Int inputs.
 // It handles large numbers of inputs by chunking them into groups of 16, hashing each chunk,
-// and then hashing the resulting hashes together. This allows for efficient hashing of
-// large input sets while maintaining the security properties of the Poseidon hash function.
-// Returns an error if more than 256 inputs are provided or if no inputs are provided.
+// and then recursively hashing the resulting hashes together. This allows for efficient hashing
+// of large input sets (including full 4096-element blobs) while maintaining the security
+// properties of the Poseidon hash function.
+// Returns an error if no inputs are provided.
 func MultiPoseidon(inputs ...*big.Int) (*big.Int, error) {
-	if len(inputs) > 256 {
-		return nil, fmt.Errorf("too many inputs")
-	} else if len(inputs) == 0 {
+	if len(inputs) == 0 {
 		return nil, fmt.Errorf("no inputs provided")
 	}
-	// calculate chunk hashes
-	hashes := []*big.Int{}
-	chunk := []*big.Int{}
-	for _, input := range inputs {
-		if len(chunk) == 16 {
-			hash, err := poseidon.Hash(chunk)
-			if err != nil {
-				return nil, err
-			}
-			hashes = append(hashes, hash)
-			chunk = []*big.Int{}
-		}
-		chunk = append(chunk, input)
+
+	// For 16 or fewer inputs, hash directly
+	if len(inputs) <= 16 {
+		return poseidon.Hash(inputs)
 	}
-	// if the final chunk is not empty, hash it to get the last chunk hash
-	if len(chunk) > 0 {
-		hash, err := poseidon.Hash(chunk)
+
+	// Pre-calculate number of chunks for memory efficiency
+	numChunks := (len(inputs) + 15) / 16 // ceiling division
+	hashes := make([]*big.Int, 0, numChunks)
+
+	// Process inputs in 16-element chunks
+	for i := 0; i < len(inputs); i += 16 {
+		end := min(i+16, len(inputs))
+
+		hash, err := poseidon.Hash(inputs[i:end])
 		if err != nil {
 			return nil, err
 		}
 		hashes = append(hashes, hash)
 	}
-	// if there is only one chunk hash, return it
+
+	// Single chunk case - return directly
 	if len(hashes) == 1 {
 		return hashes[0], nil
 	}
-	// return the hash of all chunk hashes
-	return poseidon.Hash(hashes)
+
+	// Multiple chunks - recursively hash chunk hashes if needed
+	// If we have more than 16 chunk hashes, recursively apply MultiPoseidon
+	if len(hashes) <= 16 {
+		return poseidon.Hash(hashes)
+	}
+
+	// Recursively hash the chunk hashes
+	return MultiPoseidon(hashes...)
 }

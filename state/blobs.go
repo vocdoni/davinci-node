@@ -76,8 +76,14 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 		copy(blob[start:end], cells[i][:])
 	}
 
-	// Find valid evaluation point z
-	z, err := blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, blob)
+	// Compute KZG commitment first
+	commitment, err := gethkzg.BlobToCommitment(blob)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute commitment: %w", err)
+	}
+
+	// Compute evaluation point z from commitment and blob
+	z, err := blobs.ComputeEvaluationPoint(st.processID, st.rootHashBefore, commitment)
 	if err != nil {
 		return nil, err
 	}
@@ -116,13 +122,13 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 	cellIndex := 0
 
 	// Extract ResultsAdd (first coordsPerBallot cells)
-	for i := 0; i < coordsPerBallot; i++ {
+	for i := range coordsPerBallot {
 		data.ResultsAdd[i] = getCell(cellIndex)
 		cellIndex++
 	}
 
 	// Extract ResultsSub (next coordsPerBallot cells)
-	for i := 0; i < coordsPerBallot; i++ {
+	for i := range coordsPerBallot {
 		data.ResultsSub[i] = getCell(cellIndex)
 		cellIndex++
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -33,8 +34,8 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate the census origin
-	if !p.CensusOrigin.Valid() {
-		ErrMalformedBody.Withf("invalid census origin: %d", p.CensusOrigin).Write(w)
+	if !p.Census.CensusOrigin.Valid() {
+		ErrMalformedBody.Withf("invalid census origin: %d", p.Census.CensusOrigin).Write(w)
 		return
 	}
 
@@ -65,19 +66,11 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the census root as a big.Int
-	censusRoot, err := p.CensusRootBigInt()
-	if err != nil {
-		ErrGenericInternalServerError.Withf("could not get census root: %v", err).Write(w)
-		return
-	}
-
 	// Prepare inputs for the state ready for the state transition circuit:
 	// - the census root must be encoded according to the arbo format
 	root, err := state.CalculateInitialRoot(
 		pid.BigInt(),
-		p.CensusOrigin.BigInt().MathBigInt(),
-		censusRoot.MathBigInt(),
+		p.Census.CensusOrigin.BigInt().MathBigInt(),
 		p.BallotMode,
 		publicKey)
 	if err != nil {
@@ -97,13 +90,14 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	// Write the response
 	log.Infow("new process setup query",
 		"address", address.String(),
-		"censusOrigin", p.CensusOrigin.String(),
+		"censusOrigin", p.Census.CensusOrigin.String(),
+		"censusRoot", p.Census.CensusRoot.String(),
+		"censusURI", p.Census.CensusURI,
 		"processId", pid.String(),
 		"pubKeyX", pr.EncryptionPubKey[0].String(),
 		"pubKeyY", pr.EncryptionPubKey[1].String(),
 		"stateRoot", pr.StateRoot.String(),
-		"ballotMode", pr.BallotMode.String(),
-	)
+		"ballotMode", pr.BallotMode.String())
 	httpWriteJSON(w, pr)
 }
 
@@ -116,20 +110,20 @@ func (a *API) process(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
 		return
 	}
-	pid := types.ProcessID{}
+	pid := new(types.ProcessID)
 	if err := pid.Unmarshal(pidBytes); err != nil {
 		ErrMalformedProcessID.Withf("could not unmarshal process ID: %v", err).Write(w)
 		return
 	}
 
 	// Retrieve the process
-	proc, err := a.storage.Process(&pid)
+	proc, err := a.storage.Process(pid)
 	if err != nil {
 		ErrProcessNotFound.Withf("could not retrieve process: %v", err).Write(w)
 		return
 	}
 
-	isAcceptingVotes, _ := a.storage.ProcessIsAcceptingVotes(pid.Marshal())
+	isAcceptingVotes, _ := a.storage.ProcessIsAcceptingVotes(pid)
 	// Write the response
 	httpWriteJSON(w, &ProcessResponse{
 		Process:          *proc,
@@ -148,7 +142,7 @@ func (a *API) processList(w http.ResponseWriter, r *http.Request) {
 	}
 	processList := ProcessList{}
 	for _, p := range processes {
-		processList.Processes = append(processList.Processes, p)
+		processList.Processes = append(processList.Processes, p.Marshal())
 	}
 	// Write the response
 	httpWriteJSON(w, &processList)
@@ -203,4 +197,61 @@ func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpWriteJSON(w, metadata)
+}
+
+// processParticipant retrieves information about a participant in a voting
+// process
+// GET /processes/{processId}/participants/{address}
+func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
+	// Unmarshal the process ID from URL parameter
+	pidBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, ProcessURLParam)))
+	if err != nil {
+		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
+		return
+	}
+
+	pid := new(types.ProcessID)
+	if err := pid.Unmarshal(pidBytes); err != nil {
+		ErrMalformedProcessID.Withf("could not unmarshal process ID: %v", err).Write(w)
+		return
+	}
+
+	// Load the process from storage
+	process, err := a.storage.Process(pid)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			ErrProcessNotFound.Withf("could not retrieve process: %v", err).Write(w)
+			return
+		}
+		ErrGenericInternalServerError.Withf("could not retrieve process: %v", err).Write(w)
+		return
+	}
+
+	// Unmarshal the participant address from URL parameter
+	addressStr := chi.URLParam(r, AddressURLParam)
+	address := common.HexToAddress(addressStr)
+	if address == (common.Address{}) {
+		ErrMalformedParam.Withf("invalid participant address: %s", addressStr).Write(w)
+		return
+	}
+
+	// Retrieve the participant info
+	census, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
+		return
+	}
+
+	// Get the participant weight
+	weight, ok := census.Tree().GetWeight(address)
+	if !ok {
+		ErrResourceNotFound.Withf("participant not found in census: %s", address.String()).Write(w)
+		return
+	}
+
+	// Write the response
+	httpWriteJSON(w, CensusParticipant{
+		Key:    types.HexBytes(address.Bytes()),
+		Weight: (*types.BigInt)(weight),
+	})
 }
