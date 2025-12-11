@@ -50,6 +50,34 @@ func (*testHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
 	e.Stringer("time", logTestTime)
 }
 
+// panicOnErrorHook panics when encountering Error level logs.
+// This is useful for integration tests to catch unexpected errors.
+type panicOnErrorHook struct {
+	TestName string
+}
+
+// Run panics if the log level is Error or higher.
+func (h *panicOnErrorHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
+	if level >= zerolog.ErrorLevel {
+		panic(fmt.Sprintf("ERROR found in logs during test %s: %s", h.TestName, msg))
+	}
+}
+
+// EnablePanicOnError installs a hook on the current logger
+// that makes it panic when Error level logs occur.
+// Returns the previous logger so it can be restored later.
+// This is useful for integration tests to catch unexpected errors.
+func EnablePanicOnError(testName string) zerolog.Logger {
+	previousLogger := log
+	log = log.Hook(&panicOnErrorHook{TestName: testName})
+	return previousLogger
+}
+
+// RestoreLogger restores a previously saved logger, removing any hooks.
+func RestoreLogger(previousLogger zerolog.Logger) {
+	log = previousLogger
+}
+
 type errorLevelWriter struct {
 	io.Writer
 }

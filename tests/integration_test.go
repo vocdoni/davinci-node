@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover/debug"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -18,6 +19,10 @@ import (
 )
 
 func TestIntegration(t *testing.T) {
+	// Install log monitor that panics on Error level logs
+	previousLogger := log.EnablePanicOnError(t.Name())
+	defer log.RestoreLogger(previousLogger)
+
 	numVoters := 5
 	c := qt.New(t)
 
