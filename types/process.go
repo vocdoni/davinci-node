@@ -173,36 +173,6 @@ type Process struct {
 	SequencerStats        SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
-// ProcessWithStatusChange extends types.Process to add OldStatus and NewStatus
-// fields
-type ProcessWithStatusChange struct {
-	*Process
-	OldStatus ProcessStatus
-	NewStatus ProcessStatus
-}
-
-// ProcessWithStateRootChange extends types.Process to add NewStateRoot,
-// VotersCount, and NewOverwrittenVotesCount fields
-type ProcessWithStateRootChange struct {
-	*Process
-	NewMaxVoters             *BigInt
-	NewStateRoot             *BigInt
-	VotersCount              *BigInt
-	NewOverwrittenVotesCount *BigInt
-}
-
-// ProcessWithMaxVotersChange extends types.Process to add NewMaxVoters field
-type ProcessWithMaxVotersChange struct {
-	*Process
-	NewMaxVoters *BigInt
-}
-
-type ProcessWithCensusRootChange struct {
-	*Process
-	NewCensusRoot HexBytes
-	NewCensusURI  string
-}
-
 type SequencerProcessStats struct {
 	StateTransitionCount        int       `json:"stateTransitionCount" cbor:"0,keyasint,omitempty"`
 	LastStateTransitionDate     time.Time `json:"lastStateTransitionDate" cbor:"1,keyasint,omitempty"`

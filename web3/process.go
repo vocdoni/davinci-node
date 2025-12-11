@@ -3,7 +3,6 @@ package web3
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -13,24 +12,6 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
-
-// contractProcess is a mirror of the on-chain process tuple constructed
-// with the auto-generated bindings.
-type contractProcess struct {
-	Status                uint8
-	OrganizationId        common.Address
-	EncryptionKey         npbindings.IProcessRegistryEncryptionKey
-	LatestStateRoot       *big.Int
-	StartTime             *big.Int
-	Duration              *big.Int
-	MaxVoters             *big.Int
-	VotersCount           *big.Int
-	OverwrittenVotesCount *big.Int
-	MetadataURI           string
-	BallotMode            npbindings.IProcessRegistryBallotMode
-	Census                npbindings.IProcessRegistryCensus
-	Result                []*big.Int
-}
 
 // CreateProcess creates a new process in the ProcessRegistry contract.
 // It returns the process ID and the transaction hash.
@@ -404,398 +385,63 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 	return ch, nil
 }
 
-// MonitorProcessStatusChanges monitors the status changes in processes by
-// polling the ProcessRegistry contract every interval. It returns a channel
-// that emits processes with the old and new status.
-func (c *Contracts) MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error) {
-	updatedProcChan := make(chan *types.ProcessWithStatusChange)
+// MonitorProcessChanges monitors changes to processes by polling the
+// ProcessRegistry contract every interval. It applies the provided filter
+// functions to detect specific types of changes. It returns a channel that
+// emits ProcessWithChanges objects representing the detected changes.
+func (c *Contracts) MonitorProcessChanges(
+	ctx context.Context,
+	interval time.Duration,
+	retries int,
+	filters ...types.Web3FilterFn,
+) (<-chan *types.ProcessWithChanges, error) {
+	// Create the channel to emit processes changes and run the monitoring in
+	// background
+	updatedProcChan := make(chan *types.ProcessWithChanges)
 	go func() {
 		defer close(updatedProcChan)
+		// Create a ticker to apply the filters at the specified interval
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
-				log.Infow("exiting monitor process updates")
+				log.Infow("exiting monitor process changes")
 				return
 			case <-ticker.C:
+				// Calculate the block range to query (from the last processed
+				// block to the current block)
 				end := c.CurrentBlock()
-				// Use dedicated cursor for status change events to avoid race conditions
+				// Get the last processed block for process changes using a
+				// dedicated lock to avoid race conditions
 				c.watchBlockMutex.RLock()
-				start := c.lastWatchProcessStatusBlock
+				start := c.lastWatchProcessChangesBlock
 				c.watchBlockMutex.RUnlock()
+				// Skip if there are no new blocks to process
 				if end <= start {
 					continue
 				}
-				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessStatusChanged(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil)
-				cancel()
-				if err != nil || iter == nil {
-					log.Debugw("failed to filter process finalized, retrying", "err", err)
-					continue
-				}
-				// Update cursor after successful query
-				c.watchBlockMutex.Lock()
-				c.lastWatchProcessStatusBlock = end
-				c.watchBlockMutex.Unlock()
-				for iter.Next() {
-					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
-					// Thread-safe check of knownProcesses map
-					c.knownProcessesMutex.RLock()
-					_, exists := c.knownProcesses[processID]
-					c.knownProcessesMutex.RUnlock()
-					if !exists {
-						continue
-					}
-					process, err := c.Process(iter.Event.ProcessId[:])
-					if err != nil {
-						log.Errorw(err, "failed to get process while monitoring process status changes")
-						continue
-					}
-					updatedProcChan <- &types.ProcessWithStatusChange{
-						Process:   process,
-						OldStatus: types.ProcessStatus(iter.Event.OldStatus),
-						NewStatus: types.ProcessStatus(iter.Event.NewStatus),
-					}
-				}
-			}
-		}
-	}()
-	return updatedProcChan, nil
-}
-
-// MonitorProcessStateRootChange monitors the state root changes in processes
-// by polling the ProcessRegistry contract every interval. It returns a channel
-// that emits processes with the new state root, the max voters, voters count,
-// and vote overwritten count.
-func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error) {
-	updatedProcChan := make(chan *types.ProcessWithStateRootChange)
-	go func() {
-		defer close(updatedProcChan)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				log.Infow("exiting monitor process updates")
-				return
-			case <-ticker.C:
-				end := c.CurrentBlock()
-				// Use dedicated cursor for state root events to prevent concurrent
-				// monitors from interfering with each other's block tracking.
-				c.watchBlockMutex.RLock()
-				start := c.lastWatchProcessStateRootBlock
-				c.watchBlockMutex.RUnlock()
-				if end <= start {
-					continue
-				}
-				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessStateRootUpdated(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil, nil)
-				cancel()
-				if err != nil || iter == nil {
-					log.Debugw("failed to filter process finalized, retrying", "err", err)
-					continue
-				}
-				c.watchBlockMutex.Lock()
-				c.lastWatchProcessStateRootBlock = end
-				c.watchBlockMutex.Unlock()
-				for iter.Next() {
-					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
-					// Check if process is registered in knownProcesses map
-					c.knownProcessesMutex.RLock()
-					_, exists := c.knownProcesses[processID]
-					c.knownProcessesMutex.RUnlock()
-					if !exists {
-						continue
-					}
-					process, err := c.Process(iter.Event.ProcessId[:])
-					if err != nil {
-						log.Errorw(err, "failed to get process while monitoring process status changes")
-						continue
-					}
-
-					updatedProcChan <- &types.ProcessWithStateRootChange{
-						Process:                  process,
-						NewMaxVoters:             process.MaxVoters,
-						NewStateRoot:             new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
-						VotersCount:              process.VotersCount,
-						NewOverwrittenVotesCount: process.OverwrittenVotesCount,
-					}
-				}
-			}
-		}
-	}()
-	return updatedProcChan, nil
-}
-
-// MonitorProcessMaxVotersChange monitors the max voters changes in processes
-// by polling the ProcessRegistry contract every interval. It returns a channel
-// that emits processes with the new max voters.
-func (c *Contracts) MonitorProcessMaxVotersChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithMaxVotersChange, error) {
-	updatedProcChan := make(chan *types.ProcessWithMaxVotersChange)
-	go func() {
-		defer close(updatedProcChan)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				log.Infow("exiting monitor process updates")
-				return
-			case <-ticker.C:
-				end := c.CurrentBlock()
-				// Use dedicated cursor for state root events to prevent concurrent
-				// monitors from interfering with each other's block tracking.
-				c.watchBlockMutex.RLock()
-				start := c.lastWatchProcessStateRootBlock
-				c.watchBlockMutex.RUnlock()
-				if end <= start {
-					continue
-				}
-				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessMaxVotersChanged(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil)
-				cancel()
-				if err != nil || iter == nil {
-					log.Debugw("failed to filter process finalized, retrying", "err", err)
-					continue
-				}
-				c.watchBlockMutex.Lock()
-				c.lastWatchProcessStateRootBlock = end
-				c.watchBlockMutex.Unlock()
-				for iter.Next() {
-					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
-					// Check if process is registered in knownProcesses map
-					c.knownProcessesMutex.RLock()
-					_, exists := c.knownProcesses[processID]
-					c.knownProcessesMutex.RUnlock()
-					if !exists {
-						continue
-					}
-					process, err := c.Process(iter.Event.ProcessId[:])
-					if err != nil {
-						log.Errorw(err, "failed to get process while monitoring process status changes")
-						continue
-					}
-
-					updatedProcChan <- &types.ProcessWithMaxVotersChange{
-						Process:      process,
-						NewMaxVoters: process.MaxVoters,
-					}
-				}
-			}
-		}
-	}()
-	return updatedProcChan, nil
-}
-
-func (c *Contracts) MonitorProcessCensusRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithCensusRootChange, error) {
-	updatedProcChan := make(chan *types.ProcessWithCensusRootChange)
-	go func() {
-		defer close(updatedProcChan)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				log.Infow("exiting monitor process updates")
-				return
-			case <-ticker.C:
-				end := c.CurrentBlock()
-				// Use dedicated cursor for state root events to prevent concurrent
-				// monitors from interfering with each other's block tracking.
-				c.watchBlockMutex.RLock()
-				start := c.lastWatchProcessStateRootBlock
-				c.watchBlockMutex.RUnlock()
-				if end <= start {
-					continue
-				}
-				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterCensusUpdated(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil)
-				cancel()
-				if err != nil || iter == nil {
-					log.Debugw("failed to filter process finalized, retrying", "err", err)
-					continue
-				}
-				c.watchBlockMutex.Lock()
-				c.lastWatchProcessStateRootBlock = end
-				c.watchBlockMutex.Unlock()
-				for iter.Next() {
-					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
-					// Check if process is registered in knownProcesses map
-					c.knownProcessesMutex.RLock()
-					_, exists := c.knownProcesses[processID]
-					c.knownProcessesMutex.RUnlock()
-					if !exists {
-						continue
-					}
-					process, err := c.Process(iter.Event.ProcessId[:])
-					if err != nil {
-						log.Errorw(err, "failed to get process while monitoring process status changes")
-						continue
-					}
-
-					updatedProcChan <- &types.ProcessWithCensusRootChange{
-						Process:       process,
-						NewCensusRoot: iter.Event.CensusRoot[:],
-						NewCensusURI:  iter.Event.CensusURI,
-					}
-				}
-			}
-		}
-	}()
-	return updatedProcChan, nil
-}
-
-// MonitorProcessCreationBySubscription monitors the creation of new processes
-// by subscribing to the ProcessRegistry contract. Requires the web3 rpc
-// endpoint to support subscriptions on websockets.
-func (c *Contracts) MonitorProcessCreationBySubscription(ctx context.Context) (<-chan *types.Process, error) {
-	ch1 := make(chan *npbindings.ProcessRegistryProcessCreated)
-	ch2 := make(chan *types.Process)
-
-	sub, err := c.processes.WatchProcessCreated(nil, ch1, nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to watch process created: %w", err)
-	}
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Warnw("exiting monitor process created")
-				sub.Unsubscribe()
-				close(ch1)
-				close(ch2)
-				return
-			case <-sub.Err():
-				log.Errorw(err, "failed to watch process created")
-				close(ch1)
-				close(ch2)
-				return
-			case event := <-ch1:
-				go func() {
-					var p *types.Process
-					var err error
-					maxTries := 20
-					for {
-						// wait for the process to be indexed by web3 providers
-						time.Sleep(1 * time.Second)
-						p, err = c.Process(event.ProcessId[:])
-						if err != nil {
-							log.Errorw(err, "failed to get process while monitoring")
-							continue
-						}
-						if p.Status == types.ProcessStatusEnded {
-							log.Debugw("process already ended, skipping", "processId", event.ProcessId)
-							return // Skip already ended processes
-						}
-						if p.OrganizationId.Cmp(common.Address{}) != 0 {
-							ch2 <- p
+				// Iterate over each filter function
+				for _, filter := range filters {
+					// Retry the filter function up to the specified number of retries
+					for range retries {
+						// Call the filter function with a new context
+						ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
+						err := filter(ctxQuery, start, end, updatedProcChan)
+						cancel()
+						// If the filter function succeeds, break out of the retry loop
+						if err == nil {
 							break
 						}
-						maxTries--
-						if maxTries == 0 {
-							log.Errorw(fmt.Errorf("max tries reached while monitoring process created"), fmt.Sprintf("processId:%x", event.ProcessId))
-							break
-						}
+
 					}
-				}()
+				}
+				// Update the last processed block after processing all filters
+				c.watchBlockMutex.Lock()
+				c.lastWatchProcessChangesBlock = end
+				c.watchBlockMutex.Unlock()
 			}
 		}
 	}()
-	return ch2, nil
-}
-
-func contractProcess2Process(p *contractProcess) (*types.Process, error) {
-	mode := types.BallotMode{
-		UniqueValues:   p.BallotMode.UniqueValues,
-		CostFromWeight: p.BallotMode.CostFromWeight,
-		NumFields:      p.BallotMode.NumFields,
-		CostExponent:   p.BallotMode.CostExponent,
-		MaxValue:       (*types.BigInt)(p.BallotMode.MaxValue),
-		MinValue:       (*types.BigInt)(p.BallotMode.MinValue),
-		MaxValueSum:    (*types.BigInt)(p.BallotMode.MaxValueSum),
-		MinValueSum:    (*types.BigInt)(p.BallotMode.MinValueSum),
-	}
-	if err := mode.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid ballot mode: %w", err)
-	}
-
-	// Validate the census origin
-	censusOrigin := types.CensusOrigin(p.Census.CensusOrigin)
-	if !censusOrigin.Valid() {
-		return nil, fmt.Errorf("invalid census origin: %d", p.Census.CensusOrigin)
-	}
-
-	census := types.Census{
-		CensusRoot:   p.Census.CensusRoot[:],
-		CensusURI:    p.Census.CensusURI,
-		CensusOrigin: types.CensusOrigin(p.Census.CensusOrigin),
-	}
-
-	results := make([]*types.BigInt, len(p.Result))
-	for i, r := range p.Result {
-		results[i] = (*types.BigInt)(r)
-	}
-
-	return &types.Process{
-		Status:         types.ProcessStatus(p.Status),
-		OrganizationId: p.OrganizationId,
-		EncryptionKey: &types.EncryptionKey{
-			X: (*types.BigInt)(p.EncryptionKey.X),
-			Y: (*types.BigInt)(p.EncryptionKey.Y),
-		},
-		StateRoot:             (*types.BigInt)(p.LatestStateRoot),
-		StartTime:             time.Unix(int64(p.StartTime.Uint64()), 0),
-		Duration:              time.Duration(p.Duration.Uint64()) * time.Second,
-		MaxVoters:             (*types.BigInt)(p.MaxVoters),
-		VotersCount:           (*types.BigInt)(p.VotersCount),
-		OverwrittenVotesCount: (*types.BigInt)(p.OverwrittenVotesCount),
-		MetadataURI:           p.MetadataURI,
-		BallotMode:            &mode,
-		Census:                &census,
-		Result:                results,
-	}, nil
-}
-
-func process2ContractProcess(p *types.Process) contractProcess {
-	var prp contractProcess
-
-	prp.Status = uint8(p.Status)
-	prp.OrganizationId = p.OrganizationId
-	prp.EncryptionKey = npbindings.IProcessRegistryEncryptionKey{
-		X: p.EncryptionKey.X.MathBigInt(),
-		Y: p.EncryptionKey.Y.MathBigInt(),
-	}
-
-	prp.LatestStateRoot = p.StateRoot.MathBigInt()
-	prp.StartTime = big.NewInt(p.StartTime.Unix())
-	prp.Duration = big.NewInt(int64(p.Duration.Seconds()))
-	prp.MaxVoters = p.MaxVoters.MathBigInt()
-	prp.MetadataURI = p.MetadataURI
-
-	prp.BallotMode = npbindings.IProcessRegistryBallotMode{
-		CostFromWeight: p.BallotMode.CostFromWeight,
-		UniqueValues:   p.BallotMode.UniqueValues,
-		NumFields:      p.BallotMode.NumFields,
-		CostExponent:   p.BallotMode.CostExponent,
-		MaxValue:       p.BallotMode.MaxValue.MathBigInt(),
-		MinValue:       p.BallotMode.MinValue.MathBigInt(),
-		MaxValueSum:    p.BallotMode.MaxValueSum.MathBigInt(),
-		MinValueSum:    p.BallotMode.MinValueSum.MathBigInt(),
-	}
-
-	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
-	prp.Census.CensusOrigin = uint8(p.Census.CensusOrigin)
-	prp.Census.CensusURI = p.Census.CensusURI
-	prp.VotersCount = p.VotersCount.MathBigInt()
-	prp.OverwrittenVotesCount = p.OverwrittenVotesCount.MathBigInt()
-	if p.Result != nil {
-		prp.Result = make([]*big.Int, len(p.Result))
-		for i, r := range p.Result {
-			prp.Result[i] = r.MathBigInt()
-		}
-	} else {
-		prp.Result = []*big.Int{} // Ensure it's not nil
-	}
-	return prp
+	return updatedProcChan, nil
 }

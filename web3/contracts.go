@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -50,6 +51,7 @@ type Addresses struct {
 	ResultsZKVerifier         common.Address
 }
 
+// ContractABIs contains the ABIs of the deployed contracts.
 type ContractABIs struct {
 	OrganizationRegistry      *abi.ABI
 	ProcessRegistry           *abi.ABI
@@ -74,14 +76,13 @@ type Contracts struct {
 	currentBlockLastUpdate time.Time
 	currentBlockMutex      sync.Mutex
 
-	knownProcesses                 map[string]struct{}
-	knownProcessesMutex            sync.RWMutex
-	lastWatchProcessCreationBlock  uint64
-	lastWatchProcessStatusBlock    uint64
-	lastWatchProcessStateRootBlock uint64
-	watchBlockMutex                sync.RWMutex
-	knownOrganizations             map[string]struct{}
-	lastWatchOrgBlock              uint64
+	knownProcesses                map[string]struct{}
+	knownProcessesMutex           sync.RWMutex
+	lastWatchProcessCreationBlock uint64
+	lastWatchProcessChangesBlock  uint64
+	watchBlockMutex               sync.RWMutex
+	knownOrganizations            map[string]struct{}
+	lastWatchOrgBlock             uint64
 
 	// Transaction manager for nonce management and stuck transaction recovery
 	txManager *txmanager.TxManager
@@ -144,19 +145,18 @@ func New(web3rpcs []string, web3cApi string, gasMultiplier float64) (*Contracts,
 	}
 
 	return &Contracts{
-		ChainID:                        *chainID,
-		web3pool:                       w3pool,
-		cli:                            cli,
-		Web3ConsensusAPIEndpoint:       web3cApi,
-		GasMultiplier:                  gasMultiplier,
-		knownProcesses:                 make(map[string]struct{}),
-		knownOrganizations:             make(map[string]struct{}),
-		lastWatchProcessCreationBlock:  uint64(startBlock),
-		lastWatchProcessStatusBlock:    uint64(startBlock),
-		lastWatchProcessStateRootBlock: uint64(startBlock),
-		lastWatchOrgBlock:              uint64(startBlock),
-		currentBlock:                   lastBlock,
-		currentBlockLastUpdate:         time.Now(),
+		ChainID:                       *chainID,
+		web3pool:                      w3pool,
+		cli:                           cli,
+		Web3ConsensusAPIEndpoint:      web3cApi,
+		GasMultiplier:                 gasMultiplier,
+		knownProcesses:                make(map[string]struct{}),
+		knownOrganizations:            make(map[string]struct{}),
+		lastWatchProcessCreationBlock: uint64(startBlock),
+		lastWatchProcessChangesBlock:  uint64(startBlock),
+		lastWatchOrgBlock:             uint64(startBlock),
+		currentBlock:                  lastBlock,
+		currentBlockLastUpdate:        time.Now(),
 	}, nil
 }
 
@@ -179,11 +179,6 @@ func (c *Contracts) Signer() *ethSigner.Signer {
 // instance.
 func (c *Contracts) SetTxManager(tm *txmanager.TxManager) {
 	c.txManager = tm
-}
-
-// TxManager returns the transaction manager used by the Contracts instance.
-func (c *Contracts) TxManager() *txmanager.TxManager {
-	return c.txManager
 }
 
 // CurrentBlock returns the current block number for the chain.
@@ -348,7 +343,7 @@ func (c *Contracts) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(erro
 	if c.txManager == nil {
 		return fmt.Errorf("no transaction manager configured")
 	}
-	return c.TxManager().WaitTxByID(id, timeOut, cb...)
+	return c.txManager.WaitTxByID(id, timeOut, cb...)
 }
 
 // waitTx waits for a transaction to be mined given its hash.
@@ -544,7 +539,7 @@ func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
 
 	// 1) Try custom errors from all loaded ABIs
 	var decoded string
-	err := c.ContractABIs.ForEachABI(func(_ string, a *abi.ABI) error {
+	err := c.ContractABIs.forEachABI(func(_ string, a *abi.ABI) error {
 		for name, e := range a.Errors {
 			// e.ID is the 4-byte selector
 			if bytes.Equal(selector, e.ID.Bytes()) {
@@ -579,9 +574,9 @@ func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
 	return "", fmt.Errorf("unknown error selector 0x%x", selector)
 }
 
-// ForEachABI calls fn(name, abi) for each non-nil *abi.ABI field.
+// forEachABI calls fn(name, abi) for each non-nil *abi.ABI field.
 // Stops and returns an error if fn returns an error.
-func (c *ContractABIs) ForEachABI(fn func(fieldName string, a *abi.ABI) error) error {
+func (c *ContractABIs) forEachABI(fn func(fieldName string, a *abi.ABI) error) error {
 	v := reflect.ValueOf(c).Elem() // reflect.Value of the struct
 	t := v.Type()                  // reflect.Type of the struct
 	for i := range v.NumField() {  // loop fields
@@ -677,4 +672,20 @@ func (c *Contracts) RegisterKnownProcess(processID string) {
 	c.knownProcessesMutex.Lock()
 	defer c.knownProcessesMutex.Unlock()
 	c.knownProcesses[processID] = struct{}{}
+}
+
+// knownPIDs returns a slice of known process IDs as [32]byte arrays, ready to
+// be used as filter topics.
+func (c *Contracts) knownPIDs() [][32]byte {
+	c.knownProcessesMutex.RLock()
+	defer c.knownProcessesMutex.RUnlock()
+	pids := make([][32]byte, 0, len(c.knownProcesses))
+	for pidStr := range c.knownProcesses {
+		if pidBytes, err := hex.DecodeString(pidStr); err == nil {
+			var pid [32]byte
+			copy(pid[:], pidBytes)
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }
