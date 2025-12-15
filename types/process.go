@@ -192,12 +192,12 @@ type ProcessWithStatusChange struct {
 }
 
 // ProcessWithStateRootChange extends types.Process to add NewStateRoot,
-// VotersCountCount, and NewOverwrittenVotesCount fields
+// VotersCount, and NewOverwrittenVotesCount fields
 type ProcessWithStateRootChange struct {
 	*Process
 	NewMaxVoters             *BigInt
 	NewStateRoot             *BigInt
-	VotersCountCount         *BigInt
+	VotersCount              *BigInt
 	NewOverwrittenVotesCount *BigInt
 }
 
