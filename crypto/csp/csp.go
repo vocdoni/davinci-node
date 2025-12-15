@@ -45,11 +45,6 @@ func New(origin types.CensusOrigin, seed []byte) (CSP, error) {
 	// Create a new CSP based on the origin
 	var csp CSP
 	switch origin {
-	case types.CensusOriginCSPEdDSABLS12377V1:
-		var err error
-		if csp, err = eddsa.CSP(twistededwards.BLS12_377); err != nil {
-			return nil, fmt.Errorf("failed to create EdDSA CSP: %w", err)
-		}
 	case types.CensusOriginCSPEdDSABN254V1:
 		var err error
 		if csp, err = eddsa.CSP(twistededwards.BN254); err != nil {
@@ -73,12 +68,6 @@ func New(origin types.CensusOrigin, seed []byte) (CSP, error) {
 func VerifyCensusProof(proof *types.CensusProof) error {
 	var csp CSP
 	switch proof.CensusOrigin {
-	case types.CensusOriginCSPEdDSABLS12377V1:
-		var err error
-		csp, err = eddsa.CSP(twistededwards.BLS12_377)
-		if err != nil {
-			return fmt.Errorf("failed to create EdDSA CSP: %w", err)
-		}
 	case types.CensusOriginCSPEdDSABN254V1:
 		var err error
 		csp, err = eddsa.CSP(twistededwards.BN254)

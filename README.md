@@ -369,7 +369,7 @@ The sequencers only supports the following census origin, that may be used by th
 
 | Census Origin Variable | Value | Description |
 |:---|:---:|:---|
-| `CensusOriginCSPEdDSABLS12377` | `2` | EdDSA signatures over the BLS12-377 curve |
+| `CensusOriginCSPEdDSABN254V1` | `4` | EdDSA signatures over the BN254 curve |
 
 ### What a CSP Does
 
@@ -387,7 +387,7 @@ The `crypto/csp` package provides two helpers functions:
 The `CSP` interface has the following methods:
 
 - `SetSeed(seed []byte) error` – Sets the cryptographic seed used by the CSP.
-- `CensusOrigin() types.CensusOrigin` – Returns the type of census origin (e.g., `CensusOriginCSPEdDSABLS12377`).
+- `CensusOrigin() types.CensusOrigin` – Returns the type of census origin (e.g., `CensusOriginCSPEdDSABN254V1`).
 - `CensusRoot() types.HexBytes` – Returns the census root hash.
 - `GenerateProof(processID *types.ProcessID, address common.Address) (*types.CensusProof, error)` – Generates a cryptographic proof for a given participant.
 - `VerifyProof(proof *types.CensusProof) error` – Verifies that a given proof is valid for the configured CSP.
@@ -411,7 +411,7 @@ import (
 
 func main() {
 	// Select the CSP origin and provide a seed
-	origin := types.CensusOriginCSPEdDSABLS12377
+	origin := types.CensusOriginCSPEdDSABN254V1
 	seed := []byte("example_seed")
 
 	// Create a new CSP instance

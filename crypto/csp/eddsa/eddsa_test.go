@@ -4,7 +4,6 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/types"
@@ -24,7 +23,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 		Version: []byte{0x00, 0x00, 0x00, 0x01},
 	}
 
-	csp, err := CSP(twistededwards.BLS12_377)
+	csp, err := CSP(types.CensusOriginCSPEdDSABN254V1.CurveID())
 	c.Assert(err, qt.IsNil)
 
 	t.Run("invalid inputs", func(t *testing.T) {
@@ -88,7 +87,7 @@ func TestCensusRootLengthAndValue(t *testing.T) {
 	c := qt.New(t)
 
 	for range 1000 {
-		csp, err := CSP(twistededwards.BN254)
+		csp, err := CSP(types.CensusOriginCSPEdDSABN254V1.CurveID())
 		c.Assert(err, qt.IsNil)
 		root := csp.CensusRoot().Root
 		c.Assert(len(root), qt.Equals, types.CensusRootLength)
