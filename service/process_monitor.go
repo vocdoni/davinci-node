@@ -214,17 +214,28 @@ func (pm *ProcessMonitor) monitorProcesses(
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
-			// download and import the process census if needed
-			pm.censusDownloader.DownloadQueue <- process.Census
 			// if it does not exist, create a new one
 			log.Debugw("new process found", "pid", process.ID.String())
-			if err := pm.storage.NewProcess(process); err != nil {
-				log.Warnw("failed to store new process",
-					"pid", process.ID.String(),
-					"err", err.Error())
-			}
-			// initialize the state for the process
-			log.Debugw("process state created", "pid", process.ID.String())
+			// download and import the process census if needed
+			pm.censusDownloader.DownloadQueue <- process.Census
+			// after census is downloaded and imported, store the new process
+			downloadCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			pm.censusDownloader.OnCensusDownloaded(process.Census, downloadCtx, func(err error) {
+				if err != nil {
+					log.Warnw("failed to download census for new process",
+						"pid", process.ID.String(),
+						"censusRoot", process.Census.CensusRoot.String(),
+						"err", err.Error())
+				}
+				if err := pm.storage.NewProcess(process); err != nil {
+					log.Warnw("failed to store new process",
+						"pid", process.ID.String(),
+						"err", err.Error())
+				}
+				log.Debugw("process created", "pid", process.ID.String())
+			})
+
 		case update := <-updatedProcChan:
 			// decode pid
 			pid := new(types.ProcessID).SetBytes(update.ProcessID)
@@ -279,20 +290,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 						"err", err.Error())
 				}
 			case update.CensusRootChange != nil:
-				// process census root change
-				log.Debugw("process census root or/and URI changed",
-					"pid", pid.String(),
-					"newCensusRoot", update.NewCensusRoot.String(),
-					"newCensusURI", update.NewCensusURI)
-				if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetCensusRoot(
-					update.NewCensusRoot,
-					update.NewCensusURI,
-				)); err != nil {
-					log.Warnw("failed to update process census root",
-						"pid", pid.String(),
-						"err", err.Error())
-				}
-				// fetch the process to get the census info
+				// fetch the process to get the current census info
 				process, err := pm.storage.Process(pid)
 				if err != nil {
 					log.Warnw("received update for unknown process",
@@ -300,8 +298,45 @@ func (pm *ProcessMonitor) monitorProcesses(
 						"err", err.Error())
 					continue
 				}
-				// download and import the process new census
-				pm.censusDownloader.DownloadQueue <- process.Census
+				// process census root change
+				log.Debugw("process census root or/and URI changed",
+					"pid", pid.String(),
+					"newCensusRoot", update.NewCensusRoot.String(),
+					"newCensusURI", update.NewCensusURI)
+				newCensus := &types.Census{
+					CensusOrigin: process.Census.CensusOrigin,
+					CensusRoot:   update.NewCensusRoot,
+					CensusURI:    update.NewCensusURI,
+				}
+				pm.censusDownloader.DownloadQueue <- newCensus
+				// wait for census to be downloaded and imported, then update
+				// process census info
+				pm.censusDownloader.OnCensusDownloaded(newCensus, ctx, func(err error) {
+					if err != nil {
+						log.Warnw("failed to download updated census for process",
+							"pid", pid.String(),
+							"censusRoot", update.NewCensusRoot.String(),
+							"err", err.Error())
+						return
+					}
+					log.Debugw("new process census downloaded",
+						"pid", pid.String(),
+						"newCensusRoot", update.NewCensusRoot.String(),
+						"newCensusURI", update.NewCensusURI)
+					// update process census info in storage
+					if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetCensusRoot(
+						update.NewCensusRoot,
+						update.NewCensusURI,
+					)); err != nil {
+						log.Warnw("failed to update process census root",
+							"pid", pid.String(),
+							"err", err.Error())
+					}
+					log.Infow("process census updated",
+						"pid", pid.String(),
+						"censusRoot", update.NewCensusRoot.String(),
+						"censusURI", update.NewCensusURI)
+				})
 			}
 		}
 	}

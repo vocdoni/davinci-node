@@ -78,35 +78,17 @@ type RPCError struct {
 	Data    hexutil.Bytes `json:"data"`
 }
 
-// contractProcess is a mirror of the on-chain process tuple constructed
-// with the auto-generated bindings.
-type contractProcess struct {
-	Status                uint8
-	OrganizationId        common.Address
-	EncryptionKey         npbindings.IProcessRegistryEncryptionKey
-	LatestStateRoot       *big.Int
-	StartTime             *big.Int
-	Duration              *big.Int
-	MaxVoters             *big.Int
-	VotersCount           *big.Int
-	OverwrittenVotesCount *big.Int
-	MetadataURI           string
-	BallotMode            npbindings.IProcessRegistryBallotMode
-	Census                npbindings.IProcessRegistryCensus
-	Result                []*big.Int
-}
-
 // contractProcess2Process converts a contractProcess to a types.Process
-func contractProcess2Process(p *contractProcess) (*types.Process, error) {
+func contractProcess2Process(p npbindings.IProcessRegistryProcess) (*types.Process, error) {
 	mode := types.BallotMode{
 		UniqueValues:   p.BallotMode.UniqueValues,
 		CostFromWeight: p.BallotMode.CostFromWeight,
 		NumFields:      p.BallotMode.NumFields,
 		CostExponent:   p.BallotMode.CostExponent,
-		MaxValue:       (*types.BigInt)(p.BallotMode.MaxValue),
-		MinValue:       (*types.BigInt)(p.BallotMode.MinValue),
-		MaxValueSum:    (*types.BigInt)(p.BallotMode.MaxValueSum),
-		MinValueSum:    (*types.BigInt)(p.BallotMode.MinValueSum),
+		MaxValue:       new(types.BigInt).SetBigInt(p.BallotMode.MaxValue),
+		MinValue:       new(types.BigInt).SetBigInt(p.BallotMode.MinValue),
+		MaxValueSum:    new(types.BigInt).SetBigInt(p.BallotMode.MaxValueSum),
+		MinValueSum:    new(types.BigInt).SetBigInt(p.BallotMode.MinValueSum),
 	}
 	if err := mode.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ballot mode: %w", err)
@@ -150,8 +132,8 @@ func contractProcess2Process(p *contractProcess) (*types.Process, error) {
 }
 
 // process2ContractProcess converts a types.Process to a contractProcess
-func process2ContractProcess(p *types.Process) contractProcess {
-	var prp contractProcess
+func process2ContractProcess(p *types.Process) npbindings.IProcessRegistryProcess {
+	var prp npbindings.IProcessRegistryProcess
 
 	prp.Status = uint8(p.Status)
 	prp.OrganizationId = p.OrganizationId

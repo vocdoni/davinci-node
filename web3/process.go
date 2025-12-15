@@ -66,21 +66,7 @@ func (c *Contracts) Process(processID []byte) (*types.Process, error) {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
 
-	process, err := contractProcess2Process(&contractProcess{
-		Status:                p.Status,
-		OrganizationId:        p.OrganizationId,
-		EncryptionKey:         p.EncryptionKey,
-		LatestStateRoot:       p.LatestStateRoot,
-		StartTime:             p.StartTime,
-		Duration:              p.Duration,
-		MaxVoters:             p.MaxVoters,
-		VotersCount:           p.VotersCount,
-		OverwrittenVotesCount: p.OverwrittenVotesCount,
-		MetadataURI:           p.MetadataURI,
-		BallotMode:            p.BallotMode,
-		Census:                p.Census,
-		Result:                p.Result,
-	})
+	process, err := contractProcess2Process(p)
 	if err != nil {
 		return nil, err
 	}
