@@ -490,7 +490,7 @@ func (c *Contracts) MonitorProcessStateRootChange(ctx context.Context, interval 
 						Process:                  process,
 						NewMaxVoters:             process.MaxVoters,
 						NewStateRoot:             new(types.BigInt).SetBigInt(iter.Event.NewStateRoot),
-						VotersCountCount:         process.VotersCount,
+						VotersCount:              process.VotersCount,
 						NewOverwrittenVotesCount: process.OverwrittenVotesCount,
 					}
 				}

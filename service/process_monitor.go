@@ -264,14 +264,14 @@ func (pm *ProcessMonitor) monitorProcesses(
 			log.Debugw("process state root changed",
 				"pid", process.ID.String(),
 				"newStateRoot", process.NewStateRoot.String(),
-				"votersCountCount", process.VotersCountCount.String(),
+				"votersCount", process.VotersCount.String(),
 				"newOverwrittenVotesCount", process.NewOverwrittenVotesCount.String())
 			if err := pm.storage.UpdateProcess(
 				new(types.ProcessID).SetBytes(process.ID),
 				storage.ProcessUpdateCallbackSetStateRoot(
 					process.NewStateRoot,
 					process.MaxVoters,
-					process.VotersCountCount,
+					process.VotersCount,
 					process.NewOverwrittenVotesCount,
 				),
 			); err != nil {
