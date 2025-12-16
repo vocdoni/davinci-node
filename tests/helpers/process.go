@@ -129,7 +129,7 @@ func TestUpdateMaxVotersOnChain(
 	return contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
-func TestProcessVotersCount(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
+func TestProcessVotersCountOnChain(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)
@@ -140,7 +140,7 @@ func TestProcessVotersCount(contracts *web3.Contracts, pid types.ProcessID) (int
 	return int(process.VotersCount.MathBigInt().Int64()), nil
 }
 
-func TestProcessOverwrittenVotesCount(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
+func TestProcessOverwrittenVotesCountOnChain(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)

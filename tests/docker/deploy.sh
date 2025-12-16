@@ -84,6 +84,8 @@ forge script \
   --slow \
   --optimize \
   --optimizer-runs 200 \
+  --gas-price 0 \
+  --base-fee 0 \
   -vvvv
 
 # 4) extract addresses into JSON

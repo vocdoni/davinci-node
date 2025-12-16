@@ -93,7 +93,7 @@ func TestNewVoteWithRandomFields(pid types.ProcessID, bm *types.BallotMode, encK
 	return TestNewVote(pid, bm, encKey, privKey, k, fields)
 }
 
-func TestNewVoteFromUnknownVoter(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
+func TestNewVoteFromNonCensusVoter(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
 	privKey, err := ethereum.NewSigner()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate signer: %w", err)
