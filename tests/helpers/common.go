@@ -1,7 +1,6 @@
 package helpers
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -41,21 +40,6 @@ func TestTimeoutChan(t *testing.T) <-chan time.Time {
 		t.Logf("No test deadline found, using %s minute default timeout", timeOut.String())
 	}
 	return timeoutCh
-}
-
-func TestWaitForWithContext(ctx context.Context, interval time.Duration, condition func() bool) error {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if condition() {
-				return nil
-			}
-		}
-	}
 }
 
 func TestWaitForWithChannel(ch <-chan time.Time, interval time.Duration, condition func() bool) error {
