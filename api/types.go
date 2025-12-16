@@ -16,7 +16,7 @@ type CensusParticipant struct {
 // Vote is the struct to represent a vote in the system. It will be provided by
 // the user to cast a vote in a process.
 type Vote struct {
-	ProcessID        *types.ProcessID         `json:"processId"`
+	ProcessID        types.ProcessID          `json:"processId"`
 	CensusProof      types.CensusProof        `json:"censusProof"`
 	Ballot           *elgamal.Ballot          `json:"ballot"`
 	BallotProof      *circomgnark.CircomProof `json:"ballotProof"`

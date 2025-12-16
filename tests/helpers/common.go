@@ -1,0 +1,74 @@
+package helpers
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+	"time"
+)
+
+func IsDebugTest() bool {
+	return os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false"
+}
+
+func TestTimeoutChan(t *testing.T) <-chan time.Time {
+	// Set up timeout based on context deadline
+	var timeoutCh <-chan time.Time
+	deadline, hasDeadline := t.Deadline()
+
+	if hasDeadline {
+		// If context has a deadline, set timeout to 15 seconds before it
+		// to allow for clean shutdown and error reporting
+		remainingTime := time.Until(deadline)
+		timeoutBuffer := 15 * time.Second
+
+		// If we have less than the buffer time left, use half of the remaining time
+		if remainingTime <= timeoutBuffer {
+			timeoutBuffer = remainingTime / 2
+		}
+
+		effectiveTimeout := remainingTime - timeoutBuffer
+		timeoutCh = time.After(effectiveTimeout)
+		t.Logf("Test will timeout in %v (deadline: %v)", effectiveTimeout, deadline)
+	} else {
+		// No deadline set, use a reasonable default
+		timeOut := 20 * time.Minute
+		if IsDebugTest() {
+			timeOut = 50 * time.Minute
+		}
+		timeoutCh = time.After(timeOut)
+		t.Logf("No test deadline found, using %s minute default timeout", timeOut.String())
+	}
+	return timeoutCh
+}
+
+func TestWaitForWithContext(ctx context.Context, interval time.Duration, condition func() bool) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if condition() {
+				return nil
+			}
+		}
+	}
+}
+
+func TestWaitForWithChannel(ch <-chan time.Time, interval time.Duration, condition func() bool) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ch:
+			return fmt.Errorf("timeout waiting for condition")
+		case <-ticker.C:
+			if condition() {
+				return nil
+			}
+		}
+	}
+}
