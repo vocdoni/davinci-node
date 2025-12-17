@@ -7,6 +7,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
@@ -462,40 +463,17 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API, mask []fro
 	api.AssertIsEqual(circuit.OverwrittenVotesCount, overwrittenVotesCount)
 }
 
-// VerifyCSPCensusProofs verifies the CSP proofs of the votes in the batch.
-// It verifies the CSP proof of each vote using its IsValid function but the
-// result is only asserted if the census origin is CSP and the vote is real.
-func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API, mask []frontend.Variable) {
-	censusOrigin := types.CensusOriginCSPEdDSABN254V1
-	curveID := censusOrigin.CurveID()
-	isCSPCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(censusOrigin)))
-	for i := range types.VotesPerBatch {
-		vote := c.Votes[i]
-		cspProof := c.CensusProofs.CSPProofs[i]
-		// verify the CSP proof
-		isValidProof := cspProof.IsValid(api, curveID, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
-		// check if the census origin is CSP
-		// the proof should be valid only if it's a real proof and the census origin is CSP
-		shouldBeValid := api.And(mask[i], isCSPCensus)
-		// assert the validity of the proof only if it should be valid, using
-		// its value to compare with 1 only when it applies, otherwise compare
-		// with 1 directly (to ignore dummy proofs and non-CSP census origins)
-		api.AssertIsEqual(api.Select(shouldBeValid, isValidProof, 1), 1)
-	}
-}
-
 // VerifyMerkleCensusProofs verifies the Merkle proofs of the votes in the
 // batch. It verifies the Merkle proof of each vote using its Verify function
 // and that the leaf is correct, but the result is only asserted if the census
 // origin is MerkleTree and the vote is real.
 func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API, mask []frontend.Variable) {
-	isMerkleTreeCensus := api.IsZero(api.Sub(c.Process.CensusOrigin, uint8(types.CensusOriginMerkleTreeOffchainStaticV1)))
+	isMerkleTreeCensus := census.IsMerkleTreeCensusOrigin(api, c.Process.CensusOrigin)
 	for i := range types.VotesPerBatch {
 		vote := c.Votes[i]
 		// check if the proof is valid only if the census origin is MerkleTree
 		// and the current vote inputs are from a valid vote.
 		shouldBeValid := api.And(mask[i], isMerkleTreeCensus)
-
 		// check that calculated leaf is equal to the one in the proof
 		leaf := imt.PackLeaf(api, vote.Address, vote.VoteWeight)
 		isLeafEqual := api.IsZero(api.Cmp(leaf, c.CensusProofs.MerkleProofs[i].Leaf))
@@ -509,5 +487,25 @@ func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API, mask 
 		}
 		// assert the validity of the proof only if it should be valid
 		api.AssertIsEqual(api.Select(shouldBeValid, isValid, 1), 1)
+	}
+}
+
+// VerifyCSPCensusProofs verifies the CSP proofs of the votes in the batch.
+// It verifies the CSP proof of each vote using its IsValid function but the
+// result is only asserted if the census origin is CSP and the vote is real.
+func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API, mask []frontend.Variable) {
+	isCSPCensus := census.IsCSPCensusOrigin(api, c.Process.CensusOrigin)
+	curveID := census.CSPCensusOriginCurveID()
+	for i := range types.VotesPerBatch {
+		vote := c.Votes[i]
+		cspProof := c.CensusProofs.CSPProofs[i]
+		// verify the CSP proof
+		isValidProof := cspProof.IsValid(api, curveID, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
+		// the proof should be valid only if it's a real proof and the census origin is CSP
+		shouldBeValid := api.And(mask[i], isCSPCensus)
+		// assert the validity of the proof only if it should be valid, using
+		// its value to compare with 1 only when it applies, otherwise compare
+		// with 1 directly (to ignore dummy proofs and non-CSP census origins)
+		api.AssertIsEqual(api.Select(shouldBeValid, isValidProof, 1), 1)
 	}
 }

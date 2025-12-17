@@ -48,6 +48,13 @@ func TestProcessMonitor(t *testing.T) {
 	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
 	c.Assert(err, qt.IsNil)
 
+	// Create a new census
+	census := &types.Census{
+		CensusRoot:   make([]byte, 32),
+		CensusURI:    "https://example.com/census",
+		CensusOrigin: types.CensusOriginCSPEdDSABN254V1,
+	}
+
 	// Create a new process
 	pid, createTx, err := contracts.CreateProcess(&types.Process{
 		Status:         types.ProcessStatusReady,
@@ -65,11 +72,7 @@ func TestProcessMonitor(t *testing.T) {
 			UniqueValues:   false,
 			CostFromWeight: false,
 		},
-		Census: &types.Census{
-			CensusRoot:   make([]byte, 32),
-			CensusURI:    "https://example.com/census",
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-		},
+		Census: census,
 	})
 	c.Assert(err, qt.IsNil)
 	c.Assert(createTx, qt.Not(qt.IsNil))
@@ -82,8 +85,20 @@ func TestProcessMonitor(t *testing.T) {
 	err = contracts.WaitTxByHash(*createTx, 30*time.Second)
 	c.Assert(err, qt.IsNil)
 
-	// Give monitor time to detect and store the process
+	// Allow some time for the monitor to pick up the new process
 	time.Sleep(3 * time.Second)
+
+	// Create a wait group for census download
+	censusDownloaded := make(chan struct{})
+
+	// Register a callback for when the census is downloaded
+	censusDownloader.OnCensusDownloaded(census, ctx, func(err error) {
+		c.Assert(err, qt.IsNil)
+		close(censusDownloaded)
+	})
+
+	// Wait for the census to be downloaded
+	<-censusDownloaded
 
 	// Verify process was stored
 	proc, err := store.Process(pid)

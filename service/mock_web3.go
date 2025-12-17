@@ -47,16 +47,17 @@ func (m *MockContracts) MonitorProcessCreation(ctx context.Context, interval tim
 	return ch, nil
 }
 
-func (m *MockContracts) MonitorProcessStatusChanges(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStatusChange, error) {
-	return make(chan *types.ProcessWithStatusChange), nil
+func (m *MockContracts) ProcessChangesFilters() []types.Web3FilterFn {
+	return []types.Web3FilterFn{}
 }
 
-func (m *MockContracts) MonitorProcessStateRootChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithStateRootChange, error) {
-	return make(chan *types.ProcessWithStateRootChange), nil
-}
-
-func (m *MockContracts) MonitorProcessMaxVotersChange(ctx context.Context, interval time.Duration) (<-chan *types.ProcessWithMaxVotersChange, error) {
-	return make(chan *types.ProcessWithMaxVotersChange), nil
+func (m *MockContracts) MonitorProcessChanges(
+	ctx context.Context,
+	interval time.Duration,
+	retries int,
+	filters ...types.Web3FilterFn,
+) (<-chan *types.ProcessWithChanges, error) {
+	return make(chan *types.ProcessWithChanges), nil
 }
 
 func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {

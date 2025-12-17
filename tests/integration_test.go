@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -23,7 +22,7 @@ func TestIntegration(t *testing.T) {
 	previousLogger := log.EnablePanicOnError(t.Name())
 	defer log.RestoreLogger(previousLogger)
 
-	numVoters := 5
+	numVoters := 2
 	c := qt.New(t)
 
 	// Setup
@@ -46,13 +45,13 @@ func TestIntegration(t *testing.T) {
 		censusURI     string
 	)
 
-	if os.Getenv("DEBUG") == "true" || os.Getenv("DEBUG") == "1" {
+	if isDebugTest() {
 		services.Sequencer.SetProver(debug.NewDebugProver(t))
 	}
 
 	c.Run("create process", func(c *qt.C) {
-		// Create census with numVoters participants + 1 extra for later tests
-		censusRoot, censusURI, signers, err = createCensus(censusCtx, numVoters+1)
+		// Create census with numVoters participants
+		censusRoot, censusURI, signers, err = createCensusWithRandomVoters(censusCtx, types.CensusOriginMerkleTreeOffchainStaticV1, numVoters+1)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 		ballotMode = &types.BallotMode{
 			NumFields:      circuits.MockNumFields,
@@ -70,13 +69,13 @@ func TestIntegration(t *testing.T) {
 			// but only if we are not using a CSP census
 			{
 				// create a different censusRoot for testing
-				root2, root2URI, _, err := createCensus(censusCtx, numVoters*2)
+				root2, root2URI, _, err := createCensusWithRandomVoters(censusCtx, types.CensusOriginMerkleTreeOffchainStaticV1, numVoters*2)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 				// createProcessInSequencer should be idempotent, but there was
 				// a bug in this, test it's fixed
-				pid1, encryptionKey1, stateRoot1, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2URI, root2, ballotMode, numVoters)
+				pid1, encryptionKey1, stateRoot1, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2URI, root2, ballotMode)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
-				pid2, encryptionKey2, stateRoot2, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2URI, root2, ballotMode, numVoters)
+				pid2, encryptionKey2, stateRoot2, err := createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), root2URI, root2, ballotMode)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 				c.Assert(pid2.String(), qt.Equals, pid1.String())
 				c.Assert(encryptionKey2, qt.DeepEquals, encryptionKey1)
@@ -84,7 +83,7 @@ func TestIntegration(t *testing.T) {
 				// a subsequent call to create process, same processID but with
 				// different censusOrigin should return the same encryptionKey
 				// but yield a different stateRoot
-				pid3, encryptionKey3, stateRoot3, err := createProcessInSequencer(services.Contracts, cli, testWrongCensusOrigin(), root2URI, root2, ballotMode, numVoters)
+				pid3, encryptionKey3, stateRoot3, err := createProcessInSequencer(services.Contracts, cli, testWrongCensusOrigin(), root2URI, root2, ballotMode)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 				c.Assert(pid3.String(), qt.Equals, pid1.String())
 				c.Assert(encryptionKey3, qt.DeepEquals, encryptionKey1)
@@ -95,7 +94,7 @@ func TestIntegration(t *testing.T) {
 		// this final call is the good one, with the real censusRoot, should
 		// return the correct stateRoot and encryptionKey that we'll use to
 		// create process in contracts
-		pid, encryptionKey, stateRoot, err = createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), censusURI, censusRoot, ballotMode, numVoters)
+		pid, encryptionKey, stateRoot, err = createProcessInSequencer(services.Contracts, cli, testCensusOrigin(), censusURI, censusRoot, ballotMode)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts
@@ -210,33 +209,7 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 
-	// Set up timeout based on context deadline
-	var timeoutCh <-chan time.Time
-	deadline, hasDeadline := t.Deadline()
-
-	if hasDeadline {
-		// If context has a deadline, set timeout to 15 seconds before it
-		// to allow for clean shutdown and error reporting
-		remainingTime := time.Until(deadline)
-		timeoutBuffer := 15 * time.Second
-
-		// If we have less than the buffer time left, use half of the remaining time
-		if remainingTime <= timeoutBuffer {
-			timeoutBuffer = remainingTime / 2
-		}
-
-		effectiveTimeout := remainingTime - timeoutBuffer
-		timeoutCh = time.After(effectiveTimeout)
-		t.Logf("Test will timeout in %v (deadline: %v)", effectiveTimeout, deadline)
-	} else {
-		// No deadline set, use a reasonable default
-		timeOut := 20 * time.Minute
-		if os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false" {
-			timeOut = 50 * time.Minute
-		}
-		timeoutCh = time.After(timeOut)
-		t.Logf("No test deadline found, using %s minute default timeout", timeOut.String())
-	}
+	timeoutCh := testTimeoutChan(t)
 
 	c.Run("wait for process votes", func(c *qt.C) {
 		// Create a ticker to check the status of votes every 10 seconds

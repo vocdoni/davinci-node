@@ -2,11 +2,9 @@ package types
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/big"
 
 	"github.com/consensys/gnark-crypto/ecc/twistededwards"
-	"github.com/vocdoni/arbo"
 )
 
 // CensusOrigin represents the origin of the census used in a voting process.
@@ -15,31 +13,32 @@ type CensusOrigin uint8
 const (
 	CensusOriginUnknown CensusOrigin = iota
 	CensusOriginMerkleTreeOffchainStaticV1
+	CensusOriginMerkleTreeOffchainDynamicV1
+	CensusOriginMerkleTreeOnchainV1
 	CensusOriginCSPEdDSABN254V1
-	// Unused origins
-	CensusOriginCSPEdDSABLS12377V1
 
-	CensusOriginNameUnknown                    = "unknown"
-	CensusOriginNameMerkleTreeOffchainStaticV1 = "merkle_tree_offchain_static_v1"
-	CensusOriginNameCSPEdDSABN254V1            = "csp_eddsa_bn254_v1"
-	// Unused names
-	CensusOriginNameCSPEdDSABLS12377V1 = "csp_eddsa_bls12377_v1"
+	CensusOriginNameUnknown                     = "unknown"
+	CensusOriginNameMerkleTreeOffchainStaticV1  = "merkle_tree_offchain_static_v1"
+	CensusOriginNameMerkleTreeOffchainDynamicV1 = "merkle_tree_offchain_dynamic_v1"
+	CensusOriginNameMerkleTreeOnchainV1         = "merkle_tree_onchain_v1"
+	CensusOriginNameCSPEdDSABN254V1             = "csp_eddsa_bn254_v1"
 
 	// CensusRootLength defines the length in bytes of the census root.
 	CensusRootLength = 32
 )
 
 var supportedCensusOrigins = map[CensusOrigin]string{
-	CensusOriginMerkleTreeOffchainStaticV1: CensusOriginNameMerkleTreeOffchainStaticV1,
-	CensusOriginCSPEdDSABN254V1:            CensusOriginNameCSPEdDSABN254V1,
+	CensusOriginMerkleTreeOffchainStaticV1:  CensusOriginNameMerkleTreeOffchainStaticV1,
+	CensusOriginMerkleTreeOffchainDynamicV1: CensusOriginNameMerkleTreeOffchainDynamicV1,
+	// TODO: bring back when implemented
+	// CensusOriginMerkleTreeOnchainV1: CensusOriginNameMerkleTreeOnchainV1,
+	CensusOriginCSPEdDSABN254V1: CensusOriginNameCSPEdDSABN254V1,
 }
 
 // CurveID returns the twistededwards.ID associated with the CensusOrigin. Only
 // CSP origins have an associated curve, the rest return UNKNOWN.
 func (co CensusOrigin) CurveID() twistededwards.ID {
 	switch co {
-	case CensusOriginCSPEdDSABLS12377V1:
-		return twistededwards.BLS12_377
 	case CensusOriginCSPEdDSABN254V1:
 		return twistededwards.BN254
 	default:
@@ -69,6 +68,28 @@ func (co CensusOrigin) BigInt() *BigInt {
 	return (*BigInt)(new(big.Int).SetUint64(uint64(co)))
 }
 
+// IsMerkleTree checks if the CensusOrigin corresponds to a Merkle Tree census.
+func (co CensusOrigin) IsMerkleTree() bool {
+	switch co {
+	case CensusOriginMerkleTreeOffchainStaticV1,
+		CensusOriginMerkleTreeOffchainDynamicV1,
+		CensusOriginMerkleTreeOnchainV1:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsCSP checks if the CensusOrigin corresponds to a CSP-based census.
+func (co CensusOrigin) IsCSP() bool {
+	switch co {
+	case CensusOriginCSPEdDSABN254V1:
+		return true
+	default:
+		return false
+	}
+}
+
 // NormalizedCensusRoot function ensures that the census root is always of a
 // fixed length. If its length is not CensusRootLength, it truncates or pads
 // it accordingly.
@@ -83,23 +104,23 @@ type Census struct {
 	CensusOrigin CensusOrigin `json:"censusOrigin" cbor:"0,keyasint,omitempty"`
 	// Census root based on census origin:
 	//  - CensusOriginMerkleTreeOffchainStaticV1: Merkle Root (fixed).
-	//  - CensusOriginCSPEdDSABN254V1: MiMC7 of CSP PubKey (fixed).
-	// TODO: Extend with other census origins:
 	//  - CensusOriginMerkleTreeOffchainDynamicV1: Merkle Root (could change
 	// 	  via tx).
-	//  - CensusOriginMerkleTreeOnchainDynamicV1: Address of census manager
+	//  - CensusOriginCSPEdDSABN254V1: MiMC7 of CSP PubKey (fixed).
+	// TODO: Extend with other census origins:
+	//  - CensusOriginMerkleTreeOnchainV1: Address of census manager
 	//    contract (should be queried on each transition, during state
 	//    transitions).
 	CensusRoot HexBytes `json:"censusRoot" cbor:"2,keyasint,omitempty"`
 	// CensusURI contains the following information depending on the CensusOrigin:
 	//  - CensusOriginMerkleTreeOffchainStaticV1: URL where the sequencer can
 	// 	  download the census snapshot used to compute the Merkle Proofs.
+	//  - CensusOriginMerkleTreeOffchainDynamicV: URL where the sequencer can
+	// 	  download the census snapshot used to compute the Merkle Proofs.
 	//  - CensusOriginCSPEdDSABN254V1: URL where the voters can generate their
 	// 	  signatures.
 	// TODO: Extend with other census origins:
-	//  - CensusOriginMerkleTreeOffchainDynamicV: URL where the sequencer can
-	// 	  download the census snapshot used to compute the Merkle Proofs.
-	// 	- CensusOriginMerkleTreeOnchainDynamicV1: URL where the sequencer can
+	// 	- CensusOriginMerkleTreeOnchainV1: URL where the sequencer can
 	// 	  download the census snapshot used to compute the Merkle Proofs.
 	CensusURI string `json:"censusURI" cbor:"3,keyasint,omitempty"`
 }
@@ -134,10 +155,10 @@ func (cp *CensusProof) Valid() bool {
 		return false
 	}
 	switch cp.CensusOrigin {
-	case CensusOriginMerkleTreeOffchainStaticV1:
+	case CensusOriginMerkleTreeOffchainStaticV1, CensusOriginMerkleTreeOffchainDynamicV1, CensusOriginMerkleTreeOnchainV1:
 		// By default the census proof is not required to this census origin.
 		return true
-	case CensusOriginCSPEdDSABLS12377V1, CensusOriginCSPEdDSABN254V1:
+	case CensusOriginCSPEdDSABN254V1:
 		return cp.Root != nil && cp.Address != nil && cp.ProcessID != nil &&
 			cp.PublicKey != nil && cp.Signature != nil
 	default:
@@ -153,16 +174,4 @@ func (cp *CensusProof) String() string {
 		return ""
 	}
 	return string(data)
-}
-
-// processCensusRootToBigInt helper converts the census root from its original
-// format to a BigInt according to the census origin.
-func processCensusRootToBigInt(origin CensusOrigin, root HexBytes) (*BigInt, error) {
-	if _, ok := supportedCensusOrigins[origin]; !ok {
-		return nil, fmt.Errorf("unsupported census origin: %s", origin)
-	}
-	if origin == CensusOriginMerkleTreeOffchainStaticV1 {
-		return new(BigInt).SetBigInt(arbo.BytesToBigInt(root)), nil
-	}
-	return root.BigInt(), nil
 }

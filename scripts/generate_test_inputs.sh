@@ -81,7 +81,36 @@ extract_json_block() {
 
 decode_json_string() {
     local raw=$1
-    jq -r 'fromjson' <<<"$raw"
+    python3 - "$raw" <<'PY'
+import json
+import sys
+
+raw = sys.argv[1]
+def load_json(value):
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(f"failed to decode json: {exc}\n")
+        sys.exit(1)
+
+
+data = load_json(raw)
+if isinstance(data, str):
+    data = load_json(data)
+
+
+def stringify_ints(value):
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, list):
+        return [stringify_ints(item) for item in value]
+    if isinstance(value, dict):
+        return {key: stringify_ints(val) for key, val in value.items()}
+    return value
+
+
+json.dump(stringify_ints(data), sys.stdout)
+PY
 }
 
 readarray -t transition_lines < <(grep -F "proof ready to submit to the contract" "$tmp_log")
@@ -147,10 +176,11 @@ invalid_root_after=$(jq -r '.rootHashAfter' "$invalid_inputs_json")
 voters_count=$(jq -r '.votersCount // .numNewVotes' "$valid_inputs_json")
 overwritten_votes_count=$(jq -r '.overwrittenVotesCount // .numOverwritten' "$valid_inputs_json")
 census_root=$(jq -r '.censusRoot' "$valid_inputs_json")
-blob_eval_point_z=$(jq -r '.blobEvaluationPointZ' "$valid_inputs_json")
-mapfile -t blob_eval_point_y < <(jq -r '.blobEvaluationPointY[]' "$valid_inputs_json")
-blob_commitment=$(jq -r '.blobCommitment' "$valid_inputs_json")
-blob_proof=$(jq -r '.blobProof' "$valid_inputs_json")
+mapfile -t blob_commitment_limbs < <(jq -r '.blobCommitmentLimbs[]?' "$valid_inputs_json")
+if ((${#blob_commitment_limbs[@]} != 3)); then
+    echo "error: expected three blobCommitmentLimbs entries in statetransition inputs" >&2
+    exit 1
+fi
 
 valid_blob_hash=${blob_hash_by_after["$valid_root_after"]-}
 if [[ -z "$valid_blob_hash" ]]; then
@@ -255,17 +285,9 @@ abstract contract TestInputs {
     uint256 public constant VOTERS_COUNT = $voters_count;
     uint256 public constant OVERWRITTEN_VOTES_COUNT = $overwritten_votes_count;
     uint256 public constant CENSUS_ROOT = $census_root;
-    uint256 public constant BLOB_EVALUATION_POINT_Z =
-        $blob_eval_point_z;
-    uint256 public constant BLOB_EVALUATION_POINT_Y_L1 = ${blob_eval_point_y[0]};
-    uint256 public constant BLOB_EVALUATION_POINT_Y_L2 = ${blob_eval_point_y[1]};
-    uint256 public constant BLOB_EVALUATION_POINT_Y_L3 = ${blob_eval_point_y[2]};
-    uint256 public constant BLOB_EVALUATION_POINT_Y_L4 = ${blob_eval_point_y[3]};
-
-    bytes public constant BLOB_COMMITMENT =
-        $(format_hex_bytes "$blob_commitment");
-    bytes public constant BLOB_PROOF =
-        $(format_hex_bytes "$blob_proof");
+    uint256 public constant BLOBS_COMMITMENT_L1 = ${blob_commitment_limbs[0]};
+    uint256 public constant BLOBS_COMMITMENT_L2 = ${blob_commitment_limbs[1]};
+    uint256 public constant BLOBS_COMMITMENT_L3 = ${blob_commitment_limbs[2]};
 
     bytes32 public constant BLOB_VERSIONEDHASH = $(format_hex_bytes "$valid_blob_hash");
 
@@ -342,7 +364,7 @@ abstract contract TestInputs {
         ${results_commitment_pok[1]}
     ];
 
-    uint256[8] public FINAL_RESULTS = [$(format_array_inline "," "${final_results[@]}")];
+    uint256[8] public FINAL_RESULTS = [$(format_array_inline ", " "${final_results[@]}")];
 }
 EOF
 

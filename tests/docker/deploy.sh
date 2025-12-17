@@ -19,7 +19,7 @@ fi
 
 BRANCH=${BRANCH:-main}
 echo "📥 Cloning davinci-contracts branch: $BRANCH"
-git clone https://github.com/vocdoni/davinci-contracts.git
+git clone --recurse-submodules https://github.com/vocdoni/davinci-contracts.git
 cd davinci-contracts
 
 echo "🔍 Using commit: ${COMMIT:-latest}"
@@ -68,12 +68,11 @@ cp -f "${VERIFIER_SOURCE_DIR}/resultsverifier_vkey.sol" src/verifiers/
 cp -f "${VERIFIER_SOURCE_DIR}/statetransition_vkey.sol" src/verifiers/
 echo "📄 Verification keys contracts copied to src/verifiers/"
 
-head -n -5 foundry.toml > foundry.tmp && mv foundry.tmp foundry.toml
-
 cp .env.example .env
 
 export CHAIN_ID=1337
 export PRIVATE_KEY=${SEPOLIA_PRIVATE_KEY}
+export FOUNDRY_DISABLE_NIGHTLY_WARNING=1
 
 forge clean && forge build
 

@@ -426,7 +426,7 @@ func createCensus(ctx context.Context, size int64, weight uint64, c3URL string) 
 			Weight:  new(big.Int).SetUint64(weight),
 		})
 	}
-	censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, votes, c3URL)
+	censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, types.CensusOriginMerkleTreeOffchainStaticV1, votes, c3URL)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 	}

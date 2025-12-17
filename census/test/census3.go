@@ -17,7 +17,7 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-func NewCensus3MerkleTreeForTest(ctx context.Context, votes []state.Vote, c3url string) (*big.Int, string, error) {
+func NewCensus3MerkleTreeForTest(ctx context.Context, origin types.CensusOrigin, votes []state.Vote, c3url string) (*big.Int, string, error) {
 	// create a new census
 	censusId, err := c3NewCensus(c3url)
 	if err != nil {

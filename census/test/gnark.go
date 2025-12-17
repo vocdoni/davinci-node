@@ -31,8 +31,8 @@ func CensusProofsForCircuitTest(
 	var root *big.Int
 	merkleProofs := [types.VotesPerBatch]imtcircuit.MerkleProof{}
 	cspProofs := [types.VotesPerBatch]csp.CSPProof{}
-	switch origin {
-	case types.CensusOriginMerkleTreeOffchainStaticV1:
+	switch {
+	case origin.IsMerkleTree():
 		// generate the census merkle tree and set the census root
 		census, err := CensusIMTForTest(votes)
 		if err != nil {
@@ -57,7 +57,7 @@ func CensusProofsForCircuitTest(
 			}
 			cspProofs[i] = statetransition.DummyCSPProof()
 		}
-	default:
+	case origin.IsCSP():
 		// instance a csp for testing
 		eddsaCSP, err := csp.New(origin, []byte(testCSPSeed))
 		if err != nil {
@@ -85,6 +85,8 @@ func CensusProofsForCircuitTest(
 				cspProofs[i] = statetransition.DummyCSPProof()
 			}
 		}
+	default:
+		return nil, statetransition.CensusProofs{}, fmt.Errorf("unsupported census origin: %s", origin.String())
 	}
 	return root, statetransition.CensusProofs{
 		MerkleProofs: merkleProofs,

@@ -27,13 +27,13 @@ type CensusDownloaderConfig struct {
 	Attempts        int
 }
 
-// downloadStatus holds the status of a census download attempt. It is for
+// DownloadStatus holds the status of a census download attempt. It is for
 // internal use by the CensusDownloader.
-type downloadStatus struct {
+type DownloadStatus struct {
 	census      *types.Census
-	complete    bool
-	attempts    int
-	lastErr     error
+	Complete    bool
+	Attempts    int
+	LastErr     error
 	lastUpdated time.Time
 }
 
@@ -48,7 +48,7 @@ type CensusDownloader struct {
 	contracts       ContractsService
 	storage         *storage.Storage
 	importer        *census.CensusImporter
-	pendingCensuses map[string]downloadStatus
+	pendingCensuses map[string]DownloadStatus
 	mu              sync.RWMutex
 }
 
@@ -83,11 +83,7 @@ func (cd *CensusDownloader) Start(ctx context.Context) error {
 				return
 			case census := <-cd.DownloadQueue:
 				// Check if census is already pending
-				if cd.IsCensusPending(census) {
-					log.Warnw("census already pending",
-						"census", census.CensusRoot.String(),
-						"uri", census.CensusURI,
-						"origin", census.CensusOrigin.String())
+				if _, pending := cd.DownloadCensusStatus(census); pending {
 					continue
 				}
 				// Add census to pending list
@@ -164,14 +160,14 @@ func (cd *CensusDownloader) addPendingCensus(census *types.Census) {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
 	if cd.pendingCensuses == nil {
-		cd.pendingCensuses = make(map[string]downloadStatus)
+		cd.pendingCensuses = make(map[string]DownloadStatus)
 	}
 	censusKey := census.CensusRoot.String()
 	if _, exists := cd.pendingCensuses[censusKey]; exists {
 		return
 	}
-	cd.pendingCensuses[censusKey] = downloadStatus{
-		attempts: 0,
+	cd.pendingCensuses[censusKey] = DownloadStatus{
+		Attempts: 0,
 		census:   census,
 	}
 }
@@ -187,20 +183,53 @@ func (cd *CensusDownloader) updatePendingCensusStatus(census *types.Census, err 
 	if !exists {
 		return false
 	}
-	status.attempts++
-	status.lastErr = err
+	status.Attempts++
+	status.LastErr = err
 	status.lastUpdated = time.Now()
-	status.complete = err == nil
+	status.Complete = err == nil
 	cd.pendingCensuses[censusKey] = status
 	return true
 }
 
-// IsCensusPending checks if a census is currently pending download or import.
-// It returns true if the census is pending, false otherwise.
-func (cd *CensusDownloader) IsCensusPending(census *types.Census) bool {
+// DownloadCensusStatus retrieves the current download status of the specified
+// census. It returns the DownloadStatus and a boolean indicating whether the
+// census is found in the pending list.
+func (cd *CensusDownloader) DownloadCensusStatus(census *types.Census) (DownloadStatus, bool) {
 	cd.mu.RLock()
 	defer cd.mu.RUnlock()
 	censusKey := census.CensusRoot.String()
-	_, exists := cd.pendingCensuses[censusKey]
-	return exists
+	status, exists := cd.pendingCensuses[censusKey]
+	return status, exists
+}
+
+// OnCensusDownloaded registers a callback function that will be called when
+// the specified census has been downloaded and imported. The callback will
+// be called with an error if the download or import failed, or nil if it
+// succeeded. It allows to wait asynchronously for a census to be ready, and
+// then execute custom logic based on the result.
+func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context.Context, callback func(error)) {
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		innerCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		for {
+			select {
+			case <-innerCtx.Done():
+				callback(fmt.Errorf("context done before census downloaded"))
+				return
+			case <-ticker.C:
+				status, exists := cd.DownloadCensusStatus(census)
+				if !exists {
+					callback(fmt.Errorf("census not found in pending list"))
+					return
+				}
+				if status.Complete {
+					callback(nil)
+					return
+				}
+			}
+		}
+	}()
 }

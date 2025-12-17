@@ -3,11 +3,9 @@ package web3
 import (
 	"context"
 	"fmt"
-	"time"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -39,50 +37,4 @@ func (c *Contracts) Organization(address common.Address) (*types.OrganizationInf
 		Name:        org.Name,
 		MetadataURI: org.MetadataURI,
 	}, nil
-}
-
-// MonitorOrganizationCreatedByPolling monitors the creation of organizations
-// by polling the logs of the blockchain.
-func (c *Contracts) MonitorOrganizationCreatedByPolling(ctx context.Context, interval time.Duration) (<-chan *types.OrganizationInfo, error) {
-	ch := make(chan *types.OrganizationInfo)
-	go func() {
-		defer close(ch)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				log.Warnw("exiting monitor organizations creation")
-				return
-			case <-ticker.C:
-				end := c.CurrentBlock()
-				if end <= c.lastWatchOrgBlock {
-					continue
-				}
-				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.organizations.FilterOrganizationCreated(&bind.FilterOpts{Start: c.lastWatchOrgBlock, End: &end, Context: ctxQuery}, nil)
-				cancel()
-				if err != nil || iter == nil {
-					log.Warnw("failed to filter organization created, retrying", "err", err)
-					continue
-				}
-				c.lastWatchOrgBlock = end
-				for iter.Next() {
-					id := fmt.Sprintf("%x", iter.Event.Id)
-					if _, exists := c.knownOrganizations[id]; exists {
-						continue
-					}
-					c.knownOrganizations[id] = struct{}{}
-					org, err := c.Organization(iter.Event.Id)
-					if err != nil {
-						log.Errorw(err, "failed to get organization while monitoring")
-						continue
-					}
-					org.ID = iter.Event.Id
-					ch <- org
-				}
-			}
-		}
-	}()
-	return ch, nil
 }

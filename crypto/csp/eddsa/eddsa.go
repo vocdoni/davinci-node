@@ -89,8 +89,6 @@ func (c *EdDSA) SetSeed(seed []byte) error {
 // returns the type of the CSP, which is EdDSA in this case.
 func (c *EdDSA) CensusOrigin() types.CensusOrigin {
 	switch c.curve {
-	case twistededwards.BLS12_377:
-		return types.CensusOriginCSPEdDSABLS12377V1
 	case twistededwards.BN254:
 		return types.CensusOriginCSPEdDSABN254V1
 	default:
@@ -200,12 +198,6 @@ func (c *EdDSA) VerifyProof(proof *types.CensusProof) error {
 // provided acording to its census origin.
 func pubKeyFromCensusProof(proof *types.CensusProof) (signature.PublicKey, error) {
 	switch proof.CensusOrigin {
-	case types.CensusOriginCSPEdDSABLS12377V1:
-		pubKey := new(bls12377_eddsa.PublicKey)
-		if _, err := pubKey.SetBytes(proof.PublicKey); err != nil {
-			return nil, fmt.Errorf("error unmarshalling public key: %w", err)
-		}
-		return pubKey, nil
 	case types.CensusOriginCSPEdDSABN254V1:
 		pubKey := new(bn254_eddsa.PublicKey)
 		if _, err := pubKey.SetBytes(proof.PublicKey); err != nil {
