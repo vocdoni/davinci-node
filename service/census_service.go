@@ -63,7 +63,7 @@ func NewCensusDownloader(
 		DownloadQueue: make(chan *types.Census),
 		contracts:     contracts,
 		storage:       stg,
-		importer:      census.NewCensusImporter(stg),
+		importer:      census.NewCensusImporter(stg, census.JSONImporter),
 		config:        config,
 	}
 }
