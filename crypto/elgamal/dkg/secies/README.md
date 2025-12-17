@@ -1,15 +1,15 @@
 # ScalarECIES Encryption Scheme
 
-**sECIES** is an asymmetric encryption scheme based on elliptic curve. It allows encryption of scalar messages (big integers). 
+**sECIES** is an asymmetric encryption scheme based on elliptic curves. It allows encryption of scalar messages (big integers). 
 
- Traditional ECIES typically encrypts arbitrary-length messages using symmetric encryption (like AES) after deriving a shared secret. In contrast, sECIES directly encrypts scalar messages, simplifying the scheme.
+Traditional ECIES typically encrypts arbitrary-length messages using symmetric encryption (like AES) after deriving a shared secret. In contrast, sECIES directly encrypts scalar messages, simplifying the scheme.
 
 ### Key Generation
 
-- **Private Key ($sk$)**: A randomly selected scalar in $\mathbb{F}_r$, the finite field of the curve.
+- **Private Key ($sk$)**: A randomly selected scalar in $\mathbb{F}_q$, the scalar field of the curve.
 - **Public Key ($pk$)**: The point on the curve computed as:
 
-  $pk = sk \cdot G$
+  $PK = sk \cdot G$
 
   where $G$ is the generator point of the BabyJubJub curve.
 
@@ -17,8 +17,8 @@
 
 Given:
 
-- **Message ($m$)**: A scalar in $\mathbb{F}_r$.
-- **Recipient's Public Key ($pk$)**.
+- **Message ($m$)**: A scalar in $\mathbb{F}_q$.
+- **Recipient's Public Key ($PK$)**.
 
 Steps:
 
@@ -31,7 +31,7 @@ Steps:
 
 3. **Compute Shared Secret Point ($S$)**:
 
-   $S = r \cdot pk$
+   $S = r \cdot PK$
 
 4. **Derive Shared Secret Scalar ($s$)**:
 
@@ -39,11 +39,11 @@ Steps:
 
    $s = \text{Hash}(S)$
 
-   The hash function maps the elliptic curve point $S$ to a scalar in $\mathbb{F}_r$.
+   The hash function maps the elliptic curve point $S$ to a scalar in $\mathbb{F}_q$.
 
 5. **Compute Ciphertext ($c$)**:
 
-   $c = (m + s) \mod r$
+   $c = (m + s) \mod q$
 
 6. **Output**:
 
@@ -73,7 +73,7 @@ Steps:
 
 3. **Recover Message ($m$)**:
 
-   $m = (c - s') \mod r$
+   $m = (c - s') \mod q$
 
    This effectively reverses the masking applied during encryption.
 
@@ -96,7 +96,7 @@ In this scheme:
 - **Encryption**:
 
   - $R = rG$
-  - $S = r(pk) = r(sk)G = (r \cdot sk)G$
+  - $S = r(PK) = r(sk)G = (r \cdot sk)G$
 
 - **Decryption**:
 
