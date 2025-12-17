@@ -9,26 +9,25 @@ import (
 // base64 default.
 type HexBytes []byte
 
+// Hex32Bytes returns a new HexBytes padded with leading zeros to 32 bytes.
+func (b HexBytes) Hex32Bytes() HexBytes {
+	return b.LeftPad(32)
+}
+
+// Bytes returns the underlying byte slice of the HexBytes.
 func (b *HexBytes) Bytes() []byte {
 	return *b
 }
 
+// String returns the hexadecimal string representation of the HexBytes,
+// prefixed with "0x".
 func (b *HexBytes) String() string {
 	return "0x" + hex.EncodeToString(*b)
 }
 
+// BigInt converts the HexBytes to a BigInt.
 func (b *HexBytes) BigInt() *BigInt {
 	return new(BigInt).SetBytes(*b)
-}
-
-func (b HexBytes) MarshalJSON() ([]byte, error) {
-	enc := make([]byte, hex.EncodedLen(len(b))+4)
-	enc[0] = '"'
-	enc[1] = '0'
-	enc[2] = 'x'
-	hex.Encode(enc[3:], b)
-	enc[len(enc)-1] = '"'
-	return enc, nil
 }
 
 // LeftPad returns a new HexBytes padded with leading zeros to the specified
@@ -45,6 +44,21 @@ func (b HexBytes) LeftPad(n int) HexBytes {
 	return out
 }
 
+// MarshalJSON implements the json.Marshaler interface for HexBytes. It encodes
+// the byte slice as a hexadecimal string prefixed with "0x".
+func (b HexBytes) MarshalJSON() ([]byte, error) {
+	enc := make([]byte, hex.EncodedLen(len(b))+4)
+	enc[0] = '"'
+	enc[1] = '0'
+	enc[2] = 'x'
+	hex.Encode(enc[3:], b)
+	enc[len(enc)-1] = '"'
+	return enc, nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for HexBytes. It
+// expects a JSON string containing a hexadecimal representation, optionally
+// prefixed with "0x".
 func (b *HexBytes) UnmarshalJSON(data []byte) error {
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
 		return fmt.Errorf("invalid JSON string: %q", data)
