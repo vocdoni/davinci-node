@@ -2,14 +2,15 @@ package census
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
+	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -40,35 +41,50 @@ func (format JSONFormat) String() string {
 	}
 }
 
-// downloadAndImportJSON downloads the census merkle tree dump from the
+// JSONImporter method returns an instance of jsonImporter.
+func JSONImporter() *jsonImporter {
+	return new(jsonImporter)
+}
+
+// jsonImporter is an implementation of the ImporterPlugin interface for
+// importing censuses from JSON dumps.
+type jsonImporter struct{}
+
+// ValidURI checks if the provided targetURI is a valid HTTP or HTTPS URL.
+func (jsonImporter) ValidURI(targetURI string) bool {
+	return strings.HasPrefix(targetURI, "http://") || strings.HasPrefix(targetURI, "https://")
+}
+
+// DownloadAndImportCensus downloads the census merkle tree dump from the
 // specified targetURL and imports it into the census DB based on the
 // expectedRoot. It returns an error if the download or import fails.
-func downloadAndImportJSON(
-	stg *storage.Storage,
-	targetURL string,
+func (jsonImporter) DownloadAndImportCensus(
+	ctx context.Context,
+	censusDB *censusdb.CensusDB,
+	targetURI string,
 	expectedRoot types.HexBytes,
 ) error {
 	// Download the census merkle tree dump
-	res, err := requestRawDump(targetURL)
+	res, err := requestRawDump(ctx, targetURI)
 	if err != nil {
-		return fmt.Errorf("failed to download JSON dump from %s: %w", targetURL, err)
+		return fmt.Errorf("failed to download JSON dump from %s: %w", targetURI, err)
 	}
 	// Ensure the response body is closed
 	defer func() {
 		if err := res.Body.Close(); err != nil {
 			log.Warnw("failed to close JSON dump response body",
 				"root", expectedRoot.String(),
-				"uri", targetURL,
+				"uri", targetURI,
 				"err", err.Error())
 		}
 	}()
 	// Create a reader that detects the JSON format
 	jsonReader, jsonFormat, err := jsonReader(res)
 	if err != nil {
-		return fmt.Errorf("failed to download census merkle tree from %s: %w", targetURL, err)
+		return fmt.Errorf("failed to download census merkle tree from %s: %w", targetURI, err)
 	}
-	if err := importJSONDump(stg, jsonFormat, expectedRoot, jsonReader); err != nil {
-		return fmt.Errorf("failed to import census merkle tree from %s: %w", targetURL, err)
+	if err := importJSONDump(censusDB, jsonFormat, expectedRoot, jsonReader); err != nil {
+		return fmt.Errorf("failed to import census merkle tree from %s: %w", targetURI, err)
 	}
 	return nil
 }
@@ -76,12 +92,12 @@ func downloadAndImportJSON(
 // requestRawDump performs an HTTP GET request to download the census raw dump
 // from the specified URL. It returns the HTTP response or an error if the
 // download fails.
-func requestRawDump(targetURL string) (*http.Response, error) {
+func requestRawDump(ctx context.Context, targetURL string) (*http.Response, error) {
 	// Create HTTP client with no timeout (can be adjusted as needed)
 	client := &http.Client{
 		Timeout: 0,
 	}
-	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request for %s: %w", targetURL, err)
 	}
@@ -144,23 +160,13 @@ func jsonReader(res *http.Response) (io.Reader, JSONFormat, error) {
 // dataReader into the census DB based on the specified JSON format. It
 // verifies that the imported census root matches the expected root.
 func importJSONDump(
-	stg *storage.Storage,
+	censusDB *censusdb.CensusDB,
 	format JSONFormat,
 	expectedRoot types.HexBytes,
 	dataReader io.Reader,
 ) error {
 	// Import the census merkle tree dump into the census DB
 	var err error
-	censusDB := stg.CensusDB()
-
-	// Check if the census already exists
-	if _, err = censusDB.LoadByRoot(expectedRoot); err == nil {
-		// Census already exists, skip import
-		log.Infow("census already exists in census DB, skipping import",
-			"root", expectedRoot.String())
-		return nil
-	}
-
 	switch format {
 	case JSONL:
 		// Import JSONL directly into census DB by expected root
