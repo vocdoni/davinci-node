@@ -7,7 +7,7 @@ Traditional ECIES typically encrypts arbitrary-length messages using symmetric e
 ### Key Generation
 
 - **Private Key ($sk$)**: A randomly selected scalar in $\mathbb{F}_q$, the scalar field of the curve.
-- **Public Key ($pk$)**: The point on the curve computed as:
+- **Public Key ($PK$)**: The point on the curve computed as:
 
   $PK = sk \cdot G$
 
@@ -23,7 +23,7 @@ Given:
 Steps:
 
 1. **Generate Ephemeral Scalar ($r$)**:
-   Randomly select $r$ in $\mathbb{F}_r$, ensuring $r \neq 0$.
+   Randomly select $r$ in $\mathbb{F}_q$, ensuring $r \neq 0$.
 
 2. **Compute Ephemeral Public Key ($R$)**:
 
@@ -89,7 +89,7 @@ Steps:
 
 The security of ScalarECIES relies on the **Elliptic Curve Decisional Diffie-Hellman (DDH)** assumption:
 
-- **DDH Assumption**: Given $G$, $aG$, $bG$, and $cG$, it is computationally infeasible to determine whether $c = ab \mod r$ without knowing $a$ or $b$.
+- **DDH Assumption**: Given $G$, $aG$, $bG$, and $cG$, it is computationally infeasible to determine whether $c = ab \mod q$ without knowing $a$ or $b$.
 
 In this scheme:
 
