@@ -44,6 +44,18 @@ func (b HexBytes) LeftPad(n int) HexBytes {
 	return out
 }
 
+// LeftTrim returns a new HexBytes with leading zeros removed. If there are no
+// leading zeros, it returns a copy of b.
+func (b HexBytes) LeftTrim() HexBytes {
+	i := 0
+	for i < len(b) && b[i] == 0 {
+		i++
+	}
+	out := make(HexBytes, len(b)-i)
+	copy(out, b[i:])
+	return out
+}
+
 // MarshalJSON implements the json.Marshaler interface for HexBytes. It encodes
 // the byte slice as a hexadecimal string prefixed with "0x".
 func (b HexBytes) MarshalJSON() ([]byte, error) {
@@ -73,6 +85,8 @@ func (b *HexBytes) UnmarshalJSON(data []byte) error {
 	decLen := hex.DecodedLen(len(data))
 	if cap(*b) < decLen {
 		*b = make([]byte, decLen)
+	} else {
+		*b = (*b)[:decLen]
 	}
 	if _, err := hex.Decode(*b, data); err != nil {
 		return err
