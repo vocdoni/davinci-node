@@ -15,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/rs/zerolog"
-	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
@@ -351,7 +350,7 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vot
 	censusOrigin := types.CensusOrigin(s.CensusOrigin().Uint64())
 	pid := new(types.ProcessID).SetBytes(s.ProcessID().Bytes())
 
-	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(votes, censusOrigin, pid)
+	censusRoot, censusProofs, err := statetransitiontest.CensusProofsForCircuitTest(votes, censusOrigin, pid)
 	if err != nil {
 		t.Fatal(err)
 	}
