@@ -33,6 +33,7 @@ func (c *Contracts) CreateProcess(process *types.Process) (*types.ProcessID, *co
 	pidDecoded.SetBytes(pid[:])
 
 	p := process2ContractProcess(process)
+	log.Infof("%w", p)
 	tx, err := c.processes.NewProcess(
 		txOpts,
 		p.Status,
