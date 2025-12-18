@@ -31,7 +31,6 @@ func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *com
 	}
 
 	p := process2ContractProcess(process)
-	log.Infof("%w", p)
 	tx, err := c.processes.NewProcess(
 		txOpts,
 		p.Status,

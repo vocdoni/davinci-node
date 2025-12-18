@@ -171,18 +171,18 @@ func importJSONDump(
 	case JSONL:
 		// Import JSONL directly into census DB by expected root
 		if _, err = censusDB.Import(expectedRoot.BigInt().MathBigInt(), dataReader); err != nil {
-			return fmt.Errorf("failet to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
+			return fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 	case JSONArray:
 		// Read entire JSON array dump
 		dump, err := io.ReadAll(dataReader)
 		if err != nil {
-			return fmt.Errorf("failet to read %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
+			return fmt.Errorf("failed to read %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 		// Import JSON array dump into census DB
 		ref, err := censusDB.ImportAll(dump)
 		if err != nil {
-			return fmt.Errorf("failet to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
+			return fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 		// Verify the imported census root matches the expected root
 		if !bytes.Equal(ref.Root(), expectedRoot) {
