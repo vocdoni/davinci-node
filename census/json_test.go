@@ -293,7 +293,7 @@ func TestImportJSONDump(t *testing.T) {
 		readErr := fmt.Errorf("read failure")
 		err := importJSONDump(nil, JSONArray, expectedRoot, &testErrReader{err: readErr})
 		c.Assert(err, qt.Not(qt.IsNil))
-		c.Assert(err.Error(), qt.Contains, "failet to read json census dump")
+		c.Assert(err.Error(), qt.Contains, "failed to read json census dump")
 		c.Assert(err.Error(), qt.Contains, expectedRoot.String())
 		c.Assert(err.Error(), qt.Contains, readErr.Error())
 	})
@@ -319,7 +319,7 @@ func TestImportJSONDump(t *testing.T) {
 		expectedRoot := types.HexBytes{0x01}
 		err := importJSONDump(censusDB, JSONL, expectedRoot, strings.NewReader("not json\n"))
 		c.Assert(err, qt.Not(qt.IsNil))
-		c.Assert(err.Error(), qt.Contains, "failet to import jsonl census dump")
+		c.Assert(err.Error(), qt.Contains, "failed to import jsonl census dump")
 		c.Assert(err.Error(), qt.Contains, expectedRoot.String())
 	})
 
@@ -328,7 +328,7 @@ func TestImportJSONDump(t *testing.T) {
 		expectedRoot := types.HexBytes{0x01}
 		err := importJSONDump(censusDB, JSONArray, expectedRoot, strings.NewReader("{not-json"))
 		c.Assert(err, qt.Not(qt.IsNil))
-		c.Assert(err.Error(), qt.Contains, "failet to import json census dump")
+		c.Assert(err.Error(), qt.Contains, "failed to import json census dump")
 		c.Assert(err.Error(), qt.Contains, expectedRoot.String())
 	})
 
