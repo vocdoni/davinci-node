@@ -152,6 +152,15 @@ func importJSONDump(
 	// Import the census merkle tree dump into the census DB
 	var err error
 	censusDB := stg.CensusDB()
+
+	// Check if the census already exists
+	if _, err = censusDB.LoadByRoot(expectedRoot); err == nil {
+		// Census already exists, skip import
+		log.Infow("census already exists in census DB, skipping import",
+			"root", expectedRoot.String())
+		return nil
+	}
+
 	switch format {
 	case JSONL:
 		// Import JSONL directly into census DB by expected root
