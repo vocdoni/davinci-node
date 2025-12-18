@@ -1,9 +1,15 @@
 package statetransitiontest
 
 import (
+	"fmt"
+	"log"
 	"math/big"
+	"os"
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types/params"
 
@@ -14,7 +20,6 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
-	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
@@ -24,7 +29,13 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
+	imt "github.com/vocdoni/lean-imt-go"
+	imtcensus "github.com/vocdoni/lean-imt-go/census"
+	imtcircuit "github.com/vocdoni/lean-imt-go/circuit"
 )
+
+// fixed seed for CSP testing
+const testCSPSeed = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
 
 // StateTransitionTestResults struct includes relevant data after StateTransitionCircuit
 // inputs generation
@@ -142,7 +153,7 @@ func StateTransitionInputsForTest(
 	c.Assert(err, qt.IsNil, qt.Commentf("end batch"))
 
 	// add census data to witness
-	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(
+	censusRoot, censusProofs, err := CensusProofsForCircuitTest(
 		aggInputs.Votes,
 		censusOrigin,
 		processID,
@@ -171,4 +182,123 @@ func StateTransitionInputsForTest(
 		Votes:        aggInputs.Votes,
 		PublicInputs: publicInputs,
 	}, circuitPlaceholder, witness
+}
+
+// CensusProofsForCircuitTest generates the census proofs required for the
+// state transition circuit tests based on the provided votes and census
+// origin. It returns the census root, the generated census proofs ready to
+// be used in the statetransition circuit, and an error if the process fails.
+// It supports both Merkle tree and CSP-based by initializing a CSP instance
+// or generating a Merkle tree census as needed.
+func CensusProofsForCircuitTest(
+	votes []state.Vote,
+	origin types.CensusOrigin,
+	pid types.ProcessID,
+) (*big.Int, statetransition.CensusProofs, error) {
+	log.Printf("generating testing census with '%s' origin", origin.String())
+	var root *big.Int
+	merkleProofs := [params.VotesPerBatch]imtcircuit.MerkleProof{}
+	cspProofs := [params.VotesPerBatch]csp.CSPProof{}
+	switch {
+	case origin.IsMerkleTree():
+		// generate the census merkle tree and set the census root
+		census, err := CensusIMTForTest(votes)
+		if err != nil {
+			return nil, statetransition.CensusProofs{}, fmt.Errorf("error generating census merkle tree: %w", err)
+		}
+		var ok bool
+		if root, ok = census.Root(); !ok {
+			return nil, statetransition.CensusProofs{}, fmt.Errorf("error getting census merkle tree root")
+		}
+		// generate the merkle tree census proofs for each voter and fill the
+		// csp proofs with dummy data
+		for i := range params.VotesPerBatch {
+			if i < len(votes) {
+				addr := common.BigToAddress(votes[i].Address)
+				mkproof, err := census.GenerateProof(addr)
+				if err != nil {
+					return nil, statetransition.CensusProofs{}, fmt.Errorf("error generating census proof for address %s: %w", addr.Hex(), err)
+				}
+				merkleProofs[i] = imtcircuit.CensusProofToMerkleProof(mkproof)
+			} else {
+				merkleProofs[i] = statetransition.DummyMerkleProof()
+			}
+			cspProofs[i] = statetransition.DummyCSPProof()
+		}
+	case origin.IsCSP():
+		// instance a csp for testing
+		eddsaCSP, err := csp.New(origin, []byte(testCSPSeed))
+		if err != nil {
+			return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to create csp: %w", err)
+		}
+		// get the root and generate the csp proofs for each voter
+		root = eddsaCSP.CensusRoot().Root.BigInt().MathBigInt()
+		for i := range params.VotesPerBatch {
+			// add dummy merkle proof
+			merkleProofs[i] = statetransition.DummyMerkleProof()
+			if i < len(votes) {
+				// generate csp proof for the voter address
+				addr := common.BytesToAddress(votes[i].Address.Bytes())
+				cspProof, err := eddsaCSP.GenerateProof(pid, addr, new(types.BigInt).SetBigInt(votes[i].Weight))
+				if err != nil {
+					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to generate census proof: %w", err)
+				}
+				// convert to gnark csp proof
+				gnarkCSPProof, err := csp.CensusProofToCSPProof(types.CensusOriginCSPEdDSABN254V1.CurveID(), cspProof)
+				if err != nil {
+					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to convert census proof to gnark proof: %w", err)
+				}
+				cspProofs[i] = *gnarkCSPProof
+			} else {
+				cspProofs[i] = statetransition.DummyCSPProof()
+			}
+		}
+	default:
+		return nil, statetransition.CensusProofs{}, fmt.Errorf("unsupported census origin: %s", origin.String())
+	}
+	return root, statetransition.CensusProofs{
+		MerkleProofs: merkleProofs,
+		CSPProofs:    cspProofs,
+	}, nil
+}
+
+// CensusIMTForTest creates a CensusIMT instance for testing purposes including
+// the provided votes as census participants. It returns the initialized
+// CensusIMT or an error if the process fails.
+func CensusIMTForTest(votes []state.Vote) (*imtcensus.CensusIMT, error) {
+	// generate the census with voters information
+	votersData := map[*big.Int]*big.Int{}
+	for _, v := range votes {
+		votersData[v.Address] = v.Weight
+	}
+
+	// Create a unique directory name to avoid lock conflicts
+	// Include timestamp and process info for uniqueness
+	censusDir := os.TempDir() + fmt.Sprintf("/census_imt_test_%d", time.Now().UnixNano())
+
+	// Initialize the census merkle tree
+	censusTree, err := imtcensus.NewCensusIMTWithPebble(censusDir, imt.PoseidonHasher)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create census IMT: %w", err)
+	}
+
+	// Clean up the census directory when done
+	defer func() {
+		if err := censusTree.Close(); err != nil {
+			log.Printf("Warning: failed to close census IMT: %v", err)
+		}
+		if err := os.RemoveAll(censusDir); err != nil {
+			log.Printf("Warning: failed to cleanup census directory %s: %v", censusDir, err)
+		}
+	}()
+
+	bAddresses, bWeights := []common.Address{}, []*big.Int{}
+	for address, weight := range votersData {
+		bAddresses = append(bAddresses, common.BigToAddress(address))
+		bWeights = append(bWeights, weight)
+	}
+	if err := censusTree.AddBulk(bAddresses, bWeights); err != nil {
+		return nil, fmt.Errorf("failed to add bulk to census IMT: %w", err)
+	}
+	return censusTree, nil
 }
