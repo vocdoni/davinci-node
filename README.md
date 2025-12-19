@@ -91,7 +91,12 @@ DOMAIN=mydomain.com
 And execute the docker compose with `--profile=prod`. This is launch all required services (including watchtower).
 
 ```bash
-docker compose --profile=prod up -d
+docker compose --profile prod up -d
+```
+
+For GPU-enabled HTTPS production setup, use:
+```bash
+docker compose --profile prod-gpu up -d
 ```
 
 ### Enable Workers API
@@ -258,12 +263,18 @@ go test -v ./tests -timeout=1h
 
 > 💡 **Note:** Integration tests require a local environment setup (Docker for Anvil/Deployer). The test runner handles this automatically using Testcontainers.
 
-### Integration Tests with Docker Compose
+### Running Tests with Docker Compose
 
-You can run integration tests in a containerized environment using Docker Compose. This is recommended for CI/CD or ensuring a consistent environment.
+You can run tests in a containerized environment using Docker Compose. This is recommended for CI/CD or ensuring a consistent environment.
 
+**Integration Tests:**
 ```bash
 docker compose --profile test up integration-test
+```
+
+**Unit Tests:**
+```bash
+docker compose --profile test up unit-test
 ```
 
 ## GPU Prover Support
@@ -346,12 +357,18 @@ You can customize the CUDA version by setting the `CUDA_VERSION` environment var
 CUDA_VERSION=13.0.2 docker compose --profile gpu up -d sequencer-cuda
 ```
 
-### Running Integration Tests with GPU
+### Running Tests with GPU Support (Docker Compose)
 
-To run the integration tests with GPU support:
+To run the tests with GPU support:
 
+**Integration Tests:**
 ```bash
 docker compose --profile test-cuda up integration-test-cuda
+```
+
+**Unit Tests:**
+```bash
+docker compose --profile test-cuda up unit-test-cuda
 ```
 
 > ⚠️ **Note:** The integration tests require the `docker-compose` CLI to be available inside the container, as they spawn sibling containers. The GPU test image includes this dependency.

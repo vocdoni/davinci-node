@@ -342,12 +342,13 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	if err != nil {
 		return fmt.Errorf("could not generate witness for process %s: %w", pid.String(), err)
 	}
+	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 	proof, err := f.prover(
 		circuits.ResultsVerifierCurve,
 		f.circuits.rvCcs,
 		f.circuits.rvPk,
 		resultsVerifierWitness,
-		solidity.WithProverTargetSolidityVerifier(backend.GROTH16),
+		opts,
 	)
 	if err != nil {
 		return fmt.Errorf("could not generate proof for process %s: %w", pid.String(), err)

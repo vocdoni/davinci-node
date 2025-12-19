@@ -15,6 +15,7 @@ import (
 	"github.com/consensys/gnark/constraint"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -22,7 +23,7 @@ import (
 // CacheableData defines the interface for data that can be cached
 type CacheableData interface {
 	WriteToCache(cacheDir, cacheKey string) error
-	ReadFromCache(cacheDir, cacheKey string) error
+	ReadFromCache(cacheDir, cacheKey string, requireProvingKey bool) error
 }
 
 // cacheError provides consistent error handling for cache operations
@@ -209,11 +210,22 @@ func readWitness(path string, field *big.Int) (witness.Witness, error) {
 
 // CircuitCache manages caching for circuit test data
 type CircuitCache struct {
-	baseDir string
+	BaseDir string
 }
 
 // NewCircuitCache creates a new circuit cache instance
 func NewCircuitCache() (*CircuitCache, error) {
+	// Check for environment variable override
+	cacheBaseDir := os.Getenv("DAVINCI_ARTIFACTS_DIR")
+	if cacheBaseDir != "" {
+		cacheDir := filepath.Join(cacheBaseDir, "test-circuits")
+		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+			return nil, fmt.Errorf("create cache directory from DAVINCI_ARTIFACTS_DIR: %w", err)
+		}
+		log.Debugw("using circuit cache directory from DAVINCI_ARTIFACTS_DIR", "dir", cacheDir)
+		return &CircuitCache{BaseDir: cacheDir}, nil
+	}
+	// Default to user home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get user home directory: %w", err)
@@ -224,7 +236,8 @@ func NewCircuitCache() (*CircuitCache, error) {
 		return nil, fmt.Errorf("create cache directory: %w", err)
 	}
 
-	return &CircuitCache{baseDir: cacheDir}, nil
+	log.Debugw("using circuit cache directory from user home", "dir", cacheDir)
+	return &CircuitCache{BaseDir: cacheDir}, nil
 }
 
 // GenerateCacheKey creates a deterministic cache key based on circuit type and parameters
@@ -244,27 +257,25 @@ func (c *CircuitCache) GenerateCacheKey(circuitType string, processID *types.Pro
 
 // SaveData saves cacheable data to the cache
 func (c *CircuitCache) SaveData(cacheKey string, data CacheableData) error {
-	return data.WriteToCache(c.baseDir, cacheKey)
+	return data.WriteToCache(c.BaseDir, cacheKey)
 }
 
 // LoadData loads cacheable data from the cache
-func (c *CircuitCache) LoadData(cacheKey string, data CacheableData) error {
-	if disabled := os.Getenv("DISABLED_CACHE"); disabled == "1" || disabled == "true" {
-		return fmt.Errorf("cache is disabled via DISABLED_CACHE environment variable")
-	}
-	return data.ReadFromCache(c.baseDir, cacheKey)
+func (c *CircuitCache) LoadData(cacheKey string, data CacheableData, requireProvingKey bool) error {
+	return data.ReadFromCache(c.BaseDir, cacheKey, requireProvingKey)
 }
 
 // Exists checks if cached data exists for the given key
 func (c *CircuitCache) Exists(cacheKey string) bool {
-	cf := CacheFiles{BaseDir: c.baseDir, CacheKey: cacheKey}
-	return cf.Exists(".proof", ".pk", ".vk", ".ccs", ".inputs.cbor")
+	cf := CacheFiles{BaseDir: c.BaseDir, CacheKey: cacheKey}
+	return cf.Exists(".proof", ".vk", ".ccs", ".inputs.cbor")
 }
 
 // AggregatorCacheData holds cached aggregator circuit data
 type AggregatorCacheData struct {
 	Proof            groth16.Proof
 	VerifyingKey     groth16.VerifyingKey
+	ProvingKey       groth16.ProvingKey
 	ConstraintSystem constraint.ConstraintSystem
 	Witness          witness.Witness
 	Inputs           AggregatorTestResults
@@ -275,23 +286,36 @@ func (d *AggregatorCacheData) WriteToCache(cacheDir, cacheKey string) error {
 	cf := CacheFiles{BaseDir: cacheDir, CacheKey: cacheKey}
 
 	// Save proof
-	if err := writeGroth16Component(cf.Path(".proof"), d.Proof, "proof"); err != nil {
-		return err
+	if d.Proof != nil {
+		if err := writeGroth16Component(cf.Path(".proof"), d.Proof, "proof"); err != nil {
+			return err
+		}
 	}
 
 	// Save verifying key
-	if err := writeGroth16Component(cf.Path(".vk"), d.VerifyingKey, "verifying key"); err != nil {
-		return err
+	if d.VerifyingKey != nil {
+		if err := writeGroth16Component(cf.Path(".vk"), d.VerifyingKey, "verifying key"); err != nil {
+			return err
+		}
 	}
 
 	// Save constraint system
-	if err := writeConstraintSystem(cf.Path(".ccs"), d.ConstraintSystem); err != nil {
-		return err
+	if d.ConstraintSystem != nil {
+		if err := writeConstraintSystem(cf.Path(".ccs"), d.ConstraintSystem); err != nil {
+			return err
+		}
 	}
 
 	// Save witness if available
 	if d.Witness != nil {
 		if err := writeWitness(cf.Path(".witness"), d.Witness); err != nil {
+			return err
+		}
+	}
+
+	// Save proving key
+	if d.ProvingKey != nil {
+		if err := writeGroth16Component(cf.Path(".pk"), d.ProvingKey, "proving key"); err != nil {
 			return err
 		}
 	}
@@ -302,15 +326,24 @@ func (d *AggregatorCacheData) WriteToCache(cacheDir, cacheKey string) error {
 }
 
 // ReadFromCache implements CacheableData interface for AggregatorCacheData
-func (d *AggregatorCacheData) ReadFromCache(cacheDir, cacheKey string) error {
+func (d *AggregatorCacheData) ReadFromCache(cacheDir, cacheKey string, requireProvingKey bool) error {
 	cf := CacheFiles{BaseDir: cacheDir, CacheKey: cacheKey}
 
 	// Load proof
-	proof, err := readGroth16Proof(cf.Path(".proof"), circuits.AggregatorCurve)
-	if err != nil {
+	if cf.Exists(".proof") {
+		proof, err := readGroth16Proof(cf.Path(".proof"), circuits.AggregatorCurve)
+		if err != nil {
+			return err
+		}
+		d.Proof = proof
+	}
+
+	// Load proving key
+	pk, err := readGroth16ProvingKey(cf.Path(".pk"), circuits.AggregatorCurve)
+	if err != nil && requireProvingKey {
 		return err
 	}
-	d.Proof = proof
+	d.ProvingKey = pk
 
 	// Load verifying key
 	vk, err := readGroth16VerifyingKey(cf.Path(".vk"), circuits.AggregatorCurve)
@@ -384,12 +417,12 @@ func (d *VoteVerifierCacheData) WriteToCache(cacheDir, cacheKey string) error {
 }
 
 // ReadFromCache implements CacheableData interface for VoteVerifierCacheData
-func (d *VoteVerifierCacheData) ReadFromCache(cacheDir, cacheKey string) error {
+func (d *VoteVerifierCacheData) ReadFromCache(cacheDir, cacheKey string, requireProvingKey bool) error {
 	cf := CacheFiles{BaseDir: cacheDir, CacheKey: cacheKey}
 
 	// Load proving key
 	pk, err := readGroth16ProvingKey(cf.Path(".pk"), circuits.VoteVerifierCurve)
-	if err != nil {
+	if err != nil && requireProvingKey {
 		return err
 	}
 	d.ProvingKey = pk

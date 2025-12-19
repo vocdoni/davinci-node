@@ -4,7 +4,7 @@ set -e
 case "$1" in
     "save")
         # First, find all potential libwasmer.so files
-        WASMER_PATHS=$(find /go/pkg/mod -name "libwasmer.so" -type f | grep iden3/wasmer-go)
+        WASMER_PATHS=$(find /go/pkg/mod -name "libwasmer.so" -type f | grep iden3/wasmer-go || true)
         
         if [ -z "$WASMER_PATHS" ]; then
             echo "Error: No libwasmer.so found in go mod cache" >&2
@@ -45,7 +45,7 @@ case "$1" in
             echo "Library $LIB_NAME not found, searching in go mod cache..."
             
             # Find the correct libwasmer.so that matches the architecture
-            WASMER_PATH=$(find /go/pkg/mod -name "libwasmer.so" -type f | grep iden3/wasmer-go | head -1)
+            WASMER_PATH=$(find /go/pkg/mod -name "libwasmer.so" -type f | grep iden3/wasmer-go | head -1 || true)
             
             if [ -z "$WASMER_PATH" ]; then
                 echo "Error: Could not find libwasmer.so in go mod cache" >&2

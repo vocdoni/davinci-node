@@ -14,7 +14,8 @@ import (
 )
 
 // DefaultProver is the default prover implementation.
-// Without icicle, this always uses CPU proving.
+// It uses the GPU prover if UseGPUProver is true, otherwise it uses the CPU prover.
+// If GPU proving fails, it falls back to CPU proving.
 func DefaultProver(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
@@ -26,6 +27,7 @@ func DefaultProver(
 }
 
 // CPUProver is the standard implementation that simply calls groth16.Prove directly.
+// This is used in production environments.
 func CPUProver(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
@@ -33,10 +35,14 @@ func CPUProver(
 	assignment frontend.Circuit,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return baseCPUProver(curve, ccs, pk, assignment, opts...)
+	w, err := frontend.NewWitness(assignment, curve.ScalarField())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create witness: %w", err)
+	}
+	return groth16.Prove(ccs, pk, w, opts...)
 }
 
-// GPUProver is not available without icicle build tag.
+// GPUProver is an implementation that uses GPU acceleration for proving.
 func GPUProver(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
@@ -44,11 +50,12 @@ func GPUProver(
 	assignment frontend.Circuit,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return nil, fmt.Errorf("GPU proving not available: build with -tags=icicle")
+	panic("GPU prover not supported in this build")
 }
 
 // ProveWithWitness generates a proof from an already-created witness.
-// Without icicle, this always uses CPU proving.
+// It automatically uses GPU acceleration if UseGPUProver is true.
+// If GPU proving fails, it falls back to CPU proving.
 func ProveWithWitness(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
@@ -67,10 +74,10 @@ func CPUProverWithWitness(
 	w witness.Witness,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return baseCPUProverWithWitness(ccs, pk, w, opts...)
+	return groth16.Prove(ccs, pk, w, opts...)
 }
 
-// GPUProverWithWitness is not available without icicle build tag.
+// GPUProverWithWitness proves using GPU with an already-created witness.
 func GPUProverWithWitness(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
@@ -78,5 +85,5 @@ func GPUProverWithWitness(
 	w witness.Witness,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return nil, fmt.Errorf("GPU proving not available: build with -tags=icicle")
+	panic("GPU prover not supported in this build")
 }

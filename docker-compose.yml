@@ -1,11 +1,20 @@
+# Docker Compose Profiles Description:
+# - prod:      Production setup with Sequencer, Traefik (HTTPS), and Watchtower (auto-updates).
+# - prod-gpu:  Production setup with GPU-enabled Sequencer and Traefik (no Watchtower).
+# - dev:       Development setup with Sequencer and Watchtower.
+# - test:      Runs CPU-based integration and unit tests.
+# - test-cuda: Runs GPU-based integration, unit, and circuit tests (requires NVIDIA driver & toolkit).
+
 x-sequencer-common: &sequencer-common
   env_file: .env
   environment:
     - DAVINCI_DATADIR=/app/run
+    - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
     - SEQUENCER_API_URL=${SEQUENCER_API_URL:-http://localhost:${DAVINCI_API_PORT:-9090}}
     - BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io/address}
   volumes:
     - run:/app/run
+    - ${HOME:-/root}/.davinci/artifacts:${HOME:-/root}/.davinci/artifacts
   ports:
     - "${DAVINCI_API_PORT:-9090}:${DAVINCI_API_PORT:-9090}"
   sysctls:
@@ -21,58 +30,121 @@ x-sequencer-common: &sequencer-common
     - "traefik.http.routers.sequencer.tls.domains[0].main=${DOMAIN}"
     - "com.centurylinklabs.watchtower.enable=true"
 
+x-test-common: &test-common
+  environment:
+    - LOG_LEVEL=debug
+    - CGO_ENABLED=1
+    - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ${HOME:-/root}/.davinci/artifacts:${HOME:-/root}/.davinci/artifacts
+  network_mode: "host"
+
+x-cuda-deploy: &cuda-deploy
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+x-test-cuda-common: &test-cuda-common
+  <<: [*test-common, *cuda-deploy]
+  build:
+    context: ./
+    dockerfile: Dockerfile.cuda
+    target: builder
+    args:
+      CUDA_VERSION: ${CUDA_VERSION:-12.6.0}
+  environment:
+    - LOG_LEVEL=debug
+    - GPU_PROVER=true
+    - CGO_ENABLED=1
+    - LD_LIBRARY_PATH=/usr/local/lib
+    - ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend
+    - ICICLE_SHARED_POINTS=false
+    - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
+
+x-traefik-common: &traefik-common
+  image: traefik:latest
+  ports:
+    - "80:80"
+    - "443:443"
+  volumes:
+    - "./letsencrypt:/letsencrypt"
+    - "/var/run/docker.sock:/var/run/docker.sock:ro"
+  command:
+    - "--log.level=INFO"
+    - "--providers.docker=true"
+    - "--providers.docker.exposedbydefault=false"
+    - "--entrypoints.web.address=:80"
+    - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+    - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+    - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+    - "--entrypoints.websecure.address=:443"
+    - "--certificatesresolvers.le.acme.httpchallenge=true"
+    - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+    - "--certificatesresolvers.le.acme.email=root@vocdoni.io"
+    - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+    - "com.centurylinklabs.watchtower.enable=true"
+  restart: ${RESTART:-unless-stopped}
+
 services:
+  # ---------------------------------------------------------------------------
+  # Core Services
+  # ---------------------------------------------------------------------------
+
   sequencer:
+    profiles: ["prod", "dev", "prod-test"]
     build:
       context: ./
     image: "ghcr.io/vocdoni/davinci-node:${DAVINCI_NODE_TAG:-main}"
     <<: *sequencer-common
 
   sequencer-cuda:
-    profiles: ["gpu"]
+    profiles: ["gpu", "prod-gpu"]
+    <<: [*cuda-deploy, *sequencer-common]
     build:
       context: ./
       dockerfile: Dockerfile.cuda
       args:
         CUDA_VERSION: ${CUDA_VERSION:-12.6.0}
     image: "ghcr.io/vocdoni/davinci-node:cuda-${DAVINCI_NODE_TAG:-main}"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    <<: *sequencer-common
 
-  integration-test-cuda:
-    profiles: ["test-cuda"]
-    build:
-      context: ./
-      dockerfile: Dockerfile.cuda
-      target: builder
-      args:
-        CUDA_VERSION: ${CUDA_VERSION:-12.6.0}
-    environment:
-      - LOG_LEVEL=debug
-      - GPU_PROVER=true
-      - CGO_ENABLED=1
-      - LD_LIBRARY_PATH=/usr/local/lib
-      - ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend
+  # ---------------------------------------------------------------------------
+  # Network & Maintenance Services
+  # ---------------------------------------------------------------------------
+
+  traefik:
+    profiles: ["prod", "prod-test"]
+    <<: *traefik-common
+    depends_on:
+      - sequencer
+
+  traefik-gpu:
+    profiles: ["prod-gpu"]
+    <<: *traefik-common
+    depends_on:
+      - sequencer-cuda
+
+  watchtower:
+    profiles: ["prod", "dev"]
+    image: nickfedor/watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    network_mode: "host"
-    command: go test -v -tags=icicle ./tests
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    command: --interval 300 --label-enable --include-stopped --revive-stopped
+    restart: ${RESTART:-unless-stopped}
+    depends_on:
+      - sequencer
+
+  # ---------------------------------------------------------------------------
+  # Test Services (CPU)
+  # ---------------------------------------------------------------------------
 
   integration-test:
     profiles: ["test"]
+    <<: *test-common
     build:
       context: ./
       dockerfile: Dockerfile
@@ -81,51 +153,64 @@ services:
       - LOG_LEVEL=debug
       - GPU_PROVER=false
       - CGO_ENABLED=1
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    network_mode: "host"
+      - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
     command: go test -v ./tests -timeout=1h
 
-  traefik:
-    image: traefik:latest
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - "./letsencrypt:/letsencrypt"
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-    command:
-      - "--log.level=INFO"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.le.acme.httpchallenge=true"
-      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.le.acme.email=root@vocdoni.io"
-      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-      - "com.centurylinklabs.watchtower.enable=true"
-    restart: ${RESTART:-unless-stopped}
-    depends_on:
-      - sequencer
-    profiles:
-      - prod
-      - prod-test
+  unit-test:
+    profiles: ["test"]
+    <<: *test-common
+    build:
+      context: ./
+      dockerfile: Dockerfile
+      target: builder
+    environment:
+      - LOG_LEVEL=debug
+      - GPU_PROVER=false
+      - CGO_ENABLED=1
+      - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
+    command: /bin/sh -c "go test -v $$(go list ./... | grep -v github.com/vocdoni/davinci-node/tests) -timeout=1h"
 
-  watchtower:
-    image: nickfedor/watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 300 --label-enable --include-stopped --revive-stopped
-    restart: ${RESTART:-unless-stopped}
-    depends_on:
-      - sequencer
-    profiles:
-      - prod
-      - dev
+  # ---------------------------------------------------------------------------
+  # Test Services (GPU/CUDA)
+  # ---------------------------------------------------------------------------
+
+  integration-test-cuda:
+    profiles: ["test-cuda"]
+    <<: *test-cuda-common
+    command: go test -v -p 1 -tags=icicle ./tests -timeout=1h
+
+  unit-test-cuda:
+    profiles: ["test-cuda"]
+    <<: *test-cuda-common
+    command: /bin/sh -c "go test -v -p 1 -tags=icicle $$(go list ./... | grep -v github.com/vocdoni/davinci-node/tests) -timeout=1h"
+
+  aggregator-gpu-test:
+    profiles: ["test-cuda"]
+    <<: *test-cuda-common
+    environment:
+      - LOG_LEVEL=debug
+      - GPU_PROVER=true
+      - CGO_ENABLED=1
+      - LD_LIBRARY_PATH=/usr/local/lib
+      - ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend
+      - ICICLE_SHARED_POINTS=false
+      - RUN_CIRCUIT_TESTS=true
+      - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
+    command: go test -v -tags=icicle ./circuits/test/aggregator -run TestAggregatorCircuitProve -timeout=1h
+
+  statetransition-gpu-test:
+    profiles: ["test-cuda"]
+    <<: *test-cuda-common
+    environment:
+      - LOG_LEVEL=debug
+      - GPU_PROVER=true
+      - LD_LIBRARY_PATH=/usr/local/lib
+      - ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend
+      - ICICLE_SHARED_POINTS=false
+      - RUN_CIRCUIT_TESTS=true
+      - ICICLE_DEBUG=true
+      - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
+    command: go test -v -tags=icicle ./circuits/test/statetransition -run TestStateTransitionFullProvingCircuit -timeout=1h
 
 volumes:
   run:

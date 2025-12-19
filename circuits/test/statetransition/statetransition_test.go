@@ -131,9 +131,9 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	c.Logf("witness creation took %s", time.Since(now).String())
 
 	// prove
+	var proof groth16.Proof
 	now = time.Now()
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
-	var proof groth16.Proof
 	proof, err = prover.ProveWithWitness(circuits.StateTransitionCurve, ccs, pk, w, opts)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove with witness"))
 	c.Logf("proving took %s", time.Since(now).String())
@@ -252,12 +252,21 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	err = os.MkdirAll(buildDir, 0o755)
 	c.Assert(err, qt.IsNil, qt.Commentf("create build directory"))
 
-	compileCmd := exec.Command("docker", "run", "--rm",
-		"-v", fmt.Sprintf("%s:/src", dir),
-		"ethereum/solc:stable",
-		"--abi", "--bin",
-		"/src/vk.sol",
-		"-o", "/src/build")
+	var compileCmd *exec.Cmd
+	if _, err := exec.LookPath("solc"); err == nil {
+		c.Logf("Found local solc, using it...")
+		compileCmd = exec.Command("solc",
+			"--abi", "--bin",
+			filepath.Join(dir, "vk.sol"),
+			"-o", buildDir)
+	} else {
+		compileCmd = exec.Command("docker", "run", "--rm",
+			"-v", fmt.Sprintf("%s:/src", dir),
+			"ethereum/solc:stable",
+			"--abi", "--bin",
+			"/src/vk.sol",
+			"-o", "/src/build")
+	}
 
 	compileOutput, err := compileCmd.CombinedOutput()
 	if err != nil {

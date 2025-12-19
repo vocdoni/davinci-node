@@ -271,7 +271,6 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		circuits.StateTransitionCurve.ScalarField(),
 		circuits.AggregatorCurve.ScalarField(),
 	)
-
 	// Generate the proof for the aggregator circuit
 	proof, err := s.prover(circuits.AggregatorCurve, s.aggCcs, s.aggPk, assignment, opts)
 	if err != nil {
