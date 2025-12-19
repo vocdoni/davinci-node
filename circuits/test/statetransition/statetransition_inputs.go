@@ -50,7 +50,7 @@ func StateTransitionInputsForTest(
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
 
-	cacheKey := cache.GenerateCacheKey("aggregator", processId, nValidVoters)
+	cacheKey := cache.GenerateCacheKey("statetransition-test-aggregator", processId, nValidVoters)
 	cachedData := &circuitstest.AggregatorCacheData{}
 
 	var proof groth16.Proof
@@ -59,9 +59,9 @@ func StateTransitionInputsForTest(
 	var aggInputs *circuitstest.AggregatorTestResults
 
 	// Try to use cached aggregation proof and vk if available, otherwise generate from scratch
-	if err := cache.LoadData(cacheKey, cachedData); err != nil {
+	if err := cache.LoadData(cacheKey, cachedData, false); err != nil {
 		// Cache miss - generate everything from scratch
-		c.Logf("Cache miss for key %s, generating aggregator circuit data", cacheKey)
+		c.Logf("Cache miss for key %s (error: %v), generating aggregator circuit data", cacheKey, err)
 
 		// generate aggregator circuit and inputs
 		var agPlaceholder, aggWitness *aggregator.AggregatorCircuit

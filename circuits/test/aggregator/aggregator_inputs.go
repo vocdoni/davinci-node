@@ -57,7 +57,7 @@ func AggregatorInputsForTest(
 	var vvInputs circuitstest.VoteVerifierTestResults
 	var vvWitness []witness.Witness
 
-	if err := cache.LoadData(cacheKey, cachedData); err != nil {
+	if err := cache.LoadData(cacheKey, cachedData, true); err != nil {
 		// Cache miss - compile and setup vote verifier circuit
 		c.Logf("Cache miss for key %s, generating vote verifier circuit data", cacheKey)
 

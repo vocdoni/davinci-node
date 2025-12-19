@@ -95,7 +95,11 @@ func CPUProver(
 	assignment frontend.Circuit,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return baseCPUProver(curve, ccs, cpuReadyProvingKey(pk), assignment, opts...)
+	w, err := frontend.NewWitness(assignment, curve.ScalarField())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create witness: %w", err)
+	}
+	return groth16.Prove(ccs, pk, w, opts...)
 }
 
 // GPUProver is an implementation that uses GPU acceleration for proving.
@@ -106,9 +110,9 @@ func GPUProver(
 	assignment frontend.Circuit,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	w, err := createWitness(assignment, curve)
+	w, err := frontend.NewWitness(assignment, curve.ScalarField())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create witness: %w", err)
 	}
 	return gpuProve(curve, ccs, pk, w, opts...)
 }
@@ -143,7 +147,7 @@ func CPUProverWithWitness(
 	w witness.Witness,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return baseCPUProverWithWitness(ccs, cpuReadyProvingKey(pk), w, opts...)
+	return groth16.Prove(ccs, pk, w, opts...)
 }
 
 // GPUProverWithWitness proves using GPU with an already-created witness.

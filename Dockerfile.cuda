@@ -31,6 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     docker-compose \
     && rm -rf /var/lib/apt/lists/*
 
+# Install solc
+RUN wget -q https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.8.28+commit.7893614a -O /usr/local/bin/solc && \
+    chmod +x /usr/local/bin/solc
+
 # Install Go 1.25
 RUN wget -q https://go.dev/dl/go1.25.0.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.25.0.linux-amd64.tar.gz && \
@@ -39,20 +43,28 @@ ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
 RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 
-# Copy go mod files
+# Copy go mod files and local gnark replacement to leverage cache
 COPY go.mod go.sum ./
+
 # Download dependencies with cache
 RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
-
-# Build Icicle backend
-# We locate the installed module path and run the build script.
-# This compiles the C++ CUDA wrappers and installs them to /usr/local/lib
-RUN --mount=type=cache,target=/go/pkg/mod \
-    export ICICLE_DIR=$(go list -m -f '{{.Dir}}' github.com/ingonyama-zk/icicle-gnark/v3)/wrappers/golang && \
-    echo "Building Icicle from $ICICLE_DIR" && \
-    cd $ICICLE_DIR && \
-    bash build.sh -curve=all
+    --mount=type=cache,target=/icicle-cache \
+    bash -lc 'set -euo pipefail; \
+    ICICLE_DIR=$(go list -m -f "{{.Dir}}" github.com/ingonyama-zk/icicle-gnark/v3)/wrappers/golang; \
+    echo "Preparing Icicle from $ICICLE_DIR"; \
+    if [ ! -d /icicle-cache/backend ]; then \
+      echo "No cached Icicle build found, compiling..."; \
+      cd "$ICICLE_DIR"; \
+      bash build.sh -curve=all; \
+      mkdir -p /icicle-cache/backend; \
+      cp -r /usr/local/lib/backend/. /icicle-cache/backend/; \
+      cp /usr/local/lib/libicicle* /icicle-cache/; \
+    else \
+      echo "Reusing cached Icicle build artifacts"; \
+      mkdir -p /usr/local/lib/backend; \
+      cp -r /icicle-cache/backend/. /usr/local/lib/backend/; \
+      cp /icicle-cache/libicicle* /usr/local/lib/; \
+    fi'
 
 # Copy source code and helper script
 COPY . .
@@ -68,7 +80,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     # Build
     CGO_ENABLED=1 \
     go build -trimpath -tags=icicle \
-    -ldflags="-w -s -X=github.com/vocdoni-davinci-node/internal.Version=$(git describe --always --tags --dirty --match='v[0-9]*' 2>/dev/null || echo dev)" \
+    -ldflags="-w -s -X=github.com/vocdoni/davinci-node/internal.Version=$(git describe --always --tags --dirty --match='v[0-9]*' 2>/dev/null || echo dev)" \
     -o davinci-sequencer $BUILDARGS ./cmd/davinci-sequencer && \
     # Save libwasmer path
     /usr/local/bin/find-wasmer-lib.sh save-after-build
