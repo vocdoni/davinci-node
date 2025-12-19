@@ -178,16 +178,19 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	var voterWeight *types.BigInt
 	switch {
 	case process.Census.CensusOrigin.IsMerkleTree():
+		// load the census from the census DB
 		censusRef, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
 		if err != nil {
 			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
 			return
 		}
+		// verify the census proof
 		weight, exists := censusRef.Tree().GetWeight(common.BytesToAddress(vote.Address))
 		if !exists {
 			ErrInvalidCensusProof.Withf("address not in census").Write(w)
 			return
 		}
+		// overwrite the voter weight with the one from the census
 		voterWeight = new(types.BigInt).SetBigInt(weight)
 	case process.Census.CensusOrigin.IsCSP():
 		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {

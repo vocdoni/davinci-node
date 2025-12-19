@@ -238,7 +238,11 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	encryptionPubKey, encryptionPrivKey, err := f.stg.EncryptionKeys(processID)
 	if err != nil || encryptionPubKey == nil || encryptionPrivKey == nil {
 		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encryption keys for process %s: %w", pid.String(), err)
+		finalErr := fmt.Errorf("encryption keys are nil for process %s", pid.String())
+		if err != nil {
+			finalErr = fmt.Errorf("%w: %w", finalErr, err)
+		}
+		return finalErr
 	}
 
 	// Open the state for the process
@@ -265,12 +269,12 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	encryptedAddAccumulator, ok := st.ResultsAdd()
 	if !ok {
 		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s", pid.String())
 	}
 	encryptedSubAccumulator, ok := st.ResultsSub()
 	if !ok {
 		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s", pid.String())
 	}
 
 	// Decrypt the accumulators

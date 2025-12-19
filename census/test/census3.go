@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"net/url"
 
@@ -17,7 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-func NewCensus3MerkleTreeForTest(ctx context.Context, origin types.CensusOrigin, votes []state.Vote, c3url string) (*big.Int, string, error) {
+func NewCensus3MerkleTreeForTest(ctx context.Context, origin types.CensusOrigin, votes []state.Vote, c3url string) (types.HexBytes, string, error) {
 	// create a new census
 	censusId, err := c3NewCensus(c3url)
 	if err != nil {
@@ -113,7 +112,7 @@ func c3AddParticipants(c3url, censusID string, participants []c3api.CensusPartic
 	return nil
 }
 
-func c3PublishCensus(c3url, censusId string) (*big.Int, int, string, error) {
+func c3PublishCensus(c3url, censusId string) (types.HexBytes, int, string, error) {
 	// publish the census making a POST request to /censuses/{censusID}/publish
 	publishURL, err := url.JoinPath(c3url, "/censuses/", censusId, "/publish")
 	if err != nil {
@@ -132,5 +131,5 @@ func c3PublishCensus(c3url, censusId string) (*big.Int, int, string, error) {
 	if err := json.NewDecoder(res.Body).Decode(&publishRes); err != nil {
 		return nil, 0, "", fmt.Errorf("error decoding publish census response: %w", err)
 	}
-	return publishRes.Root.BigInt().MathBigInt(), publishRes.Size, publishRes.CensusURI, nil
+	return publishRes.Root, publishRes.Size, publishRes.CensusURI, nil
 }

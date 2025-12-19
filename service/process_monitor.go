@@ -110,8 +110,7 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 
 	// Register each process ID in the contracts' knownProcesses map
 	for _, pid := range pids {
-		processID := fmt.Sprintf("%x", pid)
-		pm.contracts.RegisterKnownProcess(processID)
+		pm.contracts.RegisterKnownProcess(pid.String())
 	}
 
 	log.Infow("initialized known processes from storage", "count", len(pids))
@@ -146,7 +145,7 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		blockchainProcess, err := pm.contracts.Process(pid.Marshal())
 		if err != nil {
 			log.Warnw("failed to fetch process from blockchain during sync",
-				"pid", fmt.Sprintf("%x", pid), "error", err)
+				"pid", pid.String(), "error", err)
 			continue
 		}
 
@@ -154,7 +153,7 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		localProcess, err := pm.storage.Process(pid)
 		if err != nil {
 			log.Warnw("failed to fetch process from storage during sync",
-				"pid", fmt.Sprintf("%x", pid), "error", err)
+				"pid", pid.String(), "error", err)
 			continue
 		}
 
@@ -179,12 +178,13 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 					blockchainProcess.OverwrittenVotesCount,
 				)); err != nil {
 				log.Warnw("failed to sync process from blockchain",
-					"pid", fmt.Sprintf("%x", pid), "error", err)
+					"pid", pid.String(),
+					"err", err)
 				continue
 			}
 
 			log.Infow("synced process from blockchain",
-				"pid", fmt.Sprintf("%x", pid),
+				"pid", pid.String(),
 				"stateRoot", blockchainProcess.StateRoot.String(),
 				"votersCount", blockchainProcess.VotersCount.String(),
 				"overwrittenVotesCount", blockchainProcess.OverwrittenVotesCount.String())
@@ -210,32 +210,43 @@ func (pm *ProcessMonitor) monitorProcesses(
 		case <-ctx.Done():
 			return
 		case process := <-newProcChan:
-			// try to update the process if it already exists
+			// Try to update the process if it already exists
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
-			// if it does not exist, create a new one
 			log.Debugw("new process found", "pid", process.ID.String())
-			// download and import the process census if needed
-			pm.censusDownloader.DownloadQueue <- process.Census
-			// after census is downloaded and imported, store the new process
-			downloadCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-			pm.censusDownloader.OnCensusDownloaded(process.Census, downloadCtx, func(err error) {
-				if err != nil {
-					log.Warnw("failed to download census for new process",
-						"pid", process.ID.String(),
-						"censusRoot", process.Census.CensusRoot.String(),
-						"err", err.Error())
-				}
+
+			// Create a function to store the new process
+			processSetup := func() {
 				if err := pm.storage.NewProcess(process); err != nil {
 					log.Warnw("failed to store new process",
 						"pid", process.ID.String(),
 						"err", err.Error())
 				}
 				log.Debugw("process created", "pid", process.ID.String())
-			})
+			}
 
+			// If the process is ready and has a census, download and import it
+			// first, then store the process. If not, just store the process
+			// directly.
+			if process.Status == types.ProcessStatusReady && process.Census != nil {
+				// Download and import the process census if needed
+				pm.censusDownloader.DownloadQueue <- process.Census
+				// After census is downloaded and imported, store the new process
+				downloadCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				defer cancel()
+				pm.censusDownloader.OnCensusDownloaded(process.Census, downloadCtx, func(err error) {
+					if err != nil {
+						log.Warnw("failed to download census for new process",
+							"pid", process.ID.String(),
+							"censusRoot", process.Census.CensusRoot.String(),
+							"err", err.Error())
+					}
+					processSetup()
+				})
+			} else {
+				processSetup()
+			}
 		case update := <-updatedProcChan:
 			// decode pid
 			pid := new(types.ProcessID).SetBytes(update.ProcessID)
@@ -294,7 +305,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				process, err := pm.storage.Process(pid)
 				if err != nil {
 					log.Warnw("received update for unknown process",
-						"pid", fmt.Sprintf("%x", update.ProcessID),
+						"pid", pid.String(),
 						"err", err.Error())
 					continue
 				}

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -209,11 +208,11 @@ func main() {
 		return
 	}
 	log.Infow("census created",
-		"root", hex.EncodeToString(censusRoot),
+		"root", censusRoot.String(),
 		"participants", len(signers))
 
 	// Create a new process with mocked ballot mode
-	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, censusRoot, censusURI, mockedBallotMode)
+	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, censusRoot, censusURI, mockedBallotMode, new(types.BigInt).SetInt(int(*votersCount)))
 	if err != nil {
 		log.Errorw(err, "failed to create process")
 		return
@@ -411,7 +410,7 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	return orgAddr, nil
 }
 
-func createCensus(ctx context.Context, size int64, weight uint64, c3URL string) ([]byte, string, []*ethereum.Signer, error) {
+func createCensus(ctx context.Context, size int64, weight uint64, c3URL string) (types.HexBytes, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
 	votes := []state.Vote{}
@@ -430,16 +429,17 @@ func createCensus(ctx context.Context, size int64, weight uint64, c3URL string) 
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 	}
-	return censusRoot.Bytes(), censusURI, signers, nil
+	return censusRoot, censusURI, signers, nil
 }
 
 func createProcess(
 	ctx context.Context,
 	contracts *web3.Contracts,
 	cli *client.HTTPclient,
-	censusRoot []byte,
+	censusRoot types.HexBytes,
 	censusURI string,
 	ballotMode types.BallotMode,
+	maxVoters *types.BigInt,
 ) (*types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
 
@@ -491,6 +491,7 @@ func createProcess(
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode:     &ballotMode,
+		MaxVoters:      maxVoters,
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
 			CensusURI:    censusURI,
