@@ -43,6 +43,8 @@ func callGPUProver(
 		if !ok {
 			return nil, fmt.Errorf("proving key type mismatch for BLS12_377: expected *icicle_bls12_377.ProvingKey, got %T", pk)
 		}
+		// Enable PinToGPU for BLS12-377 (hot circuit optimization)
+		bls12377Pk.PinToGPU = true
 		return gpugroth16.Prove(ccs, bls12377Pk, w, icicleOpts...)
 
 	case ecc.BLS12_381:
@@ -99,7 +101,9 @@ func CPUProver(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create witness: %w", err)
 	}
-	return groth16.Prove(ccs, pk, w, opts...)
+	// Extract the standard proving key from ICICLE wrapper if needed
+	cpuPk := cpuReadyProvingKey(pk)
+	return groth16.Prove(ccs, cpuPk, w, opts...)
 }
 
 // GPUProver is an implementation that uses GPU acceleration for proving.
@@ -147,7 +151,9 @@ func CPUProverWithWitness(
 	w witness.Witness,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	return groth16.Prove(ccs, pk, w, opts...)
+	// Extract the standard proving key from ICICLE wrapper if needed
+	cpuPk := cpuReadyProvingKey(pk)
+	return groth16.Prove(ccs, cpuPk, w, opts...)
 }
 
 // GPUProverWithWitness proves using GPU with an already-created witness.
