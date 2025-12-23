@@ -2,15 +2,15 @@ package storage
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 )
 
 func TestEncryptionKeys(t *testing.T) {
@@ -25,17 +25,9 @@ func TestEncryptionKeys(t *testing.T) {
 	defer st.Close()
 
 	// Create test process IDs
-	processID1 := &types.ProcessID{
-		Address: common.Address{1},
-		Nonce:   42,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID1 := testutil.DeterministicProcessID(42)
 
-	processID2 := &types.ProcessID{
-		Address: common.Address{2},
-		Nonce:   43,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID2 := testutil.DeterministicProcessID(43)
 
 	// Test 1: Initially no encryption keys exist
 	pids, err := st.ListProcessWithEncryptionKeys()
@@ -63,7 +55,7 @@ func TestEncryptionKeys(t *testing.T) {
 	pids, err = st.ListProcessWithEncryptionKeys()
 	c.Assert(err, qt.IsNil)
 	c.Assert(len(pids), qt.Equals, 1)
-	c.Assert(string(pids[0].Marshal()), qt.DeepEquals, string(processID1.Marshal()))
+	c.Assert(pids[0].Bytes(), qt.DeepEquals, processID1.Bytes())
 
 	// Generate a key pair for processID2
 	publicKey2, privateKey2, err := elgamal.GenerateKey(bjj.New())
@@ -79,19 +71,6 @@ func TestEncryptionKeys(t *testing.T) {
 	c.Assert(len(pids), qt.Equals, 2)
 
 	// Verify both processes are in the list
-	// Sort the pids to ensure consistent comparison
-	foundProcessID1 := false
-	foundProcessID2 := false
-
-	for _, pid := range pids {
-		if string(pid.Marshal()) == string(processID1.Marshal()) {
-			foundProcessID1 = true
-		}
-		if string(pid.Marshal()) == string(processID2.Marshal()) {
-			foundProcessID2 = true
-		}
-	}
-
-	c.Assert(foundProcessID1, qt.IsTrue)
-	c.Assert(foundProcessID2, qt.IsTrue)
+	c.Assert(slices.Contains(pids, processID1), qt.IsTrue)
+	c.Assert(slices.Contains(pids, processID2), qt.IsTrue)
 }

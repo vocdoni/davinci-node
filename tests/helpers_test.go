@@ -22,7 +22,6 @@ import (
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
 	censustest "github.com/vocdoni/davinci-node/census/test"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/config"
@@ -31,6 +30,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
@@ -585,7 +585,7 @@ func createCensusWithRandomVoters(ctx context.Context, origin types.CensusOrigin
 		signers = append(signers, signer)
 		votes = append(votes, state.Vote{
 			Address: signer.Address().Big(),
-			Weight:  big.NewInt(circuits.MockWeight),
+			Weight:  big.NewInt(testutil.Weight),
 		})
 		privKey := signer.HexPrivateKey()
 		log.Infow("new voter created",
@@ -618,7 +618,7 @@ func createCensusWithVoters(ctx context.Context, origin types.CensusOrigin, sign
 	for _, signer := range signers {
 		votes = append(votes, state.Vote{
 			Address: signer.Address().Big(),
-			Weight:  big.NewInt(circuits.MockWeight),
+			Weight:  big.NewInt(testutil.Weight),
 		})
 		privKey := signer.HexPrivateKey()
 		log.Infow("new voter created",
@@ -645,14 +645,13 @@ func createCensusWithVoters(ctx context.Context, origin types.CensusOrigin, sign
 	}
 }
 
-func generateCensusProof(pid, key []byte) (*types.CensusProof, error) {
+func generateCensusProof(processID types.ProcessID, key []byte) (*types.CensusProof, error) {
 	if isCSPCensus() {
-		weight := new(types.BigInt).SetUint64(circuits.MockWeight)
+		weight := new(types.BigInt).SetUint64(testutil.Weight)
 		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(testLocalCSPSeed))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CSP: %w", err)
 		}
-		processID := new(types.ProcessID).SetBytes(pid)
 		cspProof, err := eddsaCSP.GenerateProof(processID, common.BytesToAddress(key), weight)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate CSP proof: %w", err)
@@ -685,21 +684,21 @@ func createProcessInSequencer(
 	censusURI string,
 	censusRoot []byte,
 	ballotMode *types.BallotMode,
-) (*types.ProcessID, *types.EncryptionKey, *types.HexBytes, error) {
+) (types.ProcessID, *types.EncryptionKey, *types.HexBytes, error) {
 	// Get the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get next process ID: %w", err)
+		return types.ProcessID{}, nil, nil, fmt.Errorf("failed to get next process ID: %w", err)
 	}
 
 	// Sign the process creation request
 	signature, err := contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processID.String()))
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to sign message: %w", err)
+		return types.ProcessID{}, nil, nil, fmt.Errorf("failed to sign message: %w", err)
 	}
 
 	process := &types.ProcessSetup{
-		ProcessID: processID.Marshal(),
+		ProcessID: processID,
 		Census: &types.Census{
 			CensusOrigin: censusOrigin,
 			CensusURI:    censusURI,
@@ -711,22 +710,22 @@ func createProcessInSequencer(
 
 	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create process: %w", err)
+		return types.ProcessID{}, nil, nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	if code != http.StatusOK {
-		return nil, nil, nil, fmt.Errorf("unexpected status code creating process: %d, body: %s", code, string(body))
+		return types.ProcessID{}, nil, nil, fmt.Errorf("unexpected status code creating process: %d, body: %s", code, string(body))
 	}
 
 	var resp types.ProcessSetupResponse
 	err = json.NewDecoder(bytes.NewReader(body)).Decode(&resp)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to decode process response: %w", err)
+		return types.ProcessID{}, nil, nil, fmt.Errorf("failed to decode process response: %w", err)
 	}
 	if resp.ProcessID == nil {
-		return nil, nil, nil, fmt.Errorf("process ID is nil")
+		return types.ProcessID{}, nil, nil, fmt.Errorf("process ID is nil")
 	}
 	if resp.EncryptionPubKey[0] == nil || resp.EncryptionPubKey[1] == nil {
-		return nil, nil, nil, fmt.Errorf("encryption public key is nil")
+		return types.ProcessID{}, nil, nil, fmt.Errorf("encryption public key is nil")
 	}
 
 	encryptionKeys := &types.EncryptionKey{
@@ -746,7 +745,7 @@ func createProcessInContracts(
 	stateRoot *types.HexBytes,
 	numVoters int,
 	duration ...time.Duration,
-) (*types.ProcessID, error) {
+) (types.ProcessID, error) {
 	finalDuration := time.Hour
 	if len(duration) > 0 {
 		finalDuration = duration[0]
@@ -769,24 +768,24 @@ func createProcessInContracts(
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create process: %w", err)
+		return types.ProcessID{}, fmt.Errorf("failed to create process: %w", err)
 	}
 	return pid, contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
 func updateProcessCensusInContracts(
 	contracts *web3.Contracts,
-	pid *types.ProcessID,
+	pid types.ProcessID,
 	census types.Census,
 ) error {
-	txHash, err := contracts.SetProcessCensus(pid.Marshal(), census)
+	txHash, err := contracts.SetProcessCensus(pid, census)
 	if err != nil {
 		return fmt.Errorf("failed to update process census: %w", err)
 	}
 	return contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
-func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
+func createVote(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
 	var err error
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
@@ -797,11 +796,11 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 		}
 	}
 	// set voter weight
-	voterWeight := new(types.BigInt).SetInt(circuits.MockWeight)
+	voterWeight := new(types.BigInt).SetInt(testutil.Weight)
 	// compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:       address.Bytes(),
-		ProcessID:     pid.Marshal(),
+		ProcessID:     pid,
 		EncryptionKey: []*types.BigInt{encKey.X, encKey.Y},
 		K:             new(types.BigInt).SetBigInt(k),
 		BallotMode:    bm,
@@ -845,7 +844,7 @@ func createVote(pid *types.ProcessID, bm *types.BallotMode, encKey *types.Encryp
 	}, nil
 }
 
-func createVoteWithRandomFields(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, error) {
+func createVoteWithRandomFields(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, error) {
 	// generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
@@ -860,7 +859,7 @@ func createVoteWithRandomFields(pid *types.ProcessID, bm *types.BallotMode, encK
 	return createVote(pid, bm, encKey, privKey, k, fields)
 }
 
-func createVoteFromInvalidVoter(pid *types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
+func createVoteFromInvalidVoter(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
 	privKey, err := ethereum.NewSigner()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate signer: %w", err)
@@ -880,11 +879,11 @@ func createVoteFromInvalidVoter(pid *types.ProcessID, bm *types.BallotMode, encK
 	// compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:       address.Bytes(),
-		ProcessID:     pid.Marshal(),
+		ProcessID:     pid,
 		EncryptionKey: []*types.BigInt{encKey.X, encKey.Y},
 		K:             new(types.BigInt).SetBigInt(k),
 		BallotMode:    bm,
-		Weight:        new(types.BigInt).SetInt(circuits.MockWeight),
+		Weight:        new(types.BigInt).SetInt(testutil.Weight),
 		FieldValues:   randFields[:],
 	}
 	// generate the inputs for the ballot proof circuit
@@ -922,12 +921,12 @@ func createVoteFromInvalidVoter(pid *types.ProcessID, bm *types.BallotMode, encK
 		Signature:        signature.Bytes(),
 		VoteID:           wasmResult.VoteID,
 		CensusProof: types.CensusProof{
-			Weight: new(types.BigInt).SetInt(circuits.MockWeight),
+			Weight: new(types.BigInt).SetInt(testutil.Weight),
 		},
 	}, nil
 }
 
-func checkVoteStatus(cli *client.HTTPclient, pid *types.ProcessID, voteIDs []types.HexBytes, expectedStatus string) (bool, []types.HexBytes, error) {
+func checkVoteStatus(cli *client.HTTPclient, pid types.ProcessID, voteIDs []types.HexBytes, expectedStatus string) (bool, []types.HexBytes, error) {
 	// Check vote status and return whether all votes have the expected status
 	allExpectedStatus := true
 	failed := []types.HexBytes{}
@@ -980,10 +979,10 @@ func checkVoteStatus(cli *client.HTTPclient, pid *types.ProcessID, voteIDs []typ
 
 func updateMaxVoters(
 	contracts *web3.Contracts,
-	pid *types.ProcessID,
+	pid types.ProcessID,
 	numVoters int,
 ) error {
-	currentProcess, err := contracts.Process(pid.Marshal())
+	currentProcess, err := contracts.Process(pid)
 	if err != nil {
 		return fmt.Errorf("failed to get current process: %w", err)
 	}
@@ -991,15 +990,15 @@ func updateMaxVoters(
 	if numVoters < int(currentMaxVoters) {
 		return fmt.Errorf("new max voters (%d) is less than current max voters (%d)", numVoters, currentMaxVoters)
 	}
-	txHash, err := contracts.SetProcessMaxVoters(pid.Marshal(), types.NewInt(numVoters))
+	txHash, err := contracts.SetProcessMaxVoters(pid, types.NewInt(numVoters))
 	if err != nil {
 		return fmt.Errorf("failed to set process max voters: %w", err)
 	}
 	return contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
-func votersCount(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
-	process, err := contracts.Process(pid.Marshal())
+func votersCount(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
+	process, err := contracts.Process(pid)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)
 	}
@@ -1009,8 +1008,8 @@ func votersCount(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
 	return int(process.VotersCount.MathBigInt().Int64()), nil
 }
 
-func overwrittenVotesCount(contracts *web3.Contracts, pid *types.ProcessID) (int, error) {
-	process, err := contracts.Process(pid.Marshal())
+func overwrittenVotesCount(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
+	process, err := contracts.Process(pid)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)
 	}
@@ -1020,8 +1019,8 @@ func overwrittenVotesCount(contracts *web3.Contracts, pid *types.ProcessID) (int
 	return int(process.OverwrittenVotesCount.MathBigInt().Int64()), nil
 }
 
-func finishProcessOnContract(contracts *web3.Contracts, pid *types.ProcessID) error {
-	txHash, err := contracts.SetProcessStatus(pid.Marshal(), types.ProcessStatusEnded)
+func finishProcessOnContract(contracts *web3.Contracts, pid types.ProcessID) error {
+	txHash, err := contracts.SetProcessStatus(pid, types.ProcessStatusEnded)
 	if err != nil {
 		return fmt.Errorf("failed to set process status: %w", err)
 	}
@@ -1034,8 +1033,8 @@ func finishProcessOnContract(contracts *web3.Contracts, pid *types.ProcessID) er
 	return nil
 }
 
-func publishedResults(contracts *web3.Contracts, pid *types.ProcessID) ([]*types.BigInt, error) {
-	process, err := contracts.Process(pid.Marshal())
+func publishedResults(contracts *web3.Contracts, pid types.ProcessID) ([]*types.BigInt, error) {
+	process, err := contracts.Process(pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}

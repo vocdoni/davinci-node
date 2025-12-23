@@ -9,8 +9,8 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/api"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -31,7 +31,7 @@ func TestDynamicOffChainCensus(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	var (
-		pid           *types.ProcessID
+		pid           types.ProcessID
 		encryptionKey *types.EncryptionKey
 		ballotMode    *types.BallotMode
 		signers       []*ethereum.Signer
@@ -43,16 +43,7 @@ func TestDynamicOffChainCensus(t *testing.T) {
 		// Create census with numVoters participants
 		censusRoot, censusURI, signers, err = createCensusWithRandomVoters(censusCtx, types.CensusOriginMerkleTreeOffchainDynamicV1, numInitialVoters)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
-		ballotMode = &types.BallotMode{
-			NumFields:      circuits.MockNumFields,
-			UniqueValues:   circuits.MockUniqueValues == 1,
-			MaxValue:       new(types.BigInt).SetUint64(circuits.MockMaxValue),
-			MinValue:       new(types.BigInt).SetUint64(circuits.MockMinValue),
-			MaxValueSum:    new(types.BigInt).SetUint64(circuits.MockMaxValueSum),
-			MinValueSum:    new(types.BigInt).SetUint64(circuits.MockMinValueSum),
-			CostFromWeight: circuits.MockCostFromWeight == 1,
-			CostExponent:   circuits.MockCostExponent,
-		}
+		ballotMode = testutil.BallotModeInternal()
 
 		// create process in sequencer
 		var stateRoot *types.HexBytes
@@ -99,7 +90,7 @@ func TestDynamicOffChainCensus(t *testing.T) {
 				c.Fatal("Timeout waiting for process to be registered in sequencer")
 				c.FailNow()
 			default:
-				if services.Sequencer.ExistsProcessID(pid.Marshal()) {
+				if services.Sequencer.ExistsProcessID(pid) {
 					t.Logf("Process ID %s registered in sequencer", pid.String())
 					return
 				}
@@ -120,7 +111,7 @@ func TestDynamicOffChainCensus(t *testing.T) {
 			vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signers[i], k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			if isCSPCensus() {
-				censusProof, err := generateCensusProof(pid.Marshal(), signers[i].Address().Bytes())
+				censusProof, err := generateCensusProof(pid, signers[i].Address().Bytes())
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 				c.Assert(censusProof, qt.Not(qt.IsNil))
 				vote.CensusProof = *censusProof
@@ -150,7 +141,7 @@ func TestDynamicOffChainCensus(t *testing.T) {
 		vote, err := createVoteWithRandomFields(pid, ballotMode, encryptionKey, signer, k)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 		if isCSPCensus() {
-			censusProof, err := generateCensusProof(pid.Marshal(), signer.Address().Bytes())
+			censusProof, err := generateCensusProof(pid, signer.Address().Bytes())
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			c.Assert(censusProof, qt.Not(qt.IsNil))
 			vote.CensusProof = *censusProof

@@ -8,7 +8,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 )
 
 func TestBallotQueue_RemoveBallotBatchesByProcess(t *testing.T) {
@@ -16,20 +16,20 @@ func TestBallotQueue_RemoveBallotBatchesByProcess(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid1 := []byte("p1")
-	pid2 := []byte("p2")
+	pid1 := testutil.RandomProcessID()
+	pid2 := testutil.RandomProcessID()
 	ensureProcess(t, stg, pid1)
 	ensureProcess(t, stg, pid2)
 
 	// push two batches: one per process
 	batch1 := &AggregatorBallotBatch{
-		ProcessID: types.HexBytes(pid1),
+		ProcessID: pid1,
 		Ballots: []*AggregatorBallot{
 			mkAggBallot([]byte("a1")),
 		},
 	}
 	batch2 := &AggregatorBallotBatch{
-		ProcessID: types.HexBytes(pid2),
+		ProcessID: pid2,
 		Ballots: []*AggregatorBallot{
 			mkAggBallot([]byte("b1")),
 		},
@@ -56,12 +56,12 @@ func TestBallotQueue_MarkBallotBatchFailed(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("p1")
+	pid := testutil.RandomProcessID()
 	ids := [][]byte{[]byte("a"), []byte("b")}
 	ensureProcess(t, stg, pid)
 
 	batch := &AggregatorBallotBatch{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		Ballots: []*AggregatorBallot{
 			mkAggBallot(ids[0]),
 			mkAggBallot(ids[1]),
@@ -94,20 +94,21 @@ func TestBallotQueue_RemoveStateTransitionBatchesByProcess(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid1 := []byte("p1")
-	pid2 := []byte("p2")
+	pid1 := testutil.RandomProcessID()
+	pid2 := testutil.RandomProcessID()
+
 	ensureProcess(t, stg, pid1)
 	ensureProcess(t, stg, pid2)
 
 	// push state transition batches
 	stb1 := &StateTransitionBatch{
-		ProcessID: types.HexBytes(pid1),
+		ProcessID: pid1,
 		Ballots: []*AggregatorBallot{
 			mkAggBallot([]byte("a1")),
 		},
 	}
 	stb2 := &StateTransitionBatch{
-		ProcessID: types.HexBytes(pid2),
+		ProcessID: pid2,
 		Ballots: []*AggregatorBallot{
 			mkAggBallot([]byte("b1")),
 		},
@@ -134,13 +135,13 @@ func TestBallotQueue_MarkStateTransitionBatchDone(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("p1")
+	pid := testutil.RandomProcessID()
 	ids := [][]byte{[]byte("a"), []byte("b")}
 	ensureProcess(t, stg, pid)
 
 	// push a state transition batch (also sets statuses to processed)
 	stb := &StateTransitionBatch{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		Ballots: []*AggregatorBallot{
 			mkAggBallot(ids[0]),
 			mkAggBallot(ids[1]),
@@ -182,7 +183,7 @@ func TestMarkStateTransitionOutdated(t *testing.T) {
 	defer stg.Close()
 
 	// Test process ID
-	processID := []byte("test-process-outdated")
+	processID := testutil.RandomProcessID()
 
 	// Create test ballots
 	ballots := []*AggregatorBallot{
@@ -222,7 +223,7 @@ func TestMarkStateTransitionOutdated(t *testing.T) {
 	val, err := EncodeArtifact(stb)
 	c.Assert(err, qt.IsNil)
 	key := hashKey(val)
-	fullKey := append([]byte{}, processID...)
+	fullKey := append([]byte{}, processID.Bytes()...)
 	fullKey = append(fullKey, key...)
 	err = stg.setArtifact(stateTransitionPrefix, fullKey, stb)
 	c.Assert(err, qt.IsNil)
@@ -275,7 +276,7 @@ func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 	defer stg.Close()
 
 	// Test process ID
-	processID := []byte("test-process-comparison")
+	processID := testutil.RandomProcessID()
 
 	// Create test ballots
 	ballots := []*AggregatorBallot{
@@ -322,7 +323,7 @@ func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 	val1, err := EncodeArtifact(stb1)
 	c.Assert(err, qt.IsNil)
 	key1 := hashKey(val1)
-	fullKey1 := append([]byte{}, processID...)
+	fullKey1 := append([]byte{}, processID.Bytes()...)
 	fullKey1 = append(fullKey1, key1...)
 	err = stg.setArtifact(stateTransitionPrefix, fullKey1, stb1)
 	c.Assert(err, qt.IsNil)
@@ -331,7 +332,7 @@ func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 	val2, err := EncodeArtifact(stb2)
 	c.Assert(err, qt.IsNil)
 	key2 := hashKey(val2)
-	fullKey2 := append([]byte{}, processID...)
+	fullKey2 := append([]byte{}, processID.Bytes()...)
 	fullKey2 = append(fullKey2, key2...)
 	err = stg.setArtifact(stateTransitionPrefix, fullKey2, stb2)
 	c.Assert(err, qt.IsNil)

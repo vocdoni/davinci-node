@@ -30,11 +30,11 @@ import (
 )
 
 // AggregatorInputsForTest returns the AggregatorTestResults, the placeholder
-// and the assignments of a AggregatorCircuit for the processId provided
+// and the assignments of a AggregatorCircuit for the processID provided
 // generating nValidVotes. Uses quicktest assertions instead of returning errors.
 func AggregatorInputsForTest(
 	t *testing.T,
-	processID *types.ProcessID,
+	processID types.ProcessID,
 	censusOrigin types.CensusOrigin,
 	nValidVotes int,
 ) (
