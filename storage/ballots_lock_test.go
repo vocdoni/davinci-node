@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -15,7 +16,7 @@ func TestVoteIDLockRelease(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("process1")
+	pid := testutil.RandomProcessID()
 	address := []byte("address1")
 	voteID1 := []byte("voteID1")
 	voteID2 := []byte("voteID2")
@@ -24,7 +25,7 @@ func TestVoteIDLockRelease(t *testing.T) {
 
 	// Create first ballot from address1 with voteID1
 	ballot1 := &Ballot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(voteID1),
 		Address:   new(big.Int).SetBytes(address),
 	}
@@ -46,7 +47,7 @@ func TestVoteIDLockRelease(t *testing.T) {
 
 	// Mark as verified
 	verifiedBallot1 := &VerifiedBallot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(voteID1),
 		Address:   new(big.Int).SetBytes(address),
 	}
@@ -71,7 +72,7 @@ func TestVoteIDLockRelease(t *testing.T) {
 
 	// Now user should be able to submit a new vote (overwrite) with different vote ID
 	ballot2 := &Ballot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(voteID2),
 		Address:   new(big.Int).SetBytes(address), // Same address
 	}
@@ -91,7 +92,7 @@ func TestVoteIDLockReleaseOnFailure(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("process1")
+	pid := testutil.RandomProcessID()
 	voteID := []byte("voteID1")
 
 	ensureProcess(t, stg, pid)
@@ -133,7 +134,7 @@ func TestNoDuplicateAddressesInBatch(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("process1")
+	pid := testutil.RandomProcessID()
 	address := []byte("address1")
 	voteID1 := []byte("voteID1")
 	voteID2 := []byte("voteID2")
@@ -142,12 +143,12 @@ func TestNoDuplicateAddressesInBatch(t *testing.T) {
 
 	// Create two ballots from same address with different vote IDs
 	ballot1 := &Ballot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(voteID1),
 		Address:   new(big.Int).SetBytes(address),
 	}
 	ballot2 := &Ballot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(voteID2),
 		Address:   new(big.Int).SetBytes(address), // Same address
 	}
@@ -165,7 +166,7 @@ func TestNoDuplicateAddressesInBatch(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	verifiedBallot := &VerifiedBallot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(voteID1),
 		Address:   new(big.Int).SetBytes(address),
 	}
@@ -181,7 +182,7 @@ func TestNoDuplicateAddressesInBatch(t *testing.T) {
 	// Note: We need to create a fresh ballot object since the previous push attempt
 	// may have left some state
 	ballot2Fresh := &Ballot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(voteID2),
 		Address:   new(big.Int).SetBytes(address),
 	}
@@ -195,7 +196,7 @@ func TestMultipleOverwrites(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("process1")
+	pid := testutil.RandomProcessID()
 	address := []byte("address1")
 
 	ensureProcess(t, stg, pid)
@@ -205,7 +206,7 @@ func TestMultipleOverwrites(t *testing.T) {
 		voteID := []byte{byte(i)}
 
 		ballot := &Ballot{
-			ProcessID: types.HexBytes(pid),
+			ProcessID: pid,
 			VoteID:    types.HexBytes(voteID),
 			Address:   new(big.Int).SetBytes(address),
 		}
@@ -219,7 +220,7 @@ func TestMultipleOverwrites(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		verifiedBallot := &VerifiedBallot{
-			ProcessID: types.HexBytes(pid),
+			ProcessID: pid,
 			VoteID:    types.HexBytes(voteID),
 			Address:   new(big.Int).SetBytes(address),
 		}

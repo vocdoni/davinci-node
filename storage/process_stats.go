@@ -17,9 +17,9 @@ var totalPendingBallotsKey = []byte("totalPendingBallotsKey")
 // updateProcessStats updates multiple process stats in a single operation.
 // This method assumes the caller already holds the globalLock.
 // NOTE: This method should NOT be converted to use UpdateProcess as it would cause nested locking.
-func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) error {
-	if pid == nil {
-		return fmt.Errorf("nil process ID")
+func (s *Storage) updateProcessStats(processID types.ProcessID, updates []ProcessStatsUpdate) error {
+	if !processID.IsValid() {
+		return fmt.Errorf("invalid process ID")
 	}
 
 	if len(updates) == 0 {
@@ -27,7 +27,7 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 	}
 
 	p := &types.Process{}
-	if err := s.getArtifact(processPrefix, pid, p); err != nil {
+	if err := s.getArtifact(processPrefix, processID.Bytes(), p); err != nil {
 		return fmt.Errorf("failed to get process for stats update: %w", err)
 	}
 
@@ -61,7 +61,7 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 			newValue := p.SequencerStats.PendingVotesCount + update.Delta
 			if newValue < 0 {
 				log.Warnw("attempted to set negative PendingVotesCount, clamping to 0",
-					"processID", fmt.Sprintf("%x", pid),
+					"processID", processID.String(),
 					"currentValue", p.SequencerStats.PendingVotesCount,
 					"delta", update.Delta,
 				)
@@ -75,7 +75,7 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 		case types.TypeStatsLastBatchSize:
 			if update.Delta < 0 {
 				log.Warnw("attempted to set negative LastBatchSize, clamping to 0",
-					"processID", fmt.Sprintf("%x", pid),
+					"processID", processID.String(),
 					"delta", update.Delta,
 				)
 				p.SequencerStats.LastBatchSize = 0
@@ -86,7 +86,7 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 			newValue := p.SequencerStats.CurrentBatchSize + update.Delta
 			if newValue < 0 {
 				log.Warnw("attempted to set negative CurrentBatchSize, clamping to 0",
-					"processID", fmt.Sprintf("%x", pid),
+					"processID", processID.String(),
 					"currentValue", p.SequencerStats.CurrentBatchSize,
 					"delta", update.Delta,
 				)
@@ -103,7 +103,7 @@ func (s *Storage) updateProcessStats(pid []byte, updates []ProcessStatsUpdate) e
 		}
 	}
 
-	if err := s.setArtifact(processPrefix, pid, p); err != nil {
+	if err := s.setArtifact(processPrefix, processID.Bytes(), p); err != nil {
 		return fmt.Errorf("failed to save process after stats update: %w", err)
 	}
 	if err := s.setArtifact(statsPrefix, totalStatsStorageKey, totalStats); err != nil {

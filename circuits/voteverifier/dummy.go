@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -62,7 +63,7 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 			EncryptionKey: circuits.EncryptionKey[emulated.Element[sw_bn254.ScalarField]]{
 				PubKey: [2]emulated.Element[sw_bn254.ScalarField]{dummyEmulatedBN254, dummyEmulatedBN254},
 			},
-			BallotMode: circuits.MockBallotModeEmulated(),
+			BallotMode: testutil.BallotModeEmulated(),
 		},
 		PublicKey: ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: dummyEmulatedSecp256k1Fp,

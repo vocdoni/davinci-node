@@ -28,10 +28,10 @@ const maxValue = 2 << 24 // 2^24
 type finalizer struct {
 	stg              *storage.Storage
 	stateDB          db.Database
-	circuits         *internalCircuits   // Internal circuit artifacts for proof generation and verification
-	prover           types.ProverFunc    // Function for generating zero-knowledge proofs
-	OndemandCh       chan types.HexBytes // Channel to receive process IDs to finalize
-	invalidProcesses sync.Map            // Cache of invalid processes to avoid re-processing (thread-safe)
+	circuits         *internalCircuits    // Internal circuit artifacts for proof generation and verification
+	prover           types.ProverFunc     // Function for generating zero-knowledge proofs
+	OndemandCh       chan types.ProcessID // Channel to receive process IDs to finalize
+	invalidProcesses sync.Map             // Cache of invalid processes to avoid re-processing (thread-safe)
 	wg               sync.WaitGroup
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -50,7 +50,7 @@ func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuit
 		stateDB:    stateDB,
 		circuits:   ca,
 		prover:     proverFn,
-		OndemandCh: make(chan types.HexBytes, 10), // Use buffered channel to prevent blocking
+		OndemandCh: make(chan types.ProcessID, 10), // Use buffered channel to prevent blocking
 	}
 }
 
@@ -67,11 +67,11 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 		for {
 			select {
 			case pid := <-f.OndemandCh:
-				go func(pid types.HexBytes) {
+				go func(processID types.ProcessID) {
 					// Check if process is marked as invalid (thread-safe)
-					if _, isInvalid := f.invalidProcesses.Load(pid.String()); !isInvalid {
-						if err := f.finalize(pid); err != nil {
-							log.Errorw(err, fmt.Sprintf("finalizing process %s", pid.String()))
+					if _, isInvalid := f.invalidProcesses.Load(processID); !isInvalid {
+						if err := f.finalize(processID); err != nil {
+							log.Errorw(err, fmt.Sprintf("finalizing process %s", processID.String()))
 						}
 					}
 				}(pid) // Use a goroutine to avoid blocking the channel
@@ -164,7 +164,7 @@ func (f *finalizer) finalizeEnded() {
 	}
 	for _, processID := range pids {
 		// Skip invalid processes (thread-safe check)
-		if _, isInvalid := f.invalidProcesses.Load(processID.String()); isInvalid {
+		if _, isInvalid := f.invalidProcesses.Load(processID); isInvalid {
 			continue
 		}
 
@@ -181,35 +181,31 @@ func (f *finalizer) finalizeEnded() {
 
 		// Also check if verified results already exist in storage
 		// This prevents re-generation when results were generated but failed to upload
-		if f.stg.HasVerifiedResults(processID.Marshal()) {
+		if f.stg.HasVerifiedResults(processID) {
 			continue
 		}
 
 		// Check if the state root exists in the state DB. If not, mark as invalid and skip
 		// This prevents trying to finalize processes that were never properly processed.
-		if err := state.RootExists(f.stateDB, processID.BigInt(), process.StateRoot.MathBigInt()); err != nil {
+		if err := state.RootExists(f.stateDB, processID, process.StateRoot.MathBigInt()); err != nil {
 			// Mark process as invalid (thread-safe)
-			f.invalidProcesses.Store(processID.String(), struct{}{})
+			f.invalidProcesses.Store(processID, struct{}{})
 			continue
 		}
 
 		log.Debugw("found ended process to finalize", "pid", processID.String())
-		f.OndemandCh <- processID.Marshal()
+		f.OndemandCh <- processID
 	}
 }
 
 // finalize finalizes a process by decrypting the accumulators and storing the result.
 // It retrieves the process from storage, decrypts the accumulators using the encryption keys,
 // and stores the result back to storage.
-func (f *finalizer) finalize(pid types.HexBytes) error {
+func (f *finalizer) finalize(processID types.ProcessID) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
 	// Retrieve the process from storage
-	processID := new(types.ProcessID)
-	if err := processID.Unmarshal(pid); err != nil {
-		return fmt.Errorf("invalid process ID %s: %w", pid.String(), err)
-	}
 	process, err := f.stg.Process(processID)
 	if err != nil {
 		return err
@@ -217,17 +213,17 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 
 	// Check if the process is already finalized
 	if process.Status == types.ProcessStatusResults || process.Status == types.ProcessStatusCanceled || process.Result != nil {
-		log.Debugw("process already finalized, skipping", "pid", pid.String())
+		log.Debugw("process already finalized, skipping", "pid", processID.String())
 		return nil
 	}
 
 	// Helper to mark process as invalid in cache (thread-safe)
 	setProcessInvalid := func() {
-		f.invalidProcesses.Store(pid.String(), struct{}{})
+		f.invalidProcesses.Store(processID, struct{}{})
 	}
 
 	// Ensure the state root exists in the state DB. If not
-	if err := state.RootExists(f.stateDB, processID.BigInt(), process.StateRoot.MathBigInt()); err != nil {
+	if err := state.RootExists(f.stateDB, processID, process.StateRoot.MathBigInt()); err != nil {
 		setProcessInvalid()
 		return fmt.Errorf("state root does not exist in state DB %s: %w", process.StateRoot.String(), err)
 	}
@@ -238,7 +234,7 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	encryptionPubKey, encryptionPrivKey, err := f.stg.EncryptionKeys(processID)
 	if err != nil || encryptionPubKey == nil || encryptionPrivKey == nil {
 		setProcessInvalid()
-		finalErr := fmt.Errorf("encryption keys are nil for process %s", pid.String())
+		finalErr := fmt.Errorf("encryption keys are nil for process %s", processID.String())
 		if err != nil {
 			finalErr = fmt.Errorf("%w: %w", finalErr, err)
 		}
@@ -246,35 +242,35 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	}
 
 	// Open the state for the process
-	st, err := state.LoadOnRoot(f.stateDB, processID.BigInt(), process.StateRoot.MathBigInt())
+	st, err := state.LoadOnRoot(f.stateDB, processID, process.StateRoot.MathBigInt())
 	if err != nil {
 		setProcessInvalid()
-		return fmt.Errorf("could not open state for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not open state for process %s: %w", processID.String(), err)
 	}
 
 	// Ensure the state root matches the process state root
 	stateRoot, err := st.Root()
 	if err != nil {
 		setProcessInvalid()
-		return fmt.Errorf("could not get state root for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not get state root for process %s: %w", processID.String(), err)
 	}
 	processStateRoot := state.BigIntToBytes(process.StateRoot.MathBigInt())
 	if !bytes.Equal(stateRoot, processStateRoot) {
 		setProcessInvalid()
 		return fmt.Errorf("state root is not synced or mismatch for process %s: expected %x, got %s",
-			pid.String(), processStateRoot, stateRoot)
+			processID.String(), processStateRoot, stateRoot)
 	}
 
 	// Fetch the encrypted accumulators
 	encryptedAddAccumulator, ok := st.ResultsAdd()
 	if !ok {
 		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s", pid.String())
+		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s", processID.String())
 	}
 	encryptedSubAccumulator, ok := st.ResultsSub()
 	if !ok {
 		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s", pid.String())
+		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s", processID.String())
 	}
 
 	// Decrypt the accumulators
@@ -285,22 +281,22 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	for i, ct := range encryptedAddAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			setProcessInvalid()
-			return fmt.Errorf("invalid ciphertext for process %s: %v", pid.String(), ct)
+			return fmt.Errorf("invalid ciphertext for process %s: %v", processID.String(), ct)
 		}
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
 			setProcessInvalid()
-			return fmt.Errorf("could not decrypt add accumulator for process %s: %w", pid.String(), err)
+			return fmt.Errorf("could not decrypt add accumulator for process %s: %w", processID.String(), err)
 		}
 		addAccumulator[i] = result
 		addAccumulatorsEncrypted[i] = *ct
 		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
 		if err != nil {
 			setProcessInvalid()
-			return fmt.Errorf("could not build decryption proof for add accumulator for process %s: %w", pid.String(), err)
+			return fmt.Errorf("could not build decryption proof for add accumulator for process %s: %w", processID.String(), err)
 		}
 	}
-	log.Debugw("decrypted add accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
+	log.Debugw("decrypted add accumulator", "pid", processID.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
 
 	startTime = time.Now()
 	resultsAccumulator := [types.FieldsPerBallot]*big.Int{}
@@ -310,23 +306,23 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	for i, ct := range encryptedSubAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			setProcessInvalid()
-			return fmt.Errorf("invalid ciphertext for process %s: %v", pid.String(), ct)
+			return fmt.Errorf("invalid ciphertext for process %s: %v", processID.String(), ct)
 		}
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
 			setProcessInvalid()
-			return fmt.Errorf("could not decrypt sub accumulator for process %s: %w", pid.String(), err)
+			return fmt.Errorf("could not decrypt sub accumulator for process %s: %w", processID.String(), err)
 		}
 		subAccumulator[i] = result
 		subAccumulatorsEncrypted[i] = *ct
 		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
 		if err != nil {
 			setProcessInvalid()
-			return fmt.Errorf("could not build decryption proof for sub accumulator for process %s: %w", pid.String(), err)
+			return fmt.Errorf("could not build decryption proof for sub accumulator for process %s: %w", processID.String(), err)
 		}
 		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
 	}
-	log.Debugw("decrypted sub accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
+	log.Debugw("decrypted sub accumulator", "pid", processID.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
 
 	// Generate the witness for the circuit
 	resultsVerifierWitness, err := results.GenerateWitness(
@@ -340,7 +336,7 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 		subDecryptionProofs,
 	)
 	if err != nil {
-		return fmt.Errorf("could not generate witness for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not generate witness for process %s: %w", processID.String(), err)
 	}
 	proof, err := f.prover(
 		circuits.ResultsVerifierCurve,
@@ -350,24 +346,24 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 		solidity.WithProverTargetSolidityVerifier(backend.GROTH16),
 	)
 	if err != nil {
-		return fmt.Errorf("could not generate proof for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not generate proof for process %s: %w", processID.String(), err)
 	}
 
 	stateRootBI, err := st.RootAsBigInt()
 	if err != nil {
-		return fmt.Errorf("could not get state root for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not get state root for process %s: %w", processID.String(), err)
 	}
 
 	// Store the result in the process
-	if err := f.setProcessResults(pid, &storage.VerifiedResults{
-		ProcessID: processID.Marshal(),
+	if err := f.setProcessResults(processID, &storage.VerifiedResults{
+		ProcessID: processID,
 		Proof:     proof.(*groth16_bn254.Proof),
 		Inputs: storage.ResultsVerifierProofInputs{
 			StateRoot: stateRootBI,
 			Results:   resultsAccumulator,
 		},
 	}); err != nil {
-		return fmt.Errorf("could not store results for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not store results for process %s: %w", processID.String(), err)
 	}
 
 	return nil
@@ -375,9 +371,9 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 
 // setProcessResults sets the results of a finalized process.
 // It updates the process in storage with the results and pushes the verified results.
-func (f *finalizer) setProcessResults(pid types.HexBytes, res *storage.VerifiedResults) error {
+func (f *finalizer) setProcessResults(processID types.ProcessID, res *storage.VerifiedResults) error {
 	if res == nil {
-		return fmt.Errorf("cannot finalize process %s with nil results", pid.String())
+		return fmt.Errorf("cannot finalize process %s with nil results", processID.String())
 	}
 
 	// Transform the results accumulators to types.BigInt
@@ -390,18 +386,17 @@ func (f *finalizer) setProcessResults(pid types.HexBytes, res *storage.VerifiedR
 	}
 
 	// Update the process atomically to avoid race conditions
-	processID := new(types.ProcessID).SetBytes(pid)
 	if err := f.stg.UpdateProcess(processID, storage.ProcessUpdateCallbackFinalization(results)); err != nil {
-		return fmt.Errorf("could not update process %s with results: %w", pid.String(), err)
+		return fmt.Errorf("could not update process %s with results: %w", processID.String(), err)
 	}
 
 	// Push the verified results to storage
 	if err := f.stg.PushVerifiedResults(res); err != nil {
-		return fmt.Errorf("could not store verified results for process %s: %w", pid.String(), err)
+		return fmt.Errorf("could not store verified results for process %s: %w", processID.String(), err)
 	}
 
 	log.Infow("process finalized and pushed to storage queue",
-		"pid", pid.String(),
+		"processID", processID.String(),
 		"result", results)
 
 	return nil
@@ -409,19 +404,19 @@ func (f *finalizer) setProcessResults(pid types.HexBytes, res *storage.VerifiedR
 
 // WaitUntilResults waits until the process is finalized. Returns the result of the process.
 // It ensures proper timeout handling and provides detailed logging for troubleshooting.
-func (f *finalizer) WaitUntilResults(ctx context.Context, pid *types.ProcessID) ([]*types.BigInt, error) {
+func (f *finalizer) WaitUntilResults(ctx context.Context, processID types.ProcessID) ([]*types.BigInt, error) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	log.Debugw("waiting for results", "pid", pid.String())
+	log.Debugw("waiting for results", "processID", processID.String())
 
 	for {
 		select {
 		case <-ticker.C:
-			process, err := f.stg.Process(pid)
+			process, err := f.stg.Process(processID)
 			if err != nil {
-				log.Errorw(err, fmt.Sprintf("error retrieving process %s during wait", pid.String()))
-				return nil, fmt.Errorf("could not retrieve process %s: %w", pid.String(), err)
+				log.Errorw(err, fmt.Sprintf("error retrieving process %s during wait", processID.String()))
+				return nil, fmt.Errorf("could not retrieve process %s: %w", processID.String(), err)
 			}
 
 			if process.Result != nil {
@@ -430,11 +425,11 @@ func (f *finalizer) WaitUntilResults(ctx context.Context, pid *types.ProcessID) 
 
 		case <-ctx.Done():
 			return nil, fmt.Errorf("context done, waiting for process %s to be finalized: %w",
-				pid.String(), ctx.Err())
+				processID.String(), ctx.Err())
 
 		case <-f.ctx.Done():
 			return nil, fmt.Errorf("finalizer is shutting down while waiting for process %s",
-				pid.String())
+				processID.String())
 		}
 	}
 }

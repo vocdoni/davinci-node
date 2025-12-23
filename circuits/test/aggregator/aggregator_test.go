@@ -11,6 +11,7 @@ import (
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -22,9 +23,7 @@ func TestAggregatorCircuit(t *testing.T) {
 	c := qt.New(t)
 	// inputs generation
 	now := time.Now()
-	// Use centralized testing ProcessID for consistent caching
-	processID := types.TestProcessID
-	_, placeholder, assignments := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	_, placeholder, assignments := AggregatorInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation tooks %s", time.Since(now).String())
 	// proving
 	now = time.Now()

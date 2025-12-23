@@ -16,7 +16,7 @@ import (
 // BallotProofInputs struct contains the required inputs to compose the
 // data to generate the witness for a ballot proof using the circom circuit.
 type BallotProofInputs struct {
-	ProcessID     types.HexBytes    `json:"processId"`
+	ProcessID     types.ProcessID   `json:"processId"`
 	Address       types.HexBytes    `json:"address"`
 	EncryptionKey []*types.BigInt   `json:"encryptionKey"`
 	K             *types.BigInt     `json:"k"`
@@ -35,7 +35,7 @@ func (b *BallotProofInputs) VoteID() (*types.BigInt, error) {
 	if b == nil {
 		return nil, fmt.Errorf("ballot proof inputs cannot be nil")
 	}
-	return circuits.VoteID(new(types.ProcessID).SetBytes(b.ProcessID), common.BytesToAddress(b.Address), b.K)
+	return circuits.VoteID(b.ProcessID, common.BytesToAddress(b.Address), b.K)
 }
 
 // VoteIDForSign returns the vote ID in a format suitable for signing and
@@ -109,7 +109,7 @@ type CircomInputs struct {
 // used by the API to verify the resulting circom proof and the voteID, which
 // is signed by the user to prove the ownership of the vote.
 type BallotProofInputsResult struct {
-	ProcessID        types.HexBytes  `json:"processId"`
+	ProcessID        types.ProcessID `json:"processId"`
 	Address          types.HexBytes  `json:"address"`
 	Weight           *types.BigInt   `json:"weight"`
 	Ballot           *elgamal.Ballot `json:"ballot"`

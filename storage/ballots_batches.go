@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
@@ -34,7 +33,7 @@ func (s *Storage) pushAggregatorBatch(abb *AggregatorBallotBatch) error {
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), aggregBatchPrefix)
 	key := hashKey(val)
-	if err := wTx.Set(append(slices.Clone(abb.ProcessID), key...), val); err != nil {
+	if err := wTx.Set(append(abb.ProcessID.Bytes(), key...), val); err != nil {
 		wTx.Discard()
 		return err
 	}
@@ -63,16 +62,17 @@ func (s *Storage) pushAggregatorBatch(abb *AggregatorBallotBatch) error {
 }
 
 // RemoveAggregatorBatchesByProcess removes all ballot batches for a given processID.
-func (s *Storage) RemoveAggregatorBatchesByProcess(pid []byte) error {
+func (s *Storage) RemoveAggregatorBatchesByProcess(processID types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	// get every batch key for the process
 	batchesToRemove := []types.HexBytes{}
+	pidBytes := processID.Bytes()
 	rd := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
-	if err := rd.Iterate(pid, func(k, _ []byte) bool {
+	if err := rd.Iterate(pidBytes, func(k, _ []byte) bool {
 		// Append the processID prefix to the key if missing (depends on the database implementation)
-		if len(k) < len(pid) || !bytes.Equal(k[:len(pid)], pid) {
-			k = append(pid, k...)
+		if len(k) < len(pidBytes) || !bytes.Equal(k[:len(pidBytes)], pidBytes) {
+			k = append(pidBytes, k...)
 		}
 		batchesToRemove = append(batchesToRemove, k)
 		return true
@@ -173,16 +173,16 @@ func (s *Storage) MarkAggregatorBatchFailed(key []byte) error {
 // NextAggregatorBatch returns the next aggregated ballot batch for a given
 // processID, sets a reservation.
 // Returns ErrNoMoreElements if no more elements are available.
-func (s *Storage) NextAggregatorBatch(processID []byte) (*AggregatorBallotBatch, []byte, error) {
+func (s *Storage) NextAggregatorBatch(processID types.ProcessID) (*AggregatorBallotBatch, []byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-
+	pidBytes := processID.Bytes()
 	pr := prefixeddb.NewPrefixedReader(s.db, aggregBatchPrefix)
 	var chosenKey, chosenVal []byte
-	if err := pr.Iterate(processID, func(k, v []byte) bool {
+	if err := pr.Iterate(pidBytes, func(k, v []byte) bool {
 		// Append the processID prefix to the key if missing (depends on the database implementation)
-		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
-			k = append(processID, k...)
+		if len(k) < len(pidBytes) || !bytes.Equal(k[:len(pidBytes)], pidBytes) {
+			k = append(pidBytes, k...)
 		}
 		if s.isReserved(aggregBatchReservPrefix, k) {
 			return true
@@ -226,12 +226,12 @@ func (s *Storage) MarkAggregatorBatchPending(batch *AggregatorBallotBatch) error
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
 	key := hashKey(val)
 	// Check if already exists
-	if _, err := wTx.Get(append(slices.Clone(batch.ProcessID), key...)); err == nil {
+	if _, err := wTx.Get(append(batch.ProcessID.Bytes(), key...)); err == nil {
 		wTx.Discard()
 		return ErrKeyAlreadyExists
 	}
 
-	if err := wTx.Set(append(slices.Clone(batch.ProcessID), key...), val); err != nil {
+	if err := wTx.Set(append(batch.ProcessID.Bytes(), key...), val); err != nil {
 		wTx.Discard()
 		return err
 	}
@@ -240,7 +240,7 @@ func (s *Storage) MarkAggregatorBatchPending(batch *AggregatorBallotBatch) error
 
 // PendingAggregatorBatch retrieves a pending aggregator batch for a given
 // processID. If no pending batch is found, it returns ErrNotFound.
-func (s *Storage) PendingAggregatorBatch(processID []byte) (*AggregatorBallotBatch, error) {
+func (s *Storage) PendingAggregatorBatch(processID types.ProcessID) (*AggregatorBallotBatch, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -250,10 +250,10 @@ func (s *Storage) PendingAggregatorBatch(processID []byte) (*AggregatorBallotBat
 // pendingAggregatorBatch is an internal helper to retrieve a pending
 // aggregator batch for a given processID. It assumes the caller already
 // holds the globalLock.
-func (s *Storage) pendingAggregatorBatch(processID []byte) (*AggregatorBallotBatch, error) {
+func (s *Storage) pendingAggregatorBatch(processID types.ProcessID) (*AggregatorBallotBatch, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, pendingAggregBatchPrefix)
 	var chosenVal []byte
-	if err := pr.Iterate(processID, func(_, v []byte) bool {
+	if err := pr.Iterate(processID.Bytes(), func(_, v []byte) bool {
 		chosenVal = v
 		return false
 	}); err != nil {
@@ -273,10 +273,10 @@ func (s *Storage) pendingAggregatorBatch(processID []byte) (*AggregatorBallotBat
 // releasePendingAggregatorBatch removes the pending aggregator batch for
 // a given processID. It is used after the batch has been successfully or
 // unsuccessfully processed and it needs to be retried again.
-func (s *Storage) releasePendingAggregatorBatch(processID []byte) error {
+func (s *Storage) releasePendingAggregatorBatch(processID types.ProcessID) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
 	var chosenKey []byte
-	if err := wTx.Iterate(processID, func(k, _ []byte) bool {
+	if err := wTx.Iterate(processID.Bytes(), func(k, _ []byte) bool {
 		chosenKey = k
 		return false
 	}); err != nil {
@@ -285,7 +285,7 @@ func (s *Storage) releasePendingAggregatorBatch(processID []byte) error {
 	if chosenKey == nil {
 		return ErrNotFound
 	}
-	finalKey := append(slices.Clone(processID), chosenKey...)
+	finalKey := append(processID.Bytes(), chosenKey...)
 	if err := wTx.Delete(finalKey); err != nil {
 		return fmt.Errorf("delete pending agg batch: %w", err)
 	}
@@ -324,7 +324,7 @@ func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 	key := hashKey(val)
 
 	// set the key-value pair in the write transaction
-	if err := wTx.Set(append(slices.Clone(stb.ProcessID), key...), val); err != nil {
+	if err := wTx.Set(append(stb.ProcessID.Bytes(), key...), val); err != nil {
 		wTx.Discard()
 		return err
 	}
@@ -350,17 +350,18 @@ func (s *Storage) PushStateTransitionBatch(stb *StateTransitionBatch) error {
 	return nil
 }
 
-func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBatch, []byte, error) {
+func (s *Storage) NextStateTransitionBatch(processID types.ProcessID) (*StateTransitionBatch, []byte, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	// initialize the read transaction over the state transition prefix
 	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
 	var chosenKey, chosenVal []byte
-	if err := pr.Iterate(processID, func(k, v []byte) bool {
+	pidBytes := processID.Bytes()
+	if err := pr.Iterate(pidBytes, func(k, v []byte) bool {
 		// append the processID prefix to the key if missing
 		// (depends on the database implementation)
-		if len(k) < len(processID) || !bytes.Equal(k[:len(processID)], processID) {
-			k = append(processID, k...)
+		if len(k) < len(pidBytes) || !bytes.Equal(k[:len(pidBytes)], pidBytes) {
+			k = append(pidBytes, k...)
 		}
 		// check if reserved
 		if s.isReserved(stateTransitionReservPrefix, k) {
@@ -390,7 +391,7 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 	return &stb, chosenKey, nil
 }
 
-func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
+func (s *Storage) MarkStateTransitionBatchDone(k []byte, processID types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -408,7 +409,7 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 		if err := DecodeArtifact(val, &stb); err != nil {
 			log.Warnw("failed to decode state transition batch for vote ID settlement",
 				"error", err.Error(),
-				"processID", fmt.Sprintf("%x", pid),
+				"processID", processID.String(),
 			)
 		} else {
 			// Extract vote IDs from the batch
@@ -421,15 +422,15 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 			}
 
 			// Mark all vote IDs in the batch as settled (using unsafe version to avoid deadlock)
-			if err := s.markVoteIDsSettled(pid, voteIDs); err != nil {
+			if err := s.markVoteIDsSettled(processID, voteIDs); err != nil {
 				log.Warnw("failed to mark vote IDs as settled",
 					"error", err.Error(),
-					"processID", fmt.Sprintf("%x", pid),
+					"processID", processID.String(),
 					"voteIDCount", len(voteIDs),
 				)
 			} else {
 				log.Debugw("marked vote IDs as settled",
-					"processID", fmt.Sprintf("%x", pid),
+					"processID", processID.String(),
 					"voteIDCount", len(voteIDs),
 				)
 			}
@@ -442,13 +443,13 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 	}
 
 	// Update process stats
-	if err := s.updateProcessStats(pid, []ProcessStatsUpdate{
+	if err := s.updateProcessStats(processID, []ProcessStatsUpdate{
 		{TypeStats: types.TypeStatsSettledStateTransitions, Delta: 1},
 		{TypeStats: types.TypeStatsLastTransitionDate, Delta: 0},
 	}); err != nil {
 		log.Warnw("failed to update process stats after marking state transition batch as done",
 			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", pid),
+			"processID", processID.String(),
 		)
 	}
 
@@ -457,16 +458,17 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, pid []byte) error {
 
 // RemoveStateTransitionBatchesByProcess removes all state transition batches
 // for a given processID.
-func (s *Storage) RemoveStateTransitionBatchesByProcess(pid []byte) error {
+func (s *Storage) RemoveStateTransitionBatchesByProcess(processID types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	// get every batch key for the processID
 	batchesToRemove := []types.HexBytes{}
+	pidBytes := processID.Bytes()
 	pr := prefixeddb.NewPrefixedReader(s.db, stateTransitionPrefix)
-	if err := pr.Iterate(pid, func(k, _ []byte) bool {
+	if err := pr.Iterate(pidBytes, func(k, _ []byte) bool {
 		// Append the processID prefix to the key if missing (depends on the database implementation)
-		if len(k) < len(pid) || !bytes.Equal(k[:len(pid)], pid) {
-			k = append(pid, k...)
+		if len(k) < len(pidBytes) || !bytes.Equal(k[:len(pidBytes)], pidBytes) {
+			k = append(pidBytes, k...)
 		}
 		batchesToRemove = append(batchesToRemove, k)
 		return true
@@ -553,7 +555,7 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 // sets all ballots in the batch to error status, removes the reservation,
 // and deletes the batch from the state transition queue. This is typically
 // called when the state transition processing fails or is not valid.
-func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
+func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -576,18 +578,18 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 			log.Errorw(err, "failed to remove failed state transition batch")
 		}
 		// Release pending tx
-		if err := s.prunePendingTx(StateTransitionTx, pid); err != nil {
+		if err := s.prunePendingTx(StateTransitionTx, processID); err != nil {
 			log.Warnw("failed to release pending tx",
 				"error", err,
-				"processID", hex.EncodeToString(pid))
+				"processID", processID.String())
 		}
 	}()
 
-	if pendingBatch, err := s.pendingAggregatorBatch(pid); err != nil && !errors.Is(err, ErrNotFound) {
+	if pendingBatch, err := s.pendingAggregatorBatch(processID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("failed to get pending aggregator batch: %w", err)
 	} else if pendingBatch != nil {
 		// Release pending aggregator batch to be able to reprocess it
-		if err := s.releasePendingAggregatorBatch(pid); err != nil {
+		if err := s.releasePendingAggregatorBatch(processID); err != nil {
 			return fmt.Errorf("failed to release pending aggregator batch: %w", err)
 		}
 
@@ -595,11 +597,11 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 		pendingBatch.Attempts++
 		if pendingBatch.Attempts >= MaxStateTransitionAttempts {
 			log.Warnw("maximum state transition attempts reached for pending aggregator batch",
-				"processID", hex.EncodeToString(pid),
+				"processID", processID.String(),
 				"attempts", pendingBatch.Attempts)
 			// Mark all ballots in the batch as error
 			for _, v := range stb.Ballots {
-				if err := s.setVoteIDStatus(pid, v.VoteID, VoteIDStatusError); err != nil {
+				if err := s.setVoteIDStatus(processID, v.VoteID, VoteIDStatusError); err != nil {
 					log.Warnw("failed to set vote ID status to failed", "error", err.Error())
 				}
 			}
@@ -609,7 +611,7 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 		// Check if votes were already processed in the state (maybe by another
 		// sequencer)
 		votesAlreadyProcessed := false
-		currentState, err := state.New(s.StateDB(), stb.ProcessID.BigInt().MathBigInt())
+		currentState, err := state.New(s.StateDB(), stb.ProcessID)
 		if err := currentState.SetRootAsBigInt(stb.Inputs.RootHashBefore); err != nil {
 			return fmt.Errorf("failed to set state root for process %s: %w", stb.ProcessID.String(), err)
 		}
@@ -634,12 +636,12 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 	// If there is not pending batch or some of their votes are already in the
 	// state we cannot re-push the batch, we need to mark the votes as failed.
 	for _, v := range stb.Ballots {
-		if err := s.setVoteIDStatus(pid, v.VoteID, VoteIDStatusError); err != nil {
+		if err := s.setVoteIDStatus(processID, v.VoteID, VoteIDStatusError); err != nil {
 			log.Warnw("failed to set vote ID status to failed", "error", err.Error())
 		}
 	}
 	log.Warnw("batch can not be recovered after state transition failure",
-		"processID", hex.EncodeToString(pid),
+		"processID", processID.String(),
 		"batchID", hex.EncodeToString(key))
 	return nil
 }

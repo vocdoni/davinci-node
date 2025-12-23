@@ -10,7 +10,8 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 )
 
-// RandK function generates a random k value for encryption.
+// RandK function generates a random k value for encryption,
+// inside the scalar field of the BallotProof curve
 func RandK() (*big.Int, error) {
 	kBytes := make([]byte, 20)
 	_, err := rand.Read(kBytes)

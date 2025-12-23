@@ -14,21 +14,19 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestBlobDataStructures(t *testing.T) {
 	c := qt.New(t)
 
-	// Test parameters
-	processID := big.NewInt(12345)
-
 	// Create encryption key pair
 	publicKey, _, err := elgamal.GenerateKey(Curve)
 	c.Assert(err, qt.IsNil)
 
 	// Initialize state
-	state, err := New(memdb.New(), processID)
+	state, err := New(memdb.New(), testutil.RandomProcessID())
 	c.Assert(err, qt.IsNil)
 	defer func() {
 		if err := state.Close(); err != nil {
@@ -156,7 +154,7 @@ func TestBlobDataStructures(t *testing.T) {
 
 func TestBlobStateTransition(t *testing.T) {
 	c := qt.New(t)
-	processID := big.NewInt(12345)
+	processID := testutil.RandomProcessID()
 	numTransitions := 5 // Test multiple state transitions
 
 	// Create encryption key pair
@@ -500,7 +498,7 @@ func verifyKZGCommitment(t *testing.T, blob *gethkzg.Blob, commit *gethkzg.Commi
 	c.Assert(y.Cmp(recomputedY), qt.Equals, 0, qt.Commentf("KZG evaluation (y value) mismatch"))
 }
 
-func restoreStateFromBlob(t *testing.T, blob *gethkzg.Blob, processID *big.Int, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
+func restoreStateFromBlob(t *testing.T, blob *gethkzg.Blob, processID types.ProcessID, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
 	c := qt.New(t)
 	// Parse blob data
 	blobData, err := ParseBlobData(blob)

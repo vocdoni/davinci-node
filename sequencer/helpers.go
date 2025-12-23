@@ -14,21 +14,21 @@ import (
 // latestProcessState retrieves and initializes the latest state for a given
 // process ID. It ensures that the local state is synchronized with the
 // on-chain state.
-func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, error) {
+func (s *Sequencer) latestProcessState(processID types.ProcessID) (*state.State, error) {
 	// get the process from the storage
-	process, err := s.stg.Process(pid)
+	process, err := s.stg.Process(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
-	isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(pid)
+	isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
 	}
 	if !isAcceptingVotes {
-		return nil, fmt.Errorf("process %x is not accepting votes", pid)
+		return nil, fmt.Errorf("process %x is not accepting votes", processID)
 	}
 
-	st, err := state.New(s.stg.StateDB(), pid.BigInt())
+	st, err := state.New(s.stg.StateDB(), processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state: %w", err)
 	}
@@ -42,7 +42,7 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 	}
 
 	// get the on-chain state root to ensure we are in sync
-	onchainStateRoot, err := s.contracts.StateRoot(pid.Marshal())
+	onchainStateRoot, err := s.contracts.StateRoot(processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get on-chain state root: %w", err)
 	}
@@ -52,18 +52,18 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 		if err := st.RootExists(onchainStateRoot.MathBigInt()); err != nil {
 			return nil, fmt.Errorf("on-chain state root does not exist in local state: %w", err)
 		}
-		if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStateRoot(onchainStateRoot, nil, nil)); err != nil {
+		if err := s.stg.UpdateProcess(processID, storage.ProcessUpdateCallbackSetStateRoot(onchainStateRoot, nil, nil)); err != nil {
 			return nil, fmt.Errorf("failed to update process state root: %w", err)
 		}
 		log.Warnw("local state root mismatch, updated local state root to match on-chain",
-			"pid", pid.String(),
+			"pid", processID.String(),
 			"local", process.StateRoot.String(),
 			"onchain", onchainStateRoot.String(),
 		)
 	}
 
 	// initialize the process state on the given root
-	processState, err := state.LoadOnRoot(s.stg.StateDB(), pid.BigInt(), onchainStateRoot.MathBigInt())
+	processState, err := state.LoadOnRoot(s.stg.StateDB(), processID, onchainStateRoot.MathBigInt())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create state: %w", err)
 	}

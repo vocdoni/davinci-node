@@ -48,7 +48,7 @@ type API struct {
 	storage           *stg.Storage
 	network           string
 	web3Config        config.DavinciWeb3Config
-	processIDsVersion []byte // Current process ID version
+	processIDsVersion [4]byte // Current process ID version
 	// Workers API stuff
 	sequencerSigner            *ethereum.Signer        // Signer for workers authentication
 	sequencerUUID              *uuid.UUID              // UUID to keep the workers endpoints hidden
@@ -206,10 +206,10 @@ func staticHandler(w http.ResponseWriter, r *http.Request) {
 
 // ProcessIDVersion returns the expected ProcessID version for the current
 // network and contract address. It can be used to validate ProcessIDs.
-func (a *API) ProcessIDVersion() ([]byte, error) {
+func (a *API) ProcessIDVersion() ([4]byte, error) {
 	chainID, ok := npbindings.AvailableNetworksByName[a.network]
 	if !ok {
-		return nil, fmt.Errorf("unknown network: %s", a.network)
+		return [4]byte{}, fmt.Errorf("unknown network: %s", a.network)
 	}
 	contractAddr := common.HexToAddress(a.web3Config.ProcessRegistrySmartContract)
 	return types.ProcessIDVersion(chainID, contractAddr), nil

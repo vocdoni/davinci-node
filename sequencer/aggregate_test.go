@@ -5,6 +5,7 @@ import (
 	"time"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 )
 
 // TestBatchTimingBehavior tests the core behavior of our timing update:
@@ -16,7 +17,7 @@ func TestBatchTimingBehavior(t *testing.T) {
 
 	// Create a ProcessIDMap for testing
 	pmap := NewProcessIDMap()
-	pid := []byte{1, 2, 3, 4}
+	pid := testutil.RandomProcessID()
 
 	// 1. Initially, there should be no first ballot timestamp
 	_, exists := pmap.GetFirstBallotTime(pid)

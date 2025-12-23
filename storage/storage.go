@@ -71,6 +71,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 var (
@@ -110,7 +111,7 @@ type reservationRecord struct {
 
 // addressInfo stores the mapping from voteID to address for lock management
 type addressInfo struct {
-	ProcessID []byte
+	ProcessID types.ProcessID
 	Address   *big.Int
 }
 
@@ -497,14 +498,14 @@ func (s *Storage) releaseVoteID(bigVoteID *big.Int) {
 // lockAddress attempts to lock an address to prevent concurrent processing.
 // Returns true if the lock was acquired, false if the address is already locked.
 // The key format is "processID:address" to scope locks per process.
-func (s *Storage) lockAddress(processID []byte, address *big.Int) bool {
-	key := string(processID) + ":" + address.String()
+func (s *Storage) lockAddress(processID types.ProcessID, address *big.Int) bool {
+	key := processID.String() + ":" + address.String()
 	_, loaded := s.processingAddresses.LoadOrStore(key, struct{}{})
 	return !loaded // true if we stored (not loaded), false if already existed
 }
 
 // releaseAddress releases an address after processing is complete or failed.
-func (s *Storage) releaseAddress(processID []byte, address *big.Int) {
-	key := string(processID) + ":" + address.String()
+func (s *Storage) releaseAddress(processID types.ProcessID, address *big.Int) {
+	key := processID.String() + ":" + address.String()
 	s.processingAddresses.Delete(key)
 }
