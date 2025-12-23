@@ -9,6 +9,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -21,49 +22,27 @@ func TestCleanAllPending(t *testing.T) {
 	defer s.Close()
 
 	// Create test processes
-	pid1 := &types.ProcessID{
-		Address: [20]byte{1},
-		Nonce:   1,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
-	pid2 := &types.ProcessID{
-		Address: [20]byte{2},
-		Nonce:   2,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
-
-	processID1 := pid1.Marshal()
-	processID2 := pid2.Marshal()
+	processID1 := testutil.DeterministicProcessID(1)
+	processID2 := testutil.DeterministicProcessID(2)
 
 	// Initialize processes
-	for _, pid := range []*types.ProcessID{pid1, pid2} {
+	for _, pid := range []types.ProcessID{processID1, processID2} {
 		process := &types.Process{
-			ID:             pid.Marshal(),
-			Status:         0,
-			StartTime:      time.Now(),
-			Duration:       time.Hour,
-			MetadataURI:    "http://example.com/metadata",
-			StateRoot:      new(types.BigInt).SetUint64(100),
-			SequencerStats: types.SequencerProcessStats{},
-			BallotMode: &types.BallotMode{
-				NumFields:   8,
-				MaxValue:    new(types.BigInt).SetUint64(100),
-				MinValue:    new(types.BigInt).SetUint64(0),
-				MaxValueSum: new(types.BigInt).SetUint64(0),
-				MinValueSum: new(types.BigInt).SetUint64(0),
-			},
-			Census: &types.Census{
-				CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-				CensusRoot:   make([]byte, 32),
-				CensusURI:    "http://example.com/census",
-			},
+			ID:          &pid,
+			Status:      0,
+			StartTime:   time.Now(),
+			Duration:    time.Hour,
+			MetadataURI: "http://example.com/metadata",
+			StateRoot:   testutil.StateRoot(),
+			BallotMode:  testutil.BallotModeInternal(),
+			Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 		}
 		err := s.NewProcess(process)
 		c.Assert(err, qt.IsNil)
 	}
 
 	// Helper function to create a verified ballot
-	createVerifiedBallot := func(processID []byte, voteID int) *VerifiedBallot {
+	createVerifiedBallot := func(processID types.ProcessID, voteID int) *VerifiedBallot {
 		voteIDBytes := types.HexBytes(fmt.Sprintf("vote%d", voteID))
 		return &VerifiedBallot{
 			VoteID:          voteIDBytes,
@@ -96,7 +75,7 @@ func TestCleanAllPending(t *testing.T) {
 
 		// Store verified ballots directly
 		for _, vb := range []*VerifiedBallot{vb1, vb2, vb3} {
-			key := append(vb.ProcessID, vb.VoteID...)
+			key := append(vb.ProcessID.Bytes(), vb.VoteID...)
 			err := s.setArtifact(verifiedBallotPrefix, key, vb)
 			c.Assert(err, qt.IsNil)
 
@@ -146,12 +125,12 @@ func TestCleanAllPending(t *testing.T) {
 		}
 
 		// Verify stats are updated
-		p1, err := s.Process(pid1)
+		p1, err := s.Process(processID1)
 		c.Assert(err, qt.IsNil)
 		c.Assert(p1.SequencerStats.VerifiedVotesCount, qt.Equals, 0)
 		c.Assert(p1.SequencerStats.CurrentBatchSize, qt.Equals, 0)
 
-		p2, err := s.Process(pid2)
+		p2, err := s.Process(processID2)
 		c.Assert(err, qt.IsNil)
 		c.Assert(p2.SequencerStats.VerifiedVotesCount, qt.Equals, 0)
 		c.Assert(p2.SequencerStats.CurrentBatchSize, qt.Equals, 0)
@@ -212,11 +191,11 @@ func TestCleanAllPending(t *testing.T) {
 		}
 
 		// Verify stats are updated
-		p1, err := s.Process(pid1)
+		p1, err := s.Process(processID1)
 		c.Assert(err, qt.IsNil)
 		c.Assert(p1.SequencerStats.AggregatedVotesCount, qt.Equals, 0)
 
-		p2, err := s.Process(pid2)
+		p2, err := s.Process(processID2)
 		c.Assert(err, qt.IsNil)
 		c.Assert(p2.SequencerStats.AggregatedVotesCount, qt.Equals, 0)
 	})
@@ -287,11 +266,11 @@ func TestCleanAllPending(t *testing.T) {
 		}
 
 		// Verify stats are updated
-		p1, err := s.Process(pid1)
+		p1, err := s.Process(processID1)
 		c.Assert(err, qt.IsNil)
 		c.Assert(p1.SequencerStats.StateTransitionCount, qt.Equals, 0)
 
-		p2, err := s.Process(pid2)
+		p2, err := s.Process(processID2)
 		c.Assert(err, qt.IsNil)
 		c.Assert(p2.SequencerStats.StateTransitionCount, qt.Equals, 0)
 	})
@@ -302,7 +281,7 @@ func TestCleanAllPending(t *testing.T) {
 
 		// Add verified ballots
 		vb := createVerifiedBallot(processID1, 50)
-		err := s.setArtifact(verifiedBallotPrefix, append(vb.ProcessID, vb.VoteID...), vb)
+		err := s.setArtifact(verifiedBallotPrefix, append(vb.ProcessID.Bytes(), vb.VoteID...), vb)
 		c.Assert(err, qt.IsNil)
 		err = s.setVoteIDStatus(vb.ProcessID, vb.VoteID, VoteIDStatusVerified)
 		c.Assert(err, qt.IsNil)
@@ -368,20 +347,20 @@ func TestCleanAllPending(t *testing.T) {
 		c := qt.New(t)
 
 		// Get current stats to know the baseline
-		pBefore, err := s.Process(pid1)
+		pBefore, err := s.Process(processID1)
 		c.Assert(err, qt.IsNil)
 		initialVerifiedCount := pBefore.SequencerStats.VerifiedVotesCount
 
 		// Add verified ballot with correct status
 		vb1 := createVerifiedBallot(processID1, 60)
-		err = s.setArtifact(verifiedBallotPrefix, append(vb1.ProcessID, vb1.VoteID...), vb1)
+		err = s.setArtifact(verifiedBallotPrefix, append(vb1.ProcessID.Bytes(), vb1.VoteID...), vb1)
 		c.Assert(err, qt.IsNil)
 		err = s.setVoteIDStatus(vb1.ProcessID, vb1.VoteID, VoteIDStatusVerified)
 		c.Assert(err, qt.IsNil)
 
 		// Add verified ballot with wrong status (already aggregated)
 		vb2 := createVerifiedBallot(processID1, 61)
-		err = s.setArtifact(verifiedBallotPrefix, append(vb2.ProcessID, vb2.VoteID...), vb2)
+		err = s.setArtifact(verifiedBallotPrefix, append(vb2.ProcessID.Bytes(), vb2.VoteID...), vb2)
 		c.Assert(err, qt.IsNil)
 		err = s.setVoteIDStatus(vb2.ProcessID, vb2.VoteID, VoteIDStatusAggregated)
 		c.Assert(err, qt.IsNil)
@@ -408,7 +387,7 @@ func TestCleanAllPending(t *testing.T) {
 
 		// Stats should only decrease by 1 (the correctly-statused ballot)
 		// So it should be back to the initial count
-		p, err := s.Process(pid1)
+		p, err := s.Process(processID1)
 		c.Assert(err, qt.IsNil)
 		c.Assert(p.SequencerStats.VerifiedVotesCount, qt.Equals, initialVerifiedCount)
 	})

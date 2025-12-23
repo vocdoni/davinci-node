@@ -36,6 +36,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/prover"
 	davinci_solidity "github.com/vocdoni/davinci-node/solidity"
 	"github.com/vocdoni/davinci-node/state"
@@ -83,9 +84,7 @@ func TestStateTransitionCircuit(t *testing.T) {
 	c := qt.New(t)
 	// inputs generation
 	now := time.Now()
-	// Use centralized testing ProcessID for consistent caching
-	processID := types.TestProcessID
-	_, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	_, placeholder, assignments := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 	// proving
 	now = time.Now()
@@ -108,8 +107,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	now := time.Now()
 
 	// Use centralized testing ProcessID for consistent caching
-	processID := types.TestProcessID
-	testResults, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	testResults, placeholder, assignments := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 
 	// compile circuit
@@ -627,9 +625,12 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vot
 	}
 
 	censusOrigin := types.CensusOrigin(s.CensusOrigin().Uint64())
-	pid := new(types.ProcessID).SetBytes(s.ProcessID().Bytes())
+	processID, err := types.ProcessIDFromBigInt(s.ProcessID())
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(votes, censusOrigin, pid)
+	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(votes, censusOrigin, processID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -702,20 +703,15 @@ func newMockWitness(t *testing.T, origin types.CensusOrigin) *statetransition.St
 }
 
 func newMockState(t *testing.T, origin types.CensusOrigin) *state.State {
-	pid := &types.ProcessID{
-		Address: common.BytesToAddress(util.RandomBytes(20)),
-		Version: types.ProcessIDVersion(1, common.BytesToAddress(util.RandomBytes(20))),
-		Nonce:   1,
-	}
-	s, err := state.New(metadb.NewTest(t), pid.BigInt())
+	s, err := state.New(metadb.NewTest(t), testutil.RandomProcessID())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, encryptionKey := circuits.MockEncryptionKey()
+	_, encryptionKey := testutil.RandomEncryptionKey()
 	if err := s.Initialize(
 		origin.BigInt().MathBigInt(),
-		circuits.MockBallotMode(),
+		testutil.BallotMode(),
 		encryptionKey,
 	); err != nil {
 		t.Fatal(err)

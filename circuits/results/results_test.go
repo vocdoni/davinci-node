@@ -1,7 +1,6 @@
 package results
 
 import (
-	"crypto/rand"
 	"fmt"
 	"log"
 	"math/big"
@@ -20,9 +19,9 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/util"
 )
 
 const nVotes = 10
@@ -36,10 +35,9 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	now := time.Now()
 
 	// Random inputs for the state (processID and censusRoot)
-	processID, err := rand.Int(rand.Reader, circuits.ResultsVerifierCurve.ScalarField())
-	c.Assert(err, qt.IsNil)
+	processID := testutil.RandomProcessID()
 	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
-	ballotMode := circuits.MockBallotMode()
+	ballotMode := testutil.BallotMode()
 
 	// Generate a random ElGamal key pair
 	pubKey, privKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
@@ -56,7 +54,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	err = st.StartBatch()
 	c.Assert(err, qt.IsNil)
 	for i := range nVotes {
-		err = st.AddVote(newMockVote(pubKey, i, 100))
+		err = st.AddVote(newMockVote(pubKey, uint64(i), 100))
 		c.Assert(err, qt.IsNil)
 	}
 	err = st.EndBatch()
@@ -121,7 +119,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	c.Logf("proving took %s", time.Since(now).String())
 }
 
-func newMockVote(pubKey ecc.Point, index, amount int) *state.Vote {
+func newMockVote(pubKey ecc.Point, index uint64, amount int) *state.Vote {
 	fields := [types.FieldsPerBallot]*big.Int{}
 	for i := range fields {
 		fields[i] = big.NewInt(int64(amount + i))
@@ -136,7 +134,7 @@ func newMockVote(pubKey ecc.Point, index, amount int) *state.Vote {
 		// the ReencryptedBallot.
 		Ballot:            elgamal.NewBallot(state.Curve),
 		ReencryptedBallot: ballot,
-		VoteID:            util.RandomBytes(20),
-		Address:           big.NewInt(int64(index + 200)), // mock
+		VoteID:            testutil.RandomVoteID().Bytes(),
+		Address:           testutil.DeterministicAddress(index).Big(),
 	}
 }

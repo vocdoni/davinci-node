@@ -2,6 +2,7 @@ package circuitstest
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
@@ -241,9 +243,9 @@ func NewCircuitCache() (*CircuitCache, error) {
 }
 
 // GenerateCacheKey creates a deterministic cache key based on circuit type and parameters
-func (c *CircuitCache) GenerateCacheKey(circuitType string, processID *types.ProcessID, params ...interface{}) string {
+func (c *CircuitCache) GenerateCacheKey(circuitType string, processID types.ProcessID, params ...interface{}) string {
 	// Build cache key with circuit type, ProcessID, and additional parameters
-	keyData := fmt.Sprintf("%s-%s-%d-%x", circuitType, processID.Address.Hex(), processID.Nonce, processID.Version)
+	keyData := fmt.Sprintf("%s-%s-%d-%x", circuitType, processID.Address().Hex(), processID.Nonce(), processID.Version())
 
 	// Append additional parameters
 	for _, param := range params {
@@ -464,11 +466,11 @@ func (d *VoteVerifierCacheData) ReadFromCache(cacheDir, cacheKey string, require
 
 // DeterministicGenerator provides deterministic value generation based on ProcessID
 type DeterministicGenerator struct {
-	ProcessID *types.ProcessID
+	ProcessID types.ProcessID
 }
 
 // NewDeterministicGenerator creates a new deterministic generator
-func NewDeterministicGenerator(processID *types.ProcessID) *DeterministicGenerator {
+func NewDeterministicGenerator(processID types.ProcessID) *DeterministicGenerator {
 	return &DeterministicGenerator{ProcessID: processID}
 }
 
@@ -484,33 +486,30 @@ func (dg *DeterministicGenerator) BigInt(nValidVoters int) *big.Int {
 
 // GenerateDeterministicSeed creates a deterministic seed based on ProcessID and index
 // This ensures the same ProcessID + index always generates the same seed
-func GenerateDeterministicSeed(processID *types.ProcessID, index int) int64 {
-	// Create a simple deterministic seed from ProcessID and index
-	seed := int64(processID.Version[0])<<24 | int64(processID.Version[1])<<16 |
-		int64(processID.Version[2])<<8 | int64(processID.Version[3])
-	seed = seed*1000000 + int64(processID.Nonce)*1000 + int64(index)
+func GenerateDeterministicSeed(processID types.ProcessID, index int) int64 {
+	// PID (32 bytes) + index (8 bytes) -> hash -> take 8 bytes as seed
+	var buf [40]byte
+	copy(buf[0:32], processID[:])
+	binary.BigEndian.PutUint64(buf[32:40], uint64(index))
 
-	// Add some variation based on the address
-	if len(processID.Address) >= 8 {
-		addrSeed := int64(processID.Address[0])<<24 | int64(processID.Address[1])<<16 |
-			int64(processID.Address[2])<<8 | int64(processID.Address[3])
-		seed += addrSeed
-	}
+	sum := crypto.Keccak256(buf[:]) // 32 bytes
 
-	// Ensure positive seed
-	if seed < 0 {
-		seed = -seed
-	}
+	seed := int64(binary.BigEndian.Uint64(sum[:8]))
 	if seed == 0 {
 		seed = 1
 	}
-
+	if seed < 0 {
+		seed = -seed
+		if seed == 0 { // handles MinInt64 edge case
+			seed = 1
+		}
+	}
 	return seed
 }
 
 // GenerateDeterministicK creates a deterministic big.Int value based on ProcessID and parameters
 // This ensures consistent K generation for cryptographic operations
-func GenerateDeterministicK(processID *types.ProcessID, nValidVoters int) *big.Int {
+func GenerateDeterministicK(processID types.ProcessID, nValidVoters int) *big.Int {
 	// Create a deterministic seed from ProcessID and parameters
 	seed := GenerateDeterministicSeed(processID, nValidVoters)
 

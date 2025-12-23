@@ -16,6 +16,7 @@ import (
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -27,14 +28,13 @@ func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 	s, err := ballottest.GenDeterministicECDSAaccountForTest(0)
 	c.Assert(err, qt.IsNil)
 	// Use centralized testing ProcessID for consistent caching
-	processID := types.TestProcessID
 	_, placeholder, assignments := VoteVerifierInputsForTest(t, []VoterTestData{
 		{
 			PrivKey: s,
 			PubKey:  s.PublicKey,
 			Address: s.Address(),
 		},
-	}, processID, types.CensusOriginMerkleTreeOffchainStaticV1)
+	}, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1)
 	// generate proof
 	assert := test.NewAssert(t)
 	now := time.Now()
@@ -52,14 +52,13 @@ func TestVerifyCSPVoteCircuit(t *testing.T) {
 	s, err := ballottest.GenDeterministicECDSAaccountForTest(0)
 	c.Assert(err, qt.IsNil)
 	// Use centralized testing ProcessID for consistent caching
-	processID := types.TestProcessID
 	_, placeholder, assignments := VoteVerifierInputsForTest(t, []VoterTestData{
 		{
 			PrivKey: s,
 			PubKey:  s.PublicKey,
 			Address: s.Address(),
 		},
-	}, processID, types.CensusOriginCSPEdDSABN254V1)
+	}, testutil.FixedProcessID(), types.CensusOriginCSPEdDSABN254V1)
 	// generate proof
 	assert := test.NewAssert(t)
 	now := time.Now()
@@ -97,8 +96,7 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 		data = append(data, VoterTestData{s, s.PublicKey, s.Address()})
 	}
 	// Use centralized testing ProcessID for consistent caching
-	processID := types.TestProcessID
-	_, placeholder, assignments := VoteVerifierInputsForTest(t, data, processID, types.CensusOriginMerkleTreeOffchainStaticV1)
+	_, placeholder, assignments := VoteVerifierInputsForTest(t, data, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1)
 	assert := test.NewAssert(t)
 	now := time.Now()
 	for _, assignment := range assignments {

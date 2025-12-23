@@ -1,11 +1,11 @@
 package eddsa
 
 import (
-	"math/rand"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
@@ -13,15 +13,9 @@ import (
 func TestGenerateVerifyProof(t *testing.T) {
 	c := qt.New(t)
 
-	orgAddress := common.Address(util.RandomBytes(20))
-	userAddress := common.Address(util.RandomBytes(20))
-	userWeight := new(types.BigInt).SetInt(42)
-
-	processID := &types.ProcessID{
-		Address: orgAddress,
-		Nonce:   rand.Uint64(),
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID := testutil.RandomProcessID()
+	userAddress := testutil.RandomAddress()
+	userWeight := types.NewInt(testutil.Weight)
 
 	csp, err := CSP(types.CensusOriginCSPEdDSABN254V1.CurveID())
 	c.Assert(err, qt.IsNil)
@@ -30,10 +24,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 		_, err := new(EdDSA).GenerateProof(processID, userAddress, userWeight)
 		c.Assert(err, qt.IsNotNil)
 
-		_, err = csp.GenerateProof(nil, userAddress, userWeight)
-		c.Assert(err, qt.IsNotNil)
-
-		_, err = csp.GenerateProof(&types.ProcessID{}, userAddress, userWeight)
+		_, err = csp.GenerateProof(types.ProcessID{}, userAddress, userWeight)
 		c.Assert(err, qt.IsNotNil)
 
 		_, err = csp.GenerateProof(processID, common.Address{}, userWeight)
@@ -67,7 +58,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 		c.Assert(proof, qt.IsNotNil)
 
-		proof.Address = util.RandomBytes(20)
+		proof.Address = testutil.RandomAddress().Bytes()
 		err = csp.VerifyProof(proof)
 		c.Assert(err, qt.IsNotNil)
 	})

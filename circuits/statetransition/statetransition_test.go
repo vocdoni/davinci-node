@@ -12,7 +12,6 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
 	"github.com/consensys/gnark/test"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/rs/zerolog"
 	censustest "github.com/vocdoni/davinci-node/census/test"
@@ -21,6 +20,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	statetransitiontest "github.com/vocdoni/davinci-node/circuits/test/statetransition"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	dlog "github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -349,9 +349,12 @@ func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vot
 	}
 
 	censusOrigin := types.CensusOrigin(s.CensusOrigin().Uint64())
-	pid := new(types.ProcessID).SetBytes(s.ProcessID().Bytes())
+	processID, err := types.ProcessIDFromBigInt(s.ProcessID())
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(votes, censusOrigin, pid)
+	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(votes, censusOrigin, processID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,20 +401,15 @@ func newMockWitness(t *testing.T, origin types.CensusOrigin) *statetransition.St
 }
 
 func newMockState(t *testing.T, origin types.CensusOrigin) *state.State {
-	pid := &types.ProcessID{
-		Address: common.BytesToAddress(util.RandomBytes(20)),
-		Version: types.ProcessIDVersion(1, common.BytesToAddress(util.RandomBytes(20))),
-		Nonce:   1,
-	}
-	s, err := state.New(metadb.NewTest(t), pid.BigInt())
+	s, err := state.New(metadb.NewTest(t), testutil.RandomProcessID())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, encryptionKey := circuits.MockEncryptionKey()
+	_, encryptionKey := testutil.RandomEncryptionKey()
 	if err := s.Initialize(
 		origin.BigInt().MathBigInt(),
-		circuits.MockBallotMode(),
+		testutil.BallotMode(),
 		encryptionKey,
 	); err != nil {
 		t.Fatal(err)
@@ -422,12 +420,8 @@ func newMockState(t *testing.T, origin types.CensusOrigin) *state.State {
 
 const mockAddressesOffset = 200
 
-func newMockAddress(index int64) *big.Int {
-	return big.NewInt(index + int64(mockAddressesOffset)) // mock
-}
-
 // newMockVote creates a new vote
-func newMockVote(s *state.State, index, amount int64) state.Vote {
+func newMockVote(s *state.State, index uint64, amount int64) state.Vote {
 	publicKey := state.Curve.New().SetPoint(s.EncryptionKey().PubKey[0], s.EncryptionKey().PubKey[1])
 
 	fields := [types.FieldsPerBallot]*big.Int{}
@@ -441,8 +435,8 @@ func newMockVote(s *state.State, index, amount int64) state.Vote {
 	}
 
 	return state.Vote{
-		Address: newMockAddress(index),
-		VoteID:  util.RandomBytes(20),
+		Address: testutil.DeterministicAddress(mockAddressesOffset + index).Big(),
+		VoteID:  testutil.RandomVoteID().Bytes(),
 		Weight:  big.NewInt(10),
 		Ballot:  ballot,
 	}

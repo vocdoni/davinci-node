@@ -1,7 +1,6 @@
 package csp
 
 import (
-	"math/rand"
 	"os"
 	"testing"
 
@@ -15,6 +14,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
@@ -39,15 +39,9 @@ func TestEmulatedCSPProofCircuit(t *testing.T) {
 	csp, err := New(types.CensusOriginCSPEdDSABN254V1, nil)
 	c.Assert(err, qt.IsNil)
 
-	orgAddress := common.Address(util.RandomBytes(20))
-	userAddress := common.Address(util.RandomBytes(20))
-	userWeight := new(types.BigInt).SetInt(42)
-
-	processID := &types.ProcessID{
-		Address: orgAddress,
-		Nonce:   rand.Uint64(),
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID := testutil.RandomProcessID()
+	userAddress := testutil.RandomAddress()
+	userWeight := types.NewInt(testutil.Weight)
 
 	proof, err := csp.GenerateProof(processID, userAddress, userWeight)
 	c.Assert(err, qt.IsNil)
@@ -55,8 +49,7 @@ func TestEmulatedCSPProofCircuit(t *testing.T) {
 	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABN254V1.CurveID(), proof)
 	c.Assert(err, qt.IsNil)
 
-	hexPID := types.HexBytes(processID.Marshal())
-	ffPID := hexPID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
+	ffPID := processID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
 	hexAddress := types.HexBytes(userAddress.Bytes())
 	ffAddress := hexAddress.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
 	ffWeight := userWeight.ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
@@ -93,15 +86,10 @@ func TestCSPProofCircuit(t *testing.T) {
 	csp, err := New(types.CensusOriginCSPEdDSABN254V1, nil)
 	c.Assert(err, qt.IsNil)
 
-	orgAddress := common.Address(util.RandomBytes(20))
 	userAddress := common.Address(util.RandomBytes(20))
 	userWeight := new(types.BigInt).SetInt(42)
 
-	processID := &types.ProcessID{
-		Address: orgAddress,
-		Nonce:   rand.Uint64(),
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID := testutil.RandomProcessID()
 
 	proof, err := csp.GenerateProof(processID, userAddress, userWeight)
 	c.Assert(err, qt.IsNil)
@@ -109,10 +97,8 @@ func TestCSPProofCircuit(t *testing.T) {
 	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABN254V1.CurveID(), proof)
 	c.Assert(err, qt.IsNil)
 
-	hexPID := types.HexBytes(processID.Marshal())
-	ffPID := hexPID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
-	hexAddress := types.HexBytes(userAddress.Bytes())
-	ffAddress := hexAddress.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
+	ffPID := types.BigIntConverter(processID.MathBigInt()).ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
+	ffAddress := types.BigIntConverter(userAddress.Big()).ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
 	ffWeight := userWeight.ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
 	assignments := &cspProofCircuit{
 		Proof:      *gnarkProof,

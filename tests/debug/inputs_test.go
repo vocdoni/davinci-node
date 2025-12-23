@@ -49,7 +49,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// decode info
-	processID := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), process.ProcessID.BigInt().MathBigInt())
+	processID := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), process.ProcessID.MathBigInt())
 	root := arbo.BytesToBigInt(vote.CensusProof.Root)
 	ballotMode := circuits.BallotModeToCircuit(process.BallotMode)
 	encryptionKey := circuits.EncryptionKey[*big.Int]{

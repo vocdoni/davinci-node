@@ -21,6 +21,7 @@ import (
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	aggregatortest "github.com/vocdoni/davinci-node/circuits/test/aggregator"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -34,11 +35,11 @@ type StateTransitionTestResults struct {
 }
 
 // StateTransitionInputsForTest returns the StateTransitionTestResults, the placeholder
-// and the assignments of a StateTransitionCircuit for the processId provided
+// and the assignments of a StateTransitionCircuit for the processID provided
 // generating nValidVoters. Uses quicktest assertions instead of returning errors.
 func StateTransitionInputsForTest(
 	t *testing.T,
-	processId *types.ProcessID,
+	processID types.ProcessID,
 	censusOrigin types.CensusOrigin,
 	nValidVoters int,
 ) (
@@ -50,7 +51,7 @@ func StateTransitionInputsForTest(
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
 
-	cacheKey := cache.GenerateCacheKey("statetransition-test-aggregator", processId, nValidVoters)
+	cacheKey := cache.GenerateCacheKey("statetransition-test-aggregator", processID, nValidVoters)
 	cachedData := &circuitstest.AggregatorCacheData{}
 
 	var proof groth16.Proof
@@ -65,7 +66,7 @@ func StateTransitionInputsForTest(
 
 		// generate aggregator circuit and inputs
 		var agPlaceholder, aggWitness *aggregator.AggregatorCircuit
-		aggInputs, agPlaceholder, aggWitness = aggregatortest.AggregatorInputsForTest(t, processId, censusOrigin, nValidVoters)
+		aggInputs, agPlaceholder, aggWitness = aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
 
 		// parse the witness to the circuit
 		fullWitness, err = frontend.NewWitness(aggWitness, circuits.AggregatorCurve.ScalarField())
@@ -116,12 +117,12 @@ func StateTransitionInputsForTest(
 	c.Assert(err, qt.IsNil, qt.Commentf("aggregator verify"))
 
 	// reencrypt the votes with deterministic K for consistent caching
-	reencryptionK := circuitstest.GenerateDeterministicK(processId, nValidVoters)
+	reencryptionK := circuitstest.GenerateDeterministicK(processID, nValidVoters)
 
 	// get the encryption key from the aggregator inputs
 	encryptionKey := state.Curve.New().SetPoint(aggInputs.Process.EncryptionKey.PubKey[0], aggInputs.Process.EncryptionKey.PubKey[1])
 	// init final assignments stuff
-	s := newState(c, aggInputs.Process.ID, circuits.MockBallotMode(), censusOrigin, aggInputs.Process.EncryptionKey)
+	s := newState(c, processID, testutil.BallotMode(), censusOrigin, aggInputs.Process.EncryptionKey)
 
 	err = s.StartBatch()
 	c.Assert(err, qt.IsNil, qt.Commentf("start batch"))
@@ -143,8 +144,8 @@ func StateTransitionInputsForTest(
 	// add census data to witness
 	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(
 		aggInputs.Votes,
-		types.CensusOrigin(aggInputs.Process.CensusOrigin.Uint64()),
-		new(types.ProcessID).SetBytes(aggInputs.Process.ID.Bytes()),
+		censusOrigin,
+		processID,
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("generate census proofs for test"))
 
@@ -173,7 +174,7 @@ func StateTransitionInputsForTest(
 }
 
 func newState(c *qt.C,
-	processId *big.Int,
+	processID types.ProcessID,
 	ballotMode circuits.BallotMode[*big.Int],
 	censusOrigin types.CensusOrigin,
 	encryptionKey circuits.EncryptionKey[*big.Int],
@@ -184,7 +185,7 @@ func newState(c *qt.C,
 	db, err := metadb.New("pebble", dir)
 	c.Assert(err, qt.IsNil, qt.Commentf("create metadb"))
 
-	s, err := state.New(db, processId)
+	s, err := state.New(db, processID)
 	c.Assert(err, qt.IsNil, qt.Commentf("create state"))
 
 	err = s.Initialize(
