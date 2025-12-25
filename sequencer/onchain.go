@@ -103,7 +103,7 @@ func (s *Sequencer) processTransitionOnChain() {
 		}
 
 		// send the proof to the contract with the public witness
-		if err := s.pushTransitionToContract(pid, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
+		if err := s.pushTransitionToContract(pid, batchID, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
 			log.Errorw(err, "failed to push to contract")
 			if err := s.stg.MarkStateTransitionBatchFailed(batchID, pid); err != nil {
 				log.Errorw(err, "failed to mark state transition batch as failed")
@@ -130,6 +130,7 @@ func (s *Sequencer) processTransitionOnChain() {
 // to the smart contract for the given process ID.
 func (s *Sequencer) pushTransitionToContract(
 	processID types.HexBytes,
+	batchID []byte,
 	proof *solidity.Groth16CommitmentProof,
 	inputs storage.StateTransitionBatchProofInputs,
 	blobSidecar *gethtypes.BlobTxSidecar,
@@ -195,7 +196,7 @@ func (s *Sequencer) pushTransitionToContract(
 	log.Infow("state transition pending to be mined",
 		"pid", processID.String())
 	// Create a callback for the state transition
-	callback := s.pushStateTransitionCallback(processID)
+	callback := s.pushStateTransitionCallback(processID, batchID)
 	if err := s.contracts.SetProcessTransition(
 		processID,
 		abiProof,
@@ -204,26 +205,7 @@ func (s *Sequencer) pushTransitionToContract(
 		transitionOnChainTimeout,
 		callback,
 	); err != nil {
-		// TODO: mark the batch as failed? recover the pending batch?
-		// If this function returns an error, the caller skips to the next
-		// pending transition, so it should be retried later.
 		return fmt.Errorf("failed to set process transition: %w", err)
-	}
-	return nil
-}
-
-// recoverPendingBatch attempts to recover any pending state
-// transitions for the given process ID by re-pushing the batch to storage to
-// be retried later in a new state transition cycle.
-func (s *Sequencer) recoverPendingBatch(pid types.HexBytes) error {
-	pendingBatch, err := s.stg.PendingAggregatorBatch(pid)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return fmt.Errorf("failed to get pending aggregator batch: %w", err)
-	}
-	if pendingBatch != nil {
-		if err := s.stg.PushAggregatorBatch(pendingBatch); err != nil {
-			return fmt.Errorf("failed to recover pending aggregator batch: %w", err)
-		}
 	}
 	return nil
 }
@@ -231,7 +213,7 @@ func (s *Sequencer) recoverPendingBatch(pid types.HexBytes) error {
 // pushStateTransitionCallback returns a callback function to be called when
 // the state transition transaction is mined or fails. It handles logging and
 // recovery of pending state transitions.
-func (s *Sequencer) pushStateTransitionCallback(pid types.HexBytes) func(err error) {
+func (s *Sequencer) pushStateTransitionCallback(pid types.HexBytes, batchID []byte) func(err error) {
 	return func(err error) {
 		defer func() {
 			// Remove the pending tx mark
@@ -242,17 +224,18 @@ func (s *Sequencer) pushStateTransitionCallback(pid types.HexBytes) func(err err
 			}
 			log.Infow("pending tx released", "pid", pid.String())
 		}()
-		// If there was an error, log it and recover the batch if possible
+		// If there was an error, log it and mark the batch as failed
 		if err != nil {
 			log.Errorf("failed to wait for state transition of %s: %s", pid.String(), err)
-			if err := s.recoverPendingBatch(pid); err != nil {
-				log.Warnw("failed to recover pending state transition after state transition failure",
+			// Use MarkStateTransitionBatchFailed for consistent recovery logic
+			if err := s.stg.MarkStateTransitionBatchFailed(batchID, pid); err != nil {
+				log.Warnw("failed to mark state transition batch as failed after callback error",
 					"error", err,
 					"processID", pid.String())
 			}
 			return
 		}
-		log.Infow("state transition uploaded to contract", "pid", pid.String())
+		log.Infow("state transition pushed to contract", "pid", pid.String())
 	}
 }
 

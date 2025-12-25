@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
@@ -187,6 +188,28 @@ func (s *Storage) NextAggregatorBatch(processID []byte) (*AggregatorBallotBatch,
 		if s.isReserved(aggregBatchReservPrefix, k) {
 			return true
 		}
+
+		// Decode the batch to check cooldown
+		var tempBatch AggregatorBallotBatch
+		if err := DecodeArtifact(v, &tempBatch); err != nil {
+			log.Warnw("failed to decode batch during iteration", "error", err.Error())
+			return true // Skip this batch
+		}
+
+		// Check if batch is in cooldown period
+		if !tempBatch.LastAttemptTime.IsZero() {
+			// Calculate exponential backoff: 30s * 2^(attempts-1)
+			// Attempt 1: 30s, Attempt 2: 60s, Attempt 3: 120s, Attempt 4: 240s
+			// Cap at 5 minutes
+			cooldownSeconds := min(30*(1<<uint(tempBatch.Attempts-1)), 300)
+			cooldown := time.Duration(cooldownSeconds) * time.Second
+			timeSinceLastAttempt := time.Since(tempBatch.LastAttemptTime)
+
+			if timeSinceLastAttempt < cooldown {
+				return true // Skip this batch, it's in cooldown
+			}
+		}
+
 		chosenKey = slices.Clone(k)
 		chosenVal = bytes.Clone(v)
 		return false
@@ -606,30 +629,76 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 			return nil
 		}
 
-		// Check if votes were already processed in the state (maybe by another
-		// sequencer)
-		votesAlreadyProcessed := false
-		currentState, err := state.New(s.StateDB(), stb.ProcessID.BigInt().MathBigInt())
-		if err := currentState.SetRootAsBigInt(stb.Inputs.RootHashBefore); err != nil {
-			return fmt.Errorf("failed to set state root for process %s: %w", stb.ProcessID.String(), err)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to load state for process %s: %w", stb.ProcessID.String(), err)
-		}
-		for _, v := range stb.Ballots {
-			if currentState.ContainsVoteID(v.VoteID.BigInt().MathBigInt()) {
-				votesAlreadyProcessed = true
-				break
-			}
-		}
-		// If votes were not processed, re-push the pending aggregator batch to
-		// retry the state transition
-		if !votesAlreadyProcessed {
-			if err := s.pushAggregatorBatch(pendingBatch); err != nil {
-				return fmt.Errorf("failed to recover pending aggregator batch: %w", err)
+		// Validate that the process is still accepting votes before retrying
+		processID := new(types.ProcessID).SetBytes(stb.ProcessID)
+		if isAccepting, err := s.ProcessIsAcceptingVotes(processID); err != nil || !isAccepting {
+			log.Warnw("process is no longer accepting votes, marking batch as permanently failed",
+				"processID", hex.EncodeToString(pid),
+				"error", err)
+			// Mark all ballots in the batch as error
+			for _, v := range stb.Ballots {
+				if err := s.setVoteIDStatus(pid, v.VoteID, VoteIDStatusError); err != nil {
+					log.Warnw("failed to set vote ID status to failed", "error", err.Error())
+				}
 			}
 			return nil
 		}
+
+		// Get the latest process state to check against current state root
+		process, err := s.Process(processID)
+		if err != nil {
+			return fmt.Errorf("failed to get process for validation: %w", err)
+		}
+		if process.StateRoot == nil {
+			return fmt.Errorf("process %s has no state root", processID.String())
+		}
+
+		// Load the current state with the latest root
+		currentState, err := state.New(s.StateDB(), stb.ProcessID.BigInt().MathBigInt())
+		if err != nil {
+			return fmt.Errorf("failed to load state for process %s: %w", stb.ProcessID.String(), err)
+		}
+		if err := currentState.SetRootAsBigInt(process.StateRoot.MathBigInt()); err != nil {
+			return fmt.Errorf("failed to set latest state root for process %s: %w", stb.ProcessID.String(), err)
+		}
+
+		// Check which votes are already in the state and filter them out
+		validBallots := make([]*AggregatorBallot, 0, len(pendingBatch.Ballots))
+		for _, v := range stb.Ballots {
+			if currentState.ContainsVoteID(v.VoteID.BigInt().MathBigInt()) {
+				log.Debugw("vote already in state, marking as failed",
+					"processID", hex.EncodeToString(pid),
+					"voteID", v.VoteID.String())
+				if err := s.setVoteIDStatus(pid, v.VoteID, VoteIDStatusError); err != nil {
+					log.Warnw("failed to set vote ID status to failed", "error", err.Error())
+				}
+			} else {
+				// Vote is still valid, keep it in the batch
+				validBallots = append(validBallots, v)
+			}
+		}
+
+		// If no valid ballots remain, don't retry
+		if len(validBallots) == 0 {
+			log.Infow("no valid ballots remaining after filtering, batch not retried",
+				"processID", hex.EncodeToString(pid))
+			return nil
+		}
+
+		// Update the pending batch with only valid ballots
+		pendingBatch.Ballots = validBallots
+
+		// Set LastAttemptTime to implement cooldown
+		pendingBatch.LastAttemptTime = time.Now()
+		if err := s.pushAggregatorBatch(pendingBatch); err != nil {
+			return fmt.Errorf("failed to recover pending aggregator batch: %w", err)
+		}
+		log.Infow("re-pushed aggregator batch for retry with cooldown",
+			"processID", hex.EncodeToString(pid),
+			"attempts", pendingBatch.Attempts,
+			"validBallots", len(validBallots),
+			"lastAttemptTime", pendingBatch.LastAttemptTime.Format(time.RFC3339))
+		return nil
 	}
 	// If there is not pending batch or some of their votes are already in the
 	// state we cannot re-push the batch, we need to mark the votes as failed.

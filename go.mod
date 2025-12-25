@@ -2,7 +2,7 @@ module github.com/vocdoni/davinci-node
 
 go 1.25.1
 
-replace github.com/consensys/gnark => github.com/p4u/gnark v0.0.0-20251219172412-4c062375dab5
+replace github.com/consensys/gnark => github.com/p4u/gnark v0.0.0-20251225172317-373b7ed338e2
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.3
