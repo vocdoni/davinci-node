@@ -151,10 +151,11 @@ type AggregatorBallot struct {
 // proof should be in the BW6-761 curve, which is the one used by the
 // aggregator circuit and verified by the statetransition circuit.
 type AggregatorBallotBatch struct {
-	ProcessID types.HexBytes        `json:"processId"`
-	Proof     *groth16_bw6761.Proof `json:"proof"`
-	Ballots   []*AggregatorBallot   `json:"ballots"`
-	Attempts  int                   `json:"attempts"`
+	ProcessID       types.HexBytes        `json:"processId"`
+	Proof           *groth16_bw6761.Proof `json:"proof"`
+	Ballots         []*AggregatorBallot   `json:"ballots"`
+	Attempts        int                   `json:"attempts"`
+	LastAttemptTime time.Time             `json:"lastAttemptTime"`
 }
 
 // StateTransitionBatch is the struct that contains the information of a
