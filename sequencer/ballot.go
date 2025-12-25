@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/consensys/gnark/backend/groth16"
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
+	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
@@ -89,7 +91,6 @@ func (s *Sequencer) processAvailableBallots() bool {
 
 		log.Infow("processing ballot",
 			"address", hex.EncodeToString(ballot.Address.Bytes()),
-			"queued", s.stg.TotalPendingBallots(),
 			"voteID", hex.EncodeToString(ballot.VoteID),
 			"processID", fmt.Sprintf("%x", ballot.ProcessID),
 		)
@@ -201,6 +202,13 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		CircomProof: b.BallotProof,
 	}
 
+	log.Debugw("vote verifier inputs ready",
+		"processID", pid.String(),
+		"voteID", b.VoteID.String(),
+		"address", b.Address.String(),
+		"inputsHash", inputHash.String(),
+	)
+
 	// Prepare the options for the prover
 	opts := stdgroth16.GetNativeProverOptions(
 		circuits.AggregatorCurve.ScalarField(),
@@ -212,12 +220,36 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
 
-	log.Infow("ballot verified",
+	if s.vvVk == nil {
+		return nil, fmt.Errorf("vote verifier verifying key is not loaded")
+	}
+	pubAssignment := &voteverifier.VerifyVoteCircuit{
+		IsValid:    1,
+		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
+	}
+	pubWitness, err := frontend.NewWitness(pubAssignment, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create public witness: %w", err)
+	}
+	verifyOpts := stdgroth16.GetNativeVerifierOptions(
+		circuits.AggregatorCurve.ScalarField(),
+		circuits.VoteVerifierCurve.ScalarField(),
+	)
+	if err := groth16.Verify(proof, s.vvVk, pubWitness, verifyOpts); err != nil {
+		return nil, fmt.Errorf("failed to verify generated proof: %w", err)
+	}
+
+	log.Infow("vote verification proof generated",
 		"pid", pid.String(),
 		"voteID", hex.EncodeToString(b.VoteID),
 		"address", hex.EncodeToString(b.Address.Bytes()),
 		"took", time.Since(startTime).String(),
 	)
+
+	proofBLS, ok := proof.(*groth16_bls12377.Proof)
+	if !ok {
+		return nil, fmt.Errorf("unexpected vote verifier proof type: %T", proof)
+	}
 
 	// Create and return the verified ballot
 	return &storage.VerifiedBallot{
@@ -226,7 +258,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		VoterWeight:     b.VoterWeight,
 		EncryptedBallot: b.EncryptedBallot,
 		Address:         b.Address,
-		Proof:           proof.(*groth16_bls12377.Proof),
+		Proof:           proofBLS,
 		InputsHash:      inputHash,
 		CensusProof:     b.CensusProof,
 	}, nil

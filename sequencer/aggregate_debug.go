@@ -1,0 +1,224 @@
+package sequencer
+
+import (
+	"fmt"
+	"math/big"
+	"reflect"
+
+	"github.com/consensys/gnark/backend/groth16"
+	"github.com/consensys/gnark/backend/witness"
+	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
+	"github.com/consensys/gnark/std/math/emulated"
+	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
+)
+
+func (s *Sequencer) debugLogAggregationBatchSummary(
+	pid types.HexBytes,
+	batchInputs *aggregationBatchInputs,
+	batchInputsHash *big.Int,
+) {
+	if log.Level() != log.LogLevelDebug {
+		return
+	}
+
+	voteIDs := make([]string, 0, len(batchInputs.verifiedBallots))
+	for _, vb := range batchInputs.verifiedBallots {
+		if vb == nil {
+			voteIDs = append(voteIDs, "<nil>")
+			continue
+		}
+		voteIDs = append(voteIDs, vb.VoteID.String())
+	}
+	voteIDPrefix, voteIDSuffix := prefixSuffixStrings(voteIDs, 5)
+
+	inputHashStrings := bigIntStrings(batchInputs.proofsInputsHashInputs)
+	hashPrefix, hashSuffix := prefixSuffixStrings(inputHashStrings, 5)
+
+	log.Debugw("aggregator batch summary",
+		"processID", pid.String(),
+		"validProofs", len(batchInputs.verifiedBallots),
+		"inputsHash", batchInputsHash.String(),
+		"voteIDsCount", len(voteIDs),
+		"voteIDsPrefix", voteIDPrefix,
+		"voteIDsSuffix", voteIDSuffix,
+		"inputsHashesCount", len(inputHashStrings),
+		"inputsHashesPrefix", hashPrefix,
+		"inputsHashesSuffix", hashSuffix,
+	)
+}
+
+func (s *Sequencer) debugAggregationFailure(
+	pid types.HexBytes,
+	assignment *aggregator.AggregatorCircuit,
+	batchInputs *aggregationBatchInputs,
+	batchInputsHash *big.Int,
+	proveErr error,
+) {
+	if log.Level() != log.LogLevelDebug {
+		return
+	}
+
+	log.Warnw("aggregator proving failed; investigating batch inputs",
+		"processID", pid.String(),
+		"error", proveErr.Error(),
+		"validProofs", len(batchInputs.verifiedBallots),
+		"inputsHash", batchInputsHash.String(),
+		"voteVerifierNbPublicWitness", s.vvVk.NbPublicWitness(),
+		"voteVerifierNbConstraints", s.vvCcs.GetNbConstraints(),
+		"aggregatorNbConstraints", s.aggCcs.GetNbConstraints(),
+	)
+
+	if pubW, err := frontend.NewWitness(assignment, circuits.AggregatorCurve.ScalarField(), frontend.PublicOnly()); err != nil {
+		log.Warnw("failed to build aggregator public witness", "processID", pid.String(), "error", err.Error())
+	} else {
+		log.Debugw("aggregator public witness",
+			"processID", pid.String(),
+			"vector", witnessVectorStrings(pubW),
+		)
+	}
+
+	proofInputsHashStrings := bigIntStrings(batchInputs.proofsInputsHashInputs)
+	hashPrefix, hashSuffix := prefixSuffixStrings(proofInputsHashStrings, 5)
+	log.Debugw("aggregator inputs hash preimage (vote verifier inputs hashes)",
+		"processID", pid.String(),
+		"count", len(proofInputsHashStrings),
+		"prefix", hashPrefix,
+		"suffix", hashSuffix,
+	)
+
+	opts := stdgroth16.GetNativeVerifierOptions(
+		circuits.AggregatorCurve.ScalarField(),
+		circuits.VoteVerifierCurve.ScalarField(),
+	)
+
+	for i, vb := range batchInputs.verifiedBallots {
+		if vb == nil {
+			log.Warnw("nil verified ballot in aggregation batch",
+				"processID", pid.String(),
+				"index", i,
+			)
+			continue
+		}
+		if vb.Proof == nil {
+			log.Warnw("missing vote verifier proof in aggregation batch",
+				"processID", pid.String(),
+				"index", i,
+				"voteID", vb.VoteID.String(),
+				"address", vb.Address.String(),
+			)
+			continue
+		}
+		if vb.InputsHash == nil {
+			log.Warnw("missing vote verifier inputs hash in aggregation batch",
+				"processID", pid.String(),
+				"index", i,
+				"voteID", vb.VoteID.String(),
+				"address", vb.Address.String(),
+			)
+			continue
+		}
+
+		inputsHashValue := emulated.ValueOf[sw_bn254.ScalarField](vb.InputsHash)
+		pubAssignment := &voteverifier.VerifyVoteCircuit{
+			IsValid:    1,
+			InputsHash: inputsHashValue,
+		}
+		pubWitness, err := frontend.NewWitness(pubAssignment, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+		if err != nil {
+			log.Warnw("failed to build vote verifier public witness",
+				"processID", pid.String(),
+				"index", i,
+				"voteID", vb.VoteID.String(),
+				"address", vb.Address.String(),
+				"inputsHash", vb.InputsHash.String(),
+				"error", err.Error(),
+			)
+			continue
+		}
+
+		if err := groth16.Verify(vb.Proof, s.vvVk, pubWitness, opts); err != nil {
+
+			pubAssignmentIsValid0 := &voteverifier.VerifyVoteCircuit{
+				IsValid:    0,
+				InputsHash: inputsHashValue,
+			}
+			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+			if errIsValid0 == nil {
+				if err2 := groth16.Verify(vb.Proof, s.vvVk, pubWitnessIsValid0, opts); err2 == nil {
+					log.Warnw("vote verifier proof verifies only with IsValid=0; aggregator treating it as real will fail",
+						"processID", pid.String(),
+						"index", i,
+						"voteID", vb.VoteID.String(),
+						"address", vb.Address.String(),
+						"inputsHash", vb.InputsHash.String(),
+						"publicWitnessIsValid0", witnessVectorStrings(pubWitnessIsValid0),
+					)
+					continue
+				}
+			}
+
+			log.Warnw("vote verifier proof does not verify (native)",
+				"processID", pid.String(),
+				"index", i,
+				"voteID", vb.VoteID.String(),
+				"address", vb.Address.String(),
+				"inputsHash", vb.InputsHash.String(),
+				"publicWitness", witnessVectorStrings(pubWitness),
+				"error", err.Error(),
+			)
+			continue
+		}
+
+		log.Debugw("vote verifier proof verifies (native)",
+			"processID", pid.String(),
+			"index", i,
+			"voteID", vb.VoteID.String(),
+			"address", vb.Address.String(),
+			"inputsHash", vb.InputsHash.String(),
+			"publicWitness", witnessVectorStrings(pubWitness),
+		)
+	}
+}
+
+func witnessVectorStrings(w witness.Witness) []string {
+	vecAny := w.Vector()
+	rv := reflect.ValueOf(vecAny)
+	if rv.Kind() != reflect.Slice {
+		return nil
+	}
+	out := make([]string, rv.Len())
+	for i := range rv.Len() {
+		out[i] = fmt.Sprint(rv.Index(i).Interface())
+	}
+	return out
+}
+
+func bigIntStrings(v []*big.Int) []string {
+	out := make([]string, 0, len(v))
+	for _, n := range v {
+		if n == nil {
+			out = append(out, "<nil>")
+			continue
+		}
+		out = append(out, n.String())
+	}
+	return out
+}
+
+func prefixSuffixStrings(v []string, maxEach int) (prefix, suffix []string) {
+	if maxEach <= 0 || len(v) == 0 {
+		return nil, nil
+	}
+	if len(v) <= maxEach*2 {
+		return v, nil
+	}
+	prefix = v[:maxEach]
+	suffix = v[len(v)-maxEach:]
+	return prefix, suffix
+}

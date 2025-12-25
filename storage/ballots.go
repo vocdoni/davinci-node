@@ -359,6 +359,20 @@ func (s *Storage) PullVerifiedBallots(processID []byte, numFields int) ([]*Verif
 	return res, keys, nil
 }
 
+// ReleaseVerifiedBallotReservations removes the reservations for the given
+// verified ballots list. The ballots will be available for pulling again.
+func (s *Storage) ReleaseVerifiedBallotReservations(keys [][]byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	// Remove reservation
+	for _, key := range keys {
+		if err := s.deleteArtifact(verifiedBallotReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete reservation: %w", err)
+		}
+	}
+	return nil
+}
+
 // CountVerifiedBallots returns the number of verified ballots for a given
 // processID which are not reserved.
 func (s *Storage) CountVerifiedBallots(processID []byte) int {
@@ -574,7 +588,7 @@ func (s *Storage) nextPendingBallot() (*Ballot, []byte, error) {
 		// Make a copy of the key to avoid potential issues with slice reuse
 		chosenKey = make([]byte, len(k))
 		copy(chosenKey, k)
-		chosenVal = v
+		chosenVal = bytes.Clone(v)
 		return false
 	}); err != nil {
 		return nil, nil, fmt.Errorf("iterate ballots: %w", err)

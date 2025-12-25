@@ -7,6 +7,7 @@ import (
 
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
+	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -14,10 +15,355 @@ import (
 	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
+
+type aggregationProcessState interface {
+	ContainsVoteID(voteID *big.Int) bool
+	ContainsAddress(address *types.BigInt) bool
+}
+
+type aggregationStorage interface {
+	MarkVerifiedBallotsFailed(keys ...[]byte) error
+	ReleaseVerifiedBallotReservations(keys [][]byte) error
+}
+
+type (
+	proofToRecursionFn           func(groth16.Proof) (stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine], error)
+	voteVerifierProofValidatorFn func(ballot *storage.VerifiedBallot) error
+)
+
+type aggregationBatchInputs struct {
+	proofs                 [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
+	proofsInputHash        [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
+	aggBallots             []*storage.AggregatorBallot
+	verifiedBallots        []*storage.VerifiedBallot
+	processedKeys          [][]byte
+	proofsInputsHashInputs []*big.Int
+}
+
+func collectAggregationBatchInputs(
+	stg aggregationStorage,
+	pid types.HexBytes,
+	ballots []*storage.VerifiedBallot,
+	keys [][]byte,
+	processState aggregationProcessState,
+	maxVotersReached bool,
+	proofToRecursion proofToRecursionFn,
+	verifyVoteVerifierProof voteVerifierProofValidatorFn,
+) (*aggregationBatchInputs, error) {
+	// Prepare data structures for the aggregator circuit
+	proofs := [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
+	proofsInputHash := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
+	aggBallots := make([]*storage.AggregatorBallot, 0, len(ballots))
+	verifiedBallots := make([]*storage.VerifiedBallot, 0, len(ballots))
+	processedKeys := make([][]byte, 0, types.VotesPerBatch)
+	proofsInputsHashInputs := make([]*big.Int, 0, types.VotesPerBatch)
+
+	for i, b := range ballots {
+		if b == nil {
+			log.Warnw("skipping nil verified ballot",
+				"processID", pid.String(),
+				"index", i,
+			)
+			if i < len(keys) {
+				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+					log.Warnw("failed to mark nil ballot as failed",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"index", i,
+					)
+					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+						log.Warnw("failed to release ballot reservation after nil ballot failure marking",
+							"error", err.Error(),
+							"processID", pid.String(),
+							"index", i,
+						)
+					}
+				}
+			}
+			continue
+		}
+
+		if b.VoteID == nil {
+			addressStr := ""
+			if b.Address != nil {
+				addressStr = b.Address.String()
+			}
+			log.Warnw("skipping verified ballot with missing voteID",
+				"processID", pid.String(),
+				"index", i,
+				"address", addressStr,
+			)
+			if i < len(keys) {
+				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+					log.Warnw("failed to mark ballot as failed",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"index", i,
+					)
+					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+						log.Warnw("failed to release ballot reservation after failure marking",
+							"error", err.Error(),
+							"processID", pid.String(),
+							"index", i,
+						)
+					}
+				}
+			}
+			continue
+		}
+		if b.Address == nil {
+			log.Warnw("skipping verified ballot with missing address",
+				"processID", pid.String(),
+				"index", i,
+				"voteID", b.VoteID.String(),
+			)
+			if i < len(keys) {
+				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+					log.Warnw("failed to mark ballot as failed",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"voteID", b.VoteID.String(),
+					)
+					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+						log.Warnw("failed to release ballot reservation after failure marking",
+							"error", err.Error(),
+							"processID", pid.String(),
+							"voteID", b.VoteID.String(),
+						)
+					}
+				}
+			}
+			continue
+		}
+
+		// if the vote ID already exists in the state, skip it
+		if processState.ContainsVoteID(b.VoteID.BigInt().MathBigInt()) {
+			log.Debugw("skipping ballot already in state",
+				"processID", pid.String(),
+				"voteID", b.VoteID.String(),
+			)
+			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+				log.Warnw("failed to mark ballot as failed",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+				)
+				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+					log.Warnw("failed to release ballot reservation after failure marking",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"voteID", b.VoteID.String(),
+					)
+				}
+			}
+			continue
+		}
+
+		// If the maxVoters is reached, check if the ballot is an overwrite
+		// and skip if not
+		if maxVotersReached && !processState.ContainsAddress(new(types.BigInt).SetBigInt(b.Address)) {
+			log.Debugw("skipping ballot due to max voters reached",
+				"address", b.Address.String(),
+				"processID", pid.String())
+			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+				log.Warnw("failed to mark ballot as failed",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+					"address", b.Address.String(),
+				)
+				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+					log.Warnw("failed to release ballot reservation after failure marking",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"voteID", b.VoteID.String(),
+						"address", b.Address.String(),
+					)
+				}
+			}
+			continue
+		}
+
+		if b.Proof == nil {
+			log.Warnw("skipping verified ballot with missing vote verifier proof",
+				"processID", pid.String(),
+				"voteID", b.VoteID.String(),
+				"address", b.Address.String(),
+			)
+			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+				log.Warnw("failed to mark ballot as failed",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+					"address", b.Address.String(),
+				)
+				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+					log.Warnw("failed to release ballot reservation after failure marking",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"voteID", b.VoteID.String(),
+						"address", b.Address.String(),
+					)
+				}
+			}
+			continue
+		}
+		if b.InputsHash == nil {
+			log.Warnw("skipping verified ballot with missing vote verifier inputs hash",
+				"processID", pid.String(),
+				"voteID", b.VoteID.String(),
+				"address", b.Address.String(),
+			)
+			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+				log.Warnw("failed to mark ballot as failed",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+					"address", b.Address.String(),
+				)
+				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+					log.Warnw("failed to release ballot reservation after failure marking",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"voteID", b.VoteID.String(),
+						"address", b.Address.String(),
+					)
+				}
+			}
+			continue
+		}
+
+		if !b.Proof.Ar.IsInSubGroup() || !b.Proof.Krs.IsInSubGroup() || !b.Proof.Bs.IsInSubGroup() {
+			log.Warnw("skipping verified ballot with malformed vote verifier proof (subgroup check failed)",
+				"processID", pid.String(),
+				"voteID", b.VoteID.String(),
+				"address", b.Address.String(),
+			)
+			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+				log.Warnw("failed to mark ballot as failed",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+					"address", b.Address.String(),
+				)
+				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+					log.Warnw("failed to release ballot reservation after failure marking",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"voteID", b.VoteID.String(),
+						"address", b.Address.String(),
+					)
+				}
+			}
+			continue
+		}
+
+		if verifyVoteVerifierProof != nil {
+			if err := verifyVoteVerifierProof(b); err != nil {
+				log.Warnw("skipping verified ballot with invalid vote verifier proof",
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+					"address", b.Address.String(),
+					"error", err.Error(),
+				)
+				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+					log.Warnw("failed to mark ballot as failed",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"voteID", b.VoteID.String(),
+						"address", b.Address.String(),
+					)
+					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+						log.Warnw("failed to release ballot reservation after failure marking",
+							"error", err.Error(),
+							"processID", pid.String(),
+							"voteID", b.VoteID.String(),
+							"address", b.Address.String(),
+						)
+					}
+				}
+				continue
+			}
+		}
+
+		batchIdx := len(aggBallots)
+		if batchIdx >= types.VotesPerBatch {
+			remainingKeys := keys[i:]
+			if err := stg.ReleaseVerifiedBallotReservations(remainingKeys); err != nil {
+				log.Warnw("failed to release ballot reservations", "error", err.Error())
+			}
+			break
+		}
+
+		// Transform the proof into the required format
+		var err error
+		proofs[batchIdx], err = proofToRecursion(groth16.Proof(b.Proof))
+		if err != nil {
+			log.Warnw("failed to transform proof for recursion; marking ballot as failed",
+				"processID", pid.String(),
+				"voteID", b.VoteID.String(),
+				"address", b.Address.String(),
+				"error", err.Error(),
+			)
+			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+				log.Warnw("failed to mark ballot as failed",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"voteID", b.VoteID.String(),
+					"address", b.Address.String(),
+				)
+				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+					log.Warnw("failed to release ballot reservation after failure marking",
+						"error", err.Error(),
+						"processID", pid.String(),
+						"voteID", b.VoteID.String(),
+						"address", b.Address.String(),
+					)
+				}
+			}
+			continue
+		}
+
+		// Transform and collect the input hash for the proof
+		proofsInputHash[batchIdx] = emulated.ValueOf[sw_bn254.ScalarField](b.InputsHash)
+		proofsInputsHashInputs = append(proofsInputsHashInputs, b.InputsHash)
+
+		// Prepare the aggregator ballot entry
+		aggBallots = append(aggBallots, &storage.AggregatorBallot{
+			VoteID:          b.VoteID,
+			Address:         b.Address,
+			Weight:          b.VoterWeight,
+			EncryptedBallot: b.EncryptedBallot,
+			CensusProof:     b.CensusProof,
+		})
+		verifiedBallots = append(verifiedBallots, b)
+		processedKeys = append(processedKeys, keys[i])
+
+		// If we've reached the batch size, stop processing more ballots
+		if len(aggBallots) >= types.VotesPerBatch {
+			remainingKeys := keys[i+1:]
+			// Release reservations for any remaining ballots that were not processed
+			if err := stg.ReleaseVerifiedBallotReservations(remainingKeys); err != nil {
+				log.Warnw("failed to release ballot reservations", "error", err.Error())
+			}
+			break // We have enough ballots for one batch
+		}
+	}
+
+	return &aggregationBatchInputs{
+		proofs:                 proofs,
+		proofsInputHash:        proofsInputHash,
+		aggBallots:             aggBallots,
+		verifiedBallots:        verifiedBallots,
+		processedKeys:          processedKeys,
+		proofsInputsHashInputs: proofsInputsHashInputs,
+	}, nil
+}
 
 // startAggregateProcessor starts a background goroutine that periodically checks
 // for batches of verified ballots that are ready to be aggregated into a single proof.
@@ -131,7 +477,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	// Pull verified ballots from storage
-	ballots, keys, err := s.stg.PullVerifiedBallots(pid, types.VotesPerBatch)
+	ballots, keys, err := s.stg.PullVerifiedBallots(pid, types.VotesPerBatch*2) // Pull up to double the batch size, to handle skips
 	if err != nil {
 		return fmt.Errorf("failed to pull verified ballots: %w", err)
 	}
@@ -153,110 +499,116 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 		addressSeen[addr] = true
 	}
 
-	log.Debugw("aggregating ballots",
-		"processID", pid.String(),
-		"ballotCount", len(ballots))
-	startTime := time.Now()
-
-	// Prepare data structures for the aggregator circuit
-	proofs := [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
-	proofsInputHash := [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
-	aggBallots := make([]*storage.AggregatorBallot, 0, len(ballots))
-	proofsInputsHashInputs := []*big.Int{}
-
 	// Get the current process state to check if the vote ID already exists
 	processState, err := s.latestProcessState(new(types.ProcessID).SetBytes(pid))
 	if err != nil {
 		return fmt.Errorf("failed to get latest process state: %w", err)
 	}
 
-	// Transform each ballot's proof for the aggregator circuit
-	var transformErr error
-	for i, b := range ballots {
-		// if the vote ID already exists in the state, skip it
-		if processState.ContainsVoteID(b.VoteID.BigInt().MathBigInt()) {
-			log.Debugw("skipping ballot with existing vote ID",
-				"voteID", b.VoteID.String(),
-				"processID", pid.String())
-			// If the ballot is already in the state, mark it as failed
-			if err := s.stg.MarkVerifiedBallotsFailed(b.VoteID); err != nil {
-				log.Warnw("failed to mark ballot as failed",
-					"error", err.Error(),
-					"processID", pid.String(),
-					"voteID", b.VoteID.String(),
-				)
-			}
-			continue
+	proofToRecursion := func(p groth16.Proof) (stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine], error) {
+		return stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](p)
+	}
+
+	verifyOpts := stdgroth16.GetNativeVerifierOptions(
+		circuits.AggregatorCurve.ScalarField(),
+		circuits.VoteVerifierCurve.ScalarField(),
+	)
+	verifyVoteVerifierProof := func(vb *storage.VerifiedBallot) error {
+		if vb == nil {
+			return fmt.Errorf("verified ballot is nil")
+		}
+		if vb.Proof == nil {
+			return fmt.Errorf("missing proof")
+		}
+		if vb.InputsHash == nil {
+			return fmt.Errorf("missing inputs hash")
+		}
+		if s.vvVk == nil {
+			return fmt.Errorf("vote verifier verifying key is not loaded")
 		}
 
-		// If the maxVoters is reached, check if the ballot is an overwrite
-		// and skip if not
-		if maxVotersReached && !processState.ContainsAddress(new(types.BigInt).SetBigInt(b.Address)) {
-			log.Debugw("skipping ballot due to max voters reached and not an overwrite",
-				"address", b.Address.String(),
-				"processID", pid.String())
-			// Mark the ballot as failed
-			if err := s.stg.MarkVerifiedBallotsFailed(b.VoteID); err != nil {
-				log.Warnw("failed to mark ballot as failed",
-					"error", err.Error(),
-					"processID", pid.String(),
-					"voteID", b.VoteID.String(),
-				)
+		inputsHashValue := emulated.ValueOf[sw_bn254.ScalarField](vb.InputsHash)
+		pubAssignment := &voteverifier.VerifyVoteCircuit{
+			IsValid:    1,
+			InputsHash: inputsHashValue,
+		}
+		pubWitness, err := frontend.NewWitness(pubAssignment, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+		if err != nil {
+			return fmt.Errorf("build public witness: %w", err)
+		}
+		if err := groth16.Verify(vb.Proof, s.vvVk, pubWitness, verifyOpts); err != nil {
+			pubAssignmentIsValid0 := &voteverifier.VerifyVoteCircuit{
+				IsValid:    0,
+				InputsHash: inputsHashValue,
 			}
-			continue
+			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+			if errIsValid0 == nil {
+				if err2 := groth16.Verify(vb.Proof, s.vvVk, pubWitnessIsValid0, verifyOpts); err2 == nil {
+					return fmt.Errorf("proof verifies only with IsValid=0")
+				}
+			}
+			return fmt.Errorf("verify proof: %w", err)
 		}
+		return nil
+	}
 
-		// Transform the proof into the required format
-		proofs[i], transformErr = stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](groth16.Proof(b.Proof))
-		if transformErr != nil {
-			return fmt.Errorf("failed to transform proof for recursion (ballot %s): %w", b.VoteID.String(), transformErr)
-		}
-		// Transform and collect the input hash for the proof
-		proofsInputHash[i] = emulated.ValueOf[sw_bn254.ScalarField](b.InputsHash)
-		proofsInputsHashInputs = append(proofsInputsHashInputs, b.InputsHash)
-		// Prepare the aggregator ballot entry
-		aggBallots = append(aggBallots, &storage.AggregatorBallot{
-			VoteID:          b.VoteID,
-			Address:         b.Address,
-			Weight:          b.VoterWeight,
-			EncryptedBallot: b.EncryptedBallot,
-			CensusProof:     b.CensusProof,
-		})
+	batchInputs, err := collectAggregationBatchInputs(
+		s.stg,
+		pid,
+		ballots,
+		keys,
+		processState,
+		maxVotersReached,
+		proofToRecursion,
+		verifyVoteVerifierProof,
+	)
+	if err != nil {
+		return err
 	}
 
 	// Check if we have some ballots to process
-	if len(aggBallots) == 0 {
+	if len(batchInputs.aggBallots) == 0 {
 		log.Debugw("no ballots to process", "processID", fmt.Sprintf("%x", pid))
 		return nil
 	}
 
+	log.Debugw("aggregating ballots",
+		"processID", pid.String(),
+		"ballotCount", len(batchInputs.aggBallots))
+	startTime := time.Now()
+
 	// Padding the proofsInputsHashInputs with 1s to fill the array
-	for i := len(ballots); i < types.VotesPerBatch; i++ {
-		proofsInputsHashInputs = append(proofsInputsHashInputs, new(big.Int).SetInt64(1))
+	for i := len(batchInputs.aggBallots); i < types.VotesPerBatch; i++ {
+		batchInputs.proofsInputsHashInputs = append(batchInputs.proofsInputsHashInputs, new(big.Int).SetInt64(1))
 	}
 
 	// Compute the hash of the ballot input hashes using MiMC hash function
-	inputsHash, err := mimc7.Hash(proofsInputsHashInputs, nil)
+	inputsHash, err := mimc7.Hash(batchInputs.proofsInputsHashInputs, nil)
 	if err != nil {
 		return fmt.Errorf("failed to calculate inputs hash: %w", err)
 	}
 
+	// Log a summary of the batch inputs for debugging, if in debug mode
+	// We might remove this log once the aggregator proving is stable
+	s.debugLogAggregationBatchSummary(pid, batchInputs, inputsHash)
+
 	// Create the aggregator circuit assignment
 	assignment := &aggregator.AggregatorCircuit{
-		ValidProofs:        len(ballots),
+		ValidProofs:        len(batchInputs.aggBallots),
 		InputsHash:         emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
-		Proofs:             proofs,
-		ProofsInputsHashes: proofsInputHash,
+		Proofs:             batchInputs.proofs,
+		ProofsInputsHashes: batchInputs.proofsInputHash,
 	}
 
 	// Fill any remaining slots with dummy proofs if needed
-	if len(ballots) < types.VotesPerBatch {
-		log.Debugw("filling with dummy proofs", "count", types.VotesPerBatch-len(ballots))
-		if err := assignment.FillWithDummy(s.vvCcs, s.vvPk, s.bVkCircom, len(ballots), s.prover); err != nil {
-			if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
-				log.Warnw("failed to mark ballot batch as failed",
+	if len(batchInputs.aggBallots) < types.VotesPerBatch {
+		log.Debugw("filling with dummy proofs", "count", types.VotesPerBatch-len(batchInputs.aggBallots))
+		if err := assignment.FillWithDummy(s.vvCcs, s.vvPk, s.bVkCircom, len(batchInputs.aggBallots), s.prover); err != nil {
+			if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.processedKeys); err != nil {
+				log.Warnw("failed to release ballot reservations after dummy fill failure",
 					"error", err.Error(),
-					"processID", pid.String())
+					"processID", pid.String(),
+				)
 			}
 			return fmt.Errorf("failed to fill with dummy proofs: %w", err)
 		}
@@ -274,10 +626,47 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	// Generate the proof for the aggregator circuit
 	proof, err := s.prover(circuits.AggregatorCurve, s.aggCcs, s.aggPk, assignment, opts)
 	if err != nil {
-		if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
-			log.Warnw("failed to mark ballot batch as failed",
+		// Log detailed debug information about the failure
+		// Remove block once we have sufficient confidence in the aggregator proving
+		s.debugAggregationFailure(pid, assignment, batchInputs, inputsHash, err)
+		var invalidKeys [][]byte
+		for i, vb := range batchInputs.verifiedBallots {
+			if errVerify := verifyVoteVerifierProof(vb); errVerify != nil {
+				invalidKeys = append(invalidKeys, batchInputs.processedKeys[i])
+				voteIDStr := "<nil>"
+				addressStr := "<nil>"
+				if vb != nil {
+					if vb.VoteID != nil {
+						voteIDStr = vb.VoteID.String()
+					}
+					if vb.Address != nil {
+						addressStr = vb.Address.String()
+					}
+				}
+				log.Warnw("vote verifier proof does not verify for aggregation batch; excluding ballot",
+					"processID", pid.String(),
+					"voteID", voteIDStr,
+					"address", addressStr,
+					"error", errVerify.Error(),
+				)
+			}
+		}
+		// End debug block
+		// Mark any invalid ballots as failed
+		if len(invalidKeys) > 0 {
+			if err := s.stg.MarkVerifiedBallotsFailed(invalidKeys...); err != nil {
+				log.Warnw("failed to mark invalid ballots as failed after aggregation proving failure",
+					"error", err.Error(),
+					"processID", pid.String(),
+					"invalidCount", len(invalidKeys),
+				)
+			}
+		}
+		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.processedKeys); err != nil {
+			log.Warnw("failed to release ballot reservations after aggregation proving failure",
 				"error", err.Error(),
-				"processID", pid.String())
+				"processID", pid.String(),
+			)
 		}
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)
 	}
@@ -285,23 +674,39 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	log.Infow("aggregate proof generated",
 		"took", time.Since(startTime).String(),
 		"processID", pid.String(),
-		"ballots", len(ballots))
+		"ballots", len(batchInputs.aggBallots))
+
+	proofBW6, ok := proof.(*groth16_bw6761.Proof)
+	if !ok {
+		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.processedKeys); err != nil {
+			log.Warnw("failed to release ballot reservations after unexpected aggregate proof type",
+				"error", err.Error(),
+				"processID", pid.String(),
+			)
+		}
+		return fmt.Errorf("unexpected aggregate proof type: %T", proof)
+	}
 
 	// Store the aggregated batch
 	abb := storage.AggregatorBallotBatch{
 		ProcessID: pid,
-		Proof:     proof.(*groth16_bw6761.Proof),
-		Ballots:   aggBallots,
+		Proof:     proofBW6,
+		Ballots:   batchInputs.aggBallots,
 	}
 
-	log.Debugw("pushing aggregated batch to storage")
 	if err := s.stg.PushAggregatorBatch(&abb); err != nil {
+		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.processedKeys); err != nil {
+			log.Warnw("failed to release ballot reservations after batch push failure",
+				"error", err.Error(),
+				"processID", pid.String(),
+			)
+		}
 		return fmt.Errorf("failed to push ballot batch: %w", err)
 	}
 
 	// Mark the individual ballots as processed
-	if err := s.stg.MarkVerifiedBallotsDone(keys...); err != nil {
-		if err := s.stg.MarkVerifiedBallotsFailed(keys...); err != nil {
+	if err := s.stg.MarkVerifiedBallotsDone(batchInputs.processedKeys...); err != nil {
+		if err := s.stg.MarkVerifiedBallotsFailed(batchInputs.processedKeys...); err != nil {
 			log.Warnw("failed to mark ballot batch as failed",
 				"error", err.Error(),
 				"processID", pid.String())
