@@ -204,6 +204,7 @@ services:
     environment:
       - LOG_LEVEL=debug
       - GPU_PROVER=true
+      - CGO_ENABLED=1
       - LD_LIBRARY_PATH=/usr/local/lib
       - ICICLE_BACKEND_INSTALL_DIR=/usr/local/lib/backend
       - ICICLE_SHARED_POINTS=false

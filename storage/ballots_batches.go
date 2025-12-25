@@ -187,8 +187,8 @@ func (s *Storage) NextAggregatorBatch(processID []byte) (*AggregatorBallotBatch,
 		if s.isReserved(aggregBatchReservPrefix, k) {
 			return true
 		}
-		chosenKey = k
-		chosenVal = v
+		chosenKey = slices.Clone(k)
+		chosenVal = bytes.Clone(v)
 		return false
 	}); err != nil {
 		return nil, nil, fmt.Errorf("iterate agg batches: %w", err)
@@ -254,7 +254,7 @@ func (s *Storage) pendingAggregatorBatch(processID []byte) (*AggregatorBallotBat
 	pr := prefixeddb.NewPrefixedReader(s.db, pendingAggregBatchPrefix)
 	var chosenVal []byte
 	if err := pr.Iterate(processID, func(_, v []byte) bool {
-		chosenVal = v
+		chosenVal = bytes.Clone(v)
 		return false
 	}); err != nil {
 		return nil, fmt.Errorf("iterate pending agg batches: %w", err)
@@ -277,7 +277,7 @@ func (s *Storage) releasePendingAggregatorBatch(processID []byte) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
 	var chosenKey []byte
 	if err := wTx.Iterate(processID, func(k, _ []byte) bool {
-		chosenKey = k
+		chosenKey = slices.Clone(k)
 		return false
 	}); err != nil {
 		return fmt.Errorf("iterate pending agg batches: %w", err)
@@ -367,8 +367,8 @@ func (s *Storage) NextStateTransitionBatch(processID []byte) (*StateTransitionBa
 			return true
 		}
 		// store the first non-reserved state transition batch
-		chosenKey = k
-		chosenVal = v
+		chosenKey = slices.Clone(k)
+		chosenVal = bytes.Clone(v)
 		return false
 	}); err != nil {
 		return nil, nil, fmt.Errorf("iterate state transition batches: %w", err)

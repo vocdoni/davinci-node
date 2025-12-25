@@ -23,7 +23,7 @@ type internalCircuits struct {
 	bVkCircom                   []byte
 	vvCcs, aggCcs, stCcs, rvCcs constraint.ConstraintSystem
 	vvPk, aggPk, stPk, rvPk     groth16.ProvingKey
-	stVk                        groth16.VerifyingKey
+	vvVk, stVk                  groth16.VerifyingKey
 }
 
 // loadInternalCircuitArtifacts loads the internal circuit artifacts for the
@@ -47,6 +47,12 @@ func (s *Sequencer) loadInternalCircuitArtifacts() error {
 	s.vvCcs, s.vvPk, err = loadCircuitArtifacts(voteverifier.Artifacts)
 	if err != nil {
 		return fmt.Errorf("failed to load vote verifier artifacts: %w", err)
+	}
+
+	// Load vote verifier verifying key
+	s.vvVk, err = voteverifier.Artifacts.VerifyingKey()
+	if err != nil {
+		return fmt.Errorf("failed to load vote verifier verifying key: %w", err)
 	}
 
 	// Load aggregator artifacts

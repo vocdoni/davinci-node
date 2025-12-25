@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -59,7 +60,7 @@ func (s *Storage) NextVerifiedResults() (*VerifiedResults, error) {
 	var chosenVal []byte
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
 		log.Debugw("found verified result entry", "key", hex.EncodeToString(k), "keyLen", len(k))
-		chosenVal = v
+		chosenVal = bytes.Clone(v)
 		return false
 	}); err != nil {
 		return nil, fmt.Errorf("iterate verified results: %w", err)
