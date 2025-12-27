@@ -18,41 +18,6 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-func (s *Sequencer) debugLogAggregationBatchSummary(
-	pid types.HexBytes,
-	batchInputs *aggregationBatchInputs,
-	batchInputsHash *big.Int,
-) {
-	if log.Level() != log.LogLevelDebug {
-		return
-	}
-
-	voteIDs := make([]string, 0, len(batchInputs.verifiedBallots))
-	for _, vb := range batchInputs.verifiedBallots {
-		if vb == nil {
-			voteIDs = append(voteIDs, "<nil>")
-			continue
-		}
-		voteIDs = append(voteIDs, vb.VoteID.String())
-	}
-	voteIDPrefix, voteIDSuffix := prefixSuffixStrings(voteIDs, 5)
-
-	inputHashStrings := bigIntStrings(batchInputs.proofsInputsHashInputs)
-	hashPrefix, hashSuffix := prefixSuffixStrings(inputHashStrings, 5)
-
-	log.Debugw("aggregator batch summary",
-		"processID", pid.String(),
-		"validProofs", len(batchInputs.verifiedBallots),
-		"inputsHash", batchInputsHash.String(),
-		"voteIDsCount", len(voteIDs),
-		"voteIDsPrefix", voteIDPrefix,
-		"voteIDsSuffix", voteIDSuffix,
-		"inputsHashesCount", len(inputHashStrings),
-		"inputsHashesPrefix", hashPrefix,
-		"inputsHashesSuffix", hashSuffix,
-	)
-}
-
 func (s *Sequencer) debugAggregationFailure(
 	pid types.HexBytes,
 	assignment *aggregator.AggregatorCircuit,

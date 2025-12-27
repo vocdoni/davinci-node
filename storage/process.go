@@ -16,6 +16,12 @@ func (s *Storage) Process(pid *types.ProcessID) (*types.Process, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
+	return s.process(pid)
+}
+
+// process retrieves the process data from the storage without acquiring
+// the globalLock. It assumes the caller already holds the lock.
+func (s *Storage) process(pid *types.ProcessID) (*types.Process, error) {
 	p := &types.Process{}
 	if err := s.getArtifact(processPrefix, pid.Marshal(), p); err != nil {
 		return nil, err
@@ -182,6 +188,12 @@ func (s *Storage) ProcessIsAcceptingVotes(pid *types.ProcessID) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to get process %s: %w", pid.String(), err)
 	}
+	return s.processIsAcceptingVotes(pid, stgProcess)
+}
+
+// processIsAcceptingVotes checks if the process is ready to accept votes
+// without acquiring the globalLock. It assumes the caller already holds the lock.
+func (s *Storage) processIsAcceptingVotes(pid *types.ProcessID, stgProcess *types.Process) (bool, error) {
 	// Check that the process has a state root
 	if stgProcess.StateRoot == nil {
 		return false, fmt.Errorf("process %s has no state root", pid.String())
@@ -290,7 +302,6 @@ func (s *Storage) CleanProcessStaleVotes(pid []byte) error {
 	if err := s.RemoveStateTransitionBatchesByProcess(pid); err != nil {
 		return fmt.Errorf("error removing state transition batches for process %x: %w", pid, err)
 	}
-	log.Infow("cleaned up stale votes for finalized process", "pid", fmt.Sprintf("%x", pid))
 	return nil
 }
 

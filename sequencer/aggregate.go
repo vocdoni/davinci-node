@@ -500,7 +500,7 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	}
 
 	// Get the current process state to check if the vote ID already exists
-	processState, err := s.latestProcessState(new(types.ProcessID).SetBytes(pid))
+	processState, err := s.currentProcessState(new(types.ProcessID).SetBytes(pid))
 	if err != nil {
 		return fmt.Errorf("failed to get latest process state: %w", err)
 	}
@@ -587,10 +587,6 @@ func (s *Sequencer) aggregateBatch(pid types.HexBytes) error {
 	if err != nil {
 		return fmt.Errorf("failed to calculate inputs hash: %w", err)
 	}
-
-	// Log a summary of the batch inputs for debugging, if in debug mode
-	// We might remove this log once the aggregator proving is stable
-	s.debugLogAggregationBatchSummary(pid, batchInputs, inputsHash)
 
 	// Create the aggregator circuit assignment
 	assignment := &aggregator.AggregatorCircuit{
