@@ -81,8 +81,8 @@ func (s *Sequencer) processPendingTransitions() {
 		defer s.workInProgressLock.Unlock()
 		startTime := time.Now()
 
-		// Initialize the process state
-		processState, err := s.latestProcessState(processID)
+		// Initialize the process state (use current in-construction state)
+		processState, err := s.currentProcessState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
 			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
@@ -92,7 +92,7 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 
 		// Get the root hash, this is the state before the batch
-		root, err := processState.RootAsBigInt()
+		rootHashBefore, err := processState.RootAsBigInt()
 		if err != nil {
 			log.Errorw(err, "failed to get root")
 			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
@@ -104,7 +104,7 @@ func (s *Sequencer) processPendingTransitions() {
 		log.Debugw("state transition ready for processing",
 			"processID", processID.String(),
 			"ballotCount", len(batch.Ballots),
-			"rootHashBefore", root.String(),
+			"rootHashBefore", rootHashBefore.String(),
 		)
 
 		// Reencrypt the votes with a new k
@@ -130,7 +130,7 @@ func (s *Sequencer) processPendingTransitions() {
 
 		// Process the batch inner proof and votes to get the proof of the
 		// state transition
-		proof, blobData, err := s.processStateTransitionBatch(
+		proof, blobData, rootHashAfter, err := s.processStateTransitionBatch(
 			processState,
 			censusRoot,
 			*circuitCensusProofs,
@@ -145,10 +145,15 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 
-		// Get raw public inputs
-		rootHashAfter, err := processState.RootAsBigInt()
-		if err != nil {
-			log.Errorw(err, "failed to get root hash after")
+		// Sanity check: roots must be different if voters were added
+		if rootHashBefore.Cmp(rootHashAfter) == 0 && len(reencryptedVotes) > 0 {
+			log.Errorw(fmt.Errorf("state root unchanged after adding %d votes", len(reencryptedVotes)),
+				"failed to update state root")
+			log.Debugw("state root unchanged details",
+				"rootBefore", rootHashBefore.String(),
+				"rootAfter", rootHashAfter.String(),
+				"processID", processID.String(),
+				"voteCount", len(reencryptedVotes))
 			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark ballot batch as failed")
 			}
@@ -161,7 +166,7 @@ func (s *Sequencer) processPendingTransitions() {
 		log.Infow("state transition proof generated",
 			"took", time.Since(startTime).String(),
 			"pid", processID.String(),
-			"rootHashBefore", root.String(),
+			"rootHashBefore", rootHashBefore.String(),
 			"rootHashAfter", rootHashAfter.String(),
 			"blobHash", blobSidecar.BlobHashes()[0].String(),
 		)
@@ -184,7 +189,7 @@ func (s *Sequencer) processPendingTransitions() {
 			Proof:     proof.(*groth16_bn254.Proof),
 			Ballots:   batch.Ballots,
 			Inputs: storage.StateTransitionBatchProofInputs{
-				RootHashBefore:        processState.RootHashBefore(),
+				RootHashBefore:        rootHashBefore,
 				RootHashAfter:         rootHashAfter,
 				VotersCount:           processState.VotersCount(),
 				OverwrittenVotesCount: processState.OverwrittenVotesCount(),
@@ -219,14 +224,22 @@ func (s *Sequencer) processStateTransitionBatch(
 	votes []*state.Vote,
 	kSeed *types.BigInt,
 	innerProof groth16.Proof,
-) (groth16.Proof, *blobs.BlobEvalData, error) {
+) (groth16.Proof, *blobs.BlobEvalData, *big.Int, error) {
 	startTime := time.Now()
 	// generate the state transition assignments from the batch and the blob data
 	assignments, blobData, err := s.stateBatchToWitness(processState, votes, censusRoot, censusProofs, kSeed, innerProof)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate assignments: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to generate assignments: %w", err)
 	}
-	log.Debugw("state transition assignments ready for proof generation", "took", time.Since(startTime).String())
+	log.Debugw("state transition assignments ready for proof generation",
+		"took", time.Since(startTime).String(),
+		"processID", processState.ProcessID().String(),
+		"votersCount", assignments.VotersCount,
+		"overwrittenVotesCount", assignments.OverwrittenVotesCount,
+		"rootHashBefore", assignments.RootHashBefore,
+		"rootHashAfter", assignments.RootHashAfter,
+		"censusRoot", censusRoot.String(),
+	)
 
 	// Prepare the options for the prover - use solidity verifier target
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
@@ -234,9 +247,48 @@ func (s *Sequencer) processStateTransitionBatch(
 	// Generate the proof
 	proof, err := s.prover(circuits.StateTransitionCurve, s.stCcs, s.stPk, assignments, opts)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
+		s.logStateTransitionDebugInfo(processState, votes, censusRoot, assignments, err)
+		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
-	return proof, blobData, nil
+	return proof, blobData, assignments.RootHashAfter.(*big.Int), nil
+}
+
+// logStateTransitionDebugInfo logs detailed information about a failed state transition
+// to help reproduce and debug constraint satisfaction errors
+func (s *Sequencer) logStateTransitionDebugInfo(
+	processState *state.State,
+	votes []*state.Vote,
+	censusRoot *types.BigInt,
+	assignments *statetransition.StateTransitionCircuit,
+	err error,
+) {
+	log.Errorw(err, "STATE TRANSITION CONSTRAINT ERROR - DEBUG INFO")
+	if assignments != nil {
+		log.Infow("constraint error details",
+			"processID", processState.ProcessID().String(),
+			"rootHashBefore", assignments.RootHashBefore,
+			"rootHashAfter", assignments.RootHashAfter,
+			"votersCount", assignments.VotersCount,
+			"overwrittenVotesCount", assignments.OverwrittenVotesCount,
+			"censusRoot", censusRoot.String(),
+			"#votes", len(votes),
+		)
+
+		// Log assignment info (basic info only)
+		log.Infow("assignment details available for debugging")
+	} else {
+		log.Warnw("assignments is nil, skipping detailed constraint error logging")
+	}
+
+	// Log vote details
+	for i, v := range votes {
+		log.Infow("vote details",
+			"index", i,
+			"voteID", v.VoteID.String(),
+			"address", v.Address.String(),
+			"weight", v.Weight.String(),
+		)
+	}
 }
 
 func (s *Sequencer) reencryptVotes(pid *types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
@@ -343,7 +395,7 @@ func (s *Sequencer) processCensusProofs(
 		censusTree := censusRef.Tree()
 		var ok bool
 		if root, ok = censusTree.Root(); !ok {
-			return nil, nil, fmt.Errorf("error getting census merkle tree root")
+			log.Warnw("census tree has no root?", "censusRoot", process.Census.CensusRoot.String(), "fetchedRoot", root.String())
 		}
 		// iterate over the votes to generate the merkle proofs of each voter
 		for i := range types.VotesPerBatch {

@@ -35,22 +35,24 @@ type finalizer struct {
 	wg               sync.WaitGroup
 	ctx              context.Context
 	cancel           context.CancelFunc
-	lock             sync.Mutex // Mutex to ensure that only one process results calculation is running at a time
+	lock             sync.Mutex                          // Mutex to ensure that only one process results calculation is running at a time
+	getStateRoot     func([]byte) (*types.BigInt, error) // Function to get state root from contract
 }
 
 // New creates a new Finalizer instance.
-func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, proverFn types.ProverFunc) *finalizer {
+func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, proverFn types.ProverFunc, getStateRootFn func([]byte) (*types.BigInt, error)) *finalizer {
 	// Default prover function if none is provided
 	if proverFn == nil {
 		proverFn = prover.DefaultProver
 	}
 	// We'll create the context in Start() now to avoid premature cancellation
 	return &finalizer{
-		stg:        stg,
-		stateDB:    stateDB,
-		circuits:   ca,
-		prover:     proverFn,
-		OndemandCh: make(chan types.HexBytes, 10), // Use buffered channel to prevent blocking
+		stg:          stg,
+		stateDB:      stateDB,
+		circuits:     ca,
+		prover:       proverFn,
+		OndemandCh:   make(chan types.HexBytes, 10), // Use buffered channel to prevent blocking
+		getStateRoot: getStateRootFn,
 	}
 }
 
@@ -188,12 +190,10 @@ func (f *finalizer) finalizeEnded() {
 		// Check if the state root exists in the state DB. If not, mark as invalid and skip
 		// This prevents trying to finalize processes that were never properly processed.
 		if err := state.RootExists(f.stateDB, processID.BigInt(), process.StateRoot.MathBigInt()); err != nil {
-			// Mark process as invalid (thread-safe)
 			f.invalidProcesses.Store(processID.String(), struct{}{})
 			continue
 		}
 
-		log.Debugw("found ended process to finalize", "pid", processID.String())
 		f.OndemandCh <- processID.Marshal()
 	}
 }
@@ -233,6 +233,22 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	}
 
 	log.Debugw("finalizing process", "pid", processID.String(), "stateRoot", process.StateRoot.String())
+
+	// Verify that the local state root matches the contract state root
+	// This ensures we're computing results on the correct, up-to-date state
+	if f.getStateRoot != nil {
+		contractStateRoot, err := f.getStateRoot(processID.Marshal())
+		if err != nil {
+			return fmt.Errorf("could not fetch contract state root for process %s: %w", pid.String(), err)
+		}
+		if contractStateRoot.MathBigInt().Cmp(process.StateRoot.MathBigInt()) != 0 {
+			// State root mismatch - mark as invalid to prevent infinite retries
+			setProcessInvalid()
+			return fmt.Errorf("local state root mismatch with contract for process %s: local=%s, contract=%s",
+				pid.String(), process.StateRoot.String(), contractStateRoot.String())
+		}
+		log.Debugw("state root verified against contract", "pid", processID.String(), "stateRoot", process.StateRoot.String())
+	}
 
 	// Fetch the encryption key
 	encryptionPubKey, encryptionPrivKey, err := f.stg.EncryptionKeys(processID)

@@ -7,14 +7,13 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// latestProcessState retrieves and initializes the latest state for a given
-// process ID. It ensures that the local state is synchronized with the
-// on-chain state.
-func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, error) {
+// currentProcessState retrieves the current in-construction state for a given
+// process ID. This state includes all locally processed batches, even if they
+// haven't been confirmed on-chain yet. Use this for processing new votes.
+func (s *Sequencer) currentProcessState(pid *types.ProcessID) (*state.State, error) {
 	// get the process from the storage
 	process, err := s.stg.Process(pid)
 	if err != nil {
@@ -28,11 +27,13 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 		return nil, fmt.Errorf("process %x is not accepting votes", pid)
 	}
 
+	// Open the state tree - this gives us the in-construction root
 	st, err := state.New(s.stg.StateDB(), pid.BigInt())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state: %w", err)
 	}
 
+	// Initialize if this is the first time
 	if err := st.Initialize(
 		process.Census.CensusOrigin.BigInt().MathBigInt(),
 		circuits.BallotModeToCircuit(process.BallotMode),
@@ -41,31 +42,15 @@ func (s *Sequencer) latestProcessState(pid *types.ProcessID) (*state.State, erro
 		return nil, fmt.Errorf("failed to init state: %w", err)
 	}
 
-	// get the on-chain state root to ensure we are in sync
-	onchainStateRoot, err := s.contracts.StateRoot(pid.Marshal())
+	// Get the current root from the tree (in-construction state)
+	currentRoot, err := st.RootAsBigInt()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get on-chain state root: %w", err)
+		return nil, fmt.Errorf("failed to get current root: %w", err)
 	}
 
-	// if the on-chain state root is different from the local one, update it
-	if onchainStateRoot.MathBigInt().Cmp(process.StateRoot.MathBigInt()) != 0 {
-		if err := st.RootExists(onchainStateRoot.MathBigInt()); err != nil {
-			return nil, fmt.Errorf("on-chain state root does not exist in local state: %w", err)
-		}
-		if err := s.stg.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStateRoot(onchainStateRoot, nil, nil)); err != nil {
-			return nil, fmt.Errorf("failed to update process state root: %w", err)
-		}
-		log.Warnw("local state root mismatch, updated local state root to match on-chain",
-			"pid", pid.String(),
-			"local", process.StateRoot.String(),
-			"onchain", onchainStateRoot.String(),
-		)
-	}
+	log.Debugw("using current in-construction state",
+		"pid", pid.String(),
+		"currentRoot", currentRoot.String())
 
-	// initialize the process state on the given root
-	processState, err := state.LoadOnRoot(s.stg.StateDB(), pid.BigInt(), onchainStateRoot.MathBigInt())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create state: %w", err)
-	}
-	return processState, nil
+	return st, nil
 }

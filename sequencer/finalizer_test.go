@@ -40,7 +40,7 @@ func TestFinalize(t *testing.T) {
 	defer cleanup()
 
 	// Create a finalizer
-	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil)
+	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil, nil)
 	f.Start(t.Context(), 0)
 
 	// Test finalize

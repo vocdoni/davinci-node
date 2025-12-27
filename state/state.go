@@ -232,6 +232,7 @@ func (o *State) EndBatch() error {
 	if err != nil {
 		return err
 	}
+
 	// first get MerkleProofs, since they need to belong to RootHashBefore, i.e.
 	// before MerkleTransitions
 	if o.processProofs.ID, err = o.GenArboProof(KeyProcessID); err != nil {
@@ -282,6 +283,7 @@ func (o *State) EndBatch() error {
 	if err != nil {
 		return fmt.Errorf("resultsAdd: %w", err)
 	}
+
 	// update ResultsSub
 	o.oldResultsSub, ok = o.ResultsSub()
 	if !ok {
@@ -293,7 +295,13 @@ func (o *State) EndBatch() error {
 	if err != nil {
 		return fmt.Errorf("resultsSub: %w", err)
 	}
-	return o.dbTx.Commit()
+
+	// Commit the transaction
+	if err := o.dbTx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Root method returns the root of the tree as a byte array.

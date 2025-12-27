@@ -96,7 +96,6 @@ func (s *Storage) CleanAllPending() error {
 		return fmt.Errorf("cleanup errors: %v", errs)
 	}
 
-	log.Info("completed global cleanup of all pending items")
 	return nil
 }
 
@@ -213,8 +212,9 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 			}
 		}
 	}
-
-	log.Infow("cleaned all verified ballots", "count", totalCleaned)
+	if totalCleaned > 0 {
+		log.Infow("cleaned all verified ballots", "count", totalCleaned)
+	}
 	return nil
 }
 
@@ -329,7 +329,9 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 		}
 	}
 
-	log.Infow("cleaned all aggregated batches", "count", totalCleaned)
+	if totalCleaned > 0 {
+		log.Infow("cleaned all aggregated batches", "count", totalCleaned)
+	}
 	return nil
 }
 
@@ -460,8 +462,9 @@ func (s *Storage) cleanAllStateTransitions() error {
 			}
 		}
 	}
-
-	log.Infow("cleaned all state transitions", "count", totalCleaned)
+	if totalCleaned > 0 {
+		log.Infow("cleaned all state transitions", "count", totalCleaned)
+	}
 	return nil
 }
 
@@ -505,8 +508,9 @@ func (s *Storage) cleanPendingBallotsForProcess(processID []byte) error {
 		s.releaseAddress(ballot.ProcessID, ballot.Address)
 		s.voteIDToAddress.Delete(ballot.VoteID.String())
 	}
-
-	log.Debugw("cleaned pending ballots", "processID", fmt.Sprintf("%x", processID), "count", len(ballotsToDelete))
+	if len(ballotsToDelete) > 0 {
+		log.Debugw("cleaned pending ballots", "processID", fmt.Sprintf("%x", processID), "count", len(ballotsToDelete))
+	}
 	return nil
 }
 
@@ -568,7 +572,9 @@ func (s *Storage) cleanVerifiedBallotsForProcess(processID []byte) error {
 		}
 	}
 
-	log.Debugw("cleaned verified ballots", "processID", fmt.Sprintf("%x", processID), "count", len(ballotsToDelete))
+	if len(ballotsToDelete) > 0 {
+		log.Debugw("cleaned verified ballots", "processID", fmt.Sprintf("%x", processID), "count", len(ballotsToDelete))
+	}
 	return nil
 }
 
@@ -604,8 +610,9 @@ func (s *Storage) cleanAggregatorBatchesForProcess(processID []byte) error {
 			log.Warnw("failed to delete aggregator batch", "key", hex.EncodeToString(key), "error", err)
 		}
 	}
-
-	log.Debugw("cleaned aggregator batches", "processID", fmt.Sprintf("%x", processID), "count", len(keysToDelete))
+	if len(keysToDelete) > 0 {
+		log.Debugw("cleaned aggregator batches", "processID", fmt.Sprintf("%x", processID), "count", len(keysToDelete))
+	}
 	return nil
 }
 
@@ -641,8 +648,9 @@ func (s *Storage) cleanStateTransitionsForProcess(processID []byte) error {
 			log.Warnw("failed to delete state transition", "key", hex.EncodeToString(key), "error", err)
 		}
 	}
-
-	log.Debugw("cleaned state transitions", "processID", fmt.Sprintf("%x", processID), "count", len(keysToDelete))
+	if len(keysToDelete) > 0 {
+		log.Debugw("cleaned state transitions", "processID", fmt.Sprintf("%x", processID), "count", len(keysToDelete))
+	}
 	return nil
 }
 

@@ -90,8 +90,12 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	if err := s.loadInternalCircuitArtifacts(); err != nil {
 		return nil, fmt.Errorf("failed to load internal circuit artifacts: %w", err)
 	}
-	// Initialize the finalizer
-	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, s.prover)
+	// Initialize the finalizer with state root getter
+	var getStateRootFn func([]byte) (*types.BigInt, error)
+	if contracts != nil {
+		getStateRootFn = contracts.StateRoot
+	}
+	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, s.prover, getStateRootFn)
 	return s, nil
 }
 

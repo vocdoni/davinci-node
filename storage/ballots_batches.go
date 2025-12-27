@@ -631,7 +631,11 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 
 		// Validate that the process is still accepting votes before retrying
 		processID := new(types.ProcessID).SetBytes(stb.ProcessID)
-		if isAccepting, err := s.ProcessIsAcceptingVotes(processID); err != nil || !isAccepting {
+		process, err := s.process(processID)
+		if err != nil {
+			return fmt.Errorf("failed to get process for validation: %w", err)
+		}
+		if isAccepting, err := s.processIsAcceptingVotes(processID, process); err != nil || !isAccepting {
 			log.Warnw("process is no longer accepting votes, marking batch as permanently failed",
 				"processID", hex.EncodeToString(pid),
 				"error", err)
@@ -644,11 +648,6 @@ func (s *Storage) MarkStateTransitionBatchFailed(key, pid []byte) error {
 			return nil
 		}
 
-		// Get the latest process state to check against current state root
-		process, err := s.Process(processID)
-		if err != nil {
-			return fmt.Errorf("failed to get process for validation: %w", err)
-		}
 		if process.StateRoot == nil {
 			return fmt.Errorf("process %s has no state root", processID.String())
 		}
