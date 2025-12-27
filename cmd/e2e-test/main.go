@@ -36,15 +36,15 @@ import (
 )
 
 const (
-	defaultNetwork       = "sepolia"
-	defaultCAPI          = "https://ethereum-sepolia-beacon-api.publicnode.com"
-	defaultSequencerHost = "0.0.0.0"
-	defaultSequencerPort = 8080
-	defaultCensus3URL    = "https://c3-dev.davinci.vote"
+	defaultNetwork     = "sepolia"
+	defaultCAPI        = "https://ethereum-sepolia-beacon-api.publicnode.com"
+	localSequencerHost = "0.0.0.0"
+	localSequencerPort = 8080
+	defaultCensus3URL  = "https://c3-dev.davinci.vote"
 )
 
 var (
-	defaultSequencerEndpoint = fmt.Sprintf("http://%s:%d", defaultSequencerHost, defaultSequencerPort)
+	localSequencerEndpoint = fmt.Sprintf("http://%s:%d", localSequencerHost, localSequencerPort)
 
 	mockedWeight     = uint64(circuits.MockWeight)
 	mockedBallotMode = types.BallotMode{
@@ -70,7 +70,7 @@ func main() {
 		stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", "", "state transition zk verifier smart contract address")
 		resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", "", " results zk verifier smart contract address")
 		testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
-		sequencerEndpoint                = flag.String("sequencerEndpoint", defaultSequencerEndpoint, "sequencer endpoint")
+		sequencerEndpoint                = flag.StringSlice("sequencerEndpoint", []string{}, "sequencer endpoint(s)")
 		census3URL                       = flag.String("census3URL", defaultCensus3URL, "census3 endpoint")
 		votersCount                      = flag.Int64("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
@@ -105,6 +105,7 @@ func main() {
 		"stateTransitionZKVerifierAddress", *stateTransitionZKVerifierAddress,
 		"resultsZKVerifierAddress", *resultsZKVerifierAddress,
 		"web3rpcs", *web3rpcs,
+		"voteSleepTime", *voteSleepTime,
 	)
 
 	// Intance contracts with the provided web3rpcs
@@ -158,7 +159,7 @@ func main() {
 	log.Infow("contracts initialized", "chainId", contracts.ChainID)
 
 	// If no sequencer endpoint is provided, start a local one
-	if *sequencerEndpoint == defaultSequencerEndpoint {
+	if len(*sequencerEndpoint) == 0 {
 		log.Infow("no remote sequencer endpoint provided, starting a local one...")
 		// Start a local sequencer
 		service := new(localService)
@@ -166,10 +167,11 @@ func main() {
 			log.Fatal(err)
 		}
 		defer service.Stop()
-		log.Infow("local sequencer started", "endpoint", defaultSequencerEndpoint)
+		log.Infow("local sequencer started", "endpoint", localSequencerEndpoint)
+		(*sequencerEndpoint)[0] = localSequencerEndpoint
 	}
 	// Create a API client
-	cli, err := client.New(*sequencerEndpoint)
+	cli, err := client.New((*sequencerEndpoint)[0])
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -220,87 +222,78 @@ func main() {
 	log.Infow("process created", "pid", pid.String())
 
 	// Generate votes for each participant and send them to the sequencer
-	for i, signer := range signers {
-		// Generate a vote for each participant
-		vote, err := createVote(signer, pid, encryptionKey, &mockedBallotMode)
+	{
+		votes, err := createVotes(signers, pid, encryptionKey)
 		if err != nil {
-			log.Errorw(err, "failed to create vote")
+			log.Errorw(err, "failed to create votes")
 			return
 		}
-		log.Infow("vote created", "vote", vote)
-
-		// Generate a census proof for each participant
-		vote.CensusProof = types.CensusProof{
-			Weight: new(types.BigInt).SetUint64(mockedWeight),
-		}
-
-		// Send the vote to the sequencer
-		voteID, err := sendVote(cli, vote)
-		if err != nil {
-			log.Errorw(err, "failed to send vote")
+		log.Info("votes created", votes)
+		if err := sendVotesToSequencer(testCtx, (*sequencerEndpoint)[0], *voteSleepTime, votes); err != nil {
+			log.Errorw(err, "failed to send votes")
 			return
 		}
-		log.Infow("vote sent",
-			"voteID", voteID.String(),
-			"currentVote", i+1,
-			"totalVoters", *votersCount)
 
-		// Wait the voteSleepTime before sending the next vote
-		time.Sleep(*voteSleepTime)
-	}
+		// Wait for the votes to be registered in the smart contract
+		log.Info("all votes sent, waiting for votes to be registered in smart contract...")
 
-	// Wait for the votes to be registered in the smart contract
-	log.Info("all votes sent, waiting for votes to be registered in smart contract...")
+		if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, 0); err != nil {
+			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
+			return
+		}
 
-	if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, 0); err != nil {
-		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
-		return
 	}
 
 	log.Info("first batch of votes registered in smart contract, will now overwrite half of them")
 	overwriters := signers[:len(signers)/2]
-
 	// Generate votes for each participant and send them to the sequencer
-	for i, signer := range overwriters {
-		// Generate a vote for each participant
-		vote, err := createVote(signer, pid, encryptionKey, &mockedBallotMode)
+	{
+		votes, err := createVotes(overwriters, pid, encryptionKey)
 		if err != nil {
-			log.Errorw(err, "failed to create vote")
+			log.Errorw(err, "failed to create vote overwrites")
 			return
 		}
-		log.Infow("vote overwrite created", "vote", vote)
-
-		// Generate a census proof for each participant
-		vote.CensusProof = types.CensusProof{
-			Weight: new(types.BigInt).SetUint64(mockedWeight),
-		}
-
-		// Send the vote to the sequencer
-		voteID, err := sendVote(cli, vote)
-		if err != nil {
-			log.Errorw(err, "failed to send vote")
+		log.Info("vote overwrites created", votes)
+		if err := sendVotesToSequencer(testCtx, (*sequencerEndpoint)[0], *voteSleepTime, votes); err != nil {
+			log.Errorw(err, "failed to send vote overwrites")
 			return
 		}
-		log.Infow("vote overwrite sent",
-			"voteID", voteID.String(),
-			"currentVote", i+1,
-			"overwritesCount", len(overwriters))
 
-		// Wait the voteSleepTime before sending the next vote
-		time.Sleep(*voteSleepTime)
+		// Wait for the votes to be registered in the smart contract
+		log.Info("all overwrite votes sent, waiting for votes to be registered in smart contract...")
+
+		if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, int64(len(overwriters))); err != nil {
+			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
+			return
+		}
 	}
 
-	// Wait for the votes to be registered in the smart contract
-	log.Info("all overwrite votes sent, waiting for votes to be registered in smart contract...")
-
-	if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, int64(len(overwriters))); err != nil {
-		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
-		return
-	}
-
-	log.Info("second batch of votes registered, finishing the process in the smart contract...")
+	log.Info("second batch of votes registered")
+	log.Info("now voting in sequencer2")
 
 	time.Sleep(1 * time.Second)
+	if len(*sequencerEndpoint) >= 2 {
+		votes, err := createVotes(signers, pid, encryptionKey)
+		if err != nil {
+			log.Errorw(err, "failed to create votes")
+			return
+		}
+		log.Info("votes created", votes)
+		if err := sendVotesToSequencer(testCtx, (*sequencerEndpoint)[1], *voteSleepTime, votes); err != nil {
+			log.Errorw(err, "failed to send votes")
+			return
+		}
+
+		// Wait for the votes to be registered in the smart contract
+		log.Info("all votes sent, waiting for votes to be registered in smart contract...")
+
+		if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, int64(len(overwriters)+len(signers))); err != nil {
+			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
+			return
+		}
+	}
+
+	log.Info("finishing the process in the smart contract...")
 	// finish the process in the smart contract
 	if err := finishProcessOnChain(contracts, pid); err != nil {
 		log.Errorw(err, "failed to finish process in smart contract")
@@ -341,8 +334,13 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 	if err := s.censusDownloader.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start census downloader: %w", err)
 	}
+	// Start StateSync
+	stateSync := service.NewStateSync(contracts, s.storage)
+	if err := stateSync.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start state sync: %v", err)
+	}
 	// Monitor new processes from the contracts
-	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, s.censusDownloader, time.Second*2)
+	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, s.censusDownloader, stateSync, time.Second*2)
 	if err := s.processMonitor.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
@@ -363,7 +361,7 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 		ResultsZKVerifier:                 c[npbindings.ResultsVerifierGroth16Contract],
 		StateTransitionZKVerifier:         c[npbindings.StateTransitionVerifierGroth16Contract],
 	}
-	s.api = service.NewAPI(s.storage, defaultSequencerHost, defaultSequencerPort, network, web3Conf, false)
+	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, network, web3Conf, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}
@@ -408,6 +406,51 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	}
 
 	return orgAddr, nil
+}
+
+func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime time.Duration, votes []api.Vote) error {
+	// Create a API client
+	cli, err := client.New(seqEndpoint)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Wait for the sequencer to be ready, make ping request until it responds
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	for isConnected := false; !isConnected; {
+		select {
+		case <-pingCtx.Done():
+			log.Fatal("ping timeout")
+		default:
+			_, status, err := cli.Request(http.MethodGet, nil, nil, api.PingEndpoint)
+			if err == nil && status == http.StatusOK {
+				isConnected = true
+				break
+			}
+			log.Warnw("failed to ping sequencer", "status", status, "err", err)
+			time.Sleep(10 * time.Second)
+		}
+	}
+	log.Infow("connected to sequencer", "endpoint", seqEndpoint)
+
+	// Generate votes for each participant and send them to the sequencer
+	for i, vote := range votes {
+		// Send the vote to the sequencer
+		log.Infow("sending vote", "vote", vote)
+		voteID, err := sendVote(cli, vote)
+		if err != nil {
+			return fmt.Errorf("failed to send vote: %w", err)
+		}
+		log.Infow("vote sent",
+			"voteID", voteID.String(),
+			"currentVote", i+1,
+			"totalVotes", len(votes))
+
+		// Wait the sleepTime before sending the next vote
+		time.Sleep(sleepTime)
+	}
+	return nil
 }
 
 func createCensus(ctx context.Context, size int64, weight uint64, c3URL string) (types.HexBytes, string, []*ethereum.Signer, error) {
@@ -531,6 +574,18 @@ func createProcess(
 	return pid, encryptionKeys, nil
 }
 
+func createVotes(signers []*ethereum.Signer, pid *types.ProcessID, encryptionKey *types.EncryptionKey) ([]api.Vote, error) {
+	votes := make([]api.Vote, 0, len(signers))
+	for _, signer := range signers {
+		vote, err := createVote(signer, pid, encryptionKey, &mockedBallotMode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create vote: %w", err)
+		}
+		votes = append(votes, vote)
+	}
+	return votes, nil
+}
+
 func createVote(
 	privKey *ethereum.Signer,
 	pid *types.ProcessID,
@@ -618,11 +673,11 @@ func createVote(
 
 func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
 	// Make the request to cast the vote
-	_, status, err := cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
+	body, status, err := cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to cast vote: %v", err)
+		return nil, fmt.Errorf("failed to cast vote: %w", err)
 	} else if status != http.StatusOK {
-		return nil, fmt.Errorf("failed to cast vote, status code: %d", status)
+		return nil, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
 }

@@ -5,6 +5,7 @@ go 1.25.1
 replace github.com/consensys/gnark => github.com/p4u/gnark v0.0.0-20251225172317-373b7ed338e2
 
 require (
+	github.com/attestantio/go-eth2-client v0.27.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
@@ -114,11 +115,12 @@ require (
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/eiannone/keyboard v0.0.0-20220611211555-0d226195f203 // indirect
-	github.com/emicklei/dot v1.6.2 // indirect
+	github.com/emicklei/dot v1.6.4 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.5 // indirect
 	github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
+	github.com/fatih/color v1.16.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/fsnotify/fsevents v0.2.0 // indirect
@@ -133,6 +135,7 @@ require (
 	github.com/go-openapi/swag v0.22.3 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/goccy/go-yaml v1.11.0 // indirect
 	github.com/gofrs/flock v0.12.1 // indirect
 	github.com/gogo/googleapis v1.4.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -158,6 +161,7 @@ require (
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/holiman/billy v0.0.0-20250707135307-f2f9b9aae7db // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
+	github.com/huandu/go-clone v1.6.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/iden3/go-rapidsnark/types v0.0.3 // indirect
 	github.com/iden3/wasmer-go v0.0.1 // indirect
@@ -184,7 +188,7 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect
-	github.com/minio/sha256-simd v1.0.0 // indirect
+	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mitchellh/pointerstructure v1.2.1 // indirect
 	github.com/moby/buildkit v0.14.1 // indirect
@@ -220,6 +224,7 @@ require (
 	github.com/pion/stun/v2 v2.0.0 // indirect
 	github.com/pion/transport/v2 v2.2.1 // indirect
 	github.com/pion/transport/v3 v3.0.1 // indirect
+	github.com/pk910/dynamic-ssz v0.0.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
@@ -227,7 +232,9 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.4 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect
+	github.com/prysmaticlabs/go-bitfield v0.0.0-20240618144021-706c95b2dd15 // indirect
 	github.com/r3labs/sse v0.0.0-20210224172625-26fe804710bc // indirect
+	github.com/r3labs/sse/v2 v2.10.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/ronanh/intcomp v1.1.1 // indirect
@@ -306,6 +313,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251103181224-f26f9409b101 // indirect
 	google.golang.org/grpc v1.76.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
+	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect

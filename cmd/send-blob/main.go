@@ -30,9 +30,11 @@ func main() {
 	numBlobs := pflag.Int("n", 1, "Number of random blobs to include")
 	wait := pflag.Bool("wait", true, "Wait for tx to be mined")
 	capi := pflag.String("capi", "https://ethereum-sepolia-beacon-api.publicnode.com", "Consensus API URL (required)")
+	justFetch := pflag.String("justFetch", "", "skip sending, just fetch blob from txHash")
+
 	pflag.Parse()
 
-	if *rpcURL == "" || *privKey == "" || *capi == "" {
+	if *rpcURL == "" || *privKey == "" || *capi == "" && *justFetch == "" {
 		pflag.Usage()
 		return
 	}
@@ -62,6 +64,22 @@ func main() {
 	}
 	txm.Start(txmCtx)
 	contracts.SetTxManager(txm)
+	if txHash := *justFetch; txHash != "" {
+		i, c := 0, "0132c2d5dbc01c3990b1542ffb909338a0e43ed3572d238e3827bccd3bf4646f"
+		// Get blob by commitment
+		blobs, err := contracts.BlobsByTxHash(context.TODO(), common.HexToHash(txHash))
+		if err != nil {
+			log.Errorf("get blob %d by commitment 0x%x: %v", i, c, err)
+			return
+		}
+		for _, blob := range blobs {
+			log.Infow(blob.KZGCommitment.String(), fmt.Sprintf("0x%s", c))
+			if blob.String() == fmt.Sprintf("0x%s", c) {
+				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob.Blob), "preview", preview(blob.Blob[:], 32))
+			}
+		}
+		return
+	}
 
 	// Destination address
 	var to common.Address
@@ -74,7 +92,7 @@ func main() {
 	// 2) Build blobs
 	blobs := make([][]byte, *numBlobs)
 	for i := range blobs {
-		b := RandomBlob()
+		b := DummyBlobWithCafe()
 		blobs[i] = b
 	}
 
@@ -154,12 +172,18 @@ func main() {
 
 	// Get blob by commitment
 	for i, c := range commitments {
-		blob, err := contracts.BlobByCommitment(ctx2, tx.Hash(), fmt.Sprintf("0x%x", c))
+		blobs, err := contracts.BlobsByTxHash(ctx2, tx.Hash())
 		if err != nil {
 			log.Errorf("get blob %d by commitment 0x%x: %v", i, c, err)
 			continue
 		}
-		log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob), "preview", preview(blob, 32))
+		for _, blob := range blobs {
+			log.Info(blob.KZGCommitment.String(), fmt.Sprintf("0x%s", c))
+
+			if blob.String() == fmt.Sprintf("0x%x", c) {
+				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob.Blob), "preview", preview(blob.Blob[:], 32))
+			}
+		}
 	}
 }
 
@@ -175,8 +199,19 @@ func RandomBlob() []byte {
 	const feSize = gethparams.BlobTxBytesPerFieldElement              // 32
 	out := make([]byte, gethparams.BlobTxFieldElementsPerBlob*feSize) // 131072
 	var el fr.Element
-	for i := 0; i < gethparams.BlobTxFieldElementsPerBlob; i++ {
+	for i := range gethparams.BlobTxFieldElementsPerBlob {
 		el.MustSetRandom()                             // uses crypto/rand.Reader
+		copy(out[i*feSize:(i+1)*feSize], el.Marshal()) // big-endian canonical bytes
+	}
+	return out
+}
+
+func DummyBlobWithCafe() []byte {
+	const feSize = gethparams.BlobTxBytesPerFieldElement              // 32
+	out := make([]byte, gethparams.BlobTxFieldElementsPerBlob*feSize) // 131072
+	var el fr.Element
+	for i := range gethparams.BlobTxFieldElementsPerBlob {
+		el.SetUint64(0xcafedecaca<<20 + uint64(i))     // uniquely identify content
 		copy(out[i*feSize:(i+1)*feSize], el.Marshal()) // big-endian canonical bytes
 	}
 	return out

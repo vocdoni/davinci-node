@@ -8,6 +8,7 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -33,14 +34,33 @@ func (s *Storage) FetchOrGenerateEncryptionKeys(pid *types.ProcessID) (ecc.Point
 	return s.fetchOrGenerateEncryptionKeysUnsafe(pid)
 }
 
-// setEncryptionKeysUnsafe stores the encryption keys for a process without
-// locking.
+// setEncryptionKeysUnsafe stores both the private and public encryption keys for a process, without locking.
 func (s *Storage) setEncryptionKeysUnsafe(pid *types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
 	x, y := publicKey.Point()
 	eks := &EncryptionKeys{
 		X:          x,
 		Y:          y,
 		PrivateKey: privateKey,
+	}
+	return s.setArtifact(encryptionKeyPrefix, pid.Marshal(), eks)
+}
+
+// setEncryptionPubKeyUnsafe stores only the encryption public key for a process, without locking.
+// If there's already a matching EncryptionKey (PubKey) in storage, it won't rewrite it.
+func (s *Storage) setEncryptionPubKeyUnsafe(pid *types.ProcessID, ek *types.EncryptionKey) error {
+	publicKey, _, err := s.encryptionKeysUnsafe(pid)
+	if err == nil {
+		if types.EncryptionKeyFromPoint(publicKey).X.Equal(ek.X) &&
+			types.EncryptionKeyFromPoint(publicKey).Y.Equal(ek.Y) {
+			return nil
+		}
+		log.Warnf("stored encryption key for process %s mismatch, overwriting stored %+v with new %+v", pid.String(),
+			types.EncryptionKeyFromPoint(publicKey), ek)
+	}
+
+	eks := &EncryptionKeys{
+		X: ek.X.MathBigInt(),
+		Y: ek.Y.MathBigInt(),
 	}
 	return s.setArtifact(encryptionKeyPrefix, pid.Marshal(), eks)
 }

@@ -24,6 +24,11 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("RUN_INTEGRATION_TESTS") != "true" {
+		log.Info("skipping integration tests...")
+		os.Exit(0)
+	}
+
 	log.Init(log.LogLevelDebug, "stdout", nil)
 	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
 		log.Fatalf("failed to download artifacts: %v", err)

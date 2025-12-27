@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"sync"
 	"time"
 
+	eth2deneb "github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -15,12 +17,16 @@ var _ ContractsService = &MockContracts{}
 // MockContracts implements a mock version of web3.Contracts for testing
 type MockContracts struct {
 	processes []*types.Process
+	blobs     map[common.Hash]*eth2deneb.Blob
+	chanPWC   chan *types.ProcessWithChanges
 	mu        sync.Mutex
 }
 
 func NewMockContracts() *MockContracts {
 	return &MockContracts{
 		processes: make([]*types.Process, 0),
+		blobs:     make(map[common.Hash]*eth2deneb.Blob),
+		chanPWC:   make(chan *types.ProcessWithChanges),
 	}
 }
 
@@ -57,7 +63,7 @@ func (m *MockContracts) MonitorProcessChanges(
 	retries int,
 	filters ...types.Web3FilterFn,
 ) (<-chan *types.ProcessWithChanges, error) {
-	return make(chan *types.ProcessWithChanges), nil
+	return m.chanPWC, nil
 }
 
 func (m *MockContracts) CreateProcess(process *types.Process) (*types.ProcessID, *common.Hash, error) {
@@ -101,4 +107,28 @@ func (m *MockContracts) Process(processID []byte) (*types.Process, error) {
 
 func (m *MockContracts) RegisterKnownProcess(processID string) {
 	// No-op for mock
+}
+
+func (m *MockContracts) BlobsByTxHash(ctx context.Context, txHash common.Hash,
+) ([]*eth2deneb.BlobSidecar, error) {
+	if blob, ok := m.blobs[txHash]; ok {
+		return []*eth2deneb.BlobSidecar{{
+			Blob: *blob,
+		}}, nil
+	}
+	return nil, fmt.Errorf("txHash not found")
+}
+
+func (m *MockContracts) MockStateRootChange(_ context.Context, process *types.ProcessWithChanges) error {
+	m.chanPWC <- process
+	return nil
+}
+
+func (m *MockContracts) SendBlobTx(blob []byte) common.Hash {
+	var txHash common.Hash
+	_, _ = rand.Read(txHash[:])
+	denebBlob := eth2deneb.Blob{}
+	copy(denebBlob[:], blob)
+	m.blobs[txHash] = &denebBlob
+	return txHash
 }

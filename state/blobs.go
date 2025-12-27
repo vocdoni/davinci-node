@@ -3,7 +3,6 @@ package state
 import (
 	"fmt"
 	"math/big"
-	"unsafe"
 
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 
@@ -98,8 +97,12 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 	return blobData, err
 }
 
-// ParseBlobData extracts vote and results data from a blob
-func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
+// ParseBlobData extracts vote and results data from a blob.
+func ParseBlobData(blob []byte) (*BlobData, error) {
+	if len(blob) != blobs.FieldElementsPerBlob*blobs.BytesPerFieldElement {
+		return nil, fmt.Errorf("unexpected blob length %d", len(blob))
+	}
+
 	coordsPerBallot := types.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
 
 	data := &BlobData{
@@ -109,13 +112,12 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 	}
 
 	// extract big.Int from blob cell
-	blobBytes := (*(*[131072]byte)(unsafe.Pointer(blob)))[:]
 	getCell := func(cellIndex int) *big.Int {
 		if cellIndex >= blobs.FieldElementsPerBlob {
 			return big.NewInt(0)
 		}
 		start := cellIndex * blobs.BytesPerFieldElement
-		cellBytes := blobBytes[start : start+blobs.BytesPerFieldElement]
+		cellBytes := blob[start : start+blobs.BytesPerFieldElement]
 		// Read blob cells as big-endian (canonical form)
 		return new(big.Int).SetBytes(cellBytes)
 	}
