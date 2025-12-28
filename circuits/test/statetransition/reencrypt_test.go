@@ -1,4 +1,4 @@
-package statetransition
+package statetransitiontest
 
 import (
 	"math/big"
@@ -35,7 +35,7 @@ func (c *ReencryptedBallotCircuit) Define(api frontend.API) error {
 func TestReencryptedBallotCircuit(t *testing.T) {
 	c := qt.New(t)
 
-	privkey, encKey := testutil.RandomEncryptionKey()
+	privkey, encKey := testutil.RandomEncryptionKeys()
 	encryptionKey := new(bjj.BJJ).SetPoint(encKey.PubKey[0], encKey.PubKey[1])
 
 	k, err := elgamal.RandK()

@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -52,7 +53,7 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 		addresses: make(map[string]struct{}),
 	}
 
-	pid := types.HexBytes{0x01}
+	pid := testutil.FixedProcessID()
 	ballots := make([]*storage.VerifiedBallot, 0, types.VotesPerBatch+1)
 	keys := make([][]byte, 0, types.VotesPerBatch+1)
 
@@ -76,17 +77,17 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 	inputs, err := collectAggregationBatchInputs(stg, pid, ballots, keys, processState, false, proofToRecursion, nil)
 	c.Assert(err, qt.IsNil)
 
-	c.Assert(len(inputs.aggBallots), qt.Equals, types.VotesPerBatch)
-	c.Assert(len(inputs.processedKeys), qt.Equals, types.VotesPerBatch)
-	c.Assert(len(inputs.proofsInputsHashInputs), qt.Equals, types.VotesPerBatch)
+	c.Assert(len(inputs.AggBallots), qt.Equals, types.VotesPerBatch)
+	c.Assert(len(inputs.ProcessedKeys), qt.Equals, types.VotesPerBatch)
+	c.Assert(len(inputs.ProofsInputsHashInputs), qt.Equals, types.VotesPerBatch)
 
 	c.Assert(stg.failed, qt.HasLen, 1)
 	c.Assert(stg.failed[0], qt.DeepEquals, keys[0])
 
 	c.Assert(stg.released, qt.HasLen, 0)
 
-	c.Assert(inputs.processedKeys[0], qt.DeepEquals, keys[1])
-	c.Assert(inputs.aggBallots[0].VoteID, qt.DeepEquals, ballots[1].VoteID)
-	c.Assert(inputs.proofsInputsHashInputs[0].Cmp(ballots[1].InputsHash), qt.Equals, 0)
-	c.Assert(inputs.processedKeys[len(inputs.processedKeys)-1], qt.DeepEquals, keys[len(keys)-1])
+	c.Assert(inputs.ProcessedKeys[0], qt.DeepEquals, keys[1])
+	c.Assert(inputs.AggBallots[0].VoteID, qt.DeepEquals, ballots[1].VoteID)
+	c.Assert(inputs.ProofsInputsHashInputs[0].Cmp(ballots[1].InputsHash), qt.Equals, 0)
+	c.Assert(inputs.ProcessedKeys[len(inputs.ProcessedKeys)-1], qt.DeepEquals, keys[len(keys)-1])
 }

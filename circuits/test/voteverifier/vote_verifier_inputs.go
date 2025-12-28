@@ -78,16 +78,17 @@ func VoteVerifierInputsForTest(
 		c.Assert(err, qt.IsNil, qt.Commentf("sign ECDSA for voter %d", i))
 
 		// hash the inputs of gnark circuit (except weight and including census root)
-		inputsHash, err := voteverifier.VoteVerifierInputHash(
-			voterProof.ProcessID,
-			testutil.BallotMode(),
-			encryptionKey,
-			voterProof.Address,
-			voterProof.VoteID,
-			big.NewInt(testutil.Weight),
-			voterProof.Ballot.FromTEtoRTE(),
-			censusOrigin,
-		)
+		vvInputs := voteverifier.VoteVerifierInputs{
+			ProcessID:       voterProof.ProcessID,
+			CensusOrigin:    censusOrigin,
+			BallotMode:      testutil.BallotMode(),
+			EncryptionKey:   encryptionKey,
+			Address:         voterProof.Address,
+			VoteID:          voterProof.VoteID,
+			UserWeight:      big.NewInt(testutil.Weight),
+			EncryptedBallot: voterProof.Ballot.FromTEtoRTE(),
+		}
+		inputsHash, err := vvInputs.InputsHash()
 		c.Assert(err, qt.IsNil, qt.Commentf("vote verifier input hash for voter %d", i))
 
 		inputsHashes = append(inputsHashes, inputsHash)

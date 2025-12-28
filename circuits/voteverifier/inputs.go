@@ -15,13 +15,13 @@ import (
 
 type VoteVerifierInputs struct {
 	ProcessID       *big.Int
+	CensusOrigin    types.CensusOrigin
 	BallotMode      circuits.BallotMode[*big.Int]
 	EncryptionKey   circuits.EncryptionKey[*big.Int]
 	Address         *big.Int
 	VoteID          types.HexBytes
 	UserWeight      *big.Int
 	EncryptedBallot *elgamal.Ballot
-	CensusOrigin    types.CensusOrigin
 	CSPProof        csp.CSPProof
 }
 
@@ -45,47 +45,23 @@ func (vi *VoteVerifierInputs) FromProcessBallot(process *types.Process, b *stora
 }
 
 func (vi *VoteVerifierInputs) Serialize() []*big.Int {
-	inputs := make([]*big.Int, 0, 8+len(vi.EncryptedBallot.BigInts()))
+	ballotMode := vi.BallotMode.Serialize()
+	encryptionKey := vi.EncryptionKey.Serialize()
+	encryptedBallot := vi.EncryptedBallot.BigInts()
+	inputs := make([]*big.Int, 0, 5+len(ballotMode)+len(encryptionKey)+len(encryptedBallot))
 	inputs = append(inputs, vi.ProcessID)
 	inputs = append(inputs, vi.CensusOrigin.BigInt().MathBigInt())
-	inputs = append(inputs, vi.BallotMode.Serialize()...)
-	inputs = append(inputs, vi.EncryptionKey.Serialize()...)
+	inputs = append(inputs, ballotMode...)
+	inputs = append(inputs, encryptionKey...)
 	inputs = append(inputs, vi.Address)
 	inputs = append(inputs, vi.VoteID.BigInt().MathBigInt())
 	inputs = append(inputs, vi.UserWeight)
-	inputs = append(inputs, vi.EncryptedBallot.BigInts()...)
+	inputs = append(inputs, encryptedBallot...)
 	return inputs
 }
 
 func (vi *VoteVerifierInputs) InputsHash() (*big.Int, error) {
 	inputHash, err := mimc7.Hash(vi.Serialize(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash inputs: %w", err)
-	}
-	return inputHash, nil
-}
-
-func VoteVerifierInputHash(
-	processID *big.Int,
-	ballotMode circuits.BallotMode[*big.Int],
-	encryptionKey circuits.EncryptionKey[*big.Int],
-	address *big.Int,
-	voteID types.HexBytes,
-	userWeight *big.Int,
-	encryptedBallot *elgamal.Ballot,
-	censusOrigin types.CensusOrigin,
-) (*big.Int, error) {
-	hashInputs := []*big.Int{}
-	hashInputs = append(hashInputs, processID)
-	hashInputs = append(hashInputs, censusOrigin.BigInt().MathBigInt())
-	hashInputs = append(hashInputs, ballotMode.Serialize()...)
-	hashInputs = append(hashInputs, encryptionKey.Serialize()...)
-	hashInputs = append(hashInputs, address)
-	hashInputs = append(hashInputs, voteID.BigInt().MathBigInt())
-	hashInputs = append(hashInputs, userWeight)
-	hashInputs = append(hashInputs, encryptedBallot.BigInts()...)
-
-	inputHash, err := mimc7.Hash(hashInputs, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash inputs: %w", err)
 	}

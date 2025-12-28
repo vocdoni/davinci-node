@@ -18,7 +18,6 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
@@ -128,15 +127,10 @@ func AggregatorInputsForTest(
 		proofsInputsHashes[i] = emulated.ValueOf[sw_bn254.ScalarField](vvInputs.InputsHashes[i])
 	}
 	// calculate inputs hash
-	hashInputs := []*big.Int{}
-	for i := range types.VotesPerBatch {
-		if i < nValidVotes {
-			hashInputs = append(hashInputs, vvInputs.InputsHashes[i])
-		} else {
-			hashInputs = append(hashInputs, big.NewInt(1))
-		}
+	aggInputs := aggregator.AggregatorInputs{
+		ProofsInputsHashInputs: vvInputs.InputsHashes,
 	}
-	inputsHash, err := mimc7.Hash(hashInputs, nil)
+	inputsHash, err := aggInputs.InputsHash()
 	c.Assert(err, qt.IsNil, qt.Commentf("calculate inputs hash"))
 
 	// init final assignments stuff

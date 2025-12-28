@@ -1,7 +1,6 @@
 package results
 
 import (
-	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -15,12 +14,12 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/state"
+	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -54,7 +53,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	err = st.StartBatch()
 	c.Assert(err, qt.IsNil)
 	for i := range nVotes {
-		err = st.AddVote(newMockVote(pubKey, uint64(i), 100))
+		err = st.AddVote(statetest.NewVoteForTest(pubKey, uint64(i), 100))
 		c.Assert(err, qt.IsNil)
 	}
 	err = st.EndBatch()
@@ -117,24 +116,4 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	assert.SolvingSucceeded(&ResultsVerifierCircuit{}, witness,
 		test.WithCurves(circuits.ResultsVerifierCurve), test.WithBackends(backend.GROTH16))
 	c.Logf("proving took %s", time.Since(now).String())
-}
-
-func newMockVote(pubKey ecc.Point, index uint64, amount int) *state.Vote {
-	fields := [types.FieldsPerBallot]*big.Int{}
-	for i := range fields {
-		fields[i] = big.NewInt(int64(amount + i))
-	}
-	ballot, err := elgamal.NewBallot(bjj.New()).Encrypt(fields, pubKey, nil)
-	if err != nil {
-		panic(fmt.Errorf("error encrypting: %v", err))
-	}
-	return &state.Vote{
-		// This circuit does not use the ballot, so we can create it empty,
-		// only to prevent nil pointer dereference. The value that matters is
-		// the ReencryptedBallot.
-		Ballot:            elgamal.NewBallot(state.Curve),
-		ReencryptedBallot: ballot,
-		VoteID:            testutil.RandomVoteID().Bytes(),
-		Address:           testutil.DeterministicAddress(index).Big(),
-	}
 }

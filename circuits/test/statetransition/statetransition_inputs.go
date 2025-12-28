@@ -2,7 +2,6 @@ package statetransitiontest
 
 import (
 	"math/big"
-	"os"
 	"testing"
 
 	"github.com/vocdoni/davinci-node/prover"
@@ -20,9 +19,9 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	aggregatortest "github.com/vocdoni/davinci-node/circuits/test/aggregator"
-	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/state"
+	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -122,7 +121,7 @@ func StateTransitionInputsForTest(
 	// get the encryption key from the aggregator inputs
 	encryptionKey := state.Curve.New().SetPoint(aggInputs.Process.EncryptionKey.PubKey[0], aggInputs.Process.EncryptionKey.PubKey[1])
 	// init final assignments stuff
-	s := newState(c, processID, testutil.BallotMode(), censusOrigin, aggInputs.Process.EncryptionKey)
+	s := statetest.NewStateForTest(t, processID, testutil.BallotMode(), censusOrigin, aggInputs.Process.EncryptionKey)
 
 	err = s.StartBatch()
 	c.Assert(err, qt.IsNil, qt.Commentf("start batch"))
@@ -171,29 +170,4 @@ func StateTransitionInputsForTest(
 		Votes:        aggInputs.Votes,
 		PublicInputs: publicInputs,
 	}, circuitPlaceholder, witness
-}
-
-func newState(c *qt.C,
-	processID types.ProcessID,
-	ballotMode circuits.BallotMode[*big.Int],
-	censusOrigin types.CensusOrigin,
-	encryptionKey circuits.EncryptionKey[*big.Int],
-) *state.State {
-	dir, err := os.MkdirTemp(os.TempDir(), "statetransition")
-	c.Assert(err, qt.IsNil, qt.Commentf("create temp dir"))
-
-	db, err := metadb.New("pebble", dir)
-	c.Assert(err, qt.IsNil, qt.Commentf("create metadb"))
-
-	s, err := state.New(db, processID)
-	c.Assert(err, qt.IsNil, qt.Commentf("create state"))
-
-	err = s.Initialize(
-		censusOrigin.BigInt().MathBigInt(),
-		ballotMode,
-		encryptionKey,
-	)
-	c.Assert(err, qt.IsNil, qt.Commentf("initialize state"))
-
-	return s
 }

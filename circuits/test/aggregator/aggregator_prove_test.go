@@ -12,6 +12,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -25,7 +26,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	}
 	c := qt.New(t)
 
-	processID := types.TestProcessID
+	processID := testutil.FixedProcessID()
 
 	// Cache for the local compiled circuit artifacts
 	cache, err := circuitstest.NewCircuitCache()

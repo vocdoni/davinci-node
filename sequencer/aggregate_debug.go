@@ -19,9 +19,9 @@ import (
 )
 
 func (s *Sequencer) debugAggregationFailure(
-	pid types.HexBytes,
+	pid types.ProcessID,
 	assignment *aggregator.AggregatorCircuit,
-	batchInputs *aggregationBatchInputs,
+	batchInputs *aggregator.AggregatorInputs,
 	batchInputsHash *big.Int,
 	proveErr error,
 ) {
@@ -32,7 +32,7 @@ func (s *Sequencer) debugAggregationFailure(
 	log.Warnw("aggregator proving failed; investigating batch inputs",
 		"processID", pid.String(),
 		"error", proveErr.Error(),
-		"validProofs", len(batchInputs.verifiedBallots),
+		"validProofs", len(batchInputs.VerifiedBallots),
 		"inputsHash", batchInputsHash.String(),
 		"voteVerifierNbPublicWitness", s.vvVk.NbPublicWitness(),
 		"voteVerifierNbConstraints", s.vvCcs.GetNbConstraints(),
@@ -48,7 +48,7 @@ func (s *Sequencer) debugAggregationFailure(
 		)
 	}
 
-	proofInputsHashStrings := bigIntStrings(batchInputs.proofsInputsHashInputs)
+	proofInputsHashStrings := bigIntStrings(batchInputs.ProofsInputsHashInputs)
 	hashPrefix, hashSuffix := prefixSuffixStrings(proofInputsHashStrings, 5)
 	log.Debugw("aggregator inputs hash preimage (vote verifier inputs hashes)",
 		"processID", pid.String(),
@@ -62,7 +62,7 @@ func (s *Sequencer) debugAggregationFailure(
 		circuits.VoteVerifierCurve.ScalarField(),
 	)
 
-	for i, vb := range batchInputs.verifiedBallots {
+	for i, vb := range batchInputs.VerifiedBallots {
 		if vb == nil {
 			log.Warnw("nil verified ballot in aggregation batch",
 				"processID", pid.String(),
