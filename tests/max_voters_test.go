@@ -83,7 +83,6 @@ func TestMaxVoters(t *testing.T) {
 
 	c.Run("create votes", func(c *qt.C) {
 		for i, signer := range signers[:initialVoters] {
-			// generate a vote for the first participant
 			k := util.RandomBigInt(big.NewInt(100000000), big.NewInt(9999999999999999))
 			vote, err := helpers.TestNewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))

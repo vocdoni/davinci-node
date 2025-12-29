@@ -82,7 +82,6 @@ func TestOverwriteVotes(t *testing.T) {
 
 	c.Run("create votes", func(c *qt.C) {
 		for i := range signers {
-			// generate a vote for the first participant
 			k := util.RandomBigInt(big.NewInt(100000000), big.NewInt(9999999999999999))
 			vote, err := helpers.TestNewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signers[i], k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
