@@ -1,6 +1,7 @@
 package blobs
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"math/big"
 	"os"
@@ -14,10 +15,10 @@ import (
 	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/test"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -32,7 +33,7 @@ func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Compute commitment first, then evaluation point
-	commitment, err := gethkzg.BlobToCommitment(blob)
+	commitment, err := blob.ComputeCommitment()
 	c.Assert(err, qt.IsNil)
 
 	processID := util.RandomBytes(31)
@@ -41,9 +42,8 @@ func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Compute KZG proof to get Y value
-	_, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
+	_, y, err := blob.ComputeProof(z)
 	c.Assert(err, qt.IsNil)
-	y := new(big.Int).SetBytes(claim[:])
 
 	// Create witness for barycentric evaluation only (no KZG verification)
 	witness := blobEvalCircuitBarycentricOnly{
@@ -76,7 +76,7 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 		fmt.Printf("\n=== Testing with %d elements ===\n", count)
 
 		// Create blob with 'count' elements
-		blob := &gethkzg.Blob{}
+		blob := &types.Blob{}
 		for i := range count {
 			val := big.NewInt(int64(i + 1))
 			valHash, err := poseidon.MultiPoseidon(val) // Ensure the cell is processed by Poseidon
@@ -85,7 +85,7 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 		}
 
 		// Compute commitment first
-		commitment, err := gethkzg.BlobToCommitment(blob)
+		commitment, err := blob.ComputeCommitment()
 		c.Assert(err, qt.IsNil)
 
 		// Compute evaluation point
@@ -95,11 +95,8 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Compute KZG proof
-		proof, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
+		proof, claim, err := blob.ComputeProof(z)
 		c.Assert(err, qt.IsNil)
-
-		// Convert claim to Y
-		y := new(big.Int).SetBytes(claim[:])
 
 		// Extract limbs from commitment and proof
 		commitmentLimbs := CommitmentToLimbs(commitment)
@@ -111,7 +108,7 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 			RootHashBefore:  new(big.Int).SetBytes(rootHashBefore),
 			CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
 			ProofLimbs:      [3]frontend.Variable{proofLimbs[0], proofLimbs[1], proofLimbs[2]},
-			Y:               emulated.ValueOf[FE](y),
+			Y:               emulated.ValueOf[FE](claim),
 		}
 
 		// Fill blob data
@@ -135,7 +132,7 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 	}
 
 	// Create test data
-	blob := &gethkzg.Blob{}
+	blob := &types.Blob{}
 	for i := range 50 {
 		val := big.NewInt(int64(i + 1))
 		valHash, err := poseidon.MultiPoseidon(val) // Ensure the cell is processed by Poseidon
@@ -144,7 +141,7 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 	}
 
 	// Compute commitment first
-	commitment, err := gethkzg.BlobToCommitment(blob)
+	commitment, err := blob.ComputeCommitment()
 	c.Assert(err, qt.IsNil)
 
 	processID := util.RandomBytes(31)
@@ -153,11 +150,8 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Compute KZG proof
-	proof, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
+	proof, claim, err := blob.ComputeProof(z)
 	c.Assert(err, qt.IsNil)
-
-	// Convert claim to Y
-	y := new(big.Int).SetBytes(claim[:])
 
 	// Extract limbs from commitment and proof
 	commitmentLimbs := CommitmentToLimbs(commitment)
@@ -169,11 +163,11 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 		RootHashBefore:  new(big.Int).SetBytes(rootHashBefore),
 		CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
 		ProofLimbs:      [3]frontend.Variable{proofLimbs[0], proofLimbs[1], proofLimbs[2]},
-		Y:               emulated.ValueOf[FE](y),
+		Y:               emulated.ValueOf[FE](claim),
 	}
 
-	// Fill blob data from gethkzg.Blob
-	for i := range 4096 {
+	// Fill blob data
+	for i := range types.CellProofsPerBlob * 32 {
 		cell := new(big.Int).SetBytes(blob[i*32 : (i+1)*32])
 		witness.Blob[i] = cell
 	}
@@ -217,7 +211,7 @@ func TestBlobEvalDataTransform(t *testing.T) {
 	c := qt.New(t)
 
 	// Create test blob with deterministic data
-	blob := &gethkzg.Blob{}
+	blob := &types.Blob{}
 	for i := range 50 {
 		val := big.NewInt(int64(i + 1))
 		valHash, err := poseidon.MultiPoseidon(val)
@@ -226,7 +220,7 @@ func TestBlobEvalDataTransform(t *testing.T) {
 	}
 
 	// Compute commitment first, then evaluation point
-	commitment, err := gethkzg.BlobToCommitment(blob)
+	commitment, err := blob.ComputeCommitment()
 	c.Assert(err, qt.IsNil)
 
 	processID := util.RandomBytes(31)
@@ -290,7 +284,7 @@ func TestBlobEvalDataTransformWithActualData(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Compute commitment first, then evaluation point
-	commitment, err := gethkzg.BlobToCommitment(blob)
+	commitment, err := blob.ComputeCommitment()
 	c.Assert(err, qt.IsNil)
 
 	processID := util.RandomBytes(31)
@@ -310,8 +304,8 @@ func TestBlobEvalDataTransformWithActualData(t *testing.T) {
 	c.Assert(len(blobData.OpeningProof), qt.Equals, 48)
 
 	// Verify cell proofs were computed (EIP-7594)
-	c.Assert(len(blobData.CellProofs), qt.Equals, gethkzg.CellProofsPerBlob,
-		qt.Commentf("Should have %d cell proofs", gethkzg.CellProofsPerBlob))
+	c.Assert(len(blobData.CellProofs), qt.Equals, types.CellProofsPerBlob,
+		qt.Commentf("Should have %d cell proofs", types.CellProofsPerBlob))
 
 	// Verify TxSidecar can be created
 	sidecar := blobData.TxSidecar()
@@ -320,5 +314,5 @@ func TestBlobEvalDataTransformWithActualData(t *testing.T) {
 	c.Assert(len(sidecar.Commitments), qt.Equals, 1)
 
 	// Verify blob hash
-	c.Assert(len(blobData.HashV1()), qt.Equals, 32)
+	c.Assert(len(blobData.Commitment.CalcBlobHashV1(sha256.New())), qt.Equals, 32)
 }

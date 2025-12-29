@@ -57,18 +57,27 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	// Parse the process ID from the byte slice
 	pid := new(types.ProcessID).SetBytes(process.ID)
 
-	// Fetch or generate encryption keys for the process
-	publicKey, _, err := s.fetchOrGenerateEncryptionKeysUnsafe(pid)
-	if err != nil {
-		log.Warnw("failed to fetch or generate encryption keys for process",
-			"pid", pid.String(), "err", err.Error())
+	// If process already has an EncryptionKey, store it
+	if process.EncryptionKey != nil {
+		if err := s.setEncryptionPubKeyUnsafe(pid, process.EncryptionKey); err != nil {
+			log.Warnw("failed to store encryption keys for process",
+				"pid", pid.String(), "err", err.Error())
+		}
+	} else { // otherwise fetch or generate encryption keys for the process
+		publicKey, _, err := s.fetchOrGenerateEncryptionKeysUnsafe(pid)
+		if err != nil {
+			log.Warnw("failed to fetch or generate encryption keys for process",
+				"pid", pid.String(), "err", err.Error())
+		}
+		ek := types.EncryptionKeyFromPoint(publicKey)
+		process.EncryptionKey = &ek
 	}
 
 	// Initialize the process state to store the process data
 	if err := pState.Initialize(
 		process.Census.CensusOrigin.BigInt().MathBigInt(),
 		circuits.BallotModeToCircuit(process.BallotMode),
-		circuits.EncryptionKeyFromECCPoint(publicKey),
+		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),
 	); err != nil {
 		return fmt.Errorf("failed to initialize process state: %w", err)
 	}

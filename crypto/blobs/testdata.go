@@ -9,7 +9,7 @@ import (
 	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // Embedded test data files
@@ -99,7 +99,7 @@ type testData struct {
 // generateValidKZGData creates a valid KZG commitment and proof for testing
 func generateValidKZGData(seed int64) testData {
 	// Create a simple blob with deterministic data based on seed
-	blob := &gethkzg.Blob{}
+	blob := &types.Blob{}
 	for i := range 50 {
 		val := big.NewInt(seed + int64(i))
 		valBytes := make([]byte, 32)
@@ -108,29 +108,25 @@ func generateValidKZGData(seed int64) testData {
 	}
 
 	// Generate commitment
-	commitment, err := gethkzg.BlobToCommitment(blob)
+	commitment, err := blob.ComputeCommitment()
 	if err != nil {
 		panic(fmt.Sprintf("failed to generate commitment: %v", err))
 	}
 
 	// Generate evaluation point Z (use a simple deterministic value)
 	z := big.NewInt(seed * 12345)
-	zPoint := BigIntToPoint(z)
 
 	// Compute KZG proof
-	proof, claim, err := gethkzg.ComputeProof(blob, zPoint)
+	proof, claim, err := blob.ComputeProof(z)
 	if err != nil {
 		panic(fmt.Sprintf("failed to compute KZG proof: %v", err))
 	}
-
-	// Extract Y from claim
-	y := new(big.Int).SetBytes(claim[:])
 
 	return testData{
 		CommitmentLimbs: bytesToLimbs(commitment[:]),
 		ProofLimbs:      bytesToLimbs(proof[:]),
 		Z:               z,
-		Y:               y,
+		Y:               claim,
 	}
 }
 
@@ -208,8 +204,8 @@ func (td testData) ToPublicWitness() kzgVerifyCircuit {
 }
 
 // hexStrToBlob converts a hex string to a blob
-func hexStrToBlob(hexStr string) (*gethkzg.Blob, error) {
-	var blob gethkzg.Blob
+func hexStrToBlob(hexStr string) (*types.Blob, error) {
+	var blob types.Blob
 	byts, err := hexStrToBytes(hexStr)
 	if err != nil {
 		return nil, err
@@ -256,11 +252,11 @@ func hexCharToNibble(c byte) byte {
 }
 
 // GetBlobData1 returns the first embedded test blob data
-func GetBlobData1() (*gethkzg.Blob, error) {
+func GetBlobData1() (*types.Blob, error) {
 	return hexStrToBlob(blobData1Hex)
 }
 
 // GetBlobData2 returns the second embedded test blob data
-func GetBlobData2() (*gethkzg.Blob, error) {
+func GetBlobData2() (*types.Blob, error) {
 	return hexStrToBlob(blobData2Hex)
 }

@@ -9,11 +9,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	gethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/spf13/pflag"
 
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
@@ -30,6 +31,7 @@ func main() {
 	numBlobs := pflag.Int("n", 1, "Number of random blobs to include")
 	wait := pflag.Bool("wait", true, "Wait for tx to be mined")
 	capi := pflag.String("capi", "https://ethereum-sepolia-beacon-api.publicnode.com", "Consensus API URL (required)")
+
 	pflag.Parse()
 
 	if *rpcURL == "" || *privKey == "" || *capi == "" {
@@ -78,12 +80,12 @@ func main() {
 		blobs[i] = b
 	}
 
-	var sidecar *gethtypes.BlobTxSidecar
+	var sidecar *types.BlobTxSidecar
 	switch contracts.ChainID {
 	case gethparams.SepoliaChainConfig.ChainID.Uint64():
-		sidecar, err = web3.ComputeBlobTxSidecar(gethtypes.BlobSidecarVersion1, blobs)
+		sidecar, err = types.ComputeBlobTxSidecar(types.BlobSidecarVersion1, blobs)
 	default: // mainnet, for example
-		sidecar, err = web3.ComputeBlobTxSidecar(gethtypes.BlobSidecarVersion0, blobs)
+		sidecar, err = types.ComputeBlobTxSidecar(types.BlobSidecarVersion0, blobs)
 	}
 	if err != nil {
 		log.Fatalf("build sidecar: %v", err)
@@ -93,22 +95,17 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	mockStateTransition := func() *gethtypes.Transaction {
-		// Prepare the ABI for packing the data
-		processABI, err := contracts.ProcessRegistryABI()
-		if err != nil {
-			log.Fatal("failed to get process registry ABI: %w", err)
-		}
-
-		tx, err := contracts.NewEIP4844Transaction(ctx, to, processABI, "submitStateTransition",
-			[]any{[32]byte{0x1}, []byte{0x1}, []byte{0x1}}, sidecar)
-		if err != nil {
-			log.Fatalf("failed to build blob tx: %v", err)
-		}
-		return tx
+	// Prepare the ABI for packing the data
+	processABI, err := contracts.ProcessRegistryABI()
+	if err != nil {
+		log.Fatal("failed to get process registry ABI: %w", err)
 	}
 
-	tx := mockStateTransition()
+	tx, err := contracts.NewEIP4844Transaction(ctx, to, processABI, "submitStateTransition",
+		[]any{[32]byte{0x1}, []byte{0x1}, []byte{0x1}}, sidecar)
+	if err != nil {
+		log.Fatalf("failed to build blob tx: %v", err)
+	}
 
 	log.Infow("sending blob tx",
 		"Nonce", tx.Nonce(),
@@ -154,12 +151,17 @@ func main() {
 
 	// Get blob by commitment
 	for i, c := range commitments {
-		blob, err := contracts.BlobByCommitment(ctx2, tx.Hash(), fmt.Sprintf("0x%x", c))
+		blobs, err := contracts.BlobsByTxHash(ctx2, tx.Hash())
 		if err != nil {
 			log.Errorf("get blob %d by commitment 0x%x: %v", i, c, err)
 			continue
 		}
-		log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob), "preview", preview(blob, 32))
+		for _, blob := range blobs {
+			log.Infof("%x, %x", blob.Commitment, c)
+			if blob.String() == fmt.Sprintf("0x%x", c) {
+				log.Infow("blob retrieved", "index", i, "commitment", fmt.Sprintf("0x%x", c), "size", len(blob.Blob), "preview", preview(blob.Blob[:], 32))
+			}
+		}
 	}
 }
 
@@ -172,10 +174,10 @@ func preview(b []byte, n int) string {
 }
 
 func RandomBlob() []byte {
-	const feSize = gethparams.BlobTxBytesPerFieldElement              // 32
-	out := make([]byte, gethparams.BlobTxFieldElementsPerBlob*feSize) // 131072
+	const feSize = params.BlobTxBytesPerFieldElement              // 32
+	out := make([]byte, params.BlobTxFieldElementsPerBlob*feSize) // 131072
 	var el fr.Element
-	for i := 0; i < gethparams.BlobTxFieldElementsPerBlob; i++ {
+	for i := range params.BlobTxFieldElementsPerBlob {
 		el.MustSetRandom()                             // uses crypto/rand.Reader
 		copy(out[i*feSize:(i+1)*feSize], el.Marshal()) // big-endian canonical bytes
 	}

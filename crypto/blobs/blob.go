@@ -1,26 +1,17 @@
 package blobs
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/emulated"
-	gethtypes "github.com/ethereum/go-ethereum/core/types"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
-	gethparams "github.com/ethereum/go-ethereum/params"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
+	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	gnarkposeidon "github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
-)
-
-const (
-	// Number of field elements stored in a single data blob
-	FieldElementsPerBlob = gethparams.BlobTxFieldElementsPerBlob
-	// Size in bytes of a field element
-	BytesPerFieldElement = gethparams.BlobTxBytesPerFieldElement
 )
 
 // BlobEvalData holds the evaluation data for a blob.
@@ -32,24 +23,24 @@ type BlobEvalData struct {
 		Y               emulated.Element[FE]
 		Blob            [N]frontend.Variable // values within bn254 field
 	}
-	Commitment      gethkzg.Commitment
+	Commitment      types.KZGCommitment
 	CommitmentLimbs [3]*big.Int
 	Z               *big.Int
 	Y               *big.Int
 	Ylimbs          [4]*big.Int
-	Blob            gethkzg.Blob
-	OpeningProof    gethkzg.Proof
+	Blob            *types.Blob
+	OpeningProof    types.KZGProof
 	ProofLimbs      [3]*big.Int
 	// Cell proofs for EIP-7594 (Fusaka upgrade)
 	// Each blob has CellProofsPerBlob (128) cell proofs
-	CellProofs [gethkzg.CellProofsPerBlob]gethkzg.Proof
+	CellProofs [types.CellProofsPerBlob]types.KZGProof
 }
 
 // Set initializes the BlobEvalData with the given blob, claim, and evaluation point z.
 // Computes the KZG cell proofs (EIP-7594) and sets the relevant fields.
 // It returns itself for chaining.
-func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error) {
-	commitment, cellProofs, err := ComputeCommitmentAndCellProofs(blob)
+func (b *BlobEvalData) Set(blob *types.Blob, z *big.Int) (*BlobEvalData, error) {
+	commitment, cellProofs, err := blob.ComputeCommitmentAndCellProofs()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute: %w", err)
 	}
@@ -57,11 +48,12 @@ func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error
 	copy(b.CellProofs[:], cellProofs)
 
 	// Compute the point evaluation proof to get the claim (y value) and OpeningProof
-	openingProof, claim, err := gethkzg.ComputeProof(blob, BigIntToPoint(z))
+	proof, claim, err := blob.ComputeProof(z)
 	if err != nil {
 		return nil, err
 	}
-	b.OpeningProof = openingProof
+	b.OpeningProof = proof
+	b.Y = claim
 
 	// Extract commitment limbs (3 × 16 bytes)
 	b.CommitmentLimbs = CommitmentToLimbs(b.Commitment)
@@ -78,9 +70,6 @@ func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error
 		b.ProofLimbs[1],
 		b.ProofLimbs[2],
 	}
-
-	// Convert claim (Y value) to big.Int
-	b.Y = new(big.Int).SetBytes(claim[:])
 
 	// Set evaluation point (y) for Gnark
 	b.ForGnark.Y = emulated.ValueOf[FE](b.Y)
@@ -104,13 +93,14 @@ func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error
 	b.Z = new(big.Int).Set(z)
 
 	// Convert blob to gnark circuit format
-	for i := range FieldElementsPerBlob {
+	for i := range params.BlobTxFieldElementsPerBlob {
 		b.ForGnark.Blob[i] = new(big.Int).SetBytes(
-			blob[i*BytesPerFieldElement : (i+1)*BytesPerFieldElement],
+			blob[i*params.BlobTxBytesPerFieldElement : (i+1)*params.BlobTxBytesPerFieldElement],
 		)
 	}
 
 	// Copy for safety
+	b.Blob = new(types.Blob)
 	copy(b.Blob[:], blob[:])
 
 	return b, err
@@ -118,11 +108,11 @@ func (b *BlobEvalData) Set(blob *gethkzg.Blob, z *big.Int) (*BlobEvalData, error
 
 // TxSidecar returns a BlobTxSidecar with a single KZG blob, commitment, and 128 cell proofs.
 // Returns a Version 1 sidecar with cell proofs for EIP-7594 (Fusaka upgrade).
-func (b *BlobEvalData) TxSidecar() *gethtypes.BlobTxSidecar {
-	return gethtypes.NewBlobTxSidecar(
-		gethtypes.BlobSidecarVersion1,
-		[]gethkzg.Blob{b.Blob},
-		[]gethkzg.Commitment{b.Commitment},
+func (b *BlobEvalData) TxSidecar() *types.BlobTxSidecar {
+	return types.NewBlobTxSidecar(
+		types.BlobSidecarVersion1,
+		[]types.Blob{*b.Blob},
+		[]types.KZGCommitment{b.Commitment},
 		b.CellProofs[:],
 	)
 }
@@ -131,21 +121,16 @@ func (b *BlobEvalData) TxSidecar() *gethtypes.BlobTxSidecar {
 func (b *BlobEvalData) String() string {
 	str := strings.Builder{}
 	for i := range b.Blob {
-		str.WriteString(fmt.Sprintf("[%x]", b.Blob[i*BytesPerFieldElement:(i+1)*BytesPerFieldElement]))
-		if i == FieldElementsPerBlob-1 {
+		fmt.Fprintf(&str, "[%x]", b.Blob[i*params.BlobTxBytesPerFieldElement:(i+1)*params.BlobTxBytesPerFieldElement])
+		if i == params.BlobTxFieldElementsPerBlob-1 {
 			break
 		}
 	}
 	return str.String()
 }
 
-// HashV1 calculates the 'versioned blob hash' of a commitment.
-func (b *BlobEvalData) HashV1() (vh [32]byte) {
-	return gethkzg.CalcBlobHashV1(sha256.New(), &b.Commitment)
-}
-
 // CommitmentToLimbs splits a 48-byte KZG commitment into 3 × 16-byte limbs.
-func CommitmentToLimbs(commitment gethkzg.Commitment) [3]*big.Int {
+func CommitmentToLimbs(commitment types.KZGCommitment) [3]*big.Int {
 	return [3]*big.Int{
 		new(big.Int).SetBytes(commitment[0:16]),
 		new(big.Int).SetBytes(commitment[16:32]),
@@ -154,7 +139,7 @@ func CommitmentToLimbs(commitment gethkzg.Commitment) [3]*big.Int {
 }
 
 // ProofToLimbs splits a 48-byte KZG proof into 3 × 16-byte limbs.
-func ProofToLimbs(proof gethkzg.Proof) [3]*big.Int {
+func ProofToLimbs(proof types.KZGProof) [3]*big.Int {
 	return [3]*big.Int{
 		new(big.Int).SetBytes(proof[0:16]),
 		new(big.Int).SetBytes(proof[16:32]),
@@ -165,7 +150,7 @@ func ProofToLimbs(proof gethkzg.Proof) [3]*big.Int {
 // ComputeEvaluationPoint computes evaluation point z using Poseidon hash.
 // z = Poseidon(processID | rootHashBefore | C | blob)
 // where C is the KZG commitment split into 3 × 16-byte limbs.
-func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, commitment gethkzg.Commitment) (*big.Int, error) {
+func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, commitment types.KZGCommitment) (*big.Int, error) {
 	// Split 48-byte commitment into 3 × 16-byte limbs
 	limbs := CommitmentToLimbs(commitment)
 
@@ -208,39 +193,4 @@ func ComputeEvaluationPointInCircuit(
 		return nil, fmt.Errorf("poseidon hash failed: %w", err)
 	}
 	return z, nil
-}
-
-// ComputeCommitmentAndProof calculates the commitment and blob proof of the passed blob, using geth kzg4844.
-// This can be used to construct a Version 0 BlobTxSidecar.
-func ComputeCommitmentAndProof(blob *gethkzg.Blob) (gethkzg.Commitment, gethkzg.Proof, error) {
-	commitment, err := gethkzg.BlobToCommitment(blob)
-	if err != nil {
-		return gethkzg.Commitment{}, gethkzg.Proof{}, fmt.Errorf("commitment: %w", err)
-	}
-	proof, err := gethkzg.ComputeBlobProof(blob, commitment)
-	if err != nil {
-		return gethkzg.Commitment{}, gethkzg.Proof{}, fmt.Errorf("blob proof: %w", err)
-	}
-	return commitment, proof, nil
-}
-
-// ComputeCommitmentAndCellProofs calculates the commitment and cell proofs of the passed blob, using geth kzg4844.
-// This can be used to construct a Version 1 BlobTxSidecar.
-func ComputeCommitmentAndCellProofs(blob *gethkzg.Blob) (gethkzg.Commitment, []gethkzg.Proof, error) {
-	commitment, err := gethkzg.BlobToCommitment(blob)
-	if err != nil {
-		return gethkzg.Commitment{}, nil, fmt.Errorf("commitment: %w", err)
-	}
-	proofs, err := gethkzg.ComputeCellProofs(blob)
-	if err != nil {
-		return gethkzg.Commitment{}, nil, fmt.Errorf("cell proofs: %w", err)
-	}
-	return commitment, proofs, nil
-}
-
-// BigIntToPoint converts a big.Int to a gethkzg.Point (big-endian byte array)
-func BigIntToPoint(x *big.Int) gethkzg.Point {
-	var point gethkzg.Point
-	x.FillBytes(point[:])
-	return point
 }

@@ -7,7 +7,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -42,17 +41,17 @@ type StateOverride struct {
 
 // Call is a single call to be executed in the simulated block
 type Call struct {
-	From                 common.Address           `json:"from,omitempty"`
-	To                   common.Address           `json:"to,omitempty"`
-	Gas                  hexutil.Uint64           `json:"gas,omitempty"`
-	GasPrice             *hexutil.Big             `json:"gasPrice,omitempty"`
-	MaxFeePerGas         *hexutil.Big             `json:"maxFeePerGas,omitempty"`
-	MaxPriorityFeePerGas *hexutil.Big             `json:"maxPriorityFeePerGas,omitempty"`
-	Value                *hexutil.Big             `json:"value,omitempty"`
-	Data                 hexutil.Bytes            `json:"data,omitempty"`
-	Nonce                hexutil.Uint64           `json:"nonce,omitempty"`
-	BlobHashes           []common.Hash            `json:"blobHashes,omitempty"`
-	Sidecar              *gethtypes.BlobTxSidecar `json:"sidecar,omitempty"`
+	From                 common.Address       `json:"from,omitempty"`
+	To                   common.Address       `json:"to,omitempty"`
+	Gas                  hexutil.Uint64       `json:"gas,omitempty"`
+	GasPrice             *hexutil.Big         `json:"gasPrice,omitempty"`
+	MaxFeePerGas         *hexutil.Big         `json:"maxFeePerGas,omitempty"`
+	MaxPriorityFeePerGas *hexutil.Big         `json:"maxPriorityFeePerGas,omitempty"`
+	Value                *hexutil.Big         `json:"value,omitempty"`
+	Data                 hexutil.Bytes        `json:"data,omitempty"`
+	Nonce                hexutil.Uint64       `json:"nonce,omitempty"`
+	BlobHashes           []common.Hash        `json:"blobHashes,omitempty"`
+	Sidecar              *types.BlobTxSidecar `json:"sidecar,omitempty"`
 }
 
 // SimulatedBlock is the result of a simulated block

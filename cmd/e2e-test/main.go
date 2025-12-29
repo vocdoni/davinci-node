@@ -313,8 +313,13 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 	if err := s.censusDownloader.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start census downloader: %w", err)
 	}
+	// Start StateSync
+	stateSync := service.NewStateSync(contracts, s.storage)
+	if err := stateSync.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start state sync: %v", err)
+	}
 	// Monitor new processes from the contracts
-	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, s.censusDownloader, time.Second*2)
+	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, s.censusDownloader, stateSync, time.Second*2)
 	if err := s.processMonitor.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}

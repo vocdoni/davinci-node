@@ -15,6 +15,7 @@ import (
 	"github.com/holiman/uint256"
 	ethSigner "github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
@@ -88,7 +89,7 @@ type PendingTransaction struct {
 	// BlobHashes store the hashes of the blobs associated with the transaction.
 	BlobHashes []common.Hash
 	// BlobSidecar stores the sidecar for rebuilding blob transactions.
-	BlobSidecar *gethtypes.BlobTxSidecar
+	BlobSidecar *types.BlobTxSidecar
 	// LastError stores the last error encountered for this transaction.
 	// Used to categorize failures as permanent or temporary.
 	LastError error
@@ -366,7 +367,7 @@ func (tm *TxManager) buildTx(
 			Data:       ptx.Data,
 			BlobFeeCap: uint256.MustFromBig(blobFee),
 			BlobHashes: ptx.BlobSidecar.BlobHashes(),
-			Sidecar:    ptx.BlobSidecar,
+			Sidecar:    ptx.BlobSidecar.AsGethSidecar(),
 		})
 	} else {
 		// Build standard dynamic fee transaction

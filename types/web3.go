@@ -1,6 +1,10 @@
 package types
 
-import "context"
+import (
+	"context"
+
+	"github.com/ethereum/go-ethereum/common"
+)
 
 // Web3FilterFn defines the signature for functions that filter process changes
 // from the blockchain. These functions take a context, a start and end block
@@ -17,11 +21,14 @@ type StatusChange struct {
 
 // StateRootChange represents a change in the state root of a voting process.
 // It includes the new state root, the updated voters count, and the updated
-// count of overwritten votes.
+// count of overwritten votes, as well as the tx hash where the data blob lives,
+// that enables a sequencer to reconstruct that NewStateRoot.
 type StateRootChange struct {
+	OldStateRoot             *BigInt
 	NewStateRoot             *BigInt
-	VotersCount              *BigInt
+	NewVotersCount           *BigInt
 	NewOverwrittenVotesCount *BigInt
+	TxHash                   *common.Hash
 }
 
 // MaxVotersChange represents a change in the maximum number of voters

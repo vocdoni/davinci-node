@@ -105,7 +105,7 @@ func (tm *TxManager) SendTx(
 // TrackBlobTxWithSidecar tracks a blob transaction with its sidecar for
 // potential recovery. This should be called immediately after sending a blob
 // transaction if recovery is desired.
-func (tm *TxManager) TrackBlobTxWithSidecar(tx *gethtypes.Transaction, sidecar *gethtypes.BlobTxSidecar) error {
+func (tm *TxManager) TrackBlobTxWithSidecar(tx *gethtypes.Transaction) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if tx.Type() != gethtypes.BlobTxType {
@@ -117,7 +117,11 @@ func (tm *TxManager) TrackBlobTxWithSidecar(tx *gethtypes.Transaction, sidecar *
 		return fmt.Errorf("transaction not tracked, call SendTransactionWithFallback first")
 	}
 	// Update with sidecar
-	ptx.BlobSidecar = sidecar
+	sidecar := tx.BlobTxSidecar()
+	if sidecar == nil {
+		return fmt.Errorf("transaction has no blob sidecar")
+	}
+	ptx.BlobSidecar = types.NewBlobTxSidecarFromGeth(sidecar)
 	log.Infow("blob transaction sidecar stored for recovery",
 		"nonce", tx.Nonce(),
 		"hash", tx.Hash().Hex(),
