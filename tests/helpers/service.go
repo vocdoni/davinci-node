@@ -321,7 +321,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 
 		deployerCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 		defer cancel()
-		// Get the enpoint of the deployer service
+		// Get the endpoint of the deployer service
 		deployerContainer, err := compose.ServiceContainer(deployerCtx, "deployer")
 		if err != nil {
 			cleanup() // Clean up what we've done so far
