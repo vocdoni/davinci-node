@@ -9,10 +9,10 @@ import (
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/test"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -46,7 +46,7 @@ func TestComputeEvaluationPointConsistency(t *testing.T) {
 	c := qt.New(t)
 
 	// Create a test blob
-	blob := &gethkzg.Blob{}
+	blob := new(types.Blob)
 	for i := range 50 {
 		val := big.NewInt(int64(i + 1))
 		valHash, err := poseidon.MultiPoseidon(val)
@@ -55,7 +55,7 @@ func TestComputeEvaluationPointConsistency(t *testing.T) {
 	}
 
 	// Compute commitment
-	commitment, err := gethkzg.BlobToCommitment(blob)
+	commitment, err := blob.ComputeCommitment()
 	c.Assert(err, qt.IsNil)
 
 	// Test with random inputs
@@ -66,14 +66,11 @@ func TestComputeEvaluationPointConsistency(t *testing.T) {
 	zOffCircuit, err := ComputeEvaluationPoint(processID, rootHashBefore, commitment)
 	c.Assert(err, qt.IsNil)
 
-	// Split commitment into limbs for circuit
-	commitmentLimbs := CommitmentToLimbs(commitment)
-
 	// Create witness for circuit
 	witness := testEvaluationPointCircuit{
 		ProcessID:       processID,
 		RootHashBefore:  rootHashBefore,
-		CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
+		CommitmentLimbs: commitment.ToGnarkLimbs(),
 		ExpectedZ:       zOffCircuit,
 	}
 
@@ -102,7 +99,7 @@ func TestComputeEvaluationPointMultipleCases(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create test blob
-			blob := &gethkzg.Blob{}
+			blob := new(types.Blob)
 			for i := range tc.blobSize {
 				val := big.NewInt(int64(i + 1))
 				valHash, err := poseidon.MultiPoseidon(val)
@@ -111,7 +108,7 @@ func TestComputeEvaluationPointMultipleCases(t *testing.T) {
 			}
 
 			// Compute commitment
-			commitment, err := gethkzg.BlobToCommitment(blob)
+			commitment, err := blob.ComputeCommitment()
 			c.Assert(err, qt.IsNil)
 
 			// Random inputs
@@ -122,14 +119,11 @@ func TestComputeEvaluationPointMultipleCases(t *testing.T) {
 			zOffCircuit, err := ComputeEvaluationPoint(processID, rootHashBefore, commitment)
 			c.Assert(err, qt.IsNil)
 
-			// Split commitment into limbs
-			commitmentLimbs := CommitmentToLimbs(commitment)
-
 			// Create witness
 			witness := testEvaluationPointCircuit{
 				ProcessID:       processID,
 				RootHashBefore:  rootHashBefore,
-				CommitmentLimbs: [3]frontend.Variable{commitmentLimbs[0], commitmentLimbs[1], commitmentLimbs[2]},
+				CommitmentLimbs: commitment.ToGnarkLimbs(),
 				ExpectedZ:       zOffCircuit,
 			}
 
@@ -146,13 +140,13 @@ func TestCommitmentToLimbs(t *testing.T) {
 	c := qt.New(t)
 
 	// Create a test commitment (48 bytes)
-	commitment := gethkzg.Commitment{}
+	commitment := types.KZGCommitment{}
 	for i := range 48 {
 		commitment[i] = byte(i)
 	}
 
 	// Split into limbs
-	limbs := CommitmentToLimbs(commitment)
+	limbs := commitment.ToLimbs()
 
 	// Verify we have 3 limbs
 	c.Assert(len(limbs), qt.Equals, 3)

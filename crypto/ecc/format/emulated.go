@@ -39,15 +39,15 @@ func SplitIntoEmulatedLimbsLE[T emulated.FieldParams](nativeField *big.Int, z *b
 }
 
 // SplitYForBn254FromBLS12381 splits a BLS12-381 scalar field element z into limbs for emulation in a BN254 circuit.
-// It returns the limbs as []*big.Int in little-endian order.
+// It returns the limbs as [4]*big.Int in little-endian order.
 // The returned limbs can be used to reconstruct z within a gnark circuit emulating BLS12-381 Fr.
-func SplitYForBn254FromBLS12381(z *big.Int) ([]*big.Int, error) {
+func SplitYForBn254FromBLS12381(z *big.Int) ([4]*big.Int, error) {
 	limbs, err := SplitIntoEmulatedLimbsLE[emparams.BLS12381Fr](ecc.BN254.ScalarField(), z)
 	if err != nil {
-		return nil, fmt.Errorf("failed to split BLS12-381 Fr element into limbs: %w", err)
+		return [4]*big.Int{}, fmt.Errorf("failed to split BLS12-381 Fr element into limbs: %w", err)
 	}
 	if len(limbs) != 4 {
-		return nil, fmt.Errorf("expected 4 limbs for BLS12-381 Fr element, got %d", len(limbs))
+		return [4]*big.Int{}, fmt.Errorf("expected 4 limbs for BLS12-381 Fr element, got %d", len(limbs))
 	}
-	return limbs, nil
+	return [4]*big.Int{limbs[0], limbs[1], limbs[2], limbs[3]}, nil
 }

@@ -19,6 +19,7 @@ type ProcessMonitor struct {
 	contracts        ContractsService
 	storage          *storage.Storage
 	censusDownloader *CensusDownloader
+	statesync        *StateSync
 	interval         time.Duration
 	mu               sync.Mutex
 	cancel           context.CancelFunc
@@ -35,10 +36,12 @@ type ContractsService interface {
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
+	BlobsByTxHash(ctx context.Context, txHash common.Hash) ([]*types.BlobSidecar, error)
 }
 
 // NewProcessMonitor creates a new ProcessMonitor service. If storage is nil, it uses a memory storage.
-func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, censusDownloader *CensusDownloader, interval time.Duration) *ProcessMonitor {
+func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, censusDownloader *CensusDownloader, stateSync *StateSync, interval time.Duration,
+) *ProcessMonitor {
 	if stg == nil {
 		kv := memdb.New()
 		stg = storage.New(kv)
@@ -47,6 +50,7 @@ func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, censusD
 		contracts:        contracts,
 		storage:          stg,
 		censusDownloader: censusDownloader,
+		statesync:        stateSync,
 		interval:         interval,
 	}
 }
@@ -210,7 +214,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 		case <-ctx.Done():
 			return
 		case process := <-newProcChan:
-			// Try to update the process if it already exists
+			// Skip if the process already exists
 			if _, err := pm.storage.Process(new(types.ProcessID).SetBytes(process.ID)); err == nil {
 				continue
 			}
@@ -223,7 +227,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 						"pid", process.ID.String(),
 						"err", err.Error())
 				}
-				log.Debugw("process created", "pid", process.ID.String())
+				log.Debugw("process created", "pid", process.ID.String(), "stateRoot", process.StateRoot.String())
 			}
 
 			// If the process is ready and has a census, download and import it
@@ -277,17 +281,22 @@ func (pm *ProcessMonitor) monitorProcesses(
 				log.Debugw("process state root changed",
 					"pid", pid.String(),
 					"newStateRoot", update.NewStateRoot.String(),
-					"votersCount", update.VotersCount.String(),
+					"newVotersCount", update.NewVotersCount.String(),
 					"newOverwrittenVotesCount", update.NewOverwrittenVotesCount.String())
 				if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetStateRoot(
 					update.NewStateRoot,
-					update.VotersCount,
+					update.NewVotersCount,
 					update.NewOverwrittenVotesCount,
 				)); err != nil {
 					log.Warnw("failed to update process state root",
 						"pid", pid.String(),
 						"err", err.Error())
 				}
+				// Notify StateSync service for blob fetching and state reconstruction (non-blocking)
+				if pm.statesync != nil {
+					pm.statesync.Notify(update)
+				}
+
 			case update.MaxVotersChange != nil:
 				// process max voters change
 				log.Debugw("process max voters changed",

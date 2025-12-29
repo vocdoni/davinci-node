@@ -108,7 +108,7 @@ func (c *Contracts) StateRoot(processID []byte) (*types.BigInt, error) {
 // the process. It returns the transaction hash of the state transition
 // submission, or an error if the submission fails. The tx hash can be used to
 // track the status of the transaction on the blockchain.
-func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, inputs []byte, blobsSidecar *gethtypes.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
+func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, inputs []byte, blobsSidecar *types.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
 	// Copy processID into a fixed-size array to match the contract's expected
 	// type
 	var pid [32]byte
@@ -150,8 +150,8 @@ func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, input
 		}
 	})
 	// If blob transaction sent successfully, store sidecar for recovery
-	if err == nil && blobsSidecar != nil && sentTx != nil {
-		if err := c.txManager.TrackBlobTxWithSidecar(sentTx, blobsSidecar); err != nil {
+	if err == nil && sentTx != nil && sentTx.BlobTxSidecar() != nil {
+		if err := c.txManager.TrackBlobTxWithSidecar(sentTx); err != nil {
 			log.Warnw("failed to track blob sidecar for recovery",
 				"error", err,
 				"hash", txHash.Hex(),
@@ -175,7 +175,7 @@ func (c *Contracts) sendProcessTransition(processID types.HexBytes, proof, input
 func (c *Contracts) SetProcessTransition(
 	processID types.HexBytes,
 	proof, inputs []byte,
-	blobsSidecar *gethtypes.BlobTxSidecar,
+	blobsSidecar *types.BlobTxSidecar,
 	timeout time.Duration,
 	callback ...func(error),
 ) error {

@@ -3,13 +3,11 @@ package state
 import (
 	"fmt"
 	"math/big"
-	"unsafe"
-
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -29,17 +27,17 @@ type BlobData struct {
 //  3. Votes sequentially until voteID = 0x0 (sentinel):
 //     Each vote: voteID + address + reencryptedBallot coordinates
 func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
-	var cells [blobs.FieldElementsPerBlob][blobs.BytesPerFieldElement]byte
+	var cells [params.BlobTxFieldElementsPerBlob][params.BlobTxBytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) {
-		if cell >= blobs.FieldElementsPerBlob {
+		if cell >= params.BlobTxFieldElementsPerBlob {
 			panic("blob overflow")
 		}
 		biBytes := bi.Bytes()
 		// Pad to 32 bytes if necessary (big-endian)
-		if len(biBytes) < blobs.BytesPerFieldElement {
-			padded := make([]byte, blobs.BytesPerFieldElement)
-			copy(padded[blobs.BytesPerFieldElement-len(biBytes):], biBytes)
+		if len(biBytes) < params.BlobTxBytesPerFieldElement {
+			padded := make([]byte, params.BlobTxBytesPerFieldElement)
+			copy(padded[params.BlobTxBytesPerFieldElement-len(biBytes):], biBytes)
 			biBytes = padded
 		}
 		// Copy as big-endian
@@ -70,15 +68,15 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 
 	// Convert 2D cell array to flat blob format
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement)
-	blob := new(gethkzg.Blob)
-	for i := range blobs.FieldElementsPerBlob {
-		start := i * blobs.BytesPerFieldElement
-		end := start + blobs.BytesPerFieldElement
+	blob := new(types.Blob)
+	for i := range params.BlobTxFieldElementsPerBlob {
+		start := i * params.BlobTxBytesPerFieldElement
+		end := start + params.BlobTxBytesPerFieldElement
 		copy(blob[start:end], cells[i][:])
 	}
 
 	// Compute KZG commitment first
-	commitment, err := gethkzg.BlobToCommitment(blob)
+	commitment, err := blob.ComputeCommitment()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute commitment: %w", err)
 	}
@@ -98,8 +96,12 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 	return blobData, err
 }
 
-// ParseBlobData extracts vote and results data from a blob
-func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
+// parseBlobData extracts vote and results data from a blob.
+func parseBlobData(blob []byte) (*BlobData, error) {
+	if len(blob) != types.BlobLength {
+		return nil, fmt.Errorf("unexpected blob length %d", len(blob))
+	}
+
 	coordsPerBallot := types.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
 
 	data := &BlobData{
@@ -109,13 +111,12 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 	}
 
 	// extract big.Int from blob cell
-	blobBytes := (*(*[131072]byte)(unsafe.Pointer(blob)))[:]
 	getCell := func(cellIndex int) *big.Int {
-		if cellIndex >= blobs.FieldElementsPerBlob {
+		if cellIndex >= params.BlobTxFieldElementsPerBlob {
 			return big.NewInt(0)
 		}
-		start := cellIndex * blobs.BytesPerFieldElement
-		cellBytes := blobBytes[start : start+blobs.BytesPerFieldElement]
+		start := cellIndex * params.BlobTxBytesPerFieldElement
+		cellBytes := blob[start : start+params.BlobTxBytesPerFieldElement]
 		// Read blob cells as big-endian (canonical form)
 		return new(big.Int).SetBytes(cellBytes)
 	}
@@ -145,7 +146,7 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 		}
 
 		// Check if we have enough cells for a complete vote
-		if cellIndex+1+coordsPerBallot > blobs.FieldElementsPerBlob {
+		if cellIndex+1+coordsPerBallot > params.BlobTxFieldElementsPerBlob {
 			return nil, fmt.Errorf("incomplete vote data in blob")
 		}
 
@@ -167,8 +168,8 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 		}
 
 		// Convert voteID back to byte array
-		voteIDBytes := make([]byte, types.StateKeyMaxLen)
-		voteID = util.TruncateToLowerBits(voteID, types.StateKeyMaxLen*8) // avoid panics in FillBytes
+		voteIDBytes := make([]byte, types.VoteIDLen)
+		voteID = util.TruncateToLowerBits(voteID, types.VoteIDLen*8) // avoid panics in FillBytes
 		voteID.FillBytes(voteIDBytes)
 
 		vote := &Vote{
@@ -188,7 +189,12 @@ func ParseBlobData(blob *gethkzg.Blob) (*BlobData, error) {
 }
 
 // ApplyBlobToState applies the data from a blob to restore state
-func (st *State) ApplyBlobToState(blobData *BlobData) error {
+func (st *State) ApplyBlobToState(blob []byte) error {
+	blobData, err := parseBlobData(blob)
+	if err != nil {
+		return err
+	}
+
 	// Add votes directly to the state tree without batch processing
 	for _, vote := range blobData.Votes {
 		// Add or update the vote ballot in the tree

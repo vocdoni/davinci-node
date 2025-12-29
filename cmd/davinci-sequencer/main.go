@@ -30,6 +30,7 @@ type Services struct {
 	Contracts        *web3.Contracts
 	TxManager        *txmanager.TxManager
 	Storage          *storage.Storage
+	StateSync        *service.StateSync
 	CensusDownloader *service.CensusDownloader
 	ProcessMon       *service.ProcessMonitor
 	API              *service.APIService
@@ -236,9 +237,15 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		return nil, fmt.Errorf("failed to start census downloader: %w", err)
 	}
 
+	// Start StateSync
+	stateSync := service.NewStateSync(services.Contracts, services.Storage)
+	if err := stateSync.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start state sync: %v", err)
+	}
+
 	// Start process monitor
 	log.Info("starting process monitor")
-	services.ProcessMon = service.NewProcessMonitor(services.Contracts, services.Storage, services.CensusDownloader, monitorInterval)
+	services.ProcessMon = service.NewProcessMonitor(services.Contracts, services.Storage, services.CensusDownloader, stateSync, monitorInterval)
 	if err := services.ProcessMon.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}

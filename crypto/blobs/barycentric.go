@@ -5,7 +5,7 @@ import (
 	"math/big"
 
 	fr "github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // EvaluateBarycentricNative evaluates a polynomial in evaluation form using the barycentric formula.
@@ -20,7 +20,7 @@ import (
 //   - dᵢ are the blob data values (polynomial evaluations at domain points)
 //   - ωᵢ are the roots of unity forming the evaluation domain
 //   - z is the evaluation point
-func EvaluateBarycentricNative(blob *gethkzg.Blob, z *big.Int, debug bool) (*big.Int, error) {
+func EvaluateBarycentricNative(blob *types.Blob, z *big.Int, debug bool) (*big.Int, error) {
 	if len(blob) != 32*4096 {
 		return nil, fmt.Errorf("blob length is %d, want 131072", len(blob))
 	}
@@ -180,7 +180,7 @@ func EvaluateBarycentricNative(blob *gethkzg.Blob, z *big.Int, debug bool) (*big
 
 // blobCell extracts the i-th 32-byte element from the blob and converts it to a big integer.
 // The blob stores field elements in big-endian format.
-func blobCell(blob *gethkzg.Blob, i int) *big.Int {
+func blobCell(blob *types.Blob, i int) *big.Int {
 	start := i * 32
 	return new(big.Int).SetBytes(blob[start : start+32])
 }

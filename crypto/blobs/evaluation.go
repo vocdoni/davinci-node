@@ -30,11 +30,8 @@ import (
 	"fmt"
 	"math/big"
 
-	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
-	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
 )
 
 const (
@@ -218,41 +215,4 @@ func emulatedToNative(api frontend.API, e *emulated.Element[FE]) frontend.Variab
 		acc = api.Add(acc, api.Mul(limb, pow))
 	}
 	return acc
-}
-
-// KZGToCircuitInputs converts geth-kzg types to Gnark circuit-compatible types.
-//
-// Parameters:
-//   - commitment: 48-byte compressed BLS12-381 G1 point from gethkzg.BlobToCommitment
-//   - proof: 48-byte compressed BLS12-381 G1 point from gethkzg.ComputeProof
-//   - claim: 32-byte BLS12-381 Fr element (Y value) from gethkzg.ComputeProof
-//
-// Returns:
-//   - commitmentPoint: sw_bls12381.G1Affine point for witness assignment
-//   - proofPoint: sw_bls12381.G1Affine point for witness assignment
-//   - y: The claim value as a big.Int for emulated.ValueOf[FE]
-func KZGToCircuitInputs(
-	commitment gethkzg.Commitment,
-	proof gethkzg.Proof,
-	claim gethkzg.Claim,
-) (commitmentPoint sw_bls12381.G1Affine, proofPoint sw_bls12381.G1Affine, y *big.Int, err error) {
-	// Import the gnark-crypto bls12381 package for unmarshaling
-	var commitmentCrypto, proofCrypto bls12381.G1Affine
-
-	// Unmarshal commitment from compressed bytes
-	if _, err = commitmentCrypto.SetBytes(commitment[:]); err != nil {
-		return commitmentPoint, proofPoint, nil, fmt.Errorf("failed to unmarshal commitment: %w", err)
-	}
-	commitmentPoint = sw_bls12381.NewG1Affine(commitmentCrypto)
-
-	// Unmarshal proof from compressed bytes
-	if _, err = proofCrypto.SetBytes(proof[:]); err != nil {
-		return commitmentPoint, proofPoint, nil, fmt.Errorf("failed to unmarshal proof: %w", err)
-	}
-	proofPoint = sw_bls12381.NewG1Affine(proofCrypto)
-
-	// Convert claim (32 bytes) to big.Int
-	y = new(big.Int).SetBytes(claim[:])
-
-	return commitmentPoint, proofPoint, y, nil
 }

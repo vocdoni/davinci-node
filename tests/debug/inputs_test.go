@@ -52,11 +52,12 @@ func TestDebugVoteVerifier(t *testing.T) {
 	processID := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), process.ProcessID.BigInt().MathBigInt())
 	root := arbo.BytesToBigInt(vote.CensusProof.Root)
 	ballotMode := circuits.BallotModeToCircuit(process.BallotMode)
-	encKey := types.EncryptionKey{
-		X: process.EncryptionPubKey[0],
-		Y: process.EncryptionPubKey[1],
+	encryptionKey := circuits.EncryptionKey[*big.Int]{
+		PubKey: [2]*big.Int{
+			process.EncryptionPubKey[0].MathBigInt(),
+			process.EncryptionPubKey[1].MathBigInt(),
+		},
 	}
-	encryptionKey := circuits.EncryptionKeyToCircuit(encKey)
 
 	// convert the circom proof to gnark proof and verify it
 	err = ballotproof.Artifacts.LoadAll()
