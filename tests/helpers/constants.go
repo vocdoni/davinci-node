@@ -14,7 +14,7 @@ const (
 	TestWorkerSeed            = "test-seed"
 	TestWorkerTokenExpiration = 24 * time.Hour
 	TestWorkerTimeout         = time.Second * 5
-	// envarionment variable names
+	// environment variable names
 	DeployerServerPortEnvVarName      = "DEPLOYER_SERVER"                        // environment variable name for deployer server port
 	ContractsBranchNameEnvVarName     = "SEQUENCER_CONTRACTS_BRANCH"             // environment variable name for z-contracts branch
 	ContractsCommitHashEnvVarName     = "SEQUENCER_CONTRACTS_COMMIT"             // environment variable name for z-contracts commit hash
