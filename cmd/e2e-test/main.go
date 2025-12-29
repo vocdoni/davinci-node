@@ -544,10 +544,10 @@ func createProcess(
 	return pid, encryptionKeys, nil
 }
 
-func createVotes(signers []*ethereum.Signer, pid *types.ProcessID, encryptionKey *types.EncryptionKey) ([]api.Vote, error) {
+func createVotes(signers []*ethereum.Signer, pid types.ProcessID, encryptionKey *types.EncryptionKey) ([]api.Vote, error) {
 	votes := make([]api.Vote, 0, len(signers))
 	for _, signer := range signers {
-		vote, err := createVote(signer, pid, encryptionKey, &mockedBallotMode)
+		vote, err := createVote(signer, pid, encryptionKey, ballotMode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create vote: %w", err)
 		}

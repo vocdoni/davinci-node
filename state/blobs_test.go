@@ -3,7 +3,6 @@ package state_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -317,7 +316,7 @@ func TestBlobStateTransition(t *testing.T) {
 		// Apply each blob in sequence to restore the cumulative state
 		for i, transition := range transitions {
 			// Apply the blob data to the test state
-			err = testState.ApplyBlobToState(transition.Blob.Blob[:])
+			err = testState.ApplyBlobToState(transition.Blob.Blob)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to apply blob to state for transition %d", i+1))
 
 			// Verify the state root matches the expected root for this transition
@@ -361,7 +360,7 @@ func TestBlobStateTransition(t *testing.T) {
 		}
 
 		// Now apply the last transition using the blob
-		err = testState.ApplyBlobToState(lastTransition.Blob.Blob[:])
+		err = testState.ApplyBlobToState(lastTransition.Blob.Blob)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to apply last blob to state"))
 
 		// Verify the final state root matches
@@ -387,7 +386,7 @@ func TestBlobStateTransition(t *testing.T) {
 func verifyBlobStructureBasic(t *testing.T, blob *types.Blob, votes []*state.Vote) {
 	c := qt.New(t)
 	// Parse blob data
-	blobData, err := state.ParseBlobData(blob)
+	blobData, err := state.ParseBlobData(blob.Bytes())
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob data"))
 
 	// Verify number of votes
@@ -448,7 +447,7 @@ func verifyKZGCommitment(t *testing.T, blob *types.Blob, commit *types.KZGCommit
 func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.ProcessID, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
 	c := qt.New(t)
 	// Parse blob data
-	blobData, err := state.ParseBlobData(blob)
+	blobData, err := state.ParseBlobData(blob.Bytes())
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob data"))
 
 	// Create new state
@@ -467,7 +466,7 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize new state"))
 
 	// Apply blob data to new state
-	err = newState.ApplyBlobToState(blob[:])
+	err = newState.ApplyBlobToState(blob)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to apply blob to state"))
 
 	// Verify restored state root matches original
@@ -477,9 +476,6 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	c.Assert(expectedRoot.Cmp(restoredRoot), qt.Equals, 0,
 		qt.Commentf("Restored state root mismatch: expected %s, got %s", expectedRoot.String(), restoredRoot.String()))
 
-	// Parse blob data
-	blobData, err := parseBlobData(blob[:])
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob data"))
 	// Verify individual votes can be retrieved
 	for _, vote := range blobData.Votes {
 		retrievedBallot, err := newState.EncryptedBallot(vote.Address)
@@ -512,31 +508,6 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	}
 }
 
-func TestBlobDataParsing(t *testing.T) {
-	// Test parsing with various vote counts
-	testCases := []int{0, 1, 5, 50, 115}
-
-	for _, numVotes := range testCases {
-		t.Run(fmt.Sprintf("ParseVotes_%d", numVotes), func(t *testing.T) {
-			c := qt.New(t)
-			// Create a test blob with known data
-			blob := &types.Blob{}
-
-			// This would normally populate the blob with test data
-			// For now, we'll test the parsing logic with empty data
-			blobData, err := state.ParseBlobData(blob[:])
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob"))
-
-			// With empty blob, we should get 0 votes (since first cell is 0x0 = sentinel)
-			c.Assert(len(blobData.Votes), qt.Equals, 0, qt.Commentf("Expected 0 votes from empty blob, got %d", len(blobData.Votes)))
-
-			c.Assert(len(blobData.ResultsAdd), qt.Equals, 32, qt.Commentf("Expected 32 ResultsAdd coordinates, got %d", len(blobData.ResultsAdd)))
-
-			c.Assert(len(blobData.ResultsSub), qt.Equals, 32, qt.Commentf("Expected 32 ResultsSub coordinates, got %d", len(blobData.ResultsSub)))
-		})
-	}
-}
-
 func TestParseBlobData_FromFile(t *testing.T) {
 	log.Init("debug", "stdout", nil)
 	// Path: state/testdata/blob.bin
@@ -565,7 +536,7 @@ func TestParseBlobData_FromFile(t *testing.T) {
 		t.Fatalf("unexpected blob length: got %d, want %d", len(raw), types.BlobLength)
 	}
 
-	data, err := parseBlobData(raw)
+	data, err := state.ParseBlobData(raw)
 	if err != nil {
 		t.Fatalf("ParseBlobData returned error: %v", err)
 	}

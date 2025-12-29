@@ -56,7 +56,7 @@ func (s *Storage) NewProcess(process *types.Process) error {
 
 	// If process already has an EncryptionKey, store it
 	if process.EncryptionKey != nil {
-		if err := s.setEncryptionPubKeyUnsafe(process.ID, process.EncryptionKey); err != nil {
+		if err := s.setEncryptionPubKeyUnsafe(*process.ID, process.EncryptionKey); err != nil {
 			log.Warnw("failed to store encryption keys for process",
 				"pid", process.ID.String(), "err", err.Error())
 		}

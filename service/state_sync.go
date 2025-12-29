@@ -88,7 +88,7 @@ func (ss *StateSync) consumeQueue(ctx context.Context) {
 func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.ProcessWithChanges) error {
 	// First check if NEW state root is already present (i.e. we're synced already), skip sync
 	if _, err := state.LoadOnRoot(ss.storage.StateDB(),
-		process.ProcessID.BigInt().MathBigInt(),
+		process.ProcessID,
 		process.NewStateRoot.MathBigInt()); err == nil {
 		log.Debugf("process %s with state %d is up-to-date, no need for StateSync",
 			process.ProcessID.String(), process.NewStateRoot.MathBigInt())
@@ -103,7 +103,7 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 
 	// Load state at the OLD state root (before the transition)
 	st, err := state.LoadOnRoot(ss.storage.StateDB(),
-		process.ProcessID.BigInt().MathBigInt(),
+		process.ProcessID,
 		process.OldStateRoot.MathBigInt())
 	if err != nil {
 		return fmt.Errorf("failed to load state on old root %s: %w",
@@ -122,7 +122,7 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 
 	// Apply blob data to reconstruct the state
 	for _, blobSidecar := range blobs {
-		if err := st.ApplyBlobToState(blobSidecar.Blob.Bytes()); err != nil {
+		if err := st.ApplyBlobToState(blobSidecar.Blob); err != nil {
 			return fmt.Errorf("failed to apply blob data to state: %w", err)
 		}
 	}

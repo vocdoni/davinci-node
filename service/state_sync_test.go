@@ -107,7 +107,7 @@ func TestStateSync(t *testing.T) {
 	// TODO: dedup all of this with state/blobs_test.go code that was copypasted here
 
 	// Initialize state
-	originalState, err := state.New(memdb.New(), pid.BigInt())
+	originalState, err := state.New(memdb.New(), pid)
 	c.Assert(err, qt.IsNil)
 	defer func() {
 		if err := originalState.Close(); err != nil {
@@ -173,7 +173,7 @@ func TestStateSync(t *testing.T) {
 		c.Log(proc)
 	}
 	err = contracts.MockStateRootChange(ctx, &types.ProcessWithChanges{
-		ProcessID: proc.ID,
+		ProcessID: *proc.ID,
 		StateRootChange: &types.StateRootChange{
 			OldStateRoot:             (*types.BigInt)(oldStateRoot),
 			NewStateRoot:             (*types.BigInt)(newStateRoot),

@@ -47,7 +47,7 @@ func (s *Storage) setEncryptionKeysUnsafe(pid types.ProcessID, publicKey ecc.Poi
 
 // setEncryptionPubKeyUnsafe stores only the encryption public key for a process, without locking.
 // If there's already a matching EncryptionKey (PubKey) in storage, it won't rewrite it.
-func (s *Storage) setEncryptionPubKeyUnsafe(pid *types.ProcessID, ek *types.EncryptionKey) error {
+func (s *Storage) setEncryptionPubKeyUnsafe(pid types.ProcessID, ek *types.EncryptionKey) error {
 	publicKey, _, err := s.encryptionKeysUnsafe(pid)
 	if err == nil {
 		if types.EncryptionKeyFromPoint(publicKey).X.Equal(ek.X) &&
@@ -62,7 +62,7 @@ func (s *Storage) setEncryptionPubKeyUnsafe(pid *types.ProcessID, ek *types.Encr
 		X: ek.X.MathBigInt(),
 		Y: ek.Y.MathBigInt(),
 	}
-	return s.setArtifact(encryptionKeyPrefix, pid.Marshal(), eks)
+	return s.setArtifact(encryptionKeyPrefix, pid.Bytes(), eks)
 }
 
 // encryptionKeysUnsafe loads the encryption keys for a process without locking.
