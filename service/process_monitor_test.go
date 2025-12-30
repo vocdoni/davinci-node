@@ -10,6 +10,7 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -64,20 +65,12 @@ func TestProcessMonitor(t *testing.T) {
 	pid, createTx, err := contracts.CreateProcess(&types.Process{
 		Status:         types.ProcessStatusReady,
 		OrganizationId: contracts.AccountAddress(),
-		StateRoot:      new(types.BigInt).SetUint64(100),
+		StateRoot:      testutil.StateRoot(),
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
-		BallotMode: &types.BallotMode{
-			NumFields:      2,
-			MaxValue:       new(types.BigInt).SetUint64(100),
-			MinValue:       new(types.BigInt).SetUint64(0),
-			MaxValueSum:    new(types.BigInt).SetUint64(0),
-			MinValueSum:    new(types.BigInt).SetUint64(0),
-			UniqueValues:   false,
-			CostFromWeight: false,
-		},
-		Census: census,
+		BallotMode:     testutil.BallotModeInternal(),
+		Census:         census,
 	})
 	c.Assert(err, qt.IsNil)
 	c.Assert(createTx, qt.Not(qt.IsNil))

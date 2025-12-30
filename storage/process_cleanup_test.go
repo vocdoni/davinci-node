@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 )
 
 func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
@@ -12,7 +12,7 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("p1")
+	pid := testutil.RandomProcessID()
 	ensureProcess(t, stg, pid)
 
 	// 1) Verified ballots (push pending -> reserve -> mark done)
@@ -37,7 +37,7 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 		aggBallots = append(aggBallots, mkAggBallot(id))
 	}
 	c.Assert(stg.PushAggregatorBatch(&AggregatorBallotBatch{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		Ballots:   aggBallots,
 	}), qt.IsNil)
 
@@ -48,7 +48,7 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 		stBallots = append(stBallots, mkAggBallot(id))
 	}
 	c.Assert(stg.PushStateTransitionBatch(&StateTransitionBatch{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		Ballots:   stBallots,
 	}), qt.IsNil)
 

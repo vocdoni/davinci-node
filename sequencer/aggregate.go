@@ -12,7 +12,6 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
@@ -36,25 +35,16 @@ type (
 	voteVerifierProofValidatorFn func(ballot *storage.VerifiedBallot) error
 )
 
-type aggregationBatchInputs struct {
-	proofs                 [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
-	proofsInputHash        [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
-	aggBallots             []*storage.AggregatorBallot
-	verifiedBallots        []*storage.VerifiedBallot
-	processedKeys          [][]byte
-	proofsInputsHashInputs []*big.Int
-}
-
 func collectAggregationBatchInputs(
 	stg aggregationStorage,
-	processID types.HexBytes,
+	processID types.ProcessID,
 	ballots []*storage.VerifiedBallot,
 	keys [][]byte,
 	processState aggregationProcessState,
 	maxVotersReached bool,
 	proofToRecursion proofToRecursionFn,
 	verifyVoteVerifierProof voteVerifierProofValidatorFn,
-) (*aggregationBatchInputs, error) {
+) (*aggregator.AggregatorInputs, error) {
 	// Prepare data structures for the aggregator circuit
 	proofs := [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
 	proofsInputHash := [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
@@ -355,13 +345,13 @@ func collectAggregationBatchInputs(
 		}
 	}
 
-	return &aggregationBatchInputs{
-		proofs:                 proofs,
-		proofsInputHash:        proofsInputHash,
-		aggBallots:             aggBallots,
-		verifiedBallots:        verifiedBallots,
-		processedKeys:          processedKeys,
-		proofsInputsHashInputs: proofsInputsHashInputs,
+	return &aggregator.AggregatorInputs{
+		Proofs:                 proofs,
+		ProofsInputHash:        proofsInputHash,
+		AggBallots:             aggBallots,
+		VerifiedBallots:        verifiedBallots,
+		ProcessedKeys:          processedKeys,
+		ProofsInputsHashInputs: proofsInputsHashInputs,
 	}, nil
 }
 
@@ -566,40 +556,35 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	}
 
 	// Check if we have some ballots to process
-	if len(batchInputs.aggBallots) == 0 {
-		log.Debugw("no ballots to process", "processID", fmt.Sprintf("%x", processID))
+	if len(batchInputs.AggBallots) == 0 {
+		log.Debugw("no ballots to process", "processID", processID.String())
 		return nil
 	}
 
 	log.Debugw("aggregating ballots",
 		"processID", processID.String(),
-		"ballotCount", len(batchInputs.aggBallots))
+		"ballotCount", len(batchInputs.AggBallots))
 	startTime := time.Now()
 
-	// Padding the proofsInputsHashInputs with 1s to fill the array
-	for i := len(batchInputs.aggBallots); i < params.VotesPerBatch; i++ {
-		batchInputs.proofsInputsHashInputs = append(batchInputs.proofsInputsHashInputs, new(big.Int).SetInt64(1))
-	}
-
 	// Compute the hash of the ballot input hashes using MiMC hash function
-	inputsHash, err := mimc7.Hash(batchInputs.proofsInputsHashInputs, nil)
+	inputsHash, err := batchInputs.InputsHash()
 	if err != nil {
 		return fmt.Errorf("failed to calculate inputs hash: %w", err)
 	}
 
 	// Create the aggregator circuit assignment
 	assignment := &aggregator.AggregatorCircuit{
-		ValidProofs:        len(batchInputs.aggBallots),
+		ValidProofs:        len(batchInputs.AggBallots),
 		InputsHash:         emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
-		Proofs:             batchInputs.proofs,
-		ProofsInputsHashes: batchInputs.proofsInputHash,
+		Proofs:             batchInputs.Proofs,
+		ProofsInputsHashes: batchInputs.ProofsInputHash,
 	}
 
 	// Fill any remaining slots with dummy proofs if needed
-	if len(batchInputs.aggBallots) < params.VotesPerBatch {
-		log.Debugw("filling with dummy proofs", "count", params.VotesPerBatch-len(batchInputs.aggBallots))
-		if err := assignment.FillWithDummy(s.vvCcs, s.vvPk, s.bVkCircom, len(batchInputs.aggBallots), s.prover); err != nil {
-			if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.processedKeys); err != nil {
+	if len(batchInputs.AggBallots) < params.VotesPerBatch {
+		log.Debugw("filling with dummy proofs", "count", params.VotesPerBatch-len(batchInputs.AggBallots))
+		if err := assignment.FillWithDummy(s.vvCcs, s.vvPk, s.bVkCircom, len(batchInputs.AggBallots), s.prover); err != nil {
+			if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
 				log.Warnw("failed to release ballot reservations after dummy fill failure",
 					"error", err.Error(),
 					"processID", processID.String(),
@@ -625,9 +610,9 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		// Remove block once we have sufficient confidence in the aggregator proving
 		s.debugAggregationFailure(processID, assignment, batchInputs, inputsHash, err)
 		var invalidKeys [][]byte
-		for i, vb := range batchInputs.verifiedBallots {
+		for i, vb := range batchInputs.VerifiedBallots {
 			if errVerify := verifyVoteVerifierProof(vb); errVerify != nil {
-				invalidKeys = append(invalidKeys, batchInputs.processedKeys[i])
+				invalidKeys = append(invalidKeys, batchInputs.ProcessedKeys[i])
 				voteIDStr := "<nil>"
 				addressStr := "<nil>"
 				if vb != nil {
@@ -657,7 +642,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 				)
 			}
 		}
-		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.processedKeys); err != nil {
+		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
 			log.Warnw("failed to release ballot reservations after aggregation proving failure",
 				"error", err.Error(),
 				"processID", processID.String(),
@@ -669,11 +654,11 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	log.Infow("aggregate proof generated",
 		"took", time.Since(startTime).String(),
 		"processID", processID.String(),
-		"ballots", len(batchInputs.aggBallots))
+		"ballots", len(batchInputs.AggBallots))
 
 	proofBW6, ok := proof.(*groth16_bw6761.Proof)
 	if !ok {
-		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.processedKeys); err != nil {
+		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
 			log.Warnw("failed to release ballot reservations after unexpected aggregate proof type",
 				"error", err.Error(),
 				"processID", processID.String(),
@@ -686,11 +671,11 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	abb := storage.AggregatorBallotBatch{
 		ProcessID: processID,
 		Proof:     proofBW6,
-		Ballots:   batchInputs.aggBallots,
+		Ballots:   batchInputs.AggBallots,
 	}
 
 	if err := s.stg.PushAggregatorBatch(&abb); err != nil {
-		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.processedKeys); err != nil {
+		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
 			log.Warnw("failed to release ballot reservations after batch push failure",
 				"error", err.Error(),
 				"processID", processID.String(),
@@ -700,8 +685,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	}
 
 	// Mark the individual ballots as processed
-	if err := s.stg.MarkVerifiedBallotsDone(batchInputs.processedKeys...); err != nil {
-		if err := s.stg.MarkVerifiedBallotsFailed(batchInputs.processedKeys...); err != nil {
+	if err := s.stg.MarkVerifiedBallotsDone(batchInputs.ProcessedKeys...); err != nil {
+		if err := s.stg.MarkVerifiedBallotsFailed(batchInputs.ProcessedKeys...); err != nil {
 			log.Warnw("failed to mark ballot batch as failed",
 				"error", err.Error(),
 				"processID", processID.String())

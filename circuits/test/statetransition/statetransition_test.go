@@ -24,21 +24,18 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
 	qt "github.com/frankban/quicktest"
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/rs/zerolog"
-	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
-	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/prover"
 	davinci_solidity "github.com/vocdoni/davinci-node/solidity"
-	"github.com/vocdoni/davinci-node/state"
+	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
@@ -84,9 +81,7 @@ func TestStateTransitionCircuit(t *testing.T) {
 	c := qt.New(t)
 	// inputs generation
 	now := time.Now()
-	// Use centralized testing ProcessID for consistent caching
-	processID := types.TestProcessID
-	_, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	_, placeholder, assignments := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 	// proving
 	now = time.Now()
@@ -109,8 +104,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	now := time.Now()
 
 	// Use centralized testing ProcessID for consistent caching
-	processID := types.TestProcessID
-	testResults, placeholder, assignments := StateTransitionInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	testResults, placeholder, assignments := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 
 	// compile circuit
@@ -325,7 +319,7 @@ func verifySolidityProof(c *qt.C, buildDir string, proof *davinci_solidity.Groth
 		return false
 	}
 
-	alloc := ethtypes.GenesisAlloc{
+	alloc := gethtypes.GenesisAlloc{
 		deployer.From:               {Balance: new(big.Int).Mul(big.NewInt(1e18), big.NewInt(10))},
 		common.HexToAddress("0x05"): {Balance: big.NewInt(1)}, // MODEXP
 		common.HexToAddress("0x06"): {Balance: big.NewInt(1)}, // BN256ADD
@@ -425,7 +419,7 @@ func TestCircuitCalculateAggregatorWitnessCompile(t *testing.T) {
 }
 
 func TestCircuitCalculateAggregatorWitnessProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitCalculateAggregatorWitness{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -446,7 +440,7 @@ func TestCircuitAggregatorProofCompile(t *testing.T) {
 }
 
 func TestCircuitAggregatorProofProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitAggregatorProof{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -467,7 +461,7 @@ func TestCircuitBallotsCompile(t *testing.T) {
 }
 
 func TestCircuitBallotsProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitBallots{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -487,7 +481,7 @@ func TestCircuitMerkleProofsCompile(t *testing.T) {
 }
 
 func TestCircuitMerkleProofsProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitMerkleProofs{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -508,7 +502,7 @@ func TestCircuitMerkleTransitionsCompile(t *testing.T) {
 }
 
 func TestCircuitMerkleTransitionsProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitMerkleTransitions{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -531,7 +525,7 @@ func TestCircuitLeafHashesCompile(t *testing.T) {
 }
 
 func TestCircuitLeafHashesProve(t *testing.T) {
-	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitLeafHashes{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -559,7 +553,7 @@ func TestCircuitReencryptBallotsCompile(t *testing.T) {
 func TestCircuitReencryptBallotsProve(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitReencryptBallots{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
@@ -586,7 +580,7 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	t.Run("MerkleTree", func(t *testing.T) {
-		witness := newMockWitness(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+		witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 
 		testCircuitProve(t, &CircuitCensusProofs{
 			*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
@@ -594,7 +588,7 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 	})
 
 	t.Run("CSPEdDSABN254", func(t *testing.T) {
-		witness := newMockWitness(t, types.CensusOriginCSPEdDSABN254V1)
+		witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginCSPEdDSABN254V1)
 
 		testCircuitProve(t, &CircuitCensusProofs{
 			*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
@@ -602,194 +596,39 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 	})
 }
 
-func newMockTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vote) *statetransition.StateTransitionCircuit {
-	reencryptionK, err := elgamal.RandK()
-	if err != nil {
-		t.Fatal(err)
-	}
-	originalEncKey := s.EncryptionKey()
-	encryptionKey := state.Curve.New().SetPoint(originalEncKey.PubKey[0], originalEncKey.PubKey[1])
-	if err := s.StartBatch(); err != nil {
-		t.Fatal(err)
-	}
-	lastK := new(big.Int).Set(reencryptionK)
-	for _, v := range votes {
-		v.ReencryptedBallot, lastK, err = v.Ballot.Reencrypt(encryptionKey, lastK)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := s.AddVote(&v); err != nil {
-			t.Fatal(err)
-		}
+// TestDummySlot verifies that a "dummy" slot (index >= VotersCount)
+// cannot contain any state transition (Insert/Update).
+func TestDummySlot(t *testing.T) {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
+		t.Skip("skipping circuit tests...")
 	}
 
-	if err := s.EndBatch(); err != nil {
-		t.Fatal(err)
-	}
+	s := statetest.NewRandomState(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	publicKey := statetest.EncryptionKeyAsECCPoint(s)
 
-	censusOrigin := types.CensusOrigin(s.CensusOrigin().Uint64())
-	pid := new(types.ProcessID).SetBytes(s.ProcessID().Bytes())
-
-	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(votes, censusOrigin, pid)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	witness, _, err := statetransition.GenerateWitness(
-		s,
-		new(types.BigInt).SetBigInt(censusRoot),
-		censusProofs,
-		new(types.BigInt).SetBigInt(reencryptionK))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	aggregatorHash, err := aggregatorWitnessHashForTest(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	proof, vk, err := DummyAggProof(len(votes), aggregatorHash)
-	if err != nil {
-		t.Fatal(err)
-	}
-	witness.AggregatorProof = *proof
-	witness.AggregatorVK = *vk
-	return witness
-}
-
-// newMockWitness returns a witness with an overwritten vote
-func newMockWitness(t *testing.T, origin types.CensusOrigin) *statetransition.StateTransitionCircuit {
-	// First initialize a state with a transition of 2 new votes,
-	s := newMockState(t, origin)
-	{
-		reencryptionK, err := elgamal.RandK()
-		if err != nil {
-			t.Fatal(err)
-		}
-		originalEncKey := s.EncryptionKey()
-		encryptionKey := state.Curve.New().SetPoint(originalEncKey.PubKey[0], originalEncKey.PubKey[1])
-		if err := s.StartBatch(); err != nil {
-			t.Fatal(err)
-		}
-		lastK := new(big.Int).Set(reencryptionK)
-		votes := []state.Vote{
-			newMockVote(s, 0, 10),
-			newMockVote(s, 1, 10),
-		}
-		for _, v := range votes {
-			v.ReencryptedBallot, lastK, err = v.Ballot.Reencrypt(encryptionKey, lastK)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := s.AddVote(&v); err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		if err := s.EndBatch(); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// so now we can return a transition where vote 1 is overwritten
-	// and add 3 more votes
-	return newMockTransitionWithVotes(t, s,
-		newMockVote(s, 1, 20),
-		newMockVote(s, 2, 20),
-		newMockVote(s, 3, 20),
-		newMockVote(s, 4, 20),
+	// Create a transition with 2 votes (index 0 and 1)
+	// We will try to "hide" the second vote (index 1) by claiming VotersCount is 1.
+	witness := NewTransitionWithVotes(t, s,
+		*statetest.NewVoteForTest(publicKey, 1, 10), // valid vote 1
+		*statetest.NewVoteForTest(publicKey, 2, 20), // valid vote 2
 	)
-}
 
-func newMockState(t *testing.T, origin types.CensusOrigin) *state.State {
-	pid := &types.ProcessID{
-		Address: common.BytesToAddress(util.RandomBytes(20)),
-		Version: types.ProcessIDVersion(1, common.BytesToAddress(util.RandomBytes(20))),
-		Nonce:   1,
-	}
-	s, err := state.New(metadb.NewTest(t), pid.BigInt())
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Hack the witness: reduce VotersCount from 2 to 1.
+	// This makes the vote at index 1 a "dummy" vote according to the circuit logic.
+	// However, the MerkleProof for index 1 is still a valid Insert/Update.
+	witness.VotersCount = 1
 
-	_, encryptionKey := circuits.MockEncryptionKey()
-	if err := s.Initialize(
-		origin.BigInt().MathBigInt(),
-		circuits.MockBallotMode(),
-		encryptionKey,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	return s
-}
-
-const mockAddressesOffset = 200
-
-func newMockAddress(index int64) *big.Int {
-	return big.NewInt(index + int64(mockAddressesOffset)) // mock
-}
-
-// newMockVote creates a new vote
-func newMockVote(s *state.State, index, amount int64) state.Vote {
-	publicKey := state.Curve.New().SetPoint(s.EncryptionKey().PubKey[0], s.EncryptionKey().PubKey[1])
-
-	fields := [params.FieldsPerBallot]*big.Int{}
-	for i := range fields {
-		fields[i] = big.NewInt(int64(amount + int64(i)))
-	}
-
-	ballot, err := elgamal.NewBallot(publicKey).Encrypt(fields, publicKey, nil)
-	if err != nil {
-		panic(fmt.Errorf("error encrypting: %v", err))
-	}
-
-	return state.Vote{
-		Address: newMockAddress(index),
-		VoteID:  util.RandomBytes(20),
-		Weight:  big.NewInt(10),
-		Ballot:  ballot,
-	}
-}
-
-// aggregatorWitnessHashForTest uses the following values for each vote
-//
-//	process.ID
-//	process.BallotMode
-//	process.EncryptionKey
-//	vote.Address
-//	vote.Ballot
-//
-// to calculate a subhash of each process+vote, then hashes all subhashes
-// and returns the final hash
-func aggregatorWitnessHashForTest(o *state.State) (*big.Int, error) {
-	hashes := []*big.Int{}
-	for _, v := range o.PaddedVotes() {
-		inputs := []*big.Int{}
-		inputs = append(inputs, o.ProcessSerializeBigInts()...)
-		inputs = append(inputs, v.SerializeBigInts()...)
-		h, err := mimc7.Hash(inputs, nil)
-		if err != nil {
-			return nil, err
-		}
-		hashes = append(hashes, h)
-	}
-	// calculate final hash
-	finalHashInputs := []*big.Int{}
-	for i := range params.VotesPerBatch {
-		if i < o.VotersCount() {
-			finalHashInputs = append(finalHashInputs, hashes[i])
-		} else {
-			finalHashInputs = append(finalHashInputs, big.NewInt(1))
-		}
-	}
-	finalHash, err := mimc7.Hash(finalHashInputs, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return finalHash, nil
+	// Assert that the circuit rejects this witness.
+	// The fix in VerifyMerkleTransitions and VerifyBallots should assert that
+	// for dummy slots (mask=0), the operations must be NOOP.
+	assert := test.NewAssert(t)
+	// We expect the prover to FAIL because the constraints are not satisfied.
+	assert.ProverFailed(
+		CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
+		witness,
+		test.WithCurves(params.StateTransitionCurve),
+		test.WithBackends(backend.GROTH16),
+	)
 }
 
 func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {

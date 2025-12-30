@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits/results"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
@@ -15,11 +14,11 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/davinci-node/util"
 )
 
 func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
@@ -45,7 +44,7 @@ func TestFinalize(t *testing.T) {
 	f.Start(t.Context(), 0)
 
 	// Test finalize
-	f.OndemandCh <- pid.Marshal()
+	f.OndemandCh <- pid
 	_, err := f.WaitUntilResults(t.Context(), pid)
 	c.Assert(err, qt.IsNil, qt.Commentf("finalize failed: %v", err))
 
@@ -65,7 +64,7 @@ func TestFinalize(t *testing.T) {
 func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	*storage.Storage,
 	db.Database,
-	*types.ProcessID,
+	types.ProcessID,
 	ecc.Point,
 	ecc.Point,
 	*big.Int,
@@ -88,11 +87,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	stateDB := stg.StateDB()
 
 	// Create a process ID
-	pid := &types.ProcessID{
-		Address: common.Address{},
-		Nonce:   42,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	pid := testutil.DeterministicProcessID(42)
 
 	// Create encryption keys
 	curve := curves.New(bjj.CurveType)
@@ -108,26 +103,14 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	}
 	// Create a process
 	process := &types.Process{
-		ID:          pid.Marshal(),
+		ID:          &pid,
 		Status:      0,
 		StartTime:   time.Now(),
 		Duration:    time.Hour,
 		MetadataURI: "http://example.com/metadata",
-		StateRoot:   new(types.BigInt).SetUint64(100),
-		BallotMode: &types.BallotMode{
-			NumFields:      8,
-			MaxValue:       new(types.BigInt).SetUint64(100),
-			MinValue:       new(types.BigInt).SetUint64(0),
-			MaxValueSum:    new(types.BigInt).SetUint64(0),
-			MinValueSum:    new(types.BigInt).SetUint64(0),
-			UniqueValues:   false,
-			CostFromWeight: false,
-		},
-		Census: &types.Census{
-			CensusRoot:   make([]byte, 32),
-			CensusURI:    "http://example.com/census",
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-		},
+		StateRoot:   testutil.StateRoot(),
+		BallotMode:  testutil.BallotModeInternal(),
+		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 
 	// Store the process
@@ -163,13 +146,13 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 func setupTestState(
 	t *testing.T,
 	stateDB db.Database,
-	pid *types.ProcessID,
+	processID types.ProcessID,
 	pubKey ecc.Point,
 	stateRoot *big.Int,
 	addValue, subValue int64,
 ) *types.BigInt {
 	// Load the initial state
-	st, err := state.LoadOnRoot(stateDB, pid.BigInt(), stateRoot)
+	st, err := state.LoadOnRoot(stateDB, processID, stateRoot)
 	if err != nil {
 		t.Fatalf("failed to load state: %v", err)
 	}
@@ -185,7 +168,10 @@ func setupTestState(
 		addValues[i] = big.NewInt(addValue)
 	}
 	// Encrypt the values
-	k1 := new(big.Int).SetBytes(util.RandomBytes(16))
+	k1, err := elgamal.RandK()
+	if err != nil {
+		t.Fatalf("failed to generate k1: %v", err)
+	}
 	encryptedAdd, err := addAccumulator.Encrypt(addValues, pubKey, k1)
 	if err != nil {
 		t.Fatalf("failed to encrypt add accumulator: %v", err)
@@ -199,7 +185,10 @@ func setupTestState(
 		subValues[i] = big.NewInt(subValue)
 	}
 	// Encrypt the values
-	k2 := new(big.Int).SetBytes(util.RandomBytes(16))
+	k2, err := elgamal.RandK()
+	if err != nil {
+		t.Fatalf("failed to generate k2: %v", err)
+	}
 	encryptedSub, err := subAccumulator.Encrypt(subValues, pubKey, k2)
 	if err != nil {
 		t.Fatalf("failed to encrypt sub accumulator: %v", err)

@@ -96,8 +96,8 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 	return blobData, err
 }
 
-// parseBlobData extracts vote and results data from a blob.
-func parseBlobData(blob []byte) (*BlobData, error) {
+// ParseBlobData extracts vote and results data from a blob.
+func ParseBlobData(blob []byte) (*BlobData, error) {
 	if len(blob) != types.BlobLength {
 		return nil, fmt.Errorf("unexpected blob length %d", len(blob))
 	}
@@ -189,8 +189,8 @@ func parseBlobData(blob []byte) (*BlobData, error) {
 }
 
 // ApplyBlobToState applies the data from a blob to restore state
-func (st *State) ApplyBlobToState(blob []byte) error {
-	blobData, err := parseBlobData(blob)
+func (st *State) ApplyBlobToState(blob *types.Blob) error {
+	blobData, err := ParseBlobData(blob.Bytes())
 	if err != nil {
 		return err
 	}
