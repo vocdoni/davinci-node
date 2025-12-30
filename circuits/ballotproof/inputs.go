@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // GenerateBallotProofInputs composes the data to generate the inputs required
@@ -21,7 +22,7 @@ func GenerateBallotProofInputs(
 	inputs *BallotProofInputs,
 ) (*BallotProofInputsResult, error) {
 	// pad the field values to the number of circuits.FieldsPerBallot
-	fields := [types.FieldsPerBallot]*big.Int{}
+	fields := [params.FieldsPerBallot]*big.Int{}
 	for i := range fields {
 		if i < len(inputs.FieldValues) {
 			fields[i] = inputs.FieldValues[i].MathBigInt()
@@ -78,7 +79,7 @@ func GenerateBallotProofInputs(
 		BallotInputsHash: ballotInputsHash,
 		VoteID:           voteIDForSign,
 		CircomInputs: &CircomInputs{
-			Fields:         circuits.BigIntArrayToNInternal(fields[:], types.FieldsPerBallot),
+			Fields:         circuits.BigIntArrayToNInternal(fields[:], params.FieldsPerBallot),
 			NumFields:      new(types.BigInt).SetBigInt(ballotMode.NumFields),
 			UniqueValues:   new(types.BigInt).SetBigInt(ballotMode.UniqueValues),
 			MaxValue:       new(types.BigInt).SetBigInt(ballotMode.MaxValue),
@@ -87,13 +88,13 @@ func GenerateBallotProofInputs(
 			MinValueSum:    new(types.BigInt).SetBigInt(ballotMode.MinValueSum),
 			CostExponent:   new(types.BigInt).SetBigInt(ballotMode.CostExponent),
 			CostFromWeight: new(types.BigInt).SetBigInt(ballotMode.CostFromWeight),
-			Address:        inputs.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()),
+			Address:        inputs.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField()),
 			Weight:         inputs.Weight,
-			ProcessID:      inputs.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()),
+			ProcessID:      inputs.ProcessID.BigInt().ToFF(params.BallotProofCurve.ScalarField()),
 			VoteID:         voteID,
 			EncryptionKey:  types.SliceOf([]*big.Int{circomEncryptionKeyX, circomEncryptionKeyY}, types.BigIntConverter),
 			K:              inputs.K,
-			Cipherfields:   circuits.BigIntArrayToNInternal(ballot.FromRTEtoTE().BigInts(), types.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
+			Cipherfields:   circuits.BigIntArrayToNInternal(ballot.FromRTEtoTE().BigInts(), params.FieldsPerBallot*elgamal.BigIntsPerCiphertext),
 			InputsHash:     ballotInputsHash,
 		},
 	}, nil

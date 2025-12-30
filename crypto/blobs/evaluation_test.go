@@ -16,9 +16,9 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -59,7 +59,7 @@ func TestBlobEvaluationCircuitWithActualData(t *testing.T) {
 
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&blobEvalCircuitBarycentricOnly{}, &witness,
-		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
+		test.WithCurves(params.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 }
 
 // TestProgressiveElementsNative tests the circuit with increasing number of elements
@@ -116,7 +116,7 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 		// Test with IsSolved
 		assert := test.NewAssert(t)
 		assert.SolvingSucceeded(&blobEvalCircuitBN254{}, &witness,
-			test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
+			test.WithCurves(params.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 	}
 }
 
@@ -263,7 +263,7 @@ func TestBlobEvalDataTransform(t *testing.T) {
 	// Test that the circuit accepts this witness
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&blobEvalCircuitBN254{}, &witness,
-		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
+		test.WithCurves(params.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 }
 
 // TestBlobEvalDataTransformWithActualData tests BlobEvalData.Set() with embedded test data.

@@ -8,18 +8,18 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func GenerateWitness(
 	o *state.State,
-	results [types.FieldsPerBallot]*big.Int,
-	addAccumulators [types.FieldsPerBallot]*big.Int,
-	subAccumulators [types.FieldsPerBallot]*big.Int,
-	addAccumulatorsEncrypted [types.FieldsPerBallot]elgamal.Ciphertext,
-	subAccumulatorsEncrypted [types.FieldsPerBallot]elgamal.Ciphertext,
-	decryptionAddProofs [types.FieldsPerBallot]*elgamal.DecryptionProof,
-	decryptionSubProofs [types.FieldsPerBallot]*elgamal.DecryptionProof,
+	results [params.FieldsPerBallot]*big.Int,
+	addAccumulators [params.FieldsPerBallot]*big.Int,
+	subAccumulators [params.FieldsPerBallot]*big.Int,
+	addAccumulatorsEncrypted [params.FieldsPerBallot]elgamal.Ciphertext,
+	subAccumulatorsEncrypted [params.FieldsPerBallot]elgamal.Ciphertext,
+	decryptionAddProofs [params.FieldsPerBallot]*elgamal.DecryptionProof,
+	decryptionSubProofs [params.FieldsPerBallot]*elgamal.DecryptionProof,
 ) (*ResultsVerifierCircuit, error) {
 	var err error
 	witness := &ResultsVerifierCircuit{}
@@ -31,7 +31,7 @@ func GenerateWitness(
 	}
 
 	// Encrypted and decrypted results
-	for i := range types.FieldsPerBallot {
+	for i := range params.FieldsPerBallot {
 		witness.AddAccumulatorsEncrypted[i] = *addAccumulatorsEncrypted[i].ToGnark()
 		witness.SubAccumulatorsEncrypted[i] = *subAccumulatorsEncrypted[i].ToGnark()
 		witness.Results[i] = results[i]
@@ -50,7 +50,7 @@ func GenerateWitness(
 	}
 
 	// Decryption add and sub proofs
-	for i := range types.FieldsPerBallot {
+	for i := range params.FieldsPerBallot {
 		witness.DecryptionAddProofs[i] = decryptionAddProofs[i].ToGnark()
 		witness.DecryptionSubProofs[i] = decryptionSubProofs[i].ToGnark()
 	}

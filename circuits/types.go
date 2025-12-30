@@ -16,6 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	emu_tweds "github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
@@ -375,7 +376,7 @@ func (v Vote[T]) SerializeAsVars() []frontend.Variable {
 	return list
 }
 
-type Ballot [types.FieldsPerBallot]elgamal.Ciphertext
+type Ballot [params.FieldsPerBallot]elgamal.Ciphertext
 
 func NewBallot() *Ballot {
 	z := &Ballot{}
@@ -390,7 +391,7 @@ func NewBallot() *Ballot {
 // from the provided k.
 func (z *Ballot) Encrypt(
 	api frontend.API,
-	messages [types.FieldsPerBallot]frontend.Variable,
+	messages [params.FieldsPerBallot]frontend.Variable,
 	encKey EncryptionKey[frontend.Variable],
 	k frontend.Variable,
 ) *Ballot {
@@ -426,7 +427,7 @@ func (z *Ballot) Reencrypt(api frontend.API, encKey EncryptionKey[frontend.Varia
 // AssertDecrypt checks that the ballot can be decrypted with the provided
 // private key and the original values. It uses the elgamal.Ciphertext's
 // AssertDecrypt method for each ciphertext in the ballot.
-func (z *Ballot) AssertDecrypt(api frontend.API, privKey frontend.Variable, originals [types.FieldsPerBallot]frontend.Variable) {
+func (z *Ballot) AssertDecrypt(api frontend.API, privKey frontend.Variable, originals [params.FieldsPerBallot]frontend.Variable) {
 	for i := range z {
 		if err := z[i].AssertDecrypt(api, privKey, originals[i]); err != nil {
 			FrontendError(api, "failed to assert decrypt", err)
@@ -527,7 +528,7 @@ type EmulatedCiphertext[F emulated.FieldParams] struct {
 
 // EmulatedBallot is a copy of the Ballot struct, but using the
 // EmulatedCiphertext type
-type EmulatedBallot[F emulated.FieldParams] [types.FieldsPerBallot]EmulatedCiphertext[F]
+type EmulatedBallot[F emulated.FieldParams] [params.FieldsPerBallot]EmulatedCiphertext[F]
 
 // EmulatedVote is a copy of the Vote struct, but using the emulated.Element
 // type as generic type for the Address, VoteID fields and the EmulatedBallot
@@ -669,9 +670,9 @@ func VoteID(processID *types.ProcessID, address common.Address, k *types.BigInt)
 	hexAddress := types.HexBytes(address.Bytes())
 	hexProcessID := types.HexBytes(processID.Marshal())
 	// safe address, processID and k
-	ffAddress := hexAddress.BigInt().ToFF(BallotProofCurve.ScalarField())
-	ffProcessID := hexProcessID.BigInt().ToFF(BallotProofCurve.ScalarField())
-	ffK := k.ToFF(BallotProofCurve.ScalarField())
+	ffAddress := hexAddress.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ffProcessID := hexProcessID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ffK := k.ToFF(params.BallotProofCurve.ScalarField())
 	// calculate the vote ID hash using mimc7
 	hash, err := iden3mimc7.Hash([]*big.Int{
 		ffProcessID.MathBigInt(), // process id
@@ -681,5 +682,5 @@ func VoteID(processID *types.ProcessID, address common.Address, k *types.BigInt)
 	if err != nil {
 		return nil, fmt.Errorf("error hashing vote ID inputs: %v", err.Error())
 	}
-	return new(types.BigInt).SetBigInt(util.TruncateToLowerBits(hash, types.VoteIDLen*8)), nil
+	return new(types.BigInt).SetBigInt(util.TruncateToLowerBits(hash, params.VoteIDLen*8)), nil
 }

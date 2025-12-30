@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 var (
@@ -51,7 +52,7 @@ func (o *State) AddVote(v *Vote) error {
 	if o.dbTx == nil {
 		return fmt.Errorf("need to StartBatch() first")
 	}
-	if len(o.votes) >= types.VotesPerBatch {
+	if len(o.votes) >= params.VotesPerBatch {
 		return fmt.Errorf("too many votes for this batch")
 	}
 	if keyIsBelowReservedOffset(v.Address) {

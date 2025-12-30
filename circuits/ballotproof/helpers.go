@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // BallotInputsHash helper function calculates the hash of the public inputs
@@ -32,15 +33,15 @@ func BallotInputsHash(
 	weight *types.BigInt,
 ) (*types.BigInt, error) {
 	// check if unconverted parameters are in the field
-	if !voteID.IsInField(circuits.BallotProofCurve.ScalarField()) {
+	if !voteID.IsInField(params.BallotProofCurve.ScalarField()) {
 		return nil, fmt.Errorf("voteID is not in the scalar field")
 	}
-	if !weight.IsInField(circuits.BallotProofCurve.ScalarField()) {
+	if !weight.IsInField(params.BallotProofCurve.ScalarField()) {
 		return nil, fmt.Errorf("weight is not in the scalar field")
 	}
 	// safe address and processID
-	ffAddress := address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
-	ffProcessID := processID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
+	ffAddress := address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	// convert the encryption key to twisted edwards form
 	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(encryptionKey.Point())
 	// ballot mode as circuit ballot mode

@@ -4,12 +4,13 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // Artifacts contains the circuit artifacts for the vote verifier circuit,
 // which includes the proving and verification keys.
 var Artifacts = circuits.NewCircuitArtifacts(
-	circuits.VoteVerifierCurve,
+	params.VoteVerifierCurve,
 	&circuits.Artifact{
 		Name:      "vote-verifier ccs",
 		RemoteURL: config.VoteVerifierCircuitURL,

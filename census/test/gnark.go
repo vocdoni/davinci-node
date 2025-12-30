@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	imtcircuit "github.com/vocdoni/lean-imt-go/circuit"
 )
 
@@ -29,8 +30,8 @@ func CensusProofsForCircuitTest(
 ) (*big.Int, statetransition.CensusProofs, error) {
 	log.Printf("generating testing census with '%s' origin", origin.String())
 	var root *big.Int
-	merkleProofs := [types.VotesPerBatch]imtcircuit.MerkleProof{}
-	cspProofs := [types.VotesPerBatch]csp.CSPProof{}
+	merkleProofs := [params.VotesPerBatch]imtcircuit.MerkleProof{}
+	cspProofs := [params.VotesPerBatch]csp.CSPProof{}
 	switch {
 	case origin.IsMerkleTree():
 		// generate the census merkle tree and set the census root
@@ -44,7 +45,7 @@ func CensusProofsForCircuitTest(
 		}
 		// generate the merkle tree census proofs for each voter and fill the
 		// csp proofs with dummy data
-		for i := range types.VotesPerBatch {
+		for i := range params.VotesPerBatch {
 			if i < len(votes) {
 				addr := common.BigToAddress(votes[i].Address)
 				mkproof, err := census.GenerateProof(addr)
@@ -65,7 +66,7 @@ func CensusProofsForCircuitTest(
 		}
 		// get the root and generate the csp proofs for each voter
 		root = eddsaCSP.CensusRoot().Root.BigInt().MathBigInt()
-		for i := range types.VotesPerBatch {
+		for i := range params.VotesPerBatch {
 			// add dummy merkle proof
 			merkleProofs[i] = statetransition.DummyMerkleProof()
 			if i < len(votes) {

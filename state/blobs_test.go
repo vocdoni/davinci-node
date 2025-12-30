@@ -18,6 +18,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func TestBlobDataStructures(t *testing.T) {
@@ -103,7 +104,7 @@ func TestBlobDataStructures(t *testing.T) {
 		push(big.NewInt(0))
 
 		// Verify we used the expected number of cells
-		coordsPerBallot := types.FieldsPerBallot * 4
+		coordsPerBallot := params.FieldsPerBallot * 4
 		resultsCells := 2 * coordsPerBallot     // resultsAdd + resultsSub
 		cellsPerVote := 1 + 1 + coordsPerBallot // voteID + address + ballot
 		sentinelCells := 1
@@ -397,18 +398,18 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 		address := big.NewInt(int64(1000 + offset + i))
 
 		// Create vote ID (use VoteIDLen bytes) with offset
-		voteID := make([]byte, types.VoteIDLen)
+		voteID := make([]byte, params.VoteIDLen)
 		voteIDValue := offset + i + 1
 		// Store the vote ID value in the last few bytes to ensure uniqueness
-		voteID[types.StateKeyMaxLen-4] = byte(voteIDValue >> 24)
-		voteID[types.StateKeyMaxLen-3] = byte(voteIDValue >> 16)
-		voteID[types.StateKeyMaxLen-2] = byte(voteIDValue >> 8)
-		voteID[types.StateKeyMaxLen-1] = byte(voteIDValue)
+		voteID[params.StateKeyMaxLen-4] = byte(voteIDValue >> 24)
+		voteID[params.StateKeyMaxLen-3] = byte(voteIDValue >> 16)
+		voteID[params.StateKeyMaxLen-2] = byte(voteIDValue >> 8)
+		voteID[params.StateKeyMaxLen-1] = byte(voteIDValue)
 
 		// Create ballot with test values (vary based on offset and index)
 		ballot := elgamal.NewBallot(Curve)
-		messages := [types.FieldsPerBallot]*big.Int{}
-		for j := 0; j < types.FieldsPerBallot; j++ {
+		messages := [params.FieldsPerBallot]*big.Int{}
+		for j := 0; j < params.FieldsPerBallot; j++ {
 			// Make ballot values unique based on offset, vote index, and field index
 			messages[j] = big.NewInt(int64((offset+1)*100 + i*10 + j + 1))
 		}
@@ -462,7 +463,7 @@ func verifyBlobStructureBasic(t *testing.T, blob *types.Blob, votes []*Vote) {
 		// Verify ballot coordinates match (comparing reencrypted ballot since that's what's stored in blob)
 		originalCoords := originalVote.ReencryptedBallot.BigInts()
 
-		c.Assert(len(originalCoords), qt.Equals, types.FieldsPerBallot*elgamal.BigIntsPerCiphertext,
+		c.Assert(len(originalCoords), qt.Equals, params.FieldsPerBallot*elgamal.BigIntsPerCiphertext,
 			qt.Commentf("Vote %d ballot coordinate count mismatch", i))
 	}
 
@@ -534,7 +535,7 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID *big.Int, ba
 
 		// Compare ballot coordinates
 		retrievedCoords := retrievedBallot.BigInts()
-		c.Assert(len(retrievedCoords), qt.Equals, types.FieldsPerBallot*elgamal.BigIntsPerCiphertext,
+		c.Assert(len(retrievedCoords), qt.Equals, params.FieldsPerBallot*elgamal.BigIntsPerCiphertext,
 			qt.Commentf("Retrieved ballot coordinate count mismatch for address %s", vote.Address.String()))
 	}
 

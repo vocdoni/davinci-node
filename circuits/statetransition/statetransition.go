@@ -12,7 +12,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -44,7 +44,7 @@ type StateTransitionCircuit struct {
 
 	// Private data inputs
 	Process       circuits.Process[frontend.Variable]
-	Votes         [types.VotesPerBatch]Vote
+	Votes         [params.VotesPerBatch]Vote
 	Results       Results
 	ReencryptionK frontend.Variable
 
@@ -80,16 +80,16 @@ type ProcessProofs struct {
 // voters of the ballots in the batch. They can be proofs of merkle tree or
 // CSP proofs depending on the census origin.
 type CensusProofs struct {
-	MerkleProofs [types.VotesPerBatch]imt.MerkleProof
-	CSPProofs    [types.VotesPerBatch]csp.CSPProof
+	MerkleProofs [params.VotesPerBatch]imt.MerkleProof
+	CSPProofs    [params.VotesPerBatch]csp.CSPProof
 }
 
 // VotesProofs struct contains the Merkle transition proofs for the ballots and
 // commitments.
 type VotesProofs struct {
 	// Key is Address, LeafHash is smt.Hash1(encoded(Ballot.Serialize()))
-	Ballot  [types.VotesPerBatch]merkleproof.MerkleTransition
-	VoteIDs [types.VotesPerBatch]merkleproof.MerkleTransition
+	Ballot  [params.VotesPerBatch]merkleproof.MerkleTransition
+	VoteIDs [params.VotesPerBatch]merkleproof.MerkleTransition
 }
 
 // ResultsProofs struct contains the Merkle transition proofs for the addition
@@ -135,10 +135,10 @@ func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 // valid and 0 otherwise. It uses a latch logic to avoid expensive comparisons
 // inside the loops.
 func (c StateTransitionCircuit) VoteMask(api frontend.API) []frontend.Variable {
-	mask := make([]frontend.Variable, types.VotesPerBatch)
+	mask := make([]frontend.Variable, params.VotesPerBatch)
 	// if VotersCount > 0, the first vote is valid
 	isReal := api.Sub(1, api.IsZero(c.VotersCount))
-	for i := range types.VotesPerBatch {
+	for i := range params.VotesPerBatch {
 		mask[i] = isReal
 		// if VotersCount == i+1, the next vote is invalid
 		isEnd := api.IsZero(api.Sub(c.VotersCount, i+1))
@@ -213,7 +213,7 @@ func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API, mas
 	}
 	// iterate over votes inputs to select between valid hashes and dummy ones
 	hashes := []frontend.Variable{}
-	for i := range types.VotesPerBatch {
+	for i := range params.VotesPerBatch {
 		inputsHash := c.proofInputsHash(api, i)
 		dummyProofInputsHash := 1
 		hashes = append(hashes, api.Select(mask[i], inputsHash, dummyProofInputsHash))
@@ -334,7 +334,7 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Votes
 	for i, v := range circuit.Votes {
 		// Address
-		addressKey, err := merkleproof.TruncateMerkleTreeKey(api, v.Address, types.StateKeyMaxLen)
+		addressKey, err := merkleproof.TruncateMerkleTreeKey(api, v.Address, params.StateKeyMaxLen)
 		if err != nil {
 			circuits.FrontendError(api, "failed to truncate address key: ", err)
 			return
@@ -398,7 +398,7 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	// keep==1 means "we haven't seen sentinel yet". Once we see voteID==0,
 	// keep becomes 0 and stays 0, zeroing out everything afterwards.
 	keep := frontend.Variable(1)
-	for i := range types.VotesPerBatch {
+	for i := range params.VotesPerBatch {
 		voteID := circuit.Votes[i].VoteID
 		isZero := api.IsZero(voteID)  // 1 if voteID==0 else 0
 		notZero := api.Sub(1, isZero) // 1 if voteID!=0 else 0
@@ -469,7 +469,7 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API, mask []fro
 // origin is MerkleTree and the vote is real.
 func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API, mask []frontend.Variable) {
 	isMerkleTreeCensus := census.IsMerkleTreeCensusOrigin(api, c.Process.CensusOrigin)
-	for i := range types.VotesPerBatch {
+	for i := range params.VotesPerBatch {
 		vote := c.Votes[i]
 		// check if the proof is valid only if the census origin is MerkleTree
 		// and the current vote inputs are from a valid vote.
@@ -496,7 +496,7 @@ func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API, mask 
 func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API, mask []frontend.Variable) {
 	isCSPCensus := census.IsCSPCensusOrigin(api, c.Process.CensusOrigin)
 	curveID := census.CSPCensusOriginCurveID()
-	for i := range types.VotesPerBatch {
+	for i := range params.VotesPerBatch {
 		vote := c.Votes[i]
 		cspProof := c.CensusProofs.CSPProofs[i]
 		// verify the CSP proof

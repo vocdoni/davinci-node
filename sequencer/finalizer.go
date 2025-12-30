@@ -11,7 +11,6 @@ import (
 	"github.com/consensys/gnark/backend"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/solidity"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/results"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
@@ -20,6 +19,7 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 const maxValue = 2 << 24 // 2^24
@@ -295,9 +295,9 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 
 	// Decrypt the accumulators
 	startTime := time.Now()
-	addAccumulator := [types.FieldsPerBallot]*big.Int{}
-	addAccumulatorsEncrypted := [types.FieldsPerBallot]elgamal.Ciphertext{}
-	addDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
+	addAccumulator := [params.FieldsPerBallot]*big.Int{}
+	addAccumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	addDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedAddAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			setProcessInvalid()
@@ -319,10 +319,10 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	log.Debugw("decrypted add accumulator", "pid", pid.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
 
 	startTime = time.Now()
-	resultsAccumulator := [types.FieldsPerBallot]*big.Int{}
-	subAccumulator := [types.FieldsPerBallot]*big.Int{}
-	subAccumulatorsEncrypted := [types.FieldsPerBallot]elgamal.Ciphertext{}
-	subDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
+	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
+	subAccumulator := [params.FieldsPerBallot]*big.Int{}
+	subAccumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	subDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedSubAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			setProcessInvalid()
@@ -360,7 +360,7 @@ func (f *finalizer) finalize(pid types.HexBytes) error {
 	}
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 	proof, err := f.prover(
-		circuits.ResultsVerifierCurve,
+		params.ResultsVerifierCurve,
 		f.circuits.rvCcs,
 		f.circuits.rvPk,
 		resultsVerifierWitness,

@@ -12,15 +12,15 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
 )
 
 type AggregatorCircuit struct {
 	ValidProofs        frontend.Variable                      `gnark:",public"`
 	InputsHash         emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
-	ProofsInputsHashes [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
-	Proofs             [types.VotesPerBatch]groth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
+	ProofsInputsHashes [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
+	Proofs             [params.VotesPerBatch]groth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
 	VerificationKey    groth16.VerifyingKey[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT] `gnark:"-"`
 }
 
@@ -56,7 +56,7 @@ func (c *AggregatorCircuit) calculateWitnesses(api frontend.API) []groth16.Witne
 	// Initialize 'isReal' to 1 if c.ValidProofs > 0, else 0.
 	isReal := api.Sub(1, api.IsZero(c.ValidProofs))
 
-	for i := range len(c.Proofs) { // len(c.Proofs) is types.VotesPerBatch
+	for i := range len(c.Proofs) { // len(c.Proofs) is params.VotesPerBatch
 		isValid := isReal // Current iteration's validity state
 
 		// Update 'isReal' for the next iteration (i.e., for i+1).

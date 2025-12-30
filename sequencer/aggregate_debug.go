@@ -11,11 +11,11 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func (s *Sequencer) debugAggregationFailure(
@@ -39,7 +39,7 @@ func (s *Sequencer) debugAggregationFailure(
 		"aggregatorNbConstraints", s.aggCcs.GetNbConstraints(),
 	)
 
-	if pubW, err := frontend.NewWitness(assignment, circuits.AggregatorCurve.ScalarField(), frontend.PublicOnly()); err != nil {
+	if pubW, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField(), frontend.PublicOnly()); err != nil {
 		log.Warnw("failed to build aggregator public witness", "processID", pid.String(), "error", err.Error())
 	} else {
 		log.Debugw("aggregator public witness",
@@ -58,8 +58,8 @@ func (s *Sequencer) debugAggregationFailure(
 	)
 
 	opts := stdgroth16.GetNativeVerifierOptions(
-		circuits.AggregatorCurve.ScalarField(),
-		circuits.VoteVerifierCurve.ScalarField(),
+		params.AggregatorCurve.ScalarField(),
+		params.VoteVerifierCurve.ScalarField(),
 	)
 
 	for i, vb := range batchInputs.verifiedBallots {
@@ -94,7 +94,7 @@ func (s *Sequencer) debugAggregationFailure(
 			IsValid:    1,
 			InputsHash: inputsHashValue,
 		}
-		pubWitness, err := frontend.NewWitness(pubAssignment, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+		pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 		if err != nil {
 			log.Warnw("failed to build vote verifier public witness",
 				"processID", pid.String(),
@@ -113,7 +113,7 @@ func (s *Sequencer) debugAggregationFailure(
 				IsValid:    0,
 				InputsHash: inputsHashValue,
 			}
-			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 			if errIsValid0 == nil {
 				if err2 := groth16.Verify(vb.Proof, s.vvVk, pubWitnessIsValid0, opts); err2 == nil {
 					log.Warnw("vote verifier proof verifies only with IsValid=0; aggregator treating it as real will fail",

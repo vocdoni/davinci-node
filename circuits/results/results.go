@@ -8,7 +8,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 )
@@ -18,16 +18,16 @@ import (
 var HashFn = poseidon.MultiHash
 
 type ResultsVerifierCircuit struct {
-	StateRoot                  frontend.Variable                        `gnark:",public"`
-	Results                    [types.FieldsPerBallot]frontend.Variable `gnark:",public"`
-	AddAccumulators            [types.FieldsPerBallot]frontend.Variable
-	SubAccumulators            [types.FieldsPerBallot]frontend.Variable
+	StateRoot                  frontend.Variable                         `gnark:",public"`
+	Results                    [params.FieldsPerBallot]frontend.Variable `gnark:",public"`
+	AddAccumulators            [params.FieldsPerBallot]frontend.Variable
+	SubAccumulators            [params.FieldsPerBallot]frontend.Variable
 	AddAccumulatorsEncrypted   circuits.Ballot
 	SubAccumulatorsEncrypted   circuits.Ballot
 	AddAccumulatorsMerkleProof merkleproof.MerkleProof
 	SubAccumulatorsMerkleProof merkleproof.MerkleProof
-	DecryptionAddProofs        [types.FieldsPerBallot]elgamal.DecryptionProof
-	DecryptionSubProofs        [types.FieldsPerBallot]elgamal.DecryptionProof
+	DecryptionAddProofs        [params.FieldsPerBallot]elgamal.DecryptionProof
+	DecryptionSubProofs        [params.FieldsPerBallot]elgamal.DecryptionProof
 	EncryptionKeyMerkleProof   merkleproof.MerkleProof
 	EncryptionPublicKey        circuits.EncryptionKey[frontend.Variable]
 }
@@ -106,7 +106,7 @@ func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
 		X: c.EncryptionPublicKey.PubKey[0],
 		Y: c.EncryptionPublicKey.PubKey[1],
 	}
-	for i := range types.FieldsPerBallot {
+	for i := range params.FieldsPerBallot {
 		// Prove the decryption add proofs
 		err := c.DecryptionAddProofs[i].Verify(api, HashFn, pubKey, c.AddAccumulatorsEncrypted[i], c.AddAccumulators[i])
 		if err != nil {
@@ -124,7 +124,7 @@ func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
 
 func (c *ResultsVerifierCircuit) VerifyResults(api frontend.API) {
 	// Verify that the results add minus results sub equals results
-	for i := range types.FieldsPerBallot {
+	for i := range params.FieldsPerBallot {
 		api.AssertIsEqual(
 			api.Sub(c.AddAccumulators[i], c.SubAccumulators[i]),
 			c.Results[i],

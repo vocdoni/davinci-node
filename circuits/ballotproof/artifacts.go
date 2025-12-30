@@ -4,13 +4,14 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // Artifacts contains the circuit artifacts for the ballot proof verification,
 // it only contains the verification key because the proving key is used by
 // the voter to generate the proof.
 var Artifacts = circuits.NewCircuitArtifacts(
-	circuits.BallotProofCurve,
+	params.BallotProofCurve,
 	&circuits.Artifact{
 		Name:      "ballot-proof wasm",
 		RemoteURL: config.BallotProofCircuitURL,

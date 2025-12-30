@@ -22,6 +22,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -36,7 +37,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	now := time.Now()
 
 	// Random inputs for the state (processID and censusRoot)
-	processID, err := rand.Int(rand.Reader, circuits.ResultsVerifierCurve.ScalarField())
+	processID, err := rand.Int(rand.Reader, params.ResultsVerifierCurve.ScalarField())
 	c.Assert(err, qt.IsNil)
 	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
 	ballotMode := circuits.MockBallotMode()
@@ -70,9 +71,9 @@ func TestResultsVerifierCircuit(t *testing.T) {
 
 	// Decrypt the votes and generate the decryption proofs
 	maxValue := ballotMode.MaxValue.Uint64() * 1000
-	addAccumulator := [types.FieldsPerBallot]*big.Int{}
-	addCiphertexts := [types.FieldsPerBallot]elgamal.Ciphertext{}
-	addDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
+	addAccumulator := [params.FieldsPerBallot]*big.Int{}
+	addCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	addDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedAddAccumulator.Ciphertexts {
 		c.Assert(ct.C1 != nil && ct.C2 != nil, qt.IsTrue)
 		addCiphertexts[i] = *ct
@@ -82,10 +83,10 @@ func TestResultsVerifierCircuit(t *testing.T) {
 		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
 		c.Assert(err, qt.IsNil)
 	}
-	resultsAccumulator := [types.FieldsPerBallot]*big.Int{}
-	subAccumulator := [types.FieldsPerBallot]*big.Int{}
-	subCiphertexts := [types.FieldsPerBallot]elgamal.Ciphertext{}
-	subDecryptionProofs := [types.FieldsPerBallot]*elgamal.DecryptionProof{}
+	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
+	subAccumulator := [params.FieldsPerBallot]*big.Int{}
+	subCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	subDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
 	for i, ct := range encryptedSubAccumulator.Ciphertexts {
 		c.Assert(ct.C1 != nil && ct.C2 != nil, qt.IsTrue)
 		subCiphertexts[i] = *ct
@@ -117,12 +118,12 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	now = time.Now()
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&ResultsVerifierCircuit{}, witness,
-		test.WithCurves(circuits.ResultsVerifierCurve), test.WithBackends(backend.GROTH16))
+		test.WithCurves(params.ResultsVerifierCurve), test.WithBackends(backend.GROTH16))
 	c.Logf("proving took %s", time.Since(now).String())
 }
 
 func newMockVote(pubKey ecc.Point, index, amount int) *state.Vote {
-	fields := [types.FieldsPerBallot]*big.Int{}
+	fields := [params.FieldsPerBallot]*big.Int{}
 	for i := range fields {
 		fields[i] = big.NewInt(int64(amount + i))
 	}

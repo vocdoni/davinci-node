@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // BallotMode is the struct to define the rules of a ballot
@@ -21,9 +23,8 @@ type BallotMode struct {
 
 func (b *BallotMode) Validate() error {
 	// Validate NumFields
-	numFieldsMax := FieldsPerBallot
-	if int(b.NumFields) > numFieldsMax {
-		return fmt.Errorf("numFields %d is greater than max size %d", b.NumFields, numFieldsMax)
+	if int(b.NumFields) > params.FieldsPerBallot {
+		return fmt.Errorf("numFields %d is greater than max size %d", b.NumFields, params.FieldsPerBallot)
 	}
 
 	// Validate MaxValueSum

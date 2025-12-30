@@ -9,7 +9,7 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	gelgamal "github.com/vocdoni/gnark-crypto-primitives/elgamal"
 )
 
@@ -18,7 +18,7 @@ const (
 	sizeCoord            = crypto.SignatureCircuitVariableLen
 	sizePoint            = 2 * sizeCoord
 	sizeCiphertext       = 2 * sizePoint
-	SerializedBallotSize = types.FieldsPerBallot * sizeCiphertext
+	SerializedBallotSize = params.FieldsPerBallot * sizeCiphertext
 )
 
 // BigIntsPerCiphertext is 4 since each Ciphertext has C1.X, C1.Y, C2.X and

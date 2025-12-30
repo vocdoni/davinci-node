@@ -12,7 +12,6 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
@@ -21,6 +20,7 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	imtcircuit "github.com/vocdoni/lean-imt-go/circuit"
 )
 
@@ -245,7 +245,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 
 	// Generate the proof
-	proof, err := s.prover(circuits.StateTransitionCurve, s.stCcs, s.stPk, assignments, opts)
+	proof, err := s.prover(params.StateTransitionCurve, s.stCcs, s.stPk, assignments, opts)
 	if err != nil {
 		s.logStateTransitionDebugInfo(processState, votes, censusRoot, assignments, err)
 		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
@@ -382,8 +382,8 @@ func (s *Sequencer) processCensusProofs(
 	}
 
 	var root *big.Int
-	merkleProofs := [types.VotesPerBatch]imtcircuit.MerkleProof{}
-	cspProofs := [types.VotesPerBatch]csp.CSPProof{}
+	merkleProofs := [params.VotesPerBatch]imtcircuit.MerkleProof{}
+	cspProofs := [params.VotesPerBatch]csp.CSPProof{}
 	switch {
 	case process.Census.CensusOrigin.IsMerkleTree():
 		// load the census from the storage
@@ -398,7 +398,7 @@ func (s *Sequencer) processCensusProofs(
 			log.Warnw("census tree has no root?", "censusRoot", process.Census.CensusRoot.String(), "fetchedRoot", root.String())
 		}
 		// iterate over the votes to generate the merkle proofs of each voter
-		for i := range types.VotesPerBatch {
+		for i := range params.VotesPerBatch {
 			if i < len(votes) {
 				addr := common.BigToAddress(votes[i].Address)
 				proof, err := censusTree.GenerateProof(addr)
@@ -414,7 +414,7 @@ func (s *Sequencer) processCensusProofs(
 	case process.Census.CensusOrigin.IsCSP():
 		// iterate over the votes to get the CSP proofs
 		root = process.Census.CensusRoot.BigInt().MathBigInt()
-		for i := range types.VotesPerBatch {
+		for i := range params.VotesPerBatch {
 			if i < len(votes) {
 				proof, err := csp.CensusProofToCSPProof(process.Census.CensusOrigin.CurveID(), censusProofs[i])
 				if err != nil {

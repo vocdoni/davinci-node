@@ -11,6 +11,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 type mockAggregationStore struct {
@@ -53,10 +54,10 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 	}
 
 	pid := types.HexBytes{0x01}
-	ballots := make([]*storage.VerifiedBallot, 0, types.VotesPerBatch+1)
-	keys := make([][]byte, 0, types.VotesPerBatch+1)
+	ballots := make([]*storage.VerifiedBallot, 0, params.VotesPerBatch+1)
+	keys := make([][]byte, 0, params.VotesPerBatch+1)
 
-	for i := 0; i < types.VotesPerBatch+1; i++ {
+	for i := 0; i < params.VotesPerBatch+1; i++ {
 		voteID := types.HexBytes{byte(i + 1)}
 		ballots = append(ballots, &storage.VerifiedBallot{
 			VoteID:     voteID,
@@ -76,9 +77,9 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 	inputs, err := collectAggregationBatchInputs(stg, pid, ballots, keys, processState, false, proofToRecursion, nil)
 	c.Assert(err, qt.IsNil)
 
-	c.Assert(len(inputs.aggBallots), qt.Equals, types.VotesPerBatch)
-	c.Assert(len(inputs.processedKeys), qt.Equals, types.VotesPerBatch)
-	c.Assert(len(inputs.proofsInputsHashInputs), qt.Equals, types.VotesPerBatch)
+	c.Assert(len(inputs.aggBallots), qt.Equals, params.VotesPerBatch)
+	c.Assert(len(inputs.processedKeys), qt.Equals, params.VotesPerBatch)
+	c.Assert(len(inputs.proofsInputsHashInputs), qt.Equals, params.VotesPerBatch)
 
 	c.Assert(stg.failed, qt.HasLen, 1)
 	c.Assert(stg.failed[0], qt.DeepEquals, keys[0])

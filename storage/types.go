@@ -19,6 +19,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // Process is the struct that contains the information of a process. It includes
@@ -240,8 +241,8 @@ type VerifiedResults struct {
 // results verifier proof. It includes the state root and the decrypted results
 // of the votes.
 type ResultsVerifierProofInputs struct {
-	StateRoot *big.Int                        `json:"stateRoot"`
-	Results   [types.FieldsPerBallot]*big.Int `json:"results"`
+	StateRoot *big.Int                         `json:"stateRoot"`
+	Results   [params.FieldsPerBallot]*big.Int `json:"results"`
 }
 
 // ABIEncode packs the state root and results as a single static uint256[1 + N]

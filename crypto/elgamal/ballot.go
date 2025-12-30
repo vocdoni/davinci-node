@@ -13,19 +13,19 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 type Ballot struct {
-	CurveType   string                             `json:"curveType,omitempty"`
-	Ciphertexts [types.FieldsPerBallot]*Ciphertext `json:"ciphertexts"`
+	CurveType   string                              `json:"curveType,omitempty"`
+	Ciphertexts [params.FieldsPerBallot]*Ciphertext `json:"ciphertexts"`
 }
 
 // NewBallot creates a new Ballot for the given curve.
 func NewBallot(curve ecc.Point) *Ballot {
 	z := &Ballot{
 		CurveType:   curve.Type(),
-		Ciphertexts: [types.FieldsPerBallot]*Ciphertext{},
+		Ciphertexts: [params.FieldsPerBallot]*Ciphertext{},
 	}
 	for i := range z.Ciphertexts {
 		z.Ciphertexts[i] = NewCiphertext(curve)
@@ -59,7 +59,7 @@ func (z *Ballot) IsZero() bool {
 // point. The randomness k can be provided or nil to generate a new one. Each
 // ciphertext uses a different k derived from the previous one using mimc7 hash
 // function. The first k is the hash of the provided one.
-func (z *Ballot) Encrypt(message [types.FieldsPerBallot]*big.Int, publicKey ecc.Point, k *big.Int) (*Ballot, error) {
+func (z *Ballot) Encrypt(message [params.FieldsPerBallot]*big.Int, publicKey ecc.Point, k *big.Int) (*Ballot, error) {
 	var err error
 	if k == nil {
 		k, err = RandK()
@@ -168,11 +168,11 @@ func (z *Ballot) SetBigInts(list []*big.Int) (*Ballot, error) {
 		return nil, fmt.Errorf("invalid curve type: %s", z.CurveType)
 	}
 	// check if the list has the right length
-	if len(list) != types.FieldsPerBallot*4 {
+	if len(list) != params.FieldsPerBallot*4 {
 		return nil, fmt.Errorf("expected 8*4 BigInts, got %d", len(list))
 	}
 	// compose the ciphertexts
-	z.Ciphertexts = [types.FieldsPerBallot]*Ciphertext{}
+	z.Ciphertexts = [params.FieldsPerBallot]*Ciphertext{}
 	for i := range z.Ciphertexts {
 		c1x, c1y := list[i*4], list[i*4+1]
 		c2x, c2y := list[i*4+2], list[i*4+3]
