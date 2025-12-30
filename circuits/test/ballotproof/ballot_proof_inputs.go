@@ -13,13 +13,13 @@ import (
 	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/iden3/go-rapidsnark/prover"
 	"github.com/iden3/go-rapidsnark/witness"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 )
@@ -112,34 +112,6 @@ func GenBallotFieldsForTest(n, max, min int, unique bool) [params.FieldsPerBallo
 	return fields
 }
 
-// GenDeterministicBallotFieldsForTest generates a list of n deterministic fields
-// based on the provided seed for consistent testing and caching.
-func GenDeterministicBallotFieldsForTest(seed int64, n, max, min int, unique bool) [params.FieldsPerBallot]*types.BigInt {
-	fields := [params.FieldsPerBallot]*types.BigInt{}
-	for i := range len(fields) {
-		fields[i] = types.NewInt(0)
-	}
-
-	// Use seed-based deterministic generation
-	stored := map[string]bool{}
-	for i := range n {
-		for attempt := 0; ; attempt++ {
-			// Generate deterministic field based on seed, index, and attempt
-			fieldSeed := seed + int64(i*1000) + int64(attempt)
-			fieldValue := int64(min) + (fieldSeed % int64(max-min))
-			field := big.NewInt(fieldValue)
-
-			// if it should be unique and it's already stored, try next attempt
-			if !unique || !stored[field.String()] {
-				fields[i] = fields[i].SetBigInt(field)
-				stored[field.String()] = true
-				break
-			}
-		}
-	}
-	return fields
-}
-
 // GenDeterministicKForTest generates a deterministic k value for encryption
 // based on the provided seed for consistent testing and caching.
 func GenDeterministicKForTest(seed int64) (*big.Int, error) {
@@ -203,62 +175,12 @@ type VoterProofResult struct {
 	VoteID     types.HexBytes
 }
 
-// BallotProofForTest function return the information after proving a valid
-// ballot for the voter address, process id and encryption key provided. It
-// generates and encrypts the fields for the ballot and generates a proof of
-// a valid vote. It returns a *VoterProofResult and an error if it fails.
-func BallotProofForTest(address []byte, processID *types.ProcessID, encryptionKey ecc.Point) (*VoterProofResult, error) {
-	now := time.Now()
-	// generate random fields
-	fields := GenBallotFieldsForTest(circuits.MockNumFields, circuits.MockMaxValue, circuits.MockMinValue, circuits.MockUniqueValues > 0)
-	// generate voter k
-	k, err := elgamal.RandK()
-	if err != nil {
-		return nil, err
-	}
-	// generate ballot proof inputs
-	weight := new(types.BigInt).SetInt(circuits.MockWeight)
-	ballotProofInputs := &ballotproof.BallotProofInputs{
-		ProcessID:     processID.Marshal(),
-		Address:       address,
-		EncryptionKey: types.SliceOf(encryptionKey.BigInts(), types.BigIntConverter),
-		K:             new(types.BigInt).SetBigInt(k),
-		BallotMode:    circuits.MockBallotModeInternal(),
-		Weight:        weight,
-		FieldValues:   fields[:],
-	}
-	proofInputs, err := ballotproof.GenerateBallotProofInputs(ballotProofInputs)
-	if err != nil {
-		return nil, fmt.Errorf("generate ballot proof inputs: %w", err)
-	}
-	// generate ballot proof
-	bCircomInputs, err := json.Marshal(proofInputs.CircomInputs)
-	if err != nil {
-		return nil, err
-	}
-	circomProof, circomPubInputs, err := CompileAndGenerateProofForTest(bCircomInputs)
-	if err != nil {
-		return nil, fmt.Errorf("create circom proof: %w", err)
-	}
-	log.Printf("ballot proof generation ends, it tooks %s", time.Since(now))
-	return &VoterProofResult{
-		ProcessID:  proofInputs.ProcessID.BigInt().MathBigInt(),
-		Address:    proofInputs.Address.BigInt().MathBigInt(),
-		Weight:     proofInputs.Weight.MathBigInt(),
-		Ballot:     proofInputs.Ballot,
-		Proof:      circomProof,
-		PubInputs:  circomPubInputs,
-		InputsHash: proofInputs.BallotInputsHash.MathBigInt(),
-		VoteID:     proofInputs.VoteID,
-	}, nil
-}
-
 // BallotProofForTestDeterministic function returns the information after proving a valid
 // ballot using deterministic generation for consistent testing and caching.
-func BallotProofForTestDeterministic(address []byte, processID *types.ProcessID, encryptionKey ecc.Point, seed int64) (*VoterProofResult, error) {
+func BallotProofForTestDeterministic(address []byte, processID types.ProcessID, encryptionKey ecc.Point, seed int64) (*VoterProofResult, error) {
 	now := time.Now()
 	// generate deterministic fields
-	fields := GenDeterministicBallotFieldsForTest(seed, circuits.MockNumFields, circuits.MockMaxValue, circuits.MockMinValue, circuits.MockUniqueValues > 0)
+	fields := testutil.GenDeterministicBallotFields(seed)
 	// generate deterministic voter k
 	k, err := GenDeterministicKForTest(seed + 1000) // offset seed for k generation
 	if err != nil {
@@ -266,12 +188,12 @@ func BallotProofForTestDeterministic(address []byte, processID *types.ProcessID,
 	}
 	// generate ballot proof inputs
 	ballotProofInputs := &ballotproof.BallotProofInputs{
-		ProcessID:     processID.Marshal(),
+		ProcessID:     processID,
 		Address:       address,
 		EncryptionKey: types.SliceOf(encryptionKey.BigInts(), types.BigIntConverter),
 		K:             new(types.BigInt).SetBigInt(k),
-		BallotMode:    circuits.MockBallotModeInternal(),
-		Weight:        new(types.BigInt).SetInt(circuits.MockWeight),
+		BallotMode:    testutil.BallotModeInternal(),
+		Weight:        new(types.BigInt).SetInt(testutil.Weight),
 		FieldValues:   fields[:],
 	}
 	proofInputs, err := ballotproof.GenerateBallotProofInputs(ballotProofInputs)

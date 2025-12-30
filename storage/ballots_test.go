@@ -9,6 +9,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 )
@@ -23,19 +24,19 @@ func newTestStorage(t *testing.T) *Storage {
 	return New(testdb)
 }
 
-func mkBallot(pid, id []byte) *Ballot {
+func mkBallot(pid types.ProcessID, id []byte) *Ballot {
 	return &Ballot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(id),
-		Address:   new(big.Int).SetBytes(append(pid, id...)),
+		Address:   new(big.Int).SetBytes(append(pid.Bytes(), id...)),
 	}
 }
 
-func mkVerifiedBallot(pid, id []byte) *VerifiedBallot {
+func mkVerifiedBallot(pid types.ProcessID, id []byte) *VerifiedBallot {
 	return &VerifiedBallot{
-		ProcessID: types.HexBytes(pid),
+		ProcessID: pid,
 		VoteID:    types.HexBytes(id),
-		Address:   new(big.Int).SetBytes(append(pid, id...)),
+		Address:   new(big.Int).SetBytes(append(pid.Bytes(), id...)),
 	}
 }
 
@@ -45,7 +46,7 @@ func mkAggBallot(id []byte) *AggregatorBallot {
 	}
 }
 
-func ensureProcess(t *testing.T, stg *Storage, pid []byte) {
+func ensureProcess(t *testing.T, stg *Storage, pid types.ProcessID) {
 	t.Helper()
 	bm := &types.BallotMode{
 		NumFields:    uint8(params.FieldsPerBallot),
@@ -58,7 +59,7 @@ func ensureProcess(t *testing.T, stg *Storage, pid []byte) {
 	}
 	censusRoot := make([]byte, types.CensusRootLength)
 	proc := &types.Process{
-		ID:         types.HexBytes(pid),
+		ID:         &pid,
 		Status:     types.ProcessStatusReady,
 		BallotMode: bm,
 		Census: &types.Census{
@@ -76,7 +77,7 @@ func TestBallotQueue_RemoveBallot(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("p1")
+	pid := testutil.RandomProcessID()
 	id1 := []byte("id1")
 	ensureProcess(t, stg, pid)
 
@@ -103,8 +104,8 @@ func TestBallotQueue_RemovePendingBallotsByProcess_OnlyRemovesTargetProcess(t *t
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid1 := []byte("p1")
-	pid2 := []byte("p2")
+	pid1 := testutil.RandomProcessID()
+	pid2 := testutil.RandomProcessID()
 	ids := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
 	ensureProcess(t, stg, pid1)
 	ensureProcess(t, stg, pid2)
@@ -123,7 +124,7 @@ func TestBallotQueue_RemovePendingBallotsByProcess_OnlyRemovesTargetProcess(t *t
 	// verify the remaining ballot belongs to pid2
 	ballot, _, err := stg.NextPendingBallot()
 	c.Assert(err, qt.IsNil)
-	c.Assert([]byte(ballot.ProcessID), qt.DeepEquals, pid2)
+	c.Assert(ballot.ProcessID.Bytes(), qt.DeepEquals, pid2.Bytes())
 	c.Assert([]byte(ballot.VoteID), qt.DeepEquals, ids[2])
 
 	// verify pid1's ballots still have pending status (removePendingBallot doesn't change status)
@@ -146,7 +147,7 @@ func TestBallotQueue_ReleaseBallotReservation(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("p1")
+	pid := testutil.RandomProcessID()
 	id1 := []byte("id1")
 	ensureProcess(t, stg, pid)
 
@@ -169,7 +170,7 @@ func TestBallotQueue_MarkBallotDoneAndPullVerified(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("p1")
+	pid := testutil.RandomProcessID()
 	id1 := []byte("id1")
 	ensureProcess(t, stg, pid)
 
@@ -195,7 +196,7 @@ func TestBallotQueue_MarkBallotDoneAndPullVerified(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(len(vbs), qt.Equals, 1)
 	c.Assert(len(keys), qt.Equals, 1)
-	c.Assert([]byte(vbs[0].ProcessID), qt.DeepEquals, pid)
+	c.Assert(vbs[0].ProcessID.Bytes(), qt.DeepEquals, pid.Bytes())
 	c.Assert([]byte(vbs[0].VoteID), qt.DeepEquals, id1)
 
 	// status should be verified
@@ -214,7 +215,7 @@ func TestBallotQueue_PullVerifiedBallots_ReservationsAndLimits(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("p1")
+	pid := testutil.RandomProcessID()
 	ids := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
 	ensureProcess(t, stg, pid)
 
@@ -247,8 +248,8 @@ func TestBallotQueue_RemoveVerifiedBallotsByProcess(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid1 := []byte("p1")
-	pid2 := []byte("p2")
+	pid1 := testutil.RandomProcessID()
+	pid2 := testutil.RandomProcessID()
 	ensureProcess(t, stg, pid1)
 	ensureProcess(t, stg, pid2)
 
@@ -284,7 +285,7 @@ func TestBallotQueue_MarkVerifiedBallotsFailed(t *testing.T) {
 	stg := newTestStorage(t)
 	defer stg.Close()
 
-	pid := []byte("p1")
+	pid := testutil.RandomProcessID()
 	ids := [][]byte{[]byte("a"), []byte("b")}
 	ensureProcess(t, stg, pid)
 

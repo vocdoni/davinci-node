@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -24,34 +24,20 @@ func TestMonitorEndedProcesses(t *testing.T) {
 	defer st.Close()
 
 	// Create a process that should have ended 1 hour ago
-	processID := &types.ProcessID{
-		Address: common.Address{},
-		Nonce:   42,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID := testutil.DeterministicProcessID(42)
 
 	pastTime := time.Now().Add(-2 * time.Hour) // Started 2 hours ago
 	shortDuration := 1 * time.Hour             // Should have ended 1 hour ago
 
 	process := &types.Process{
-		ID:          processID.Marshal(),
+		ID:          &processID,
 		Status:      types.ProcessStatusReady, // Still ready, should be ended
 		StartTime:   pastTime,
 		Duration:    shortDuration,
 		MetadataURI: "http://example.com/metadata",
-		StateRoot:   new(types.BigInt).SetUint64(100),
-		BallotMode: &types.BallotMode{
-			NumFields:   8,
-			MaxValue:    new(types.BigInt).SetUint64(100),
-			MinValue:    new(types.BigInt).SetUint64(0),
-			MaxValueSum: new(types.BigInt).SetUint64(0),
-			MinValueSum: new(types.BigInt).SetUint64(0),
-		},
-		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-			CensusRoot:   make([]byte, 32),
-			CensusURI:    "http://example.com/census",
-		},
+		StateRoot:   testutil.StateRoot(),
+		BallotMode:  testutil.BallotModeInternal(),
+		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 
 	// Store the process
@@ -84,34 +70,20 @@ func TestMonitorEndedProcessesNotYetEnded(t *testing.T) {
 	defer st.Close()
 
 	// Create a process that should not have ended yet
-	processID := &types.ProcessID{
-		Address: common.Address{1},
-		Nonce:   43,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID := testutil.DeterministicProcessID(43)
 
 	recentTime := time.Now().Add(-30 * time.Minute) // Started 30 minutes ago
 	longDuration := 2 * time.Hour                   // Should end in 1.5 hours
 
 	process := &types.Process{
-		ID:          processID.Marshal(),
+		ID:          &processID,
 		Status:      types.ProcessStatusReady,
 		StartTime:   recentTime,
 		Duration:    longDuration,
 		MetadataURI: "http://example.com/metadata",
-		StateRoot:   new(types.BigInt).SetUint64(100),
-		BallotMode: &types.BallotMode{
-			NumFields:   8,
-			MaxValue:    new(types.BigInt).SetUint64(100),
-			MinValue:    new(types.BigInt).SetUint64(0),
-			MaxValueSum: new(types.BigInt).SetUint64(0),
-			MinValueSum: new(types.BigInt).SetUint64(0),
-		},
-		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-			CensusRoot:   make([]byte, 32),
-			CensusURI:    "http://example.com/census",
-		},
+		StateRoot:   testutil.StateRoot(),
+		BallotMode:  testutil.BallotModeInternal(),
+		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 
 	// Store the process
@@ -144,34 +116,20 @@ func TestMonitorEndedProcessesSkipsAlreadyEnded(t *testing.T) {
 	defer st.Close()
 
 	// Create a process that is already ended
-	processID := &types.ProcessID{
-		Address: common.Address{2},
-		Nonce:   44,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID := testutil.DeterministicProcessID(44)
 
 	pastTime := time.Now().Add(-2 * time.Hour)
 	shortDuration := 1 * time.Hour
 
 	process := &types.Process{
-		ID:          processID.Marshal(),
+		ID:          &processID,
 		Status:      types.ProcessStatusEnded, // Already ended
 		StartTime:   pastTime,
 		Duration:    shortDuration,
 		MetadataURI: "http://example.com/metadata",
-		StateRoot:   new(types.BigInt).SetUint64(100),
-		BallotMode: &types.BallotMode{
-			NumFields:   8,
-			MaxValue:    new(types.BigInt).SetUint64(100),
-			MinValue:    new(types.BigInt).SetUint64(0),
-			MaxValueSum: new(types.BigInt).SetUint64(0),
-			MinValueSum: new(types.BigInt).SetUint64(0),
-		},
-		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-			CensusRoot:   make([]byte, 32),
-			CensusURI:    "http://example.com/census",
-		},
+		StateRoot:   testutil.StateRoot(),
+		BallotMode:  testutil.BallotModeInternal(),
+		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 
 	// Store the process

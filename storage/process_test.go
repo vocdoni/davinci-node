@@ -9,6 +9,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -24,11 +25,7 @@ func TestProcess(t *testing.T) {
 	defer st.Close()
 
 	// Create a test process ID
-	processID := &types.ProcessID{
-		Address: common.Address{},
-		Nonce:   42,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
+	processID := testutil.DeterministicProcessID(42)
 
 	// Test 1: Get non-existent data
 	metadata, err := st.Process(processID)
@@ -65,27 +62,15 @@ func TestProcess(t *testing.T) {
 	}
 
 	testProcess := &types.Process{
-		ID:             processID.Marshal(),
+		ID:             &processID,
 		Status:         0,
 		OrganizationId: common.Address{},
-		StateRoot:      new(types.BigInt).SetUint64(100),
 		StartTime:      time.Now(),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
-		BallotMode: &types.BallotMode{
-			NumFields:      2,
-			MaxValue:       new(types.BigInt).SetUint64(100),
-			MinValue:       new(types.BigInt).SetUint64(0),
-			MaxValueSum:    new(types.BigInt).SetUint64(0),
-			MinValueSum:    new(types.BigInt).SetUint64(0),
-			UniqueValues:   false,
-			CostFromWeight: false,
-		},
-		Census: &types.Census{
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-			CensusRoot:   make([]byte, 32),
-			CensusURI:    "https://example.com/census",
-		},
+		StateRoot:      testutil.StateRoot(),
+		BallotMode:     testutil.BallotModeInternal(),
+		Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 
 	err = st.NewProcess(testProcess)
@@ -94,22 +79,18 @@ func TestProcess(t *testing.T) {
 	// Get and verify data and metadata
 	process, err := st.Process(processID)
 	c.Assert(err, qt.IsNil)
-	c.Assert(string(process.ID), qt.DeepEquals, string(processID.Marshal()))
+	c.Assert(process.ID.Bytes(), qt.DeepEquals, processID.Bytes())
 	c.Assert(process.MetadataURI, qt.Equals, testProcess.MetadataURI)
 
 	// Test 3: List processes
 	processes, err := st.ListProcesses()
 	c.Assert(err, qt.IsNil)
 	c.Assert(len(processes), qt.Equals, 1)
-	c.Assert(processes[0].Marshal(), qt.DeepEquals, processID.Marshal())
+	c.Assert(processes[0].Bytes(), qt.DeepEquals, processID.Bytes())
 
 	// Test 4: Set another process
-	anotherProcessID := types.ProcessID{
-		Address: common.Address{1},
-		Nonce:   43,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
-	process.ID = anotherProcessID.Marshal()
+	anotherProcessID := testutil.RandomProcessID()
+	process.ID = &anotherProcessID
 
 	err = st.NewProcess(process)
 	c.Assert(err, qt.IsNil)

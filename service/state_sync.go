@@ -122,7 +122,7 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 
 	// Apply blob data to reconstruct the state
 	for _, blobSidecar := range blobs {
-		if err := st.ApplyBlobToState(blobSidecar.Blob.Bytes()); err != nil {
+		if err := st.ApplyBlobToState(blobSidecar.Blob); err != nil {
 			return fmt.Errorf("failed to apply blob data to state: %w", err)
 		}
 	}

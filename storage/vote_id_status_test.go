@@ -5,7 +5,7 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db/metadb"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 )
 
 func TestVoteIDStatus(t *testing.T) {
@@ -17,57 +17,52 @@ func TestVoteIDStatus(t *testing.T) {
 	defer st.Close()
 
 	// Create test process
-	pid := &types.ProcessID{
-		Address: [20]byte{1},
-		Nonce:   1,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
-	pidBytes := pid.Marshal()
+	pid := testutil.DeterministicProcessID(1)
 
 	voteID1 := []byte("vote1")
 	voteID2 := []byte("vote2")
 	voteID3 := []byte("vote3")
 
 	// Test 1: Set and get statuses
-	err := st.setVoteIDStatus(pidBytes, voteID1, VoteIDStatusPending)
+	err := st.setVoteIDStatus(pid, voteID1, VoteIDStatusPending)
 	c.Assert(err, qt.IsNil)
 
-	status, err := st.VoteIDStatus(pidBytes, voteID1)
+	status, err := st.VoteIDStatus(pid, voteID1)
 	c.Assert(err, qt.IsNil)
 	c.Assert(status, qt.Equals, VoteIDStatusPending)
 
 	// Test 2: Update status
-	err = st.setVoteIDStatus(pidBytes, voteID1, VoteIDStatusVerified)
+	err = st.setVoteIDStatus(pid, voteID1, VoteIDStatusVerified)
 	c.Assert(err, qt.IsNil)
 
-	status, err = st.VoteIDStatus(pidBytes, voteID1)
+	status, err = st.VoteIDStatus(pid, voteID1)
 	c.Assert(err, qt.IsNil)
 	c.Assert(status, qt.Equals, VoteIDStatusVerified)
 
 	// Test 3: Mark as settled
 	// Setup multiple vote IDs
-	err = st.setVoteIDStatus(pidBytes, voteID1, VoteIDStatusProcessed)
+	err = st.setVoteIDStatus(pid, voteID1, VoteIDStatusProcessed)
 	c.Assert(err, qt.IsNil)
 
-	err = st.setVoteIDStatus(pidBytes, voteID2, VoteIDStatusProcessed)
+	err = st.setVoteIDStatus(pid, voteID2, VoteIDStatusProcessed)
 	c.Assert(err, qt.IsNil)
 
-	err = st.setVoteIDStatus(pidBytes, voteID3, VoteIDStatusProcessed)
+	err = st.setVoteIDStatus(pid, voteID3, VoteIDStatusProcessed)
 	c.Assert(err, qt.IsNil)
 
 	// Mark them as settled
-	err = st.MarkVoteIDsSettled(pidBytes, [][]byte{voteID1, voteID2, voteID3})
+	err = st.MarkVoteIDsSettled(pid, [][]byte{voteID1, voteID2, voteID3})
 	c.Assert(err, qt.IsNil)
 
 	// Verify all are settled
 	for _, voteID := range [][]byte{voteID1, voteID2, voteID3} {
-		status, err := st.VoteIDStatus(pidBytes, voteID)
+		status, err := st.VoteIDStatus(pid, voteID)
 		c.Assert(err, qt.IsNil)
 		c.Assert(status, qt.Equals, VoteIDStatusSettled)
 	}
 
 	// Test 4: Non-existent vote ID
-	_, err = st.VoteIDStatus(pidBytes, []byte("nonexistent"))
+	_, err = st.VoteIDStatus(pid, []byte("nonexistent"))
 	c.Assert(err, qt.Equals, ErrNotFound)
 }
 
@@ -79,12 +74,7 @@ func TestVoteIDStatusTransitionProtection(t *testing.T) {
 	st := New(db)
 	defer st.Close()
 
-	pid := &types.ProcessID{
-		Address: [20]byte{1},
-		Nonce:   1,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
-	pidBytes := pid.Marshal()
+	pidBytes := testutil.DeterministicProcessID(1)
 
 	// Test 1: SETTLED status cannot be changed
 	voteID1 := []byte("vote1")
@@ -206,12 +196,7 @@ func TestMarkProcessVoteIDsTimeout(t *testing.T) {
 	st := New(db)
 	defer st.Close()
 
-	pid := &types.ProcessID{
-		Address: [20]byte{1},
-		Nonce:   1,
-		Version: []byte{0x00, 0x00, 0x00, 0x01},
-	}
-	pidBytes := pid.Marshal()
+	pidBytes := testutil.DeterministicProcessID(1)
 
 	// Create vote IDs with different statuses
 	voteID1 := []byte("vote1")

@@ -1,8 +1,6 @@
 package results
 
 import (
-	"crypto/rand"
-	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -16,14 +14,14 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/state"
+	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/davinci-node/util"
 )
 
 const nVotes = 10
@@ -37,10 +35,9 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	now := time.Now()
 
 	// Random inputs for the state (processID and censusRoot)
-	processID, err := rand.Int(rand.Reader, params.ResultsVerifierCurve.ScalarField())
-	c.Assert(err, qt.IsNil)
+	processID := testutil.RandomProcessID()
 	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
-	ballotMode := circuits.MockBallotMode()
+	ballotMode := testutil.BallotMode()
 
 	// Generate a random ElGamal key pair
 	pubKey, privKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
@@ -57,7 +54,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	err = st.StartBatch()
 	c.Assert(err, qt.IsNil)
 	for i := range nVotes {
-		err = st.AddVote(newMockVote(pubKey, i, 100))
+		err = st.AddVote(statetest.NewVoteForTest(pubKey, uint64(i), 100))
 		c.Assert(err, qt.IsNil)
 	}
 	err = st.EndBatch()
@@ -120,24 +117,4 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	assert.SolvingSucceeded(&ResultsVerifierCircuit{}, witness,
 		test.WithCurves(params.ResultsVerifierCurve), test.WithBackends(backend.GROTH16))
 	c.Logf("proving took %s", time.Since(now).String())
-}
-
-func newMockVote(pubKey ecc.Point, index, amount int) *state.Vote {
-	fields := [params.FieldsPerBallot]*big.Int{}
-	for i := range fields {
-		fields[i] = big.NewInt(int64(amount + i))
-	}
-	ballot, err := elgamal.NewBallot(bjj.New()).Encrypt(fields, pubKey, nil)
-	if err != nil {
-		panic(fmt.Errorf("error encrypting: %v", err))
-	}
-	return &state.Vote{
-		// This circuit does not use the ballot, so we can create it empty,
-		// only to prevent nil pointer dereference. The value that matters is
-		// the ReencryptedBallot.
-		Ballot:            elgamal.NewBallot(state.Curve),
-		ReencryptedBallot: ballot,
-		VoteID:            util.RandomBytes(20),
-		Address:           big.NewInt(int64(index + 200)), // mock
-	}
 }

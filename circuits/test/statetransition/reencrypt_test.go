@@ -1,4 +1,4 @@
-package statetransition
+package statetransitiontest
 
 import (
 	"math/big"
@@ -12,6 +12,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types/params"
 )
 
@@ -34,7 +35,7 @@ func (c *ReencryptedBallotCircuit) Define(api frontend.API) error {
 func TestReencryptedBallotCircuit(t *testing.T) {
 	c := qt.New(t)
 
-	privkey, encKey := circuits.MockEncryptionKey()
+	privkey, encKey := testutil.RandomEncryptionKeys()
 	encryptionKey := new(bjj.BJJ).SetPoint(encKey.PubKey[0], encKey.PubKey[1])
 
 	k, err := elgamal.RandK()

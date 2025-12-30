@@ -656,7 +656,7 @@ func RandK() (*big.Int, error) {
 		return nil, fmt.Errorf("failed to generate random k: %v", err)
 	}
 	k := new(big.Int).SetBytes(kBytes)
-	return crypto.BigToFF(BallotProofCurve.ScalarField(), k), nil
+	return crypto.BigToFF(params.BallotProofCurve.ScalarField(), k), nil
 }
 
 func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.Element[sw_bn254.ScalarField] {

@@ -7,7 +7,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
-	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 )
 
 func TestPendingTxs(t *testing.T) {
@@ -22,7 +22,7 @@ func TestPendingTxs(t *testing.T) {
 	st := New(db)
 	defer st.Close()
 
-	testProcessID := util.RandomBytes(32)
+	testProcessID := testutil.RandomProcessID()
 
 	c.Run("no pending txs", func(c *qt.C) {
 		hasPending := st.HasPendingTx(StateTransitionTx, testProcessID)

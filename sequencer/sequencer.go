@@ -91,7 +91,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		return nil, fmt.Errorf("failed to load internal circuit artifacts: %w", err)
 	}
 	// Initialize the finalizer with state root getter
-	var getStateRootFn func([]byte) (*types.BigInt, error)
+	var getStateRootFn func(types.ProcessID) (*types.BigInt, error)
 	if contracts != nil {
 		getStateRootFn = contracts.StateRoot
 	}

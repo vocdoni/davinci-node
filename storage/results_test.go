@@ -1,14 +1,13 @@
 package storage
 
 import (
-	"fmt"
 	"math/big"
 	"testing"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types/params"
 )
 
@@ -26,7 +25,7 @@ func TestHasVerifiedResults(t *testing.T) {
 	defer stg.Close()
 
 	// Test process ID
-	processID := []byte("test-process-123")
+	processID := testutil.RandomProcessID()
 
 	// Test 1: Check non-existent results
 	hasResults := stg.HasVerifiedResults(processID)
@@ -34,9 +33,9 @@ func TestHasVerifiedResults(t *testing.T) {
 
 	// Test 2: Push verified results
 	results := &VerifiedResults{
-		ProcessID: types.HexBytes(processID),
+		ProcessID: processID,
 		Inputs: ResultsVerifierProofInputs{
-			StateRoot: big.NewInt(12345),
+			StateRoot: testutil.StateRoot().MathBigInt(),
 			Results: [params.FieldsPerBallot]*big.Int{
 				big.NewInt(100),
 				big.NewInt(200),
@@ -56,7 +55,7 @@ func TestHasVerifiedResults(t *testing.T) {
 	// Test 4: Check NextVerifiedResults still returns the results
 	nextResults, err := stg.NextVerifiedResults()
 	c.Assert(err, qt.IsNil)
-	c.Assert([]byte(nextResults.ProcessID), qt.DeepEquals, processID)
+	c.Assert(nextResults.ProcessID, qt.DeepEquals, processID)
 
 	// Test 5: Mark results as done
 	err = stg.MarkVerifiedResultsDone(processID)
@@ -94,11 +93,11 @@ func TestHasVerifiedResultsConcurrency(t *testing.T) {
 
 	// Create and push results for multiple processes
 	for i := range numProcesses {
-		processID := fmt.Appendf(nil, "process-%d", i)
+		processID := testutil.DeterministicProcessID(uint64(i))
 		results := &VerifiedResults{
-			ProcessID: types.HexBytes(processID),
+			ProcessID: processID,
 			Inputs: ResultsVerifierProofInputs{
-				StateRoot: big.NewInt(int64(i)),
+				StateRoot: testutil.RandomStateRoot().MathBigInt(),
 				Results: [params.FieldsPerBallot]*big.Int{
 					big.NewInt(int64(i * 100)),
 					big.NewInt(int64(i * 200)),
@@ -118,7 +117,7 @@ func TestHasVerifiedResultsConcurrency(t *testing.T) {
 			defer func() { done <- true }()
 
 			for j := range numProcesses {
-				processID := fmt.Appendf(nil, "process-%d", j)
+				processID := testutil.DeterministicProcessID(uint64(j))
 				if !stg.HasVerifiedResults(processID) {
 					t.Errorf("worker %d: expected results for process %d", workerID, j)
 					return
@@ -134,7 +133,7 @@ func TestHasVerifiedResultsConcurrency(t *testing.T) {
 
 	// Verify all results still exist
 	for i := range numProcesses {
-		processID := fmt.Appendf(nil, "process-%d", i)
+		processID := testutil.DeterministicProcessID(uint64(i))
 		hasResults := stg.HasVerifiedResults(processID)
 		c.Assert(hasResults, qt.IsTrue, qt.Commentf("expected results for process %d", i))
 	}
