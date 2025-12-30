@@ -6,7 +6,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // MarshalJSON serializes the Ballot to JSON.
@@ -55,12 +55,12 @@ func (z *Ballot) UnmarshalJSON(data []byte) error {
 	}
 	z.CurveType = tmp.CurveType
 
-	if len(tmp.Ciphertexts) != types.FieldsPerBallot {
-		return fmt.Errorf("expected %d ciphertexts, got %d", types.FieldsPerBallot, len(tmp.Ciphertexts))
+	if len(tmp.Ciphertexts) != params.FieldsPerBallot {
+		return fmt.Errorf("expected %d ciphertexts, got %d", params.FieldsPerBallot, len(tmp.Ciphertexts))
 	}
 
 	// Create a new array for the ciphertexts.
-	var cts [types.FieldsPerBallot]*Ciphertext
+	var cts [params.FieldsPerBallot]*Ciphertext
 	// Only unmarshal if the curve type is set. Else we assume the ballot is not initialized.
 	if z.CurveType != "" {
 		for i, raw := range tmp.Ciphertexts {
@@ -172,11 +172,11 @@ func (z *Ballot) UnmarshalCBOR(buf []byte) error {
 	}
 	z.CurveType = tmp.CurveType
 
-	if len(tmp.Ciphertexts) != types.FieldsPerBallot {
-		return fmt.Errorf("expected %d ciphertexts, got %d", types.FieldsPerBallot, len(tmp.Ciphertexts))
+	if len(tmp.Ciphertexts) != params.FieldsPerBallot {
+		return fmt.Errorf("expected %d ciphertexts, got %d", params.FieldsPerBallot, len(tmp.Ciphertexts))
 	}
 
-	z.Ciphertexts = [types.FieldsPerBallot]*Ciphertext{}
+	z.Ciphertexts = [params.FieldsPerBallot]*Ciphertext{}
 	// Only unmarshal if the curve type is set. Else we assume the ballot is not initialized.
 	if z.CurveType != "" {
 		for i, raw := range tmp.Ciphertexts {

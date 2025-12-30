@@ -32,7 +32,7 @@ import (
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -103,7 +103,7 @@ func main() {
 		log.Fatalf("error generating circom2gnark placeholder: %v", err)
 	}
 	// compile the circuit
-	voteVerifierCCS, err := frontend.Compile(circuits.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, &voteverifier.VerifyVoteCircuit{
+	voteVerifierCCS, err := frontend.Compile(params.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, &voteverifier.VerifyVoteCircuit{
 		CircomVerificationKey: circomPlaceholder.Vk,
 		CircomProof:           circomPlaceholder.Proof,
 	})
@@ -152,14 +152,14 @@ func main() {
 	}
 	// create final placeholder
 	aggregatePlaceholder := &aggregator.AggregatorCircuit{
-		Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
+		Proofs:          [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
 		VerificationKey: voteVerifierFixedVk,
 	}
-	for i := range types.VotesPerBatch {
+	for i := range params.VotesPerBatch {
 		aggregatePlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](voteVerifierCCS)
 	}
 
-	aggregateCCS, err := frontend.Compile(circuits.AggregatorCurve.ScalarField(), r1cs.NewBuilder, aggregatePlaceholder)
+	aggregateCCS, err := frontend.Compile(params.AggregatorCurve.ScalarField(), r1cs.NewBuilder, aggregatePlaceholder)
 	if err != nil {
 		log.Fatalf("failed to compile aggregator circuit: %v", err)
 	}
@@ -207,7 +207,7 @@ func main() {
 		AggregatorProof: stdgroth16.PlaceholderProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](aggregateCCS),
 		AggregatorVK:    aggregatorFixedVk,
 	}
-	statetransitionCCS, err := frontend.Compile(circuits.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, statetransitionPlaceholder)
+	statetransitionCCS, err := frontend.Compile(params.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, statetransitionPlaceholder)
 	if err != nil {
 		log.Fatalf("failed to compile statetransition circuit: %v", err)
 	}
@@ -279,7 +279,7 @@ func main() {
 	startTime = time.Now()
 	// create final placeholder
 	resultsverifierPlaceholder := &results.ResultsVerifierCircuit{}
-	resultsverifierCCS, err := frontend.Compile(circuits.ResultsVerifierCurve.ScalarField(), r1cs.NewBuilder, resultsverifierPlaceholder)
+	resultsverifierCCS, err := frontend.Compile(params.ResultsVerifierCurve.ScalarField(), r1cs.NewBuilder, resultsverifierPlaceholder)
 	if err != nil {
 		log.Fatalf("failed to compile results verifier circuit: %v", err)
 	}

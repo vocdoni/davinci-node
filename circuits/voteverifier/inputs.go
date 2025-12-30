@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 type VoteVerifierInputs struct {
@@ -33,7 +34,7 @@ func (vi *VoteVerifierInputs) FromProcessBallot(process *types.Process, b *stora
 		return fmt.Errorf("ballot cannot be nil")
 	}
 
-	vi.ProcessID = crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), b.ProcessID.BigInt().MathBigInt())
+	vi.ProcessID = crypto.BigToFF(params.BallotProofCurve.ScalarField(), b.ProcessID.BigInt().MathBigInt())
 	vi.CensusOrigin = process.Census.CensusOrigin
 	vi.BallotMode = circuits.BallotModeToCircuit(process.BallotMode)
 	vi.EncryptionKey = circuits.EncryptionKeyToCircuit(*process.EncryptionKey)

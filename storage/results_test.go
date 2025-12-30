@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // TestHasVerifiedResults tests the HasVerifiedResults functionality
@@ -36,7 +37,7 @@ func TestHasVerifiedResults(t *testing.T) {
 		ProcessID: types.HexBytes(processID),
 		Inputs: ResultsVerifierProofInputs{
 			StateRoot: big.NewInt(12345),
-			Results: [types.FieldsPerBallot]*big.Int{
+			Results: [params.FieldsPerBallot]*big.Int{
 				big.NewInt(100),
 				big.NewInt(200),
 				big.NewInt(300),
@@ -98,7 +99,7 @@ func TestHasVerifiedResultsConcurrency(t *testing.T) {
 			ProcessID: types.HexBytes(processID),
 			Inputs: ResultsVerifierProofInputs{
 				StateRoot: big.NewInt(int64(i)),
-				Results: [types.FieldsPerBallot]*big.Int{
+				Results: [params.FieldsPerBallot]*big.Int{
 					big.NewInt(int64(i * 100)),
 					big.NewInt(int64(i * 200)),
 					big.NewInt(int64(i * 300)),

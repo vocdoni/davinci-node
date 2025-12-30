@@ -19,6 +19,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // startBallotProcessor starts a background goroutine that continuously processes ballots.
@@ -211,11 +212,11 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 
 	// Prepare the options for the prover
 	opts := stdgroth16.GetNativeProverOptions(
-		circuits.AggregatorCurve.ScalarField(),
-		circuits.VoteVerifierCurve.ScalarField(),
+		params.AggregatorCurve.ScalarField(),
+		params.VoteVerifierCurve.ScalarField(),
 	)
 	log.Debugw("generating vote verification proof...", "pid", pid.String(), "voteID", hex.EncodeToString(b.VoteID))
-	proof, err := s.prover(circuits.VoteVerifierCurve, s.vvCcs, s.vvPk, &assignment, opts)
+	proof, err := s.prover(params.VoteVerifierCurve, s.vvCcs, s.vvPk, &assignment, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
@@ -227,13 +228,13 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		IsValid:    1,
 		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 	}
-	pubWitness, err := frontend.NewWitness(pubAssignment, circuits.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
+	pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create public witness: %w", err)
 	}
 	verifyOpts := stdgroth16.GetNativeVerifierOptions(
-		circuits.AggregatorCurve.ScalarField(),
-		circuits.VoteVerifierCurve.ScalarField(),
+		params.AggregatorCurve.ScalarField(),
+		params.VoteVerifierCurve.ScalarField(),
 	)
 	if err := groth16.Verify(proof, s.vvVk, pubWitness, verifyOpts); err != nil {
 		return nil, fmt.Errorf("failed to verify generated proof: %w", err)

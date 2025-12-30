@@ -10,9 +10,9 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -130,7 +130,7 @@ func TestComputeEvaluationPointMultipleCases(t *testing.T) {
 			// Verify circuit accepts the witness
 			assert := test.NewAssert(t)
 			assert.SolvingSucceeded(&testEvaluationPointCircuit{}, &witness,
-				test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
+				test.WithCurves(params.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 		})
 	}
 }

@@ -22,8 +22,8 @@ type BlobData struct {
 // produces (blob, commitment, proof, z, y, versionedHash).
 //
 // blob layout:
-//  1. ResultsAdd (types.FieldsPerBallot * 4 coordinates)
-//  2. ResultsSub (types.FieldsPerBallot * 4 coordinates)
+//  1. ResultsAdd (params.FieldsPerBallot * 4 coordinates)
+//  2. ResultsSub (params.FieldsPerBallot * 4 coordinates)
 //  3. Votes sequentially until voteID = 0x0 (sentinel):
 //     Each vote: voteID + address + reencryptedBallot coordinates
 func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
@@ -102,7 +102,7 @@ func parseBlobData(blob []byte) (*BlobData, error) {
 		return nil, fmt.Errorf("unexpected blob length %d", len(blob))
 	}
 
-	coordsPerBallot := types.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
+	coordsPerBallot := params.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
 
 	data := &BlobData{
 		Votes:      make([]*Vote, 0),
@@ -168,8 +168,8 @@ func parseBlobData(blob []byte) (*BlobData, error) {
 		}
 
 		// Convert voteID back to byte array
-		voteIDBytes := make([]byte, types.VoteIDLen)
-		voteID = util.TruncateToLowerBits(voteID, types.VoteIDLen*8) // avoid panics in FillBytes
+		voteIDBytes := make([]byte, params.VoteIDLen)
+		voteID = util.TruncateToLowerBits(voteID, params.VoteIDLen*8) // avoid panics in FillBytes
 		voteID.FillBytes(voteIDBytes)
 
 		vote := &Vote{
@@ -180,7 +180,7 @@ func parseBlobData(blob []byte) (*BlobData, error) {
 		data.Votes = append(data.Votes, vote)
 
 		// Safety check to prevent infinite loop
-		if len(data.Votes) > types.VotesPerBatch {
+		if len(data.Votes) > params.VotesPerBatch {
 			return nil, fmt.Errorf("too many votes in blob")
 		}
 	}

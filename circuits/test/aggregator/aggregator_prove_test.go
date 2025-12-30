@@ -10,10 +10,10 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/davinci-node/circuits"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // TestAggregatorCircuitProve performs a full proof using the GPU prover (if enabled)
@@ -52,7 +52,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 		t.Logf("inputs generation took %s", time.Since(start))
 
 		t.Logf("compiling aggregator circuit...")
-		ccs, err := frontend.Compile(circuits.AggregatorCurve.ScalarField(), r1cs.NewBuilder, placeholder)
+		ccs, err := frontend.Compile(params.AggregatorCurve.ScalarField(), r1cs.NewBuilder, placeholder)
 		c.Assert(err, qt.IsNil, qt.Commentf("compile aggregator circuit"))
 		aggCacheData.ConstraintSystem = ccs
 
@@ -63,7 +63,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 		aggCacheData.VerifyingKey = vk
 
 		t.Logf("creating witness for aggregator circuit...")
-		w, err := frontend.NewWitness(assignments, circuits.AggregatorCurve.ScalarField())
+		w, err := frontend.NewWitness(assignments, params.AggregatorCurve.ScalarField())
 		c.Assert(err, qt.IsNil, qt.Commentf("witness creation"))
 		aggCacheData.Witness = w
 
@@ -79,11 +79,11 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	t.Logf("proving and verifying aggregator circuit...")
 	start := time.Now()
 	opts := stdgroth16.GetNativeProverOptions(
-		circuits.StateTransitionCurve.ScalarField(),
-		circuits.AggregatorCurve.ScalarField(),
+		params.StateTransitionCurve.ScalarField(),
+		params.AggregatorCurve.ScalarField(),
 	)
 	proof, err = prover.ProveWithWitness(
-		circuits.AggregatorCurve,
+		params.AggregatorCurve,
 		aggCacheData.ConstraintSystem,
 		aggCacheData.ProvingKey,
 		aggCacheData.Witness,
@@ -96,8 +96,8 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	pub, err := aggCacheData.Witness.Public()
 	c.Assert(err, qt.IsNil, qt.Commentf("public witness"))
 	err = groth16.Verify(proof, aggCacheData.VerifyingKey, pub, stdgroth16.GetNativeVerifierOptions(
-		circuits.StateTransitionCurve.ScalarField(),
-		circuits.AggregatorCurve.ScalarField()))
+		params.StateTransitionCurve.ScalarField(),
+		params.AggregatorCurve.ScalarField()))
 	c.Assert(err, qt.IsNil, qt.Commentf("verify proof"))
 	t.Logf("verification took %s", time.Since(start))
 }

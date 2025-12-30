@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func newTestStorage(t *testing.T) *Storage {
@@ -47,7 +48,7 @@ func mkAggBallot(id []byte) *AggregatorBallot {
 func ensureProcess(t *testing.T, stg *Storage, pid []byte) {
 	t.Helper()
 	bm := &types.BallotMode{
-		NumFields:    uint8(types.FieldsPerBallot),
+		NumFields:    uint8(params.FieldsPerBallot),
 		UniqueValues: false,
 		MaxValue:     types.NewInt(1000),
 		MinValue:     types.NewInt(0),

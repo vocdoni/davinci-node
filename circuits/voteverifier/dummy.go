@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -86,5 +87,5 @@ func DummyWitness(ballotProofVKey []byte, curve ecc.Point) (witness.Witness, err
 	if err != nil {
 		return nil, err
 	}
-	return frontend.NewWitness(assignment, circuits.VoteVerifierCurve.ScalarField())
+	return frontend.NewWitness(assignment, params.VoteVerifierCurve.ScalarField())
 }

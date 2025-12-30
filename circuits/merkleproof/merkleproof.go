@@ -8,7 +8,7 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -18,7 +18,7 @@ import (
 type MerkleProof struct {
 	// Key + Value hashed through Siblings path, should produce Root hash
 	Root     frontend.Variable
-	Siblings [types.StateTreeMaxLevels]frontend.Variable
+	Siblings [params.StateTreeMaxLevels]frontend.Variable
 	Key      frontend.Variable
 	LeafHash frontend.Variable
 }
@@ -78,7 +78,7 @@ func (mp *MerkleProof) String() string {
 type MerkleTransition struct {
 	// NewKey + NewValue hashed through Siblings path, should produce NewRoot hash
 	NewRoot     frontend.Variable
-	Siblings    [types.StateTreeMaxLevels]frontend.Variable
+	Siblings    [params.StateTreeMaxLevels]frontend.Variable
 	NewKey      frontend.Variable
 	NewLeafHash frontend.Variable
 	// OldKey + OldValue hashed through same Siblings should produce OldRoot hash
@@ -212,9 +212,9 @@ func (mp *MerkleTransition) IsNoop(api frontend.API) frontend.Variable {
 // padStateSiblings pads the unpacked siblings to the maximum number of levels
 // in the census tree, filling with 0s if needed. It returns a fixed-size array
 // of the maximum number of levels of frontend.Variable.
-func padStateSiblings(unpackedSiblings []*big.Int) [types.StateTreeMaxLevels]frontend.Variable {
-	paddedSiblings := [types.StateTreeMaxLevels]frontend.Variable{}
-	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, types.StateTreeMaxLevels) {
+func padStateSiblings(unpackedSiblings []*big.Int) [params.StateTreeMaxLevels]frontend.Variable {
+	paddedSiblings := [params.StateTreeMaxLevels]frontend.Variable{}
+	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, params.StateTreeMaxLevels) {
 		paddedSiblings[i] = v
 	}
 	return paddedSiblings

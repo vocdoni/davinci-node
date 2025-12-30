@@ -10,8 +10,8 @@ import (
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func TestAggregatorCircuit(t *testing.T) {
@@ -30,9 +30,9 @@ func TestAggregatorCircuit(t *testing.T) {
 	now = time.Now()
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(placeholder, assignments,
-		test.WithCurves(circuits.AggregatorCurve), test.WithBackends(backend.GROTH16),
+		test.WithCurves(params.AggregatorCurve), test.WithBackends(backend.GROTH16),
 		test.WithProverOpts(stdgroth16.GetNativeProverOptions(
-			circuits.StateTransitionCurve.ScalarField(),
-			circuits.AggregatorCurve.ScalarField())))
+			params.StateTransitionCurve.ScalarField(),
+			params.AggregatorCurve.ScalarField())))
 	c.Logf("proving tooks %s", time.Since(now).String())
 }

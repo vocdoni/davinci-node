@@ -14,10 +14,10 @@ import (
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/fxamacker/cbor/v2"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // CacheableData defines the interface for data that can be cached
@@ -331,7 +331,7 @@ func (d *AggregatorCacheData) ReadFromCache(cacheDir, cacheKey string, requirePr
 
 	// Load proof
 	if cf.Exists(".proof") {
-		proof, err := readGroth16Proof(cf.Path(".proof"), circuits.AggregatorCurve)
+		proof, err := readGroth16Proof(cf.Path(".proof"), params.AggregatorCurve)
 		if err != nil {
 			return err
 		}
@@ -339,21 +339,21 @@ func (d *AggregatorCacheData) ReadFromCache(cacheDir, cacheKey string, requirePr
 	}
 
 	// Load proving key
-	pk, err := readGroth16ProvingKey(cf.Path(".pk"), circuits.AggregatorCurve)
+	pk, err := readGroth16ProvingKey(cf.Path(".pk"), params.AggregatorCurve)
 	if err != nil && requireProvingKey {
 		return err
 	}
 	d.ProvingKey = pk
 
 	// Load verifying key
-	vk, err := readGroth16VerifyingKey(cf.Path(".vk"), circuits.AggregatorCurve)
+	vk, err := readGroth16VerifyingKey(cf.Path(".vk"), params.AggregatorCurve)
 	if err != nil {
 		return err
 	}
 	d.VerifyingKey = vk
 
 	// Load constraint system
-	cs, err := readConstraintSystem(cf.Path(".ccs"), circuits.AggregatorCurve)
+	cs, err := readConstraintSystem(cf.Path(".ccs"), params.AggregatorCurve)
 	if err != nil {
 		return err
 	}
@@ -361,7 +361,7 @@ func (d *AggregatorCacheData) ReadFromCache(cacheDir, cacheKey string, requirePr
 
 	// Load witness if available
 	if cf.Exists(".witness") {
-		witness, err := readWitness(cf.Path(".witness"), circuits.AggregatorCurve.ScalarField())
+		witness, err := readWitness(cf.Path(".witness"), params.AggregatorCurve.ScalarField())
 		if err != nil {
 			return err
 		}
@@ -421,21 +421,21 @@ func (d *VoteVerifierCacheData) ReadFromCache(cacheDir, cacheKey string, require
 	cf := CacheFiles{BaseDir: cacheDir, CacheKey: cacheKey}
 
 	// Load proving key
-	pk, err := readGroth16ProvingKey(cf.Path(".pk"), circuits.VoteVerifierCurve)
+	pk, err := readGroth16ProvingKey(cf.Path(".pk"), params.VoteVerifierCurve)
 	if err != nil && requireProvingKey {
 		return err
 	}
 	d.ProvingKey = pk
 
 	// Load verifying key
-	vk, err := readGroth16VerifyingKey(cf.Path(".vk"), circuits.VoteVerifierCurve)
+	vk, err := readGroth16VerifyingKey(cf.Path(".vk"), params.VoteVerifierCurve)
 	if err != nil {
 		return err
 	}
 	d.VerifyingKey = vk
 
 	// Load constraint system
-	cs, err := readConstraintSystem(cf.Path(".ccs"), circuits.VoteVerifierCurve)
+	cs, err := readConstraintSystem(cf.Path(".ccs"), params.VoteVerifierCurve)
 	if err != nil {
 		return err
 	}
@@ -448,7 +448,7 @@ func (d *VoteVerifierCacheData) ReadFromCache(cacheDir, cacheKey string, require
 		if !cf.Exists(name) {
 			break
 		}
-		witness, err := readWitness(cf.Path(name), circuits.VoteVerifierCurve.ScalarField())
+		witness, err := readWitness(cf.Path(name), params.VoteVerifierCurve.ScalarField())
 		if err != nil {
 			return err
 		}

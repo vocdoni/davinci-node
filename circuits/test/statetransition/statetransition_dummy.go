@@ -14,8 +14,8 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/prover"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // DummyAggCircuit is dummy aggregator circuit
@@ -75,7 +75,7 @@ func DummyAggProofPlaceholder() (
 	*stdgroth16.Proof[sw_bw6761.G1Affine, sw_bw6761.G2Affine],
 	*stdgroth16.VerifyingKey[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl],
 ) {
-	ccs, _, vk, err := CompileAndSetup(DummyAggPlaceholderWithConstraints(0), circuits.AggregatorCurve.ScalarField())
+	ccs, _, vk, err := CompileAndSetup(DummyAggPlaceholderWithConstraints(0), params.AggregatorCurve.ScalarField())
 	if err != nil {
 		panic(err)
 	}
@@ -96,7 +96,7 @@ func DummyAggProof(validProofs, hash frontend.Variable) (
 ) {
 	_, _, proof, vk, err := Prove(
 		DummyAggPlaceholderWithConstraints(0), DummyAggAssignment(validProofs, hash),
-		circuits.StateTransitionCurve.ScalarField(), circuits.AggregatorCurve.ScalarField())
+		params.StateTransitionCurve.ScalarField(), params.AggregatorCurve.ScalarField())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -126,7 +126,7 @@ func Prove(placeholder, assignment frontend.Circuit, outer *big.Int, field *big.
 	}
 
 	// Determine curve from field - AggregatorCurve uses BW6-761
-	curve := circuits.AggregatorCurve
+	curve := params.AggregatorCurve
 
 	// Generate proof (automatically uses GPU if enabled)
 	proof, err := prover.ProveWithWitness(curve, ccs, pk, fullWitness, stdgroth16.GetNativeProverOptions(outer, field))

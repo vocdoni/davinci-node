@@ -40,6 +40,7 @@ import (
 	davinci_solidity "github.com/vocdoni/davinci-node/solidity"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -57,7 +58,7 @@ func testCircuitCompile(t *testing.T, c frontend.Circuit) {
 	}
 	// enable log to see nbConstraints
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
-	if _, err := frontend.Compile(circuits.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, c); err != nil {
+	if _, err := frontend.Compile(params.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, c); err != nil {
 		panic(err)
 	}
 }
@@ -70,7 +71,7 @@ func testCircuitProve(t *testing.T, circuit, witness frontend.Circuit) {
 	assert.ProverSucceeded(
 		circuit,
 		witness,
-		test.WithCurves(circuits.StateTransitionCurve),
+		test.WithCurves(params.StateTransitionCurve),
 		test.WithBackends(backend.GROTH16))
 }
 
@@ -92,7 +93,7 @@ func TestStateTransitionCircuit(t *testing.T) {
 
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(placeholder, assignments,
-		test.WithCurves(circuits.StateTransitionCurve), test.WithBackends(backend.GROTH16))
+		test.WithCurves(params.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 	c.Logf("proving took %s", time.Since(now).String())
 }
 
@@ -114,7 +115,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// compile circuit
 	now = time.Now()
-	ccs, err := frontend.Compile(circuits.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, placeholder)
+	ccs, err := frontend.Compile(params.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, placeholder)
 	c.Assert(err, qt.IsNil, qt.Commentf("compile circuit"))
 	c.Logf("compiled circuit with %d constraints, took %s", ccs.GetNbConstraints(), time.Since(now).String())
 
@@ -126,7 +127,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// create witness
 	now = time.Now()
-	w, err := frontend.NewWitness(assignments, circuits.StateTransitionCurve.ScalarField())
+	w, err := frontend.NewWitness(assignments, params.StateTransitionCurve.ScalarField())
 	c.Assert(err, qt.IsNil, qt.Commentf("create witness"))
 	c.Logf("witness creation took %s", time.Since(now).String())
 
@@ -134,7 +135,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	var proof groth16.Proof
 	now = time.Now()
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
-	proof, err = prover.ProveWithWitness(circuits.StateTransitionCurve, ccs, pk, w, opts)
+	proof, err = prover.ProveWithWitness(params.StateTransitionCurve, ccs, pk, w, opts)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove with witness"))
 	c.Logf("proving took %s", time.Since(now).String())
 
@@ -734,7 +735,7 @@ func newMockAddress(index int64) *big.Int {
 func newMockVote(s *state.State, index, amount int64) state.Vote {
 	publicKey := state.Curve.New().SetPoint(s.EncryptionKey().PubKey[0], s.EncryptionKey().PubKey[1])
 
-	fields := [types.FieldsPerBallot]*big.Int{}
+	fields := [params.FieldsPerBallot]*big.Int{}
 	for i := range fields {
 		fields[i] = big.NewInt(int64(amount + int64(i)))
 	}
@@ -776,7 +777,7 @@ func aggregatorWitnessHashForTest(o *state.State) (*big.Int, error) {
 	}
 	// calculate final hash
 	finalHashInputs := []*big.Int{}
-	for i := range types.VotesPerBatch {
+	for i := range params.VotesPerBatch {
 		if i < o.VotersCount() {
 			finalHashInputs = append(finalHashInputs, hashes[i])
 		} else {
@@ -796,7 +797,7 @@ func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
 	t.Log("public: RootHashAfter", util.PrettyHex(witness.RootHashAfter))
 	t.Log("public: VotersCount", util.PrettyHex(witness.VotersCount))
 	t.Log("public: OverwrittenVotesCount", util.PrettyHex(witness.OverwrittenVotesCount))
-	for name, mts := range map[string][types.VotesPerBatch]merkleproof.MerkleTransition{
+	for name, mts := range map[string][params.VotesPerBatch]merkleproof.MerkleTransition{
 		"Ballot": witness.VotesProofs.Ballot,
 	} {
 		for _, mt := range mts {

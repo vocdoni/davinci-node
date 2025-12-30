@@ -14,8 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/rs/zerolog"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -56,10 +56,10 @@ func TestEmulatedCSPProofCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	hexPID := types.HexBytes(processID.Marshal())
-	ffPID := hexPID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
+	ffPID := hexPID.BigInt().ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
 	hexAddress := types.HexBytes(userAddress.Bytes())
-	ffAddress := hexAddress.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
-	ffWeight := userWeight.ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
+	ffAddress := hexAddress.BigInt().ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
+	ffWeight := userWeight.ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
 	assignments := &emulatedCSPProofCircuit{
 		Proof:      *gnarkProof,
 		CensusRoot: emulated.ValueOf[sw_bn254.ScalarField](proof.Root.BigInt().MathBigInt()),
@@ -69,7 +69,7 @@ func TestEmulatedCSPProofCircuit(t *testing.T) {
 	}
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&emulatedCSPProofCircuit{}, assignments,
-		test.WithCurves(circuits.StateTransitionCurve),
+		test.WithCurves(params.StateTransitionCurve),
 		test.WithBackends(backend.GROTH16))
 }
 
@@ -110,10 +110,10 @@ func TestCSPProofCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	hexPID := types.HexBytes(processID.Marshal())
-	ffPID := hexPID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
+	ffPID := hexPID.BigInt().ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
 	hexAddress := types.HexBytes(userAddress.Bytes())
-	ffAddress := hexAddress.BigInt().ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
-	ffWeight := userWeight.ToFF(circuits.BallotProofCurve.ScalarField()).MathBigInt()
+	ffAddress := hexAddress.BigInt().ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
+	ffWeight := userWeight.ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
 	assignments := &cspProofCircuit{
 		Proof:      *gnarkProof,
 		CensusRoot: proof.Root.BigInt().MathBigInt(),
@@ -123,6 +123,6 @@ func TestCSPProofCircuit(t *testing.T) {
 	}
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&cspProofCircuit{}, assignments,
-		test.WithCurves(circuits.StateTransitionCurve),
+		test.WithCurves(params.StateTransitionCurve),
 		test.WithBackends(backend.GROTH16))
 }

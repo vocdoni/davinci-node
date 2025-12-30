@@ -6,7 +6,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
 )
 
@@ -14,7 +14,7 @@ import (
 // to calculate the sum of the hashes and to generate the witness for the i-th
 // voter of a batch of voters.
 type VotersHashes struct {
-	Hashes [types.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
+	Hashes [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
 }
 
 // VoterHashFn function calculates the mimc7 hash of the provided inputs. It

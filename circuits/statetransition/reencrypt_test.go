@@ -12,11 +12,11 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 type ReencryptedBallotCircuit struct {
-	Originals         [types.FieldsPerBallot]frontend.Variable
+	Originals         [params.FieldsPerBallot]frontend.Variable
 	EncryptionKey     circuits.EncryptionKey[frontend.Variable]
 	DecryptionKey     frontend.Variable
 	ReencryptionK     frontend.Variable
@@ -41,8 +41,8 @@ func TestReencryptedBallotCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// generate fields
-	fields := [types.FieldsPerBallot]*big.Int{}
-	originals := [types.FieldsPerBallot]frontend.Variable{}
+	fields := [params.FieldsPerBallot]*big.Int{}
+	originals := [params.FieldsPerBallot]frontend.Variable{}
 	for i := range fields {
 		fields[i] = big.NewInt(int64(i + 1))
 		originals[i] = frontend.Variable(fields[i])

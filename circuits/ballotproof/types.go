@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // BallotProofInputs struct contains the required inputs to compose the
@@ -46,14 +47,14 @@ func (b *BallotProofInputs) VoteIDForSign() (types.HexBytes, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error generating vote ID: %v", err.Error())
 	}
-	// return crypto.BigIntToFFToSign(voteID.MathBigInt(), circuits.VoteVerifierCurve.ScalarField()), nil
+	// return crypto.BigIntToFFToSign(voteID.MathBigInt(), params.VoteVerifierCurve.ScalarField()), nil
 	return crypto.PadToSign(voteID.Bytes()), err
 }
 
 func (b *BallotProofInputs) Serialize(ballot *elgamal.Ballot) ([]*big.Int, error) {
 	// safe address and processID
-	ffAddress := b.Address.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
-	ffProcessID := b.ProcessID.BigInt().ToFF(circuits.BallotProofCurve.ScalarField())
+	ffAddress := b.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ffProcessID := b.ProcessID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	// convert the encryption key to twisted edwards form
 	encryptionKey := new(bjj.BJJ).SetPoint(b.EncryptionKey[0].MathBigInt(), b.EncryptionKey[1].MathBigInt())
 	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(encryptionKey.Point())

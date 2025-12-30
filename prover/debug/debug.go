@@ -23,6 +23,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -93,14 +94,14 @@ func NewDebugProver(t *testing.T) types.ProverFunc {
 				t.Fatal(err)
 			}
 			p := &aggregator.AggregatorCircuit{
-				Proofs:          [types.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
+				Proofs:          [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
 				VerificationKey: fixedVk,
 			}
 			ccs, err := aggregator.Artifacts.CircuitDefinition()
 			if err != nil {
 				t.Fatal(err)
 			}
-			for i := range types.VotesPerBatch {
+			for i := range params.VotesPerBatch {
 				p.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](ccs)
 			}
 			placeholder = p

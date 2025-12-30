@@ -17,6 +17,7 @@ import (
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 var (
@@ -76,19 +77,19 @@ type ProcessProofs struct {
 type VotesProofs struct {
 	ResultsAdd *ArboTransition
 	ResultsSub *ArboTransition
-	Ballot     [types.VotesPerBatch]*ArboTransition
-	VoteID     [types.VotesPerBatch]*ArboTransition
+	Ballot     [params.VotesPerBatch]*ArboTransition
+	VoteID     [params.VotesPerBatch]*ArboTransition
 }
 
 // New creates or opens a State stored in the passed database.
 // The processId is used as a prefix for the keys in the database.
 func New(db db.Database, processId *big.Int) (*State, error) {
 	// the process ID must be in the scalar field of the circuit curve
-	processId = crypto.BigToFF(circuits.StateTransitionCurve.ScalarField(), processId)
+	processId = crypto.BigToFF(params.StateTransitionCurve.ScalarField(), processId)
 	pdb := prefixeddb.NewPrefixedDatabase(db, processId.Bytes())
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     pdb,
-		MaxLevels:    types.StateTreeMaxLevels,
+		MaxLevels:    params.StateTreeMaxLevels,
 		HashFunction: HashFn,
 	})
 	if err != nil {
@@ -383,7 +384,7 @@ func (o *State) Votes() []*Vote {
 // values.
 func (o *State) PaddedVotes() []*Vote {
 	v := slices.Clone(o.votes)
-	for len(v) < types.VotesPerBatch {
+	for len(v) < params.VotesPerBatch {
 		v = append(v, &Vote{
 			Address:           big.NewInt(0),
 			Ballot:            elgamal.NewBallot(Curve),
@@ -517,7 +518,7 @@ func (o *State) ResultsSub() (*elgamal.Ballot, bool) {
 // EncodeKey encodes a key to a byte array using the maximum key length for the
 // current number of levels in the state tree and the hash function length.
 func EncodeKey(key *big.Int) []byte {
-	maxKeyLen := arbo.MaxKeyLen(types.StateTreeMaxLevels, HashFn.Len())
+	maxKeyLen := arbo.MaxKeyLen(params.StateTreeMaxLevels, HashFn.Len())
 	return arbo.BigIntToBytes(maxKeyLen, key)
 }
 

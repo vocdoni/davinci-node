@@ -17,6 +17,7 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func TestStateSync(t *testing.T) {
@@ -208,18 +209,18 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 		address := big.NewInt(int64(1000 + offset + i))
 
 		// Create vote ID (use StateKeyMaxLen bytes) with offset
-		voteID := make([]byte, types.StateKeyMaxLen)
+		voteID := make([]byte, params.StateKeyMaxLen)
 		voteIDValue := offset + i + 1
 		// Store the vote ID value in the last few bytes to ensure uniqueness
-		voteID[types.StateKeyMaxLen-4] = byte(voteIDValue >> 24)
-		voteID[types.StateKeyMaxLen-3] = byte(voteIDValue >> 16)
-		voteID[types.StateKeyMaxLen-2] = byte(voteIDValue >> 8)
-		voteID[types.StateKeyMaxLen-1] = byte(voteIDValue)
+		voteID[params.StateKeyMaxLen-4] = byte(voteIDValue >> 24)
+		voteID[params.StateKeyMaxLen-3] = byte(voteIDValue >> 16)
+		voteID[params.StateKeyMaxLen-2] = byte(voteIDValue >> 8)
+		voteID[params.StateKeyMaxLen-1] = byte(voteIDValue)
 
 		// Create ballot with test values (vary based on offset and index)
 		ballot := elgamal.NewBallot(state.Curve)
-		messages := [types.FieldsPerBallot]*big.Int{}
-		for j := 0; j < types.FieldsPerBallot; j++ {
+		messages := [params.FieldsPerBallot]*big.Int{}
+		for j := 0; j < params.FieldsPerBallot; j++ {
 			// Make ballot values unique based on offset, vote index, and field index
 			messages[j] = big.NewInt(int64((offset+1)*100 + i*10 + j + 1))
 		}

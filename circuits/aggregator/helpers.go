@@ -10,11 +10,11 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // FillWithDummy function fills the assignments provided with a dummy proofs
@@ -39,22 +39,22 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 	if proverFn != nil {
 		// Use custom prover function (for debug/testing)
 		dummyProof, err = proverFn(
-			circuits.VoteVerifierCurve,
+			params.VoteVerifierCurve,
 			mainCCS,
 			mainPk,
 			assignment,
-			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
-				circuits.VoteVerifierCurve.ScalarField()),
+			stdgroth16.GetNativeProverOptions(params.AggregatorCurve.ScalarField(),
+				params.VoteVerifierCurve.ScalarField()),
 		)
 	} else {
 		// Use the default prover (supports GPU if enabled)
 		dummyProof, err = prover.DefaultProver(
-			circuits.VoteVerifierCurve,
+			params.VoteVerifierCurve,
 			mainCCS,
 			mainPk,
 			assignment,
-			stdgroth16.GetNativeProverOptions(circuits.AggregatorCurve.ScalarField(),
-				circuits.VoteVerifierCurve.ScalarField()),
+			stdgroth16.GetNativeProverOptions(params.AggregatorCurve.ScalarField(),
+				params.VoteVerifierCurve.ScalarField()),
 		)
 	}
 	if err != nil {

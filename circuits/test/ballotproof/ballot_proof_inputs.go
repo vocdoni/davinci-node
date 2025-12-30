@@ -21,6 +21,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 //go:embed circom_assets/ballot_proof.wasm
@@ -85,8 +86,8 @@ func GenDeterministicEncryptionKeyForTest(seed int64) ecc.Point {
 // GenBallotFieldsForTest generates a list of n random fields between min and max
 // values. If unique is true, the fields will be unique.
 // The items between n and NFields are padded with big.Int(0)
-func GenBallotFieldsForTest(n, max, min int, unique bool) [types.FieldsPerBallot]*types.BigInt {
-	fields := [types.FieldsPerBallot]*types.BigInt{}
+func GenBallotFieldsForTest(n, max, min int, unique bool) [params.FieldsPerBallot]*types.BigInt {
+	fields := [params.FieldsPerBallot]*types.BigInt{}
 	for i := range len(fields) {
 		fields[i] = types.NewInt(0)
 	}
@@ -113,8 +114,8 @@ func GenBallotFieldsForTest(n, max, min int, unique bool) [types.FieldsPerBallot
 
 // GenDeterministicBallotFieldsForTest generates a list of n deterministic fields
 // based on the provided seed for consistent testing and caching.
-func GenDeterministicBallotFieldsForTest(seed int64, n, max, min int, unique bool) [types.FieldsPerBallot]*types.BigInt {
-	fields := [types.FieldsPerBallot]*types.BigInt{}
+func GenDeterministicBallotFieldsForTest(seed int64, n, max, min int, unique bool) [params.FieldsPerBallot]*types.BigInt {
+	fields := [params.FieldsPerBallot]*types.BigInt{}
 	for i := range len(fields) {
 		fields[i] = types.NewInt(0)
 	}

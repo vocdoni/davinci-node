@@ -26,6 +26,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -49,7 +50,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// decode info
-	processID := crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), process.ProcessID.BigInt().MathBigInt())
+	processID := crypto.BigToFF(params.BallotProofCurve.ScalarField(), process.ProcessID.BigInt().MathBigInt())
 	root := arbo.BytesToBigInt(vote.CensusProof.Root)
 	ballotMode := circuits.BallotModeToCircuit(process.BallotMode)
 	encryptionKey := circuits.EncryptionKey[*big.Int]{
@@ -92,7 +93,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 	// Test the signature is correctly generated
 	signer, err := ethereum.NewSignerFromHex("45d17557419bc5f4e1dab368badd10de5226667109239c0c613641e17ce5b03b")
 	c.Assert(err, qt.IsNil)
-	blsCircomInputsHash := crypto.BigIntToFFToSign(vote.BallotInputsHash.MathBigInt(), circuits.VoteVerifierCurve.ScalarField())
+	blsCircomInputsHash := crypto.BigIntToFFToSign(vote.BallotInputsHash.MathBigInt(), params.VoteVerifierCurve.ScalarField())
 	localSignature, err := signer.Sign(blsCircomInputsHash)
 	c.Assert(err, qt.IsNil)
 	c.Assert(localSignature.R.String(), qt.DeepEquals, signature.R.String(), qt.Commentf("signature.R"))
@@ -139,7 +140,7 @@ func TestDebugVoteVerifier(t *testing.T) {
 		test.WithCurves(ecc.BLS12_377),
 		test.WithBackends(backend.GROTH16),
 		test.WithProverOpts(stdgroth16.GetNativeProverOptions(
-			circuits.AggregatorCurve.ScalarField(),
-			circuits.VoteVerifierCurve.ScalarField())),
+			params.AggregatorCurve.ScalarField(),
+			params.VoteVerifierCurve.ScalarField())),
 	)
 }

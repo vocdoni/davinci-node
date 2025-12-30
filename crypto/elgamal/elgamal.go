@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // RandK function generates a random k value for encryption.
@@ -18,7 +18,7 @@ func RandK() (*big.Int, error) {
 		return nil, fmt.Errorf("failed to generate random k: %v", err)
 	}
 	k := new(big.Int).SetBytes(kBytes)
-	return crypto.BigToFF(circuits.BallotProofCurve.ScalarField(), k), nil
+	return crypto.BigToFF(params.BallotProofCurve.ScalarField(), k), nil
 }
 
 // Encrypt function encrypts a message using the public key provided as

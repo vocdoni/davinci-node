@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/vocdoni/davinci-node/prover"
+	"github.com/vocdoni/davinci-node/types/params"
 
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"
@@ -68,11 +69,11 @@ func StateTransitionInputsForTest(
 		aggInputs, agPlaceholder, aggWitness = aggregatortest.AggregatorInputsForTest(t, processId, censusOrigin, nValidVoters)
 
 		// parse the witness to the circuit
-		fullWitness, err = frontend.NewWitness(aggWitness, circuits.AggregatorCurve.ScalarField())
+		fullWitness, err = frontend.NewWitness(aggWitness, params.AggregatorCurve.ScalarField())
 		c.Assert(err, qt.IsNil, qt.Commentf("aggregator witness"))
 
 		// compile aggregator circuit
-		agCCS, err := frontend.Compile(circuits.AggregatorCurve.ScalarField(), r1cs.NewBuilder, agPlaceholder)
+		agCCS, err := frontend.Compile(params.AggregatorCurve.ScalarField(), r1cs.NewBuilder, agPlaceholder)
 		c.Assert(err, qt.IsNil, qt.Commentf("aggregator compile"))
 
 		agPk, vk, err := prover.Setup(agCCS)
@@ -80,9 +81,9 @@ func StateTransitionInputsForTest(
 		agVk = vk
 
 		// generate the proof (automatically uses GPU if enabled)
-		proof, err = prover.ProveWithWitness(circuits.AggregatorCurve, agCCS, agPk, fullWitness,
-			stdgroth16.GetNativeProverOptions(circuits.StateTransitionCurve.ScalarField(),
-				circuits.AggregatorCurve.ScalarField()))
+		proof, err = prover.ProveWithWitness(params.AggregatorCurve, agCCS, agPk, fullWitness,
+			stdgroth16.GetNativeProverOptions(params.StateTransitionCurve.ScalarField(),
+				params.AggregatorCurve.ScalarField()))
 		c.Assert(err, qt.IsNil, qt.Commentf("proving aggregator circuit"))
 
 		// Save proof, verification key, CCS, and witness to cache for future use
@@ -111,8 +112,8 @@ func StateTransitionInputsForTest(
 	c.Assert(err, qt.IsNil, qt.Commentf("convert aggregator public inputs"))
 
 	err = groth16.Verify(proof, agVk, publicWitness, stdgroth16.GetNativeVerifierOptions(
-		circuits.StateTransitionCurve.ScalarField(),
-		circuits.AggregatorCurve.ScalarField()))
+		params.StateTransitionCurve.ScalarField(),
+		params.AggregatorCurve.ScalarField()))
 	c.Assert(err, qt.IsNil, qt.Commentf("aggregator verify"))
 
 	// reencrypt the votes with deterministic K for consistent caching

@@ -18,6 +18,7 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -54,7 +55,7 @@ func TestFinalize(t *testing.T) {
 	c.Assert(process.Result, qt.Not(qt.IsNil))
 
 	// Verify the results are as expected
-	c.Assert(len(process.Result), qt.Equals, types.FieldsPerBallot)
+	c.Assert(len(process.Result), qt.Equals, params.FieldsPerBallot)
 	expected := big.NewInt(5000)
 	c.Assert(process.Result[0].MathBigInt().Cmp(expected), qt.Equals, 0,
 		qt.Commentf("Expected first result to be 500, got %s", process.Result[0].String()))
@@ -178,9 +179,9 @@ func setupTestState(
 
 	// Add accumulator with a known value
 	addAccumulator := elgamal.NewBallot(curve)
-	addValues := [types.FieldsPerBallot]*big.Int{}
+	addValues := [params.FieldsPerBallot]*big.Int{}
 	// Set values for testing
-	for i := range types.FieldsPerBallot {
+	for i := range params.FieldsPerBallot {
 		addValues[i] = big.NewInt(addValue)
 	}
 	// Encrypt the values
@@ -192,9 +193,9 @@ func setupTestState(
 
 	// Sub accumulator with a known value
 	subAccumulator := elgamal.NewBallot(curve)
-	subValues := [types.FieldsPerBallot]*big.Int{}
+	subValues := [params.FieldsPerBallot]*big.Int{}
 	// Set values for testing
-	for i := range types.FieldsPerBallot {
+	for i := range params.FieldsPerBallot {
 		subValues[i] = big.NewInt(subValue)
 	}
 	// Encrypt the values
