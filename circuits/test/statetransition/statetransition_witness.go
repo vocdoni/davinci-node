@@ -7,7 +7,6 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/recursion/groth16"
 
-	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
@@ -64,7 +63,7 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vote) *
 		t.Fatal(err)
 	}
 
-	censusRoot, censusProofs, err := censustest.CensusProofsForCircuitTest(votes, censusOrigin, processID)
+	censusRoot, censusProofs, err := CensusProofsForCircuitTest(votes, censusOrigin, processID)
 	if err != nil {
 		t.Fatal(err)
 	}
