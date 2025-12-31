@@ -63,8 +63,12 @@ func NewCensusDownloader(
 		DownloadQueue: make(chan *types.Census),
 		contracts:     contracts,
 		storage:       stg,
-		importer:      census.NewCensusImporter(stg, census.JSONImporter()),
-		config:        config,
+		importer: census.NewCensusImporter(
+			stg,
+			census.JSONImporter(),
+			census.GraphQLImporter(nil),
+		),
+		config: config,
 	}
 }
 
@@ -183,10 +187,15 @@ func (cd *CensusDownloader) updatePendingCensusStatus(census *types.Census, err 
 	if !exists {
 		return false
 	}
-	status.Attempts++
-	status.LastErr = err
 	status.lastUpdated = time.Now()
-	status.Complete = err == nil
+	status.Attempts++
+	if status.Attempts <= cd.config.Attempts {
+		status.LastErr = err
+		status.Complete = err == nil
+	} else {
+		status.LastErr = fmt.Errorf("maximum attempts reached: %w", err)
+		status.Complete = false
+	}
 	cd.pendingCensuses[censusKey] = status
 	return true
 }

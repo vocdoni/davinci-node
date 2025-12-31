@@ -245,6 +245,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 							"pid", process.ID.String(),
 							"censusRoot", process.Census.CensusRoot.String(),
 							"err", err.Error())
+						return
 					}
 					processSetup()
 				})

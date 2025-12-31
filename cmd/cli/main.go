@@ -86,7 +86,7 @@ func main() {
 		censusURI  string
 		signers    []*ethereum.Signer
 	)
-	if cRoot != nil && *cURI != "" {
+	if cRoot == nil || len(*cURI) == 0 {
 		// Create a new census with numBallot participants
 		censusRoot, censusURI, signers, err = cliSrv.CreateCensus(*votersCount, userWeight, *census3URL)
 		if err != nil {
@@ -100,6 +100,10 @@ func main() {
 		censusRoot = *cRoot
 		censusURI = *cURI
 	}
+	log.Debugw("census parameters",
+		"origin", censusOrigin.String(),
+		"root", censusRoot.String(),
+		"uri", censusURI)
 
 	// Create a new process with mocked ballot mode
 	pid, _, err := cliSrv.CreateProcess(censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
