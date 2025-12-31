@@ -94,8 +94,14 @@ func (p ProcessID) Bytes() []byte { return p[:] }
 // String returns a human readable representation of process ID
 func (p ProcessID) String() string { return hex.EncodeToString(p[:]) }
 
+// HexBytes returns a HexBytes view of the ProcessID
+func (p *ProcessID) HexBytes() HexBytes { return p[:] }
+
 // MarshalBinary implements the BinaryMarshaler interface
 func (p ProcessID) MarshalBinary() (data []byte, err error) { return p[:], nil }
+
+// MarshalJSON implements the json.Marshaler interface
+func (p ProcessID) MarshalJSON() ([]byte, error) { return p.HexBytes().MarshalJSON() }
 
 // UnmarshalBinary implements the BinaryMarshaler interface
 func (p *ProcessID) UnmarshalBinary(data []byte) error {
@@ -103,6 +109,19 @@ func (p *ProcessID) UnmarshalBinary(data []byte) error {
 		return fmt.Errorf("invalid ProcessID length: %d", len(data))
 	}
 	copy(p[:], data)
+	return nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface
+func (id *ProcessID) UnmarshalJSON(b []byte) error {
+	var hb HexBytes
+	if err := hb.UnmarshalJSON(b); err != nil {
+		return err
+	}
+	if len(hb) != ProcessIDLen {
+		return fmt.Errorf("invalid ProcessID length: %d", len(hb))
+	}
+	copy(id[:], hb)
 	return nil
 }
 
