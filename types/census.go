@@ -90,6 +90,18 @@ func (co CensusOrigin) IsCSP() bool {
 	}
 }
 
+// CensusOriginFromString converts a string representation of a CensusOrigin
+// to its corresponding CensusOrigin value. If the string does not match any
+// known CensusOrigin, it returns CensusOriginUnknown.
+func CensusOriginFromString(name string) CensusOrigin {
+	for co, coName := range supportedCensusOrigins {
+		if coName == name {
+			return co
+		}
+	}
+	return CensusOriginUnknown
+}
+
 // NormalizedCensusRoot function ensures that the census root is always of a
 // fixed length. If its length is not CensusRootLength, it truncates or pads
 // it accordingly.
