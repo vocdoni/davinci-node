@@ -56,6 +56,20 @@ func (b HexBytes) LeftTrim() HexBytes {
 	return out
 }
 
+// Equal method compares the current HexBytes with the provided one. First
+// checks if both have the same length, and compare them byte per byte.
+func (b HexBytes) Equal(other HexBytes) bool {
+	if len(b) != len(other) {
+		return false
+	}
+	for i := range b {
+		if b[i] != other[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // MarshalJSON implements the json.Marshaler interface for HexBytes. It encodes
 // the byte slice as a hexadecimal string prefixed with "0x".
 func (b HexBytes) MarshalJSON() ([]byte, error) {
