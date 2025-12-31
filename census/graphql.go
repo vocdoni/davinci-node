@@ -3,6 +3,7 @@ package census
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,6 +41,7 @@ const defaultQuery = `
 var defaultConfig = GraphQLImporterConfig{
 	PageSize:     1000,
 	QueryTimeout: 30 * time.Second,
+	Insecure:     false,
 }
 
 // graphqlResponse represents the structure of the GraphQL response. It
@@ -91,17 +93,25 @@ func (e graphqlResponseData) toGraphQLEvent() (census.CensusEvent, error) {
 type GraphQLImporterConfig struct {
 	PageSize     int
 	QueryTimeout time.Duration
+	Insecure     bool
 }
 
 // GraphQLImporter returns an instance of graphqlImporter with the provided
 // configuration. If config is nil, it uses the default configuration.
-func GraphQLImporter(config *GraphQLImporterConfig) graphqlImporter {
+func GraphQLImporter(config *GraphQLImporterConfig) *graphqlImporter {
 	if config == nil {
 		config = &defaultConfig
 	}
-	return graphqlImporter{
+	if config.PageSize <= 0 {
+		config.PageSize = defaultConfig.PageSize
+	}
+	if config.QueryTimeout <= 0 {
+		config.QueryTimeout = defaultConfig.QueryTimeout
+	}
+	return &graphqlImporter{
 		queryTimeout: config.QueryTimeout,
 		pageSize:     config.PageSize,
+		insecure:     config.Insecure,
 	}
 }
 
@@ -110,6 +120,7 @@ func GraphQLImporter(config *GraphQLImporterConfig) graphqlImporter {
 type graphqlImporter struct {
 	queryTimeout time.Duration
 	pageSize     int
+	insecure     bool
 }
 
 // ValidURI checks if the provided targetURI is a valid GraphQL endpoint URL
@@ -128,12 +139,12 @@ func (d *graphqlImporter) DownloadAndImportCensus(
 	expectedRoot types.HexBytes,
 ) error {
 	// Parse the GraphQL endpoint from the target URI
-	endpoint, err := endpointFromURI(targetURI)
+	endpoint, err := endpointFromURI(targetURI, d.insecure)
 	if err != nil {
 		return fmt.Errorf("invalid GraphQL URI: %w", err)
 	}
 	// Get the graphql events from the target URI
-	events, err := queryEvents(ctx, endpoint, d.pageSize, d.queryTimeout)
+	events, err := queryEvents(ctx, endpoint, d.pageSize, d.queryTimeout, d.insecure)
 	if err != nil {
 		return fmt.Errorf("failed to query GraphQL events from %s: %w", targetURI, err)
 	}
@@ -146,25 +157,26 @@ func (d *graphqlImporter) DownloadAndImportCensus(
 	}
 	// Update the censusRef from the events
 	if err := tree.ImportEvents(expectedRoot.BigInt().MathBigInt(), events); err != nil {
-		// if err := updateCensusRefFromEvents(tree, events, expectedRoot); err != nil {
 		return fmt.Errorf("failed to update census from events: %w", err)
 	}
 	// Create a new CensusRef in the censusDB
-	censusRef, err := censusDB.NewByRoot(expectedRoot)
-	if err != nil {
+	if _, err := censusDB.NewByTree(expectedRoot, tree); err != nil {
 		return fmt.Errorf("failed to create new census: %w", err)
 	}
-	censusRef.SetTree(tree)
 	return nil
 }
 
 // endpointFromURI converts a GraphQL URI (starting with "graphql://") to an
 // HTTP endpoint by replacing the scheme with "http://".
-func endpointFromURI(targetURI string) (string, error) {
+func endpointFromURI(targetURI string, insecure bool) (string, error) {
 	if !strings.HasPrefix(targetURI, "graphql://") {
 		return "", fmt.Errorf("invalid GraphQL URI: %s", targetURI)
 	}
-	return "http://" + strings.TrimPrefix(targetURI, "graphql://"), nil
+	protocol := "https://"
+	if insecure {
+		protocol = "http://"
+	}
+	return protocol + strings.TrimPrefix(targetURI, "graphql://"), nil
 }
 
 // queryPageBody constructs the GraphQL query body for pagination with the
@@ -188,7 +200,13 @@ func queryPageBody(first, skip int) (io.Reader, error) {
 // using pagination. It returns a slice of graphqlEvent or an error if the
 // query fails. It iterates through pages until no more events are available,
 // parsing the responses and accumulating the results.
-func queryEvents(ctx context.Context, url string, pageSize int, timeout time.Duration) ([]census.CensusEvent, error) {
+func queryEvents(
+	ctx context.Context,
+	url string,
+	pageSize int,
+	timeout time.Duration,
+	insecure bool,
+) ([]census.CensusEvent, error) {
 	// Setup pagination variables
 	first := pageSize
 	skip := 0
@@ -196,6 +214,9 @@ func queryEvents(ctx context.Context, url string, pageSize int, timeout time.Dur
 	var results []census.CensusEvent
 	client := &http.Client{
 		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: insecure},
+		},
 	}
 	// Start iterating through pages
 	for {
@@ -228,13 +249,18 @@ func queryEvents(ctx context.Context, url string, pageSize int, timeout time.Dur
 							"err", err.Error())
 					}
 				}()
+				// Read the response body
+				body, err := io.ReadAll(res.Body)
+				if err != nil {
+					return fmt.Errorf("error reading response body: %v", err)
+				}
 				// Check for non-200 status codes
 				if res.StatusCode != http.StatusOK {
-					return fmt.Errorf("non-200 response: %d", res.StatusCode)
+					return fmt.Errorf("non-200 response: %d - %s", res.StatusCode, string(body))
 				}
 				// Decode the GraphQL response
 				var gqlResp graphqlResponse
-				if err := json.NewDecoder(res.Body).Decode(&gqlResp); err != nil {
+				if err := json.Unmarshal(body, &gqlResp); err != nil {
 					return fmt.Errorf("error decoding response: %v", err)
 				}
 				if len(gqlResp.Errors) > 0 {

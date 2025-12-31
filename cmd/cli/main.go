@@ -22,9 +22,8 @@ const (
 )
 
 var (
-	localSequencerEndpoint = fmt.Sprintf("http://%s:%d", localSequencerHost, localSequencerPort)
-	userWeight             = uint64(testutil.Weight)
-	ballotMode             = testutil.BallotModeInternal()
+	userWeight = uint64(testutil.Weight)
+	ballotMode = testutil.BallotModeInternal()
 
 	privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
 	web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
@@ -86,7 +85,7 @@ func main() {
 		censusURI  string
 		signers    []*ethereum.Signer
 	)
-	if cRoot != nil && *cURI != "" {
+	if cRoot == nil || len(*cURI) == 0 {
 		// Create a new census with numBallot participants
 		censusRoot, censusURI, signers, err = cliSrv.CreateCensus(*votersCount, userWeight, *census3URL)
 		if err != nil {
@@ -100,6 +99,10 @@ func main() {
 		censusRoot = *cRoot
 		censusURI = *cURI
 	}
+	log.Debugw("census parameters",
+		"origin", censusOrigin.String(),
+		"root", censusRoot.String(),
+		"uri", censusURI)
 
 	// Create a new process with mocked ballot mode
 	pid, _, err := cliSrv.CreateProcess(censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vocdoni/census3-bigquery/censusdb"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -49,6 +50,12 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 	}
 	if !census.CensusOrigin.Valid() {
 		return fmt.Errorf("invalid census origin: %s", census.CensusOrigin.String())
+	}
+	// If the census already exists, skip the import
+	if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
+		log.Infow("Census with root already exists, skipping import",
+			"root", census.CensusRoot.String())
+		return nil
 	}
 	switch {
 	case census.CensusOrigin.IsMerkleTree():

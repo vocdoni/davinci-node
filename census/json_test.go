@@ -13,18 +13,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/census3-bigquery/censusdb"
-	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/types"
 	leanimt "github.com/vocdoni/lean-imt-go"
 	leancensus "github.com/vocdoni/lean-imt-go/census"
 )
-
-func testNewCensusDB(c *qt.C) *censusdb.CensusDB {
-	c.Helper()
-	internalDB := metadb.NewTest(c)
-	return censusdb.NewCensusDB(internalDB)
-}
 
 type testErrReader struct {
 	err error

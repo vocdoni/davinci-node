@@ -11,7 +11,9 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 	c := qt.New(t)
 
 	censusDB := testNewCensusDB(c)
-	gi := GraphQLImporter(nil)
+	gi := GraphQLImporter(&GraphQLImporterConfig{
+		Insecure: true,
+	})
 
 	testServer := test.NewTestGraphQLServer(c.Context())
 	testServer.SetEvents(test.DefaultGraphQLEvents)

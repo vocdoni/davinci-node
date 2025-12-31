@@ -7,10 +7,18 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/census3-bigquery/censusdb"
+	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
+
+func testNewCensusDB(c *qt.C) *censusdb.CensusDB {
+	c.Helper()
+	internalDB, err := metadb.New(db.TypeInMem, "")
+	c.Assert(err, qt.IsNil)
+	return censusdb.NewCensusDB(internalDB)
+}
 
 type testImporterPlugin struct {
 	validFn func(string) bool

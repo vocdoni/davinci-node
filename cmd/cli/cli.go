@@ -127,7 +127,9 @@ func (s *CLIServices) Start(ctx context.Context, contracts *web3.Contracts, netw
 }
 
 func (s *CLIServices) Stop() {
-	s.cancel()
+	if s.cancel != nil {
+		s.cancel()
+	}
 	// Stop services
 	if s.sequencer != nil {
 		s.sequencer.Stop()
@@ -219,18 +221,9 @@ func (s *CLIServices) initContracts(
 
 func (s *CLIServices) initSequencerCLI() error {
 	sequencers := *sequencerEndpoints
-
 	// If no sequencer endpoint is provided, start a local one
 	if len(sequencers) == 0 {
-		log.Infow("no remote sequencer endpoint provided, starting a local one...")
-		// Start a local sequencer
-		service := new(CLIServices)
-		if err := service.Start(s.ctx, s.contracts, *web3Network); err != nil {
-			return fmt.Errorf("failed to start local sequencer: %w", err)
-		}
-		defer service.Stop()
-		log.Infow("local sequencer started", "endpoint", localSequencerEndpoint)
-		sequencers = append(sequencers, localSequencerEndpoint)
+		return fmt.Errorf("no sequencers provided")
 	}
 	// Create a API client
 	var err error
