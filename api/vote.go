@@ -117,7 +117,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// get the process from the storage
-	process, err := a.storage.Process(vote.ProcessID)
+	process, err := a.storage.Process(*vote.ProcessID)
 	if err != nil {
 		ErrResourceNotFound.Withf("could not get process: %v", err).Write(w)
 		return
@@ -139,7 +139,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// the vote will be accepted, but it is a precondition to accept the vote,
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
-	if ok, err := a.storage.ProcessIsAcceptingVotes(vote.ProcessID); !ok {
+	if ok, err := a.storage.ProcessIsAcceptingVotes(*vote.ProcessID); !ok {
 		if err != nil {
 			ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
 			return
@@ -156,7 +156,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isOverwrite {
-		if maxVotersReached, err := a.storage.ProcessMaxVotersReached(vote.ProcessID); err != nil {
+		if maxVotersReached, err := a.storage.ProcessMaxVotersReached(*vote.ProcessID); err != nil {
 			ErrGenericInternalServerError.Withf("could not check max voters: %v", err).Write(w)
 			return
 		} else if maxVotersReached {
@@ -195,7 +195,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := ballotproof.BallotInputsHash(
-		vote.ProcessID,
+		*vote.ProcessID,
 		process.BallotMode,
 		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
 		vote.Address,
@@ -240,7 +240,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	// Create the ballot object
 	ballot := &storage.Ballot{
-		ProcessID:   vote.ProcessID,
+		ProcessID:   *vote.ProcessID,
 		VoterWeight: voterWeight.MathBigInt(),
 		// convert the ballot from TE (circom) to RTE (gnark)
 		EncryptedBallot:  vote.Ballot.FromTEtoRTE(),
