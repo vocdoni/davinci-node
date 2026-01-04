@@ -6,6 +6,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj_gnark "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	bjj_iden3 "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
+	"github.com/vocdoni/davinci-node/crypto/ecc/bls12377te"
 	"github.com/vocdoni/davinci-node/crypto/ecc/bn254"
 )
 
@@ -21,6 +22,8 @@ func New(curveType string) ecc.Point {
 		return &bn254.G1{}
 	case bjj_iden3.CurveType:
 		return &bjj_iden3.BJJ{}
+	case bls12377te.CurveType:
+		return bls12377te.New()
 	default:
 		panic("unsupported curve type: " + curveType)
 	}
@@ -32,6 +35,7 @@ func Curves() []string {
 		bjj_gnark.CurveType,
 		bn254.CurveType,
 		bjj_iden3.CurveType,
+		bls12377te.CurveType,
 	}
 }
 
