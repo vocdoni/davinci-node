@@ -14,16 +14,20 @@ package rpc
 // all the endpoints and starts again.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethclient"
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/vocdoni/davinci-node/log"
 )
 
@@ -40,9 +44,38 @@ const (
 	foundTxErrMessage = "transaction type not supported"
 )
 
+var dumpRPCBodies = os.Getenv("DAVINCI_LOG_DUMPRPC") == "true"
+
 // notFoundTxRgx is a regular expression to match the error message when a
 // transaction is not found.
 var notFoundTxRgx = regexp.MustCompile(`not\s[be\s|]*found`)
+
+// debuggableTransport is a custom http.RoundTripper that can log RPC requests and responses.
+type debuggableTransport struct {
+	rt http.RoundTripper
+}
+
+// RoundTrip implements the http.RoundTripper interface for debuggableTransport.
+// If dumpRPCBodies is true, logs the request and response bodies, useful for debugging RPC issues.
+func (d debuggableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if dumpRPCBodies && req.Body != nil {
+		b, _ := io.ReadAll(req.Body)
+		log.Logger().Debug().CallerSkipFrame(100).Msgf(">>> %s %s\n%s", req.Method, req.URL, b)
+		req.Body = io.NopCloser(bytes.NewReader(b))
+	}
+
+	resp, err := d.rt.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if dumpRPCBodies && resp.Body != nil {
+		b, _ := io.ReadAll(resp.Body)
+		log.Logger().Debug().CallerSkipFrame(100).Msgf("<<< %s %s: %s\n%s", req.Method, req.URL, resp.Status, b)
+		resp.Body = io.NopCloser(bytes.NewReader(b))
+	}
+	return resp, nil
+}
 
 // Web3Pool struct contains a map of chainID-[]*Web3Endpoint, where
 // the key is the chainID and the value is a list of Web3Endpoint. It also
@@ -237,11 +270,15 @@ func (nm *Web3Pool) NetworkInfoByChainID(chainID uint64) *Web3Endpoint {
 // It retries to connect to the web3 provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
 func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.Client, err error) {
+	httpClient := &http.Client{
+		Transport: debuggableTransport{rt: http.DefaultTransport},
+	}
 	for range DefaultMaxWeb3ClientRetries {
-		if client, err = ethclient.DialContext(ctx, uri); err != nil {
+		rpcClient, err := gethrpc.DialOptions(ctx, uri, gethrpc.WithHTTPClient(httpClient))
+		if err != nil {
 			continue
 		}
-		return client, nil
+		return ethclient.NewClient(rpcClient), nil
 	}
 	return nil, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
 }
