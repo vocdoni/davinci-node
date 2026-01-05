@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -295,6 +296,12 @@ func (c *Client) BlobBaseFee(ctx context.Context) (*big.Int, error) {
 	return res.(*big.Int), nil
 }
 
+type rpcErr interface {
+	Error() string
+	ErrorData() interface{}
+	ErrorCode() int
+}
+
 // retryAndCheckErr method retries a function call with endpoint switching.
 // The function fn receives a fresh endpoint on each attempt. It first retries
 // on the current endpoint, and if that fails, it disables the endpoint and tries
@@ -345,7 +352,12 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 				}
 				return res, nil
 			}
-			lastErr = err
+			var re rpcErr
+			if errors.As(err, &re) {
+				lastErr = fmt.Errorf("%s (code: %d, data: %s)", re.Error(), re.ErrorCode(), re.ErrorData())
+			} else {
+				lastErr = err
+			}
 			if retry < defaultRetries-1 {
 				time.Sleep(defaultRetrySleep)
 			}

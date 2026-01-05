@@ -14,9 +14,11 @@ package rpc
 // all the endpoints and starts again.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"regexp"
@@ -44,6 +46,33 @@ const (
 // notFoundTxRgx is a regular expression to match the error message when a
 // transaction is not found.
 var notFoundTxRgx = regexp.MustCompile(`not\s[be\s|]*found`)
+
+// dumpTransport is a custom http.RoundTripper that logs RPC requests and responses.
+type dumpTransport struct {
+	rt http.RoundTripper
+}
+
+// RoundTrip implements the http.RoundTripper interface for dumpTransport.
+// It logs the request body and response body for debugging RPC calls.
+func (d dumpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Body != nil {
+		b, _ := io.ReadAll(req.Body)
+		fmt.Printf(">>> RPC REQUEST:\n%s\n", b)
+		req.Body = io.NopCloser(bytes.NewReader(b))
+	}
+
+	resp, err := d.rt.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Body != nil {
+		b, _ := io.ReadAll(resp.Body)
+		fmt.Printf("<<< RPC RESPONSE:\n%s\n", b)
+		resp.Body = io.NopCloser(bytes.NewReader(b))
+	}
+	return resp, nil
+}
 
 // Web3Pool struct contains a map of chainID-[]*Web3Endpoint, where
 // the key is the chainID and the value is a list of Web3Endpoint. It also
@@ -243,11 +272,16 @@ func (nm *Web3Pool) NetworkInfoByChainID(chainID uint64) *Web3Endpoint {
 // It retries to connect to the web3 provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
 func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.Client, err error) {
+	httpClient := &http.Client{
+		Transport: dumpTransport{rt: http.DefaultTransport},
+	}
 	for range DefaultMaxWeb3ClientRetries {
-		if client, err = ethclient.DialContext(ctx, uri); err != nil {
+		rpcClient, err := rpc.DialOptions(ctx, uri, rpc.WithHTTPClient(httpClient))
+		if err != nil {
 			continue
 		}
-		return client, err
+		client = ethclient.NewClient(rpcClient)
+		return client, nil
 	}
 	return nil, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
 }
@@ -256,8 +290,11 @@ func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.
 // It retries to connect to the rpc provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
 func connectNodeRawRPC(ctx context.Context, uri string) (client *rpc.Client, err error) {
+	httpClient := &http.Client{
+		Transport: dumpTransport{rt: http.DefaultTransport},
+	}
 	for range DefaultMaxWeb3ClientRetries {
-		if client, err = rpc.DialContext(ctx, uri); err != nil {
+		if client, err = rpc.DialOptions(ctx, uri, rpc.WithHTTPClient(httpClient)); err != nil {
 			continue
 		}
 		return client, err
