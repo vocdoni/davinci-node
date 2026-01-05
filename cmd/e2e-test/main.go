@@ -627,7 +627,7 @@ func createVote(
 
 	// Return the vote ready to be sent to the sequencer
 	return api.Vote{
-		ProcessID:        wasmResult.ProcessID,
+		ProcessID:        &wasmResult.ProcessID,
 		Address:          wasmInputs.Address,
 		Ballot:           wasmResult.Ballot,
 		BallotProof:      circomProof,
