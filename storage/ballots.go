@@ -97,7 +97,7 @@ func (s *Storage) PushPendingBallot(b *Ballot) error {
 	}); err != nil {
 		log.Warnw("failed to update process stats after pushing ballot",
 			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", b.ProcessID),
+			"processID", b.ProcessID.String(),
 			"voteID", hex.EncodeToString(b.VoteID),
 		)
 	}
@@ -519,13 +519,13 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 		currentStatus, err := s.voteIDStatusUnsafe(ballot.ProcessID, ballot.VoteID)
 		if err != nil {
 			log.Warnw("could not get vote ID status during failure marking",
-				"processID", fmt.Sprintf("%x", ballot.ProcessID),
+				"processID", ballot.ProcessID.String(),
 				"voteID", hex.EncodeToString(ballot.VoteID),
 				"error", err.Error())
 			// Continue processing as the ballot might still be valid
 		} else if currentStatus != VoteIDStatusVerified {
 			log.Warnw("vote ID is not in verified status, skipping counter updates",
-				"processID", fmt.Sprintf("%x", ballot.ProcessID),
+				"processID", ballot.ProcessID.String(),
 				"voteID", hex.EncodeToString(ballot.VoteID),
 				"currentStatus", VoteIDStatusName(currentStatus))
 			// Still remove the ballot from verified queue but don't update counters
@@ -642,7 +642,7 @@ func (s *Storage) removePendingBallot(pid types.ProcessID, voteID []byte) error 
 	}); err != nil {
 		log.Warnw("failed to update process stats after removing ballot",
 			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", pid),
+			"processID", pid.String(),
 			"voteID", hex.EncodeToString(voteID),
 		)
 	}

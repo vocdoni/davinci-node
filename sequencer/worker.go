@@ -199,7 +199,7 @@ func (s *Sequencer) processWorkerJob() error {
 	_, err = s.stg.Process(ballot.ProcessID)
 	if err != nil {
 		log.Debugw("process not found locally, fetching from master",
-			"processID", fmt.Sprintf("%x", ballot.ProcessID))
+			"processID", ballot.ProcessID.String())
 
 		// Fetch process from master
 		if err := s.fetchProcessFromMaster(ballot.ProcessID); err != nil {
@@ -289,7 +289,7 @@ func (s *Sequencer) fetchJobFromMaster() (*storage.Ballot, error) {
 
 		log.Debugw("fetched job from master",
 			"voteID", fmt.Sprintf("%x", ballot.VoteID),
-			"processID", fmt.Sprintf("%x", ballot.ProcessID))
+			"processID", ballot.ProcessID.String())
 
 		return &ballot, nil
 	case http.StatusUnauthorized:
@@ -346,7 +346,7 @@ func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
 
 	log.Infow("submitted job to master",
 		"voteID", fmt.Sprintf("%x", vb.VoteID),
-		"processID", fmt.Sprintf("%x", vb.ProcessID),
+		"processID", vb.ProcessID.String(),
 		"success", workerResponse.SuccessCount,
 		"failed", workerResponse.FailedCount,
 	)
