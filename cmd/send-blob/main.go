@@ -98,7 +98,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	processID := types.NewProcessID(to, types.ProcessIDVersion(uint32(contracts.ChainID), to), 1)
+	processID := types.NewProcessID(from, types.ProcessIDVersion(uint32(contracts.ChainID), to), 1)
 
 	data, err := contracts.ProcessRegistryABI().Pack("submitStateTransition", processID, []byte{0x1}, []byte{0x1})
 	if err != nil {
