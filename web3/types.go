@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -63,11 +64,11 @@ type SimulatedBlock struct {
 
 // CallResult is the result of a single call in a simulated block
 type CallResult struct {
-	Status     string         `json:"status"` // "0x1" or "0x0"
-	ReturnData hexutil.Bytes  `json:"returnData"`
-	GasUsed    hexutil.Uint64 `json:"gasUsed"`
-	Logs       []interface{}  `json:"logs"`
-	Error      *RPCError      `json:"error,omitempty"`
+	Status     string          `json:"status"` // "0x1" or "0x0"
+	ReturnData hexutil.Bytes   `json:"returnData"`
+	GasUsed    hexutil.Uint64  `json:"gasUsed"`
+	Logs       []gethtypes.Log `json:"logs"`
+	Error      *RPCError       `json:"error,omitempty"`
 }
 
 // RPCError is the error returned by the RPC server

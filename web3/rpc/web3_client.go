@@ -88,12 +88,7 @@ func (c *Client) CallContract(ctx context.Context, call ethereum.CallMsg, blockN
 	return res.([]byte), err
 }
 
-func (c *Client) CallSimulation(
-	ctx context.Context,
-	result interface{},
-	simReq interface{},
-	blockTag string,
-) error {
+func (c *Client) CallSimulation(ctx context.Context, result any, simReq any, blockTag string) error {
 	endpoint, err := c.w3p.Endpoint(c.chainID)
 	if err != nil {
 		return fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
