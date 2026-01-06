@@ -91,7 +91,7 @@ func (g *GenericMetadata) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func convertToGenericMetadata(m map[string]interface{}) GenericMetadata {
+func convertToGenericMetadata(m map[string]any) GenericMetadata {
 	out := make(GenericMetadata, len(m))
 	for k, v := range m {
 		switch vv := v.(type) {

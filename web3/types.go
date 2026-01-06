@@ -66,7 +66,7 @@ type CallResult struct {
 	Status     string         `json:"status"` // "0x1" or "0x0"
 	ReturnData hexutil.Bytes  `json:"returnData"`
 	GasUsed    hexutil.Uint64 `json:"gasUsed"`
-	Logs       []interface{}  `json:"logs"`
+	Logs       []any          `json:"logs"`
 	Error      *RPCError      `json:"error,omitempty"`
 }
 

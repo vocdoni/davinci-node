@@ -91,8 +91,8 @@ func (c *Client) CallContract(ctx context.Context, call ethereum.CallMsg, blockN
 
 func (c *Client) CallSimulation(
 	ctx context.Context,
-	result interface{},
-	simReq interface{},
+	result any,
+	simReq any,
 	blockTag string,
 ) error {
 	endpoint, err := c.w3p.Endpoint(c.chainID)
@@ -298,7 +298,7 @@ func (c *Client) BlobBaseFee(ctx context.Context) (*big.Int, error) {
 
 type rpcErr interface {
 	Error() string
-	ErrorData() interface{}
+	ErrorData() any
 	ErrorCode() int
 }
 
