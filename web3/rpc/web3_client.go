@@ -378,7 +378,9 @@ type RPCError struct {
 	Data    hexutil.Bytes `json:"data"`
 }
 
-func (e RPCError) Error() string { return e.Message }
+func (e RPCError) Error() string {
+	return fmt.Sprintf("%s (code: %d, data: %s)", e.Message, e.Code, e.Data)
+}
 
 // RPCErrorFromError tries to convert any error into an *RPCError.
 func RPCErrorFromError(err error) *RPCError {
