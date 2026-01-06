@@ -58,16 +58,16 @@ type RPCEntry struct {
 
 // jsonRPCRequest represents a JSON-RPC 2.0 request
 type jsonRPCRequest struct {
-	JSONRPC string        `json:"jsonrpc"`
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"`
-	ID      int           `json:"id"`
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  []any  `json:"params"`
+	ID      int    `json:"id"`
 }
 
 // jsonRPCResponse represents a JSON-RPC 2.0 response
 type jsonRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Result  interface{} `json:"result,omitempty"`
+	JSONRPC string `json:"jsonrpc"`
+	Result  any    `json:"result,omitempty"`
 	Error   *struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
@@ -204,7 +204,7 @@ var isHealthyEndpoint healthCheckFunc = func(bctx context.Context, endpoint stri
 	}
 
 	// Create eth_getLogs request
-	getLogsParams := map[string]interface{}{
+	getLogsParams := map[string]any{
 		"fromBlock": fromBlock,
 		"toBlock":   "latest",
 		"address":   "0x1d0b39c0239329955b9F0E8791dF9Aa84133c861", // Dummy address

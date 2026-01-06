@@ -243,7 +243,7 @@ func NewCircuitCache() (*CircuitCache, error) {
 }
 
 // GenerateCacheKey creates a deterministic cache key based on circuit type and parameters
-func (c *CircuitCache) GenerateCacheKey(circuitType string, processID types.ProcessID, params ...interface{}) string {
+func (c *CircuitCache) GenerateCacheKey(circuitType string, processID types.ProcessID, params ...any) string {
 	// Build cache key with circuit type, ProcessID, and additional parameters
 	keyData := fmt.Sprintf("%s-%s-%d-%x", circuitType, processID.Address().Hex(), processID.Nonce(), processID.Version())
 
