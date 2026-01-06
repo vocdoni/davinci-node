@@ -88,10 +88,6 @@ func (tm *TxManager) SendTx(
 			// hash of the sent transaction
 			return id, hash, nil
 		}
-		if reason, ok := c.DecodeRevertFromError(err); ok {
-			return fmt.Errorf("failed to set process transition: %w (revert: %s)", err, reason)
-		}
-
 		return nil, nil, fmt.Errorf("failed to send transaction: %w", err)
 	}
 	// Track the transaction
