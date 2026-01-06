@@ -162,18 +162,9 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		}
 
 		// Compare and update if different
-		needsUpdate := false
-		if !localProcess.StateRoot.Equal(blockchainProcess.StateRoot) {
-			needsUpdate = true
-		}
-		if !localProcess.VotersCount.Equal(blockchainProcess.VotersCount) {
-			needsUpdate = true
-		}
-		if !localProcess.OverwrittenVotesCount.Equal(blockchainProcess.OverwrittenVotesCount) {
-			needsUpdate = true
-		}
-
-		if needsUpdate {
+		if !localProcess.StateRoot.Equal(blockchainProcess.StateRoot) ||
+			!localProcess.VotersCount.Equal(blockchainProcess.VotersCount) ||
+			!localProcess.OverwrittenVotesCount.Equal(blockchainProcess.OverwrittenVotesCount) {
 			// Use ProcessUpdateCallbackSetStateRoot to set absolute values from blockchain
 			if err := pm.storage.UpdateProcess(pid,
 				storage.ProcessUpdateCallbackSetStateRoot(
