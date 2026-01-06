@@ -212,18 +212,18 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 		return
 	}
 
-	for _, pid := range procesList {
-		proc, err := s.stg.Process(pid) // Ensure the process is loaded in storage
+	for _, processID := range procesList {
+		proc, err := s.stg.Process(processID) // Ensure the process is loaded in storage
 		if err != nil {
-			log.Warnw("failed to get process for registration", "processID", fmt.Sprintf("%x", pid), "error", err)
+			log.Warnw("failed to get process for registration", "processID", processID.String(), "error", err)
 			continue
 		}
-		if s.ExistsProcessID(pid) && proc.Status != types.ProcessStatusReady {
-			s.DelProcessID(pid) // Unregister if the process
+		if s.ExistsProcessID(processID) && proc.Status != types.ProcessStatusReady {
+			s.DelProcessID(processID) // Unregister if the process
 			continue
 		}
-		if ParticipateInAllProcesses && !s.ExistsProcessID(pid) && proc.Status == types.ProcessStatusReady {
-			s.AddProcessID(pid)
+		if ParticipateInAllProcesses && !s.ExistsProcessID(processID) && proc.Status == types.ProcessStatusReady {
+			s.AddProcessID(processID)
 		}
 	}
 }
@@ -231,29 +231,23 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 // AddProcessID registers a process ID with the sequencer for ballot processing.
 // Only ballots belonging to registered process IDs will be processed.
 // If the process ID is already registered, this operation has no effect.
-//
-// Parameters:
-//   - pid: The process ID to register
-func (s *Sequencer) AddProcessID(pid types.ProcessID) {
-	if s.pids.Add(pid) {
-		log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
+func (s *Sequencer) AddProcessID(processID types.ProcessID) {
+	if s.pids.Add(processID) {
+		log.Infow("process ID registered for sequencing", "processID", processID.String())
 	}
 }
 
 // DelProcessID unregisters a process ID from the sequencer.
 // If the process ID is not registered, this operation has no effect.
-//
-// Parameters:
-//   - pid: The process ID to unregister
-func (s *Sequencer) DelProcessID(pid types.ProcessID) {
-	if s.pids.Remove(pid) {
-		log.Infow("process ID unregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
+func (s *Sequencer) DelProcessID(processID types.ProcessID) {
+	if s.pids.Remove(processID) {
+		log.Infow("process ID unregistered from sequencing", "processID", processID.String())
 	}
 }
 
 // ExistsProcessID checks if a process ID is registered with the sequencer.
-func (s *Sequencer) ExistsProcessID(pid types.ProcessID) bool {
-	return s.pids.Exists(pid)
+func (s *Sequencer) ExistsProcessID(processID types.ProcessID) bool {
+	return s.pids.Exists(processID)
 }
 
 // SetBatchTimeWindow sets the maximum time window to wait for a batch to be processed.
