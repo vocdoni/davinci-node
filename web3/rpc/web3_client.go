@@ -378,6 +378,8 @@ type RPCError struct {
 	Data    hexutil.Bytes `json:"data"`
 }
 
+func (e RPCError) Error() string { return e.Message }
+
 // RPCErrorFromError tries to convert any error into an *RPCError.
 func RPCErrorFromError(err error) *RPCError {
 	if err == nil {

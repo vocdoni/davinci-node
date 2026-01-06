@@ -537,11 +537,10 @@ func (c *Contracts) SimulateContractCall(
 		return nil
 	}
 
-	reason, uerr := c.DecodeRevert(callResult.Error.Data)
-	if uerr != nil {
-		return fmt.Errorf("call reverted; failed to unpack reason: %w", uerr)
+	if reason, ok := c.DecodeRevertFromError(callResult.Error); ok {
+		return fmt.Errorf("call reverted: %w (reason: %s)", callResult.Error, reason)
 	}
-	return fmt.Errorf("call reverted: %s", reason)
+	return fmt.Errorf("call reverted: %w", callResult.Error)
 }
 
 // DecodeRevert decodes the revert reason from the given data.
