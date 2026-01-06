@@ -390,7 +390,6 @@ func RPCErrorFromError(err error) *RPCError {
 	}
 
 	out := &RPCError{Message: err.Error()}
-	log.Warnf("init, out.Data=%s", out.Data)
 
 	// Code (if available)
 	var rpcErr gethrpc.Error
@@ -405,15 +404,10 @@ func RPCErrorFromError(err error) *RPCError {
 		switch v := dataErr.ErrorData().(type) {
 		case []byte:
 			out.Data = hexutil.Bytes(v)
-			log.Warnf("byte, out.Data=%x", out.Data)
 		case string:
-			log.Warnf("string, out.Data=%x, v=%s", out.Data, v)
 			if b, derr := hexutil.Decode(v); derr == nil {
 				out.Data = hexutil.Bytes(b)
-				log.Warnf("decoded, out.Data=%s, b=%x", out.Data, b)
-
 			}
-
 		}
 	}
 	return out

@@ -15,7 +15,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/web3/rpc"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 
 	eth2client "github.com/attestantio/go-eth2-client"
@@ -95,12 +94,8 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 		BlobHashes: blobsSidecar.BlobHashes(),
 	}, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
 	if err != nil {
-		if re := rpc.RPCErrorFromError(err); re != nil {
-			reason, derr := c.DecodeRevert(re.Data)
-			if derr != nil {
-				return nil, fmt.Errorf("failed to estimate gas: %w (reason unpack failed: %w)", err, derr)
-			}
-			return nil, fmt.Errorf("failed to estimate gas: %w (%s)", err, reason)
+		if reason, ok := c.DecodeRevertFromError(err); ok {
+			return nil, fmt.Errorf("failed to estimate gas: %w (revert: %s)", err, reason)
 		}
 		return nil, fmt.Errorf("failed to estimate gas: %w", err)
 	}

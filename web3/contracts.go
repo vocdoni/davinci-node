@@ -582,6 +582,23 @@ func (c *Contracts) DecodeRevert(data hexutil.Bytes) (string, error) {
 	return "", fmt.Errorf("unknown error selector %x", selector)
 }
 
+// DecodeRevertFromError tries to decode the revert reason from err,
+// and returns true if successful.
+func (c *Contracts) DecodeRevertFromError(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	re := rpc.RPCErrorFromError(err)
+	if re == nil || len(re.Data) < 4 {
+		return "", false
+	}
+	reason, derr := c.DecodeRevert(re.Data)
+	if derr != nil {
+		return "", false
+	}
+	return reason, true
+}
+
 // forEachABI calls fn(name, abi) for each non-nil *abi.ABI field.
 // Stops and returns an error if fn returns an error.
 func (c *ContractABIs) forEachABI(fn func(fieldName string, a *abi.ABI) error) error {
