@@ -7,8 +7,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
 // SimulationRequest is the top‐level payload for eth_simulateV1
@@ -63,18 +65,11 @@ type SimulatedBlock struct {
 
 // CallResult is the result of a single call in a simulated block
 type CallResult struct {
-	Status     string         `json:"status"` // "0x1" or "0x0"
-	ReturnData hexutil.Bytes  `json:"returnData"`
-	GasUsed    hexutil.Uint64 `json:"gasUsed"`
-	Logs       []any          `json:"logs"`
-	Error      *RPCError      `json:"error,omitempty"`
-}
-
-// RPCError is the error returned by the RPC server
-type RPCError struct {
-	Code    int           `json:"code"`
-	Message string        `json:"message"`
-	Data    hexutil.Bytes `json:"data"`
+	Status     string          `json:"status"` // "0x1" or "0x0"
+	ReturnData hexutil.Bytes   `json:"returnData"`
+	GasUsed    hexutil.Uint64  `json:"gasUsed"`
+	Logs       []gethtypes.Log `json:"logs"`
+	Error      *rpc.RPCError   `json:"error,omitempty"`
 }
 
 // contractProcess2Process converts a contractProcess to a types.Process

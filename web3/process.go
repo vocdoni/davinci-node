@@ -105,10 +105,10 @@ func (c *Contracts) StateRoot(processID types.ProcessID) (*types.BigInt, error) 
 func (c *Contracts) sendProcessTransition(processID types.ProcessID, proof, inputs []byte, blobsSidecar *types.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
-	// Prepare the ABI for packing the data
-	processABI, err := c.ProcessRegistryABI()
+
+	data, err := c.ProcessRegistryABI().Pack("submitStateTransition", processID, proof, inputs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}
 
 	// Use transaction manager for automatic nonce management
@@ -119,23 +119,12 @@ func (c *Contracts) sendProcessTransition(processID types.ProcessID, proof, inpu
 		// Build the transaction based on whether blobs are provided
 		switch blobsSidecar {
 		case nil: // Regular transaction
-			data, err := processABI.Pack("submitStateTransition", processID, proof, inputs)
-			if err != nil {
-				return nil, fmt.Errorf("failed to pack data: %w", err)
-			}
 			// No blobs so we dont not need to track sidecar, sentTx will be nil
 			return c.txManager.BuildDynamicFeeTx(internalCtx, c.ContractsAddresses.ProcessRegistry, data, nonce)
 		default: // Blob transaction
 			// Store tx in sentTx for tracking sidecar later
-			sentTx, err = c.NewEIP4844TransactionWithNonce(
-				internalCtx,
-				c.ContractsAddresses.ProcessRegistry,
-				processABI,
-				"submitStateTransition",
-				[]any{processID, proof, inputs},
-				blobsSidecar,
-				nonce,
-			)
+			sentTx, err = c.NewEIP4844TransactionWithNonce(internalCtx, c.ContractsAddresses.ProcessRegistry,
+				data, nonce, blobsSidecar)
 			return sentTx, err
 		}
 	})
@@ -190,13 +179,8 @@ func (c *Contracts) sendProcessResults(processID types.ProcessID, proof, inputs 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
-	// Prepare the ABI for packing the data
-	processABI, err := c.ProcessRegistryABI()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
-	}
 	// Pack the data for the setProcessResults function
-	data, err := processABI.Pack("setProcessResults", processID, proof, inputs)
+	data, err := c.ProcessRegistryABI().Pack("setProcessResults", processID, proof, inputs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}

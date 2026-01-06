@@ -9,13 +9,13 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 
 	eth2client "github.com/attestantio/go-eth2-client"
@@ -53,9 +53,7 @@ func applyGasMultiplier(baseFee *big.Int, multiplier float64) *big.Int {
 func (c *Contracts) NewEIP4844Transaction(
 	ctx context.Context,
 	to common.Address,
-	contractABI *abi.ABI,
-	method string,
-	args []any,
+	data []byte,
 	blobsSidecar *types.BlobTxSidecar,
 ) (*gethtypes.Transaction, error) {
 	// Nonce
@@ -63,7 +61,7 @@ func (c *Contracts) NewEIP4844Transaction(
 	if err != nil {
 		return nil, err
 	}
-	return c.NewEIP4844TransactionWithNonce(ctx, to, contractABI, method, args, blobsSidecar, nonce)
+	return c.NewEIP4844TransactionWithNonce(ctx, to, data, nonce, blobsSidecar)
 }
 
 // NewEIP4844TransactionWithNonce method creates and signs a new EIP-4844. It
@@ -72,35 +70,20 @@ func (c *Contracts) NewEIP4844Transaction(
 //
 // Requirements:
 //   - `to` MUST be non-nil per EIP-4844.
-//   - `contractABI` MUST be non-nil.
 //   - `method` MUST be a valid method in the ABI.
 //   - `c.signer` MUST be non-nil (private key set).
 func (c *Contracts) NewEIP4844TransactionWithNonce(
 	ctx context.Context,
 	to common.Address,
-	contractABI *abi.ABI,
-	method string,
-	args []any,
-	blobsSidecar *types.BlobTxSidecar,
+	data []byte,
 	nonce uint64,
+	blobsSidecar *types.BlobTxSidecar,
 ) (*gethtypes.Transaction, error) {
-	if contractABI == nil {
-		return nil, fmt.Errorf("nil contract ABI")
-	}
 	if (to == common.Address{}) {
 		return nil, fmt.Errorf("empty to address")
 	}
-	if method == "" {
-		return nil, fmt.Errorf("empty method")
-	}
 	if c.signer == nil {
 		return nil, fmt.Errorf("no signer defined")
-	}
-
-	// ABI-encode call data
-	data, err := contractABI.Pack(method, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode ABI: %w", err)
 	}
 
 	// Estimate execution gas, include blob hashes so any contract logic that
@@ -112,6 +95,13 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 		BlobHashes: blobsSidecar.BlobHashes(),
 	}, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
 	if err != nil {
+		if re := rpc.RPCErrorFromError(err); re != nil {
+			reason, derr := c.DecodeRevert(re.Data)
+			if derr != nil {
+				return nil, fmt.Errorf("failed to estimate gas: %w (reason unpack failed: %w)", err, derr)
+			}
+			return nil, fmt.Errorf("failed to estimate gas: %w (%s)", err, reason)
+		}
 		return nil, fmt.Errorf("failed to estimate gas: %w", err)
 	}
 
