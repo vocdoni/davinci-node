@@ -33,6 +33,7 @@ import (
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -66,6 +67,7 @@ func main() {
 		votersCount                      = flag.Int("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
+		parallel                         = flag.Bool("parallel", false, "cast votes to different sequencers at the same time")
 	)
 	flag.Parse()
 	log.Init("debug", "stdout", nil)
@@ -240,22 +242,37 @@ func main() {
 	log.Info("first batch of votes registered in smart contract, will now overwrite half of them")
 	overwriters := signers[:len(signers)/2]
 	overwrittenVotesCount := 0
+	group, groupCtx := errgroup.WithContext(testCtx)
 	for i, sequencer := range sequencers {
-		log.Infof("now overwriting votes, using sequencer %d: %s", i, sequencer)
 		votes, err := createVotes(overwriters, processID, encryptionKey)
 		if err != nil {
 			log.Errorw(err, "failed to create vote overwrites")
 			return
 		}
-		if err := sendVotesToSequencer(testCtx, sequencer, *voteSleepTime, votes); err != nil {
-			log.Errorw(err, "failed to send vote overwrites")
-			return
-		}
 		overwrittenVotesCount += len(overwriters)
+		log.Infof("now overwriting votes, using sequencer %d (%s)", i, sequencer)
+		if *parallel {
+			sequencer, votes := sequencer, votes
+			group.Go(func() error { return sendVotesToSequencer(groupCtx, sequencer, *voteSleepTime, votes) })
+		} else {
+			if err := sendVotesToSequencer(testCtx, sequencer, *voteSleepTime, votes); err != nil {
+				log.Errorw(err, "failed to send vote overwrites")
+				return
+			}
 
-		// Wait for the votes to be registered in the smart contract
+			log.Infof("overwrite votes sent to sequencer %d (%s), waiting for votes to be registered in smart contract...", i, sequencer)
+			if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, overwrittenVotesCount); err != nil {
+				log.Errorw(err, "failed to wait for votes to be registered in smart contract")
+				return
+			}
+		}
+	}
+	if err := group.Wait(); err != nil {
+		log.Errorw(err, "failed to send vote overwrites")
+		return
+	}
+	if *parallel {
 		log.Info("all overwrite votes sent, waiting for votes to be registered in smart contract...")
-
 		if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, overwrittenVotesCount); err != nil {
 			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 			return
