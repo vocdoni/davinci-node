@@ -8,6 +8,7 @@ import (
 
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/goleveldb"
+	"github.com/vocdoni/davinci-node/db/inmemory"
 	"github.com/vocdoni/davinci-node/db/mongodb"
 	"github.com/vocdoni/davinci-node/db/pebbledb"
 )
@@ -32,15 +33,20 @@ func New(typ, dir string) (db.Database, error) {
 		if err != nil {
 			return nil, err
 		}
+	case db.TypeInMem:
+		database, err = inmemory.New(opts)
+		if err != nil {
+			return nil, err
+		}
 	default:
-		return nil, fmt.Errorf("invalid dbType: %q. Available types: %q %q %q",
-			typ, db.TypePebble, db.TypeLevelDB, db.TypeMongo)
+		return nil, fmt.Errorf("invalid dbType: %q. Available types: %q %q %q %q",
+			typ, db.TypePebble, db.TypeLevelDB, db.TypeMongo, db.TypeInMem)
 	}
 	return database, nil
 }
 
 func ForTest() (typ string) {
-	return cmp.Or(os.Getenv("DVOTE_DB_TYPE"), "pebble") // default to Pebble, just like vocdoninode
+	return cmp.Or(os.Getenv("DVOTE_DB_TYPE"), db.TypePebble) // default to Pebble, just like vocdoninode
 }
 
 func NewTest(tb testing.TB) db.Database {
