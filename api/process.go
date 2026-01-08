@@ -226,6 +226,14 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if dump, err := census.Tree().DumpAll(); err != nil {
+		log.Warnw("error getting census dump", "err", err)
+	} else {
+		for _, p := range dump.Participants {
+			log.Infow("census participant", "address", p.Address.String(), "weight", p.Weight.String())
+		}
+	}
+
 	// Get the participant weight
 	weight, ok := census.Tree().GetWeight(address)
 	if !ok {
