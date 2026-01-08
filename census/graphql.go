@@ -151,17 +151,14 @@ func (d *graphqlImporter) DownloadAndImportCensus(
 	if len(events) == 0 {
 		return fmt.Errorf("empty census with endpoint: %s", targetURI)
 	}
-	tree, err := censusDB.EmptyTreeByRoot()
+	// Import the events into the census DB
+	ref, err := censusDB.ImportEvents(expectedRoot.BigInt().MathBigInt(), events)
 	if err != nil {
-		return fmt.Errorf("failed to create empty census tree: %w", err)
-	}
-	// Update the censusRef from the events
-	if err := tree.ImportEvents(expectedRoot.BigInt().MathBigInt(), events); err != nil {
 		return fmt.Errorf("failed to update census from events: %w", err)
 	}
-	// Create a new CensusRef in the censusDB
-	if _, err := censusDB.NewByTree(expectedRoot, tree); err != nil {
-		return fmt.Errorf("failed to create new census: %w", err)
+	// Verify the computed root matches the expected root
+	if !expectedRoot.Equal(ref.Root()) {
+		return fmt.Errorf("census root mismatch: expected %x, got %x", expectedRoot, ref.Root())
 	}
 	return nil
 }

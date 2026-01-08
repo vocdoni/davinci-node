@@ -4,6 +4,9 @@ go 1.25.1
 
 replace github.com/consensys/gnark => github.com/p4u/gnark v0.0.0-20251225172317-373b7ed338e2
 
+// replace github.com/vocdoni/lean-imt-go => ../lean-imt-go
+// replace github.com/vocdoni/census3-bigquery => ../census3-bigquery
+
 require (
 	github.com/attestantio/go-eth2-client v0.27.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
@@ -31,10 +34,10 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
-	github.com/vocdoni/census3-bigquery v0.0.0-20260107113010-ecb29b888960
+	github.com/vocdoni/census3-bigquery v0.0.0-20260108131226-718596eb9525
 	github.com/vocdoni/davinci-contracts v0.0.30
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9
-	github.com/vocdoni/lean-imt-go v0.0.0-20260107112558-1f6ce71e70ec
+	github.com/vocdoni/lean-imt-go v0.0.0-20260108131405-62343595a886
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/mod v0.31.0
 	golang.org/x/sync v0.19.0
@@ -300,7 +303,7 @@ require (
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/telemetry v0.0.0-20251203150158-8fff8a5912fc // indirect
 	golang.org/x/term v0.38.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
