@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -22,7 +22,7 @@ type Web3Endpoint struct {
 	URI        string
 	IsArchive  bool
 	client     *ethclient.Client
-	rpcClient  *rpc.Client
+	rpcClient  *gethrpc.Client
 	disabledAt time.Time // When this endpoint was disabled (zero if never disabled)
 }
 

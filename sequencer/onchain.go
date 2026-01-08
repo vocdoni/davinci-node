@@ -174,7 +174,7 @@ func (s *Sequencer) pushTransitionToContract(
 	if err := s.contracts.SimulateContractCall(
 		s.ctx,
 		s.contracts.ContractsAddresses.ProcessRegistry,
-		s.contracts.ContractABIs.ProcessRegistry,
+		s.contracts.ProcessRegistryABI(),
 		"submitStateTransition",
 		blobSidecar,
 		processID,
@@ -284,7 +284,7 @@ func (s *Sequencer) processResultsOnChain() {
 		if err := s.contracts.SimulateContractCall(
 			s.ctx,
 			s.contracts.ContractsAddresses.ProcessRegistry,
-			s.contracts.ContractABIs.ProcessRegistry,
+			s.contracts.ProcessRegistryABI(),
 			"setProcessResults",
 			nil, // No blob sidecar for regular contract calls
 			res.ProcessID,

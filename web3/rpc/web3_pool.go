@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/vocdoni/davinci-node/log"
 )
 
@@ -255,9 +255,9 @@ func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.
 // connectNodeRawRPC method returns a new *rpc.Client instance for the URI provided.
 // It retries to connect to the rpc provider if it fails, up to the
 // DefaultMaxWeb3ClientRetries times.
-func connectNodeRawRPC(ctx context.Context, uri string) (client *rpc.Client, err error) {
+func connectNodeRawRPC(ctx context.Context, uri string) (client *gethrpc.Client, err error) {
 	for range DefaultMaxWeb3ClientRetries {
-		if client, err = rpc.DialContext(ctx, uri); err != nil {
+		if client, err = gethrpc.DialContext(ctx, uri); err != nil {
 			continue
 		}
 		return client, err

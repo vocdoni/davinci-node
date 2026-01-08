@@ -66,6 +66,7 @@ func main() {
 		votersCount                      = flag.Int("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
+		parallel                         = flag.Bool("parallel", false, "cast votes to different sequencers at the same time")
 	)
 	flag.Parse()
 	log.Init("debug", "stdout", nil)
@@ -247,9 +248,18 @@ func main() {
 			log.Errorw(err, "failed to create vote overwrites")
 			return
 		}
-		if err := sendVotesToSequencer(testCtx, sequencer, *voteSleepTime, votes); err != nil {
-			log.Errorw(err, "failed to send vote overwrites")
-			return
+		if *parallel {
+			go func() {
+				if err := sendVotesToSequencer(testCtx, sequencer, *voteSleepTime, votes); err != nil {
+					log.Errorw(err, "failed to send vote overwrites")
+					return
+				}
+			}()
+		} else {
+			if err := sendVotesToSequencer(testCtx, sequencer, *voteSleepTime, votes); err != nil {
+				log.Errorw(err, "failed to send vote overwrites")
+				return
+			}
 		}
 		overwrittenVotesCount += len(overwriters)
 

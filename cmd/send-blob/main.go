@@ -49,6 +49,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init web3: %v", err)
 	}
+	if err := contracts.LoadContracts(nil); err != nil {
+		log.Fatalf("failed to load contracts: %w", err)
+	}
+
 	if err := contracts.SetAccountPrivateKey(*privKey); err != nil {
 		log.Fatalf("set privkey: %v", err)
 	}
@@ -94,14 +98,14 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Prepare the ABI for packing the data
-	processABI, err := contracts.ProcessRegistryABI()
+	processID := types.NewProcessID(from, types.ProcessIDVersion(uint32(contracts.ChainID), to), 1)
+
+	data, err := contracts.ProcessRegistryABI().Pack("submitStateTransition", processID, []byte{0x1}, []byte{0x1})
 	if err != nil {
-		log.Fatal("failed to get process registry ABI: %w", err)
+		log.Fatalf("failed to pack data: %w", err)
 	}
 
-	tx, err := contracts.NewEIP4844Transaction(ctx, to, processABI, "submitStateTransition",
-		[]any{[32]byte{0x1}, []byte{0x1}, []byte{0x1}}, sidecar)
+	tx, err := contracts.NewEIP4844Transaction(ctx, to, data, sidecar)
 	if err != nil {
 		log.Fatalf("failed to build blob tx: %v", err)
 	}

@@ -42,6 +42,39 @@ const (
 	currentBlockIntervalUpdate = 5 * time.Second
 )
 
+var (
+	organizationRegistryABI      *abi.ABI
+	processRegistryABI           *abi.ABI
+	stateTransitionZKVerifierABI *abi.ABI
+	resultsZKVerifierABI         *abi.ABI
+)
+
+func init() {
+	orABI, err := abi.JSON(strings.NewReader(npbindings.OrganizationRegistryMetaData.ABI))
+	if err != nil {
+		panic(fmt.Errorf("failed to parse organization registry ABI: %w", err))
+	}
+	organizationRegistryABI = &orABI
+
+	prABI, err := abi.JSON(strings.NewReader(npbindings.ProcessRegistryMetaData.ABI))
+	if err != nil {
+		panic(fmt.Errorf("failed to parse process registry ABI: %w", err))
+	}
+	processRegistryABI = &prABI
+
+	stABI, err := abi.JSON(strings.NewReader(vbindings.StateTransitionVerifierGroth16MetaData.ABI))
+	if err != nil {
+		panic(fmt.Errorf("failed to parse zk verifier ABI: %w", err))
+	}
+	stateTransitionZKVerifierABI = &stABI
+
+	rABI, err := abi.JSON(strings.NewReader(vbindings.ResultsVerifierGroth16MetaData.ABI))
+	if err != nil {
+		panic(fmt.Errorf("failed to parse zk verifier ABI: %w", err))
+	}
+	resultsZKVerifierABI = &rABI
+}
+
 // Addresses contains the addresses of the contracts deployed in the network.
 type Addresses struct {
 	OrganizationRegistry      common.Address
@@ -279,28 +312,11 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	c.processes = process
 	c.organizations = organizations
 
-	orgRegistryABI, err := abi.JSON(strings.NewReader(npbindings.OrganizationRegistryABI))
-	if err != nil {
-		return fmt.Errorf("failed to parse organization registry ABI: %w", err)
-	}
-	processRegistryABI, err := abi.JSON(strings.NewReader(npbindings.ProcessRegistryABI))
-	if err != nil {
-		return fmt.Errorf("failed to parse process registry ABI: %w", err)
-	}
-	stVerifierABI, err := abi.JSON(strings.NewReader(vbindings.StateTransitionVerifierGroth16ABI))
-	if err != nil {
-		return fmt.Errorf("failed to parse zk verifier ABI: %w", err)
-	}
-	rVerifierABI, err := abi.JSON(strings.NewReader(vbindings.ResultsVerifierGroth16ABI))
-	if err != nil {
-		return fmt.Errorf("failed to parse zk verifier ABI: %w", err)
-	}
-
 	c.ContractABIs = &ContractABIs{
-		OrganizationRegistry:      &orgRegistryABI,
-		ProcessRegistry:           &processRegistryABI,
-		StateTransitionZKVerifier: &stVerifierABI,
-		ResultsZKVerifier:         &rVerifierABI,
+		OrganizationRegistry:      organizationRegistryABI,
+		ProcessRegistry:           processRegistryABI,
+		StateTransitionZKVerifier: stateTransitionZKVerifierABI,
+		ResultsZKVerifier:         resultsZKVerifierABI,
 	}
 
 	// check for blob transaction support querying the ProcessRegistry contract
@@ -521,40 +537,32 @@ func (c *Contracts) SimulateContractCall(
 		return nil
 	}
 
-	reason, uerr := c.decodeRevert(callResult.Error.Data)
-	if uerr != nil {
-		return fmt.Errorf("call reverted; failed to unpack reason: %w", uerr)
+	if reason, ok := c.DecodeRevertFromError(callResult.Error); ok {
+		return fmt.Errorf("call reverted: %w (reason: %s)", callResult.Error, reason)
 	}
-	return fmt.Errorf("call reverted: %s", reason)
+	return fmt.Errorf("call reverted: %w", callResult.Error)
 }
 
-// decodeRevert decodes the revert reason from the given data.
-func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
+// DecodeRevert decodes the revert reason from the given data.
+func (c *Contracts) DecodeRevert(data hexutil.Bytes) (string, error) {
 	if len(data) < 4 {
 		return "", fmt.Errorf("no revert data")
 	}
-	selector := data[:4]
-	payload := data[4:]
+	selector := [4]byte{}
+	copy(selector[:], data[:4])
 
 	// 1) Try custom errors from all loaded ABIs
 	var decoded string
-	err := c.ContractABIs.forEachABI(func(_ string, a *abi.ABI) error {
-		for name, e := range a.Errors {
-			// e.ID is the 4-byte selector
-			if bytes.Equal(selector, e.ID.Bytes()) {
-				// unpack args if any
-				vals, uerr := e.Inputs.Unpack(payload)
-				if uerr != nil {
-					decoded = name // at least return the name
-					return nil
-				}
-				if len(vals) == 0 {
-					decoded = name
-				} else {
-					decoded = fmt.Sprintf("%s%v", name, vals)
-				}
+	err := c.ContractABIs.forEachABI(func(abiName string, a *abi.ABI) error {
+		if abiErr, err := a.ErrorByID(selector); err == nil {
+			// unpack args if any
+			vals, err := abiErr.Inputs.Unpack(data[4:])
+			if err != nil || len(vals) == 0 {
+				decoded = fmt.Sprintf("%s %s = %s", abiName, data[:4], abiErr.String())
 				return nil
 			}
+			decoded = fmt.Sprintf("%s %s = %s %+v", abiName, data[:4], abiErr.Name, vals)
+			return nil
 		}
 		return nil
 	})
@@ -570,12 +578,32 @@ func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
 		return reason, nil
 	}
 
-	return "", fmt.Errorf("unknown error selector 0x%x", selector)
+	return "", fmt.Errorf("unknown error selector %x", selector)
+}
+
+// DecodeRevertFromError tries to decode the revert reason from err,
+// and returns true if successful.
+func (c *Contracts) DecodeRevertFromError(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	re := rpc.RPCErrorFromError(err)
+	if re == nil || len(re.Data) < 4 {
+		return "", false
+	}
+	reason, derr := c.DecodeRevert(re.Data)
+	if derr != nil {
+		return "", false
+	}
+	return reason, true
 }
 
 // forEachABI calls fn(name, abi) for each non-nil *abi.ABI field.
 // Stops and returns an error if fn returns an error.
 func (c *ContractABIs) forEachABI(fn func(fieldName string, a *abi.ABI) error) error {
+	if c == nil {
+		return fmt.Errorf("no contract ABIs")
+	}
 	v := reflect.ValueOf(c).Elem() // reflect.Value of the struct
 	t := v.Type()                  // reflect.Type of the struct
 	for i := range v.NumField() {  // loop fields
@@ -597,40 +625,16 @@ func (c *ContractABIs) forEachABI(fn func(fieldName string, a *abi.ABI) error) e
 }
 
 // ProcessRegistryABI returns the ABI of the ProcessRegistry contract.
-func (c *Contracts) ProcessRegistryABI() (*abi.ABI, error) {
-	processRegistryABI, err := abi.JSON(strings.NewReader(npbindings.ProcessRegistryABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse process registry ABI: %w", err)
-	}
-	return &processRegistryABI, nil
-}
+func (c *Contracts) ProcessRegistryABI() *abi.ABI { return processRegistryABI }
 
 // ResultsRegistryABI returns the ABI of the ResultsRegistry contract.
-func (c *Contracts) OrganizationRegistryABI() (*abi.ABI, error) {
-	organizationRegistryABI, err := abi.JSON(strings.NewReader(npbindings.OrganizationRegistryABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse organization registry ABI: %w", err)
-	}
-	return &organizationRegistryABI, nil
-}
+func (c *Contracts) OrganizationRegistryABI() *abi.ABI { return organizationRegistryABI }
 
 // StateTransitionVerifierABI returns the ABI of the ZKVerifier contract.
-func (c *Contracts) StateTransitionVerifierABI() (*abi.ABI, error) {
-	stVerifierABI, err := abi.JSON(strings.NewReader(vbindings.StateTransitionVerifierGroth16ABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse state transition zk verifier ABI: %w", err)
-	}
-	return &stVerifierABI, nil
-}
+func (c *Contracts) StateTransitionVerifierABI() *abi.ABI { return stateTransitionZKVerifierABI }
 
 // ResultsVerifierABI returns the ABI of the ResultsVerifier contract.
-func (c *Contracts) ResultsVerifierABI() (*abi.ABI, error) {
-	resultsVerifierABI, err := abi.JSON(strings.NewReader(vbindings.ResultsVerifierGroth16ABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse results zk verifier ABI: %w", err)
-	}
-	return &resultsVerifierABI, nil
-}
+func (c *Contracts) ResultsVerifierABI() *abi.ABI { return resultsZKVerifierABI }
 
 func (c *Contracts) ProcessRegistryAddress() (string, error) {
 	chainName, ok := npbindings.AvailableNetworksByID[uint32(c.ChainID)]

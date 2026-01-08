@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -9,9 +10,10 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/vocdoni/davinci-node/log"
 )
 
@@ -48,7 +50,7 @@ func (c *Client) EthClient() (*ethclient.Client, error) {
 
 // RPCClient method returns the rpc.Client for the chainID of the Client
 // instance. It returns an error if the chainID is not found in the pool.
-func (c *Client) RPCClient() (*rpc.Client, error) {
+func (c *Client) RPCClient() (*gethrpc.Client, error) {
 	endpoint, err := c.w3p.Endpoint(c.chainID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
@@ -88,12 +90,7 @@ func (c *Client) CallContract(ctx context.Context, call ethereum.CallMsg, blockN
 	return res.([]byte), err
 }
 
-func (c *Client) CallSimulation(
-	ctx context.Context,
-	result interface{},
-	simReq interface{},
-	blockTag string,
-) error {
+func (c *Client) CallSimulation(ctx context.Context, result any, simReq any, blockTag string) error {
 	endpoint, err := c.w3p.Endpoint(c.chainID)
 	if err != nil {
 		return fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
@@ -345,7 +342,11 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 				}
 				return res, nil
 			}
-			lastErr = err
+			if re := RPCErrorFromError(err); re != nil {
+				lastErr = fmt.Errorf("%w (code: %d, data: %s)", err, re.Code, re.Data)
+			} else {
+				lastErr = err
+			}
 			if retry < defaultRetries-1 {
 				time.Sleep(defaultRetrySleep)
 			}
@@ -368,4 +369,45 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 		c.chainID, len(triedEndpoints)))
 	return nil, fmt.Errorf("all endpoints exhausted for chainID %d after %d attempts: %w",
 		c.chainID, endpointAttempts, lastErr)
+}
+
+// RPCError is the error returned by the RPC server
+type RPCError struct {
+	Code    int           `json:"code"`
+	Message string        `json:"message"`
+	Data    hexutil.Bytes `json:"data"`
+}
+
+func (e RPCError) Error() string {
+	return fmt.Sprintf("%s (code: %d, data: %s)", e.Message, e.Code, e.Data)
+}
+
+// RPCErrorFromError tries to convert any error into an *RPCError.
+func RPCErrorFromError(err error) *RPCError {
+	if err == nil {
+		return nil
+	}
+
+	out := &RPCError{Message: err.Error()}
+
+	// Code (if available)
+	var rpcErr gethrpc.Error
+	if errors.As(err, &rpcErr) {
+		out.Code = rpcErr.ErrorCode()
+		out.Message = rpcErr.Error()
+	}
+
+	// Data (if available)
+	var dataErr gethrpc.DataError
+	if errors.As(err, &dataErr) {
+		switch v := dataErr.ErrorData().(type) {
+		case []byte:
+			out.Data = hexutil.Bytes(v)
+		case string:
+			if b, derr := hexutil.Decode(v); derr == nil {
+				out.Data = hexutil.Bytes(b)
+			}
+		}
+	}
+	return out
 }

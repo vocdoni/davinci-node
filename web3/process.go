@@ -44,6 +44,9 @@ func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *com
 		p.LatestStateRoot,
 	)
 	if err != nil {
+		if reason, ok := c.DecodeRevertFromError(err); ok {
+			return types.ProcessID{}, nil, fmt.Errorf("failed to create process: %w (revert: %s)", err, reason)
+		}
 		return types.ProcessID{}, nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	hash := tx.Hash()
@@ -105,10 +108,10 @@ func (c *Contracts) StateRoot(processID types.ProcessID) (*types.BigInt, error) 
 func (c *Contracts) sendProcessTransition(processID types.ProcessID, proof, inputs []byte, blobsSidecar *types.BlobTxSidecar) (types.HexBytes, *common.Hash, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
-	// Prepare the ABI for packing the data
-	processABI, err := c.ProcessRegistryABI()
+
+	data, err := c.ProcessRegistryABI().Pack("submitStateTransition", processID, proof, inputs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
+		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}
 
 	// Use transaction manager for automatic nonce management
@@ -119,23 +122,12 @@ func (c *Contracts) sendProcessTransition(processID types.ProcessID, proof, inpu
 		// Build the transaction based on whether blobs are provided
 		switch blobsSidecar {
 		case nil: // Regular transaction
-			data, err := processABI.Pack("submitStateTransition", processID, proof, inputs)
-			if err != nil {
-				return nil, fmt.Errorf("failed to pack data: %w", err)
-			}
 			// No blobs so we dont not need to track sidecar, sentTx will be nil
 			return c.txManager.BuildDynamicFeeTx(internalCtx, c.ContractsAddresses.ProcessRegistry, data, nonce)
 		default: // Blob transaction
 			// Store tx in sentTx for tracking sidecar later
-			sentTx, err = c.NewEIP4844TransactionWithNonce(
-				internalCtx,
-				c.ContractsAddresses.ProcessRegistry,
-				processABI,
-				"submitStateTransition",
-				[]any{processID, proof, inputs},
-				blobsSidecar,
-				nonce,
-			)
+			sentTx, err = c.NewEIP4844TransactionWithNonce(internalCtx, c.ContractsAddresses.ProcessRegistry,
+				data, nonce, blobsSidecar)
 			return sentTx, err
 		}
 	})
@@ -171,6 +163,9 @@ func (c *Contracts) SetProcessTransition(
 ) error {
 	txID, txHash, err := c.sendProcessTransition(processID, proof, inputs, blobsSidecar)
 	if err != nil {
+		if reason, ok := c.DecodeRevertFromError(err); ok {
+			return fmt.Errorf("failed to set process transition: %w (revert: %s)", err, reason)
+		}
 		return fmt.Errorf("failed to set process transition: %w", err)
 	}
 	log.Infow("waiting for state transition to be mined",
@@ -190,13 +185,8 @@ func (c *Contracts) sendProcessResults(processID types.ProcessID, proof, inputs 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 	defer cancel()
-	// Prepare the ABI for packing the data
-	processABI, err := c.ProcessRegistryABI()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
-	}
 	// Pack the data for the setProcessResults function
-	data, err := processABI.Pack("setProcessResults", processID, proof, inputs)
+	data, err := c.ProcessRegistryABI().Pack("setProcessResults", processID, proof, inputs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to pack data: %w", err)
 	}
@@ -220,6 +210,9 @@ func (c *Contracts) SetProcessResults(
 ) error {
 	txID, txHash, err := c.sendProcessResults(processID, proof, inputs)
 	if err != nil {
+		if reason, ok := c.DecodeRevertFromError(err); ok {
+			return fmt.Errorf("failed to set process results: %w (revert: %s)", err, reason)
+		}
 		return fmt.Errorf("failed to set process results: %w", err)
 	}
 	log.Infow("waiting for process results to be mined",
@@ -242,6 +235,9 @@ func (c *Contracts) SetProcessStatus(processID types.ProcessID, status types.Pro
 	autOpts.Context = ctx
 	tx, err := c.processes.SetProcessStatus(autOpts, processID, uint8(status))
 	if err != nil {
+		if reason, ok := c.DecodeRevertFromError(err); ok {
+			return nil, fmt.Errorf("failed to set process status: %w (revert: %s)", err, reason)
+		}
 		return nil, fmt.Errorf("failed to set process status: %w", err)
 	}
 	hash := tx.Hash()
@@ -261,6 +257,9 @@ func (c *Contracts) SetProcessMaxVoters(processID types.ProcessID, maxVoters *ty
 	autOpts.Context = ctx
 	tx, err := c.processes.SetProcessMaxVoters(autOpts, processID, maxVoters.MathBigInt())
 	if err != nil {
+		if reason, ok := c.DecodeRevertFromError(err); ok {
+			return nil, fmt.Errorf("failed to set process max voters: %w (revert: %s)", err, reason)
+		}
 		return nil, fmt.Errorf("failed to set process max voters: %w", err)
 	}
 	hash := tx.Hash()
@@ -287,6 +286,9 @@ func (c *Contracts) SetProcessCensus(processID types.ProcessID, census types.Cen
 		CensusOrigin: uint8(census.CensusOrigin),
 	})
 	if err != nil {
+		if reason, ok := c.DecodeRevertFromError(err); ok {
+			return nil, fmt.Errorf("failed to set process census: %w (revert: %s)", err, reason)
+		}
 		return nil, fmt.Errorf("failed to set process census: %w", err)
 	}
 	hash := tx.Hash()
