@@ -215,7 +215,7 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 	for _, pid := range procesList {
 		proc, err := s.stg.Process(pid) // Ensure the process is loaded in storage
 		if err != nil {
-			log.Warnw("failed to get process for registration", "processID", fmt.Sprintf("%x", pid), "error", err)
+			log.Warnw("failed to get process for registration", "processID", pid.String(), "error", err)
 			continue
 		}
 		if s.ExistsProcessID(pid) && proc.Status != types.ProcessStatusReady {
@@ -236,7 +236,7 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 //   - pid: The process ID to register
 func (s *Sequencer) AddProcessID(pid types.ProcessID) {
 	if s.pids.Add(pid) {
-		log.Infow("process ID registered for sequencing", "processID", fmt.Sprintf("%x", pid))
+		log.Infow("process ID registered for sequencing", "processID", pid.String())
 	}
 }
 
@@ -247,7 +247,7 @@ func (s *Sequencer) AddProcessID(pid types.ProcessID) {
 //   - pid: The process ID to unregister
 func (s *Sequencer) DelProcessID(pid types.ProcessID) {
 	if s.pids.Remove(pid) {
-		log.Infow("process ID unregistered from sequencing", "processID", fmt.Sprintf("%x", pid))
+		log.Infow("process ID unregistered from sequencing", "processID", pid.String())
 	}
 }
 
