@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/vocdoni/davinci-node/types"
@@ -66,7 +67,17 @@ func ProcessUpdateCallbackSetMaxVoters(maxVoters *types.BigInt) func(*types.Proc
 // is received from the process monitor.
 func ProcessUpdateCallbackSetCensusRoot(censusRoot types.HexBytes, censusURI string) func(*types.Process) error {
 	return func(p *types.Process) error {
-		p.Census.CensusRoot = censusRoot
+		if p.Census == nil {
+			return fmt.Errorf("process has no census")
+		}
+		root := censusRoot
+		if p.Census.CensusOrigin.IsMerkleTree() {
+			trimmed := censusRoot.LeftTrim()
+			if len(trimmed) > 0 {
+				root = trimmed
+			}
+		}
+		p.Census.CensusRoot = root
 		p.Census.CensusURI = censusURI
 		return nil
 	}
