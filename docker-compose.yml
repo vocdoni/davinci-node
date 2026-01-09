@@ -152,6 +152,7 @@ services:
     environment:
       - LOG_LEVEL=debug
       - GPU_PROVER=false
+      - RUN_INTEGRATION_TESTS=true
       - CGO_ENABLED=1
       - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
     command: go test -v ./tests -timeout=1h
@@ -166,9 +167,10 @@ services:
     environment:
       - LOG_LEVEL=debug
       - GPU_PROVER=false
+      - RUN_INTEGRATION_TESTS=false
       - CGO_ENABLED=1
       - DAVINCI_ARTIFACTS_DIR=${HOME:-/root}/.davinci/artifacts
-    command: /bin/sh -c "go test -v $$(go list ./... | grep -v github.com/vocdoni/davinci-node/tests) -timeout=1h"
+    command: /bin/sh -c "go test -v ./... -timeout=1h"
 
   # ---------------------------------------------------------------------------
   # Test Services (GPU/CUDA)
@@ -176,13 +178,17 @@ services:
 
   integration-test-cuda:
     profiles: ["test-cuda"]
+    environment:
+      - RUN_INTEGRATION_TESTS=true
     <<: *test-cuda-common
     command: go test -v -p 1 -tags=icicle ./tests -timeout=1h
 
   unit-test-cuda:
     profiles: ["test-cuda"]
+    environment:
+      - RUN_INTEGRATION_TESTS=false
     <<: *test-cuda-common
-    command: /bin/sh -c "go test -v -p 1 -tags=icicle $$(go list ./... | grep -v github.com/vocdoni/davinci-node/tests) -timeout=1h"
+    command: /bin/sh -c "go test -v ./... -timeout=1h"
 
   aggregator-gpu-test:
     profiles: ["test-cuda"]
