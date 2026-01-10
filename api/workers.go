@@ -324,7 +324,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Warnw("failed to get process for ballot",
 			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			"processID", ballot.ProcessID.String(),
 			"voteID", ballot.VoteID.String())
 		ErrResourceNotFound.Withf("process not found").Write(w)
 		return
@@ -336,7 +336,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	if err := originalInputs.FromProcessBallot(process, ballot); err != nil {
 		log.Warnw("failed to generate original inputs from ballot",
 			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			"processID", ballot.ProcessID.String(),
 			"voteID", ballot.VoteID.String())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
@@ -346,7 +346,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Warnw("failed to generate inputs hash",
 			"error", err.Error(),
-			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			"processID", ballot.ProcessID.String(),
 			"voteID", ballot.VoteID.String())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 	}

@@ -544,7 +544,7 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 		// Continue with cleanup even if we can't decode
 	} else {
 		log.Infow("marked state transition batch as outdated",
-			"processID", fmt.Sprintf("%x", stb.ProcessID),
+			"processID", stb.ProcessID.String(),
 			"totalBallots", len(stb.Ballots),
 			"reason", "ethereum state root mismatch")
 

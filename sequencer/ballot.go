@@ -92,7 +92,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 		log.Infow("processing ballot",
 			"address", hex.EncodeToString(ballot.Address.Bytes()),
 			"voteID", hex.EncodeToString(ballot.VoteID),
-			"processID", fmt.Sprintf("%x", ballot.ProcessID),
+			"processID", ballot.ProcessID.String(),
 		)
 
 		verifiedBallot, err := s.processBallot(ballot)
@@ -112,7 +112,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 			log.Warnw("failed to mark ballot as processed",
 				"error", err.Error(),
 				"address", ballot.Address.String(),
-				"processID", fmt.Sprintf("%x", ballot.ProcessID),
+				"processID", ballot.ProcessID.String(),
 			)
 			continue
 		}

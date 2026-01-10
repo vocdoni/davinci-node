@@ -39,6 +39,12 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	if process == nil {
 		return fmt.Errorf("nil process data")
 	}
+	if process.Census != nil && process.Census.CensusOrigin.IsMerkleTree() {
+		trimmed := process.Census.CensusRoot.LeftTrim()
+		if len(trimmed) > 0 {
+			process.Census.CensusRoot = trimmed
+		}
+	}
 
 	// Check if process already exists
 	existing := &types.Process{}
@@ -216,7 +222,28 @@ func (s *Storage) processIsAcceptingVotes(pid types.ProcessID, stgProcess *types
 	if stgProcess.Status != types.ProcessStatusReady {
 		return false, fmt.Errorf("process %s status: %s", pid.String(), stgProcess.Status)
 	}
+	if stgProcess.Census == nil {
+		return false, fmt.Errorf("process %s has no census", pid.String())
+	}
+	if stgProcess.Census.CensusOrigin.IsMerkleTree() {
+		censusRoot := stgProcess.Census.CensusRoot
+		if s.censusExistsByRoot(censusRoot) {
+			return true, nil
+		}
+		trimmed := censusRoot.LeftTrim()
+		if len(trimmed) > 0 && s.censusExistsByRoot(trimmed) {
+			return true, nil
+		}
+		return false, fmt.Errorf("process %s census not available: %s", pid.String(), censusRoot.String())
+	}
 	return true, nil
+}
+
+func (s *Storage) censusExistsByRoot(root types.HexBytes) bool {
+	if root == nil {
+		return false
+	}
+	return s.CensusDB().ExistsByRoot(root)
 }
 
 // ProcessMaxVotersReached checks if the process has reached its maximum

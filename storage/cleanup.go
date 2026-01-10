@@ -56,14 +56,14 @@ func (s *Storage) cleanupEndedProcess(processID types.ProcessID) error {
 	if count, err := s.markProcessVoteIDsTimeout(processID); err != nil {
 		errs = append(errs, fmt.Errorf("vote ID timeout marking: %w", err))
 	} else {
-		log.Debugw("marked vote IDs as timeout", "processID", fmt.Sprintf("%x", processID), "count", count)
+		log.Debugw("marked vote IDs as timeout", "processID", processID.String(), "count", count)
 	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("cleanup errors: %v", errs)
 	}
 
-	log.Debugw("completed cleanup for ended process", "processID", fmt.Sprintf("%x", processID))
+	log.Debugw("completed cleanup for ended process", "processID", processID.String())
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 		currentStatus, err := s.voteIDStatusUnsafe(ballot.ProcessID, ballot.VoteID)
 		if err != nil {
 			log.Warnw("could not get vote ID status during verified ballot cleanup",
-				"processID", fmt.Sprintf("%x", ballot.ProcessID),
+				"processID", ballot.ProcessID.String(),
 				"voteID", hex.EncodeToString(ballot.VoteID),
 				"error", err.Error())
 			// Count it anyway as it might still be valid
@@ -146,7 +146,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 			processBallots[ballot.ProcessID].validCount++
 		} else {
 			log.Warnw("vote ID is not in verified status during cleanup",
-				"processID", fmt.Sprintf("%x", ballot.ProcessID),
+				"processID", ballot.ProcessID.String(),
 				"voteID", hex.EncodeToString(ballot.VoteID),
 				"currentStatus", VoteIDStatusName(currentStatus))
 		}
@@ -155,7 +155,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 		if currentStatus != VoteIDStatusSettled {
 			if err := s.setVoteIDStatus(ballot.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 				log.Warnw("failed to set vote ID status to error",
-					"processID", fmt.Sprintf("%x", ballot.ProcessID),
+					"processID", ballot.ProcessID.String(),
 					"voteID", hex.EncodeToString(ballot.VoteID),
 					"error", err.Error())
 			}
@@ -204,7 +204,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 			}); err != nil {
 				log.Warnw("failed to update process stats after cleaning verified ballots",
 					"error", err.Error(),
-					"processID", fmt.Sprintf("%x", processID),
+					"processID", processID.String(),
 					"validCount", cleanup.validCount)
 			}
 		}
@@ -255,7 +255,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 			currentStatus, err := s.voteIDStatusUnsafe(batch.ProcessID, ballot.VoteID)
 			if err != nil {
 				log.Warnw("could not get vote ID status during batch cleanup",
-					"processID", fmt.Sprintf("%x", batch.ProcessID),
+					"processID", batch.ProcessID.String(),
 					"voteID", hex.EncodeToString(ballot.VoteID),
 					"error", err.Error())
 				// Count it anyway as it might still be valid
@@ -264,7 +264,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 				processBatches[batch.ProcessID].validCount++
 			} else {
 				log.Warnw("vote ID is not in aggregated status during cleanup",
-					"processID", fmt.Sprintf("%x", batch.ProcessID),
+					"processID", batch.ProcessID.String(),
 					"voteID", hex.EncodeToString(ballot.VoteID),
 					"currentStatus", VoteIDStatusName(currentStatus))
 			}
@@ -273,7 +273,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 			if currentStatus != VoteIDStatusSettled {
 				if err := s.setVoteIDStatus(batch.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 					log.Warnw("failed to set vote ID status to error",
-						"processID", fmt.Sprintf("%x", batch.ProcessID),
+						"processID", batch.ProcessID.String(),
 						"voteID", hex.EncodeToString(ballot.VoteID),
 						"error", err.Error())
 				}
@@ -317,7 +317,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 			}); err != nil {
 				log.Warnw("failed to update process stats after cleaning aggregated batches",
 					"error", err.Error(),
-					"processID", fmt.Sprintf("%x", processID),
+					"processID", processID.String(),
 					"validCount", cleanup.validCount)
 			}
 		}
@@ -369,7 +369,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 			currentStatus, err := s.voteIDStatusUnsafe(stb.ProcessID, stb.Ballots[0].VoteID)
 			if err != nil {
 				log.Warnw("could not get vote ID status during state transition cleanup",
-					"processID", fmt.Sprintf("%x", stb.ProcessID),
+					"processID", stb.ProcessID.String(),
 					"voteID", hex.EncodeToString(stb.Ballots[0].VoteID),
 					"error", err.Error())
 				// Count it anyway as it might still be valid
@@ -378,7 +378,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 				batchIsValid = true
 			} else {
 				log.Warnw("vote ID is not in processed status during cleanup",
-					"processID", fmt.Sprintf("%x", stb.ProcessID),
+					"processID", stb.ProcessID.String(),
 					"voteID", hex.EncodeToString(stb.Ballots[0].VoteID),
 					"currentStatus", VoteIDStatusName(currentStatus))
 			}
@@ -394,7 +394,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 			currentStatus, err := s.voteIDStatusUnsafe(stb.ProcessID, ballot.VoteID)
 			if err != nil {
 				log.Warnw("could not get vote ID status during state transition cleanup",
-					"processID", fmt.Sprintf("%x", stb.ProcessID),
+					"processID", stb.ProcessID.String(),
 					"voteID", hex.EncodeToString(ballot.VoteID),
 					"error", err.Error())
 			}
@@ -405,7 +405,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 			if currentStatus != VoteIDStatusProcessed && currentStatus != VoteIDStatusSettled {
 				if err := s.setVoteIDStatus(stb.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 					log.Warnw("failed to set vote ID status to error",
-						"processID", fmt.Sprintf("%x", stb.ProcessID),
+						"processID", stb.ProcessID.String(),
 						"voteID", hex.EncodeToString(ballot.VoteID),
 						"error", err.Error())
 				}
@@ -448,7 +448,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 			}); err != nil {
 				log.Warnw("failed to update process stats after cleaning state transitions",
 					"error", err.Error(),
-					"processID", fmt.Sprintf("%x", processID),
+					"processID", processID.String(),
 					"validBatchCount", cleanup.validBatchCount)
 			}
 		}
@@ -500,7 +500,7 @@ func (s *Storage) cleanPendingBallotsForProcess(processID types.ProcessID) error
 		s.voteIDToAddress.Delete(ballot.VoteID.String())
 	}
 	if len(ballotsToDelete) > 0 {
-		log.Debugw("cleaned pending ballots", "processID", fmt.Sprintf("%x", processID), "count", len(ballotsToDelete))
+		log.Debugw("cleaned pending ballots", "processID", processID.String(), "count", len(ballotsToDelete))
 	}
 	return nil
 }
@@ -564,7 +564,7 @@ func (s *Storage) cleanVerifiedBallotsForProcess(processID types.ProcessID) erro
 	}
 
 	if len(ballotsToDelete) > 0 {
-		log.Debugw("cleaned verified ballots", "processID", fmt.Sprintf("%x", processID), "count", len(ballotsToDelete))
+		log.Debugw("cleaned verified ballots", "processID", processID.String(), "count", len(ballotsToDelete))
 	}
 	return nil
 }
@@ -602,7 +602,7 @@ func (s *Storage) cleanAggregatorBatchesForProcess(processID types.ProcessID) er
 		}
 	}
 	if len(keysToDelete) > 0 {
-		log.Debugw("cleaned aggregator batches", "processID", fmt.Sprintf("%x", processID), "count", len(keysToDelete))
+		log.Debugw("cleaned aggregator batches", "processID", processID.String(), "count", len(keysToDelete))
 	}
 	return nil
 }
@@ -640,7 +640,7 @@ func (s *Storage) cleanStateTransitionsForProcess(processID types.ProcessID) err
 		}
 	}
 	if len(keysToDelete) > 0 {
-		log.Debugw("cleaned state transitions", "processID", fmt.Sprintf("%x", processID), "count", len(keysToDelete))
+		log.Debugw("cleaned state transitions", "processID", processID.String(), "count", len(keysToDelete))
 	}
 	return nil
 }

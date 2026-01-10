@@ -216,13 +216,7 @@ func main() {
 
 	// Generate votes for each participant and send them to the sequencer
 	{
-		votes, err := createVotes(signers, pid, encryptionKey)
-		if err != nil {
-			log.Errorw(err, "failed to create votes")
-			return
-		}
-
-		if err := sendVotesToSequencer(testCtx, sequencers[0], *voteSleepTime, votes); err != nil {
+		if err := sendVotesToSequencer(testCtx, sequencers[0], *voteSleepTime, signers, pid, encryptionKey); err != nil {
 			log.Errorw(err, "failed to send votes")
 			return
 		}
@@ -242,12 +236,7 @@ func main() {
 	overwrittenVotesCount := 0
 	for i, sequencer := range sequencers {
 		log.Infof("now overwriting votes, using sequencer %d: %s", i, sequencer)
-		votes, err := createVotes(overwriters, pid, encryptionKey)
-		if err != nil {
-			log.Errorw(err, "failed to create vote overwrites")
-			return
-		}
-		if err := sendVotesToSequencer(testCtx, sequencer, *voteSleepTime, votes); err != nil {
+		if err := sendVotesToSequencer(testCtx, sequencer, *voteSleepTime, overwriters, pid, encryptionKey); err != nil {
 			log.Errorw(err, "failed to send vote overwrites")
 			return
 		}
@@ -377,7 +366,14 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	return orgAddr, nil
 }
 
-func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime time.Duration, votes []api.Vote) error {
+func sendVotesToSequencer(
+	ctx context.Context,
+	seqEndpoint string,
+	sleepTime time.Duration,
+	signers []*ethereum.Signer,
+	pid types.ProcessID,
+	encryptionKey *types.EncryptionKey,
+) error {
 	// Create a API client
 	cli, err := client.New(seqEndpoint)
 	if err != nil {
@@ -404,7 +400,18 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 	log.Infow("connected to sequencer", "endpoint", seqEndpoint)
 
 	// Generate votes for each participant and send them to the sequencer
-	for i, vote := range votes {
+	for i, signer := range signers {
+		start := time.Now()
+		vote, err := createVote(signer, pid, encryptionKey, ballotMode)
+		if err != nil {
+			log.Errorf("failed to generate this vote for signer %d", i+1)
+			return fmt.Errorf("failed to generate vote: %w", err)
+		}
+		log.Debugw("vote generated",
+			"currentVote", i+1,
+			"totalVotes", len(signers),
+			"duration", time.Since(start))
+
 		// Send the vote to the sequencer
 		voteID, err := sendVote(cli, vote)
 		if err != nil {
@@ -414,7 +421,7 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 		log.Infow("vote sent",
 			"voteID", voteID.String(),
 			"currentVote", i+1,
-			"totalVotes", len(votes))
+			"totalVotes", len(signers))
 
 		// Wait the sleepTime before sending the next vote
 		time.Sleep(sleepTime)
@@ -543,18 +550,6 @@ func createProcess(
 	return pid, encryptionKeys, nil
 }
 
-func createVotes(signers []*ethereum.Signer, pid types.ProcessID, encryptionKey *types.EncryptionKey) ([]api.Vote, error) {
-	votes := make([]api.Vote, 0, len(signers))
-	for _, signer := range signers {
-		vote, err := createVote(signer, pid, encryptionKey, ballotMode)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create vote: %w", err)
-		}
-		votes = append(votes, vote)
-	}
-	return votes, nil
-}
-
 func createVote(
 	privKey *ethereum.Signer,
 	pid types.ProcessID,
@@ -596,10 +591,14 @@ func createVote(
 	}
 
 	// Generate the inputs for the ballot proof circuit
+	stepStart := time.Now()
 	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate ballot proof inputs: %v", err)
 	}
+	log.Debugw("ballot proof inputs generated",
+		"duration", time.Since(stepStart),
+		"voteID", wasmResult.VoteID.String())
 
 	// Encode the inputs to json
 	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)
@@ -608,22 +607,35 @@ func createVote(
 	}
 
 	// Generate the proof using the circom circuit
+	log.Debugw("starting ballot proof generation", "voteID", wasmResult.VoteID.String())
+	stepStart = time.Now()
 	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate proof: %v", err)
 	}
+	log.Debugw("ballot proof generated",
+		"duration", time.Since(stepStart),
+		"voteID", wasmResult.VoteID.String())
 
 	// Convert the proof to gnark format
+	stepStart = time.Now()
 	circomProof, _, err := circomgnark.UnmarshalCircom(rawProof, pubInputs)
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to convert proof to gnark format: %v", err)
 	}
+	log.Debugw("ballot proof converted",
+		"duration", time.Since(stepStart),
+		"voteID", wasmResult.VoteID.String())
 
 	// Sign the hash of the circuit inputs
+	stepStart = time.Now()
 	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to sign vote: %v", err)
 	}
+	log.Debugw("vote signed",
+		"duration", time.Since(stepStart),
+		"voteID", wasmResult.VoteID.String())
 
 	// Return the vote ready to be sent to the sequencer
 	return api.Vote{

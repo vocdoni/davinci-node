@@ -151,7 +151,7 @@ func (s *Storage) markProcessVoteIDsTimeout(processID types.ProcessID) (int, err
 		return 0, fmt.Errorf("error committing timeout status updates: %w", err)
 	}
 
-	log.Debugw("marked vote IDs as timeout", "processID", fmt.Sprintf("%x", processID), "count", updatedCount)
+	log.Debugw("marked vote IDs as timeout", "processID", processID.String(), "count", updatedCount)
 	return updatedCount, nil
 }
 
@@ -173,7 +173,7 @@ func (s *Storage) setVoteIDStatus(processID types.ProcessID, voteID []byte, stat
 			// SETTLED is a final status - cannot be changed
 			if currentStatus == VoteIDStatusSettled {
 				log.Debugw("attempted to change settled vote status",
-					"processID", fmt.Sprintf("%x", processID),
+					"processID", processID.String(),
 					"voteID", fmt.Sprintf("%x", voteID),
 					"currentStatus", VoteIDStatusName(currentStatus),
 					"attemptedStatus", VoteIDStatusName(status))
@@ -183,7 +183,7 @@ func (s *Storage) setVoteIDStatus(processID types.ProcessID, voteID []byte, stat
 			// Validate status transition
 			if !isValidStatusTransition(currentStatus, status) {
 				log.Warnw("invalid vote status transition",
-					"processID", fmt.Sprintf("%x", processID),
+					"processID", processID.String(),
 					"voteID", fmt.Sprintf("%x", voteID),
 					"from", VoteIDStatusName(currentStatus),
 					"to", VoteIDStatusName(status))

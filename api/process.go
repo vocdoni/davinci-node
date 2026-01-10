@@ -220,7 +220,15 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the participant info
-	census, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+	censusRoot := process.Census.CensusRoot
+	census, err := a.storage.CensusDB().LoadByRoot(censusRoot)
+	if err != nil {
+		trimmed := censusRoot.LeftTrim()
+		if len(trimmed) > 0 && !trimmed.Equal(censusRoot) {
+			censusRoot = trimmed
+			census, err = a.storage.CensusDB().LoadByRoot(censusRoot)
+		}
+	}
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
 		return

@@ -69,7 +69,7 @@ func (s *Sequencer) processPendingTransitions() {
 		// If there are pending txs, skip this process ID
 		if s.stg.HasPendingTx(storage.StateTransitionTx, processID) {
 			log.Debugw("skipping state transition processing due to pending txs",
-				"processID", fmt.Sprintf("%x", processID))
+				"processID", processID.String())
 			return true // Continue to next process ID
 		}
 
