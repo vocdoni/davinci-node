@@ -2,7 +2,7 @@ module github.com/vocdoni/davinci-node
 
 go 1.25.1
 
-replace github.com/consensys/gnark => github.com/p4u/gnark v0.0.0-20251225172317-373b7ed338e2
+replace github.com/consensys/gnark => github.com/p4u/gnark v0.0.0-20260109114929-2f8a3858080a
 
 require (
 	github.com/attestantio/go-eth2-client v0.27.1
