@@ -94,6 +94,9 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 		BlobHashes: blobsSidecar.BlobHashes(),
 	}, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
 	if err != nil {
+		if reason, ok := c.DecodeError(err); ok {
+			return nil, fmt.Errorf("failed to estimate gas: %w (decoded: %s)", err, reason)
+		}
 		return nil, fmt.Errorf("failed to estimate gas: %w", err)
 	}
 

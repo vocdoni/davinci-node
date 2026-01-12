@@ -44,6 +44,9 @@ func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *com
 		p.LatestStateRoot,
 	)
 	if err != nil {
+		if reason, ok := c.DecodeError(err); ok {
+			return types.ProcessID{}, nil, fmt.Errorf("failed to create process: %w (decoded: %s)", err, reason)
+		}
 		return types.ProcessID{}, nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	hash := tx.Hash()
@@ -160,6 +163,9 @@ func (c *Contracts) SetProcessTransition(
 ) error {
 	txID, txHash, err := c.sendProcessTransition(processID, proof, inputs, blobsSidecar)
 	if err != nil {
+		if reason, ok := c.DecodeError(err); ok {
+			return fmt.Errorf("failed to set process transition: %w (decoded: %s)", err, reason)
+		}
 		return fmt.Errorf("failed to set process transition: %w", err)
 	}
 	log.Infow("waiting for state transition to be mined",
@@ -204,6 +210,9 @@ func (c *Contracts) SetProcessResults(
 ) error {
 	txID, txHash, err := c.sendProcessResults(processID, proof, inputs)
 	if err != nil {
+		if reason, ok := c.DecodeError(err); ok {
+			return fmt.Errorf("failed to set process results: %w (decoded: %s)", err, reason)
+		}
 		return fmt.Errorf("failed to set process results: %w", err)
 	}
 	log.Infow("waiting for process results to be mined",
@@ -226,6 +235,9 @@ func (c *Contracts) SetProcessStatus(processID types.ProcessID, status types.Pro
 	autOpts.Context = ctx
 	tx, err := c.processes.SetProcessStatus(autOpts, processID, uint8(status))
 	if err != nil {
+		if reason, ok := c.DecodeError(err); ok {
+			return nil, fmt.Errorf("failed to set process status: %w (decoded: %s)", err, reason)
+		}
 		return nil, fmt.Errorf("failed to set process status: %w", err)
 	}
 	hash := tx.Hash()
@@ -245,6 +257,9 @@ func (c *Contracts) SetProcessMaxVoters(processID types.ProcessID, maxVoters *ty
 	autOpts.Context = ctx
 	tx, err := c.processes.SetProcessMaxVoters(autOpts, processID, maxVoters.MathBigInt())
 	if err != nil {
+		if reason, ok := c.DecodeError(err); ok {
+			return nil, fmt.Errorf("failed to set process max voters: %w (decoded: %s)", err, reason)
+		}
 		return nil, fmt.Errorf("failed to set process max voters: %w", err)
 	}
 	hash := tx.Hash()
@@ -271,6 +286,9 @@ func (c *Contracts) SetProcessCensus(processID types.ProcessID, census types.Cen
 		CensusOrigin: uint8(census.CensusOrigin),
 	})
 	if err != nil {
+		if reason, ok := c.DecodeError(err); ok {
+			return nil, fmt.Errorf("failed to set process census: %w (decoded: %s)", err, reason)
+		}
 		return nil, fmt.Errorf("failed to set process census: %w", err)
 	}
 	hash := tx.Hash()
