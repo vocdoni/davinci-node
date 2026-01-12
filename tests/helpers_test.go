@@ -435,28 +435,6 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 	cleanupFuncs = append(cleanupFuncs, func() {
 		txm.Stop()
 	})
-	// Set contracts ABIs
-	contracts.ContractABIs = &web3.ContractABIs{}
-	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
-	if err != nil {
-		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
-	}
-	contracts.ContractABIs.OrganizationRegistry, err = contracts.OrganizationRegistryABI()
-	if err != nil {
-		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to get organization registry ABI: %w", err)
-	}
-	contracts.ContractABIs.StateTransitionZKVerifier, err = contracts.StateTransitionVerifierABI()
-	if err != nil {
-		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to get state transition verifier ABI: %w", err)
-	}
-	contracts.ContractABIs.ResultsZKVerifier, err = contracts.ResultsVerifierABI()
-	if err != nil {
-		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to get results verifier ABI: %w", err)
-	}
 	// Return the contracts object and cleanup function
 	return contracts, cleanup, nil
 }
