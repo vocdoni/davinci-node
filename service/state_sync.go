@@ -77,7 +77,7 @@ func (ss *StateSync) consumeQueue(ctx context.Context) {
 					log.Warnw("failed to sync state from blob",
 						"pid", process.ProcessID.String(),
 						"txHash", process.TxHash.String(),
-						"err", err.Error())
+						"error", err.Error())
 				}
 			}()
 		}

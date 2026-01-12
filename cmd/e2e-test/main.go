@@ -140,7 +140,7 @@ func main() {
 	// Add the web3rpcs to the contracts
 	for i := range *web3rpcs {
 		if err := contracts.AddWeb3Endpoint((*web3rpcs)[i]); err != nil {
-			log.Warnw("failed to add endpoint", "rpc", (*web3rpcs)[i], "err", err)
+			log.Warnw("failed to add endpoint", "rpc", (*web3rpcs)[i], "error", err)
 		}
 	}
 	// Set the private key for the account
@@ -181,7 +181,7 @@ func main() {
 				isConnected = true
 				break
 			}
-			log.Warnw("failed to ping sequencer", "status", status, "err", err)
+			log.Warnw("failed to ping sequencer", "status", status, "error", err)
 			time.Sleep(10 * time.Second)
 		}
 	}
@@ -397,7 +397,7 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 				isConnected = true
 				break
 			}
-			log.Warnw("failed to ping sequencer", "status", status, "err", err)
+			log.Warnw("failed to ping sequencer", "status", status, "error", err)
 			time.Sleep(10 * time.Second)
 		}
 	}
