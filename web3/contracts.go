@@ -24,7 +24,6 @@ import (
 	ethSigner "github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/web3/rpc"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
@@ -41,6 +40,27 @@ const (
 	// currentBlockIntervalUpdate is the interval to update the current block.
 	currentBlockIntervalUpdate = 5 * time.Second
 )
+
+var (
+	organizationRegistryABI      *abi.ABI
+	processRegistryABI           *abi.ABI
+	stateTransitionZKVerifierABI *abi.ABI
+	resultsZKVerifierABI         *abi.ABI
+)
+
+func init() {
+	parseABI := func(raw string) *abi.ABI {
+		parsedABI, err := abi.JSON(strings.NewReader(raw))
+		if err != nil {
+			panic(fmt.Errorf("failed to parse ABI: %w", err))
+		}
+		return &parsedABI
+	}
+	organizationRegistryABI = parseABI(npbindings.OrganizationRegistryMetaData.ABI)
+	processRegistryABI = parseABI(npbindings.ProcessRegistryMetaData.ABI)
+	stateTransitionZKVerifierABI = parseABI(vbindings.StateTransitionVerifierGroth16MetaData.ABI)
+	resultsZKVerifierABI = parseABI(vbindings.ResultsVerifierGroth16MetaData.ABI)
+}
 
 // Addresses contains the addresses of the contracts deployed in the network.
 type Addresses struct {
@@ -279,28 +299,11 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	c.processes = process
 	c.organizations = organizations
 
-	orgRegistryABI, err := abi.JSON(strings.NewReader(npbindings.OrganizationRegistryABI))
-	if err != nil {
-		return fmt.Errorf("failed to parse organization registry ABI: %w", err)
-	}
-	processRegistryABI, err := abi.JSON(strings.NewReader(npbindings.ProcessRegistryABI))
-	if err != nil {
-		return fmt.Errorf("failed to parse process registry ABI: %w", err)
-	}
-	stVerifierABI, err := abi.JSON(strings.NewReader(vbindings.StateTransitionVerifierGroth16ABI))
-	if err != nil {
-		return fmt.Errorf("failed to parse zk verifier ABI: %w", err)
-	}
-	rVerifierABI, err := abi.JSON(strings.NewReader(vbindings.ResultsVerifierGroth16ABI))
-	if err != nil {
-		return fmt.Errorf("failed to parse zk verifier ABI: %w", err)
-	}
-
 	c.ContractABIs = &ContractABIs{
-		OrganizationRegistry:      &orgRegistryABI,
-		ProcessRegistry:           &processRegistryABI,
-		StateTransitionZKVerifier: &stVerifierABI,
-		ResultsZKVerifier:         &rVerifierABI,
+		OrganizationRegistry:      organizationRegistryABI,
+		ProcessRegistry:           processRegistryABI,
+		StateTransitionZKVerifier: stateTransitionZKVerifierABI,
+		ResultsZKVerifier:         resultsZKVerifierABI,
 	}
 
 	// check for blob transaction support querying the ProcessRegistry contract
@@ -597,40 +600,16 @@ func (c *ContractABIs) forEachABI(fn func(fieldName string, a *abi.ABI) error) e
 }
 
 // ProcessRegistryABI returns the ABI of the ProcessRegistry contract.
-func (c *Contracts) ProcessRegistryABI() (*abi.ABI, error) {
-	processRegistryABI, err := abi.JSON(strings.NewReader(npbindings.ProcessRegistryABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse process registry ABI: %w", err)
-	}
-	return &processRegistryABI, nil
-}
+func (c *Contracts) ProcessRegistryABI() *abi.ABI { return processRegistryABI }
 
 // ResultsRegistryABI returns the ABI of the ResultsRegistry contract.
-func (c *Contracts) OrganizationRegistryABI() (*abi.ABI, error) {
-	organizationRegistryABI, err := abi.JSON(strings.NewReader(npbindings.OrganizationRegistryABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse organization registry ABI: %w", err)
-	}
-	return &organizationRegistryABI, nil
-}
+func (c *Contracts) OrganizationRegistryABI() *abi.ABI { return organizationRegistryABI }
 
 // StateTransitionVerifierABI returns the ABI of the ZKVerifier contract.
-func (c *Contracts) StateTransitionVerifierABI() (*abi.ABI, error) {
-	stVerifierABI, err := abi.JSON(strings.NewReader(vbindings.StateTransitionVerifierGroth16ABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse state transition zk verifier ABI: %w", err)
-	}
-	return &stVerifierABI, nil
-}
+func (c *Contracts) StateTransitionVerifierABI() *abi.ABI { return stateTransitionZKVerifierABI }
 
 // ResultsVerifierABI returns the ABI of the ResultsVerifier contract.
-func (c *Contracts) ResultsVerifierABI() (*abi.ABI, error) {
-	resultsVerifierABI, err := abi.JSON(strings.NewReader(vbindings.ResultsVerifierGroth16ABI))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse results zk verifier ABI: %w", err)
-	}
-	return &resultsVerifierABI, nil
-}
+func (c *Contracts) ResultsVerifierABI() *abi.ABI { return resultsZKVerifierABI }
 
 func (c *Contracts) ProcessRegistryAddress() (string, error) {
 	chainName, ok := npbindings.AvailableNetworksByID[uint32(c.ChainID)]
