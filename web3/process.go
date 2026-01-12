@@ -25,7 +25,7 @@ func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *com
 	// get the correct ID for the process that will be created
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx}, c.AccountAddress())
+	pidBytes, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx}, c.AccountAddress())
 	if err != nil {
 		return types.ProcessID{}, nil, fmt.Errorf("failed to get next process ID: %w", err)
 	}
@@ -47,7 +47,7 @@ func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *com
 		return types.ProcessID{}, nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	hash := tx.Hash()
-	return types.ProcessID(pid), &hash, nil
+	return types.ProcessID(pidBytes), &hash, nil
 }
 
 // Process returns the process with the given ID from the ProcessRegistry
@@ -75,11 +75,11 @@ func (c *Contracts) NextProcessID(address common.Address) (types.ProcessID, erro
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
-	pid, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx}, address)
+	pidBytes, err := c.processes.GetNextProcessId(&bind.CallOpts{Context: ctx}, address)
 	if err != nil {
 		return types.ProcessID{}, fmt.Errorf("failed to get next process ID: %w", err)
 	}
-	processID := types.ProcessID(pid)
+	processID := types.ProcessID(pidBytes)
 	if !processID.IsValid() {
 		return types.ProcessID{}, fmt.Errorf("invalid process ID: %s", processID.String())
 	}

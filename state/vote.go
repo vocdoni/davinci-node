@@ -114,8 +114,8 @@ func (o *State) ContainsAddress(address *types.BigInt) bool {
 // the state at the process's state root and checks for the address. If found,
 // it returns true, otherwise false. If there's an error opening the state or
 // during the check, it returns the error.
-func HasAddressVoted(db db.Database, pid types.ProcessID, stateRoot, address *types.BigInt) (bool, error) {
-	s, err := LoadOnRoot(db, pid, stateRoot.MathBigInt())
+func HasAddressVoted(db db.Database, processID types.ProcessID, stateRoot, address *types.BigInt) (bool, error) {
+	s, err := LoadOnRoot(db, processID, stateRoot.MathBigInt())
 	if err != nil {
 		return false, fmt.Errorf("could not open state: %v", err)
 	}

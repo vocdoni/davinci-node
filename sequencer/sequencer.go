@@ -40,7 +40,7 @@ type Sequencer struct {
 	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
 	ctx                context.Context
 	cancel             context.CancelFunc
-	pids               *ProcessIDMap    // Maps process IDs to their last update time
+	processIDs         *ProcessIDMap    // Maps process IDs to their last update time
 	workInProgressLock sync.RWMutex     // Lock to block new work while processing a batch or a state transition
 	prover             types.ProverFunc // Function for generating zero-knowledge proofs
 	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
@@ -83,7 +83,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		stg:             stg,
 		contracts:       contracts,
 		batchTimeWindow: batchTimeWindow,
-		pids:            NewProcessIDMap(),
+		processIDs:      NewProcessIDMap(),
 		prover:          prover.DefaultProver,
 	}
 	// Load the internal circuits
@@ -232,7 +232,7 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 // Only ballots belonging to registered process IDs will be processed.
 // If the process ID is already registered, this operation has no effect.
 func (s *Sequencer) AddProcessID(processID types.ProcessID) {
-	if s.pids.Add(processID) {
+	if s.processIDs.Add(processID) {
 		log.Infow("process ID registered for sequencing", "processID", processID.String())
 	}
 }
@@ -240,14 +240,14 @@ func (s *Sequencer) AddProcessID(processID types.ProcessID) {
 // DelProcessID unregisters a process ID from the sequencer.
 // If the process ID is not registered, this operation has no effect.
 func (s *Sequencer) DelProcessID(processID types.ProcessID) {
-	if s.pids.Remove(processID) {
+	if s.processIDs.Remove(processID) {
 		log.Infow("process ID unregistered from sequencing", "processID", processID.String())
 	}
 }
 
 // ExistsProcessID checks if a process ID is registered with the sequencer.
 func (s *Sequencer) ExistsProcessID(processID types.ProcessID) bool {
-	return s.pids.Exists(processID)
+	return s.processIDs.Exists(processID)
 }
 
 // SetBatchTimeWindow sets the maximum time window to wait for a batch to be processed.
@@ -259,7 +259,7 @@ func (s *Sequencer) SetBatchTimeWindow(window time.Duration) {
 // ActiveProcessIDs returns a list of process IDs that are currently being tracked
 // by the sequencer.
 func (s *Sequencer) ActiveProcessIDs() []types.ProcessID {
-	return s.pids.List()
+	return s.processIDs.List()
 }
 
 // SetProver sets a custom prover function for the Sequencer.

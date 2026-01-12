@@ -23,11 +23,11 @@ const ProcessIDLen = 32
 
 // NewProcessID builds a ProcessID using the passed params.
 func NewProcessID(addr common.Address, version [4]byte, nonce uint64) ProcessID {
-	var pid ProcessID
-	copy(pid[0:20], addr.Bytes())
-	copy(pid[20:24], version[:])
-	binary.BigEndian.PutUint64(pid[24:32], nonce)
-	return pid
+	var processID ProcessID
+	copy(processID[0:20], addr.Bytes())
+	copy(processID[20:24], version[:])
+	binary.BigEndian.PutUint64(processID[24:32], nonce)
+	return processID
 }
 
 // HexStringToProcessID parses a ProcessID from a hex string.
@@ -44,11 +44,11 @@ func HexStringToProcessID(s string) (ProcessID, error) {
 		return ProcessID{}, fmt.Errorf("could not decode hex string: %w", err)
 	}
 
-	var pid ProcessID
-	if err := pid.UnmarshalBinary(b); err != nil {
+	var processID ProcessID
+	if err := processID.UnmarshalBinary(b); err != nil {
 		return ProcessID{}, err
 	}
-	return pid, nil
+	return processID, nil
 }
 
 func BytesToProcessID(data []byte) (ProcessID, error) {

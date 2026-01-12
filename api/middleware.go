@@ -157,25 +157,25 @@ func skipUnknownProcessIDMiddleware(currentVersion [4]byte) func(http.Handler) h
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if the route contains a process id
-			pidStr := chi.URLParam(r, ProcessURLParam)
-			if pidStr == "" {
+			processIDStr := chi.URLParam(r, ProcessURLParam)
+			if processIDStr == "" {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			pid, err := types.HexStringToProcessID(pidStr)
+			processID, err := types.HexStringToProcessID(processIDStr)
 			if err != nil {
 				ErrMalformedProcessID.Withf("could not parse process ID: %v", err).Write(w)
 				return
 			}
 
 			// Check if the process id is valid
-			if !pid.IsValid() {
-				ErrMalformedProcessID.Withf("invalid process ID: %s", pidStr).Write(w)
+			if !processID.IsValid() {
+				ErrMalformedProcessID.Withf("invalid process ID: %s", processIDStr).Write(w)
 				return
 			}
 			// Check if the version matches the current expected version
-			if pid.Version() != currentVersion {
+			if processID.Version() != currentVersion {
 				http.NotFound(w, r)
 				return
 			}

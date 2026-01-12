@@ -69,15 +69,15 @@ func (m *MockContracts) CreateProcess(process *types.Process) (types.ProcessID, 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	pid := types.NewProcessID(
+	processID := types.NewProcessID(
 		process.OrganizationId,
 		[4]byte{0x00, 0x00, 0x00, 0x01},
 		uint64(len(m.processes)),
 	)
-	process.ID = &pid
+	process.ID = &processID
 	m.processes = append(m.processes, process)
 	hash := common.HexToHash("0x1234567890")
-	return pid, &hash, nil
+	return processID, &hash, nil
 }
 
 func (m *MockContracts) AccountAddress() common.Address {

@@ -212,11 +212,11 @@ results_abi_proof=$(extract_field "$results_line" "abiProof") || {
 if [[ -n "${ORGANIZATION_ADDRESS:-}" ]]; then
     organization_address=$ORGANIZATION_ADDRESS
 else
-    pid_value=$(extract_field "$valid_line" "pid") || {
+    processid_value=$(extract_field "$valid_line" "processID") || {
         echo "error: missing process id" >&2
         exit 1
     }
-    organization_address=${pid_value:0:42}
+    organization_address=${processid_value:0:42}
 fi
 
 mapfile -t st_ar < <(jq -r '.proof.Ar[]' "$valid_proof_json")

@@ -386,9 +386,9 @@ func (s *Sequencer) startAggregateProcessor(tickerInterval time.Duration) error 
 // any batches that are ready for processing.
 func (s *Sequencer) processPendingBatches() {
 	// Process each registered process ID
-	s.pids.ForEach(func(pid types.ProcessID, lastUpdate time.Time) bool {
+	s.processIDs.ForEach(func(processID types.ProcessID, lastUpdate time.Time) bool {
 		// Check if this batch is ready for processing
-		ballotCount := s.stg.CountVerifiedBallots(pid)
+		ballotCount := s.stg.CountVerifiedBallots(processID)
 
 		// If there are no ballots, skip this process ID
 		if ballotCount == 0 {
@@ -397,15 +397,15 @@ func (s *Sequencer) processPendingBatches() {
 
 		// If we have enough ballots for a full batch, process it regardless of time
 		if ballotCount >= params.VotesPerBatch {
-			return s.processAndUpdateBatch(pid)
+			return s.processAndUpdateBatch(processID)
 		}
 
 		// Otherwise, check if we have a first ballot timestamp and if enough time has passed
-		firstBallotTime, hasFirstBallot := s.pids.GetFirstBallotTime(pid)
+		firstBallotTime, hasFirstBallot := s.processIDs.GetFirstBallotTime(processID)
 
 		// If we don't have a first ballot timestamp yet, set it now
 		if !hasFirstBallot {
-			s.pids.SetFirstBallotTime(pid)
+			s.processIDs.SetFirstBallotTime(processID)
 			return true // Continue to next process ID
 		}
 
@@ -416,7 +416,7 @@ func (s *Sequencer) processPendingBatches() {
 		}
 
 		// If we're here, we have some ballots and the time window has elapsed
-		return s.processAndUpdateBatch(pid)
+		return s.processAndUpdateBatch(processID)
 	})
 }
 
@@ -431,7 +431,7 @@ func (s *Sequencer) processAndUpdateBatch(processID types.ProcessID) bool {
 	}
 
 	// Clear the first ballot timestamp since we've processed the batch
-	s.pids.ClearFirstBallotTime(processID)
+	s.processIDs.ClearFirstBallotTime(processID)
 
 	return true // Continue to next process ID
 }
@@ -441,7 +441,7 @@ func (s *Sequencer) processAndUpdateBatch(processID types.ProcessID) bool {
 // suitable for the aggregator circuit, generates a proof, and stores the result.
 //
 // Parameters:
-//   - pid: The process ID for which to aggregate ballots
+//   - processID: The process ID for which to aggregate ballots
 //
 // Returns an error if the aggregation process fails at any step.
 func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {

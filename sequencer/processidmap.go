@@ -93,22 +93,22 @@ func (p *ProcessIDMap) Get(processID types.ProcessID) (time.Time, bool) {
 // ensuring long-running operations don't block other map operations.
 func (p *ProcessIDMap) ForEach(f func(processID types.ProcessID, t time.Time) bool) {
 	// Create a copy of the data we need to iterate over
-	type pidItem struct {
-		pid  types.ProcessID
-		time time.Time
+	type item struct {
+		processID types.ProcessID
+		time      time.Time
 	}
 
 	// Take a lock only long enough to create a copy of the map data
 	p.mu.RLock()
-	items := make([]pidItem, 0, len(p.data))
-	for pid, t := range p.data {
-		items = append(items, pidItem{pid: pid, time: t})
+	items := make([]item, 0, len(p.data))
+	for processID, t := range p.data {
+		items = append(items, item{processID: processID, time: t})
 	}
 	p.mu.RUnlock() // Release the lock before executing callbacks
 
 	// Process the copied data without holding the lock
 	for _, item := range items {
-		if !f(item.pid, item.time) {
+		if !f(item.processID, item.time) {
 			break
 		}
 	}

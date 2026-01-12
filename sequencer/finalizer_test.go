@@ -36,7 +36,7 @@ func TestFinalize(t *testing.T) {
 	c := qt.New(t)
 
 	// Setup test environment
-	stg, stateDB, pid, _, _, _, cleanup := setupTestEnvironment(t, 10000, 5000)
+	stg, stateDB, procesSID, _, _, _, cleanup := setupTestEnvironment(t, 10000, 5000)
 	defer cleanup()
 
 	// Create a finalizer
@@ -44,12 +44,12 @@ func TestFinalize(t *testing.T) {
 	f.Start(t.Context(), 0)
 
 	// Test finalize
-	f.OndemandCh <- pid
-	_, err := f.WaitUntilResults(t.Context(), pid)
+	f.OndemandCh <- procesSID
+	_, err := f.WaitUntilResults(t.Context(), procesSID)
 	c.Assert(err, qt.IsNil, qt.Commentf("finalize failed: %v", err))
 
 	// Check that the process has been updated with the result
-	process, err := stg.Process(pid)
+	process, err := stg.Process(procesSID)
 	c.Assert(err, qt.IsNil)
 	c.Assert(process.Result, qt.Not(qt.IsNil))
 
@@ -87,7 +87,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	stateDB := stg.StateDB()
 
 	// Create a process ID
-	pid := testutil.DeterministicProcessID(42)
+	processID := testutil.DeterministicProcessID(42)
 
 	// Create encryption keys
 	curve := curves.New(bjj.CurveType)
@@ -97,13 +97,13 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	}
 
 	// Store the keys in storage
-	err = stg.SetEncryptionKeys(pid, pubKey, privKey)
+	err = stg.SetEncryptionKeys(processID, pubKey, privKey)
 	if err != nil {
 		t.Fatalf("failed to store encryption keys: %v", err)
 	}
 	// Create a process
 	process := &types.Process{
-		ID:          &pid,
+		ID:          &processID,
 		Status:      0,
 		StartTime:   time.Now(),
 		Duration:    time.Hour,
@@ -119,14 +119,14 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 		t.Fatalf("failed to store process: %v", err)
 	}
 
-	process, err = stg.Process(pid)
+	process, err = stg.Process(processID)
 	if err != nil {
 		t.Fatalf("failed to get process: %v", err)
 	}
 
 	// Setup state with test data
-	process.StateRoot = setupTestState(t, stateDB, pid, pubKey, process.StateRoot.MathBigInt(), addValue, subValue)
-	err = stg.UpdateProcess(pid, func(p *types.Process) error {
+	process.StateRoot = setupTestState(t, stateDB, processID, pubKey, process.StateRoot.MathBigInt(), addValue, subValue)
+	err = stg.UpdateProcess(processID, func(p *types.Process) error {
 		p.StateRoot = process.StateRoot
 		return nil
 	})
@@ -139,7 +139,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 		stg.Close()
 	}
 
-	return stg, stateDB, pid, curve, pubKey, privKey, cleanup
+	return stg, stateDB, processID, curve, pubKey, privKey, cleanup
 }
 
 // setupTestState initializes the state with encrypted test data

@@ -48,7 +48,7 @@ func (s *Sequencer) startStateTransitionProcessor() error {
 
 func (s *Sequencer) processPendingTransitions() {
 	// Process each registered process ID
-	s.pids.ForEach(func(processID types.ProcessID, _ time.Time) bool {
+	s.processIDs.ForEach(func(processID types.ProcessID, _ time.Time) bool {
 		// Check if there is a batch ready for processing
 		batch, batchID, err := s.stg.NextAggregatorBatch(processID)
 		if err != nil {
@@ -162,7 +162,7 @@ func (s *Sequencer) processPendingTransitions() {
 
 		log.Infow("state transition proof generated",
 			"took", time.Since(startTime).String(),
-			"pid", processID.String(),
+			"processID", processID.String(),
 			"rootHashBefore", rootHashBefore.String(),
 			"rootHashAfter", rootHashAfter.String(),
 			"blobHash", blobSidecar.BlobHashes()[0].String(),
@@ -209,8 +209,8 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 		// Update the last update time by re-adding the process ID
-		s.pids.Add(processID) // This will update the timestamp
-		return true           // Continue to next process ID
+		s.processIDs.Add(processID) // This will update the timestamp
+		return true                 // Continue to next process ID
 	})
 }
 
@@ -288,14 +288,14 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 	}
 }
 
-func (s *Sequencer) reencryptVotes(pid types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
+func (s *Sequencer) reencryptVotes(processID types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
 	// generate a initial k to reencrypt the ballots
 	kSeed, err := elgamal.RandK()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate random k: %w", err)
 	}
 	// get encryption key from the storage
-	encryptionKey, _, err := s.stg.EncryptionKeys(pid)
+	encryptionKey, _, err := s.stg.EncryptionKeys(processID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get encryption key: %w", err)
 	}
@@ -318,7 +318,7 @@ func (s *Sequencer) reencryptVotes(pid types.ProcessID, votes []*storage.Aggrega
 			ReencryptedBallot: reencryptedBallot,
 		}
 	}
-	log.Infow("votes reencrypted", "processID", pid.String(), "len(votes)", len(reencryptedVotes))
+	log.Infow("votes reencrypted", "processID", processID.String(), "len(votes)", len(reencryptedVotes))
 	return reencryptedVotes, new(types.BigInt).SetBigInt(kSeed), nil
 }
 
@@ -368,12 +368,12 @@ func (s *Sequencer) stateBatchToWitness(
 }
 
 func (s *Sequencer) processCensusProofs(
-	pid types.ProcessID,
+	processID types.ProcessID,
 	votes []*state.Vote,
 	censusProofs []*types.CensusProof,
 ) (*types.BigInt, *statetransition.CensusProofs, error) {
 	// get the process from the storage
-	process, err := s.stg.Process(pid)
+	process, err := s.stg.Process(processID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}

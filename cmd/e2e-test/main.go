@@ -207,16 +207,16 @@ func main() {
 		"participants", len(signers))
 
 	// Create a new process with mocked ballot mode
-	pid, encryptionKey, err := createProcess(testCtx, contracts, cli, censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
+	processID, encryptionKey, err := createProcess(testCtx, contracts, cli, censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
 	if err != nil {
 		log.Errorw(err, "failed to create process")
 		return
 	}
-	log.Infow("process created", "pid", pid.String())
+	log.Infow("process created", "processID", processID.String())
 
 	// Generate votes for each participant and send them to the sequencer
 	{
-		votes, err := createVotes(signers, pid, encryptionKey)
+		votes, err := createVotes(signers, processID, encryptionKey)
 		if err != nil {
 			log.Errorw(err, "failed to create votes")
 			return
@@ -230,7 +230,7 @@ func main() {
 		// Wait for the votes to be registered in the smart contract
 		log.Info("all votes sent, waiting for votes to be registered in smart contract...")
 
-		if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, 0); err != nil {
+		if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, 0); err != nil {
 			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 			return
 		}
@@ -242,7 +242,7 @@ func main() {
 	overwrittenVotesCount := 0
 	for i, sequencer := range sequencers {
 		log.Infof("now overwriting votes, using sequencer %d: %s", i, sequencer)
-		votes, err := createVotes(overwriters, pid, encryptionKey)
+		votes, err := createVotes(overwriters, processID, encryptionKey)
 		if err != nil {
 			log.Errorw(err, "failed to create vote overwrites")
 			return
@@ -256,7 +256,7 @@ func main() {
 		// Wait for the votes to be registered in the smart contract
 		log.Info("all overwrite votes sent, waiting for votes to be registered in smart contract...")
 
-		if err := waitUntilSmartContractCounts(testCtx, contracts, pid, *votersCount, overwrittenVotesCount); err != nil {
+		if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, overwrittenVotesCount); err != nil {
 			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 			return
 		}
@@ -264,20 +264,20 @@ func main() {
 
 	log.Info("finishing the process in the smart contract...")
 	// finish the process in the smart contract
-	if err := finishProcessOnChain(contracts, pid); err != nil {
+	if err := finishProcessOnChain(contracts, processID); err != nil {
 		log.Errorw(err, "failed to finish process in smart contract")
 		return
 	}
-	log.Infow("process finished in smart contract", "pid", pid.String())
+	log.Infow("process finished in smart contract", "processID", processID.String())
 	// Wait for the process to be finished in the sequencer
 	resultsCtx, cancel := context.WithTimeout(testCtx, 2*time.Minute)
 	defer cancel()
-	results, err := waitForOnChainResults(resultsCtx, contracts, pid)
+	results, err := waitForOnChainResults(resultsCtx, contracts, processID)
 	if err != nil {
 		log.Errorw(err, "failed to wait for on-chain results")
 		return
 	}
-	log.Infow("on-chain results received", "pid", pid.String(), "results", results)
+	log.Infow("on-chain results received", "processID", processID.String(), "results", results)
 }
 
 type localService struct {
@@ -511,7 +511,7 @@ func createProcess(
 		},
 	}
 	// Create process in the contracts
-	pid, txHash, err := contracts.CreateProcess(newProcess)
+	processID, txHash, err := contracts.CreateProcess(newProcess)
 	if err != nil {
 		return types.ProcessID{}, nil, fmt.Errorf("failed to create process in contracts: %v", err)
 	}
@@ -527,7 +527,7 @@ func createProcess(
 	for processReady := false; !processReady; {
 		select {
 		case <-time.After(time.Second * 5):
-			pBytes, status, err := cli.Request(http.MethodGet, nil, nil, api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String()))
+			pBytes, status, err := cli.Request(http.MethodGet, nil, nil, api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, processID.String()))
 			if err == nil && status == http.StatusOK {
 				proc := &api.ProcessResponse{}
 				if err := json.Unmarshal(pBytes, proc); err != nil {
@@ -540,13 +540,13 @@ func createProcess(
 		}
 	}
 	time.Sleep(5 * time.Second) // wait a bit more to ensure everything is set up
-	return pid, encryptionKeys, nil
+	return processID, encryptionKeys, nil
 }
 
-func createVotes(signers []*ethereum.Signer, pid types.ProcessID, encryptionKey *types.EncryptionKey) ([]api.Vote, error) {
+func createVotes(signers []*ethereum.Signer, processID types.ProcessID, encryptionKey *types.EncryptionKey) ([]api.Vote, error) {
 	votes := make([]api.Vote, 0, len(signers))
 	for _, signer := range signers {
-		vote, err := createVote(signer, pid, encryptionKey, ballotMode)
+		vote, err := createVote(signer, processID, encryptionKey, ballotMode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create vote: %w", err)
 		}
@@ -557,7 +557,7 @@ func createVotes(signers []*ethereum.Signer, pid types.ProcessID, encryptionKey 
 
 func createVote(
 	privKey *ethereum.Signer,
-	pid types.ProcessID,
+	processID types.ProcessID,
 	encKey *types.EncryptionKey,
 	bm *types.BallotMode,
 ) (api.Vote, error) {
@@ -584,7 +584,7 @@ func createVote(
 	// Compose wasm inputs
 	wasmInputs := &ballotproof.BallotProofInputs{
 		Address:   address.Bytes(),
-		ProcessID: pid,
+		ProcessID: processID,
 		EncryptionKey: []*types.BigInt{
 			(*types.BigInt)(encKey.X),
 			(*types.BigInt)(encKey.Y),
@@ -654,7 +654,7 @@ func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
 func waitUntilSmartContractCounts(
 	ctx context.Context,
 	contracts *web3.Contracts,
-	pid types.ProcessID,
+	processID types.ProcessID,
 	votersCount, overwrittenVotesCount int,
 ) error {
 	ticker := time.NewTicker(time.Second * 30)
@@ -666,7 +666,7 @@ func waitUntilSmartContractCounts(
 			}
 			return fmt.Errorf("process creation timeout: %v", ctx.Err())
 		case <-ticker.C:
-			process, err := contracts.Process(pid)
+			process, err := contracts.Process(processID)
 			if err != nil {
 				return fmt.Errorf("failed to get process: %v", err)
 			}
@@ -675,7 +675,7 @@ func waitUntilSmartContractCounts(
 			}
 			// Get the voters count from the process
 			if process.VotersCount != nil && process.OverwrittenVotesCount != nil {
-				log.Debugw("polled smart contract counters", "pid", pid.String(),
+				log.Debugw("polled smart contract counters", "processID", processID.String(),
 					"targetVoters", votersCount, "targetOverwritten", overwrittenVotesCount,
 					"votersCount", process.VotersCount, "overwrittenVotesCount", process.OverwrittenVotesCount)
 				if process.VotersCount.MathBigInt().Int64() >= int64(votersCount) &&
@@ -687,8 +687,8 @@ func waitUntilSmartContractCounts(
 	}
 }
 
-func finishProcessOnChain(contracts *web3.Contracts, pid types.ProcessID) error {
-	finishTx, err := contracts.SetProcessStatus(pid, types.ProcessStatusEnded)
+func finishProcessOnChain(contracts *web3.Contracts, processID types.ProcessID) error {
+	finishTx, err := contracts.SetProcessStatus(processID, types.ProcessStatusEnded)
 	if err != nil {
 		return fmt.Errorf("failed to finish process: %v", err)
 	}
@@ -698,13 +698,13 @@ func finishProcessOnChain(contracts *web3.Contracts, pid types.ProcessID) error 
 	return nil
 }
 
-func waitForOnChainResults(ctx context.Context, contracts *web3.Contracts, pid types.ProcessID) ([]*types.BigInt, error) {
+func waitForOnChainResults(ctx context.Context, contracts *web3.Contracts, processID types.ProcessID) ([]*types.BigInt, error) {
 	ticker := time.NewTicker(time.Second * 30)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			process, err := contracts.Process(pid)
+			process, err := contracts.Process(processID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get process: %v", err)
 			}
