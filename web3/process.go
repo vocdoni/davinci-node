@@ -319,7 +319,7 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil, nil)
 				cancel()
 				if err != nil || iter == nil {
-					log.Debugw("failed to filter process created, retrying", "err", err)
+					log.Debugw("failed to filter process created, retrying", "error", err)
 					continue
 				}
 				// Update cursor after successful query

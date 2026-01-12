@@ -58,13 +58,13 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	if process.EncryptionKey != nil {
 		if err := s.setEncryptionPubKeyUnsafe(*process.ID, process.EncryptionKey); err != nil {
 			log.Warnw("failed to store encryption keys for process",
-				"pid", process.ID.String(), "err", err.Error())
+				"pid", process.ID.String(), "error", err.Error())
 		}
 	} else { // otherwise fetch or generate encryption keys for the process
 		publicKey, _, err := s.fetchOrGenerateEncryptionKeysUnsafe(*process.ID)
 		if err != nil {
 			log.Warnw("failed to fetch or generate encryption keys for process",
-				"pid", process.ID.String(), "err", err.Error())
+				"pid", process.ID.String(), "error", err.Error())
 		}
 		ek := types.EncryptionKeyFromPoint(publicKey)
 		process.EncryptionKey = &ek

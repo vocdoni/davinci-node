@@ -104,7 +104,7 @@ func (tm *TxManager) EstimateGas(
 			tipCap, err = tm.cli.SuggestGasTipCap(internalCtx)
 			return err
 		}); err != nil {
-			log.Warnw("failed to get tip cap", "err", err)
+			log.Warnw("failed to get tip cap", "error", err)
 		}
 		// Get base fee with retries
 		var baseFee *big.Int
@@ -113,7 +113,7 @@ func (tm *TxManager) EstimateGas(
 			baseFee, err = tm.cli.SuggestGasPrice(internalCtx)
 			return err
 		}); err != nil {
-			log.Warnw("failed to get base fee", "err", err)
+			log.Warnw("failed to get base fee", "error", err)
 		}
 		// Set fee caps if we obtained them
 		if tipCap != nil && baseFee != nil {

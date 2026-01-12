@@ -174,7 +174,7 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 				)); err != nil {
 				log.Warnw("failed to sync process from blockchain",
 					"pid", pid.String(),
-					"err", err)
+					"error", err)
 				continue
 			}
 
@@ -216,7 +216,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				if err := pm.storage.NewProcess(process); err != nil {
 					log.Warnw("failed to store new process",
 						"pid", process.ID.String(),
-						"err", err.Error())
+						"error", err.Error())
 				}
 				log.Debugw("process created", "pid", process.ID.String(), "stateRoot", process.StateRoot.String())
 			}
@@ -235,7 +235,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 						log.Warnw("failed to download census for new process",
 							"pid", process.ID.String(),
 							"censusRoot", process.Census.CensusRoot.String(),
-							"err", err.Error())
+							"error", err.Error())
 						return
 					}
 					processSetup()
@@ -257,12 +257,12 @@ func (pm *ProcessMonitor) monitorProcesses(
 				)); err != nil {
 					log.Warnw("failed to update process status",
 						"pid", update.ProcessID.String(),
-						"err", err.Error())
+						"error", err.Error())
 				}
 				if update.NewStatus == types.ProcessStatusResults {
 					if err := pm.storage.CleanProcessStaleVotes(update.ProcessID); err != nil {
 						log.Warnw("failed to clean stale votes after process finalization",
-							"pid", update.ProcessID.String(), "err", err.Error())
+							"pid", update.ProcessID.String(), "error", err.Error())
 					}
 				}
 			case update.StateRootChange != nil:
@@ -279,7 +279,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				)); err != nil {
 					log.Warnw("failed to update process state root",
 						"pid", update.ProcessID.String(),
-						"err", err.Error())
+						"error", err.Error())
 				}
 				// Notify StateSync service for blob fetching and state reconstruction (non-blocking)
 				if pm.statesync != nil {
@@ -296,7 +296,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				)); err != nil {
 					log.Warnw("failed to update process max voters",
 						"pid", update.ProcessID.String(),
-						"err", err.Error())
+						"error", err.Error())
 				}
 			case update.CensusRootChange != nil:
 				// fetch the process to get the current census info
@@ -304,7 +304,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				if err != nil {
 					log.Warnw("received update for unknown process",
 						"pid", update.ProcessID.String(),
-						"err", err.Error())
+						"error", err.Error())
 					continue
 				}
 				// process census root change
@@ -325,7 +325,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 						log.Warnw("failed to download updated census for process",
 							"pid", update.ProcessID.String(),
 							"censusRoot", update.NewCensusRoot.String(),
-							"err", err.Error())
+							"error", err.Error())
 						return
 					}
 					log.Debugw("new process census downloaded",
@@ -339,7 +339,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					)); err != nil {
 						log.Warnw("failed to update process census root",
 							"pid", update.ProcessID.String(),
-							"err", err.Error())
+							"error", err.Error())
 					}
 					log.Infow("process census updated",
 						"pid", update.ProcessID.String(),

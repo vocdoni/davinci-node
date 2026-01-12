@@ -347,7 +347,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 				res, err := http.Get(endpoint)
 				if err != nil {
 					log.Infow("waiting for contracts to be deployed",
-						"err", err,
+						"error", err,
 						"deployUrl", endpoint)
 					continue
 				}

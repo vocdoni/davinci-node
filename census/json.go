@@ -75,7 +75,7 @@ func (jsonImporter) DownloadAndImportCensus(
 			log.Warnw("failed to close JSON dump response body",
 				"root", expectedRoot.String(),
 				"uri", targetURI,
-				"err", err.Error())
+				"error", err.Error())
 		}
 	}()
 	// Create a reader that detects the JSON format
