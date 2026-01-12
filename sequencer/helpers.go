@@ -49,7 +49,7 @@ func (s *Sequencer) currentProcessState(processID types.ProcessID) (*state.State
 	}
 
 	log.Debugw("using current in-construction state",
-		"pid", processID.String(),
+		"processID", processID.String(),
 		"currentRoot", currentRoot.String())
 
 	return st, nil

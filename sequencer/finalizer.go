@@ -68,7 +68,7 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 		defer f.wg.Done()
 		for {
 			select {
-			case pid := <-f.OndemandCh:
+			case processID := <-f.OndemandCh:
 				go func(processID types.ProcessID) {
 					// Check if process is marked as invalid (thread-safe)
 					if _, isInvalid := f.invalidProcesses.Load(processID); !isInvalid {
@@ -76,7 +76,7 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 							log.Errorw(err, fmt.Sprintf("finalizing process %s", processID.String()))
 						}
 					}
-				}(pid) // Use a goroutine to avoid blocking the channel
+				}(processID) // Use a goroutine to avoid blocking the channel
 			case <-f.ctx.Done():
 				return
 			}
@@ -159,12 +159,12 @@ func (f *finalizer) Close() {
 // result yet. It retrieves the process IDs from storage, checks if they are
 // finalized, and if not, sends them to the OndemandCh channel for processing.
 func (f *finalizer) finalizeEnded() {
-	pids, err := f.stg.ListEndedProcessWithEncryptionKeys()
+	processIDs, err := f.stg.ListEndedProcessWithEncryptionKeys()
 	if err != nil {
 		log.Errorw(err, "could not list ended processes")
 		return
 	}
-	for _, processID := range pids {
+	for _, processID := range processIDs {
 		// Skip invalid processes (thread-safe check)
 		if _, isInvalid := f.invalidProcesses.Load(processID); isInvalid {
 			continue
@@ -213,7 +213,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 
 	// Check if the process is already finalized
 	if process.Status == types.ProcessStatusResults || process.Status == types.ProcessStatusCanceled || process.Result != nil {
-		log.Debugw("process already finalized, skipping", "pid", processID.String())
+		log.Debugw("process already finalized, skipping", "processID", processID.String())
 		return nil
 	}
 
@@ -228,7 +228,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		return fmt.Errorf("state root does not exist in state DB %s: %w", process.StateRoot.String(), err)
 	}
 
-	log.Debugw("finalizing process", "pid", processID.String(), "stateRoot", process.StateRoot.String())
+	log.Debugw("finalizing process", "processID", processID.String(), "stateRoot", process.StateRoot.String())
 
 	// Verify that the local state root matches the contract state root
 	// This ensures we're computing results on the correct, up-to-date state
@@ -243,7 +243,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 			return fmt.Errorf("local state root mismatch with contract for process %s: local=%s, contract=%s",
 				processID.String(), process.StateRoot.String(), contractStateRoot.String())
 		}
-		log.Debugw("state root verified against contract", "pid", processID.String(), "stateRoot", process.StateRoot.String())
+		log.Debugw("state root verified against contract", "processID", processID.String(), "stateRoot", process.StateRoot.String())
 	}
 
 	// Fetch the encryption key
@@ -312,7 +312,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 			return fmt.Errorf("could not build decryption proof for add accumulator for process %s: %w", processID.String(), err)
 		}
 	}
-	log.Debugw("decrypted add accumulator", "pid", processID.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
+	log.Debugw("decrypted add accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
 
 	startTime = time.Now()
 	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
@@ -338,7 +338,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		}
 		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
 	}
-	log.Debugw("decrypted sub accumulator", "pid", processID.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
+	log.Debugw("decrypted sub accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
 
 	// Generate the witness for the circuit
 	resultsVerifierWitness, err := results.GenerateWitness(

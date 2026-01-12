@@ -54,7 +54,7 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 		addresses: make(map[string]struct{}),
 	}
 
-	pid := testutil.FixedProcessID()
+	processID := testutil.FixedProcessID()
 	ballots := make([]*storage.VerifiedBallot, 0, params.VotesPerBatch+1)
 	keys := make([][]byte, 0, params.VotesPerBatch+1)
 
@@ -75,7 +75,7 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 		return stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}, nil
 	}
 
-	inputs, err := collectAggregationBatchInputs(stg, pid, ballots, keys, processState, false, proofToRecursion, nil)
+	inputs, err := collectAggregationBatchInputs(stg, processID, ballots, keys, processState, false, proofToRecursion, nil)
 	c.Assert(err, qt.IsNil)
 
 	c.Assert(len(inputs.AggBallots), qt.Equals, params.VotesPerBatch)

@@ -60,7 +60,7 @@ func (s *Sequencer) startOnchainProcessor() error {
 // uploaded on-chain for each registered process ID.
 func (s *Sequencer) processTransitionOnChain() {
 	// process each registered process ID
-	s.pids.ForEach(func(processID types.ProcessID, _ time.Time) bool {
+	s.processIDs.ForEach(func(processID types.ProcessID, _ time.Time) bool {
 		// get a batch ready for uploading on-chain
 		batch, batchID, err := s.stg.NextStateTransitionBatch(processID)
 		if err != nil {
@@ -70,7 +70,7 @@ func (s *Sequencer) processTransitionOnChain() {
 			return true // Continue to next process ID
 		}
 		log.Infow("state transition batch ready for on-chain upload",
-			"pid", processID.String(),
+			"processID", processID.String(),
 			"batchID", fmt.Sprintf("%x", batchID))
 
 		// check the remote state root matches the local one
@@ -108,7 +108,7 @@ func (s *Sequencer) processTransitionOnChain() {
 			return true // Continue to next process ID
 		}
 		log.Infow("process state transition pushed",
-			"pid", processID.String(),
+			"processID", processID.String(),
 			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
 			"rootHashAfter", batch.Inputs.RootHashAfter.String())
 		// mark the batch as done
@@ -117,7 +117,7 @@ func (s *Sequencer) processTransitionOnChain() {
 			return true // Continue to next process ID
 		}
 		// update the last update time by re-adding the process ID
-		s.pids.Add(processID) // This will update the timestamp
+		s.processIDs.Add(processID) // This will update the timestamp
 
 		return true // Continue to next process ID
 	})
@@ -142,7 +142,7 @@ func (s *Sequencer) pushTransitionToContract(
 	}
 
 	log.Debugw("proof ready to submit to the contract",
-		"pid", processID.String(),
+		"processID", processID.String(),
 		"abiProof", fmt.Sprintf("%x", abiProof),
 		"abiInputs", fmt.Sprintf("%x", abiInputs),
 		"strProof", proof.String(),
@@ -183,12 +183,12 @@ func (s *Sequencer) pushTransitionToContract(
 	); err != nil {
 		log.Debugw("failed to simulate state transition",
 			"error", err,
-			"pid", processID.String())
+			"processID", processID.String())
 	}
 
 	// Submit the proof to the contract
 	log.Infow("state transition pending to be mined",
-		"pid", processID.String())
+		"processID", processID.String())
 	// Create a callback for the state transition
 	callback := s.pushStateTransitionCallback(processID, batchID)
 	if err := s.contracts.SetProcessTransition(
@@ -216,7 +216,7 @@ func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batch
 					"error", err,
 					"processID", processID.String())
 			}
-			log.Infow("pending tx released", "pid", processID.String())
+			log.Infow("pending tx released", "processID", processID.String())
 		}()
 		// If there was an error, log it and mark the batch as failed
 		if err != nil {
@@ -229,7 +229,7 @@ func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batch
 			}
 			return
 		}
-		log.Infow("state transition pushed to contract", "pid", processID.String())
+		log.Infow("state transition pushed to contract", "processID", processID.String())
 	}
 }
 
@@ -274,7 +274,7 @@ func (s *Sequencer) processResultsOnChain() {
 			continue // Continue to next process ID
 		}
 		log.Debugw("verified results ready to upload to contract",
-			"pid", res.ProcessID.String(),
+			"processID", res.ProcessID.String(),
 			"abiProof", fmt.Sprintf("%x", abiProof),
 			"abiInputs", fmt.Sprintf("%x", abiInputs),
 			"strProof", solidityProof.String(),
@@ -293,7 +293,7 @@ func (s *Sequencer) processResultsOnChain() {
 		); err != nil {
 			log.Debugw("failed to simulate verified results upload",
 				"error", err,
-				"pid", res.ProcessID.String())
+				"processID", res.ProcessID.String())
 		}
 
 		// Try to upload with retries
@@ -322,7 +322,7 @@ func (s *Sequencer) processResultsOnChain() {
 
 			// Success!
 			log.Infow("verified results uploaded to contract",
-				"pid", res.ProcessID.String(),
+				"processID", res.ProcessID.String(),
 				"results", res.Inputs.Results,
 				"attempt", attempt+1)
 			uploadSuccess = true

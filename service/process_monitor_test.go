@@ -62,7 +62,7 @@ func TestProcessMonitor(t *testing.T) {
 	}
 
 	// Create a new process
-	pid, createTx, err := contracts.CreateProcess(&types.Process{
+	processID, createTx, err := contracts.CreateProcess(&types.Process{
 		Status:         types.ProcessStatusReady,
 		OrganizationId: contracts.AccountAddress(),
 		StateRoot:      testutil.StateRoot(),
@@ -75,8 +75,8 @@ func TestProcessMonitor(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(createTx, qt.Not(qt.IsNil))
 
-	// Store the encryption keys for the process pid
-	err = store.SetEncryptionKeys(pid, publicKey, privateKey)
+	// Store the encryption keys for the process id
+	err = store.SetEncryptionKeys(processID, publicKey, privateKey)
 	c.Assert(err, qt.IsNil)
 
 	// Wait for transaction to be mined
@@ -99,7 +99,7 @@ func TestProcessMonitor(t *testing.T) {
 	<-censusDownloaded
 
 	// Verify process was stored
-	proc, err := store.Process(pid)
+	proc, err := store.Process(processID)
 	c.Assert(err, qt.IsNil)
 	c.Assert(proc, qt.Not(qt.IsNil))
 	c.Assert(proc.MetadataURI, qt.Equals, "https://example.com/metadata")

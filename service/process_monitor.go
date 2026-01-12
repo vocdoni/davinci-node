@@ -107,17 +107,17 @@ func (pm *ProcessMonitor) Stop() {
 // state transitions.
 func (pm *ProcessMonitor) initializeKnownProcesses() error {
 	// Get all process IDs from storage
-	pids, err := pm.storage.ListProcesses()
+	processIDs, err := pm.storage.ListProcesses()
 	if err != nil {
 		return fmt.Errorf("failed to list processes: %w", err)
 	}
 
 	// Register each process ID in the contracts' knownProcesses map
-	for _, pid := range pids {
-		pm.contracts.RegisterKnownProcess(pid.String())
+	for _, processID := range processIDs {
+		pm.contracts.RegisterKnownProcess(processID.String())
 	}
 
-	log.Infow("initialized known processes from storage", "count", len(pids))
+	log.Infow("initialized known processes from storage", "count", len(processIDs))
 
 	// Sync active processes from blockchain to catch up on missed state transitions
 	if err := pm.syncActiveProcessesFromBlockchain(); err != nil {
@@ -132,32 +132,32 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 // all processes that are accepting votes. This ensures that after a restart,
 // any missed state transitions are reflected in local storage.
 func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
-	pids, err := pm.storage.ListProcesses()
+	processIDs, err := pm.storage.ListProcesses()
 	if err != nil {
 		return fmt.Errorf("failed to list processes: %w", err)
 	}
 
 	syncCount := 0
-	for _, pid := range pids {
+	for _, processID := range processIDs {
 		// Check if process is accepting votes
-		isAccepting, err := pm.storage.ProcessIsAcceptingVotes(pid)
+		isAccepting, err := pm.storage.ProcessIsAcceptingVotes(processID)
 		if err != nil || !isAccepting {
 			continue
 		}
 
 		// Fetch current state from blockchain
-		blockchainProcess, err := pm.contracts.Process(pid)
+		blockchainProcess, err := pm.contracts.Process(processID)
 		if err != nil {
 			log.Warnw("failed to fetch process from blockchain during sync",
-				"pid", pid.String(), "error", err)
+				"processID", processID.String(), "error", err)
 			continue
 		}
 
 		// Fetch from local storage
-		localProcess, err := pm.storage.Process(pid)
+		localProcess, err := pm.storage.Process(processID)
 		if err != nil {
 			log.Warnw("failed to fetch process from storage during sync",
-				"pid", pid.String(), "error", err)
+				"processID", processID.String(), "error", err)
 			continue
 		}
 
@@ -166,20 +166,20 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 			!localProcess.VotersCount.Equal(blockchainProcess.VotersCount) ||
 			!localProcess.OverwrittenVotesCount.Equal(blockchainProcess.OverwrittenVotesCount) {
 			// Use ProcessUpdateCallbackSetStateRoot to set absolute values from blockchain
-			if err := pm.storage.UpdateProcess(pid,
+			if err := pm.storage.UpdateProcess(processID,
 				storage.ProcessUpdateCallbackSetStateRoot(
 					blockchainProcess.StateRoot,
 					blockchainProcess.VotersCount,
 					blockchainProcess.OverwrittenVotesCount,
 				)); err != nil {
 				log.Warnw("failed to sync process from blockchain",
-					"pid", pid.String(),
+					"processID", processID.String(),
 					"error", err)
 				continue
 			}
 
 			log.Infow("synced process from blockchain",
-				"pid", pid.String(),
+				"processID", processID.String(),
 				"stateRoot", blockchainProcess.StateRoot.String(),
 				"votersCount", blockchainProcess.VotersCount.String(),
 				"overwrittenVotesCount", blockchainProcess.OverwrittenVotesCount.String())
@@ -190,7 +190,7 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 	if syncCount > 0 {
 		log.Infow("blockchain sync completed",
 			"syncedProcesses", syncCount,
-			"totalProcesses", len(pids))
+			"totalProcesses", len(processIDs))
 	}
 	return nil
 }
@@ -209,16 +209,16 @@ func (pm *ProcessMonitor) monitorProcesses(
 			if _, err := pm.storage.Process(*process.ID); err == nil {
 				continue
 			}
-			log.Debugw("new process found", "pid", process.ID.String())
+			log.Debugw("new process found", "processID", process.ID.String())
 
 			// Create a function to store the new process
 			processSetup := func() {
 				if err := pm.storage.NewProcess(process); err != nil {
 					log.Warnw("failed to store new process",
-						"pid", process.ID.String(),
+						"processID", process.ID.String(),
 						"error", err.Error())
 				}
-				log.Debugw("process created", "pid", process.ID.String(), "stateRoot", process.StateRoot.String())
+				log.Debugw("process created", "processID", process.ID.String(), "stateRoot", process.StateRoot.String())
 			}
 
 			// If the process is ready and has a census, download and import it
@@ -233,7 +233,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				pm.censusDownloader.OnCensusDownloaded(process.Census, downloadCtx, func(err error) {
 					if err != nil {
 						log.Warnw("failed to download census for new process",
-							"pid", process.ID.String(),
+							"processID", process.ID.String(),
 							"censusRoot", process.Census.CensusRoot.String(),
 							"error", err.Error())
 						return
@@ -249,26 +249,26 @@ func (pm *ProcessMonitor) monitorProcesses(
 			case update.StatusChange != nil:
 				// process status change
 				log.Debugw("process changed status",
-					"pid", update.ProcessID.String(),
+					"processID", update.ProcessID.String(),
 					"old", update.OldStatus.String(),
 					"new", update.NewStatus.String())
 				if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
 					update.NewStatus,
 				)); err != nil {
 					log.Warnw("failed to update process status",
-						"pid", update.ProcessID.String(),
+						"processID", update.ProcessID.String(),
 						"error", err.Error())
 				}
 				if update.NewStatus == types.ProcessStatusResults {
 					if err := pm.storage.CleanProcessStaleVotes(update.ProcessID); err != nil {
 						log.Warnw("failed to clean stale votes after process finalization",
-							"pid", update.ProcessID.String(), "error", err.Error())
+							"processID", update.ProcessID.String(), "error", err.Error())
 					}
 				}
 			case update.StateRootChange != nil:
 				// process state root change
 				log.Debugw("process state root changed",
-					"pid", update.ProcessID.String(),
+					"processID", update.ProcessID.String(),
 					"newStateRoot", update.NewStateRoot.String(),
 					"newVotersCount", update.NewVotersCount.String(),
 					"newOverwrittenVotesCount", update.NewOverwrittenVotesCount.String())
@@ -278,7 +278,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					update.NewOverwrittenVotesCount,
 				)); err != nil {
 					log.Warnw("failed to update process state root",
-						"pid", update.ProcessID.String(),
+						"processID", update.ProcessID.String(),
 						"error", err.Error())
 				}
 				// Notify StateSync service for blob fetching and state reconstruction (non-blocking)
@@ -289,13 +289,13 @@ func (pm *ProcessMonitor) monitorProcesses(
 			case update.MaxVotersChange != nil:
 				// process max voters change
 				log.Debugw("process max voters changed",
-					"pid", update.ProcessID.String(),
+					"processID", update.ProcessID.String(),
 					"newMaxVoters", update.NewMaxVoters.String())
 				if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetMaxVoters(
 					update.NewMaxVoters,
 				)); err != nil {
 					log.Warnw("failed to update process max voters",
-						"pid", update.ProcessID.String(),
+						"processID", update.ProcessID.String(),
 						"error", err.Error())
 				}
 			case update.CensusRootChange != nil:
@@ -303,13 +303,13 @@ func (pm *ProcessMonitor) monitorProcesses(
 				process, err := pm.storage.Process(update.ProcessID)
 				if err != nil {
 					log.Warnw("received update for unknown process",
-						"pid", update.ProcessID.String(),
+						"processID", update.ProcessID.String(),
 						"error", err.Error())
 					continue
 				}
 				// process census root change
 				log.Debugw("process census root or/and URI changed",
-					"pid", update.ProcessID.String(),
+					"processID", update.ProcessID.String(),
 					"newCensusRoot", update.NewCensusRoot.String(),
 					"newCensusURI", update.NewCensusURI)
 				newCensus := &types.Census{
@@ -323,13 +323,13 @@ func (pm *ProcessMonitor) monitorProcesses(
 				pm.censusDownloader.OnCensusDownloaded(newCensus, ctx, func(err error) {
 					if err != nil {
 						log.Warnw("failed to download updated census for process",
-							"pid", update.ProcessID.String(),
+							"processID", update.ProcessID.String(),
 							"censusRoot", update.NewCensusRoot.String(),
 							"error", err.Error())
 						return
 					}
 					log.Debugw("new process census downloaded",
-						"pid", update.ProcessID.String(),
+						"processID", update.ProcessID.String(),
 						"newCensusRoot", update.NewCensusRoot.String(),
 						"newCensusURI", update.NewCensusURI)
 					// update process census info in storage
@@ -338,11 +338,11 @@ func (pm *ProcessMonitor) monitorProcesses(
 						update.NewCensusURI,
 					)); err != nil {
 						log.Warnw("failed to update process census root",
-							"pid", update.ProcessID.String(),
+							"processID", update.ProcessID.String(),
 							"error", err.Error())
 					}
 					log.Infow("process census updated",
-						"pid", update.ProcessID.String(),
+						"processID", update.ProcessID.String(),
 						"censusRoot", update.NewCensusRoot.String(),
 						"censusURI", update.NewCensusURI)
 				})

@@ -13,48 +13,48 @@ import (
 )
 
 // SetEncryptionKeys stores the encryption keys for a process.
-func (s *Storage) SetEncryptionKeys(pid types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
+func (s *Storage) SetEncryptionKeys(processID types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	return s.setEncryptionKeysUnsafe(pid, publicKey, privateKey)
+	return s.setEncryptionKeysUnsafe(processID, publicKey, privateKey)
 }
 
 // EncryptionKeys loads the encryption keys for a process. Returns ErrNotFound if the keys do not exist
-func (s *Storage) EncryptionKeys(pid types.ProcessID) (ecc.Point, *big.Int, error) {
+func (s *Storage) EncryptionKeys(processID types.ProcessID) (ecc.Point, *big.Int, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	return s.encryptionKeysUnsafe(pid)
+	return s.encryptionKeysUnsafe(processID)
 }
 
 // FetchOrGenerateEncryptionKeys loads the encryption keys for a process.
 // If the keys do not exist, new ones are generated and persisted to storage.
-func (s *Storage) FetchOrGenerateEncryptionKeys(pid types.ProcessID) (ecc.Point, *big.Int, error) {
+func (s *Storage) FetchOrGenerateEncryptionKeys(processID types.ProcessID) (ecc.Point, *big.Int, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	return s.fetchOrGenerateEncryptionKeysUnsafe(pid)
+	return s.fetchOrGenerateEncryptionKeysUnsafe(processID)
 }
 
 // setEncryptionKeysUnsafe stores both the private and public encryption keys for a process, without locking.
-func (s *Storage) setEncryptionKeysUnsafe(pid types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
+func (s *Storage) setEncryptionKeysUnsafe(processID types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
 	x, y := publicKey.Point()
 	eks := &EncryptionKeys{
 		X:          x,
 		Y:          y,
 		PrivateKey: privateKey,
 	}
-	return s.setArtifact(encryptionKeyPrefix, pid.Bytes(), eks)
+	return s.setArtifact(encryptionKeyPrefix, processID.Bytes(), eks)
 }
 
 // setEncryptionPubKeyUnsafe stores only the encryption public key for a process, without locking.
 // If there's already a matching EncryptionKey (PubKey) in storage, it won't rewrite it.
-func (s *Storage) setEncryptionPubKeyUnsafe(pid types.ProcessID, ek *types.EncryptionKey) error {
-	publicKey, _, err := s.encryptionKeysUnsafe(pid)
+func (s *Storage) setEncryptionPubKeyUnsafe(processID types.ProcessID, ek *types.EncryptionKey) error {
+	publicKey, _, err := s.encryptionKeysUnsafe(processID)
 	if err == nil {
 		if types.EncryptionKeyFromPoint(publicKey).X.Equal(ek.X) &&
 			types.EncryptionKeyFromPoint(publicKey).Y.Equal(ek.Y) {
 			return nil
 		}
-		log.Warnf("stored encryption key for process %s mismatch, overwriting stored %+v with new %+v", pid.String(),
+		log.Warnf("stored encryption key for process %s mismatch, overwriting stored %+v with new %+v", processID.String(),
 			types.EncryptionKeyFromPoint(publicKey), ek)
 	}
 
@@ -62,13 +62,13 @@ func (s *Storage) setEncryptionPubKeyUnsafe(pid types.ProcessID, ek *types.Encry
 		X: ek.X.MathBigInt(),
 		Y: ek.Y.MathBigInt(),
 	}
-	return s.setArtifact(encryptionKeyPrefix, pid.Bytes(), eks)
+	return s.setArtifact(encryptionKeyPrefix, processID.Bytes(), eks)
 }
 
 // encryptionKeysUnsafe loads the encryption keys for a process without locking.
-func (s *Storage) encryptionKeysUnsafe(pid types.ProcessID) (ecc.Point, *big.Int, error) {
+func (s *Storage) encryptionKeysUnsafe(processID types.ProcessID) (ecc.Point, *big.Int, error) {
 	eks := new(EncryptionKeys)
-	if err := s.getArtifact(encryptionKeyPrefix, pid.Bytes(), eks); err != nil {
+	if err := s.getArtifact(encryptionKeyPrefix, processID.Bytes(), eks); err != nil {
 		return nil, nil, err
 	}
 	if eks.X == nil || eks.Y == nil {
@@ -82,14 +82,14 @@ func (s *Storage) encryptionKeysUnsafe(pid types.ProcessID) (ecc.Point, *big.Int
 // fetchOrGenerateEncryptionKeysUnsafe loads the encryption keys for a process.
 // If the keys do not exist, new ones are generated and persisted to storage.
 // It does not lock the storage, so it should be used with caution.
-func (s *Storage) fetchOrGenerateEncryptionKeysUnsafe(pid types.ProcessID) (ecc.Point, *big.Int, error) {
-	publicKey, privateKey, err := s.encryptionKeysUnsafe(pid)
+func (s *Storage) fetchOrGenerateEncryptionKeysUnsafe(processID types.ProcessID) (ecc.Point, *big.Int, error) {
+	publicKey, privateKey, err := s.encryptionKeysUnsafe(processID)
 	if err != nil {
 		publicKey, privateKey, err = elgamal.GenerateKey(curves.New(bjj.CurveType))
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not generate elgamal key: %v", err)
 		}
-		if err := s.setEncryptionKeysUnsafe(pid, publicKey, privateKey); err != nil {
+		if err := s.setEncryptionKeysUnsafe(processID, publicKey, privateKey); err != nil {
 			return nil, nil, fmt.Errorf("could not store encryption keys: %v", err)
 		}
 	}

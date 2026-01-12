@@ -160,7 +160,7 @@ func (s *Storage) RemovePendingBallot(processID types.ProcessID, voteID []byte) 
 }
 
 // RemovePendingBallotsByProcess removes all pending ballots for a given process ID.
-func (s *Storage) RemovePendingBallotsByProcess(pid types.ProcessID) error {
+func (s *Storage) RemovePendingBallotsByProcess(processID types.ProcessID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -178,7 +178,7 @@ func (s *Storage) RemovePendingBallotsByProcess(pid types.ProcessID) error {
 		}
 
 		// Only collect ballots that belong to the target process
-		if ballot.ProcessID == pid {
+		if ballot.ProcessID == processID {
 			ballotsToRemove = append(ballotsToRemove, &ballot)
 		}
 		return true
@@ -188,7 +188,7 @@ func (s *Storage) RemovePendingBallotsByProcess(pid types.ProcessID) error {
 
 	// Remove the ballots and release their locks
 	for _, ballot := range ballotsToRemove {
-		if err := s.removePendingBallot(pid, ballot.VoteID); err != nil {
+		if err := s.removePendingBallot(processID, ballot.VoteID); err != nil {
 			return err
 		}
 		// Release both vote ID and address locks
@@ -627,7 +627,7 @@ func (s *Storage) nextPendingBallot() (*Ballot, []byte, error) {
 
 // removePendingBallot is an internal helper to remove a ballot from the pending queue.
 // It assumes the caller already holds the globalLock.
-func (s *Storage) removePendingBallot(pid types.ProcessID, voteID []byte) error {
+func (s *Storage) removePendingBallot(processID types.ProcessID, voteID []byte) error {
 	// remove reservation
 	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("error deleting reservation: %w", err)
@@ -637,12 +637,12 @@ func (s *Storage) removePendingBallot(pid types.ProcessID, voteID []byte) error 
 		return fmt.Errorf("error deleting ballot: %w", err)
 	}
 	// update process stats
-	if err := s.updateProcessStats(pid, []ProcessStatsUpdate{
+	if err := s.updateProcessStats(processID, []ProcessStatsUpdate{
 		{TypeStats: types.TypeStatsPendingVotes, Delta: -1},
 	}); err != nil {
 		log.Warnw("failed to update process stats after removing ballot",
 			"error", err.Error(),
-			"processID", pid.String(),
+			"processID", processID.String(),
 			"voteID", hex.EncodeToString(voteID),
 		)
 	}

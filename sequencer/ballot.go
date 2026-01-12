@@ -155,7 +155,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	} else if !isAcceptingVotes {
 		return nil, fmt.Errorf("process is not accepting votes")
 	}
-	log.Debugw("preparing ballot inputs", "pid", b.ProcessID.String())
+	log.Debugw("preparing ballot inputs", "processID", b.ProcessID.String())
 	// Transform process data to circuit types
 	inputs := new(voteverifier.VoteVerifierInputs)
 	if err := inputs.FromProcessBallot(process, b); err != nil {
@@ -213,7 +213,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		params.AggregatorCurve.ScalarField(),
 		params.VoteVerifierCurve.ScalarField(),
 	)
-	log.Debugw("generating vote verification proof...", "pid", b.ProcessID.String(), "voteID", hex.EncodeToString(b.VoteID))
+	log.Debugw("generating vote verification proof...", "processID", b.ProcessID.String(), "voteID", hex.EncodeToString(b.VoteID))
 	proof, err := s.prover(params.VoteVerifierCurve, s.vvCcs, s.vvPk, &assignment, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
@@ -239,7 +239,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 
 	log.Infow("vote verification proof generated",
-		"pid", b.ProcessID.String(),
+		"processID", b.ProcessID.String(),
 		"voteID", hex.EncodeToString(b.VoteID),
 		"address", hex.EncodeToString(b.Address.Bytes()),
 		"took", time.Since(startTime).String(),

@@ -84,7 +84,7 @@ func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, w
 		stg:             stg,
 		contracts:       nil,               // Workers don't need web3 contracts
 		batchTimeWindow: 0,                 // Workers don't use batch processing
-		pids:            NewProcessIDMap(), // Still needed for ExistsProcessID check
+		processIDs:      NewProcessIDMap(), // Still needed for ExistsProcessID check
 		prover:          prover.DefaultProver,
 		sequencerURL:    sequencerURL,
 		sequencerUUID:   sequencerUUID,

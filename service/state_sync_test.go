@@ -62,7 +62,7 @@ func TestStateSync(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Create a new process
-	pid, createTx, err := contracts.CreateProcess(&types.Process{
+	processID, createTx, err := contracts.CreateProcess(&types.Process{
 		Status:         types.ProcessStatusReady,
 		OrganizationId: contracts.AccountAddress(),
 		StateRoot:      new(types.BigInt).SetUint64(100),
@@ -87,8 +87,8 @@ func TestStateSync(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(createTx, qt.Not(qt.IsNil))
 
-	// Store the encryption keys for the process pid
-	err = store.SetEncryptionKeys(pid, publicKey, privateKey)
+	// Store the encryption keys for the process id
+	err = store.SetEncryptionKeys(processID, publicKey, privateKey)
 	c.Assert(err, qt.IsNil)
 
 	// Wait for transaction to be mined
@@ -99,7 +99,7 @@ func TestStateSync(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// Verify process was stored
-	proc, err := store.Process(pid)
+	proc, err := store.Process(processID)
 	c.Assert(err, qt.IsNil)
 	c.Assert(proc, qt.Not(qt.IsNil))
 	c.Assert(proc.MetadataURI, qt.Equals, "https://example.com/metadata")
@@ -108,7 +108,7 @@ func TestStateSync(t *testing.T) {
 	// TODO: dedup all of this with state/blobs_test.go code that was copypasted here
 
 	// Initialize state
-	originalState, err := state.New(memdb.New(), pid)
+	originalState, err := state.New(memdb.New(), processID)
 	c.Assert(err, qt.IsNil)
 	defer func() {
 		if err := originalState.Close(); err != nil {
@@ -164,7 +164,7 @@ func TestStateSync(t *testing.T) {
 	txHash := contracts.SendBlobTx(blobData.Blob[:])
 	{
 		// Verify process is still untouched
-		proc, err := store.Process(pid)
+		proc, err := store.Process(processID)
 		c.Assert(err, qt.IsNil)
 		c.Assert(proc, qt.Not(qt.IsNil))
 		// c.Assert(proc.StateRoot, qt.DeepEquals, (*types.BigInt)(oldStateRoot))
@@ -190,7 +190,7 @@ func TestStateSync(t *testing.T) {
 
 	{
 		// Verify process is now updated
-		proc, err := store.Process(pid)
+		proc, err := store.Process(processID)
 		c.Assert(err, qt.IsNil)
 		c.Assert(proc, qt.Not(qt.IsNil))
 		c.Assert(proc.StateRoot, qt.DeepEquals, (*types.BigInt)(newStateRoot))

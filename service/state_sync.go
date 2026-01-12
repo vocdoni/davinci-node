@@ -58,9 +58,9 @@ func (ss *StateSync) Stop() {
 func (ss *StateSync) Notify(process *types.ProcessWithChanges) {
 	select {
 	case ss.queue <- process:
-		log.Debugw("state transition notification sent to statesync", "pid", process.ProcessID.String())
+		log.Debugw("state transition notification sent to statesync", "processID", process.ProcessID.String())
 	default:
-		log.Warnw("statesync notification dropped - channel full", "pid", process.ProcessID.String())
+		log.Warnw("statesync notification dropped - channel full", "processID", process.ProcessID.String())
 	}
 }
 
@@ -75,7 +75,7 @@ func (ss *StateSync) consumeQueue(ctx context.Context) {
 			go func() {
 				if err := ss.fetchBlobAndApply(ctx, process); err != nil {
 					log.Warnw("failed to sync state from blob",
-						"pid", process.ProcessID.String(),
+						"processID", process.ProcessID.String(),
 						"txHash", process.TxHash.String(),
 						"error", err.Error())
 				}
@@ -96,7 +96,7 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 	}
 
 	log.Debugw("syncing state from blob",
-		"pid", process.ProcessID.String(),
+		"processID", process.ProcessID.String(),
 		"txHash", process.TxHash.String(),
 		"oldStateRoot", process.OldStateRoot.String(),
 		"newStateRoot", process.NewStateRoot.String())
@@ -139,7 +139,7 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 	}
 
 	log.Debugw("successfully synced state from blob",
-		"pid", process.ProcessID.String(),
+		"processID", process.ProcessID.String(),
 		"txHash", process.TxHash.String(),
 		"verifiedStateRoot", newRoot.String())
 
