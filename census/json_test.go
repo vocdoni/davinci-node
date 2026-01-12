@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	leanimt "github.com/vocdoni/lean-imt-go"
 	leancensus "github.com/vocdoni/lean-imt-go/census"
@@ -69,12 +70,12 @@ func testMakeImportJSONL(c *qt.C) (io.Reader, types.HexBytes) {
 	participants := []leancensus.CensusParticipant{
 		{
 			Index:   1,
-			Address: common.HexToAddress("0x0000000000000000000000000000000000000002"),
+			Address: testutil.RandomAddress(),
 			Weight:  big.NewInt(2),
 		},
 		{
 			Index:   0,
-			Address: common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			Address: testutil.RandomAddress(),
 			Weight:  big.NewInt(1),
 		},
 	}
