@@ -24,6 +24,7 @@ import (
 	ethSigner "github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
@@ -494,6 +495,9 @@ func (c *Contracts) SimulateContractCall(
 			BlobHashes: blobsSidecar.BlobHashes(),
 		})
 		if err != nil {
+			if reason, ok := c.DecodeError(err); ok {
+				return fmt.Errorf("failed to estimate gas: %w (decoded: %s)", err, reason)
+			}
 			return fmt.Errorf("failed to estimate gas: %w", err)
 		}
 		call.Gas = hexutil.Uint64(gas)
@@ -524,61 +528,64 @@ func (c *Contracts) SimulateContractCall(
 		return nil
 	}
 
-	reason, uerr := c.decodeRevert(callResult.Error.Data)
-	if uerr != nil {
-		return fmt.Errorf("call reverted; failed to unpack reason: %w", uerr)
+	if reason, ok := c.DecodeError(callResult.Error); ok {
+		return fmt.Errorf("call reverted: %w (decoded: %s)", callResult.Error, reason)
 	}
-	return fmt.Errorf("call reverted: %s", reason)
+	return fmt.Errorf("call reverted: %w", callResult.Error)
 }
 
-// decodeRevert decodes the revert reason from the given data.
-func (c *Contracts) decodeRevert(data hexutil.Bytes) (string, error) {
-	if len(data) < 4 {
-		return "", fmt.Errorf("no revert data")
+// DecodeError tries to decode revert reasons or custom errors from err,
+// and returns true if successful.
+func (c *Contracts) DecodeError(err error) (string, bool) {
+	if err == nil {
+		return "", false
 	}
-	selector := data[:4]
-	payload := data[4:]
+	rpcErr := rpc.ParseError(err)
+	if rpcErr == nil || len(rpcErr.Data) < 4 {
+		return "", false
+	}
+
+	errId := [4]byte{}
+	copy(errId[:], rpcErr.Data[:4])
 
 	// 1) Try custom errors from all loaded ABIs
 	var decoded string
-	err := c.ContractABIs.forEachABI(func(_ string, a *abi.ABI) error {
-		for name, e := range a.Errors {
-			// e.ID is the 4-byte selector
-			if bytes.Equal(selector, e.ID.Bytes()) {
-				// unpack args if any
-				vals, uerr := e.Inputs.Unpack(payload)
-				if uerr != nil {
-					decoded = name // at least return the name
-					return nil
-				}
-				if len(vals) == 0 {
-					decoded = name
-				} else {
-					decoded = fmt.Sprintf("%s%v", name, vals)
-				}
+	abiErr := c.ContractABIs.forEachABI(func(abiName string, a *abi.ABI) error {
+		if abiErr, err := a.ErrorByID(errId); err == nil {
+			// unpack args if any
+			vals, err := abiErr.Inputs.Unpack(rpcErr.Data[4:])
+			if err != nil || len(vals) == 0 {
+				decoded = fmt.Sprintf("%s %s = %s", abiName, rpcErr.Data[:4].String(), abiErr.String())
 				return nil
 			}
+			decoded = fmt.Sprintf("%s %s = %s %+v", abiName, rpcErr.Data[:4].String(), abiErr.Name, vals)
+			return nil
 		}
 		return nil
 	})
-	if err != nil {
-		return "", err
+	if abiErr != nil {
+		log.Warnf("forEachABI failed with err: %s", abiErr)
 	}
 	if decoded != "" {
-		return decoded, nil
+		return decoded, true
 	}
 
 	// 2) Fallback to standard Error(string)/Panic(uint256)
-	if reason, uerr := abi.UnpackRevert(data); uerr == nil {
-		return reason, nil
+	decoded, uerr := abi.UnpackRevert(rpcErr.Data)
+	if uerr != nil {
+		log.Warnf("abi.UnpackRevert failed with err: %s", uerr)
+		return "", false
 	}
 
-	return "", fmt.Errorf("unknown error selector 0x%x", selector)
+	return decoded, true
 }
 
 // forEachABI calls fn(name, abi) for each non-nil *abi.ABI field.
 // Stops and returns an error if fn returns an error.
 func (c *ContractABIs) forEachABI(fn func(fieldName string, a *abi.ABI) error) error {
+	if c == nil {
+		return fmt.Errorf("no contract ABIs")
+	}
 	v := reflect.ValueOf(c).Elem() // reflect.Value of the struct
 	t := v.Type()                  // reflect.Type of the struct
 	for i := range v.NumField() {  // loop fields
