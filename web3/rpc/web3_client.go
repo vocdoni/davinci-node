@@ -71,16 +71,6 @@ func (c *Client) EthClient() (*ethclient.Client, error) {
 	return endpoint.client, nil
 }
 
-// RPCClient method returns the rpc.Client for the chainID of the Client
-// instance. It returns an error if the chainID is not found in the pool.
-func (c *Client) RPCClient() (*gethrpc.Client, error) {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	return endpoint.rpcClient, nil
-}
-
 // CodeAt method wraps the CodeAt method from the ethclient.Client for the
 // chainID of the Client instance. It returns an error if the chainID is not
 // found in the pool or if the method fails. Required by the bind.ContractBackend
@@ -118,7 +108,7 @@ func (c *Client) CallSimulation(ctx context.Context, result any, simReq any, blo
 	if err != nil {
 		return fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
 	}
-	return endpoint.rpcClient.CallContext(ctx, result, "eth_simulateV1", simReq, blockTag)
+	return endpoint.client.Client().CallContext(ctx, result, "eth_simulateV1", simReq, blockTag)
 }
 
 // EstimateGas method wraps the EstimateGas method from the ethclient.Client for
@@ -300,7 +290,7 @@ func (c *Client) BlockNumber(ctx context.Context) (uint64, error) {
 func (c *Client) BlobBaseFee(ctx context.Context) (*big.Int, error) {
 	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
 		var hexFee string
-		if err := endpoint.rpcClient.CallContext(ctx, &hexFee, "eth_blobBaseFee"); err != nil {
+		if err := endpoint.client.Client().CallContext(ctx, &hexFee, "eth_blobBaseFee"); err != nil {
 			return nil, err
 		}
 		f, ok := new(big.Int).SetString(strings.TrimPrefix(hexFee, "0x"), 16)

@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethclient"
-	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/vocdoni/davinci-node/log"
 )
 
@@ -92,11 +91,7 @@ func (nm *Web3Pool) AddEndpoint(uri string) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
 	}
-	// init the rpc client
-	rpcClient, err := connectNodeRawRPC(ctx, uri)
-	if err != nil {
-		return 0, fmt.Errorf("error dialing rpc provider uri '%s': %w", uri, err)
-	}
+
 	// get the chainID from the web3 endpoint
 	bChainID, err := client.ChainID(ctx)
 	if err != nil {
@@ -114,7 +109,6 @@ func (nm *Web3Pool) AddEndpoint(uri string) (uint64, error) {
 		ChainID:   chainID,
 		URI:       uri,
 		client:    client,
-		rpcClient: rpcClient,
 		IsArchive: isArchive,
 	}
 	if _, ok := nm.endpoints[chainID]; !ok {
@@ -247,22 +241,9 @@ func connectNodeEthereumAPI(ctx context.Context, uri string) (client *ethclient.
 		if client, err = ethclient.DialContext(ctx, uri); err != nil {
 			continue
 		}
-		return client, err
+		return client, nil
 	}
 	return nil, fmt.Errorf("error dialing web3 provider uri '%s': %w", uri, err)
-}
-
-// connectNodeRawRPC method returns a new *rpc.Client instance for the URI provided.
-// It retries to connect to the rpc provider if it fails, up to the
-// DefaultMaxWeb3ClientRetries times.
-func connectNodeRawRPC(ctx context.Context, uri string) (client *gethrpc.Client, err error) {
-	for range DefaultMaxWeb3ClientRetries {
-		if client, err = gethrpc.DialContext(ctx, uri); err != nil {
-			continue
-		}
-		return client, err
-	}
-	return nil, fmt.Errorf("error dialing rpc provider uri '%s': %w", uri, err)
 }
 
 // isArchiveNode method returns true if the web3 client is an archive node. To
