@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -22,7 +23,8 @@ const (
 )
 
 var (
-	log zerolog.Logger
+	log   zerolog.Logger
+	logMu sync.RWMutex
 	// panicOnInvalidChars is set based on env LOG_PANIC_ON_INVALIDCHARS (parsed as bool)
 	panicOnInvalidChars = os.Getenv("LOG_PANIC_ON_INVALIDCHARS") == "true"
 )
@@ -36,7 +38,23 @@ func init() {
 }
 
 // Logger provides access to the global logger (zerolog).
-func Logger() *zerolog.Logger { return &log }
+func Logger() *zerolog.Logger {
+	logger := getLogger()
+	return &logger
+}
+
+func getLogger() zerolog.Logger {
+	logMu.RLock()
+	logger := log
+	logMu.RUnlock()
+	return logger
+}
+
+func setLogger(logger zerolog.Logger) {
+	logMu.Lock()
+	log = logger
+	logMu.Unlock()
+}
 
 var logTestWriter io.Writer // for TestLogger
 const logTestWriterName = "log_test_writer"
@@ -68,14 +86,14 @@ func (h *panicOnErrorHook) Run(e *zerolog.Event, level zerolog.Level, msg string
 // Returns the previous logger so it can be restored later.
 // This is useful for integration tests to catch unexpected errors.
 func EnablePanicOnError(testName string) zerolog.Logger {
-	previousLogger := log
-	log = log.Hook(&panicOnErrorHook{TestName: testName})
+	previousLogger := getLogger()
+	setLogger(previousLogger.Hook(&panicOnErrorHook{TestName: testName}))
 	return previousLogger
 }
 
 // RestoreLogger restores a previously saved logger, removing any hooks.
 func RestoreLogger(previousLogger zerolog.Logger) {
-	log = previousLogger
+	setLogger(previousLogger)
 }
 
 type errorLevelWriter struct {
@@ -155,14 +173,14 @@ func Init(level, output string, errorOutput io.Writer) {
 	}
 
 	// Init the global logger var, with millisecond timestamps
-	log = zerolog.New(out).With().Timestamp().Logger()
+	logger := zerolog.New(out).With().Timestamp().Logger()
 	if output == logTestWriterName {
-		log = log.Hook(&testHook{})
+		logger = logger.Hook(&testHook{})
 	}
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
 
 	// Include caller, increasing SkipFrameCount to account for this log package wrapper
-	log = log.With().Caller().Logger()
+	logger = logger.With().Caller().Logger()
 	zerolog.CallerSkipFrameCount = 3
 	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
 		return fmt.Sprintf("%s/%s:%d", path.Base(path.Dir(file)), path.Base(file), line)
@@ -170,23 +188,25 @@ func Init(level, output string, errorOutput io.Writer) {
 
 	switch level {
 	case LogLevelDebug:
-		log = log.Level(zerolog.DebugLevel)
+		logger = logger.Level(zerolog.DebugLevel)
 	case LogLevelInfo:
-		log = log.Level(zerolog.InfoLevel)
+		logger = logger.Level(zerolog.InfoLevel)
 	case LogLevelWarn:
-		log = log.Level(zerolog.WarnLevel)
+		logger = logger.Level(zerolog.WarnLevel)
 	case LogLevelError:
-		log = log.Level(zerolog.ErrorLevel)
+		logger = logger.Level(zerolog.ErrorLevel)
 	default:
 		panic(fmt.Sprintf("invalid log level: %q", level))
 	}
 
-	log.Info().Msgf("logger construction succeeded at level %s with output %s", level, output)
+	setLogger(logger)
+	logger.Info().Msgf("logger construction succeeded at level %s with output %s", level, output)
 }
 
 // Level returns the current log level
 func Level() string {
-	switch level := log.GetLevel(); level {
+	logger := getLogger()
+	switch level := logger.GetLevel(); level {
 	case zerolog.DebugLevel:
 		return LogLevelDebug
 	case zerolog.InfoLevel:
@@ -202,37 +222,43 @@ func Level() string {
 
 // Debug sends a debug level log message
 func Debug(args ...any) {
-	if log.GetLevel() > zerolog.DebugLevel {
+	logger := getLogger()
+	if logger.GetLevel() > zerolog.DebugLevel {
 		return
 	}
-	log.Debug().Msg(fmt.Sprint(args...))
+	logger.Debug().Msg(fmt.Sprint(args...))
 }
 
 // Info sends an info level log message
 func Info(args ...any) {
-	log.Info().Msg(fmt.Sprint(args...))
+	logger := getLogger()
+	logger.Info().Msg(fmt.Sprint(args...))
 }
 
 // Monitor is a wrapper around Info that allows passing a map of key-value pairs.
 // This is useful for structured logging and monitoring.
 // The caller information is skipped.
 func Monitor(msg string, args map[string]any) {
-	log.Info().CallerSkipFrame(100).Fields(args).Msg(msg)
+	logger := getLogger()
+	logger.Info().CallerSkipFrame(100).Fields(args).Msg(msg)
 }
 
 // Warn sends a warn level log message
 func Warn(args ...any) {
-	log.Warn().Msg(fmt.Sprint(args...))
+	logger := getLogger()
+	logger.Warn().Msg(fmt.Sprint(args...))
 }
 
 // Error sends an error level log message
 func Error(args ...any) {
-	log.Error().Msg(fmt.Sprint(args...))
+	logger := getLogger()
+	logger.Error().Msg(fmt.Sprint(args...))
 }
 
 // Fatal sends a fatal level log message
 func Fatal(args ...any) {
-	log.Fatal().Msg(fmt.Sprint(args...) + "\n" + string(debug.Stack()))
+	logger := getLogger()
+	logger.Fatal().Msg(fmt.Sprint(args...) + "\n" + string(debug.Stack()))
 	// We don't support log levels lower than "fatal". Help analyzers like
 	// staticcheck see that, in this package, Fatal will always exit the
 	// entire program.
