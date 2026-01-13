@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
@@ -51,7 +50,7 @@ func testMakeImportAllDumpJSON(c *qt.C) ([]byte, types.HexBytes) {
 	c.Assert(err, qt.IsNil)
 
 	nonce := testDumpNonce.Add(1)
-	addr := common.BigToAddress(new(big.Int).SetUint64(nonce))
+	addr := testutil.RandomAddress()
 	weight := new(big.Int).Add(big.NewInt(1), new(big.Int).SetUint64(nonce))
 	c.Assert(tree.Add(addr, weight), qt.IsNil)
 
