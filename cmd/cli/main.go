@@ -41,6 +41,7 @@ var (
 	votersCount                      = flag.Int("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
 	voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 	web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
+	voterPrivkey                     = flag.String("voterPrivkey", "", "private key to use for the voter account")
 )
 
 func main() {
@@ -87,7 +88,7 @@ func main() {
 	)
 	if cRoot == nil || len(*cURI) == 0 {
 		// Create a new census with numBallot participants
-		censusRoot, censusURI, signers, err = cliSrv.CreateCensus(*votersCount, userWeight, *census3URL)
+		censusRoot, censusURI, signers, err = cliSrv.CreateCensus(*votersCount, userWeight, *census3URL, *voterPrivkey)
 		if err != nil {
 			log.Errorw(err, "failed to create census")
 			return
@@ -105,10 +106,29 @@ func main() {
 		"uri", censusURI)
 
 	// Create a new process with mocked ballot mode
-	pid, _, err := cliSrv.CreateProcess(censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
+	pid, encryptionKey, err := cliSrv.CreateProcess(censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
 	if err != nil {
 		log.Errorw(err, "failed to create process")
 		return
 	}
 	log.Infow("process created", "pid", pid.String())
+
+	if voterPrivkey != nil && len(*voterPrivkey) > 0 {
+		voterSigner, err := ethereum.NewSignerFromHex(*voterPrivkey)
+		if err != nil {
+			log.Errorw(err, "failed to create voter signer")
+			return
+		}
+		vote, err := cliSrv.CreateVote(voterSigner, pid, encryptionKey, ballotMode)
+		if err != nil {
+			log.Errorw(err, "failed to create vote")
+			return
+		}
+		voteID, err := cliSrv.SubmitVote(vote)
+		if err != nil {
+			log.Errorw(err, "failed to submit vote")
+			return
+		}
+		log.Infow("vote submitted", "voteID", voteID.String(), "pid", pid.String())
+	}
 }
