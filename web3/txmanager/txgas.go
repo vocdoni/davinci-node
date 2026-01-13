@@ -28,8 +28,6 @@ type GasEstimateOpts struct {
 	MinGas    uint64        // minimum possible gas limit (default 21,000)
 	MaxGas    uint64        // maximum possible gas limit (default 5,000,000)
 	SafetyBps int           // safety margin in basis points (default +10%)
-	Retries   int           // retry count for RPC errors (default 5)
-	Backoff   time.Duration // delay between retries (default 250ms)
 	Timeout   time.Duration // timeout for each estimation call (default 20s)
 	Fallback  uint64        // final fallback gas (default 300,000)
 }
@@ -42,8 +40,6 @@ var DefaultGasEstimateOpts = &GasEstimateOpts{
 	MinGas:    21_000,
 	MaxGas:    5_000_000,
 	SafetyBps: 1000,
-	Retries:   5,
-	Backoff:   250 * time.Millisecond,
 	Timeout:   DefaultEstimateGasTimeout,
 	Fallback:  DefaultGasFallback,
 }
@@ -59,12 +55,6 @@ func (o *GasEstimateOpts) validate() {
 	}
 	if o.SafetyBps == 0 {
 		o.SafetyBps = DefaultGasEstimateOpts.SafetyBps
-	}
-	if o.Retries == 0 {
-		o.Retries = DefaultGasEstimateOpts.Retries
-	}
-	if o.Backoff == 0 {
-		o.Backoff = DefaultGasEstimateOpts.Backoff
 	}
 	if o.Timeout == 0 {
 		o.Timeout = DefaultGasEstimateOpts.Timeout
@@ -97,22 +87,14 @@ func (tm *TxManager) EstimateGas(
 	defer cancel()
 	// Ensure fee caps exist for dynamic fee calls
 	if msg.GasFeeCap == nil || msg.GasTipCap == nil {
-		// Get tip cap with retries
-		var tipCap *big.Int
-		if err := retryFn(opts.Retries, opts.Backoff, func() error {
-			var err error
-			tipCap, err = tm.cli.SuggestGasTipCap(internalCtx)
-			return err
-		}); err != nil {
+		// Get tip cap
+		tipCap, err := tm.cli.SuggestGasTipCap(internalCtx)
+		if err != nil {
 			log.Warnw("failed to get tip cap", "error", err)
 		}
-		// Get base fee with retries
-		var baseFee *big.Int
-		if err := retryFn(opts.Retries, opts.Backoff, func() error {
-			var err error
-			baseFee, err = tm.cli.SuggestGasPrice(internalCtx)
-			return err
-		}); err != nil {
+		// Get base fee
+		baseFee, err := tm.cli.SuggestGasPrice(internalCtx)
+		if err != nil {
 			log.Warnw("failed to get base fee", "error", err)
 		}
 		// Set fee caps if we obtained them
@@ -122,19 +104,12 @@ func (tm *TxManager) EstimateGas(
 		}
 	}
 
-	var gas uint64
-	retryErr := retryFn(opts.Retries, opts.Backoff, func() error {
-		var err error
-		gas, err = tm.cli.EstimateGas(internalCtx, msg)
-		return err
-	})
-	if retryErr == nil {
+	if gas, err := tm.cli.EstimateGas(internalCtx, msg); err == nil {
 		return tm.applySafetyMargin(gas, floorGasLimit, opts), nil
-	} else if isPermanentError(retryErr) {
-		return 0, fmt.Errorf("estimateGas failed with permanent error, not retrying: %w", retryErr)
+	} else {
+		log.Warnw("estimateGas failed, falling back to binary search", "error", err)
 	}
 
-	log.Warnw("estimateGas failed, falling back to binary search", "error", retryErr)
 	// Try a lightweight binary search with eth_call
 	ethcli, err := tm.cli.EthClient()
 	if err == nil {
@@ -240,20 +215,4 @@ func gasKey(msg ethereum.CallMsg) string {
 	}
 	h.Write(msg.Data)
 	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-// retryFn is a helper function that retries a given function a specified number
-// of times with a sleep duration between attempts.
-func retryFn(attempts int, sleep time.Duration, fn func() error) error {
-	if err := fn(); err == nil {
-		return nil
-	}
-	var err error
-	for range attempts {
-		time.Sleep(sleep)
-		if err = fn(); err == nil {
-			return nil
-		}
-	}
-	return err
 }
