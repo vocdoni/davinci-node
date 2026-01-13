@@ -29,6 +29,29 @@ var (
 	filterLogsTimeout = 5 * time.Second
 )
 
+// permanentErrorPatterns defines error patterns that indicate permanent
+// failures that should not be retried. These are typically contract-level
+// rejections that will never succeed regardless of gas price or retries.
+// Add new patterns here as they are discovered and confirmed.
+var permanentErrorPatterns = []string{
+	"execution reverted", // Contract rejected the transaction
+}
+
+// IsPermanentError checks if an error represents a permanent failure that
+// should not be retried.
+func IsPermanentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	for _, pattern := range permanentErrorPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
 // Client struct implements bind.ContractBackend interface for a web3 pool with
 // an specific chainID. It allows to interact with the blockchain using the
 // methods provided by the interface balancing the load between the available
@@ -346,6 +369,15 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 				lastErr = fmt.Errorf("%w (code: %d, data: %s)", err, rpcErr.Code, rpcErr.Data)
 			} else {
 				lastErr = err
+			}
+			if IsPermanentError(err) {
+				log.Warnw("RPC returned permanent error, not retrying",
+					"error", lastErr,
+					"chainID", c.chainID,
+					"failedURI", endpoint.URI,
+					"endpointAttempts", endpointAttempts+1,
+					"retriesOnEndpoint", retry+1)
+				return nil, fmt.Errorf("RPC call failed with permanent error, not retrying: %w", err)
 			}
 			if retry < defaultRetries-1 {
 				time.Sleep(defaultRetrySleep)
