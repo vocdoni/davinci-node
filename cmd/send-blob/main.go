@@ -25,7 +25,7 @@ const (
 )
 
 func main() {
-	rpcURL := pflag.String("rpc", "https://ethereum-sepolia-rpc.publicnode.com", "Execution-layer JSON-RPC endpoint (required)")
+	rpcURLs := pflag.StringSlice("rpc", []string{"https://ethereum-sepolia-rpc.publicnode.com"}, "Execution-layer JSON-RPC endpoint (required)")
 	privKey := pflag.String("privkey", "", "Hex-encoded Ethereum private key (required)")
 	toStr := pflag.String("to", "", "Optional destination address (defaults to sender)")
 	numBlobs := pflag.Int("n", 1, "Number of random blobs to include")
@@ -34,7 +34,7 @@ func main() {
 
 	pflag.Parse()
 
-	if *rpcURL == "" || *privKey == "" || *capi == "" {
+	if len(*rpcURLs) == 0 || *privKey == "" || *capi == "" {
 		pflag.Usage()
 		return
 	}
@@ -45,7 +45,7 @@ func main() {
 	log.Infow("starting sendblob")
 
 	// 1) Init Contracts
-	contracts, err := web3.New([]string{*rpcURL}, *capi, 1.0)
+	contracts, err := web3.New(*rpcURLs, *capi, 1.0)
 	if err != nil {
 		log.Fatalf("init web3: %v", err)
 	}
@@ -103,6 +103,12 @@ func main() {
 	data, err := contracts.ProcessRegistryABI().Pack("submitStateTransition", processID, []byte{0x1}, []byte{0x1})
 	if err != nil {
 		log.Fatalf("failed to pack data: %w", err)
+	}
+
+	// Simulate tx to the contract to check if it will fail and get the root
+	// cause of the failure if it does
+	if err := contracts.SimulateProcessTransition(ctx, processID, []byte{0x1}, []byte{0x1}, sidecar); err != nil {
+		log.Debugw("failed to simulate state transition", "error", err, "processID", processID.String())
 	}
 
 	tx, err := contracts.NewEIP4844Transaction(ctx, to, data, sidecar)
