@@ -230,12 +230,12 @@ func (s *Sequencer) processStateTransitionBatch(
 	}
 	log.Debugw("state transition assignments ready for proof generation",
 		"took", time.Since(startTime).String(),
-		"processID", processState.ProcessID().String(),
+		"processID", fmt.Sprintf("%x", processState.ProcessID().Bytes()),
 		"votersCount", assignments.VotersCount,
 		"overwrittenVotesCount", assignments.OverwrittenVotesCount,
 		"rootHashBefore", assignments.RootHashBefore,
 		"rootHashAfter", assignments.RootHashAfter,
-		"censusRoot", censusRoot.String(),
+		"censusRoot", fmt.Sprintf("%x", censusRoot.Bytes()),
 	)
 
 	// Prepare the options for the prover - use solidity verifier target
@@ -282,7 +282,7 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 		log.Infow("vote details",
 			"index", i,
 			"voteID", v.VoteID.String(),
-			"address", v.Address.String(),
+			"address", fmt.Sprintf("%x", v.Address.Bytes()),
 			"weight", v.Weight.String(),
 		)
 	}
