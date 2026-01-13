@@ -442,27 +442,14 @@ func (c *Contracts) authTransactOpts() (*bind.TransactOpts, error) {
 func (c *Contracts) SimulateContractCall(
 	ctx context.Context,
 	contractAddr common.Address,
-	contractABI *abi.ABI,
-	method string,
+	data []byte,
 	blobsSidecar *types.BlobTxSidecar,
-	args ...any,
 ) error {
-	if contractABI == nil {
-		return fmt.Errorf("nil contract ABI")
-	}
 	if (contractAddr == common.Address{}) {
 		return fmt.Errorf("empty contract address")
 	}
-	if method == "" {
-		return fmt.Errorf("empty method")
-	}
 	if c.signer == nil {
 		return fmt.Errorf("no signer defined")
-	}
-
-	data, err := contractABI.Pack(method, args...)
-	if err != nil {
-		return fmt.Errorf("pack %s: %w", method, err)
 	}
 
 	auth, err := c.authTransactOpts()

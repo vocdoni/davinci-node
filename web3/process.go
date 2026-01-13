@@ -175,6 +175,26 @@ func (c *Contracts) SetProcessTransition(
 	return c.txManager.WaitTxByID(txID, timeout, callback...)
 }
 
+// SimulateProcessTransition simulates a submitStateTransition contract call
+// using the eth_simulateV1 RPC method. If blobsSidecar is provided,
+// it will simulate an EIP4844 transaction with blob data.
+// If blobsSidecar is nil, it will simulate a regular contract call.
+//
+// NOTE: this is a temporary method to simulate contract calls it works on geth
+// but not expected to work on other clients or external rpc providers.
+func (c *Contracts) SimulateProcessTransition(
+	ctx context.Context,
+	processID types.ProcessID,
+	proof, inputs []byte,
+	blobsSidecar *types.BlobTxSidecar,
+) error {
+	data, err := c.ProcessRegistryABI().Pack("submitStateTransition", processID, proof, inputs)
+	if err != nil {
+		return fmt.Errorf("pack submitStateTransition: %w", err)
+	}
+	return c.SimulateContractCall(ctx, c.ContractsAddresses.ProcessRegistry, data, blobsSidecar)
+}
+
 // sendProcessResults sets the results of the process with the given ID in the
 // ProcessRegistry contract. It returns the transaction ID and hash of the
 // results submission, or an error if the submission fails.
@@ -220,6 +240,23 @@ func (c *Contracts) SetProcessResults(
 		"txID", txID.String(),
 		"processID", processID.String())
 	return c.txManager.WaitTxByID(txID, timeout, callback...)
+}
+
+// SimulateProcessResults simulates a setProcessResults contract call
+// using the eth_simulateV1 RPC method.
+//
+// NOTE: this is a temporary method to simulate contract calls it works on geth
+// but not expected to work on other clients or external rpc providers.
+func (c *Contracts) SimulateProcessResults(
+	ctx context.Context,
+	processID types.ProcessID,
+	proof, inputs []byte,
+) error {
+	data, err := c.ProcessRegistryABI().Pack("setProcessResults", processID, proof, inputs)
+	if err != nil {
+		return fmt.Errorf("pack setProcessResults: %w", err)
+	}
+	return c.SimulateContractCall(ctx, c.ContractsAddresses.ProcessRegistry, data, nil)
 }
 
 // SetProcessStatus sets the status of the process with the given ID in the

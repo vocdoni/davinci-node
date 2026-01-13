@@ -171,16 +171,7 @@ func (s *Sequencer) pushTransitionToContract(
 
 	// Simulate tx to the contract to check if it will fail and get the root
 	// cause of the failure if it does
-	if err := s.contracts.SimulateContractCall(
-		s.ctx,
-		s.contracts.ContractsAddresses.ProcessRegistry,
-		s.contracts.ProcessRegistryABI(),
-		"submitStateTransition",
-		blobSidecar,
-		processID,
-		abiProof,
-		abiInputs,
-	); err != nil {
+	if err := s.contracts.SimulateProcessTransition(s.ctx, processID, abiProof, abiInputs, blobSidecar); err != nil {
 		log.Debugw("failed to simulate state transition",
 			"error", err,
 			"processID", processID.String())
@@ -281,16 +272,7 @@ func (s *Sequencer) processResultsOnChain() {
 			"strInputs", res.Inputs.String())
 		// Simulate tx to the contract to check if it will fail and get the root
 		// cause of the failure if it does
-		if err := s.contracts.SimulateContractCall(
-			s.ctx,
-			s.contracts.ContractsAddresses.ProcessRegistry,
-			s.contracts.ProcessRegistryABI(),
-			"setProcessResults",
-			nil, // No blob sidecar for regular contract calls
-			res.ProcessID,
-			abiProof,
-			abiInputs,
-		); err != nil {
+		if err := s.contracts.SimulateProcessResults(s.ctx, res.ProcessID, abiProof, abiInputs); err != nil {
 			log.Debugw("failed to simulate verified results upload",
 				"error", err,
 				"processID", res.ProcessID.String())
