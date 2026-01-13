@@ -88,7 +88,7 @@ func main() {
 	)
 	if cRoot == nil || len(*cURI) == 0 {
 		// Create a new census with numBallot participants
-		censusRoot, censusURI, signers, err = cliSrv.CreateCensus(*votersCount, userWeight, *census3URL, *voterPrivkey)
+		censusRoot, censusURI, signers, err = cliSrv.CreateCensus(censusOrigin, *votersCount, userWeight, *census3URL, *voterPrivkey)
 		if err != nil {
 			log.Errorw(err, "failed to create census")
 			return
@@ -106,7 +106,7 @@ func main() {
 		"uri", censusURI)
 
 	// Create a new process with mocked ballot mode
-	pid, encryptionKey, err := cliSrv.CreateProcess(censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
+	pid, encryptionKey, err := cliSrv.CreateProcess(censusOrigin, censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
 	if err != nil {
 		log.Errorw(err, "failed to create process")
 		return

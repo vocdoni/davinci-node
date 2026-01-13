@@ -229,8 +229,11 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 
 	// Get the participant weight
 	weight, ok := census.Tree().GetWeight(address)
-	if !ok || weight.Cmp(big.NewInt(0)) == 0 {
+	if !ok {
 		ErrResourceNotFound.Withf("participant not found in census: %s", address.String()).Write(w)
+		return
+	} else if weight.Cmp(big.NewInt(0)) == 0 {
+		ErrResourceNotFound.Withf("participant has zero weight in census: %s", address.String()).Write(w)
 		return
 	}
 

@@ -281,7 +281,13 @@ func (s *CLIServices) CreateAccountOrganization() (common.Address, error) {
 	return orgAddr, nil
 }
 
-func (s *CLIServices) CreateCensus(size int, weight uint64, c3URL string, privKey string) (types.HexBytes, string, []*ethereum.Signer, error) {
+func (s *CLIServices) CreateCensus(
+	origin types.CensusOrigin,
+	size int,
+	weight uint64,
+	c3URL string,
+	privKey string,
+) (types.HexBytes, string, []*ethereum.Signer, error) {
 	signers := []*ethereum.Signer{}
 	votes := []state.Vote{}
 	if len(privKey) > 0 {
@@ -316,6 +322,7 @@ func (s *CLIServices) CreateCensus(size int, weight uint64, c3URL string, privKe
 }
 
 func (s *CLIServices) CreateProcess(
+	censusOrigin types.CensusOrigin,
 	censusRoot types.HexBytes,
 	censusURI string,
 	ballotMode *types.BallotMode,
@@ -342,7 +349,7 @@ func (s *CLIServices) CreateProcess(
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
 			CensusURI:    censusURI,
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
+			CensusOrigin: censusOrigin,
 		},
 	}
 	body, code, err := s.cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
@@ -375,7 +382,7 @@ func (s *CLIServices) CreateProcess(
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
 			CensusURI:    censusURI,
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
+			CensusOrigin: censusOrigin,
 		},
 	}
 	// Create process in the contracts
