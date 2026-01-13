@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	gethapitypes "github.com/ethereum/go-ethereum/signer/core/apitypes"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3/rpc"
@@ -23,9 +24,9 @@ type SimulationRequest struct {
 
 // BlockStateCall lets you override block fields, state, and queue up calls
 type BlockStateCall struct {
-	BlockOverrides *BlockOverrides          `json:"blockOverrides,omitempty"`
-	StateOverrides map[string]StateOverride `json:"stateOverrides,omitempty"`
-	Calls          []Call                   `json:"calls"`
+	BlockOverrides *BlockOverrides           `json:"blockOverrides,omitempty"`
+	StateOverrides map[string]StateOverride  `json:"stateOverrides,omitempty"`
+	Calls          []gethapitypes.SendTxArgs `json:"calls"`
 }
 
 // BlockOverrides lets you override block fields
@@ -39,21 +40,6 @@ type StateOverride struct {
 	Balance *hexutil.Big   `json:"balance,omitempty"`
 	Nonce   hexutil.Uint64 `json:"nonce,omitempty"`
 	Code    *hexutil.Bytes `json:"code,omitempty"`
-}
-
-// Call is a single call to be executed in the simulated block
-type Call struct {
-	From       common.Address       `json:"from,omitempty"`
-	To         common.Address       `json:"to,omitempty"`
-	Gas        hexutil.Uint64       `json:"gas,omitempty"`
-	GasPrice   *hexutil.Big         `json:"gasPrice,omitempty"`
-	GasFeeCap  *hexutil.Big         `json:"maxFeePerGas,omitempty"`         // a.k.a. maxFeePerGas
-	GasTipCap  *hexutil.Big         `json:"maxPriorityFeePerGas,omitempty"` // a.k.a. maxPriorityFeePerGas
-	Value      *hexutil.Big         `json:"value,omitempty"`
-	Data       hexutil.Bytes        `json:"data,omitempty"`
-	Nonce      hexutil.Uint64       `json:"nonce,omitempty"`
-	BlobHashes []common.Hash        `json:"blobHashes,omitempty"`
-	Sidecar    *types.BlobTxSidecar `json:"sidecar,omitempty"`
 }
 
 // SimulatedBlock is the result of a simulated block
@@ -168,3 +154,6 @@ func process2ContractProcess(p *types.Process) npbindings.IProcessRegistryProces
 	}
 	return prp
 }
+
+// ptr returns a pointer to v.
+func ptr[T any](v T) *T { return &v }

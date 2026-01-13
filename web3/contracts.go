@@ -17,6 +17,7 @@ import (
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	gethapitypes "github.com/ethereum/go-ethereum/signer/core/apitypes"
 
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	vbindings "github.com/vocdoni/davinci-contracts/golang-types/verifiers"
@@ -472,38 +473,55 @@ func (c *Contracts) SimulateContractCall(
 	// Cap gas fee (baseFee * 2 + tipCap)
 	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
 
-	call := Call{
-		From:      c.signer.Address(),
-		To:        contractAddr,
-		Data:      data,
-		GasTipCap: (*hexutil.Big)(tipCap),
-		GasFeeCap: (*hexutil.Big)(gasFeeCap),
-		Nonce:     hexutil.Uint64(auth.Nonce.Uint64()),
+	callMsg := ethereum.CallMsg{
+		From: c.signer.Address(),
+		To:   &contractAddr,
+		Data: data,
+	}
+	if blobsSidecar != nil {
+		callMsg.BlobHashes = blobsSidecar.BlobHashes()
+	}
+
+	gas, err := c.txManager.EstimateGas(ctx, callMsg, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
+	if err != nil {
+		if reason, ok := c.DecodeError(err); ok {
+			return fmt.Errorf("failed to estimate gas: %w (decoded: %s)", err, reason)
+		}
+		return fmt.Errorf("failed to estimate gas: %w", err)
+	}
+
+	call := gethapitypes.SendTxArgs{
+		From:                 common.NewMixedcaseAddress(c.signer.Address()),
+		To:                   ptr(common.NewMixedcaseAddress(contractAddr)),
+		Data:                 ptr(hexutil.Bytes(data)),
+		MaxPriorityFeePerGas: (*hexutil.Big)(tipCap),
+		MaxFeePerGas:         (*hexutil.Big)(gasFeeCap),
+		Nonce:                hexutil.Uint64(auth.Nonce.Uint64()),
+		Gas:                  hexutil.Uint64(gas),
 	}
 
 	if blobsSidecar != nil {
-		call.BlobHashes = blobsSidecar.BlobHashes()
-		call.Sidecar = blobsSidecar
-
-		gas, err := c.txManager.EstimateGas(ctx, ethereum.CallMsg{
-			From:       c.signer.Address(),
-			To:         &contractAddr,
-			Data:       data,
-			BlobHashes: blobsSidecar.BlobHashes(),
-		}, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
+		// Base fee for *blob gas* (separate market). Use RPC eth_blobBaseFee.
+		blobBaseFee, err := c.cli.BlobBaseFee(ctx)
 		if err != nil {
-			if reason, ok := c.DecodeError(err); ok {
-				return fmt.Errorf("failed to estimate gas: %w (decoded: %s)", err, reason)
-			}
-			return fmt.Errorf("failed to estimate gas: %w", err)
+			return fmt.Errorf("blob base fee: %w", err)
 		}
-		call.Gas = hexutil.Uint64(gas)
+		// Apply gas multiplier: (blobBaseFee * 2) * multiplier
+		baseBlobFeeCap := new(big.Int).Mul(blobBaseFee, big.NewInt(2))
+		blobFeeCap := applyGasMultiplier(baseBlobFeeCap, c.GasMultiplier)
+		call.BlobFeeCap = (*hexutil.Big)(blobFeeCap)
+
+		sidecar := blobsSidecar.AsGethSidecar()
+		call.BlobHashes = sidecar.BlobHashes()
+		call.Blobs = sidecar.Blobs
+		call.Commitments = sidecar.Commitments
+		call.Proofs = sidecar.Proofs
 	}
 
 	simReq := SimulationRequest{
 		BlockStateCalls: []BlockStateCall{
 			{
-				Calls: []Call{call},
+				Calls: []gethapitypes.SendTxArgs{call},
 			},
 		},
 		Validation:             true,
@@ -525,6 +543,11 @@ func (c *Contracts) SimulateContractCall(
 		return nil
 	}
 
+	// eth_simulateV1 returns data as ReturnData rather than inside Error,
+	// so we need to fill Error.Data before calling DecodeError
+	if callResult.Error != nil && len(callResult.Error.Data) == 0 && len(callResult.ReturnData) > 0 {
+		callResult.Error.Data = callResult.ReturnData
+	}
 	if reason, ok := c.DecodeError(callResult.Error); ok {
 		return fmt.Errorf("call reverted: %w (decoded: %s)", callResult.Error, reason)
 	}
