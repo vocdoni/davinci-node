@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -12,30 +11,8 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 )
-
-// permanentErrorPatterns defines error patterns that indicate permanent
-// failures that should not be retried. These are typically contract-level
-// rejections that will never succeed regardless of gas price or retries.
-// Add new patterns here as they are discovered and confirmed.
-var permanentErrorPatterns = []string{
-	"execution reverted", // Contract rejected the transaction
-}
-
-// isPermanentError checks if an error represents a permanent failure that
-// should not be retried.
-func isPermanentError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := strings.ToLower(err.Error())
-	for _, pattern := range permanentErrorPatterns {
-		if strings.Contains(errStr, pattern) {
-			return true
-		}
-	}
-	return false
-}
 
 // SendTx sends a transaction with automatic fallback and recovery mechanisms.
 // It accepts a transaction builder function that takes a nonce and returns a
@@ -212,7 +189,7 @@ func (tm *TxManager) handleStuckTxs(ctx context.Context) error {
 // It returns an error if the operation fails.
 func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) error {
 	// Check if last error was permanent - no point in retrying
-	if isPermanentError(ptx.LastError) {
+	if rpc.IsPermanentError(ptx.LastError) {
 		log.Warnw("transaction failed with permanent error, not retrying",
 			"id", fmt.Sprintf("%x", ptx.ID),
 			"nonce", ptx.Nonce,
@@ -406,7 +383,7 @@ func (tm *TxManager) recoverTxFromNonceGap(
 			log.Warnw("failed to send transaction after nonce recovery",
 				"error", sendErr,
 				"attempt", attempt+1)
-			if isPermanentError(err) {
+			if rpc.IsPermanentError(err) {
 				return nil, fmt.Errorf("permanent error sending transaction after nonce recovery: %w", sendErr)
 			}
 			continue
