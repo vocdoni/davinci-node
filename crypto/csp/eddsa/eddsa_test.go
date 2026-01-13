@@ -17,7 +17,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 	userAddress := testutil.RandomAddress()
 	userWeight := types.NewInt(testutil.Weight)
 
-	csp, err := CSP(types.CensusOriginCSPEdDSABN254V1.CurveID())
+	csp, err := CSP(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID())
 	c.Assert(err, qt.IsNil)
 
 	t.Run("invalid inputs", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestCensusRootLengthAndValue(t *testing.T) {
 	c := qt.New(t)
 
 	for range 1000 {
-		csp, err := CSP(types.CensusOriginCSPEdDSABN254V1.CurveID())
+		csp, err := CSP(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID())
 		c.Assert(err, qt.IsNil)
 		root := csp.CensusRoot().Root
 		c.Assert(len(root), qt.Equals, types.CensusRootLength)

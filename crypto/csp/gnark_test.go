@@ -28,7 +28,7 @@ type emulatedCSPProofCircuit struct {
 }
 
 func (c *emulatedCSPProofCircuit) Define(api frontend.API) error {
-	api.AssertIsEqual(c.Proof.IsValidEmulated(api, types.CensusOriginCSPEdDSABN254V1.CurveID(), c.CensusRoot, c.ProcessID, c.Address, c.Weight), 1)
+	api.AssertIsEqual(c.Proof.IsValidEmulated(api, types.CensusOriginCSPEdDSABabyJubJubV1.CurveID(), c.CensusRoot, c.ProcessID, c.Address, c.Weight), 1)
 	return nil
 }
 
@@ -36,7 +36,7 @@ func TestEmulatedCSPProofCircuit(t *testing.T) {
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
 
-	csp, err := New(types.CensusOriginCSPEdDSABN254V1, nil)
+	csp, err := New(types.CensusOriginCSPEdDSABabyJubJubV1, nil)
 	c.Assert(err, qt.IsNil)
 
 	processID := testutil.RandomProcessID()
@@ -46,7 +46,7 @@ func TestEmulatedCSPProofCircuit(t *testing.T) {
 	proof, err := csp.GenerateProof(processID, userAddress, userWeight)
 	c.Assert(err, qt.IsNil)
 
-	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABN254V1.CurveID(), proof)
+	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID(), proof)
 	c.Assert(err, qt.IsNil)
 
 	ffPID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
@@ -75,7 +75,7 @@ type cspProofCircuit struct {
 }
 
 func (c *cspProofCircuit) Define(api frontend.API) error {
-	api.AssertIsEqual(c.Proof.IsValid(api, types.CensusOriginCSPEdDSABN254V1.CurveID(), c.CensusRoot, c.ProcessID, c.Address, c.Weight), 1)
+	api.AssertIsEqual(c.Proof.IsValid(api, types.CensusOriginCSPEdDSABabyJubJubV1.CurveID(), c.CensusRoot, c.ProcessID, c.Address, c.Weight), 1)
 	return nil
 }
 
@@ -83,7 +83,7 @@ func TestCSPProofCircuit(t *testing.T) {
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
 
-	csp, err := New(types.CensusOriginCSPEdDSABN254V1, nil)
+	csp, err := New(types.CensusOriginCSPEdDSABabyJubJubV1, nil)
 	c.Assert(err, qt.IsNil)
 
 	userAddress := common.Address(util.RandomBytes(20))
@@ -94,7 +94,7 @@ func TestCSPProofCircuit(t *testing.T) {
 	proof, err := csp.GenerateProof(processID, userAddress, userWeight)
 	c.Assert(err, qt.IsNil)
 
-	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABN254V1.CurveID(), proof)
+	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID(), proof)
 	c.Assert(err, qt.IsNil)
 
 	ffPID := types.BigIntConverter(processID.MathBigInt()).ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()

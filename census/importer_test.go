@@ -145,7 +145,7 @@ func TestCensusImporter(t *testing.T) {
 			}
 			importer := NewCensusImporter(stg, plugin)
 			err := importer.ImportCensus(c.Context(), &types.Census{
-				CensusOrigin: types.CensusOriginCSPEdDSABN254V1,
+				CensusOrigin: types.CensusOriginCSPEdDSABabyJubJubV1,
 				CensusURI:    "https://example.invalid/csp",
 				CensusRoot:   types.HexBytes{0x01},
 			})

@@ -18,7 +18,7 @@ func IsMerkleTreeCensusOrigin(api frontend.API, origin frontend.Variable) fronte
 			api.IsZero(api.Sub(origin, uint8(types.CensusOriginMerkleTreeOffchainStaticV1))),
 			api.IsZero(api.Sub(origin, uint8(types.CensusOriginMerkleTreeOffchainDynamicV1))),
 		),
-		api.IsZero(api.Sub(origin, uint8(types.CensusOriginMerkleTreeOnchainV1))),
+		api.IsZero(api.Sub(origin, uint8(types.CensusOriginMerkleTreeOnchainDynamicV1))),
 	)
 }
 
@@ -27,11 +27,11 @@ func IsMerkleTreeCensusOrigin(api frontend.API, origin frontend.Variable) fronte
 // The supported CSP census origin is:
 //   - CensusOriginCSPEdDSABN254V1
 func IsCSPCensusOrigin(api frontend.API, origin frontend.Variable) frontend.Variable {
-	return api.IsZero(api.Sub(origin, uint8(types.CensusOriginCSPEdDSABN254V1)))
+	return api.IsZero(api.Sub(origin, uint8(types.CensusOriginCSPEdDSABabyJubJubV1)))
 }
 
 // CSPCensusOriginCurveID returns the twistededwards.ID corresponding to the
 // curve used by the CSP census origin.
 func CSPCensusOriginCurveID() twistededwards.ID {
-	return types.CensusOriginCSPEdDSABN254V1.CurveID()
+	return types.CensusOriginCSPEdDSABabyJubJubV1.CurveID()
 }

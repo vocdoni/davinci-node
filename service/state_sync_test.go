@@ -81,7 +81,7 @@ func TestStateSync(t *testing.T) {
 		Census: &types.Census{
 			CensusRoot:   make([]byte, 32),
 			CensusURI:    "https://example.com/census",
-			CensusOrigin: types.CensusOriginCSPEdDSABN254V1,
+			CensusOrigin: types.CensusOriginCSPEdDSABabyJubJubV1,
 		},
 	})
 	c.Assert(err, qt.IsNil)

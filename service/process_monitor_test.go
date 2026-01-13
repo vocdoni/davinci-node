@@ -58,7 +58,7 @@ func TestProcessMonitor(t *testing.T) {
 	census := &types.Census{
 		CensusRoot:   make([]byte, 32),
 		CensusURI:    "https://example.com/census",
-		CensusOrigin: types.CensusOriginCSPEdDSABN254V1,
+		CensusOrigin: types.CensusOriginCSPEdDSABabyJubJubV1,
 	}
 
 	// Create a new process
