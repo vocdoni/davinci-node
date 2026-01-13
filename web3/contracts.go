@@ -457,30 +457,36 @@ func (c *Contracts) SimulateContractCall(
 		return fmt.Errorf("failed to create transactor: %w", err)
 	}
 
-	auth.GasPrice, err = c.cli.SuggestGasPrice(ctx)
+	tipCap, err := c.cli.SuggestGasTipCap(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get gas price: %w", err)
+		return fmt.Errorf("failed to get tip cap: %w", err)
 	}
+	baseFee, err := c.cli.SuggestGasPrice(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get base fee: %w", err)
+	}
+	// Cap gas fee (baseFee * 2 + tipCap)
+	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tipCap)
 
 	call := Call{
-		From:     c.signer.Address(),
-		To:       contractAddr,
-		Data:     data,
-		GasPrice: (*hexutil.Big)(auth.GasPrice),
-		Nonce:    hexutil.Uint64(auth.Nonce.Uint64()),
+		From:      c.signer.Address(),
+		To:        contractAddr,
+		Data:      data,
+		GasTipCap: (*hexutil.Big)(tipCap),
+		GasFeeCap: (*hexutil.Big)(gasFeeCap),
+		Nonce:     hexutil.Uint64(auth.Nonce.Uint64()),
 	}
 
 	if blobsSidecar != nil {
 		call.BlobHashes = blobsSidecar.BlobHashes()
 		call.Sidecar = blobsSidecar
 
-		gas, err := c.cli.EstimateGas(ctx, ethereum.CallMsg{
+		gas, err := c.txManager.EstimateGas(ctx, ethereum.CallMsg{
 			From:       c.signer.Address(),
 			To:         &contractAddr,
-			Value:      nil,
 			Data:       data,
 			BlobHashes: blobsSidecar.BlobHashes(),
-		})
+		}, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
 		if err != nil {
 			if reason, ok := c.DecodeError(err); ok {
 				return fmt.Errorf("failed to estimate gas: %w (decoded: %s)", err, reason)
