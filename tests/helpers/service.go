@@ -41,7 +41,7 @@ type TestServices struct {
 	HTTPClient       *client.HTTPclient
 }
 
-func TestNewServices(
+func NewTestServices(
 	ctx context.Context,
 	tempDir string,
 	workerSecret string,
@@ -87,7 +87,6 @@ func TestNewServices(
 
 	if IsDebugTest() {
 		logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
-		// Note: Debug prover is disabled when not in testing context
 		log.Info("Debug prover is disabled in non-testing context")
 	}
 
@@ -106,8 +105,18 @@ func TestNewServices(
 	}
 	services.CensusDownloader = cd
 
+	// Start StateSync
+	stateSync := service.NewStateSync(contracts, stg)
+	if err := stateSync.Start(ctx); err != nil {
+		cd.Stop()
+		vp.Stop()
+		seqCancel()
+		web3Cleanup() // Clean up web3 if process monitor fails to start
+		return nil, nil, fmt.Errorf("failed to start state sync: %v", err)
+	}
+
 	// Start process monitor
-	pm := service.NewProcessMonitor(contracts, stg, cd, time.Second*2)
+	pm := service.NewProcessMonitor(contracts, stg, cd, stateSync, time.Second*2)
 	if err := pm.Start(ctx); err != nil {
 		cd.Stop()
 		vp.Stop()
@@ -253,7 +262,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		composeEnv := make(map[string]string)
 		composeEnv[AnvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[DeployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
-		composeEnv[PrivKeyEnvVarName] = TestLocalAccountPrivKey
+		composeEnv[PrivKeyEnvVarName] = LocalAccountPrivKey
 
 		// get branch and commit from the environment variables
 		if branchName := os.Getenv(ContractsBranchNameEnvVarName); branchName != "" {
@@ -417,7 +426,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 			}
 		}
 		// Set the private key for the sequencer
-		err = contracts.SetAccountPrivateKey(util.TrimHex(TestLocalAccountPrivKey))
+		err = contracts.SetAccountPrivateKey(util.TrimHex(LocalAccountPrivKey))
 		if err != nil {
 			cleanup() // Clean up what we've done so far
 			return nil, nil, fmt.Errorf("failed to set account private key: %w", err)
@@ -463,26 +472,11 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		txm.Stop()
 	})
 	// Set contracts ABIs
-	contracts.ContractABIs = &web3.ContractABIs{}
-	contracts.ContractABIs.ProcessRegistry, err = contracts.ProcessRegistryABI()
-	if err != nil {
-		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to get process registry ABI: %w", err)
-	}
-	contracts.ContractABIs.OrganizationRegistry, err = contracts.OrganizationRegistryABI()
-	if err != nil {
-		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to get organization registry ABI: %w", err)
-	}
-	contracts.ContractABIs.StateTransitionZKVerifier, err = contracts.StateTransitionVerifierABI()
-	if err != nil {
-		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to get state transition verifier ABI: %w", err)
-	}
-	contracts.ContractABIs.ResultsZKVerifier, err = contracts.ResultsVerifierABI()
-	if err != nil {
-		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to get results verifier ABI: %w", err)
+	contracts.ContractABIs = &web3.ContractABIs{
+		ProcessRegistry:           contracts.ProcessRegistryABI(),
+		OrganizationRegistry:      contracts.OrganizationRegistryABI(),
+		StateTransitionZKVerifier: contracts.StateTransitionVerifierABI(),
+		ResultsZKVerifier:         contracts.ResultsVerifierABI(),
 	}
 	// Return the contracts object and cleanup function
 	return contracts, cleanup, nil

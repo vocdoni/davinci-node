@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -11,12 +12,11 @@ func IsDebugTest() bool {
 	return os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "false"
 }
 
-func TestTimeoutChan(t *testing.T) <-chan time.Time {
-	// Set up timeout based on context deadline
-	var timeoutCh <-chan time.Time
-	deadline, hasDeadline := t.Deadline()
+func MaxTestTimeout(t *testing.T) time.Duration {
+	t.Helper()
 
-	if hasDeadline {
+	// Set up timeout based on context deadline
+	if deadline, hasDeadline := t.Deadline(); hasDeadline {
 		// If context has a deadline, set timeout to 15 seconds before it
 		// to allow for clean shutdown and error reporting
 		remainingTime := time.Until(deadline)
@@ -28,26 +28,21 @@ func TestTimeoutChan(t *testing.T) <-chan time.Time {
 		}
 
 		effectiveTimeout := remainingTime - timeoutBuffer
-		timeoutCh = time.After(effectiveTimeout)
-		t.Logf("Test will timeout in %v (deadline: %v)", effectiveTimeout, deadline)
-	} else {
-		// No deadline set, use a reasonable default
-		timeOut := 20 * time.Minute
-		if IsDebugTest() {
-			timeOut = 50 * time.Minute
-		}
-		timeoutCh = time.After(timeOut)
-		t.Logf("No test deadline found, using %s minute default timeout", timeOut.String())
+		return effectiveTimeout
 	}
-	return timeoutCh
+	// No deadline set, use a reasonable default
+	if IsDebugTest() {
+		return 50 * time.Minute
+	}
+	return 20 * time.Minute
 }
 
-func TestWaitForWithChannel(ch <-chan time.Time, interval time.Duration, condition func() bool) error {
+func WaitUntilCondition(ctx context.Context, interval time.Duration, condition func() bool) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ch:
+		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for condition")
 		case <-ticker.C:
 			if condition() {

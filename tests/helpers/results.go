@@ -7,7 +7,7 @@ import (
 	"github.com/vocdoni/davinci-node/web3"
 )
 
-func TestResultsOnChain(contracts *web3.Contracts, pid types.ProcessID) ([]*types.BigInt, error) {
+func FetchResultsOnChain(contracts *web3.Contracts, pid types.ProcessID) ([]*types.BigInt, error) {
 	process, err := contracts.Process(pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)

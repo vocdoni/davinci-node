@@ -9,7 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/web3"
 )
 
-func TestOrganization(contracts *web3.Contracts) (common.Address, error) {
+func CreateOrganization(contracts *web3.Contracts) (common.Address, error) {
 	orgAddr := contracts.AccountAddress()
 	txHash, err := contracts.CreateOrganization(orgAddr, &types.OrganizationInfo{
 		Name:        fmt.Sprintf("Vocdoni test %x", orgAddr[:4]),

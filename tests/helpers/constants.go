@@ -9,11 +9,11 @@ import (
 
 const (
 	// first account private key created by anvil with default mnemonic
-	TestLocalAccountPrivKey   = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-	TestLocalCSPSeed          = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
-	TestWorkerSeed            = "test-seed"
-	TestWorkerTokenExpiration = 24 * time.Hour
-	TestWorkerTimeout         = time.Second * 5
+	LocalAccountPrivKey   = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+	LocalCSPSeed          = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
+	WorkerSeed            = "test-seed"
+	WorkerTokenExpiration = 24 * time.Hour
+	WorkerTimeout         = time.Second * 5
 	// envarionment variable names
 	DeployerServerPortEnvVarName      = "DEPLOYER_SERVER"                        // environment variable name for deployer server port
 	ContractsBranchNameEnvVarName     = "SEQUENCER_CONTRACTS_BRANCH"             // environment variable name for z-contracts branch
@@ -26,11 +26,12 @@ const (
 	ResultsVerifierEnvVarName         = "SEQUENCER_RESULTS_ZK_VERIFIER"          // environment variable name for results zk verifier
 	StateTransitionVerifierEnvVarName = "SEQUENCER_STATE_TRANSITION_ZK_VERIFIER" // environment variable name for state transition zk verifier
 	CSPCensusEnvVarName               = "CSP_CENSUS"                             // environment variable name to select between csp or merkle tree census (by default merkle tree)
+
+	DefaultBatchTimeWindow = 45 * time.Second // default batch time window for sequencer
 )
 
 var (
-	DefaultBatchTimeWindow = 45 * time.Second // default batch time window for sequencer
-	DefaultAPIPort         = util.RandomInt(40000, 60000)
-	DefaultCensus3Port     = util.RandomInt(40000, 60000)
-	DefaultCensus3URL      = fmt.Sprintf("http://localhost:%d", DefaultCensus3Port)
+	DefaultAPIPort     = util.RandomInt(40000, 60000)
+	DefaultCensus3Port = util.RandomInt(40000, 60000)
+	DefaultCensus3URL  = fmt.Sprintf("http://localhost:%d", DefaultCensus3Port)
 )

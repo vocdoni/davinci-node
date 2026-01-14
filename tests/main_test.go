@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/tests/helpers"
@@ -17,7 +17,7 @@ import (
 var (
 	orgAddr           common.Address
 	services          *helpers.TestServices
-	defaultBallotMode = circuits.MockBallotModeInternal()
+	defaultBallotMode = testutil.BallotModeInternal()
 )
 
 func TestMain(m *testing.M) {
@@ -37,17 +37,17 @@ func TestMain(m *testing.M) {
 
 	var err error
 	var cleanup func()
-	services, cleanup, err = helpers.TestNewServices(ctx, tempDir,
-		helpers.TestWorkerSeed,
-		helpers.TestWorkerTokenExpiration,
-		helpers.TestWorkerTimeout,
+	services, cleanup, err = helpers.NewTestServices(ctx, tempDir,
+		helpers.WorkerSeed,
+		helpers.WorkerTokenExpiration,
+		helpers.WorkerTimeout,
 		workers.DefaultWorkerBanRules)
 	if err != nil {
 		log.Fatalf("failed to setup test services: %v", err)
 	}
 
 	// create organization
-	if orgAddr, err = helpers.TestOrganization(services.Contracts); err != nil {
+	if orgAddr, err = helpers.CreateOrganization(services.Contracts); err != nil {
 		log.Fatalf("failed to create organization: %v", err)
 	}
 	log.Infof("Organization address: %s", orgAddr.String())

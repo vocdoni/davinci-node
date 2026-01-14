@@ -23,7 +23,7 @@ func IsCSPCensus() bool {
 	return strings.ToLower(cspCensusEnvVar) == "true" || cspCensusEnvVar == "1"
 }
 
-func TestCensusOrigin() types.CensusOrigin {
+func CurrentCensusOrigin() types.CensusOrigin {
 	if IsCSPCensus() {
 		return types.CensusOriginCSPEdDSABN254V1
 	} else {
@@ -31,7 +31,7 @@ func TestCensusOrigin() types.CensusOrigin {
 	}
 }
 
-func TestWrongCensusOrigin() types.CensusOrigin {
+func WrongCensusOrigin() types.CensusOrigin {
 	if IsCSPCensus() {
 		return types.CensusOriginMerkleTreeOffchainStaticV1
 	} else {
@@ -39,7 +39,7 @@ func TestWrongCensusOrigin() types.CensusOrigin {
 	}
 }
 
-func TestCensusWithRandomVoters(ctx context.Context, origin types.CensusOrigin, nVoters int) ([]byte, string, []*ethereum.Signer, error) {
+func NewCensusWithRandomVoters(ctx context.Context, origin types.CensusOrigin, nVoters int) ([]byte, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
 	votes := []state.Vote{}
@@ -56,7 +56,7 @@ func TestCensusWithRandomVoters(ctx context.Context, origin types.CensusOrigin, 
 	}
 
 	if origin.IsCSP() {
-		eddsaCSP, err := csp.New(origin, []byte(TestLocalCSPSeed))
+		eddsaCSP, err := csp.New(origin, []byte(LocalCSPSeed))
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to create CSP: %w", err)
 		}
@@ -74,7 +74,7 @@ func TestCensusWithRandomVoters(ctx context.Context, origin types.CensusOrigin, 
 	}
 }
 
-func TestCensusWithVoters(ctx context.Context, origin types.CensusOrigin, signers ...*ethereum.Signer) ([]byte, string, []*ethereum.Signer, error) {
+func NewCensusWithVoters(ctx context.Context, origin types.CensusOrigin, signers ...*ethereum.Signer) ([]byte, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	votes := []state.Vote{}
 	for _, signer := range signers {
@@ -85,7 +85,7 @@ func TestCensusWithVoters(ctx context.Context, origin types.CensusOrigin, signer
 	}
 
 	if origin.IsCSP() {
-		eddsaCSP, err := csp.New(origin, []byte(TestLocalCSPSeed))
+		eddsaCSP, err := csp.New(origin, []byte(LocalCSPSeed))
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to create CSP: %w", err)
 		}
@@ -103,10 +103,10 @@ func TestCensusWithVoters(ctx context.Context, origin types.CensusOrigin, signer
 	}
 }
 
-func TestCensusProof(origin types.CensusOrigin, pid types.ProcessID, key []byte) (types.CensusProof, error) {
+func CreateCensusProof(origin types.CensusOrigin, pid types.ProcessID, key []byte) (types.CensusProof, error) {
 	if origin.IsCSP() {
 		weight := new(types.BigInt).SetUint64(testutil.Weight)
-		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(TestLocalCSPSeed))
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(LocalCSPSeed))
 		if err != nil {
 			return types.CensusProof{}, fmt.Errorf("failed to create CSP: %w", err)
 		}
@@ -119,7 +119,7 @@ func TestCensusProof(origin types.CensusOrigin, pid types.ProcessID, key []byte)
 	return types.CensusProof{}, nil
 }
 
-func TestUpdateCensusOnChain(
+func UpdateCensusOnChain(
 	contracts *web3.Contracts,
 	pid types.ProcessID,
 	census types.Census,

@@ -13,7 +13,7 @@ import (
 	"github.com/vocdoni/davinci-node/web3"
 )
 
-func TestNewProcess(
+func NewProcess(
 	contracts *web3.Contracts,
 	cli *client.HTTPclient,
 	censusOrigin types.CensusOrigin,
@@ -71,7 +71,7 @@ func TestNewProcess(
 	return processID, encryptionKeys, &resp.StateRoot, nil
 }
 
-func TestProcessOnChain(
+func NewProcessOnChain(
 	contracts *web3.Contracts,
 	censusOrigin types.CensusOrigin,
 	censusURI string,
@@ -109,7 +109,7 @@ func TestProcessOnChain(
 	return pid, contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
-func TestUpdateMaxVotersOnChain(
+func UpdateMaxVotersOnChain(
 	contracts *web3.Contracts,
 	pid types.ProcessID,
 	numVoters int,
@@ -129,7 +129,7 @@ func TestUpdateMaxVotersOnChain(
 	return contracts.WaitTxByHash(*txHash, time.Second*15)
 }
 
-func TestProcessVotersCountOnChain(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
+func FetchProcessVotersCountOnChain(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)
@@ -140,7 +140,7 @@ func TestProcessVotersCountOnChain(contracts *web3.Contracts, pid types.ProcessI
 	return int(process.VotersCount.MathBigInt().Int64()), nil
 }
 
-func TestProcessOverwrittenVotesCountOnChain(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
+func FetchProcessOnChainOverwrittenVotesCount(contracts *web3.Contracts, pid types.ProcessID) (int, error) {
 	process, err := contracts.Process(pid)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get process: %w", err)
@@ -151,7 +151,7 @@ func TestProcessOverwrittenVotesCountOnChain(contracts *web3.Contracts, pid type
 	return int(process.OverwrittenVotesCount.MathBigInt().Int64()), nil
 }
 
-func TestFinishProcessOnChain(contracts *web3.Contracts, pid types.ProcessID) error {
+func FinishProcessOnChain(contracts *web3.Contracts, pid types.ProcessID) error {
 	txHash, err := contracts.SetProcessStatus(pid, types.ProcessStatusEnded)
 	if err != nil {
 		return fmt.Errorf("failed to set process status: %w", err)
