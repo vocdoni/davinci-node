@@ -118,10 +118,8 @@ type Census struct {
 	//  - CensusOriginMerkleTreeOffchainDynamicV1: Merkle Root (could change
 	// 	  via tx).
 	//  - CensusOriginCSPEdDSABN254V1: MiMC7 of CSP PubKey (fixed).
-	// TODO: Extend with other census origins:
 	//  - CensusOriginMerkleTreeOnchainV1: Address of census manager
-	//    contract (should be queried on each transition, during state
-	//    transitions).
+	//    contract.
 	CensusRoot HexBytes `json:"censusRoot" cbor:"2,keyasint,omitempty"`
 	// CensusURI contains the following information depending on the CensusOrigin:
 	//  - CensusOriginMerkleTreeOffchainStaticV1: URL where the sequencer can

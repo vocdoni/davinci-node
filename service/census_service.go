@@ -65,6 +65,7 @@ func NewCensusDownloader(
 		storage:       stg,
 		importer: census.NewCensusImporter(
 			stg,
+			contracts,
 			census.JSONImporter(),
 			census.GraphQLImporter(nil),
 		),

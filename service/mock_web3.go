@@ -129,3 +129,7 @@ func (m *MockContracts) SendBlobTx(blob []byte) common.Hash {
 	m.blobs[txHash] = types.MustBlobFromBytes(blob)
 	return txHash
 }
+
+func (m *MockContracts) FetchOnchainCensusRoot(address common.Address) (types.HexBytes, error) {
+	return nil, fmt.Errorf("not implemented in mock")
+}

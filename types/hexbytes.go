@@ -56,6 +56,18 @@ func (b HexBytes) LeftTrim() HexBytes {
 	return out
 }
 
+// RightTrim returns a new HexBytes with trailing zeros removed. If there are no
+// trailing zeros, it returns a copy of b.
+func (b HexBytes) RightTrim() HexBytes {
+	i := len(b) - 1
+	for i >= 0 && b[i] == 0 {
+		i--
+	}
+	out := make(HexBytes, i+1)
+	copy(out, b[:i+1])
+	return out
+}
+
 // Equal method compares the current HexBytes with the provided one. First
 // checks if both have the same length, and compare them byte per byte.
 func (b HexBytes) Equal(other HexBytes) bool {

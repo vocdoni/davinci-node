@@ -47,6 +47,7 @@ var (
 	processRegistryABI           *abi.ABI
 	stateTransitionZKVerifierABI *abi.ABI
 	resultsZKVerifierABI         *abi.ABI
+	censusValidatorABI           *abi.ABI
 )
 
 func init() {
@@ -61,6 +62,7 @@ func init() {
 	processRegistryABI = parseABI(npbindings.ProcessRegistryMetaData.ABI)
 	stateTransitionZKVerifierABI = parseABI(vbindings.StateTransitionVerifierGroth16MetaData.ABI)
 	resultsZKVerifierABI = parseABI(vbindings.ResultsVerifierGroth16MetaData.ABI)
+	censusValidatorABI = parseABI(npbindings.ICensusValidatorMetaData.ABI)
 }
 
 // Addresses contains the addresses of the contracts deployed in the network.
@@ -77,6 +79,7 @@ type ContractABIs struct {
 	ProcessRegistry           *abi.ABI
 	StateTransitionZKVerifier *abi.ABI
 	ResultsZKVerifier         *abi.ABI
+	CensusValidator           *abi.ABI
 }
 
 // Contracts contains the bindings to the deployed contracts.
@@ -305,6 +308,7 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 		ProcessRegistry:           processRegistryABI,
 		StateTransitionZKVerifier: stateTransitionZKVerifierABI,
 		ResultsZKVerifier:         resultsZKVerifierABI,
+		CensusValidator:           censusValidatorABI,
 	}
 
 	// check for blob transaction support querying the ProcessRegistry contract
@@ -610,6 +614,9 @@ func (c *Contracts) StateTransitionVerifierABI() *abi.ABI { return stateTransiti
 
 // ResultsVerifierABI returns the ABI of the ResultsVerifier contract.
 func (c *Contracts) ResultsVerifierABI() *abi.ABI { return resultsZKVerifierABI }
+
+// CensusValidatorABI returns the ABI of the CensusValidator contract.
+func (c *Contracts) CensusValidatorABI() *abi.ABI { return censusValidatorABI }
 
 func (c *Contracts) ProcessRegistryAddress() (string, error) {
 	chainName, ok := npbindings.AvailableNetworksByID[uint32(c.ChainID)]

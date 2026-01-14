@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo/memdb"
+	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -27,6 +28,7 @@ type ProcessMonitor struct {
 
 // ContractsService defines the interface for web3 contract operations.
 type ContractsService interface {
+	census.OnchainCensusFetcher
 	MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
 	ProcessChangesFilters() []types.Web3FilterFn
 	MonitorProcessChanges(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
