@@ -4,3 +4,4 @@ artifacts
 debug_*
 *.log
 letsencrypt
+.worktrees
