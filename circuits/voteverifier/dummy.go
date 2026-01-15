@@ -8,7 +8,6 @@ import (
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -50,30 +49,9 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 	dummyEmulatedSecp256k1Fr := emulated.ValueOf[emulated.Secp256k1Fr](1)
 	return &VerifyVoteCircuit{
 		IsValid:    0,
-		InputsHash: dummyEmulatedBN254,
-		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address:    dummyEmulatedBN254,
-			VoteID:     dummyEmulatedBN254,
-			VoteWeight: dummyEmulatedBN254,
-			Ballot:     *elgamal.NewBallot(curve).ToGnarkEmulatedBN254(),
-		},
-		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-			ID:           dummyEmulatedBN254,
-			CensusOrigin: dummyEmulatedBN254,
-			EncryptionKey: circuits.EncryptionKey[emulated.Element[sw_bn254.ScalarField]]{
-				PubKey: [2]emulated.Element[sw_bn254.ScalarField]{dummyEmulatedBN254, dummyEmulatedBN254},
-			},
-			BallotMode: circuits.BallotMode[emulated.Element[sw_bn254.ScalarField]]{
-				NumFields:      dummyEmulatedBN254,
-				UniqueValues:   dummyEmulatedBN254,
-				MaxValue:       dummyEmulatedBN254,
-				MinValue:       dummyEmulatedBN254,
-				MaxValueSum:    dummyEmulatedBN254,
-				MinValueSum:    dummyEmulatedBN254,
-				CostExponent:   dummyEmulatedBN254,
-				CostFromWeight: dummyEmulatedBN254,
-			},
-		},
+		BallotHash: dummyEmulatedBN254,
+		Address:    dummyEmulatedBN254,
+		VoteID:     1,
 		PublicKey: ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: dummyEmulatedSecp256k1Fp,
 			Y: dummyEmulatedSecp256k1Fp,

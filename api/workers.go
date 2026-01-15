@@ -342,26 +342,27 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inputHash, err := originalInputs.InputsHash()
+	batchHash, err := originalInputs.InputsHash()
 	if err != nil {
-		log.Warnw("failed to generate inputs hash",
+		log.Warnw("failed to generate batch hash",
 			"error", err.Error(),
 			"processID", ballot.ProcessID.String(),
 			"voteID", ballot.VoteID.String())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
 	}
 
 	// Prepare the circuit to verify the proof, with the public inputs
 	circuit := &voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
-		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
+		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](batchHash),
 	}
 
 	// Verify the worker proof
 	if err := circuit.VerifyProof(workerVerifiedBallot.Proof); err != nil {
 		ErrGenericInternalServerError.WithErr(
-			fmt.Errorf("failed to verify worker proof, inputsHash: %v, proof: %v, err: %s",
-				circuit.InputsHash, workerVerifiedBallot.Proof, err.Error())).Write(w)
+			fmt.Errorf("failed to verify worker proof, ballotHash: %v, proof: %v, err: %s",
+				circuit.BallotHash, workerVerifiedBallot.Proof, err.Error())).Write(w)
 		return
 	}
 

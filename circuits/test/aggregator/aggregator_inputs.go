@@ -136,10 +136,10 @@ func AggregatorInputsForTest(
 
 	// init final assignments stuff
 	finalAssignments := &aggregator.AggregatorCircuit{
-		ValidProofs:        nValidVotes,
-		InputsHash:         emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
-		ProofsInputsHashes: proofsInputsHashes,
-		Proofs:             proofs,
+		ValidProofs:  nValidVotes,
+		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
+		BallotHashes: proofsInputsHashes,
+		Proofs:       proofs,
 	}
 	// fill assignments with dummy values
 	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballottest.TestCircomVerificationKey, nValidVotes, nil)

@@ -14,7 +14,6 @@ import (
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	gnarkecdsa "github.com/consensys/gnark/std/signature/ecdsa"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
@@ -177,19 +176,9 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	// Create the circuit assignment
 	assignment := voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
-		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
-		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
-			VoteID:     emulated.ValueOf[sw_bn254.ScalarField](b.VoteID.BigInt().MathBigInt()),
-			VoteWeight: emulated.ValueOf[sw_bn254.ScalarField](b.VoterWeight),
-			Ballot:     *b.EncryptedBallot.ToGnarkEmulatedBN254(),
-		},
-		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-			ID:            emulated.ValueOf[sw_bn254.ScalarField](inputs.ProcessID),
-			CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](inputs.CensusOrigin.BigInt().MathBigInt()),
-			EncryptionKey: inputs.EncryptionKey.BigIntsToEmulatedElementBN254(),
-			BallotMode:    inputs.BallotMode.BigIntsToEmulatedElementBN254(),
-		},
+		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
+		Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
+		VoteID:     b.VoteID.BigInt().MathBigInt(),
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),
@@ -224,7 +213,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 	pubAssignment := &voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
-		InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
+		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
 	}
 	pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 	if err != nil {

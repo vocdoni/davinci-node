@@ -4,7 +4,6 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // BallotProofNPubInputs is the number of public inputs for the ballot proof
@@ -59,16 +58,4 @@ func VoteVerifierInputs(
 	inputs = append(inputs, process.Serialize()...)
 	inputs = append(inputs, vote.SerializeAsVars()...)
 	return inputs
-}
-
-func CalculateVotersHashes(api frontend.API,
-	process Process[emulated.Element[sw_bn254.ScalarField]],
-	votes []EmulatedVote[sw_bn254.ScalarField],
-) VotersHashes {
-	// initialize the hashes of the voters
-	votersHashes := [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
-	for i := range params.VotesPerBatch {
-		votersHashes[i] = VoterHashFn(api, EmulatedVoteVerifierInputs(process, votes[i])...)
-	}
-	return VotersHashes{votersHashes}
 }

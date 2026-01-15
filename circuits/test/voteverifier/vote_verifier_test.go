@@ -9,6 +9,8 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
+	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
@@ -18,6 +20,7 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
@@ -105,4 +108,20 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 			test.WithBackends(backend.GROTH16))
 	}
 	fmt.Println("proving tooks", time.Since(now))
+}
+
+func TestCompileAndPrintConstraints(t *testing.T) {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
+		t.Skip("skipping circuit tests...")
+	}
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	c := qt.New(t)
+	// generate vote verifier circuit and inputs with deterministic ProcessID
+	vvPlaceholder, err := voteverifier.DummyPlaceholder(ballottest.TestCircomVerificationKey)
+	c.Assert(err, qt.IsNil, qt.Commentf("create vote verifier placeholder"))
+
+	vvCCS, err := frontend.Compile(params.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, vvPlaceholder)
+	c.Assert(err, qt.IsNil, qt.Commentf("compile vote verifier circuit"))
+	fmt.Printf("vote verifier constraints: %d\n", vvCCS.GetNbConstraints())
 }
