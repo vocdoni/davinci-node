@@ -98,20 +98,9 @@ func VoteVerifierInputsForTest(
 
 		assignments = append(assignments, voteverifier.VerifyVoteCircuit{
 			IsValid:    1,
-			InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
-			// circom inputs
-			Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-				Address:    emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
-				VoteID:     emulated.ValueOf[sw_bn254.ScalarField](voterProof.VoteID.BigInt().MathBigInt()),
-				VoteWeight: emulated.ValueOf[sw_bn254.ScalarField](testutil.Weight),
-				Ballot:     *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
-			},
-			Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-				ID:            emulated.ValueOf[sw_bn254.ScalarField](voterProof.ProcessID),
-				CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](censusOrigin.BigInt().MathBigInt()),
-				EncryptionKey: encryptionKey.BigIntsToEmulatedElementBN254(),
-				BallotMode:    testutil.BallotModeEmulated(),
-			},
+			BallotHash: emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
+			Address:    emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
+			VoteID:     voterProof.VoteID.BigInt().MathBigInt(),
 			// signature
 			PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 				X: emulated.ValueOf[emulated.Secp256k1Fp](voter.PubKey.X),

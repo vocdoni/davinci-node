@@ -67,7 +67,7 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 	}
 	// fill placeholders and assignments dummy values
 	for i := fromIdx; i < len(assignments.Proofs); i++ {
-		assignments.ProofsInputsHashes[i] = emulated.Element[sw_bn254.ScalarField]{
+		assignments.BallotHashes[i] = emulated.Element[sw_bn254.ScalarField]{
 			Limbs: []frontend.Variable{1, 0, 0, 0},
 		}
 		assignments.Proofs[i] = recursiveDummyProof

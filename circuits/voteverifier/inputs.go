@@ -8,6 +8,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/csp"
+	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -47,17 +48,16 @@ func (vi *VoteVerifierInputs) FromProcessBallot(process *types.Process, b *stora
 
 func (vi *VoteVerifierInputs) Serialize() []*big.Int {
 	ballotMode := vi.BallotMode.Serialize()
-	encryptionKey := vi.EncryptionKey.Serialize()
-	encryptedBallot := vi.EncryptedBallot.BigInts()
-	inputs := make([]*big.Int, 0, 5+len(ballotMode)+len(encryptionKey)+len(encryptedBallot))
+	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(vi.EncryptionKey.PubKey[0], vi.EncryptionKey.PubKey[1])
+	encryptedBallot := vi.EncryptedBallot.FromRTEtoTE().BigInts()
+	inputs := make([]*big.Int, 0, 4+len(ballotMode)+len(encryptedBallot))
 	inputs = append(inputs, vi.ProcessID)
-	inputs = append(inputs, vi.CensusOrigin.BigInt().MathBigInt())
 	inputs = append(inputs, ballotMode...)
-	inputs = append(inputs, encryptionKey...)
+	inputs = append(inputs, encryptionKeyXTE, encryptionKeyYTE)
 	inputs = append(inputs, vi.Address)
 	inputs = append(inputs, vi.VoteID.BigInt().MathBigInt())
-	inputs = append(inputs, vi.UserWeight)
 	inputs = append(inputs, encryptedBallot...)
+	inputs = append(inputs, vi.UserWeight)
 	return inputs
 }
 

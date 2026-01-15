@@ -1,6 +1,6 @@
 module github.com/vocdoni/davinci-node
 
-go 1.25.1
+go 1.25.5
 
 replace github.com/consensys/gnark => github.com/p4u/gnark v0.0.0-20251225172317-373b7ed338e2
 
@@ -35,6 +35,7 @@ require (
 	github.com/vocdoni/davinci-contracts v0.0.32-0.20260119161928-95700d32237f
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9
 	github.com/vocdoni/lean-imt-go v0.0.0-20260119124918-dac024645bae
+	github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/mod v0.32.0
 	golang.org/x/sync v0.19.0

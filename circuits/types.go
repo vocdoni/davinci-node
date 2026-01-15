@@ -23,6 +23,7 @@ import (
 	emu_tweds "github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
+	"github.com/vocdoni/poseidon377"
 )
 
 const (
@@ -40,6 +41,12 @@ const (
 	// where a VoteID or Address is near zero (e.g. in badly designed tests)
 	ReservedKeysOffset = 0x10
 )
+
+// Poseidon377Domain is the domain used for Poseidon377 hashing
+var Poseidon377Domain = poseidon377.DomainFromLEBytes([]byte("/davinci/"))
+
+// Poseidon377DomainVar is the domain as a frontend.Variable for use in circuits
+var Poseidon377DomainVar frontend.Variable
 
 // BallotMode is a struct that contains the common inputs for all the voters.
 // The values of this struct should be the same for all the voters in the same

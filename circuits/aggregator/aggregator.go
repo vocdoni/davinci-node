@@ -17,17 +17,17 @@ import (
 )
 
 type AggregatorCircuit struct {
-	ValidProofs        frontend.Variable                      `gnark:",public"`
-	InputsHash         emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
-	ProofsInputsHashes [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
-	Proofs             [params.VotesPerBatch]groth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
-	VerificationKey    groth16.VerifyingKey[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT] `gnark:"-"`
+	ValidProofs     frontend.Variable                      `gnark:",public"`
+	BatchHash       emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
+	BallotHashes    [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
+	Proofs          [params.VotesPerBatch]groth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
+	VerificationKey groth16.VerifyingKey[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT] `gnark:"-"`
 }
 
-// checkInputsHash recalculates the inputs hash using the MiMC hash function
-// and compares it with the expected inputs hash. The inputs hash is calculated
-// by hashing the inputs of the proofs.
-func (c *AggregatorCircuit) checkInputsHash(api frontend.API) {
+// checkBatchHash recalculates the batch hash using the MiMC hash function
+// and compares it with the expected batch hash. The batch hash is calculated
+// by hashing the ballot hashes.
+func (c *AggregatorCircuit) checkBatchHash(api frontend.API) {
 	// instantiate the MiMC hash function
 	hFn, err := mimc7.NewMiMC(api)
 	if err != nil {
@@ -35,12 +35,12 @@ func (c *AggregatorCircuit) checkInputsHash(api frontend.API) {
 		return
 	}
 	// write the inputs hash to the MiMC hash function
-	if err := hFn.Write(c.ProofsInputsHashes[:]...); err != nil {
+	if err := hFn.Write(c.BallotHashes[:]...); err != nil {
 		circuits.FrontendError(api, "failed to write inputs hash", err)
 		return
 	}
 	// compare with the expected inputs hash
-	hFn.AssertSumIsEqual(c.InputsHash)
+	hFn.AssertSumIsEqual(c.BatchHash)
 }
 
 // calculateWitnesses calculates the witnesses for the proofs. The first
@@ -72,7 +72,7 @@ func (c *AggregatorCircuit) calculateWitnesses(api frontend.API) []groth16.Witne
 		}
 		// if the proof is valid, the first limb of the first input in the
 		// witness should be 1, otherwise it should be 0
-		for j, inputsHashLimb := range c.ProofsInputsHashes[i].Limbs {
+		for j, inputsHashLimb := range c.BallotHashes[i].Limbs {
 			dummyLimb := 0
 			if j == 0 {
 				dummyLimb = 1
@@ -110,8 +110,7 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 }
 
 func (c *AggregatorCircuit) Define(api frontend.API) error {
-	c.checkInputsHash(api)
-	// check the proofs
+	c.checkBatchHash(api)
 	c.checkProofs(api)
 	return nil
 }
