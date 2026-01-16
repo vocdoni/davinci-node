@@ -65,7 +65,7 @@ func (b *BallotProofInputs) VoteIDForSign() (types.HexBytes, error) {
 //   - ballot is converted to twisted edwards form
 func BallotInputsHash(
 	processID types.ProcessID,
-	ballotMode *types.BallotMode,
+	ballotMode circuits.BallotMode[*big.Int],
 	encryptionKey ecc.Point,
 	address types.HexBytes,
 	voteID *types.BigInt,
@@ -84,11 +84,9 @@ func BallotInputsHash(
 	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	// convert the encryption key to twisted edwards form
 	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(encryptionKey.Point())
-	// ballot mode as circuit ballot mode
-	circuitBallotMode := circuits.BallotModeToCircuit(ballotMode)
 	// compose a list with the inputs of the circuit to hash them
-	inputsHash := []*big.Int{ffProcessID.MathBigInt()}                // process id
-	inputsHash = append(inputsHash, circuitBallotMode.Serialize()...) // ballot mode serialized
+	inputsHash := []*big.Int{ffProcessID.MathBigInt()}         // process id
+	inputsHash = append(inputsHash, ballotMode.Serialize()...) // ballot mode serialized
 	inputsHash = append(inputsHash,
 		encryptionKeyXTE,       // encryption key x coordinate
 		encryptionKeyYTE,       // encryption key y coordinate
@@ -156,7 +154,7 @@ func GenerateBallotProofInputs(
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := BallotInputsHash(
 		inputs.ProcessID,
-		inputs.BallotMode,
+		circuits.BallotModeToCircuit(inputs.BallotMode),
 		encryptionKey,
 		inputs.Address,
 		voteID,

@@ -21,8 +21,8 @@ type AggregatorInputs struct {
 	ProofsInputsHashInputs []*big.Int
 }
 
-// InputsHash hashes all subhashes and returns the final hash
-func (ai *AggregatorInputs) InputsHash() (*big.Int, error) {
+// BatchHash hashes all subhashes and returns the final hash
+func (ai *AggregatorInputs) BatchHash() (*big.Int, error) {
 	hashes := ai.ProofsInputsHashInputs
 	// Padding with 1s to fill the array
 	for len(hashes) < params.VotesPerBatch {

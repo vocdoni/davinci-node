@@ -152,7 +152,7 @@ func (c *VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
 		circuits.FrontendError(api, "failed to convert voteID to bn254", err)
 	}
 	witness := groth16.Witness[sw_bn254.ScalarField]{
-		Public: []emulated.Element[sw_bn254.ScalarField]{c.BallotHash, c.Address, *voteID},
+		Public: []emulated.Element[sw_bn254.ScalarField]{c.Address, *voteID, c.BallotHash},
 	}
 	// verify the ballot proof over the bn254 curve (used by circom)
 	verifier, err := groth16.NewVerifier[sw_bn254.ScalarField, sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl](api)

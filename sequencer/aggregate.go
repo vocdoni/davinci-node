@@ -566,8 +566,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		"ballotCount", len(batchInputs.AggBallots))
 	startTime := time.Now()
 
-	// Compute the hash of the ballot input hashes using MiMC hash function
-	inputsHash, err := batchInputs.InputsHash()
+	// Compute the hash of the ballot input hashes using Poseidon hash function
+	batchHash, err := batchInputs.BatchHash()
 	if err != nil {
 		return fmt.Errorf("failed to calculate inputs hash: %w", err)
 	}
@@ -575,7 +575,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	// Create the aggregator circuit assignment
 	assignment := &aggregator.AggregatorCircuit{
 		ValidProofs:  len(batchInputs.AggBallots),
-		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
+		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](batchHash),
 		BallotHashes: batchInputs.ProofsInputHash,
 		Proofs:       batchInputs.Proofs,
 	}
@@ -608,7 +608,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	if err != nil {
 		// Log detailed debug information about the failure
 		// Remove block once we have sufficient confidence in the aggregator proving
-		s.debugAggregationFailure(processID, assignment, batchInputs, inputsHash, err)
+		s.debugAggregationFailure(processID, assignment, batchInputs, batchHash, err)
 		var invalidKeys [][]byte
 		for i, vb := range batchInputs.VerifiedBallots {
 			if errVerify := verifyVoteVerifierProof(vb); errVerify != nil {

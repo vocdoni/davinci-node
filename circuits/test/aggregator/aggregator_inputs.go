@@ -131,13 +131,13 @@ func AggregatorInputsForTest(
 	aggInputs := aggregator.AggregatorInputs{
 		ProofsInputsHashInputs: vvInputs.InputsHashes,
 	}
-	inputsHash, err := aggInputs.InputsHash()
-	c.Assert(err, qt.IsNil, qt.Commentf("calculate inputs hash"))
+	batchHash, err := aggInputs.BatchHash()
+	c.Assert(err, qt.IsNil, qt.Commentf("calculate batchHash"))
 
 	// init final assignments stuff
 	finalAssignments := &aggregator.AggregatorCircuit{
 		ValidProofs:  nValidVotes,
-		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
+		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](batchHash),
 		BallotHashes: proofsInputsHashes,
 		Proofs:       proofs,
 	}
@@ -168,7 +168,7 @@ func AggregatorInputsForTest(
 	}
 	log.Printf("aggregator inputs generation ends, it tooks %s", time.Since(now))
 	return &circuitstest.AggregatorTestResults{
-		InputsHash: inputsHash,
+		InputsHash: batchHash,
 		Process: circuits.Process[*big.Int]{
 			ID:            vvInputs.ProcessID,
 			EncryptionKey: vvInputs.EncryptionPubKey,

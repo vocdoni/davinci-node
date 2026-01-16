@@ -21,8 +21,8 @@ import (
 // DummyAggCircuit is dummy aggregator circuit
 type DummyAggCircuit struct {
 	ValidProofs   frontend.Variable                      `gnark:",public"`
-	InputsHash    emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
-	SecretInput   frontend.Variable                      `gnark:",secret"`
+	BatchHash     emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
+	SecretInput   frontend.Variable
 	nbConstraints int
 }
 
@@ -43,7 +43,7 @@ func (c *DummyAggCircuit) Define(api frontend.API) error {
 		res = api.Mul(res, c.SecretInput)
 	}
 	api.AssertIsEqual(c.ValidProofs, c.ValidProofs)
-	for _, input := range c.InputsHash.Limbs {
+	for _, input := range c.BatchHash.Limbs {
 		api.AssertIsEqual(input, input)
 	}
 	return nil
@@ -65,7 +65,7 @@ func DummyAggPlaceholderWithConstraints(nbConstraints int) *DummyAggCircuit {
 func DummyAggAssignment(validProofs, hash frontend.Variable) *DummyAggCircuit {
 	return &DummyAggCircuit{
 		ValidProofs: validProofs,
-		InputsHash:  emulated.ValueOf[sw_bn254.ScalarField](hash),
+		BatchHash:   emulated.ValueOf[sw_bn254.ScalarField](hash),
 		SecretInput: 0,
 	}
 }

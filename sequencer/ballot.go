@@ -143,30 +143,12 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		return nil, fmt.Errorf("invalid ballot structure")
 	}
 
-	// Get the process metadata
-	process, err := s.stg.Process(b.ProcessID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get process metadata: %w", err)
-	}
 	// Ensure the process is accepting votes
 	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(b.ProcessID); err != nil {
 		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
 	} else if !isAcceptingVotes {
 		return nil, fmt.Errorf("process is not accepting votes")
 	}
-	log.Debugw("preparing ballot inputs", "processID", b.ProcessID.String())
-	// Transform process data to circuit types
-	inputs := new(voteverifier.VoteVerifierInputs)
-	if err := inputs.FromProcessBallot(process, b); err != nil {
-		return nil, fmt.Errorf("failed to prepare inputs from process and ballot: %w", err)
-	}
-
-	// Calculate inputs hash
-	inputHash, err := inputs.InputsHash()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate inputs hash: %w", err)
-	}
-
 	// Process public key
 	pubKey, err := ethcrypto.UnmarshalPubkey(b.PubKey)
 	if err != nil {
@@ -176,7 +158,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	// Create the circuit assignment
 	assignment := voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
-		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
+		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](b.BallotInputsHash),
 		Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
 		VoteID:     b.VoteID.BigInt().MathBigInt(),
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
@@ -194,7 +176,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		"processID", b.ProcessID.String(),
 		"voteID", b.VoteID.String(),
 		"address", b.Address.String(),
-		"inputsHash", inputHash.String(),
+		"inputsHash", b.BallotInputsHash.String(),
 	)
 
 	// Prepare the options for the prover
@@ -213,7 +195,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	}
 	pubAssignment := &voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
-		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](inputHash),
+		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](b.BallotInputsHash),
 	}
 	pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 	if err != nil {
@@ -247,7 +229,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		EncryptedBallot: b.EncryptedBallot,
 		Address:         b.Address,
 		Proof:           proofBLS,
-		InputsHash:      inputHash,
+		InputsHash:      b.BallotInputsHash,
 		CensusProof:     b.CensusProof,
 	}, nil
 }
