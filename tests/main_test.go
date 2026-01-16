@@ -21,8 +21,8 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	if os.Getenv("RUN_INTEGRATION_TESTS") != "true" {
-		log.Info("skipping integration tests...")
+	if os.Getenv("RUN_INTEGRATION_TESTS") == "" || os.Getenv("RUN_INTEGRATION_TESTS") == "false" {
+		log.Info("skipping circuit tests...")
 		os.Exit(0)
 	}
 
