@@ -11,17 +11,17 @@ import (
 	tweds "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/common"
-	iden3mimc7 "github.com/iden3/go-iden3-crypto/mimc7"
 
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
+	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
+	gnark_poseidon "github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/poseidon377"
 )
@@ -395,7 +395,7 @@ func NewBallot() *Ballot {
 }
 
 // Encrypt encrypts the ballot using the provided encryption key and messages.
-// It uses the MiMC hasher to generate a new k for each ciphertext starting
+// It uses the Poseidon hasher to generate a new k for each ciphertext starting
 // from the provided k.
 func (z *Ballot) Encrypt(
 	api frontend.API,
@@ -424,7 +424,7 @@ func (z *Ballot) Encrypt(
 // Reencrypt re-encrypts the ballot using the provided encryption key and the
 // provided k. To re-encrypt the ballot, it uses the encrypted zero point with
 // the inputs provided and them adds it to the original ballot. It uses the
-// MiMC hasher to generate a new k for each ciphertext starting from the
+// Poseidon hasher to generate a new k for each ciphertext starting from the
 // provided k.
 func (z *Ballot) Reencrypt(api frontend.API, encKey EncryptionKey[frontend.Variable], k frontend.Variable) (*Ballot, frontend.Variable, error) {
 	reencryptionK := NextK(api, k)
@@ -636,22 +636,14 @@ func (zt *EmulatedBallot[F]) SerializeAsTE(api frontend.API) []emulated.Element[
 	return list
 }
 
-// NextK uses the MiMC hasher to generate a new k starting from the provided k.
-//
-// TODO: this should really be renamed MiMC7Hash, a generic func that
-// uses native or emulated mimc7.NewMiMC depending on the args passed,
-// and thus can be reused in all circuits
+// NextK uses the Poseidon hasher to generate a new k starting from the provided k.
 func NextK(api frontend.API, k frontend.Variable) frontend.Variable {
-	kHasher, err := mimc7.NewMiMC(api)
+	newK, err := gnark_poseidon.Hash(api, k)
 	if err != nil {
-		FrontendError(api, "failed to create MiMC hasher", err)
+		FrontendError(api, "failed to hash k with Poseidon", err)
 		return nil
 	}
-	if err := kHasher.Write(k); err != nil {
-		FrontendError(api, "failed to write k to MiMC hasher", err)
-		return nil
-	}
-	return kHasher.Sum()
+	return newK
 }
 
 // RandK function generates a random k value for encryption,
@@ -674,12 +666,12 @@ func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.
 	return elem
 }
 
-// VoteID calculates the vote ID, which is the mimc7 hash of:
+// VoteID calculates the vote ID, which is the poseidon hash of:
 // the process ID, voter's address and a secret value k.
 // This is truncated to the least significant 64 bits.
 // The vote ID is used to identify a vote in the system. The
 // function transforms the inputs to safe values of ballot proof curve scalar
-// field, then hashes them using iden3 mimc7. The resulting vote ID is a hex byte
+// field, then hashes them using iden3 poseidon. The resulting vote ID is a hex byte
 // array. If something goes wrong during the hashing process, it returns an
 // error.
 func VoteID(processID types.ProcessID, address common.Address, k *types.BigInt) (*types.BigInt, error) {
@@ -692,12 +684,8 @@ func VoteID(processID types.ProcessID, address common.Address, k *types.BigInt) 
 	ffAddress := hexAddress.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	ffK := k.ToFF(params.BallotProofCurve.ScalarField())
-	// calculate the vote ID hash using mimc7
-	hash, err := iden3mimc7.Hash([]*big.Int{
-		ffProcessID.MathBigInt(), // process id
-		ffAddress.MathBigInt(),   // address
-		ffK.MathBigInt(),         // k
-	}, nil)
+	// calculate the vote ID hash using poseidon
+	hash, err := poseidon.MultiPoseidon(ffProcessID.MathBigInt(), ffAddress.MathBigInt(), ffK.MathBigInt())
 	if err != nil {
 		return nil, fmt.Errorf("error hashing vote ID inputs: %v", err.Error())
 	}

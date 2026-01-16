@@ -7,9 +7,8 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/recursion/groth16"
 
-	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
@@ -77,12 +76,11 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vote) *
 		t.Fatal(err)
 	}
 
-	aggregatorHash, err := AggregatorWitnessHash(s)
+	dumyHash, err := poseidon.MultiPoseidon(new(big.Int).SetInt64(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	proof, vk, err := DummyAggProof(len(votes), aggregatorHash)
+	proof, vk, err := DummyAggProof(len(votes), dumyHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,38 +106,4 @@ func NewTransitionWithOverwrittenVotes(t *testing.T, origin types.CensusOrigin) 
 		*statetest.NewVoteForTest(publicKey, 3, 20),
 		*statetest.NewVoteForTest(publicKey, 4, 20),
 	)
-}
-
-// AggregatorWitnessHash uses the following values for each vote
-//   - process.ID
-//   - process.CensusOrigin
-//   - process.BallotMode
-//   - process.EncryptionKey
-//   - vote.Address
-//   - vote.VoteID
-//   - vote.UserWeight
-//   - vote.Ballot
-//
-// to calculate a subhash of each process+vote, then hashes all subhashes
-// and returns the final hash
-func AggregatorWitnessHash(o *state.State) (*big.Int, error) {
-	aggInputs := new(aggregator.AggregatorInputs)
-	for _, v := range o.Votes() {
-		vvInputs := voteverifier.VoteVerifierInputs{
-			ProcessID:       o.ProcessID(),
-			CensusOrigin:    types.CensusOrigin(o.CensusOrigin().Uint64()),
-			BallotMode:      o.BallotMode(),
-			EncryptionKey:   o.EncryptionKey(),
-			Address:         v.Address,
-			VoteID:          v.VoteID,
-			UserWeight:      v.Weight,
-			EncryptedBallot: v.Ballot,
-		}
-		h, err := vvInputs.InputsHash()
-		if err != nil {
-			return nil, err
-		}
-		aggInputs.ProofsInputsHashInputs = append(aggInputs.ProofsInputsHashInputs, h)
-	}
-	return aggInputs.InputsHash()
 }

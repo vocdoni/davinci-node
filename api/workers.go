@@ -247,11 +247,6 @@ func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Infow("assigned job to worker",
-		"voteID", voteIDStr,
-		"worker", workerAddr.Hex(),
-		"processID", ballot.ProcessID.String())
-
 	// Return ballot
 	data, err := storage.EncodeArtifact(ballot)
 	if err != nil {
@@ -319,43 +314,10 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the process for the ballot to obtain the public inputs
-	process, err := a.storage.Process(ballot.ProcessID)
-	if err != nil {
-		log.Warnw("failed to get process for ballot",
-			"error", err.Error(),
-			"processID", ballot.ProcessID.String(),
-			"voteID", ballot.VoteID.String())
-		ErrResourceNotFound.Withf("process not found").Write(w)
-		return
-	}
-
-	// Recompute the inputs hash from the original ballot parameters, instead
-	// of use the one provided by the worker to avoid tampering.
-	originalInputs := new(voteverifier.VoteVerifierInputs)
-	if err := originalInputs.FromProcessBallot(process, ballot); err != nil {
-		log.Warnw("failed to generate original inputs from ballot",
-			"error", err.Error(),
-			"processID", ballot.ProcessID.String(),
-			"voteID", ballot.VoteID.String())
-		ErrGenericInternalServerError.WithErr(err).Write(w)
-		return
-	}
-
-	batchHash, err := originalInputs.InputsHash()
-	if err != nil {
-		log.Warnw("failed to generate batch hash",
-			"error", err.Error(),
-			"processID", ballot.ProcessID.String(),
-			"voteID", ballot.VoteID.String())
-		ErrGenericInternalServerError.WithErr(err).Write(w)
-		return
-	}
-
 	// Prepare the circuit to verify the proof, with the public inputs
 	circuit := &voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
-		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](batchHash),
+		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](ballot.BallotInputsHash),
 	}
 
 	// Verify the worker proof
@@ -393,7 +355,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Infow("worker job completed",
+	log.Debugw("worker job completed",
 		"voteID", ballot.VoteID.String(),
 		"workerAddr", job.Address,
 		"workerName", stats.Name,
