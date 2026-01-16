@@ -186,7 +186,7 @@ func (c StateTransitionCircuit) proofInputsHash(api frontend.API, idx int) front
 		return 0
 	}
 	// calculate the hash of the public inputs of the proof of the i-th vote
-	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, c.Votes[idx].Vote)...); err != nil {
+	if err := hFn.Write(circuits.VoteVerifierInputs(api, c.Process, c.Votes[idx].Vote)...); err != nil {
 		circuits.FrontendError(api, "failed to write mimc7 hash function: ", err)
 		return 0
 	}
@@ -219,15 +219,12 @@ func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API, mas
 		hashes = append(hashes, api.Select(mask[i], inputsHash, dummyProofInputsHash))
 	}
 	// hash the inputs hashes to get the final witness
-	hFn, err := mimc7.NewMiMC(api)
+	res, err := poseidon.MultiHash(api, hashes...)
 	if err != nil {
 		return groth16.Witness[sw_bw6761.ScalarField]{}, err
 	}
-	if err := hFn.Write(hashes...); err != nil {
-		return groth16.Witness[sw_bw6761.ScalarField]{}, err
-	}
 	// include the inputs hash in the witness as elements of the bw6761
-	witness.Public = append(witness.Public, inputsHashToElements(api, hFn.Sum())...)
+	witness.Public = append(witness.Public, inputsHashToElements(api, res)...)
 	return witness, nil
 }
 
