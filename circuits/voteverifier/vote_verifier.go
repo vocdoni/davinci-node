@@ -78,6 +78,7 @@ type VerifyVoteCircuit struct {
 	VoteID    frontend.Variable
 	PublicKey ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]
 	Signature ecdsa.Signature[emulated.Secp256k1Fr]
+
 	// The ballot proof is passed as private inputs
 	CircomProof           groth16.Proof[sw_bn254.G1Affine, sw_bn254.G2Affine]
 	CircomVerificationKey groth16.VerifyingKey[sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl] `gnark:"-"`
@@ -146,9 +147,12 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 // it asserts that the proof is valid for the public inputs provided by the
 // user.
 func (c *VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
-	// calculate the hash of the circom circuit inputs
+	voteID, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, c.VoteID)
+	if err != nil {
+		circuits.FrontendError(api, "failed to convert voteID to bn254", err)
+	}
 	witness := groth16.Witness[sw_bn254.ScalarField]{
-		Public: []emulated.Element[sw_bn254.ScalarField]{c.BallotHash},
+		Public: []emulated.Element[sw_bn254.ScalarField]{c.BallotHash, c.Address, *voteID},
 	}
 	// verify the ballot proof over the bn254 curve (used by circom)
 	verifier, err := groth16.NewVerifier[sw_bn254.ScalarField, sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl](api)
