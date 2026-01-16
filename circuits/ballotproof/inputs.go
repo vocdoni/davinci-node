@@ -5,13 +5,13 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 )
@@ -56,7 +56,7 @@ func (b *BallotProofInputs) VoteIDForSign() (types.HexBytes, error) {
 // BallotInputsHash helper function calculates the hash of the public inputs
 // of the ballot proof circuit. This hash is used to verify the proof generated
 // by the user and is also used to generate the voteID. The hash is calculated
-// using the mimc7 hash function and includes the process ID, ballot mode,
+// using the poseidon hash function and includes the process ID, ballot mode,
 // encryption key, address, ballot and weight, in that particular order. The
 // function transforms the inputs to the correct format:
 //   - processID and address are converted to FF
@@ -99,8 +99,8 @@ func BallotInputsHash(
 	inputsHash = append(inputsHash, ballot.FromRTEtoTE().BigInts()...)
 	// weight
 	inputsHash = append(inputsHash, weight.MathBigInt())
-	// hash the inputs with mimc7
-	ballotInputHash, err := mimc7.Hash(inputsHash, nil)
+	// hash the inputs with poseidon
+	ballotInputHash, err := poseidon.MultiPoseidon(inputsHash...)
 	if err != nil {
 		return nil, fmt.Errorf("error hashing inputs: %v", err.Error())
 	}
