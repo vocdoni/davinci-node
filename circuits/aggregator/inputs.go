@@ -7,7 +7,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/iden3/go-iden3-crypto/mimc7"
+	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types/params"
 )
@@ -28,7 +28,7 @@ func (ai *AggregatorInputs) InputsHash() (*big.Int, error) {
 	for len(hashes) < params.VotesPerBatch {
 		hashes = append(hashes, big.NewInt(1))
 	}
-	finalHash, err := mimc7.Hash(hashes, nil)
+	finalHash, err := poseidon.MultiPoseidon(hashes...)
 	if err != nil {
 		return nil, err
 	}

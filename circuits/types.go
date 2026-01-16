@@ -16,11 +16,11 @@ import (
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
-	emu_tweds "github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/poseidon377"
@@ -206,7 +206,7 @@ func (kt EncryptionKey[T]) SerializeAsTE(api frontend.API) []emulated.Element[sw
 	if !ok {
 		panic("EncryptionKey type assertion failed")
 	}
-	kTE0, kTE1, err := emu_tweds.FromEmulatedRTEtoTE(api, k.PubKey[0], k.PubKey[1])
+	kTE0, kTE1, err := format.FromEmulatedRTEtoTE(api, k.PubKey[0], k.PubKey[1])
 	if err != nil {
 		FrontendError(api, "failed to convert encryption key to RTE", err)
 	}
@@ -618,11 +618,11 @@ func (zt *EmulatedBallot[F]) SerializeAsTE(api frontend.API) []emulated.Element[
 	}
 	list := []emulated.Element[sw_bn254.ScalarField]{}
 	for _, zi := range z {
-		c1xTE, c1yTE, err := emu_tweds.FromEmulatedRTEtoTE(api, zi.C1.X, zi.C1.Y)
+		c1xTE, c1yTE, err := format.FromEmulatedRTEtoTE(api, zi.C1.X, zi.C1.Y)
 		if err != nil {
 			FrontendError(api, "failed to convert coords to RTE", err)
 		}
-		c2xTE, c2yTE, err := emu_tweds.FromEmulatedRTEtoTE(api, zi.C2.X, zi.C2.Y)
+		c2xTE, c2yTE, err := format.FromEmulatedRTEtoTE(api, zi.C2.X, zi.C2.Y)
 		if err != nil {
 			FrontendError(api, "failed to convert coords to RTE", err)
 		}

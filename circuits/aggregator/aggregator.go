@@ -13,7 +13,7 @@ import (
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
+	"github.com/vocdoni/gnark-crypto-primitives/emulated/poseidon"
 )
 
 type AggregatorCircuit struct {
@@ -24,23 +24,14 @@ type AggregatorCircuit struct {
 	VerificationKey groth16.VerifyingKey[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT] `gnark:"-"`
 }
 
-// checkBatchHash recalculates the batch hash using the MiMC hash function
+// checkBatchHash recalculates the batch hash using the Poseidon hash function
 // and compares it with the expected batch hash. The batch hash is calculated
 // by hashing the ballot hashes.
 func (c *AggregatorCircuit) checkBatchHash(api frontend.API) {
-	// instantiate the MiMC hash function
-	hFn, err := mimc7.NewMiMC(api)
-	if err != nil {
-		circuits.FrontendError(api, "failed to create MiMC hash function", err)
+	if err := poseidon.AssertMultiHashEqual(api, c.BallotHashes[:], c.BatchHash); err != nil {
+		circuits.FrontendError(api, "failed to assert Poseidon batch hash", err)
 		return
 	}
-	// write the inputs hash to the MiMC hash function
-	if err := hFn.Write(c.BallotHashes[:]...); err != nil {
-		circuits.FrontendError(api, "failed to write inputs hash", err)
-		return
-	}
-	// compare with the expected inputs hash
-	hFn.AssertSumIsEqual(c.BatchHash)
 }
 
 // calculateWitnesses calculates the witnesses for the proofs. The first

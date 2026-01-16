@@ -32,7 +32,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
 	aggCacheData := circuitstest.AggregatorCacheData{}
-	cacheKey := cache.GenerateCacheKey("aggregator", processID, 3)
+	cacheKey := cache.GenerateCacheKey("aggregator", processID, circuitstest.AggregatorCacheKeyVersion, 3)
 
 	// Try to load everything from cache first to avoid regenerating inputs/compile/setup
 	cacheErr := cache.LoadData(cacheKey, &aggCacheData, true)
