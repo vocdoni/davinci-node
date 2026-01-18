@@ -17,8 +17,8 @@ import (
 	"github.com/consensys/gnark/test"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	teststatetransition "github.com/vocdoni/davinci-node/circuits/test/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
@@ -75,7 +75,7 @@ func NewDebugProver(t *testing.T) types.ProverFunc {
 		case *voteverifier.VerifyVoteCircuit:
 			t.Logf("running debug prover for voteverifier")
 			circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-				ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
+				ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
 			if err != nil {
 				t.Fatal(err)
 			}

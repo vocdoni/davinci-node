@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
@@ -50,7 +51,7 @@ func VoteVerifierInputsForTest(
 	now := time.Now()
 	log.Println("voteVerifier inputs generation start")
 	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-		ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
+		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
 	c.Assert(err, qt.IsNil, qt.Commentf("circom placeholder"))
 
 	// Use deterministic encryption key for consistent caching
@@ -79,7 +80,7 @@ func VoteVerifierInputsForTest(
 		c.Assert(err, qt.IsNil, qt.Commentf("sign ECDSA for voter %d", i))
 
 		// compose circuit placeholders
-		recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballottest.TestCircomVerificationKey, ballotProof.Proof, ballotProof.PubInputs)
+		recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballotproof.CircomVerificationKey, ballotProof.Proof, ballotProof.PubInputs)
 		c.Assert(err, qt.IsNil, qt.Commentf("circom to gnark proof for voter %d", i))
 
 		assignments = append(assignments, voteverifier.VerifyVoteCircuit{
