@@ -72,6 +72,7 @@ func VoteVerifierInputsForTest(
 		addresses = append(addresses, ballotProof.Address)
 		weights = append(weights, big.NewInt(testutil.Weight))
 		voteIDs = append(voteIDs, ballotProof.VoteID)
+		inputsHashes = append(inputsHashes, ballotProof.InputsHash)
 		ballots = append(ballots, *ballotProof.Ballot)
 		// sign the voteID with the private key
 		signature, err := ballottest.SignECDSAForTest(voter.PrivKey, ballotProof.VoteID)
