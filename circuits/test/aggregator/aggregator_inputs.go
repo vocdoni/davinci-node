@@ -21,6 +21,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	voteverifiertest "github.com/vocdoni/davinci-node/circuits/test/voteverifier"
@@ -142,7 +143,7 @@ func AggregatorInputsForTest(
 		Proofs:       proofs,
 	}
 	// fill assignments with dummy values
-	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballottest.TestCircomVerificationKey, nValidVotes, nil)
+	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballotproof.CircomVerificationKey, nValidVotes, nil)
 	c.Assert(err, qt.IsNil, qt.Commentf("fill with dummy values"))
 
 	// fix the vote verifier verification key

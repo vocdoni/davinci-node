@@ -188,7 +188,7 @@ services:
     <<: *test-cuda-common
     environment:
       - RUN_INTEGRATION_TESTS=true
-     command: /bin/sh -c "go test -v -p 1 -tags=icicle $$(go list ./... | grep -v github.com/vocdoni/davinci-node/tests) -timeout=1h"
+    command: /bin/sh -c "go test -v -p 1 -tags=icicle $$(go list ./... | grep -v github.com/vocdoni/davinci-node/tests) -timeout=1h"
 
   aggregator-gpu-test:
     profiles: ["test-cuda"]

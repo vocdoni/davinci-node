@@ -16,6 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -218,10 +219,16 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// convert the circom proof to gnark proof and verify it
+	ballotProofAddress := vote.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ballotProofVoteID := vote.VoteID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	proof, err := circomgnark.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
-		[]string{vote.BallotInputsHash.String()},
+		[]string{
+			ballotProofAddress.String(),
+			ballotProofVoteID.String(),
+			vote.BallotInputsHash.String(),
+		},
 	)
 	if err != nil {
 		ErrInvalidBallotProof.Withf("could not verify and convert proof: %v", err).Write(w)
