@@ -70,9 +70,9 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 		// root contains the address of the contract that should be queried
 		// to get the actual root.
 		if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-			// Ensure the contracts client is initialized.
+			// Ensure that the importer has an on-chain fetcher.
 			if d.onchainFetcher == nil {
-				return fmt.Errorf("contracts client is not initialized")
+				return fmt.Errorf("no on-chain census fetcher available")
 			}
 			// Convert the root to a contract address and validate it.
 			contractAddress := common.BytesToAddress(root.RightTrim())
@@ -85,9 +85,6 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 			if err != nil {
 				return fmt.Errorf("failed to fetch on-chain census root: %w", err)
 			}
-			log.Infow("on-chain census root fetched",
-				"contractAddress", contractAddress.Hex(),
-				"censusRoot", root.String())
 		}
 		// If the census already exists, skip the import
 		if d.storage.CensusDB().ExistsByRoot(root) {
