@@ -52,16 +52,16 @@ func TestCSPCensus(t *testing.T) {
 		defer cancel()
 
 		// Create census with numVoters participants
-		censusRoot, censusURI, signers, err = helpers.NewCensusWithRandomVoters(censusCtx, types.CensusOriginCSPEdDSABN254V1, numVoters)
+		censusRoot, censusURI, signers, err = helpers.NewCensusWithRandomVoters(censusCtx, types.CensusOriginCSPEdDSABabyJubJubV1, numVoters)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
 		c.Assert(len(signers), qt.Equals, numVoters)
 
 		// create process in the sequencer
-		pid, encryptionKey, stateRoot, err = helpers.NewProcess(services.Contracts, services.HTTPClient, types.CensusOriginCSPEdDSABN254V1, censusURI, censusRoot, defaultBallotMode)
+		pid, encryptionKey, stateRoot, err = helpers.NewProcess(services.Contracts, services.HTTPClient, types.CensusOriginCSPEdDSABabyJubJubV1, censusURI, censusRoot, defaultBallotMode)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts
-		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginCSPEdDSABN254V1, censusURI, censusRoot, defaultBallotMode, encryptionKey, stateRoot, numVoters)
+		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginCSPEdDSABabyJubJubV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, stateRoot, numVoters)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(onchainPID.String(), qt.Equals, pid.String())
 
@@ -91,7 +91,7 @@ func TestCSPCensus(t *testing.T) {
 			vote, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof
-			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginCSPEdDSABN254V1, pid, signers[i].Address().Bytes())
+			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginCSPEdDSABabyJubJubV1, pid, signers[i].Address().Bytes())
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			// Make the request to cast the vote
 			_, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
