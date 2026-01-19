@@ -22,6 +22,9 @@ import (
 	"github.com/vocdoni/davinci-node/types/params"
 )
 
+// cacheKeyVersion defines the version of the cache key format, used to invalidate old caches
+const cacheKeyVersion = 2
+
 // CacheableData defines the interface for data that can be cached
 type CacheableData interface {
 	WriteToCache(cacheDir, cacheKey string) error
@@ -214,8 +217,6 @@ func readWitness(path string, field *big.Int) (witness.Witness, error) {
 type CircuitCache struct {
 	BaseDir string
 }
-
-const cacheKeyVersion = 2
 
 // NewCircuitCache creates a new circuit cache instance
 func NewCircuitCache() (*CircuitCache, error) {
