@@ -19,7 +19,7 @@ import (
 //     expectedRoot.
 type ImporterPlugin interface {
 	ValidURI(targetURI string) bool
-	DownloadAndImportCensus(ctx context.Context, censusDB *censusdb.CensusDB, targetURI string, expectedRoot types.HexBytes) error
+	DownloadAndImportCensus(ctx context.Context, censusDB *censusdb.CensusDB, targetURI string, expectedRoot types.HexBytes) (int, error)
 }
 
 // OnchainCensusFetcher defines the interface for fetching on-chain census
@@ -98,12 +98,13 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 		// Find the appropriate plugin for the given URI.
 		for _, plugin := range d.plugins {
 			if plugin.ValidURI(census.CensusURI) {
-				return plugin.DownloadAndImportCensus(
+				_, err := plugin.DownloadAndImportCensus(
 					ctx,
 					d.storage.CensusDB(),
 					census.CensusURI,
 					root,
 				)
+				return err
 			}
 		}
 		return fmt.Errorf("no importer plugin found for census URI: %s", census.CensusURI)

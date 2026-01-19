@@ -24,7 +24,7 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 		censusURI, err := testServer.GraphQLEndpoint()
 		c.Assert(err, qt.IsNil)
 
-		err = gi.DownloadAndImportCensus(
+		_, err = gi.DownloadAndImportCensus(
 			c.Context(),
 			censusDB,
 			censusURI,

@@ -37,12 +37,12 @@ func (p *testImporterPlugin) ValidURI(targetURI string) bool {
 	return p.validFn(targetURI)
 }
 
-func (p *testImporterPlugin) DownloadAndImportCensus(ctx context.Context, censusDB *censusdb.CensusDB, targetURI string, expectedRoot types.HexBytes) error {
+func (p *testImporterPlugin) DownloadAndImportCensus(ctx context.Context, censusDB *censusdb.CensusDB, targetURI string, expectedRoot types.HexBytes) (int, error) {
 	p.calls++
 	p.lastCensusDB = censusDB
 	p.lastURI = targetURI
 	p.lastRoot = expectedRoot
-	return p.err
+	return 100, p.err
 }
 
 func testNewStorage(c *qt.C) *storage.Storage {
@@ -118,7 +118,7 @@ func TestCensusImporter(t *testing.T) {
 				CensusURI:    "https://example.invalid/dump",
 				CensusRoot:   types.HexBytes{0x01},
 			})
-			c.Assert(err, qt.Equals, sentinelErr)
+			c.Assert(err, qt.ErrorIs, sentinelErr)
 			c.Assert(plugin.calls, qt.Equals, 1)
 		})
 
