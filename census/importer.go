@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/census3-bigquery/censusdb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
@@ -22,29 +21,20 @@ type ImporterPlugin interface {
 	DownloadAndImportCensus(ctx context.Context, censusDB *censusdb.CensusDB, targetURI string, expectedRoot types.HexBytes) (int, error)
 }
 
-// OnchainCensusFetcher defines the interface for fetching on-chain census
-// roots. It should be provided to the CensusImporter to handle dynamic
-// on-chain Merkle Tree censuses.
-type OnchainCensusFetcher interface {
-	FetchOnchainCensusRoot(address common.Address) (types.HexBytes, error)
-}
-
 // CensusImporter is responsible for importing censuses from various origins.
 type CensusImporter struct {
-	storage        *storage.Storage
-	onchainFetcher OnchainCensusFetcher
-	plugins        []ImporterPlugin
+	storage *storage.Storage
+	plugins []ImporterPlugin
 }
 
 // NewCensusImporter creates a new CensusImporter with the given storage and
 // optional plugins. If no plugins are provided, the importer will not be able
 // to import any censuses. The caller is responsible for providing the desired
 // plugins in the correct order of precedence.
-func NewCensusImporter(stg *storage.Storage, onchainFetcher OnchainCensusFetcher, plugins ...ImporterPlugin) *CensusImporter {
+func NewCensusImporter(stg *storage.Storage, plugins ...ImporterPlugin) *CensusImporter {
 	return &CensusImporter{
-		storage:        stg,
-		onchainFetcher: onchainFetcher,
-		plugins:        plugins,
+		storage: stg,
+		plugins: plugins,
 	}
 }
 
@@ -63,31 +53,8 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 	}
 	switch {
 	case census.CensusOrigin.IsMerkleTree():
-		// By default we use the CensusRoot as the expected root for
-		// verification.
-		root := census.CensusRoot
-		// Special handling for dynamic on-chain Merkle Tree censuses, which
-		// root contains the address of the contract that should be queried
-		// to get the actual root.
-		if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-			// Ensure that the importer has an on-chain fetcher.
-			if d.onchainFetcher == nil {
-				return fmt.Errorf("no on-chain census fetcher available")
-			}
-			// Convert the root to a contract address and validate it.
-			contractAddress := common.BytesToAddress(root.RightTrim())
-			if contractAddress == (common.Address{}) {
-				return fmt.Errorf("invalid on-chain census contract address")
-			}
-			// Fetch the actual census root from the on-chain contract.
-			var err error
-			root, err = d.onchainFetcher.FetchOnchainCensusRoot(contractAddress)
-			if err != nil {
-				return fmt.Errorf("failed to fetch on-chain census root: %w", err)
-			}
-		}
 		// If the census already exists, skip the import
-		if d.storage.CensusDB().ExistsByRoot(root) {
+		if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
 			log.Infow("census root already exists, skipping import",
 				"root", census.CensusRoot.String())
 			return nil
@@ -99,7 +66,7 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census)
 					ctx,
 					d.storage.CensusDB(),
 					census.CensusURI,
-					root,
+					census.CensusRoot,
 				)
 				return err
 			}

@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo/memdb"
-	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -28,7 +27,7 @@ type ProcessMonitor struct {
 
 // ContractsService defines the interface for web3 contract operations.
 type ContractsService interface {
-	census.OnchainCensusFetcher
+	OnchainCensusFetcher
 	MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
 	ProcessChangesFilters() []types.Web3FilterFn
 	MonitorProcessChanges(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
@@ -228,7 +227,15 @@ func (pm *ProcessMonitor) monitorProcesses(
 			// directly.
 			if process.Status == types.ProcessStatusReady && process.Census != nil {
 				// Download and import the process census if needed
-				pm.censusDownloader.DownloadQueue <- process.Census
+				var err error
+				process.Census.CensusRoot, err = pm.censusDownloader.DownloadCensus(process.Census)
+				if err != nil {
+					log.Warnw("failed to start census download for new process",
+						"processID", process.ID.String(),
+						"censusRoot", process.Census.CensusRoot.String(),
+						"error", err.Error())
+					continue
+				}
 				// After census is downloaded and imported, store the new process
 				downloadCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
@@ -319,7 +326,15 @@ func (pm *ProcessMonitor) monitorProcesses(
 					CensusRoot:   update.NewCensusRoot,
 					CensusURI:    update.NewCensusURI,
 				}
-				pm.censusDownloader.DownloadQueue <- newCensus
+				// download and import the new census
+				process.Census.CensusRoot, err = pm.censusDownloader.DownloadCensus(newCensus)
+				if err != nil {
+					log.Warnw("failed to start download of updated census for process",
+						"processID", update.ProcessID.String(),
+						"censusRoot", update.NewCensusRoot.String(),
+						"error", err.Error())
+					continue
+				}
 				// wait for census to be downloaded and imported, then update
 				// process census info
 				pm.censusDownloader.OnCensusDownloaded(newCensus, ctx, func(err error) {
