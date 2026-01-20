@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
 const (
@@ -69,10 +70,12 @@ func (o *GasEstimateOpts) validate() {
 // EstimateGas method, retrying on failure. If that fails, it falls back to a
 // binary search using eth_call to find the minimum gas limit that does not
 // revert. It applies a safety margin and clamps the result within configured
-// limits. It also caches successful estimates based on the call message to
-// optimize future calls.
-func (tm *TxManager) EstimateGas(
+// limits. If a non-nil TxManager is passed, it also caches successful estimates
+// based on the call message to optimize future calls.
+func EstimateGas(
 	ctx context.Context,
+	cli *rpc.Client,
+	tm *TxManager,
 	msg ethereum.CallMsg,
 	opts *GasEstimateOpts,
 	floorGasLimit uint64,
@@ -88,12 +91,12 @@ func (tm *TxManager) EstimateGas(
 	// Ensure fee caps exist for dynamic fee calls
 	if msg.GasFeeCap == nil || msg.GasTipCap == nil {
 		// Get tip cap
-		tipCap, err := tm.cli.SuggestGasTipCap(internalCtx)
+		tipCap, err := cli.SuggestGasTipCap(internalCtx)
 		if err != nil {
 			log.Warnw("failed to get tip cap", "error", err)
 		}
 		// Get base fee
-		baseFee, err := tm.cli.SuggestGasPrice(internalCtx)
+		baseFee, err := cli.SuggestGasPrice(internalCtx)
 		if err != nil {
 			log.Warnw("failed to get base fee", "error", err)
 		}
@@ -104,24 +107,23 @@ func (tm *TxManager) EstimateGas(
 		}
 	}
 
-	if gas, err := tm.cli.EstimateGas(internalCtx, msg); err == nil {
-		return tm.applySafetyMargin(gas, floorGasLimit, opts), nil
+	if gas, err := cli.EstimateGas(internalCtx, msg); err == nil {
+		return applySafetyMargin(gas, floorGasLimit, opts), nil
 	} else {
 		log.Warnw("estimateGas failed, falling back to binary search", "error", err)
 	}
 
 	// Try a lightweight binary search with eth_call
-	ethcli, err := tm.cli.EthClient()
-	if err == nil {
-		low := opts.MinGas
-		high := opts.MaxGas
-		cached := tm.cachedGasHint(msg)
-		if cached > 0 {
-			if cached/2 > low {
-				low = cached / 2
-			}
-			if cached*2 < high {
-				high = cached * 2
+	if ethcli, err := cli.EthClient(); err == nil {
+		low, high := opts.MinGas, opts.MaxGas
+		if tm != nil {
+			if cached := tm.cachedGasHint(msg); cached > 0 {
+				if cached/2 > low {
+					low = cached / 2
+				}
+				if cached*2 < high {
+					high = cached * 2
+				}
 			}
 		}
 		// Function to test if a given gas limit works with eth_call
@@ -132,7 +134,7 @@ func (tm *TxManager) EstimateGas(
 		}
 		// Check boundaries first (low and high)
 		if succeeds(low) {
-			return tm.applySafetyMargin(low, floorGasLimit, opts), nil
+			return applySafetyMargin(low, floorGasLimit, opts), nil
 		}
 		if !succeeds(high) {
 			log.Warnw("gas estimation binary search failed (revert or logic error)",
@@ -149,9 +151,11 @@ func (tm *TxManager) EstimateGas(
 			}
 		}
 		// Store result in cache
-		tm.storeGasHint(msg, high)
+		if tm != nil {
+			tm.storeGasHint(msg, high)
+		}
 		// Return result with safety margin
-		return tm.applySafetyMargin(high, floorGasLimit, opts), nil
+		return applySafetyMargin(high, floorGasLimit, opts), nil
 	}
 
 	// Absolute fallback
@@ -161,7 +165,7 @@ func (tm *TxManager) EstimateGas(
 }
 
 // applySafetyMargin adds a safety buffer and clamps to limits
-func (tm *TxManager) applySafetyMargin(gas, floor uint64, o *GasEstimateOpts) uint64 {
+func applySafetyMargin(gas, floor uint64, o *GasEstimateOpts) uint64 {
 	gas += (gas * uint64(o.SafetyBps)) / 10_000
 	if gas < o.MinGas {
 		gas = o.MinGas
@@ -183,8 +187,7 @@ func (tm *TxManager) cachedGasHint(msg ethereum.CallMsg) uint64 {
 	if tm.gasCache == nil {
 		return 0
 	}
-	key := gasKey(msg)
-	if v, ok := tm.gasCache[key]; ok {
+	if v, ok := tm.gasCache[gasKey(msg)]; ok {
 		return v
 	}
 	return 0

@@ -348,7 +348,7 @@ func (tm *TxManager) buildTx(
 		estimateMsg.BlobGasFeeCap = blobFee
 	}
 	// Estimate gas for the transaction
-	gasLimit, err := tm.EstimateGas(ctx, estimateMsg, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
+	gasLimit, err := EstimateGas(ctx, tm.cli, tm, estimateMsg, tm.config.GasEstimateOpts, ptx.OriginalGasLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to estimate gas: %w", err)
 	}

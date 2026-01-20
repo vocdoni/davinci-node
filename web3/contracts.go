@@ -482,7 +482,7 @@ func (c *Contracts) SimulateContractCall(
 		callMsg.BlobHashes = blobsSidecar.BlobHashes()
 	}
 
-	gas, err := c.txManager.EstimateGas(ctx, callMsg, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
+	gas, err := txmanager.EstimateGas(ctx, c.cli, c.txManager, callMsg, txmanager.DefaultGasEstimateOpts, txmanager.DefaultCancelGasFallback)
 	if err != nil {
 		if reason, ok := c.DecodeError(err); ok {
 			return fmt.Errorf("failed to estimate gas: %w (decoded: %s)", err, reason)
