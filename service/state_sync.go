@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -16,7 +17,14 @@ type StateSync struct {
 	contracts ContractsService
 	storage   *storage.Storage
 	queue     chan *types.ProcessWithChanges
+	applyFn   func(context.Context, *types.ProcessWithChanges) error
+	workers   sync.Map
 	cancel    context.CancelFunc
+}
+
+type stateSyncWorker struct {
+	queue   chan *types.ProcessWithChanges
+	applyFn func(context.Context, *types.ProcessWithChanges) error
 }
 
 // NewStateSync creates a new StateSync service.
@@ -24,11 +32,13 @@ func NewStateSync(
 	contracts ContractsService,
 	stg *storage.Storage,
 ) *StateSync {
-	return &StateSync{
+	ss := &StateSync{
 		contracts: contracts,
 		storage:   stg,
 		queue:     make(chan *types.ProcessWithChanges, 100),
 	}
+	ss.applyFn = ss.fetchBlobAndApply
+	return ss
 }
 
 // Start begins the state synchronization service.
@@ -39,6 +49,7 @@ func (ss *StateSync) Start(ctx context.Context) error {
 
 	ctx, cancel := context.WithCancel(ctx)
 	ss.cancel = cancel
+	ss.workers.Clear()
 
 	go ss.consumeQueue(ctx)
 	log.Infow("StateSync service started")
@@ -71,15 +82,11 @@ func (ss *StateSync) consumeQueue(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case process := <-ss.queue:
-			// Handle each sync request in a separate goroutine to avoid blocking
-			go func() {
-				if err := ss.fetchBlobAndApply(ctx, process); err != nil {
-					log.Warnw("failed to sync state from blob",
-						"processID", process.ProcessID.String(),
-						"txHash", process.TxHash.String(),
-						"error", err.Error())
-				}
-			}()
+			if err := ss.enqueueInWorker(ctx, process); err != nil {
+				log.Warnw("statesync enqueue failed",
+					"processID", process.ProcessID.String(),
+					"error", err)
+			}
 		}
 	}
 }
@@ -141,7 +148,55 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 	log.Debugw("successfully synced state from blob",
 		"processID", process.ProcessID.String(),
 		"txHash", process.TxHash.String(),
+		"oldStateRoot", process.OldStateRoot.String(),
 		"verifiedStateRoot", newRoot.String())
 
 	return nil
+}
+
+func (ss *StateSync) enqueueInWorker(ctx context.Context, process *types.ProcessWithChanges) error {
+	return ss.getOrCreateWorker(ctx, process.ProcessID).enqueue(process)
+}
+
+func (ss *StateSync) getOrCreateWorker(ctx context.Context, processID types.ProcessID) *stateSyncWorker {
+	v, loaded := ss.workers.LoadOrStore(processID, newStateSyncWorker(ss.applyFn))
+	ssw := v.(*stateSyncWorker)
+	if !loaded {
+		go ssw.run(ctx)
+	}
+	return ssw
+}
+
+func newStateSyncWorker(applyFn func(context.Context, *types.ProcessWithChanges) error) *stateSyncWorker {
+	return &stateSyncWorker{
+		queue:   make(chan *types.ProcessWithChanges, 100),
+		applyFn: applyFn,
+	}
+}
+
+func (ssw *stateSyncWorker) run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case process := <-ssw.queue:
+			if err := ssw.applyFn(ctx, process); err != nil {
+				log.Warnw("statesync failed",
+					"error", err,
+					"processID", process.ProcessID.String(),
+					"txHash", process.TxHash.String(),
+					"oldStateRoot", process.OldStateRoot.String(),
+					"newStateRoot", process.NewStateRoot.String())
+			}
+		}
+	}
+}
+
+func (ssw *stateSyncWorker) enqueue(process *types.ProcessWithChanges) error {
+	select {
+	case ssw.queue <- process:
+		return nil
+	default:
+		return fmt.Errorf("statesync queue for process %s is full", process.ProcessID.String())
+	}
 }
