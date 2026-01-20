@@ -150,7 +150,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// check if the address has already voted, to determine if the vote is an
 	// overwrite or a new vote, if so check if the process has reached max
 	// voters
-	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), *process.ID, process.StateRoot, vote.Address.BigInt())
+	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), *process.ID, vote.Address.BigInt())
 	if err != nil {
 		ErrGenericInternalServerError.Withf("error checking if address has voted: %v", err).Write(w)
 		return
