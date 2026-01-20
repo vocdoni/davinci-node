@@ -62,7 +62,8 @@ func (jsonImporter) DownloadAndImportCensus(
 	ctx context.Context,
 	censusDB *censusdb.CensusDB,
 	targetURI string,
-	expectedRoot types.HexBytes,
+	expectedRoot, _ types.HexBytes,
+	_ int,
 ) (int, error) {
 	// Download the census merkle tree dump
 	res, err := requestRawDump(ctx, targetURI)

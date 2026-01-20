@@ -362,7 +362,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		})
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
-		_, err := ji.DownloadAndImportCensus(c.Context(), censusDB, "https://example.invalid/dump.json", expectedRoot)
+		_, err := ji.DownloadAndImportCensus(c.Context(), censusDB, "https://example.invalid/dump.json", expectedRoot, nil, 0)
 		c.Assert(err, qt.IsNil)
 	})
 
@@ -378,7 +378,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		})
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
-		_, err := ji.DownloadAndImportCensus(c.Context(), censusDB, "https://example.invalid/dump", expectedRoot)
+		_, err := ji.DownloadAndImportCensus(c.Context(), censusDB, "https://example.invalid/dump", expectedRoot, nil, 0)
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "failed to download JSON dump")
 	})
@@ -395,7 +395,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		})
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
-		_, err := ji.DownloadAndImportCensus(c.Context(), censusDB, "https://example.invalid/dump", expectedRoot)
+		_, err := ji.DownloadAndImportCensus(c.Context(), censusDB, "https://example.invalid/dump", expectedRoot, nil, 0)
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "failed to download census merkle tree")
 	})
@@ -412,7 +412,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		})
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
-		_, err := ji.DownloadAndImportCensus(c.Context(), censusDB, "https://example.invalid/dump.jsonl", expectedRoot)
+		_, err := ji.DownloadAndImportCensus(c.Context(), censusDB, "https://example.invalid/dump.jsonl", expectedRoot, nil, 0)
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "failed to import census merkle tree")
 	})

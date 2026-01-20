@@ -228,10 +228,11 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	// Start census downloader
 	log.Info("starting census downloader")
 	services.CensusDownloader = service.NewCensusDownloader(services.Contracts, services.Storage, service.CensusDownloaderConfig{
-		CleanUpInterval: time.Second * 5,
-		Attempts:        5,
-		Expiration:      time.Minute * 30,
-		Cooldown:        time.Second * 10,
+		CleanUpInterval:      time.Second * 5,
+		OnchainCheckInterval: time.Second * 5,
+		Attempts:             5,
+		Expiration:           time.Minute * 10,
+		Cooldown:             time.Second * 10,
 	})
 	if err := services.CensusDownloader.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start census downloader: %w", err)

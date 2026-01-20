@@ -213,13 +213,16 @@ func (pm *ProcessMonitor) monitorProcesses(
 			log.Debugw("new process found", "processID", process.ID.String())
 
 			// Create a function to store the new process
-			processSetup := func() {
-				if err := pm.storage.NewProcess(process); err != nil {
+			processSetup := func(p *types.Process) {
+				if err := pm.storage.NewProcess(p); err != nil {
 					log.Warnw("failed to store new process",
-						"processID", process.ID.String(),
+						"processID", p.ID.String(),
 						"error", err.Error())
 				}
-				log.Debugw("process created", "processID", process.ID.String(), "stateRoot", process.StateRoot.String())
+				log.Debugw("process created",
+					"processID", p.ID.String(),
+					"stateRoot", p.StateRoot.String(),
+					"censusRoot", p.Census.CensusRoot.String())
 			}
 
 			// If the process is ready and has a census, download and import it
@@ -247,10 +250,10 @@ func (pm *ProcessMonitor) monitorProcesses(
 							"error", err.Error())
 						return
 					}
-					processSetup()
+					processSetup(process)
 				})
 			} else {
-				processSetup()
+				processSetup(process)
 			}
 		case update := <-updatedProcChan:
 			// determine the type of update

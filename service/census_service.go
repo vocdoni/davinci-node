@@ -22,10 +22,11 @@ import (
 //   - Cooldown: time duration to wait before retrying a failed census download.
 //   - Attempts: maximum number of attempts to download and import a census.
 type CensusDownloaderConfig struct {
-	CleanUpInterval time.Duration
-	Expiration      time.Duration
-	Cooldown        time.Duration
-	Attempts        int
+	CleanUpInterval      time.Duration
+	OnchainCheckInterval time.Duration
+	Expiration           time.Duration
+	Cooldown             time.Duration
+	Attempts             int
 }
 
 // DownloadStatus holds the status of a census download attempt. It is for
@@ -36,6 +37,20 @@ type DownloadStatus struct {
 	Attempts    int
 	LastErr     error
 	lastUpdated time.Time
+}
+
+// internalCensus is a wrapper around types.Census that includes additional
+// information needed for processing the census download, update and import it.
+type internalCensus struct {
+	*types.Census
+	*census.CensusToUpdate
+}
+
+// onchainCensus holds information about an on-chain dynamic census. It includes
+// the internal census data and the contract address where the census lives.
+type onchainCensus struct {
+	*internalCensus
+	address common.Address
 }
 
 // OnchainCensusFetcher defines the interface for fetching on-chain census
@@ -49,15 +64,16 @@ type OnchainCensusFetcher interface {
 // asynchronously. It maintains a queue of censuses to download and tracks
 // the status of each download attempt.
 type CensusDownloader struct {
-	queue          chan *types.Census
-	config         CensusDownloaderConfig
-	ctx            context.Context
-	cancel         context.CancelFunc
-	onchainFetcher OnchainCensusFetcher
-	storage        *storage.Storage
-	importer       *census.CensusImporter
-	censusStatus   map[string]DownloadStatus
-	mu             sync.RWMutex
+	queue           chan *internalCensus
+	config          CensusDownloaderConfig
+	ctx             context.Context
+	cancel          context.CancelFunc
+	onchainFetcher  OnchainCensusFetcher
+	storage         *storage.Storage
+	importer        *census.CensusImporter
+	censusStatus    map[string]DownloadStatus
+	onchainCensuses map[string]onchainCensus
+	mu              sync.RWMutex
 }
 
 // NewCensusDownloader creates a new CensusDownloader instance with the given
@@ -68,7 +84,7 @@ func NewCensusDownloader(
 	config CensusDownloaderConfig,
 ) *CensusDownloader {
 	return &CensusDownloader{
-		queue:          make(chan *types.Census),
+		queue:          make(chan *internalCensus),
 		onchainFetcher: onchainFetcher,
 		storage:        stg,
 		importer: census.NewCensusImporter(
@@ -76,8 +92,9 @@ func NewCensusDownloader(
 			census.JSONImporter(),
 			census.GraphQLImporter(nil),
 		),
-		censusStatus: make(map[string]DownloadStatus),
-		config:       config,
+		censusStatus:    make(map[string]DownloadStatus),
+		onchainCensuses: make(map[string]onchainCensus),
+		config:          config,
 	}
 }
 
@@ -88,22 +105,32 @@ func (cd *CensusDownloader) Start(ctx context.Context) error {
 	cd.ctx, cd.cancel = context.WithCancel(ctx)
 
 	go func() {
+		// Tickers for periodic tasks: onchain census checks and cleanup of
+		// pending censuses
+		onchainCheckTicker := time.NewTicker(cd.config.OnchainCheckInterval)
+		defer onchainCheckTicker.Stop()
 		cleanUpTicker := time.NewTicker(cd.config.CleanUpInterval)
 		defer cleanUpTicker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case census := <-cd.queue:
+			case icensus := <-cd.queue:
 				// Check if census is already pending
-				if _, pending := cd.DownloadCensusStatus(census); pending {
+				if _, pending := cd.DownloadCensusStatus(icensus.Census); pending {
 					continue
 				}
 				// Add census to pending list
-				cd.addPendingCensus(census)
+				cd.addPendingCensus(icensus.Census)
 				// Process census download
-				if err := cd.processCensusDownload(ctx, census); err != nil {
+				if err := cd.processCensusDownload(ctx, icensus); err != nil {
 					time.Sleep(cd.config.Cooldown)
+				}
+			case <-onchainCheckTicker.C:
+				// Check for updates to on-chain censuses
+				if err := cd.checkOnchainCensuses(); err != nil {
+					log.Warnw("failed to check on-chain censuses", "error", err)
 				}
 			case <-cleanUpTicker.C:
 				cd.cleanUpPendingCensuses()
@@ -123,27 +150,46 @@ func (cd *CensusDownloader) Stop() {
 // DownloadCensus adds the specified census to the download queue for
 // asynchronous processing. It handles on-chain dynamic Merkle Tree censuses
 // by fetching the current root from the on-chain contract before adding it to
-// the queue. It returns the final census root (after any necessary updates) and
-// an error if the operation fails.
-func (cd *CensusDownloader) DownloadCensus(census *types.Census) (types.HexBytes, error) {
+// the queue. It returns the final census root (after any necessary updates)
+// and an error if the operation fails.
+func (cd *CensusDownloader) DownloadCensus(censusInfo *types.Census) (types.HexBytes, error) {
+	// Create the internal census structure
+	icensus := &internalCensus{
+		Census: censusInfo,
+		CensusToUpdate: &census.CensusToUpdate{
+			OldCensusRoot:     nil,
+			ProcessedElements: 0,
+		},
+	}
 	// Handle on-chain dynamic Merkle Tree censuses
-	if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+	if censusInfo.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
 		// Convert the root to a contract address and validate it
-		contractAddress := common.BytesToAddress(census.CensusRoot.RightTrim())
+		contractAddress := common.BytesToAddress(censusInfo.CensusRoot.RightTrim())
 		if contractAddress == (common.Address{}) {
 			return nil, fmt.Errorf("invalid on-chain census contract address")
 		}
 		// Fetch the current census root from the on-chain contract and update
 		// it in the original census
 		var err error
-		census.CensusRoot, err = cd.onchainFetcher.FetchOnchainCensusRoot(contractAddress)
+		censusInfo.CensusRoot, err = cd.onchainFetcher.FetchOnchainCensusRoot(contractAddress)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch on-chain census root: %w", err)
 		}
+		log.Debugw("onchain census root unmasked",
+			"contractAddress", contractAddress.String(),
+			"censusRoot", censusInfo.CensusRoot.String())
+		// Lock the mutex to update the on-chain census map
+		cd.mu.Lock()
+		// Store the on-chain census information for later processing
+		cd.onchainCensuses[contractAddress.String()] = onchainCensus{
+			internalCensus: icensus,
+			address:        contractAddress,
+		}
+		cd.mu.Unlock()
 	}
 	// Add the census to the queue to be downloaded
-	cd.queue <- census
-	return census.CensusRoot, nil
+	cd.queue <- icensus
+	return censusInfo.CensusRoot, nil
 }
 
 // DownloadCensusStatus retrieves the current download status of the specified
@@ -193,24 +239,24 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 // retries the download and import process up to the configured number of
 // attempts. After each attempt, it updates the status of the census in the
 // internal tracking map.
-func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census *types.Census) error {
+func (cd *CensusDownloader) processCensusDownload(ctx context.Context, censusInfo *internalCensus) error {
 	log.Infow("starting census download",
-		"root", census.CensusRoot.String(),
-		"uri", census.CensusURI,
-		"origin", census.CensusOrigin.String())
+		"root", censusInfo.CensusRoot.String(),
+		"uri", censusInfo.CensusURI,
+		"origin", censusInfo.CensusOrigin.String())
 
 	var importErr error
 	for attempt := 0; attempt <= cd.config.Attempts; attempt++ {
-		importErr = cd.importer.ImportCensus(ctx, census)
-		if ok := cd.updatePendingCensusStatus(census, importErr); !ok {
+		censusInfo.ProcessedElements, importErr = cd.importer.ImportCensus(ctx, censusInfo.Census, censusInfo.CensusToUpdate)
+		if ok := cd.updatePendingCensusStatus(censusInfo.Census, importErr); !ok {
 			return fmt.Errorf("failed to store census status")
 		}
 		if importErr == nil {
 			log.Infow("census imported successfully",
 				"attempt", attempt+1,
-				"root", census.CensusRoot.String(),
-				"uri", census.CensusURI,
-				"origin", census.CensusOrigin.String())
+				"root", censusInfo.CensusRoot.String(),
+				"uri", censusInfo.CensusURI,
+				"origin", censusInfo.CensusOrigin.String())
 			return nil
 		}
 	}
@@ -218,9 +264,9 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census *t
 	log.Warnw("census import failed",
 		"error", importErr,
 		"attempts", cd.config.Attempts,
-		"root", census.CensusRoot.String(),
-		"uri", census.CensusURI,
-		"origin", census.CensusOrigin.String())
+		"root", censusInfo.CensusRoot.String(),
+		"uri", censusInfo.CensusURI,
+		"origin", censusInfo.CensusOrigin.String())
 	return importErr
 }
 
@@ -229,9 +275,6 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census *t
 func (cd *CensusDownloader) addPendingCensus(census *types.Census) {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
-	if cd.censusStatus == nil {
-		cd.censusStatus = make(map[string]DownloadStatus)
-	}
 	censusKey := census.CensusRoot.String()
 	if _, exists := cd.censusStatus[censusKey]; exists {
 		return
@@ -263,6 +306,62 @@ func (cd *CensusDownloader) updatePendingCensusStatus(census *types.Census, err 
 	}
 	cd.censusStatus[censusKey] = status
 	return true
+}
+
+// checkOnchainCensuses checks for updates to on-chain dynamic Merkle Tree
+// censuses. If the census root has changed, it updates the internal census
+// and enqueues it for download and import.
+func (cd *CensusDownloader) checkOnchainCensuses() error {
+	// Get current onchain censuses to be processed and don't block other
+	// operations
+	cd.mu.RLock()
+	onchainCensuses := make(map[string]onchainCensus)
+	for key, val := range cd.onchainCensuses {
+		// Skipt those that are already downloading and not complete
+		if status, exists := cd.censusStatus[val.CensusRoot.String()]; exists && !status.Complete {
+			continue
+		}
+		// Ensure that if there is an old census root
+		if val.OldCensusRoot != nil {
+			if status, exists := cd.censusStatus[val.OldCensusRoot.String()]; exists && !status.Complete {
+				continue
+			}
+		}
+		onchainCensuses[key] = val
+	}
+	cd.mu.RUnlock()
+	// Iterate over the on-chain censuses and check for updates
+	for _, onchainCensus := range onchainCensuses {
+		// Fetch the current census root from the on-chain contract
+		root, err := cd.onchainFetcher.FetchOnchainCensusRoot(onchainCensus.address)
+		if err != nil {
+			return fmt.Errorf("failed to fetch on-chain census root: %w", err)
+		}
+		// Check if the root has changed
+		if root.Equal(onchainCensus.CensusRoot) {
+			continue
+		}
+		// Store the current census root as the old root and update to the new
+		// root with the fetched value
+		onchainCensus.OldCensusRoot = onchainCensus.CensusRoot
+		onchainCensus.CensusRoot = root
+		log.Debugw("onchain census root updated",
+			"contractAddress", onchainCensus.address.String(),
+			"newCensusRoot", onchainCensus.CensusRoot.String(),
+			"oldCensusRoot", onchainCensus.OldCensusRoot.String())
+		// Update the on-chain census in the internal map
+		cd.mu.Lock()
+		cd.onchainCensuses[onchainCensus.address.String()] = onchainCensus
+		cd.mu.Unlock()
+		// Enqueue the updated census for download
+		// Add the census to the queue to be downloaded
+		cd.queue <- onchainCensus.internalCensus
+		log.Infow("on-chain census root updated, enqueuing for download",
+			"address", onchainCensus.address.String(),
+			"newRoot", root.String(),
+			"oldRoot", onchainCensus.OldCensusRoot.String())
+	}
+	return nil
 }
 
 // cleanUpPendingCensuses removes expired pending censuses from the internal

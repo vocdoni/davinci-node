@@ -29,6 +29,8 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 			censusDB,
 			censusURI,
 			test.DefaultExpectedRoot,
+			nil,
+			0,
 		)
 		c.Assert(err, qt.IsNil)
 	})

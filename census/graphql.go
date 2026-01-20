@@ -136,7 +136,8 @@ func (d *graphqlImporter) DownloadAndImportCensus(
 	ctx context.Context,
 	censusDB *censusdb.CensusDB,
 	targetURI string,
-	expectedRoot types.HexBytes,
+	expectedRoot, oldRoot types.HexBytes,
+	skip int,
 ) (int, error) {
 	// Parse the GraphQL endpoint from the target URI
 	endpoint, err := endpointFromURI(targetURI, d.insecure)
@@ -144,23 +145,32 @@ func (d *graphqlImporter) DownloadAndImportCensus(
 		return 0, fmt.Errorf("invalid GraphQL URI: %w", err)
 	}
 	// Get the graphql events from the target URI
-	events, nEvents, err := queryEvents(ctx, endpoint, 0, d.pageSize, d.queryTimeout, d.insecure)
+	events, err := queryEvents(ctx, endpoint, skip, d.pageSize, d.queryTimeout, d.insecure)
 	if err != nil {
 		return 0, fmt.Errorf("failed to query GraphQL events from %s: %w", targetURI, err)
 	}
 	if len(events) == 0 {
 		return 0, fmt.Errorf("empty census with endpoint: %s", targetURI)
 	}
-	// Import the events into the census DB
-	ref, err := censusDB.ImportEvents(expectedRoot.BigInt().MathBigInt(), events)
-	if err != nil {
-		return 0, fmt.Errorf("failed to update census from events: %w", err)
+	// If skip is 0, import all the received events as new census, otherwise
+	// update the existing census with the new events
+	if skip == 0 {
+		// Import all the available events into the census DB
+		if _, err := censusDB.ImportEvents(expectedRoot.BigInt().MathBigInt(), events); err != nil {
+			return 0, fmt.Errorf("failed to update census from events: %w", err)
+		}
+	} else {
+		// Get the reference of the census by its old root
+		ref, err := censusDB.LoadByRoot(oldRoot)
+		if err != nil {
+			return 0, fmt.Errorf("failed to load census by root %x: %w", oldRoot, err)
+		}
+		// Update the census with the new events
+		if err = ref.ApplyEvents(expectedRoot.BigInt().MathBigInt(), events); err != nil {
+			return 0, fmt.Errorf("failed to update census from events: %w", err)
+		}
 	}
-	// Verify the computed root matches the expected root
-	if !expectedRoot.Equal(ref.Root()) {
-		return 0, fmt.Errorf("census root mismatch: expected %x, got %x", expectedRoot, ref.Root())
-	}
-	return nEvents, nil
+	return skip + len(events), nil
 }
 
 // endpointFromURI converts a GraphQL URI (starting with "graphql://") to an
@@ -205,7 +215,7 @@ func queryEvents(
 	pageSize int,
 	timeout time.Duration,
 	insecure bool,
-) ([]census.CensusEvent, int, error) {
+) ([]census.CensusEvent, error) {
 	// Setup pagination variables
 	skip := from
 	first := pageSize
@@ -221,22 +231,22 @@ func queryEvents(
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, skip, ctx.Err()
+			return nil, ctx.Err()
 		default:
 			// Build the query body
 			queryBody, err := queryPageBody(first, skip)
 			if err != nil {
-				return nil, skip, fmt.Errorf("error building query: %v", err)
+				return nil, fmt.Errorf("error building query: %v", err)
 			}
 			// Execute the HTTP request with context
 			req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, queryBody)
 			if err != nil {
-				return nil, skip, fmt.Errorf("error creating request: %v", err)
+				return nil, fmt.Errorf("error creating request: %v", err)
 			}
 			req.Header.Set("Content-Type", "application/json")
 			res, err := client.Do(req)
 			if err != nil {
-				return nil, skip, fmt.Errorf("error executing request: %v", err)
+				return nil, fmt.Errorf("error executing request: %v", err)
 			}
 			// Ensure the response body is closed after processing
 			receivedEvents := 0
@@ -283,12 +293,12 @@ func queryEvents(
 				}
 				return nil
 			}(); err != nil {
-				return nil, skip, err
+				return nil, err
 			}
 			// Check if we received less than pageSize items, indicating the
 			// last page, if so, return the results and the last index queryed
 			if receivedEvents < pageSize {
-				return results, from + len(results), nil
+				return results, nil
 			}
 			// Update skip for next page
 			skip += pageSize
