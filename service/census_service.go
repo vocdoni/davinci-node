@@ -65,6 +65,7 @@ func NewCensusDownloader(
 		storage:       stg,
 		importer: census.NewCensusImporter(
 			stg,
+			contracts,
 			census.JSONImporter(),
 			census.GraphQLImporter(nil),
 		),
@@ -135,27 +136,29 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census *t
 		"uri", census.CensusURI,
 		"origin", census.CensusOrigin.String())
 
+	var importErr error
 	for attempt := 0; attempt <= cd.config.Attempts; attempt++ {
-		importErr := cd.importer.ImportCensus(ctx, census)
+		importErr = cd.importer.ImportCensus(ctx, census)
 		if ok := cd.updatePendingCensusStatus(census, importErr); !ok {
 			return fmt.Errorf("failed to store census status")
 		}
-		if importErr != nil {
-			log.Warnw("census import attempt failed",
-				"attempt", attempt+1,
-				"error", importErr,
-				"root", census.CensusRoot.String(),
-				"uri", census.CensusURI,
-				"origin", census.CensusOrigin.String())
-		} else {
+		if importErr == nil {
 			log.Infow("census imported successfully",
+				"attempt", attempt+1,
 				"root", census.CensusRoot.String(),
 				"uri", census.CensusURI,
 				"origin", census.CensusOrigin.String())
 			return nil
 		}
+
+		log.Warnw("census import attempt failed",
+			"error", importErr,
+			"attempt", attempt+1,
+			"root", census.CensusRoot.String(),
+			"uri", census.CensusURI,
+			"origin", census.CensusOrigin.String())
 	}
-	return nil
+	return importErr
 }
 
 // addPendingCensus adds a census to the internal tracking map of pending

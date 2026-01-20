@@ -9,7 +9,7 @@ import (
 
 func TestExampleCSP(t *testing.T) {
 	// Example usage of the CSP interface
-	origin := types.CensusOriginCSPEdDSABN254V1
+	origin := types.CensusOriginCSPEdDSABabyJubJubV1
 	seed := []byte("example_seed")
 
 	// Create a new CSP with the specified origin and seed
@@ -34,7 +34,7 @@ func TestExampleCSP(t *testing.T) {
 }
 
 func TestCensusRootLenght(t *testing.T) {
-	origin := types.CensusOriginCSPEdDSABN254V1
+	origin := types.CensusOriginCSPEdDSABabyJubJubV1
 
 	for range 10000 {
 		csp, err := New(origin, nil)

@@ -137,33 +137,30 @@ func (d *graphqlImporter) DownloadAndImportCensus(
 	censusDB *censusdb.CensusDB,
 	targetURI string,
 	expectedRoot types.HexBytes,
-) error {
+) (int, error) {
 	// Parse the GraphQL endpoint from the target URI
 	endpoint, err := endpointFromURI(targetURI, d.insecure)
 	if err != nil {
-		return fmt.Errorf("invalid GraphQL URI: %w", err)
+		return 0, fmt.Errorf("invalid GraphQL URI: %w", err)
 	}
 	// Get the graphql events from the target URI
-	events, err := queryEvents(ctx, endpoint, d.pageSize, d.queryTimeout, d.insecure)
+	events, nEvents, err := queryEvents(ctx, endpoint, 0, d.pageSize, d.queryTimeout, d.insecure)
 	if err != nil {
-		return fmt.Errorf("failed to query GraphQL events from %s: %w", targetURI, err)
+		return 0, fmt.Errorf("failed to query GraphQL events from %s: %w", targetURI, err)
 	}
 	if len(events) == 0 {
-		return fmt.Errorf("empty census with endpoint: %s", targetURI)
+		return 0, fmt.Errorf("empty census with endpoint: %s", targetURI)
 	}
-	tree, err := censusDB.EmptyTreeByRoot()
+	// Import the events into the census DB
+	ref, err := censusDB.ImportEvents(expectedRoot.BigInt().MathBigInt(), events)
 	if err != nil {
-		return fmt.Errorf("failed to create empty census tree: %w", err)
+		return 0, fmt.Errorf("failed to update census from events: %w", err)
 	}
-	// Update the censusRef from the events
-	if err := tree.ImportEvents(expectedRoot.BigInt().MathBigInt(), events); err != nil {
-		return fmt.Errorf("failed to update census from events: %w", err)
+	// Verify the computed root matches the expected root
+	if !expectedRoot.Equal(ref.Root()) {
+		return 0, fmt.Errorf("census root mismatch: expected %x, got %x", expectedRoot, ref.Root())
 	}
-	// Create a new CensusRef in the censusDB
-	if _, err := censusDB.NewByTree(expectedRoot, tree); err != nil {
-		return fmt.Errorf("failed to create new census: %w", err)
-	}
-	return nil
+	return nEvents, nil
 }
 
 // endpointFromURI converts a GraphQL URI (starting with "graphql://") to an
@@ -196,20 +193,22 @@ func queryPageBody(first, skip int) (io.Reader, error) {
 	return bytes.NewBuffer(jsonQuery), nil
 }
 
-// queryEvents fetches weight change events from the specified GraphQL endpoint
-// using pagination. It returns a slice of graphqlEvent or an error if the
-// query fails. It iterates through pages until no more events are available,
-// parsing the responses and accumulating the results.
+// queryEvents fetches weight change events from the specified GraphQL
+// endpoint using pagination. It returns a slice of graphqlEvent and the
+// last item queryed or an error if the query fails. It iterates through
+// pages until no more events are available, parsing the responses and
+// accumulating the results.
 func queryEvents(
 	ctx context.Context,
 	url string,
+	from int,
 	pageSize int,
 	timeout time.Duration,
 	insecure bool,
-) ([]census.CensusEvent, error) {
+) ([]census.CensusEvent, int, error) {
 	// Setup pagination variables
+	skip := from
 	first := pageSize
-	skip := 0
 	// Create the result slice and http client to be reused
 	var results []census.CensusEvent
 	client := &http.Client{
@@ -222,22 +221,22 @@ func queryEvents(
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, skip, ctx.Err()
 		default:
 			// Build the query body
 			queryBody, err := queryPageBody(first, skip)
 			if err != nil {
-				return nil, fmt.Errorf("error building query: %v", err)
+				return nil, skip, fmt.Errorf("error building query: %v", err)
 			}
 			// Execute the HTTP request with context
 			req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, queryBody)
 			if err != nil {
-				return nil, fmt.Errorf("error creating request: %v", err)
+				return nil, skip, fmt.Errorf("error creating request: %v", err)
 			}
 			req.Header.Set("Content-Type", "application/json")
 			res, err := client.Do(req)
 			if err != nil {
-				return nil, fmt.Errorf("error executing request: %v", err)
+				return nil, skip, fmt.Errorf("error executing request: %v", err)
 			}
 			// Ensure the response body is closed after processing
 			receivedEvents := 0
@@ -284,15 +283,15 @@ func queryEvents(
 				}
 				return nil
 			}(); err != nil {
-				return nil, err
+				return nil, skip, err
 			}
 			// Check if we received less than pageSize items, indicating the
-			// last page
+			// last page, if so, return the results and the last index queryed
 			if receivedEvents < pageSize {
-				return results, nil
+				return results, from + len(results), nil
 			}
 			// Update skip for next page
-			skip += first
+			skip += pageSize
 		}
 	}
 }

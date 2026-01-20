@@ -588,7 +588,7 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 	})
 
 	t.Run("CSPEdDSABN254", func(t *testing.T) {
-		witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginCSPEdDSABN254V1)
+		witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginCSPEdDSABabyJubJubV1)
 
 		testCircuitProve(t, &CircuitCensusProofs{
 			*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),

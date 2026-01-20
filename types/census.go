@@ -14,14 +14,14 @@ const (
 	CensusOriginUnknown CensusOrigin = iota
 	CensusOriginMerkleTreeOffchainStaticV1
 	CensusOriginMerkleTreeOffchainDynamicV1
-	CensusOriginMerkleTreeOnchainV1
-	CensusOriginCSPEdDSABN254V1
+	CensusOriginMerkleTreeOnchainDynamicV1
+	CensusOriginCSPEdDSABabyJubJubV1
 
 	CensusOriginNameUnknown                     = "unknown"
 	CensusOriginNameMerkleTreeOffchainStaticV1  = "merkle_tree_offchain_static_v1"
 	CensusOriginNameMerkleTreeOffchainDynamicV1 = "merkle_tree_offchain_dynamic_v1"
-	CensusOriginNameMerkleTreeOnchainV1         = "merkle_tree_onchain_v1"
-	CensusOriginNameCSPEdDSABN254V1             = "csp_eddsa_bn254_v1"
+	CensusOriginNameMerkleTreeOnchainDynamicV1  = "merkle_tree_onchain_dynamic_v1"
+	CensusOriginNameCSPEdDSABabyJubJubV1        = "csp_eddsa_babyjubjub_v1"
 
 	// CensusRootLength defines the length in bytes of the census root.
 	CensusRootLength = 32
@@ -30,16 +30,15 @@ const (
 var supportedCensusOrigins = map[CensusOrigin]string{
 	CensusOriginMerkleTreeOffchainStaticV1:  CensusOriginNameMerkleTreeOffchainStaticV1,
 	CensusOriginMerkleTreeOffchainDynamicV1: CensusOriginNameMerkleTreeOffchainDynamicV1,
-	// TODO: bring back when implemented
-	// CensusOriginMerkleTreeOnchainV1: CensusOriginNameMerkleTreeOnchainV1,
-	CensusOriginCSPEdDSABN254V1: CensusOriginNameCSPEdDSABN254V1,
+	CensusOriginMerkleTreeOnchainDynamicV1:  CensusOriginNameMerkleTreeOnchainDynamicV1,
+	CensusOriginCSPEdDSABabyJubJubV1:        CensusOriginNameCSPEdDSABabyJubJubV1,
 }
 
 // CurveID returns the twistededwards.ID associated with the CensusOrigin. Only
 // CSP origins have an associated curve, the rest return UNKNOWN.
 func (co CensusOrigin) CurveID() twistededwards.ID {
 	switch co {
-	case CensusOriginCSPEdDSABN254V1:
+	case CensusOriginCSPEdDSABabyJubJubV1:
 		return twistededwards.BN254
 	default:
 		return twistededwards.UNKNOWN
@@ -73,7 +72,7 @@ func (co CensusOrigin) IsMerkleTree() bool {
 	switch co {
 	case CensusOriginMerkleTreeOffchainStaticV1,
 		CensusOriginMerkleTreeOffchainDynamicV1,
-		CensusOriginMerkleTreeOnchainV1:
+		CensusOriginMerkleTreeOnchainDynamicV1:
 		return true
 	default:
 		return false
@@ -83,7 +82,7 @@ func (co CensusOrigin) IsMerkleTree() bool {
 // IsCSP checks if the CensusOrigin corresponds to a CSP-based census.
 func (co CensusOrigin) IsCSP() bool {
 	switch co {
-	case CensusOriginCSPEdDSABN254V1:
+	case CensusOriginCSPEdDSABabyJubJubV1:
 		return true
 	default:
 		return false
@@ -119,10 +118,8 @@ type Census struct {
 	//  - CensusOriginMerkleTreeOffchainDynamicV1: Merkle Root (could change
 	// 	  via tx).
 	//  - CensusOriginCSPEdDSABN254V1: MiMC7 of CSP PubKey (fixed).
-	// TODO: Extend with other census origins:
 	//  - CensusOriginMerkleTreeOnchainV1: Address of census manager
-	//    contract (should be queried on each transition, during state
-	//    transitions).
+	//    contract.
 	CensusRoot HexBytes `json:"censusRoot" cbor:"2,keyasint,omitempty"`
 	// CensusURI contains the following information depending on the CensusOrigin:
 	//  - CensusOriginMerkleTreeOffchainStaticV1: URL where the sequencer can
@@ -166,11 +163,11 @@ func (cp *CensusProof) Valid() bool {
 	if cp == nil || !cp.CensusOrigin.Valid() {
 		return false
 	}
-	switch cp.CensusOrigin {
-	case CensusOriginMerkleTreeOffchainStaticV1, CensusOriginMerkleTreeOffchainDynamicV1, CensusOriginMerkleTreeOnchainV1:
+	switch {
+	case cp.CensusOrigin.IsMerkleTree():
 		// By default the census proof is not required to this census origin.
 		return true
-	case CensusOriginCSPEdDSABN254V1:
+	case cp.CensusOrigin.IsCSP():
 		return cp.Root != nil && cp.Address != nil && cp.ProcessID != nil &&
 			cp.PublicKey != nil && cp.Signature != nil
 	default:

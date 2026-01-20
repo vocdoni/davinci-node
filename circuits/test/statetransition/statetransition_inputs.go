@@ -244,7 +244,7 @@ func CensusProofsForCircuitTest(
 					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to generate census proof: %w", err)
 				}
 				// convert to gnark csp proof
-				gnarkCSPProof, err := csp.CensusProofToCSPProof(types.CensusOriginCSPEdDSABN254V1.CurveID(), cspProof)
+				gnarkCSPProof, err := csp.CensusProofToCSPProof(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID(), cspProof)
 				if err != nil {
 					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to convert census proof to gnark proof: %w", err)
 				}

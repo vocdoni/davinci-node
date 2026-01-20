@@ -37,12 +37,12 @@ func (p *testImporterPlugin) ValidURI(targetURI string) bool {
 	return p.validFn(targetURI)
 }
 
-func (p *testImporterPlugin) DownloadAndImportCensus(ctx context.Context, censusDB *censusdb.CensusDB, targetURI string, expectedRoot types.HexBytes) error {
+func (p *testImporterPlugin) DownloadAndImportCensus(ctx context.Context, censusDB *censusdb.CensusDB, targetURI string, expectedRoot types.HexBytes) (int, error) {
 	p.calls++
 	p.lastCensusDB = censusDB
 	p.lastURI = targetURI
 	p.lastRoot = expectedRoot
-	return p.err
+	return 100, p.err
 }
 
 func testNewStorage(c *qt.C) *storage.Storage {
@@ -60,14 +60,14 @@ func TestCensusImporter(t *testing.T) {
 
 	c.Run("Validation", func(c *qt.C) {
 		c.Run("NilCensus", func(c *qt.C) {
-			importer := NewCensusImporter(nil)
+			importer := NewCensusImporter(nil, nil)
 			err := importer.ImportCensus(c.Context(), nil)
 			c.Assert(err, qt.Not(qt.IsNil))
 			c.Assert(err.Error(), qt.Equals, "census is nil")
 		})
 
 		c.Run("InvalidOrigin", func(c *qt.C) {
-			importer := NewCensusImporter(nil)
+			importer := NewCensusImporter(nil, nil)
 			err := importer.ImportCensus(c.Context(), &types.Census{
 				CensusOrigin: types.CensusOriginUnknown,
 				CensusURI:    "https://example.invalid/dump",
@@ -87,7 +87,7 @@ func TestCensusImporter(t *testing.T) {
 				validFn: func(uri string) bool { return uri == "https://example.invalid/dump" },
 			}
 
-			importer := NewCensusImporter(stg, plugin1, plugin2)
+			importer := NewCensusImporter(stg, nil, plugin1, plugin2)
 			census := &types.Census{
 				CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 				CensusURI:    "https://example.invalid/dump",
@@ -112,13 +112,13 @@ func TestCensusImporter(t *testing.T) {
 				err:     sentinelErr,
 			}
 
-			importer := NewCensusImporter(stg, plugin)
+			importer := NewCensusImporter(stg, nil, plugin)
 			err := importer.ImportCensus(c.Context(), &types.Census{
 				CensusOrigin: types.CensusOriginMerkleTreeOffchainDynamicV1,
 				CensusURI:    "https://example.invalid/dump",
 				CensusRoot:   types.HexBytes{0x01},
 			})
-			c.Assert(err, qt.Equals, sentinelErr)
+			c.Assert(err, qt.ErrorIs, sentinelErr)
 			c.Assert(plugin.calls, qt.Equals, 1)
 		})
 
@@ -126,7 +126,7 @@ func TestCensusImporter(t *testing.T) {
 			plugin := &testImporterPlugin{
 				validFn: func(string) bool { return false },
 			}
-			importer := NewCensusImporter(stg, plugin)
+			importer := NewCensusImporter(stg, nil, plugin)
 			err := importer.ImportCensus(c.Context(), &types.Census{
 				CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 				CensusURI:    "https://example.invalid/dump",
@@ -143,9 +143,9 @@ func TestCensusImporter(t *testing.T) {
 			plugin := &testImporterPlugin{
 				validFn: func(string) bool { return true },
 			}
-			importer := NewCensusImporter(stg, plugin)
+			importer := NewCensusImporter(stg, nil, plugin)
 			err := importer.ImportCensus(c.Context(), &types.Census{
-				CensusOrigin: types.CensusOriginCSPEdDSABN254V1,
+				CensusOrigin: types.CensusOriginCSPEdDSABabyJubJubV1,
 				CensusURI:    "https://example.invalid/csp",
 				CensusRoot:   types.HexBytes{0x01},
 			})

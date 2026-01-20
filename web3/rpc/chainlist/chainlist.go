@@ -395,16 +395,13 @@ func EndpointList(chainName string, numEndpoints int) ([]string, error) {
 		close(resultChan)
 	}()
 
-	// Collect healthy endpoints
+	// Collect healthy endpoints and drain results so goroutines finish cleanly.
 	healthyURLs := make([]string, 0, numEndpoints)
 	for r := range resultChan {
-		if r.healthy {
+		if r.healthy && (numEndpoints <= 0 || len(healthyURLs) < numEndpoints) {
 			healthyURLs = append(healthyURLs, r.url)
-
-			// If we have enough endpoints, cancel remaining checks
 			if len(healthyURLs) >= numEndpoints && numEndpoints > 0 {
-				cancel() // Signal other goroutines to stop
-				break
+				cancel() // Signal other goroutines to stop.
 			}
 		}
 	}

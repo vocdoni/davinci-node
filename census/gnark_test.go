@@ -32,8 +32,8 @@ func TestGnarkCensusOrigin(t *testing.T) {
 	witness := &testCensusOriginCircuit{
 		OffchainStatic:  uint8(types.CensusOriginMerkleTreeOffchainStaticV1),
 		OffchainDynamic: uint8(types.CensusOriginMerkleTreeOffchainDynamicV1),
-		Onchain:         uint8(types.CensusOriginMerkleTreeOnchainV1),
-		CSP:             uint8(types.CensusOriginCSPEdDSABN254V1),
+		Onchain:         uint8(types.CensusOriginMerkleTreeOnchainDynamicV1),
+		CSP:             uint8(types.CensusOriginCSPEdDSABabyJubJubV1),
 		Unknown:         uint8(types.CensusOriginUnknown),
 	}
 

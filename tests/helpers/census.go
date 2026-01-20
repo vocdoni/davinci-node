@@ -25,7 +25,7 @@ func IsCSPCensus() bool {
 
 func CurrentCensusOrigin() types.CensusOrigin {
 	if IsCSPCensus() {
-		return types.CensusOriginCSPEdDSABN254V1
+		return types.CensusOriginCSPEdDSABabyJubJubV1
 	} else {
 		return types.CensusOriginMerkleTreeOffchainDynamicV1
 	}
@@ -35,7 +35,7 @@ func WrongCensusOrigin() types.CensusOrigin {
 	if IsCSPCensus() {
 		return types.CensusOriginMerkleTreeOffchainStaticV1
 	} else {
-		return types.CensusOriginCSPEdDSABN254V1
+		return types.CensusOriginCSPEdDSABabyJubJubV1
 	}
 }
 
@@ -106,7 +106,7 @@ func NewCensusWithVoters(ctx context.Context, origin types.CensusOrigin, signers
 func CreateCensusProof(origin types.CensusOrigin, pid types.ProcessID, key []byte) (types.CensusProof, error) {
 	if origin.IsCSP() {
 		weight := new(types.BigInt).SetUint64(testutil.Weight)
-		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABN254V1, []byte(LocalCSPSeed))
+		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABabyJubJubV1, []byte(LocalCSPSeed))
 		if err != nil {
 			return types.CensusProof{}, fmt.Errorf("failed to create CSP: %w", err)
 		}

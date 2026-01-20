@@ -10,13 +10,18 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/arbo/memdb"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
 	censustest "github.com/vocdoni/davinci-node/census/test"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
+	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/config"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
@@ -24,6 +29,7 @@ import (
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
+	"github.com/vocdoni/davinci-node/util/circomgnark"
 	"github.com/vocdoni/davinci-node/web3"
 )
 
@@ -275,10 +281,28 @@ func (s *CLIServices) CreateAccountOrganization() (common.Address, error) {
 	return orgAddr, nil
 }
 
-func (s *CLIServices) CreateCensus(size int, weight uint64, c3URL string) (types.HexBytes, string, []*ethereum.Signer, error) {
-	// Generate random participants
+func (s *CLIServices) CreateCensus(
+	origin types.CensusOrigin,
+	size int,
+	weight uint64,
+	c3URL string,
+	privKey string,
+) (types.HexBytes, string, []*ethereum.Signer, error) {
 	signers := []*ethereum.Signer{}
 	votes := []state.Vote{}
+	if len(privKey) > 0 {
+		signer, err := ethereum.NewSignerFromHex(privKey)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("failed to create signer from privkey: %w", err)
+		}
+		signers = append(signers, signer)
+		votes = append(votes, state.Vote{
+			Address: signer.Address().Big(),
+			Weight:  new(big.Int).SetUint64(weight),
+		})
+		size -= 1
+	}
+	// Generate random participants
 	for range size {
 		signer, err := ethereum.NewSigner()
 		if err != nil {
@@ -298,6 +322,7 @@ func (s *CLIServices) CreateCensus(size int, weight uint64, c3URL string) (types
 }
 
 func (s *CLIServices) CreateProcess(
+	censusOrigin types.CensusOrigin,
 	censusRoot types.HexBytes,
 	censusURI string,
 	ballotMode *types.BallotMode,
@@ -324,7 +349,7 @@ func (s *CLIServices) CreateProcess(
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
 			CensusURI:    censusURI,
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
+			CensusOrigin: censusOrigin,
 		},
 	}
 	body, code, err := s.cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
@@ -357,7 +382,7 @@ func (s *CLIServices) CreateProcess(
 		Census: &types.Census{
 			CensusRoot:   censusRoot,
 			CensusURI:    censusURI,
-			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
+			CensusOrigin: censusOrigin,
 		},
 	}
 	// Create process in the contracts
@@ -391,4 +416,100 @@ func (s *CLIServices) CreateProcess(
 	}
 	time.Sleep(5 * time.Second) // wait a bit more to ensure everything is set up
 	return pid, encryptionKeys, nil
+}
+
+func (s *CLIServices) CreateVote(
+	privKey *ethereum.Signer,
+	pid types.ProcessID,
+	encKey *types.EncryptionKey,
+	bm *types.BallotMode,
+) (api.Vote, error) {
+	// Emulate user inputs
+	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
+	k, err := elgamal.RandK()
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to generate random k: %v", err)
+	}
+
+	// Generate random ballot fields
+	randFields := ballotprooftest.GenBallotFieldsForTest(
+		int(bm.NumFields),
+		int(bm.MaxValue.MathBigInt().Int64()),
+		int(bm.MinValue.MathBigInt().Int64()),
+		bm.UniqueValues)
+
+	// Cast fields to types.BigInt
+	fields := []*types.BigInt{}
+	for _, f := range randFields {
+		fields = append(fields, (*types.BigInt)(f))
+	}
+
+	// Compose wasm inputs
+	wasmInputs := &ballotproof.BallotProofInputs{
+		Address:   address.Bytes(),
+		ProcessID: pid,
+		EncryptionKey: []*types.BigInt{
+			(*types.BigInt)(encKey.X),
+			(*types.BigInt)(encKey.Y),
+		},
+		K:           (*types.BigInt)(k),
+		BallotMode:  bm,
+		Weight:      new(types.BigInt).SetInt(testutil.Weight),
+		FieldValues: fields,
+	}
+
+	// Generate the inputs for the ballot proof circuit
+	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to generate ballot proof inputs: %v", err)
+	}
+
+	// Encode the inputs to json
+	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to encode circom inputs: %v", err)
+	}
+
+	// Generate the proof using the circom circuit
+	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to generate proof: %v", err)
+	}
+
+	// Convert the proof to gnark format
+	circomProof, _, err := circomgnark.UnmarshalCircom(rawProof, pubInputs)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to convert proof to gnark format: %v", err)
+	}
+
+	// Sign the hash of the circuit inputs
+	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to sign vote: %v", err)
+	}
+
+	// Return the vote ready to be sent to the sequencer
+	return api.Vote{
+		ProcessID:        wasmResult.ProcessID,
+		Address:          wasmInputs.Address,
+		Ballot:           wasmResult.Ballot,
+		BallotProof:      circomProof,
+		BallotInputsHash: wasmResult.BallotInputsHash,
+		Signature:        signature.Bytes(),
+		VoteID:           wasmResult.VoteID,
+		CensusProof: types.CensusProof{
+			Weight: new(types.BigInt).SetInt(testutil.Weight),
+		},
+	}, nil
+}
+
+func (s *CLIServices) SubmitVote(vote api.Vote) (types.HexBytes, error) {
+	// Make the request to cast the vote
+	body, status, err := s.cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to cast vote: %w", err)
+	} else if status != http.StatusOK {
+		return nil, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
+	}
+	return vote.VoteID, nil
 }

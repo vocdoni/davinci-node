@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -230,6 +231,9 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	weight, ok := census.Tree().GetWeight(address)
 	if !ok {
 		ErrResourceNotFound.Withf("participant not found in census: %s", address.String()).Write(w)
+		return
+	} else if weight.Cmp(big.NewInt(0)) == 0 {
+		ErrResourceNotFound.Withf("participant has zero weight in census: %s", address.String()).Write(w)
 		return
 	}
 
