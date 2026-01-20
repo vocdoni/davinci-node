@@ -169,12 +169,9 @@ func (s *Sequencer) pushTransitionToContract(
 		blobSidecar = nil
 	}
 
-	// Simulate tx to the contract to check if it will fail and get the root
-	// cause of the failure if it does
+	// Simulate tx to the contract to check if it will fail
 	if err := s.contracts.SimulateProcessTransition(s.ctx, processID, abiProof, abiInputs, blobSidecar); err != nil {
-		log.Debugw("failed to simulate state transition",
-			"error", err,
-			"processID", processID.String())
+		return fmt.Errorf("process %s state transition simulation failed: %w", processID.String(), err)
 	}
 
 	// Submit the proof to the contract
