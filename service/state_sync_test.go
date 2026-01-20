@@ -13,6 +13,7 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
@@ -197,6 +198,73 @@ func TestStateSync(t *testing.T) {
 		c.Assert(proc.VotersCount, qt.DeepEquals, types.NewInt(3))
 		c.Assert(proc.OverwrittenVotesCount, qt.DeepEquals, types.NewInt(0))
 		c.Log(proc)
+	}
+}
+
+func TestStateSyncSequentialPerProcess(t *testing.T) {
+	c := qt.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	store := storage.New(memdb.New())
+	defer store.Close()
+
+	started := make(chan *types.ProcessWithChanges, 2)
+	releaseFirst := make(chan struct{})
+
+	stateSync := NewStateSync(NewMockContracts(), store)
+	stateSync.applyFn = func(ctx context.Context, process *types.ProcessWithChanges) error {
+		started <- process
+		if process.NewStateRoot.Equal(testutil.DeterministicStateRoot(20)) {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-releaseFirst:
+			}
+		}
+		return nil
+	}
+
+	c.Assert(stateSync.Start(ctx), qt.IsNil)
+	defer stateSync.Stop()
+
+	stateSync.Notify(&types.ProcessWithChanges{
+		ProcessID: testutil.FixedProcessID(),
+		StateRootChange: &types.StateRootChange{
+			OldStateRoot: testutil.DeterministicStateRoot(10),
+			NewStateRoot: testutil.DeterministicStateRoot(20),
+		},
+	})
+
+	stateSync.Notify(&types.ProcessWithChanges{
+		ProcessID: testutil.FixedProcessID(),
+		StateRootChange: &types.StateRootChange{
+			OldStateRoot: testutil.DeterministicStateRoot(20),
+			NewStateRoot: testutil.DeterministicStateRoot(30),
+		},
+	})
+
+	select {
+	case first := <-started:
+		c.Assert(first.NewStateRoot.Equal(testutil.DeterministicStateRoot(20)), qt.IsTrue)
+	case <-time.After(200 * time.Millisecond):
+		c.Fatalf("first update did not start")
+	}
+
+	select {
+	case <-started:
+		c.Fatalf("second update started before first completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseFirst)
+
+	select {
+	case second := <-started:
+		c.Assert(second.NewStateRoot.Equal(testutil.DeterministicStateRoot(30)), qt.IsTrue)
+	case <-time.After(200 * time.Millisecond):
+		c.Fatalf("second update did not start")
 	}
 }
 

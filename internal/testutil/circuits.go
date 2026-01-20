@@ -69,6 +69,10 @@ func StateRoot() *types.BigInt {
 	return (*types.BigInt)(bi)
 }
 
+func DeterministicStateRoot(n uint64) *types.BigInt {
+	return (*types.BigInt)(new(big.Int).SetUint64(n))
+}
+
 func RandomStateRoot() *types.BigInt {
 	return (*types.BigInt)(new(big.Int).SetBytes(util.RandomBytes(16)))
 }
