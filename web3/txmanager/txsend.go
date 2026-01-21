@@ -189,7 +189,7 @@ func (tm *TxManager) handleStuckTxs(ctx context.Context) error {
 // It returns an error if the operation fails.
 func (tm *TxManager) speedUpTx(ctx context.Context, ptx *PendingTransaction) error {
 	// Check if last error was permanent - no point in retrying
-	if rpc.IsPermanentError(ptx.LastError) {
+	if rpc.IsPermanentTxError(ptx.LastError) {
 		log.Warnw("transaction failed with permanent error, not retrying",
 			"id", fmt.Sprintf("%x", ptx.ID),
 			"nonce", ptx.Nonce,
@@ -383,7 +383,7 @@ func (tm *TxManager) recoverTxFromNonceGap(
 			log.Warnw("failed to send transaction after nonce recovery",
 				"error", sendErr,
 				"attempt", attempt+1)
-			if rpc.IsPermanentError(err) {
+			if rpc.IsPermanentTxError(err) {
 				return nil, fmt.Errorf("permanent error sending transaction after nonce recovery: %w", sendErr)
 			}
 			continue
