@@ -76,15 +76,11 @@ func (c *Client) EthClient() (*ethclient.Client, error) {
 // found in the pool or if the method fails. Required by the bind.ContractBackend
 // interface.
 func (c *Client) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) ([]byte, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.CodeAt(internalCtx, account, blockNumber)
+		return client.CodeAt(ctxWithTimeout, account, blockNumber)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.([]byte), err
 }
 
 // CallContract method wraps the CallContract method from the ethclient.Client
@@ -92,23 +88,20 @@ func (c *Client) CodeAt(ctx context.Context, account common.Address, blockNumber
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
 func (c *Client) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) ([]byte, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.CallContract(internalCtx, call, blockNumber)
+		return client.CallContract(ctxWithTimeout, call, blockNumber)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.([]byte), err
 }
 
 func (c *Client) CallSimulation(ctx context.Context, result any, simReq any, blockTag string) error {
-	endpoint, err := c.w3p.Endpoint(c.chainID)
-	if err != nil {
-		return fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
-	}
-	return endpoint.client.Client().CallContext(ctx, result, "eth_simulateV1", simReq, blockTag)
+	_, err := retrySwitchingEndpoints(c, func(client *ethclient.Client) (struct{}, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
+		defer cancel()
+		return struct{}{}, client.Client().CallContext(ctxWithTimeout, result, "eth_simulateV1", simReq, blockTag)
+	})
+	return err
 }
 
 // EstimateGas method wraps the EstimateGas method from the ethclient.Client for
@@ -116,15 +109,11 @@ func (c *Client) CallSimulation(ctx context.Context, result any, simReq any, blo
 // found in the pool or if the method fails. Required by the bind.ContractBackend
 // interface.
 func (c *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (uint64, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.EstimateGas(internalCtx, msg)
+		return client.EstimateGas(ctxWithTimeout, msg)
 	})
-	if err != nil {
-		return 0, err
-	}
-	return res.(uint64), err
 }
 
 // FilterLogs method wraps the FilterLogs method from the ethclient.Client for
@@ -132,15 +121,11 @@ func (c *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64,
 // found in the pool or if the method fails. Required by the bind.ContractBackend
 // interface.
 func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]gethtypes.Log, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, filterLogsTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) ([]gethtypes.Log, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, filterLogsTimeout)
 		defer cancel()
-		return endpoint.client.FilterLogs(internalCtx, query)
+		return client.FilterLogs(ctxWithTimeout, query)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.([]gethtypes.Log), nil
 }
 
 // HeaderByNumber method wraps the HeaderByNumber method from the ethclient.Client
@@ -148,62 +133,46 @@ func (c *Client) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
 func (c *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*gethtypes.Header, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (*gethtypes.Header, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.HeaderByNumber(internalCtx, number)
+		return client.HeaderByNumber(ctxWithTimeout, number)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*gethtypes.Header), err
 }
 
 // HeaderByHash method wraps the HeaderByHash method from the ethclient.Client
 // for the chainID of the Client instance. It returns an error if the chainID is
 // not found in the pool or if the method fails.
 func (c *Client) HeaderByHash(ctx context.Context, blockHash common.Hash) (*gethtypes.Header, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (*gethtypes.Header, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.HeaderByHash(internalCtx, blockHash)
+		return client.HeaderByHash(ctxWithTimeout, blockHash)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*gethtypes.Header), err
 }
 
 // TransactionByHash method wraps the TransactionByHash method from the ethclient.Client
 // for the chainID of the Client instance. It returns an error if the chainID is
 // not found in the pool or if the method fails.
 func (c *Client) TransactionByHash(ctx context.Context, txHash common.Hash) (*gethtypes.Transaction, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (*gethtypes.Transaction, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		tx, _, err := endpoint.client.TransactionByHash(internalCtx, txHash)
+		tx, _, err := client.TransactionByHash(ctxWithTimeout, txHash)
 		// we have no way to return the isPending bool, so we ignore it
 		return tx, err
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*gethtypes.Transaction), err
 }
 
 // TransactionReceipt method wraps the TransactionReceipt method from the ethclient.Client
 // for the chainID of the Client instance. It returns an error if the chainID is
 // not found in the pool or if the method fails.
 func (c *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*gethtypes.Receipt, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (*gethtypes.Receipt, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.TransactionReceipt(internalCtx, txHash)
+		return client.TransactionReceipt(ctxWithTimeout, txHash)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*gethtypes.Receipt), err
 }
 
 // PendingNonceAt method wraps the PendingNonceAt method from the
@@ -211,15 +180,11 @@ func (c *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*g
 // if the chainID is not found in the pool or if the method fails. Required by
 // the bind.ContractBackend interface.
 func (c *Client) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (uint64, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.PendingNonceAt(internalCtx, account)
+		return client.PendingNonceAt(ctxWithTimeout, account)
 	})
-	if err != nil {
-		return 0, err
-	}
-	return res.(uint64), err
 }
 
 // SuggestGasPrice method wraps the SuggestGasPrice method from the
@@ -227,15 +192,11 @@ func (c *Client) PendingNonceAt(ctx context.Context, account common.Address) (ui
 // if the chainID is not found in the pool or if the method fails. Required by
 // the bind.ContractBackend interface.
 func (c *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (*big.Int, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.SuggestGasPrice(internalCtx)
+		return client.SuggestGasPrice(ctxWithTimeout)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*big.Int), err
 }
 
 // SendTransaction method wraps the SendTransaction method from the ethclient.Client
@@ -243,10 +204,10 @@ func (c *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
 func (c *Client) SendTransaction(ctx context.Context, tx *gethtypes.Transaction) error {
-	_, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	_, err := retrySwitchingEndpoints(c, func(client *ethclient.Client) (struct{}, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return nil, endpoint.client.SendTransaction(internalCtx, tx)
+		return struct{}{}, client.SendTransaction(ctxWithTimeout, tx)
 	})
 	return err
 }
@@ -256,15 +217,11 @@ func (c *Client) SendTransaction(ctx context.Context, tx *gethtypes.Transaction)
 // not found in the pool or if the method fails. Required by the
 // bind.ContractBackend interface.
 func (c *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) ([]byte, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.PendingCodeAt(internalCtx, account)
+		return client.PendingCodeAt(ctxWithTimeout, account)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.([]byte), err
 }
 
 // SubscribeFilterLogs method wraps the SubscribeFilterLogs method from the
@@ -274,15 +231,11 @@ func (c *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]b
 func (c *Client) SubscribeFilterLogs(ctx context.Context,
 	query ethereum.FilterQuery, ch chan<- gethtypes.Log,
 ) (ethereum.Subscription, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (ethereum.Subscription, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.SubscribeFilterLogs(internalCtx, query, ch)
+		return client.SubscribeFilterLogs(ctxWithTimeout, query, ch)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(ethereum.Subscription), err
 }
 
 // SuggestGasTipCap method wraps the SuggestGasTipCap method from the
@@ -290,15 +243,11 @@ func (c *Client) SubscribeFilterLogs(ctx context.Context,
 // if the chainID is not found in the pool or if the method fails. Required by
 // the bind.ContractBackend interface.
 func (c *Client) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (*big.Int, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.SuggestGasTipCap(internalCtx)
+		return client.SuggestGasTipCap(ctxWithTimeout)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*big.Int), err
 }
 
 // BalanceAt method wraps the BalanceAt method from the ethclient.Client for the
@@ -306,15 +255,11 @@ func (c *Client) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 // found in the pool or if the method fails. This method is required by internal
 // logic, it is not required by the bind.ContractBackend interface.
 func (c *Client) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (*big.Int, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.BalanceAt(internalCtx, account, blockNumber)
+		return client.BalanceAt(ctxWithTimeout, account, blockNumber)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*big.Int), err
 }
 
 // BlockNumber method wraps the BlockNumber method from the ethclient.Client for
@@ -322,50 +267,37 @@ func (c *Client) BalanceAt(ctx context.Context, account common.Address, blockNum
 // found in the pool or if the method fails. This method is required by internal
 // logic, it is not required by the bind.ContractBackend interface.
 func (c *Client) BlockNumber(ctx context.Context) (uint64, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (uint64, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
 		defer cancel()
-		return endpoint.client.BlockNumber(internalCtx)
+		return client.BlockNumber(ctxWithTimeout)
 	})
-	if err != nil {
-		return 0, err
-	}
-	return res.(uint64), err
 }
 
 // BlobBaseFee retrieves the base fee for blob transactions on the blockchain.
 func (c *Client) BlobBaseFee(ctx context.Context) (*big.Int, error) {
-	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		var hexFee string
-		if err := endpoint.client.Client().CallContext(ctx, &hexFee, "eth_blobBaseFee"); err != nil {
-			return nil, err
-		}
-		f, ok := new(big.Int).SetString(strings.TrimPrefix(hexFee, "0x"), 16)
-		if !ok {
-			return nil, fmt.Errorf("invalid hex fee %q", hexFee)
-		}
-		return f, nil
+	return retrySwitchingEndpoints(c, func(client *ethclient.Client) (*big.Int, error) {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
+		defer cancel()
+		return client.BlobBaseFee(ctxWithTimeout)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*big.Int), nil
 }
 
-// retryAndCheckErr method retries a function call with endpoint switching.
+// retrySwitchingEndpoints method retries a function call with endpoint switching.
 // The function fn receives a fresh endpoint on each attempt. It first retries
 // on the current endpoint, and if that fails, it disables the endpoint and tries
 // the next available one. This continues until either the operation succeeds or
 // all endpoints have been exhausted. This ensures no RPC calls are lost due to
 // a single endpoint failure. Thread-safe: all operations are mutex-protected.
-func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, error) {
+func retrySwitchingEndpoints[T any](c *Client, fn func(*ethclient.Client) (T, error)) (T, error) {
+	var zero T
 	// Track which endpoints we've tried to avoid infinite loops
 	triedEndpoints := make(map[string]bool)
 
 	// Get total number of available endpoints for this chainID
 	totalEndpoints := c.w3p.NumberOfEndpoints(c.chainID, false)
 	if totalEndpoints == 0 {
-		return nil, fmt.Errorf("no endpoints available for chainID %d", c.chainID)
+		return zero, fmt.Errorf("no endpoints available for chainID %d", c.chainID)
 	}
 
 	var lastErr error
@@ -376,21 +308,21 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 		// Get current endpoint
 		endpoint, err := c.w3p.Endpoint(c.chainID)
 		if err != nil {
-			return nil, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
+			return zero, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
 		}
 
 		// Check if we've already tried this endpoint
 		if triedEndpoints[endpoint.URI] {
 			log.Errorw(lastErr, fmt.Sprintf("endpoint rotation returned already-tried endpoint %s for chainID %d",
 				endpoint.URI, c.chainID))
-			return nil, fmt.Errorf("endpoint rotation failed for chainID %d: %w", c.chainID, lastErr)
+			return zero, fmt.Errorf("endpoint rotation failed for chainID %d: %w", c.chainID, lastErr)
 		}
 		triedEndpoints[endpoint.URI] = true
 
 		// Retry on current endpoint
-		var res any
+		var res T
 		for retry := range defaultRetries {
-			res, err = fn(endpoint)
+			res, err = fn(endpoint.client)
 			if err == nil {
 				// Success! Log if we had to switch endpoints
 				if endpointAttempts > 0 {
@@ -414,7 +346,7 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 					"failedURI", endpoint.URI,
 					"endpointAttempts", endpointAttempts+1,
 					"retriesOnEndpoint", retry+1)
-				return nil, fmt.Errorf("RPC call failed with permanent error, not retrying: %w", err)
+				return zero, fmt.Errorf("RPC call failed with permanent error, not retrying: %w", err)
 			}
 			if retry < defaultRetries-1 {
 				time.Sleep(defaultRetrySleep)
@@ -436,7 +368,7 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 	// All endpoints exhausted
 	log.Errorw(lastErr, fmt.Sprintf("no more endpoints available after failures for chainID %d, tried %d endpoints",
 		c.chainID, len(triedEndpoints)))
-	return nil, fmt.Errorf("all endpoints exhausted for chainID %d after %d attempts: %w",
+	return zero, fmt.Errorf("all endpoints exhausted for chainID %d after %d attempts: %w",
 		c.chainID, endpointAttempts, lastErr)
 }
 
