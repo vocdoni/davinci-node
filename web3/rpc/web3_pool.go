@@ -152,15 +152,6 @@ func (nm *Web3Pool) AddEndpoint(uri string) (uint64, error) {
 	return chainID, nil
 }
 
-// DelEndpoint method removes a web3 provider URI from the *Web3Pool
-// instance. It closes the client and removes the endpoint from the list of
-// endpoints for the chainID where it was found.
-func (nm *Web3Pool) DelEndoint(uri string) {
-	for _, endpoints := range nm.endpoints {
-		endpoints.Disable(uri)
-	}
-}
-
 // Endpoint method returns the Web3Endpoint configured for the chainID
 // provided. It returns the first available endpoint. If no available endpoint
 // is found, returns an error.
