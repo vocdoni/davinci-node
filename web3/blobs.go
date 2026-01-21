@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,6 +21,14 @@ import (
 	eth2client "github.com/attestantio/go-eth2-client"
 	eth2api "github.com/attestantio/go-eth2-client/api"
 	eth2http "github.com/attestantio/go-eth2-client/http"
+)
+
+const (
+	// defaultRetries is the number of times to retry fetching blobs
+	defaultRetries = 5
+	// defaultRetrySleep is the initial time to wait between retries,
+	// each retry has an exponential backoff (doubling each time)
+	defaultRetrySleep = 10 * time.Second
 )
 
 // applyGasMultiplier applies the gas multiplier to a base fee value.
@@ -236,9 +245,24 @@ func (c *Contracts) BlobsByTxHash(
 		return nil, fmt.Errorf("parent beacon root missing (EL client too old?)")
 	}
 
-	sidecars, err := c.BlobSidecarsOfBlock(ctx, blockHeader.ParentBeaconRoot)
+	var sidecars []*types.BlobSidecar
+	for retry := range defaultRetries {
+		if retry > 0 {
+			sleep := defaultRetrySleep << (retry - 1) // 10s,20s,40s,80s
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(sleep):
+			}
+		}
+		sidecars, err = c.BlobSidecarsOfBlock(ctx, blockHeader.ParentBeaconRoot)
+		if err == nil {
+			break
+		}
+		log.Debugf("fetching blob sidecars of tx %s failed: %v", txHash, err)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("fetch blob sidecars: %w", err)
+		return nil, fmt.Errorf("fetch blob sidecars failed after %d retries: %w", defaultRetries, err)
 	}
 
 	// filter to keep only the blobs related to this transaction
