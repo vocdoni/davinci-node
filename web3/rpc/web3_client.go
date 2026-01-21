@@ -29,22 +29,45 @@ var (
 	filterLogsTimeout = 5 * time.Second
 )
 
-// permanentErrorPatterns defines error patterns that indicate permanent
+// permanentTxErrorPatterns defines error patterns that indicate permanent
 // failures that should not be retried. These are typically contract-level
 // rejections that will never succeed regardless of gas price or retries.
 // Add new patterns here as they are discovered and confirmed.
-var permanentErrorPatterns = []string{
+var permanentTxErrorPatterns = []string{
 	"execution reverted", // Contract rejected the transaction
 }
 
-// IsPermanentError checks if an error represents a permanent failure that
+// permanentRPCErrorPatterns defines error patterns that indicate permanent
+// failures that should not be retried on this RPC endpoint.
+// For example, version incompatibilities will never succeed regardless of gas price or retries.
+// Add new patterns here as they are discovered and confirmed.
+var permanentRPCErrorPatterns = []string{
+	"blob transaction invalid tx RLP length", // this RPC does not support V1 blob sidecars
+}
+
+// IsPermanentTxError checks if an error represents a permanent failure that
 // should not be retried.
-func IsPermanentError(err error) bool {
+func IsPermanentTxError(err error) bool {
 	if err == nil {
 		return false
 	}
 	errStr := strings.ToLower(err.Error())
-	for _, pattern := range permanentErrorPatterns {
+	for _, pattern := range permanentTxErrorPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsPermanentRPCError checks if an error represents a permanent failure of the RPC that
+// should not be retried.
+func IsPermanentRPCError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	for _, pattern := range permanentRPCErrorPatterns {
 		if strings.Contains(errStr, pattern) {
 			return true
 		}
@@ -360,14 +383,23 @@ func (c *Client) retryAndCheckErr(fn func(*Web3Endpoint) (any, error)) (any, err
 			} else {
 				lastErr = err
 			}
-			if IsPermanentError(err) {
-				log.Warnw("RPC returned permanent error, not retrying",
+			if IsPermanentTxError(err) {
+				log.Warnw("RPC returned a tx-related permanent error, not retrying this tx",
 					"error", lastErr,
 					"chainID", c.chainID,
 					"failedURI", endpoint.URI,
 					"endpointAttempts", endpointAttempts+1,
 					"retriesOnEndpoint", retry+1)
 				return nil, fmt.Errorf("RPC call failed with permanent error, not retrying: %w", err)
+			}
+			if IsPermanentRPCError(err) {
+				log.Warnw("RPC returned an endpoint-related permanent error, not retrying on this endpoint",
+					"error", lastErr,
+					"chainID", c.chainID,
+					"failedURI", endpoint.URI,
+					"endpointAttempts", endpointAttempts+1,
+					"retriesOnEndpoint", retry+1)
+				break
 			}
 			if retry < defaultRetries-1 {
 				time.Sleep(defaultRetrySleep)
