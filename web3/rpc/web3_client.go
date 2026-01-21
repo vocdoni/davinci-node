@@ -182,6 +182,53 @@ func (c *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*gethtype
 	return res.(*gethtypes.Header), err
 }
 
+// HeaderByHash method wraps the HeaderByHash method from the ethclient.Client
+// for the chainID of the Client instance. It returns an error if the chainID is
+// not found in the pool or if the method fails.
+func (c *Client) HeaderByHash(ctx context.Context, blockHash common.Hash) (*gethtypes.Header, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
+		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+		defer cancel()
+		return endpoint.client.HeaderByHash(internalCtx, blockHash)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*gethtypes.Header), err
+}
+
+// TransactionByHash method wraps the TransactionByHash method from the ethclient.Client
+// for the chainID of the Client instance. It returns an error if the chainID is
+// not found in the pool or if the method fails.
+func (c *Client) TransactionByHash(ctx context.Context, txHash common.Hash) (*gethtypes.Transaction, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
+		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+		defer cancel()
+		tx, _, err := endpoint.client.TransactionByHash(internalCtx, txHash)
+		// we have no way to return the isPending bool, so we ignore it
+		return tx, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*gethtypes.Transaction), err
+}
+
+// TransactionReceipt method wraps the TransactionReceipt method from the ethclient.Client
+// for the chainID of the Client instance. It returns an error if the chainID is
+// not found in the pool or if the method fails.
+func (c *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*gethtypes.Receipt, error) {
+	res, err := c.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
+		internalCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
+		defer cancel()
+		return endpoint.client.TransactionReceipt(internalCtx, txHash)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*gethtypes.Receipt), err
+}
+
 // PendingNonceAt method wraps the PendingNonceAt method from the
 // ethclient.Client for the chainID of the Client instance. It returns an error
 // if the chainID is not found in the pool or if the method fails. Required by

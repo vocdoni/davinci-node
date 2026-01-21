@@ -152,16 +152,12 @@ func (c *Contracts) NewEIP4844TransactionWithNonce(
 	return signedTx, nil
 }
 
-// TransactionWithReceipt returns the full tx including it's receipt
-// of an already mined transaction, identified by txHash.
-func (c *Contracts) TransactionWithReceipt(ctx context.Context, txHash common.Hash,
-) (*gethtypes.Transaction, *gethtypes.Receipt, error) {
-	ethcli, err := c.cli.EthClient()
-	if err != nil {
-		return nil, nil, fmt.Errorf("eth client: %w", err)
-	}
+// TransactionAndBlockHeader returns the full tx identified by txHash
+// and the header of the block it was mined in.
+func (c *Contracts) TransactionAndBlockHeader(ctx context.Context, txHash common.Hash,
+) (*gethtypes.Transaction, *gethtypes.Header, error) {
 	// EL: txHash -> receipt
-	receipt, err := ethcli.TransactionReceipt(ctx, txHash)
+	receipt, err := c.cli.TransactionReceipt(ctx, txHash)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tx receipt: %w", err)
 	}
@@ -169,32 +165,21 @@ func (c *Contracts) TransactionWithReceipt(ctx context.Context, txHash common.Ha
 		return nil, nil, fmt.Errorf("tx not mined yet")
 	}
 	// EL: txHash -> full tx
-	tx, _, err := ethcli.TransactionByHash(ctx, txHash)
+	tx, err := c.cli.TransactionByHash(ctx, txHash)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tx: %w", err)
 	}
-
-	return tx, receipt, nil
+	// EL: block hash -> header
+	blockHeader, err := c.cli.HeaderByHash(ctx, receipt.BlockHash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("header by hash: %w", err)
+	}
+	return tx, blockHeader, nil
 }
 
 // BlobSidecarsOfBlock returns the blob sidecars stored in consensus layer,
-// of a block identified by a blockHash.
-func (c *Contracts) BlobSidecarsOfBlock(ctx context.Context, blockHash common.Hash) ([]*types.BlobSidecar, error) {
-	// EL: RPC client
-	ethcli, err := c.cli.EthClient()
-	if err != nil {
-		return nil, fmt.Errorf("eth client: %w", err)
-	}
-
-	// EL: block hash -> header -> parent beacon root (EIP-4788)
-	hdr, err := ethcli.HeaderByHash(ctx, blockHash)
-	if err != nil {
-		return nil, fmt.Errorf("header by hash: %w", err)
-	}
-	if hdr.ParentBeaconRoot == nil {
-		return nil, fmt.Errorf("parent beacon root missing (EL client too old?)")
-	}
-
+// of a block identified by a parentBeaconRoot
+func (c *Contracts) BlobSidecarsOfBlock(ctx context.Context, parentBeaconRoot *common.Hash) ([]*types.BlobSidecar, error) {
 	// CL: Beacon client
 	bc, err := eth2http.New(ctx,
 		eth2http.WithAddress(strings.TrimRight(c.Web3ConsensusAPIEndpoint, "/")),
@@ -209,10 +194,10 @@ func (c *Contracts) BlobSidecarsOfBlock(ctx context.Context, blockHash common.Ha
 	var parentSlot uint64
 	if provider, isProvider := bc.(eth2client.BeaconBlockHeadersProvider); isProvider {
 		headers, err := provider.BeaconBlockHeader(ctx, &eth2api.BeaconBlockHeaderOpts{
-			Block: hdr.ParentBeaconRoot.Hex(),
+			Block: parentBeaconRoot.Hex(),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("beacon headers(%s): %w", hdr.ParentBeaconRoot, err)
+			return nil, fmt.Errorf("beacon headers(%s): %w", parentBeaconRoot, err)
 		}
 		parentSlot = uint64(headers.Data.Header.Message.Slot)
 	}
@@ -240,15 +225,18 @@ func (c *Contracts) BlobsByTxHash(
 	ctx context.Context,
 	txHash common.Hash,
 ) ([]*types.BlobSidecar, error) {
-	tx, txReceipt, err := c.TransactionWithReceipt(ctx, txHash)
+	tx, blockHeader, err := c.TransactionAndBlockHeader(ctx, txHash)
 	if err != nil {
 		return nil, fmt.Errorf("tx parent beacon root: %w", err)
 	}
 	if tx.Type() != gethtypes.BlobTxType {
 		return nil, fmt.Errorf("not a blob tx (type=%d)", tx.Type())
 	}
+	if blockHeader.ParentBeaconRoot == nil {
+		return nil, fmt.Errorf("parent beacon root missing (EL client too old?)")
+	}
 
-	sidecars, err := c.BlobSidecarsOfBlock(ctx, txReceipt.BlockHash)
+	sidecars, err := c.BlobSidecarsOfBlock(ctx, blockHeader.ParentBeaconRoot)
 	if err != nil {
 		return nil, fmt.Errorf("fetch blob sidecars: %w", err)
 	}
