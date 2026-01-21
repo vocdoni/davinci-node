@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/ethclient"
 	qt "github.com/frankban/quicktest"
 )
 
@@ -249,11 +250,11 @@ func TestRetryLogic(t *testing.T) {
 	callCount := 0
 	testErr := errors.New("test error")
 
-	_, err := client.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
+	_, err := retrySwitchingEndpoints(client, func(*ethclient.Client) (string, error) {
 		callCount++
 		// Fail for the first endpoint's retries
 		if callCount <= defaultRetries {
-			return nil, testErr
+			return "", testErr
 		}
 		// Succeed on second endpoint
 		return "success", nil
@@ -284,8 +285,8 @@ func TestRetryAllEndpointsFail(t *testing.T) {
 
 	testErr := errors.New("test error")
 
-	_, err := client.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		return nil, testErr
+	_, err := retrySwitchingEndpoints(client, func(*ethclient.Client) (string, error) {
+		return "", testErr
 	})
 
 	c.Assert(err, qt.Not(qt.IsNil))
@@ -304,8 +305,8 @@ func TestNoEndpointsAvailable(t *testing.T) {
 		chainID: 999, // Non-existent chain
 	}
 
-	_, err := client.retryAndCheckErr(func(endpoint *Web3Endpoint) (any, error) {
-		return nil, nil
+	_, err := retrySwitchingEndpoints(client, func(*ethclient.Client) (string, error) {
+		return "", nil
 	})
 
 	c.Assert(err, qt.Not(qt.IsNil))
