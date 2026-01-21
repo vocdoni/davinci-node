@@ -398,7 +398,7 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 	// Create a API client
 	cli, err := client.New(seqEndpoint)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to create client: %w", err)
 	}
 
 	// Wait for the sequencer to be ready, make ping request until it responds
@@ -406,8 +406,10 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 	defer cancel()
 	for isConnected := false; !isConnected; {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-pingCtx.Done():
-			log.Fatal("ping timeout")
+			return fmt.Errorf("ping timeout: %w", pingCtx.Err())
 		default:
 			_, status, err := cli.Request(http.MethodGet, nil, nil, api.PingEndpoint)
 			if err == nil && status == http.StatusOK {
