@@ -138,7 +138,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 		if err != nil {
 			log.Warnw("could not get vote ID status during verified ballot cleanup",
 				"processID", ballot.ProcessID.String(),
-				"voteID", hex.EncodeToString(ballot.VoteID),
+				"voteID", ballot.VoteID.String(),
 				"error", err.Error())
 			// Count it anyway as it might still be valid
 			processBallots[ballot.ProcessID].validCount++
@@ -147,7 +147,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 		} else {
 			log.Warnw("vote ID is not in verified status during cleanup",
 				"processID", ballot.ProcessID.String(),
-				"voteID", hex.EncodeToString(ballot.VoteID),
+				"voteID", ballot.VoteID.String(),
 				"currentStatus", VoteIDStatusName(currentStatus))
 		}
 
@@ -156,19 +156,19 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 			if err := s.setVoteIDStatus(ballot.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 				log.Warnw("failed to set vote ID status to error",
 					"processID", ballot.ProcessID.String(),
-					"voteID", hex.EncodeToString(ballot.VoteID),
+					"voteID", ballot.VoteID.String(),
 					"error", err.Error())
 			}
 		}
 
 		// Release vote ID lock
-		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(ballot.VoteID)
 
 		// Release address lock
 		s.releaseAddress(ballot.ProcessID, ballot.Address)
 
 		// Clean up voteID to address mapping
-		s.voteIDToAddress.Delete(ballot.VoteID.String())
+		s.voteIDToAddress.Delete(ballot.VoteID)
 
 		return true
 	}); err != nil {
@@ -256,7 +256,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 			if err != nil {
 				log.Warnw("could not get vote ID status during batch cleanup",
 					"processID", batch.ProcessID.String(),
-					"voteID", hex.EncodeToString(ballot.VoteID),
+					"voteID", ballot.VoteID.String(),
 					"error", err.Error())
 				// Count it anyway as it might still be valid
 				processBatches[batch.ProcessID].validCount++
@@ -265,7 +265,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 			} else {
 				log.Warnw("vote ID is not in aggregated status during cleanup",
 					"processID", batch.ProcessID.String(),
-					"voteID", hex.EncodeToString(ballot.VoteID),
+					"voteID", ballot.VoteID.String(),
 					"currentStatus", VoteIDStatusName(currentStatus))
 			}
 
@@ -274,13 +274,13 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 				if err := s.setVoteIDStatus(batch.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 					log.Warnw("failed to set vote ID status to error",
 						"processID", batch.ProcessID.String(),
-						"voteID", hex.EncodeToString(ballot.VoteID),
+						"voteID", ballot.VoteID.String(),
 						"error", err.Error())
 				}
 			}
 
 			// Release nullifier lock
-			s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+			s.releaseVoteID(ballot.VoteID)
 		}
 
 		return true
@@ -370,7 +370,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 			if err != nil {
 				log.Warnw("could not get vote ID status during state transition cleanup",
 					"processID", stb.ProcessID.String(),
-					"voteID", hex.EncodeToString(stb.Ballots[0].VoteID),
+					"voteID", stb.Ballots[0].VoteID.String(),
 					"error", err.Error())
 				// Count it anyway as it might still be valid
 				batchIsValid = true
@@ -379,7 +379,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 			} else {
 				log.Warnw("vote ID is not in processed status during cleanup",
 					"processID", stb.ProcessID.String(),
-					"voteID", hex.EncodeToString(stb.Ballots[0].VoteID),
+					"voteID", stb.Ballots[0].VoteID.String(),
 					"currentStatus", VoteIDStatusName(currentStatus))
 			}
 		}
@@ -395,7 +395,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 			if err != nil {
 				log.Warnw("could not get vote ID status during state transition cleanup",
 					"processID", stb.ProcessID.String(),
-					"voteID", hex.EncodeToString(ballot.VoteID),
+					"voteID", ballot.VoteID.String(),
 					"error", err.Error())
 			}
 
@@ -406,13 +406,13 @@ func (s *Storage) cleanAllStateTransitions() error {
 				if err := s.setVoteIDStatus(stb.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 					log.Warnw("failed to set vote ID status to error",
 						"processID", stb.ProcessID.String(),
-						"voteID", hex.EncodeToString(ballot.VoteID),
+						"voteID", ballot.VoteID.String(),
 						"error", err.Error())
 				}
 			}
 
 			// Release nullifier lock
-			s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+			s.releaseVoteID(ballot.VoteID)
 		}
 
 		return true
@@ -485,19 +485,19 @@ func (s *Storage) cleanPendingBallotsForProcess(processID types.ProcessID) error
 	// Delete ballots, their reservations, and release locks
 	for _, ballot := range ballotsToDelete {
 		// Delete reservation if exists
-		if err := s.deleteArtifact(ballotReservationPrefix, ballot.VoteID); err != nil && !errors.Is(err, ErrNotFound) {
-			log.Warnw("failed to delete pending ballot reservation", "voteID", hex.EncodeToString(ballot.VoteID), "error", err)
+		if err := s.deleteArtifact(ballotReservationPrefix, ballot.VoteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
+			log.Warnw("failed to delete pending ballot reservation", "voteID", ballot.VoteID.String(), "error", err)
 		}
 
 		// Delete ballot
-		if err := s.deleteArtifact(ballotPrefix, ballot.VoteID); err != nil && !errors.Is(err, ErrNotFound) {
-			log.Warnw("failed to delete pending ballot", "voteID", hex.EncodeToString(ballot.VoteID), "error", err)
+		if err := s.deleteArtifact(ballotPrefix, ballot.VoteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
+			log.Warnw("failed to delete pending ballot", "voteID", ballot.VoteID.String(), "error", err)
 		}
 
 		// Release locks
-		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(ballot.VoteID)
 		s.releaseAddress(ballot.ProcessID, ballot.Address)
-		s.voteIDToAddress.Delete(ballot.VoteID.String())
+		s.voteIDToAddress.Delete(ballot.VoteID)
 	}
 	if len(ballotsToDelete) > 0 {
 		log.Debugw("cleaned pending ballots", "processID", processID.String(), "count", len(ballotsToDelete))
@@ -557,9 +557,9 @@ func (s *Storage) cleanVerifiedBallotsForProcess(processID types.ProcessID) erro
 
 		// Release locks if we successfully decoded the ballot
 		if item.ballot != nil {
-			s.releaseVoteID(item.ballot.VoteID.BigInt().MathBigInt())
+			s.releaseVoteID(item.ballot.VoteID)
 			s.releaseAddress(item.ballot.ProcessID, item.ballot.Address)
-			s.voteIDToAddress.Delete(item.ballot.VoteID.String())
+			s.voteIDToAddress.Delete(item.ballot.VoteID)
 		}
 	}
 

@@ -5,10 +5,11 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark/frontend"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -180,6 +181,17 @@ func verifyLeafHash(
 	return nil
 }
 
+// VerifyNewKey asserts that CalculateBallotIndex(address, censusIndex) matches mp.NewKey,
+// only when the MerkleTransition is not a NOOP
+func (mp *MerkleTransition) VerifyNewKey(api frontend.API, address, censusIndex frontend.Variable) {
+	verifyLeafKey(api, mp.NewKey, mp.IsNoop(api), CalculateBallotIndex(api, address, censusIndex))
+}
+
+func verifyLeafKey(api frontend.API, key, skip frontend.Variable, value frontend.Variable) {
+	// used to skip the assert, for example when MerkleTransition is NOOP or not an UPDATE
+	api.AssertIsEqual(key, api.Select(skip, key, value))
+}
+
 func (mp *MerkleTransition) String() string {
 	return fmt.Sprint(util.PrettyHex(mp.OldRoot), " -> ", util.PrettyHex(mp.NewRoot), " | ",
 		mp.OldKey, "=", util.PrettyHex(mp.OldLeafHash), " -> ", mp.NewKey, "=", util.PrettyHex(mp.NewLeafHash))
@@ -220,20 +232,16 @@ func padStateSiblings(unpackedSiblings []*big.Int) [params.StateTreeMaxLevels]fr
 	return paddedSiblings
 }
 
-// TruncateMerkleTreeKey helper function truncates a key to a given size to be
-// compared with the key included in an arbo proof. It only matches if the
-// tree was generated with the BigInt API of arbo. It converts the key to
-// bytes, swaps the endianness, crops it to the given size, and then swaps
-// the endianness back. It returns the truncated key as a frontend.Variable.
-func TruncateMerkleTreeKey(api frontend.API, input frontend.Variable, size int) (frontend.Variable, error) {
-	bInput, err := utils.VarToU8(api, input)
-	if err != nil {
-		return 0, err
-	}
-	swappedInput := utils.SwapEndianness(bInput)
-	croppedInput := swappedInput[:size]
-	reSwappedInput := utils.SwapEndianness(croppedInput)
-	return utils.U8ToVar(api, reSwappedInput)
+// CalculateBallotIndex replicates spec.BallotIndex inside the circuit.
+// It takes the low 16 bits of the address, applies the censusIndex offset,
+// and shifts into the Ballot namespace (starting at params.BallotMin).
+//
+//	BallotIndex = BallotMin + (index * 2^CensusAddressBitLen) + (address mod 2^CensusAddressBitLen)
+func CalculateBallotIndex(api frontend.API, address, censusIndex frontend.Variable) frontend.Variable {
+	censusIndexShifted := api.Mul(censusIndex, 1<<params.CensusAddressBitLen)
+	addressLE := api.ToBinary(address, common.AddressLength*8)
+	addressTruncated := api.FromBinary(addressLE[:params.CensusAddressBitLen]...)
+	return api.Add(params.BallotMin, censusIndexShifted, addressTruncated)
 }
 
 // AssertDummyIsNoop fails when isDummy is 1 and mp is not a NOOP

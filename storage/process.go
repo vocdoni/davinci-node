@@ -65,9 +65,13 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	}
 
 	// Initialize the process state to store the process data
+	packedBallotMode, err := process.BallotMode.Pack()
+	if err != nil {
+		return fmt.Errorf("failed to pack ballot mode: %w", err)
+	}
 	if err := pState.Initialize(
 		process.Census.CensusOrigin.BigInt().MathBigInt(),
-		circuits.BallotModeToCircuit(process.BallotMode),
+		packedBallotMode,
 		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),
 	); err != nil {
 		return fmt.Errorf("failed to initialize process state: %w", err)

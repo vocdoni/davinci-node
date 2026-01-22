@@ -12,14 +12,15 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func NewStateForTest(t *testing.T,
 	processID types.ProcessID,
-	ballotMode circuits.BallotMode[*big.Int],
+	ballotMode *big.Int,
 	censusOrigin types.CensusOrigin,
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) *state.State {
@@ -39,7 +40,7 @@ func NewStateForTest(t *testing.T,
 func NewRandomState(t *testing.T, origin types.CensusOrigin) *state.State {
 	return NewStateForTest(t,
 		testutil.RandomProcessID(),
-		testutil.BallotMode(),
+		testutil.BallotModePacked(),
 		origin,
 		testutil.RandomEncryptionPubKey(),
 	)
@@ -54,7 +55,7 @@ func NewVoteForTest(publicKey ecc.Point, index uint64, value int) *state.Vote {
 	if err != nil {
 		panic(fmt.Errorf("failed to encrypt ballot: %v", err))
 	}
-	k, err := elgamal.RandK()
+	k, err := specutil.RandomK()
 	if err != nil {
 		panic(fmt.Errorf("failed to generate k: %v", err))
 	}
@@ -64,7 +65,7 @@ func NewVoteForTest(publicKey ecc.Point, index uint64, value int) *state.Vote {
 	}
 	return &state.Vote{
 		Address:           testutil.DeterministicAddress(index).Big(),
-		VoteID:            testutil.RandomVoteID().Bytes(),
+		VoteID:            testutil.RandomVoteID(),
 		Ballot:            ballot,
 		ReencryptedBallot: reencryptedBallot,
 		Weight:            big.NewInt(testutil.Weight),

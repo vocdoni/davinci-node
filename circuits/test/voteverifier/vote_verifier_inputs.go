@@ -59,7 +59,7 @@ func VoteVerifierInputsForTest(
 	encryptionKey := circuits.EncryptionKeyFromECCPoint(ek)
 	// circuits assignments, voters data and proofs
 	var assignments []voteverifier.VerifyVoteCircuit
-	inputsHashes, addresses, weights, voteIDs := []*big.Int{}, []*big.Int{}, []*big.Int{}, []types.HexBytes{}
+	inputsHashes, addresses, weights, voteIDs := []*big.Int{}, []*big.Int{}, []*big.Int{}, []types.VoteID{}
 	ballots := []elgamal.Ballot{}
 	var finalProcessID *big.Int
 	for i, voter := range votersData {
@@ -87,7 +87,7 @@ func VoteVerifierInputsForTest(
 			IsValid:    1,
 			BallotHash: emulated.ValueOf[sw_bn254.ScalarField](ballotProof.InputsHash),
 			Address:    emulated.ValueOf[sw_bn254.ScalarField](ballotProof.Address),
-			VoteID:     ballotProof.VoteID.BigInt().MathBigInt(),
+			VoteID:     ballotProof.VoteID.BigInt(),
 			// signature
 			PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 				X: emulated.ValueOf[emulated.Secp256k1Fp](voter.PubKey.X),

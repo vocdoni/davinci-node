@@ -71,7 +71,7 @@ func TestProcessMonitor(t *testing.T) {
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
-		BallotMode:     testutil.BallotModeInternal(),
+		BallotMode:     testutil.BallotMode(),
 		Census:         census,
 	})
 	c.Assert(err, qt.IsNil)

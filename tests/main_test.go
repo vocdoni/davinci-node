@@ -17,7 +17,7 @@ import (
 var (
 	orgAddr           common.Address
 	services          *helpers.TestServices
-	defaultBallotMode = testutil.BallotModeInternal()
+	defaultBallotMode = testutil.BallotMode()
 )
 
 func TestMain(m *testing.M) {

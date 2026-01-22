@@ -15,10 +15,11 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
@@ -111,7 +112,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 		Duration:    time.Hour,
 		MetadataURI: "http://example.com/metadata",
 		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
+		BallotMode:  testutil.BallotMode(),
 		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 
@@ -170,7 +171,7 @@ func setupTestState(
 		addValues[i] = big.NewInt(addValue)
 	}
 	// Encrypt the values
-	k1, err := elgamal.RandK()
+	k1, err := specutil.RandomK()
 	if err != nil {
 		t.Fatalf("failed to generate k1: %v", err)
 	}
@@ -187,7 +188,7 @@ func setupTestState(
 		subValues[i] = big.NewInt(subValue)
 	}
 	// Encrypt the values
-	k2, err := elgamal.RandK()
+	k2, err := specutil.RandomK()
 	if err != nil {
 		t.Fatalf("failed to generate k2: %v", err)
 	}

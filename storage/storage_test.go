@@ -2,7 +2,6 @@ package storage
 
 import (
 	"bytes"
-	"fmt"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -25,7 +24,7 @@ func createTestProcess(pid types.ProcessID) *types.Process {
 		MetadataURI:    "http://example.com/metadata",
 		StateRoot:      testutil.StateRoot(),
 		SequencerStats: types.SequencerProcessStats{},
-		BallotMode:     testutil.BallotModeInternal(),
+		BallotMode:     testutil.BallotMode(),
 		Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 }
@@ -56,12 +55,12 @@ func TestBallotQueue(t *testing.T) {
 	ballot1 := &Ballot{
 		ProcessID: processID,
 		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
-		VoteID:    fmt.Append(nil, "vote1"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 	ballot2 := &Ballot{
 		ProcessID: processID,
 		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
-		VoteID:    fmt.Append(nil, "vote2"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 
 	// Push the ballots
@@ -163,8 +162,7 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(err, qt.Equals, ErrNoMoreElements, qt.Commentf("no more ballots expected"))
 
 	// Additional scenario: MarkBallotDone on a non-existent/reserved key
-	nonExistentKey := []byte("fakekey")
-	err = st.MarkBallotVerified(nonExistentKey, verified1)
+	err = st.MarkBallotVerified(testutil.RandomVoteID(), verified1)
 	c.Assert(err, qt.IsNil)
 
 	// Additional scenario: no verified ballots if none processed
@@ -199,7 +197,7 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: processID,
 			Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i+1),
+			VoteID:    testutil.RandomVoteID(),
 		}
 		c.Assert(st.PushPendingBallot(ballot), qt.IsNil)
 	}

@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"fmt"
 	"math/big"
 	"path/filepath"
 	"sync"
@@ -49,7 +48,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 				ballot := &Ballot{
 					ProcessID: processID,
 					Address:   big.NewInt(int64(routineID*10000 + j)),
-					VoteID:    fmt.Appendf(nil, "vote%d", routineID*100+j),
+					VoteID:    testutil.RandomVoteID(),
 				}
 
 				// Push ballot (pending +1)
@@ -126,7 +125,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: processID,
 			Address:   big.NewInt(int64(i + 1000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i),
+			VoteID:    testutil.RandomVoteID(),
 		}
 
 		// Push ballot
@@ -230,7 +229,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 				ballot := &Ballot{
 					ProcessID: processID,
 					Address:   big.NewInt(int64(workerID*10000 + j)),
-					VoteID:    fmt.Appendf(nil, "vote%d-%d", workerID, j),
+					VoteID:    testutil.RandomVoteID(),
 				}
 
 				// Push and process ballot
@@ -359,7 +358,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 			MetadataURI:    "http://example.com/metadata",
 			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 5},
 			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
+			BallotMode:     testutil.BallotMode(),
 			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 		},
 		{
@@ -370,7 +369,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 			MetadataURI:    "http://example.com/metadata",
 			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 3},
 			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
+			BallotMode:     testutil.BallotMode(),
 			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 		},
 		{
@@ -381,7 +380,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 			MetadataURI:    "http://example.com/metadata",
 			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 7},
 			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
+			BallotMode:     testutil.BallotMode(),
 			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 		},
 	}
@@ -468,7 +467,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: processID,
 			Address:   big.NewInt(int64(i + 2000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i),
+			VoteID:    testutil.RandomVoteID(),
 		}
 
 		// Push ballot
@@ -476,7 +475,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Get and mark as done (verified)
-		b, key, err := st.NextPendingBallot()
+		b, voteID, err := st.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
 
 		verifiedBallot := &VerifiedBallot{
@@ -485,11 +484,11 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
-		err = st.MarkBallotVerified(key, verifiedBallot)
+		err = st.MarkBallotVerified(voteID, verifiedBallot)
 		c.Assert(err, qt.IsNil)
 
 		// Store the verified ballot key for later failure
-		combKey := append(processID.Bytes(), key...)
+		combKey := append(processID.Bytes(), voteID.Bytes()...)
 		keys = append(keys, combKey)
 	}
 
@@ -549,7 +548,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: processID,
 			Address:   big.NewInt(int64(i + 2000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i),
+			VoteID:    testutil.RandomVoteID(),
 		}
 
 		// Push ballot
@@ -854,12 +853,12 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	ballot1 := &Ballot{
 		ProcessID: process1,
 		Address:   big.NewInt(1000),
-		VoteID:    fmt.Appendf(nil, "vote1"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 	ballot2 := &Ballot{
 		ProcessID: process1,
 		Address:   big.NewInt(1001),
-		VoteID:    fmt.Appendf(nil, "vote2"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 
 	err = st.PushPendingBallot(ballot1)
@@ -876,7 +875,7 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	ballot3 := &Ballot{
 		ProcessID: process2,
 		Address:   big.NewInt(1002),
-		VoteID:    fmt.Appendf(nil, "vote3"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 
 	err = st.PushPendingBallot(ballot3)
@@ -1033,7 +1032,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: process1,
 			Address:   big.NewInt(int64(i + 1000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i),
+			VoteID:    testutil.RandomVoteID(),
 		}
 		err = st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)
@@ -1043,7 +1042,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: process2,
 			Address:   big.NewInt(int64(i + 3000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i+numBallotsP1),
+			VoteID:    testutil.RandomVoteID(),
 		}
 		err = st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)

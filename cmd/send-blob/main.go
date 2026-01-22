@@ -14,7 +14,6 @@ import (
 
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
@@ -184,10 +183,10 @@ func preview(b []byte, n int) string {
 }
 
 func RandomBlob() *types.Blob {
-	const feSize = params.BlobTxBytesPerFieldElement // 32
+	const feSize = gethparams.BlobTxBytesPerFieldElement // 32
 	out := new(types.Blob)
 	var el fr.Element
-	for i := range params.BlobTxFieldElementsPerBlob {
+	for i := range gethparams.BlobTxFieldElementsPerBlob {
 		el.MustSetRandom()                             // uses crypto/rand.Reader
 		copy(out[i*feSize:(i+1)*feSize], el.Marshal()) // big-endian canonical bytes
 	}

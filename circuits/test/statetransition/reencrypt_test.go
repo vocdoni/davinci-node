@@ -13,7 +13,8 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 )
 
 type ReencryptedBallotCircuit struct {
@@ -38,7 +39,7 @@ func TestReencryptedBallotCircuit(t *testing.T) {
 	privkey, encKey := testutil.RandomEncryptionKeys()
 	encryptionKey := new(bjj.BJJ).SetPoint(encKey.PubKey[0], encKey.PubKey[1])
 
-	k, err := elgamal.RandK()
+	k, err := specutil.RandomK()
 	c.Assert(err, qt.IsNil)
 
 	// generate fields
@@ -53,7 +54,7 @@ func TestReencryptedBallotCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	// ballot = elgamal.NewBallot(ek)
 
-	reencryptionK, err := elgamal.RandK()
+	reencryptionK, err := specutil.RandomK()
 	c.Assert(err, qt.IsNil)
 	reencryptedBallot, _, err := ballot.Reencrypt(encryptionKey, reencryptionK)
 	c.Assert(err, qt.IsNil)

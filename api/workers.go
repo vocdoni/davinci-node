@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -73,9 +72,8 @@ func (a *API) startWorkersMonitor() {
 			select {
 			case failedJob := <-a.jobsManager.FailedJobs:
 				now := time.Now()
-				voteIDStr := hex.EncodeToString(failedJob.VoteID)
 				log.Warnw("job failed or timed out",
-					"voteID", voteIDStr,
+					"voteID", failedJob.VoteID.String(),
 					"workerAddr", failedJob.Address,
 					"duration", now.Sub(failedJob.Timestamp).String())
 
@@ -83,7 +81,7 @@ func (a *API) startWorkersMonitor() {
 				if err := a.storage.ReleasePendingBallotReservation(failedJob.VoteID); err != nil {
 					log.Warnw("failed to remove timed out ballot",
 						"error", err.Error(),
-						"voteID", voteIDStr)
+						"voteID", failedJob.VoteID.String())
 				}
 			case <-a.parentCtx.Done():
 				log.Infow("worker timeout monitor stopped")
@@ -237,10 +235,9 @@ func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Track the job
-	voteIDStr := hex.EncodeToString(voteID)
 	if _, err := a.jobsManager.RegisterJob(workerAddr.Hex(), voteID); err != nil {
 		log.Warnw("no available workers for job",
-			"voteID", voteIDStr,
+			"voteID", voteID.String(),
 			"worker", workerAddr.Hex(),
 			"error", err.Error())
 		ErrGenericInternalServerError.Withf("no available workers for job").Write(w)
@@ -252,7 +249,7 @@ func (a *API) workersNewJob(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Warnw("failed to encode ballot for worker",
 			"error", err.Error(),
-			"voteID", voteIDStr,
+			"voteID", voteID.String(),
 		)
 		ErrGenericInternalServerError.WithErr(err).Write(w)
 		return
@@ -288,7 +285,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Sanity checks
-	if workerVerifiedBallot.VoteID == nil || workerVerifiedBallot.Proof == nil {
+	if workerVerifiedBallot.VoteID == 0 || workerVerifiedBallot.Proof == nil {
 		log.Warnw("malformed verified ballot", "error", "missing required fields")
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return

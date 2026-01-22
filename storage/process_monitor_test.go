@@ -36,7 +36,7 @@ func TestMonitorEndedProcesses(t *testing.T) {
 		Duration:    shortDuration,
 		MetadataURI: "http://example.com/metadata",
 		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
+		BallotMode:  testutil.BallotMode(),
 		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 
@@ -82,7 +82,7 @@ func TestMonitorEndedProcessesNotYetEnded(t *testing.T) {
 		Duration:    longDuration,
 		MetadataURI: "http://example.com/metadata",
 		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
+		BallotMode:  testutil.BallotMode(),
 		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 
@@ -128,7 +128,7 @@ func TestMonitorEndedProcessesSkipsAlreadyEnded(t *testing.T) {
 		Duration:    shortDuration,
 		MetadataURI: "http://example.com/metadata",
 		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
+		BallotMode:  testutil.BallotMode(),
 		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 

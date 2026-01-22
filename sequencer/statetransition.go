@@ -18,10 +18,11 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 	imtcircuit "github.com/vocdoni/lean-imt-go/circuit"
 )
 
@@ -231,12 +232,12 @@ func (s *Sequencer) processStateTransitionBatch(
 	}
 	log.Debugw("state transition assignments ready for proof generation",
 		"took", time.Since(startTime).String(),
-		"processID", fmt.Sprintf("%x", processState.ProcessID().Bytes()),
+		"processID", processState.ProcessID(),
 		"votersCount", assignments.VotersCount,
 		"overwrittenVotesCount", assignments.OverwrittenVotesCount,
 		"rootHashBefore", assignments.RootHashBefore,
 		"rootHashAfter", assignments.RootHashAfter,
-		"censusRoot", fmt.Sprintf("%x", censusRoot.Bytes()),
+		"censusRoot", censusRoot.String(),
 	)
 
 	// Prepare the options for the prover - use solidity verifier target
@@ -291,7 +292,7 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 
 func (s *Sequencer) reencryptVotes(processID types.ProcessID, votes []*storage.AggregatorBallot) ([]*state.Vote, *types.BigInt, error) {
 	// generate a initial k to reencrypt the ballots
-	kSeed, err := elgamal.RandK()
+	kSeed, err := specutil.RandomK()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate random k: %w", err)
 	}

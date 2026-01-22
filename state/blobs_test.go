@@ -2,10 +2,9 @@ package state_test
 
 import (
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"math/big"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,10 +16,11 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func TestBlobDataStructures(t *testing.T) {
@@ -40,17 +40,19 @@ func TestBlobDataStructures(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &types.BallotMode{
+	ballotMode := spec.BallotMode{
 		NumFields:      3,
-		MaxValue:       types.NewInt(100),
-		MinValue:       types.NewInt(0),
-		MaxValueSum:    types.NewInt(1000),
-		MinValueSum:    types.NewInt(0),
+		GroupSize:      3,
+		MaxValue:       100,
+		MinValue:       0,
+		MaxValueSum:    1000,
+		MinValueSum:    0,
 		CostExponent:   1,
 		UniqueValues:   false,
 		CostFromWeight: false,
 	}
-	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
+	ballotModeCircuit, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
 	err = state.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize state"))
@@ -83,7 +85,7 @@ func TestBlobDataStructures(t *testing.T) {
 
 		// Pack votes
 		for _, v := range state.Votes() {
-			push(new(big.Int).SetBytes(v.VoteID))  // voteId hash
+			push(v.VoteID.BigInt())                // voteID
 			push(v.Address)                        // address
 			for _, p := range v.Ballot.BigInts() { // ballot coords
 				push(p)
@@ -131,7 +133,7 @@ func TestBlobDataStructures(t *testing.T) {
 			address := getCell()
 
 			// Verify vote ID and address
-			c.Assert(new(big.Int).SetBytes(originalVote.VoteID).Cmp(voteID), qt.Equals, 0, qt.Commentf("Vote %d ID mismatch", i))
+			c.Assert(originalVote.VoteID.BigInt().Cmp(voteID), qt.Equals, 0, qt.Commentf("Vote %d ID mismatch", i))
 			c.Assert(originalVote.Address.Cmp(address), qt.Equals, 0, qt.Commentf("Vote %d address mismatch", i))
 
 			// Verify ballot coordinates
@@ -167,17 +169,9 @@ func TestBlobStateTransition(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &types.BallotMode{
-		NumFields:      3,
-		MaxValue:       types.NewInt(100),
-		MinValue:       types.NewInt(0),
-		MaxValueSum:    types.NewInt(1000),
-		MinValueSum:    types.NewInt(0),
-		CostExponent:   1,
-		UniqueValues:   false,
-		CostFromWeight: false,
-	}
-	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
+	ballotMode := testutil.BallotMode()
+	ballotModeCircuit, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
 	err = originalState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize original state"))
@@ -272,7 +266,7 @@ func TestBlobStateTransition(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get expected root"))
 
 		// Now test restoration from blob
-		restoreStateFromBlob(t, firstTransition.Blob.Blob, processID, *ballotMode, publicKey, expectedRoot)
+		restoreStateFromBlob(t, firstTransition.Blob.Blob, processID, ballotMode, publicKey, expectedRoot)
 	})
 
 	// Test state restoration by applying all blobs in sequence
@@ -373,7 +367,7 @@ func verifyBlobStructureBasic(t *testing.T, blob *types.Blob, votes []*state.Vot
 			qt.Commentf("Vote %d address mismatch: expected %s, got %s", i, originalVote.Address.String(), parsedVote.Address.String()))
 
 		// Verify vote ID
-		c.Assert(originalVote.VoteID.Bytes(), qt.DeepEquals, parsedVote.VoteID.Bytes(), qt.Commentf("Vote %d ID mismatch", i))
+		c.Assert(originalVote.VoteID, qt.Equals, parsedVote.VoteID, qt.Commentf("Vote %d ID mismatch", i))
 
 		// Verify ballot coordinates match (comparing reencrypted ballot since that's what's stored in blob)
 		originalCoords := originalVote.ReencryptedBallot.BigInts()
@@ -412,7 +406,7 @@ func verifyKZGCommitment(t *testing.T, blob *types.Blob, commit *types.KZGCommit
 	c.Assert(y.Cmp(recomputedY), qt.Equals, 0, qt.Commentf("KZG evaluation (y value) mismatch"))
 }
 
-func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.ProcessID, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
+func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.ProcessID, ballotMode spec.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
 	c := qt.New(t)
 	// Parse blob data
 	blobData, err := state.ParseBlobData(blob.Bytes())
@@ -428,7 +422,8 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	}()
 
 	// Initialize new state with same parameters
-	ballotModeCircuit := circuits.BallotModeToCircuit(&ballotMode)
+	ballotModeCircuit, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(encryptionKey)
 	err = newState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize new state"))
@@ -446,7 +441,7 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 
 	// Verify individual votes can be retrieved
 	for _, vote := range blobData.Votes {
-		retrievedBallot, err := newState.EncryptedBallot(vote.Address)
+		retrievedBallot, err := newState.EncryptedBallot(types.CalculateBallotIndex(vote.Address, types.IndexTODO))
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to retrieve ballot for address %s", vote.Address.String()))
 
 		// Compare ballot coordinates
@@ -476,17 +471,12 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	}
 }
 
+//go:embed testdata/blob.bin
+var blobData string
+
 func TestParseBlobData_FromFile(t *testing.T) {
 	log.Init("debug", "stdout", nil)
-	// Path: state/testdata/blob.bin
-	blobPath := filepath.Join("testdata", "blob.bin")
-
-	b, err := os.ReadFile(blobPath)
-	if err != nil {
-		t.Fatalf("read blob hex file: %v", err)
-	}
-
-	hexStr := strings.TrimSpace(string(b))
+	hexStr := strings.TrimSpace(blobData)
 	hexStr = strings.TrimPrefix(hexStr, "0x")
 
 	// remove whitespace/newlines just in case

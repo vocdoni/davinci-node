@@ -2,6 +2,8 @@ module github.com/vocdoni/davinci-node
 
 go 1.25.5
 
+replace github.com/vocdoni/davinci-node/spec => ./spec
+
 require (
 	github.com/attestantio/go-eth2-client v0.27.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
@@ -31,6 +33,7 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427
 	github.com/vocdoni/davinci-contracts v0.0.36-0.20260211114851-cff1efe6cbe7
+	github.com/vocdoni/davinci-node/spec v0.0.0-00010101000000-000000000000
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260115102516-64ce9c3fd55d
 	github.com/vocdoni/lean-imt-go v0.0.0-20260126110424-0b1c7ec41924
 	github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69

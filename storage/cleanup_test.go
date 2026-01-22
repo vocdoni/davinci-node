@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -34,7 +33,7 @@ func TestCleanAllPending(t *testing.T) {
 			Duration:    time.Hour,
 			MetadataURI: "http://example.com/metadata",
 			StateRoot:   testutil.StateRoot(),
-			BallotMode:  testutil.BallotModeInternal(),
+			BallotMode:  testutil.BallotMode(),
 			Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 		}
 		err := s.NewProcess(process)
@@ -43,9 +42,8 @@ func TestCleanAllPending(t *testing.T) {
 
 	// Helper function to create a verified ballot
 	createVerifiedBallot := func(processID types.ProcessID, voteID int) *VerifiedBallot {
-		voteIDBytes := types.HexBytes(fmt.Sprintf("vote%d", voteID))
 		return &VerifiedBallot{
-			VoteID:          voteIDBytes,
+			VoteID:          types.VoteID(voteID),
 			ProcessID:       processID,
 			VoterWeight:     big.NewInt(1),
 			EncryptedBallot: &elgamal.Ballot{},
@@ -56,9 +54,8 @@ func TestCleanAllPending(t *testing.T) {
 
 	// Helper function to create an aggregator ballot
 	createAggregatorBallot := func(voteID int) *AggregatorBallot {
-		voteIDBytes := types.HexBytes(fmt.Sprintf("vote%d", voteID))
 		return &AggregatorBallot{
-			VoteID:          voteIDBytes,
+			VoteID:          types.VoteID(voteID),
 			Address:         big.NewInt(int64(voteID)),
 			EncryptedBallot: &elgamal.Ballot{},
 		}
@@ -75,7 +72,7 @@ func TestCleanAllPending(t *testing.T) {
 
 		// Store verified ballots directly
 		for _, vb := range []*VerifiedBallot{vb1, vb2, vb3} {
-			key := append(vb.ProcessID.Bytes(), vb.VoteID...)
+			key := append(vb.ProcessID.Bytes(), vb.VoteID.Bytes()...)
 			err := s.setArtifact(verifiedBallotPrefix, key, vb)
 			c.Assert(err, qt.IsNil)
 
@@ -84,7 +81,7 @@ func TestCleanAllPending(t *testing.T) {
 			c.Assert(err, qt.IsNil)
 
 			// Lock the vote ID
-			s.lockVoteID(vb.VoteID.BigInt().MathBigInt())
+			s.lockVoteID(vb.VoteID)
 		}
 
 		// Update process stats to reflect verified ballots
@@ -121,7 +118,7 @@ func TestCleanAllPending(t *testing.T) {
 
 		// Verify nullifier locks are released
 		for _, vb := range []*VerifiedBallot{vb1, vb2, vb3} {
-			c.Assert(s.IsVoteIDProcessing(vb.VoteID.BigInt().MathBigInt()), qt.IsFalse)
+			c.Assert(s.IsVoteIDProcessing(vb.VoteID), qt.IsFalse)
 		}
 
 		// Verify stats are updated
@@ -163,7 +160,7 @@ func TestCleanAllPending(t *testing.T) {
 
 			// Lock vote IDs
 			for _, ballot := range batch.Ballots {
-				s.lockVoteID(ballot.VoteID.BigInt().MathBigInt())
+				s.lockVoteID(ballot.VoteID)
 			}
 		}
 
@@ -186,7 +183,7 @@ func TestCleanAllPending(t *testing.T) {
 				c.Assert(status, qt.Equals, VoteIDStatusError)
 
 				// Verify nullifier locks are released
-				c.Assert(s.IsVoteIDProcessing(ballot.VoteID.BigInt().MathBigInt()), qt.IsFalse)
+				c.Assert(s.IsVoteIDProcessing(ballot.VoteID), qt.IsFalse)
 			}
 		}
 
@@ -237,7 +234,7 @@ func TestCleanAllPending(t *testing.T) {
 
 			// Lock vote IDs
 			for _, ballot := range stb.Ballots {
-				s.lockVoteID(ballot.VoteID.BigInt().MathBigInt())
+				s.lockVoteID(ballot.VoteID)
 			}
 		}
 
@@ -261,7 +258,7 @@ func TestCleanAllPending(t *testing.T) {
 				c.Assert(status, qt.Equals, VoteIDStatusProcessed, qt.Commentf("state transition votes should remain PROCESSED, not ERROR"))
 
 				// Verify nullifier locks are released
-				c.Assert(s.IsVoteIDProcessing(ballot.VoteID.BigInt().MathBigInt()), qt.IsFalse)
+				c.Assert(s.IsVoteIDProcessing(ballot.VoteID), qt.IsFalse)
 			}
 		}
 
@@ -281,11 +278,11 @@ func TestCleanAllPending(t *testing.T) {
 
 		// Add verified ballots
 		vb := createVerifiedBallot(processID1, 50)
-		err := s.setArtifact(verifiedBallotPrefix, append(vb.ProcessID.Bytes(), vb.VoteID...), vb)
+		err := s.setArtifact(verifiedBallotPrefix, append(vb.ProcessID.Bytes(), vb.VoteID.Bytes()...), vb)
 		c.Assert(err, qt.IsNil)
 		err = s.setVoteIDStatus(vb.ProcessID, vb.VoteID, VoteIDStatusVerified)
 		c.Assert(err, qt.IsNil)
-		s.lockVoteID(vb.VoteID.BigInt().MathBigInt())
+		s.lockVoteID(vb.VoteID)
 
 		// Add aggregated batch
 		batch := &AggregatorBallotBatch{
@@ -294,7 +291,7 @@ func TestCleanAllPending(t *testing.T) {
 		}
 		err = s.PushAggregatorBatch(batch)
 		c.Assert(err, qt.IsNil)
-		s.lockVoteID(batch.Ballots[0].VoteID.BigInt().MathBigInt())
+		s.lockVoteID(batch.Ballots[0].VoteID)
 
 		// Add state transition
 		stb := &StateTransitionBatch{
@@ -308,7 +305,7 @@ func TestCleanAllPending(t *testing.T) {
 		}
 		err = s.PushStateTransitionBatch(stb)
 		c.Assert(err, qt.IsNil)
-		s.lockVoteID(stb.Ballots[0].VoteID.BigInt().MathBigInt())
+		s.lockVoteID(stb.Ballots[0].VoteID)
 
 		// Clean all pending
 		err = s.CleanAllPending()
@@ -328,18 +325,18 @@ func TestCleanAllPending(t *testing.T) {
 		status, err := s.VoteIDStatus(processID1, vb.VoteID)
 		c.Assert(err, qt.IsNil)
 		c.Assert(status, qt.Equals, VoteIDStatusError)
-		c.Assert(s.IsVoteIDProcessing(vb.VoteID.BigInt().MathBigInt()), qt.IsFalse)
+		c.Assert(s.IsVoteIDProcessing(vb.VoteID), qt.IsFalse)
 
 		status, err = s.VoteIDStatus(processID1, batch.Ballots[0].VoteID)
 		c.Assert(err, qt.IsNil)
 		c.Assert(status, qt.Equals, VoteIDStatusError)
-		c.Assert(s.IsVoteIDProcessing(batch.Ballots[0].VoteID.BigInt().MathBigInt()), qt.IsFalse)
+		c.Assert(s.IsVoteIDProcessing(batch.Ballots[0].VoteID), qt.IsFalse)
 
 		// State transition ballot should remain PROCESSED (not ERROR)
 		status, err = s.VoteIDStatus(processID1, stb.Ballots[0].VoteID)
 		c.Assert(err, qt.IsNil)
 		c.Assert(status, qt.Equals, VoteIDStatusProcessed, qt.Commentf("state transition votes should remain PROCESSED"))
-		c.Assert(s.IsVoteIDProcessing(stb.Ballots[0].VoteID.BigInt().MathBigInt()), qt.IsFalse)
+		c.Assert(s.IsVoteIDProcessing(stb.Ballots[0].VoteID), qt.IsFalse)
 	})
 
 	// Test 5: Clean with mixed vote statuses
@@ -353,14 +350,14 @@ func TestCleanAllPending(t *testing.T) {
 
 		// Add verified ballot with correct status
 		vb1 := createVerifiedBallot(processID1, 60)
-		err = s.setArtifact(verifiedBallotPrefix, append(vb1.ProcessID.Bytes(), vb1.VoteID...), vb1)
+		err = s.setArtifact(verifiedBallotPrefix, append(vb1.ProcessID.Bytes(), vb1.VoteID.Bytes()...), vb1)
 		c.Assert(err, qt.IsNil)
 		err = s.setVoteIDStatus(vb1.ProcessID, vb1.VoteID, VoteIDStatusVerified)
 		c.Assert(err, qt.IsNil)
 
 		// Add verified ballot with wrong status (already aggregated)
 		vb2 := createVerifiedBallot(processID1, 61)
-		err = s.setArtifact(verifiedBallotPrefix, append(vb2.ProcessID.Bytes(), vb2.VoteID...), vb2)
+		err = s.setArtifact(verifiedBallotPrefix, append(vb2.ProcessID.Bytes(), vb2.VoteID.Bytes()...), vb2)
 		c.Assert(err, qt.IsNil)
 		err = s.setVoteIDStatus(vb2.ProcessID, vb2.VoteID, VoteIDStatusAggregated)
 		c.Assert(err, qt.IsNil)

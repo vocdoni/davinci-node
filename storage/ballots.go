@@ -20,12 +20,12 @@ var ErroBallotAlreadyExists = errors.New("ballot already exists")
 // Ballot retrieves a ballot from the pending queue by its voteID. Returns the
 // ballot or ErrNotFound if it doesn't exist. This is a read-only operation
 // that doesn't create reservations or modify the ballot.
-func (s *Storage) Ballot(voteID []byte) (*Ballot, error) {
+func (s *Storage) Ballot(voteID types.VoteID) (*Ballot, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
-	val, err := pr.Get(voteID)
+	val, err := pr.Get(voteID.Bytes())
 	if err != nil {
 		if errors.Is(err, db.ErrKeyNotFound) {
 			return nil, ErrNotFound
@@ -47,7 +47,7 @@ func (s *Storage) PushPendingBallot(b *Ballot) error {
 	defer s.globalLock.Unlock()
 
 	// Check if the ballot is already processing
-	if processing := s.IsVoteIDProcessing(b.VoteID.BigInt().MathBigInt()); processing {
+	if processing := s.IsVoteIDProcessing(b.VoteID); processing {
 		return ErrNullifierProcessing
 	}
 
@@ -58,35 +58,35 @@ func (s *Storage) PushPendingBallot(b *Ballot) error {
 	}
 
 	// Lock the ballot nullifier to prevent overwrites until processing is done
-	s.lockVoteID(b.VoteID.BigInt().MathBigInt())
+	s.lockVoteID(b.VoteID)
 
 	// Now write to database
 	val, err := EncodeArtifact(b)
 	if err != nil {
 		// Release locks on error
-		s.releaseVoteID(b.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(b.VoteID)
 		s.releaseAddress(b.ProcessID, b.Address)
 		return fmt.Errorf("encode ballot: %w", err)
 	}
 
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), ballotPrefix)
-	if _, err := wTx.Get(b.VoteID); err == nil {
+	if _, err := wTx.Get(b.VoteID.Bytes()); err == nil {
 		wTx.Discard()
 		// Release locks on error
-		s.releaseVoteID(b.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(b.VoteID)
 		s.releaseAddress(b.ProcessID, b.Address)
 		return ErroBallotAlreadyExists
 	}
-	if err := wTx.Set(b.VoteID, val); err != nil {
+	if err := wTx.Set(b.VoteID.Bytes(), val); err != nil {
 		wTx.Discard()
 		// Release locks on error
-		s.releaseVoteID(b.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(b.VoteID)
 		s.releaseAddress(b.ProcessID, b.Address)
 		return err
 	}
 	if err := wTx.Commit(); err != nil {
 		// Release locks on error
-		s.releaseVoteID(b.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(b.VoteID)
 		s.releaseAddress(b.ProcessID, b.Address)
 		return err
 	}
@@ -98,12 +98,12 @@ func (s *Storage) PushPendingBallot(b *Ballot) error {
 		log.Warnw("failed to update process stats after pushing ballot",
 			"error", err.Error(),
 			"processID", b.ProcessID.String(),
-			"voteID", hex.EncodeToString(b.VoteID),
+			"voteID", b.VoteID.String(),
 		)
 	}
 
 	// Store the voteID to address mapping for later release
-	s.voteIDToAddress.Store(b.VoteID.String(), addressInfo{
+	s.voteIDToAddress.Store(b.VoteID, addressInfo{
 		ProcessID: b.ProcessID,
 		Address:   b.Address,
 	})
@@ -116,7 +116,7 @@ func (s *Storage) PushPendingBallot(b *Ballot) error {
 // reservation, and returns it. It returns the ballot, the key, and an error.
 // If no ballots are available, returns ErrNoMoreElements. The key is used to
 // mark the ballot as done after processing and to pass it to the next stage.
-func (s *Storage) NextPendingBallot() (*Ballot, []byte, error) {
+func (s *Storage) NextPendingBallot() (*Ballot, types.VoteID, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 	s.workersLock.Lock()
@@ -125,19 +125,19 @@ func (s *Storage) NextPendingBallot() (*Ballot, []byte, error) {
 }
 
 // RemovePendingBallot removes a ballot from the pending queue and its reservation.
-func (s *Storage) RemovePendingBallot(processID types.ProcessID, voteID []byte) error {
+func (s *Storage) RemovePendingBallot(processID types.ProcessID, voteID types.VoteID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	// Get the ballot first to extract address for lock release (without acquiring lock again)
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
-	val, err := pr.Get(voteID)
+	val, err := pr.Get(voteID.Bytes())
 	var ballot *Ballot
 	if err == nil {
 		ballot = new(Ballot)
 		if err := DecodeArtifact(val, ballot); err != nil {
 			log.Warnw("could not decode ballot for lock release during removal",
-				"voteID", hex.EncodeToString(voteID),
+				"voteID", voteID.String(),
 				"error", err.Error())
 			ballot = nil
 		}
@@ -150,9 +150,9 @@ func (s *Storage) RemovePendingBallot(processID types.ProcessID, voteID []byte) 
 
 	// Release locks if we got the ballot
 	if ballot != nil {
-		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(ballot.VoteID)
 		s.releaseAddress(ballot.ProcessID, ballot.Address)
-		s.voteIDToAddress.Delete(ballot.VoteID.String())
+		s.voteIDToAddress.Delete(ballot.VoteID)
 	}
 
 	// Update vote ID status to error
@@ -192,10 +192,10 @@ func (s *Storage) RemovePendingBallotsByProcess(processID types.ProcessID) error
 			return err
 		}
 		// Release both vote ID and address locks
-		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(ballot.VoteID)
 		s.releaseAddress(ballot.ProcessID, ballot.Address)
 		// Clean up voteID to address mapping
-		s.voteIDToAddress.Delete(ballot.VoteID.String())
+		s.voteIDToAddress.Delete(ballot.VoteID)
 	}
 	return nil
 }
@@ -223,12 +223,12 @@ func (s *Storage) CountPendingBallots() int {
 }
 
 // ReleasePendingBallotReservation removes the reservation for a ballot.
-func (s *Storage) ReleasePendingBallotReservation(voteID []byte) error {
+func (s *Storage) ReleasePendingBallotReservation(voteID types.VoteID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	// Remove reservation
-	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotReservationPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
@@ -238,17 +238,17 @@ func (s *Storage) ReleasePendingBallotReservation(voteID []byte) error {
 // MarkBallotVerified called after we have processed the ballot. We push the
 // verified ballot to the next queue. In this scenario, next stage is
 // verifiedBallot so we do not store the original ballot.
-func (s *Storage) MarkBallotVerified(voteID []byte, vb *VerifiedBallot) error {
+func (s *Storage) MarkBallotVerified(voteID types.VoteID, vb *VerifiedBallot) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
 	// Remove reservation
-	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotReservationPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
 	// Remove from pending queue
-	if err := s.deleteArtifact(ballotPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete pending ballot: %w", err)
 	}
 
@@ -259,7 +259,7 @@ func (s *Storage) MarkBallotVerified(voteID []byte, vb *VerifiedBallot) error {
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedBallotPrefix)
 	// key with processID as prefix + unique portion from original key
-	combKey := append(vb.ProcessID.Bytes(), voteID...)
+	combKey := append(vb.ProcessID.Bytes(), voteID.Bytes()...)
 	if err := wTx.Set(combKey, val); err != nil {
 		wTx.Discard()
 		return err
@@ -445,9 +445,9 @@ func (s *Storage) RemoveVerifiedBallotsByProcess(processID types.ProcessID) erro
 
 		// Release locks if we successfully decoded the ballot
 		if item.ballot != nil {
-			s.releaseVoteID(item.ballot.VoteID.BigInt().MathBigInt())
+			s.releaseVoteID(item.ballot.VoteID)
 			s.releaseAddress(item.ballot.ProcessID, item.ballot.Address)
-			s.voteIDToAddress.Delete(item.ballot.VoteID.String())
+			s.voteIDToAddress.Delete(item.ballot.VoteID)
 		}
 	}
 	// TODO: check if we need to update process stats here
@@ -476,13 +476,13 @@ func (s *Storage) MarkVerifiedBallotsDone(keys ...[]byte) error {
 			// Continue even if ballot not found - still try to remove
 		} else {
 			// Release the vote ID lock since processing is complete
-			s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+			s.releaseVoteID(ballot.VoteID)
 
 			// Release the address lock to allow overwrites from the same address
 			s.releaseAddress(ballot.ProcessID, ballot.Address)
 
 			// Clean up voteID to address mapping
-			s.voteIDToAddress.Delete(ballot.VoteID.String())
+			s.voteIDToAddress.Delete(ballot.VoteID)
 		}
 
 		if err := s.removeVerifiedBallot(k); err != nil {
@@ -520,13 +520,13 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 		if err != nil {
 			log.Warnw("could not get vote ID status during failure marking",
 				"processID", ballot.ProcessID.String(),
-				"voteID", hex.EncodeToString(ballot.VoteID),
+				"voteID", ballot.VoteID.String(),
 				"error", err.Error())
 			// Continue processing as the ballot might still be valid
 		} else if currentStatus != VoteIDStatusVerified {
 			log.Warnw("vote ID is not in verified status, skipping counter updates",
 				"processID", ballot.ProcessID.String(),
-				"voteID", hex.EncodeToString(ballot.VoteID),
+				"voteID", ballot.VoteID.String(),
 				"currentStatus", VoteIDStatusName(currentStatus))
 			// Still remove the ballot from verified queue but don't update counters
 		} else {
@@ -545,13 +545,13 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 		}
 
 		// Release vote ID lock
-		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(ballot.VoteID)
 
 		// Release address lock
 		s.releaseAddress(ballot.ProcessID, ballot.Address)
 
 		// Clean up voteID to address mapping
-		s.voteIDToAddress.Delete(ballot.VoteID.String())
+		s.voteIDToAddress.Delete(ballot.VoteID)
 	}
 
 	// Update process stats for each process (only for ballots that were actually verified)
@@ -576,7 +576,7 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 	return nil
 }
 
-func (s *Storage) nextPendingBallot() (*Ballot, []byte, error) {
+func (s *Storage) nextPendingBallot() (*Ballot, types.VoteID, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, ballotPrefix)
 	var chosenKey, chosenVal []byte
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
@@ -585,55 +585,47 @@ func (s *Storage) nextPendingBallot() (*Ballot, []byte, error) {
 			return true
 		}
 		// Make a copy of the key to avoid potential issues with slice reuse
-		chosenKey = make([]byte, len(k))
-		copy(chosenKey, k)
+		chosenKey = bytes.Clone(k)
 		chosenVal = bytes.Clone(v)
 		return false
 	}); err != nil {
-		return nil, nil, fmt.Errorf("iterate ballots: %w", err)
+		return nil, 0, fmt.Errorf("iterate ballots: %w", err)
 	}
 	if chosenVal == nil {
-		return nil, nil, ErrNoMoreElements
+		return nil, 0, ErrNoMoreElements
 	}
 
 	var b Ballot
 	if err := DecodeArtifact(chosenVal, &b); err != nil {
-		return nil, nil, fmt.Errorf("decode ballot: %w", err)
+		return nil, 0, fmt.Errorf("decode ballot: %w", err)
 	}
 
 	// The key must match the ballot's VoteID
 	// When using prefixed iteration, ensure we use the ballot's actual VoteID as the key
-	voteID := b.VoteID
+	// We'll anyway use the ballot's VoteID as the correct key, so just check and in case of mismatch log a warning.
 
 	// Verify that the chosen key matches the ballot's VoteID
-	if !bytes.Equal(chosenKey, voteID) {
-		// This should not happen, but if it does, use the ballot's VoteID as the correct key
-		chosenKey = voteID
-	}
-
-	// Verify that the chosen key matches the ballot's VoteID
-	if !bytes.Equal(chosenKey, voteID) {
-		// This should not happen, but if it does, use the ballot's VoteID as the correct key
-		chosenKey = voteID
+	if !bytes.Equal(chosenKey, b.VoteID.Bytes()) {
+		log.Warnf("this should not happen: chosenKey %x does not match VoteID %x", chosenKey, b.VoteID.Bytes())
 	}
 
 	// set reservation
-	if err := s.setReservation(ballotReservationPrefix, chosenKey); err != nil {
-		return nil, nil, ErrNoMoreElements
+	if err := s.setReservation(ballotReservationPrefix, b.VoteID.Bytes()); err != nil {
+		return nil, 0, ErrNoMoreElements
 	}
 
-	return &b, chosenKey, nil
+	return &b, b.VoteID, nil
 }
 
 // removePendingBallot is an internal helper to remove a ballot from the pending queue.
 // It assumes the caller already holds the globalLock.
-func (s *Storage) removePendingBallot(processID types.ProcessID, voteID []byte) error {
+func (s *Storage) removePendingBallot(processID types.ProcessID, voteID types.VoteID) error {
 	// remove reservation
-	if err := s.deleteArtifact(ballotReservationPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotReservationPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("error deleting reservation: %w", err)
 	}
 	// remove from pending queue
-	if err := s.deleteArtifact(ballotPrefix, voteID); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(ballotPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("error deleting ballot: %w", err)
 	}
 	// update process stats
@@ -643,7 +635,7 @@ func (s *Storage) removePendingBallot(processID types.ProcessID, voteID []byte) 
 		log.Warnw("failed to update process stats after removing ballot",
 			"error", err.Error(),
 			"processID", processID.String(),
-			"voteID", hex.EncodeToString(voteID),
+			"voteID", voteID.String(),
 		)
 	}
 	return nil
