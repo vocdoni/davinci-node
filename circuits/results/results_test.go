@@ -51,13 +51,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Generate a batch of random votes
-	err = st.StartBatch()
-	c.Assert(err, qt.IsNil)
-	for i := range nVotes {
-		err = st.AddVote(statetest.NewVoteForTest(pubKey, uint64(i), 100))
-		c.Assert(err, qt.IsNil)
-	}
-	err = st.EndBatch()
+	err = st.AddVotesBatch(statetest.NewVotesForTest(pubKey, nVotes, 100))
 	c.Assert(err, qt.IsNil)
 
 	// Get encrypted votes

@@ -158,9 +158,9 @@ func AggregatorInputsForTest(
 	for i := range params.VotesPerBatch {
 		finalPlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](vvCCS)
 	}
-	votes := []state.Vote{}
+	votes := []*state.Vote{}
 	for i := range nValidVotes {
-		votes = append(votes, state.Vote{
+		votes = append(votes, &state.Vote{
 			Address: vvInputs.Addresses[i],
 			VoteID:  vvInputs.VoteIDs[i],
 			Weight:  vvInputs.Weights[i],
