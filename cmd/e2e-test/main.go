@@ -654,13 +654,13 @@ func createVote(
 	}, nil
 }
 
-func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
+func sendVote(cli *client.HTTPclient, vote api.Vote) (types.VoteID, error) {
 	// Make the request to cast the vote
 	body, status, err := cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to cast vote: %w", err)
+		return 0, fmt.Errorf("failed to cast vote: %w", err)
 	} else if status != http.StatusOK {
-		return nil, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
+		return 0, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
 }

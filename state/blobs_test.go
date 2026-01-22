@@ -2,10 +2,9 @@ package state_test
 
 import (
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"math/big"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -83,7 +82,7 @@ func TestBlobDataStructures(t *testing.T) {
 
 		// Pack votes
 		for _, v := range state.Votes() {
-			push(new(big.Int).SetBytes(v.VoteID))  // voteId hash
+			push(v.VoteID.BigInt())                // voteID
 			push(v.Address)                        // address
 			for _, p := range v.Ballot.BigInts() { // ballot coords
 				push(p)
@@ -131,7 +130,7 @@ func TestBlobDataStructures(t *testing.T) {
 			address := getCell()
 
 			// Verify vote ID and address
-			c.Assert(new(big.Int).SetBytes(originalVote.VoteID).Cmp(voteID), qt.Equals, 0, qt.Commentf("Vote %d ID mismatch", i))
+			c.Assert(originalVote.VoteID.BigInt().Cmp(voteID), qt.Equals, 0, qt.Commentf("Vote %d ID mismatch", i))
 			c.Assert(originalVote.Address.Cmp(address), qt.Equals, 0, qt.Commentf("Vote %d address mismatch", i))
 
 			// Verify ballot coordinates
@@ -373,7 +372,7 @@ func verifyBlobStructureBasic(t *testing.T, blob *types.Blob, votes []*state.Vot
 			qt.Commentf("Vote %d address mismatch: expected %s, got %s", i, originalVote.Address.String(), parsedVote.Address.String()))
 
 		// Verify vote ID
-		c.Assert(originalVote.VoteID.Bytes(), qt.DeepEquals, parsedVote.VoteID.Bytes(), qt.Commentf("Vote %d ID mismatch", i))
+		c.Assert(originalVote.VoteID, qt.Equals, parsedVote.VoteID, qt.Commentf("Vote %d ID mismatch", i))
 
 		// Verify ballot coordinates match (comparing reencrypted ballot since that's what's stored in blob)
 		originalCoords := originalVote.ReencryptedBallot.BigInts()
@@ -446,7 +445,7 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 
 	// Verify individual votes can be retrieved
 	for _, vote := range blobData.Votes {
-		retrievedBallot, err := newState.EncryptedBallot(vote.Address)
+		retrievedBallot, err := newState.EncryptedBallot(types.CalculateBallotIndex(vote.Address, types.IndexTODO))
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to retrieve ballot for address %s", vote.Address.String()))
 
 		// Compare ballot coordinates
@@ -476,17 +475,12 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	}
 }
 
+//go:embed testdata/blob.bin
+var blobData string
+
 func TestParseBlobData_FromFile(t *testing.T) {
 	log.Init("debug", "stdout", nil)
-	// Path: state/testdata/blob.bin
-	blobPath := filepath.Join("testdata", "blob.bin")
-
-	b, err := os.ReadFile(blobPath)
-	if err != nil {
-		t.Fatalf("read blob hex file: %v", err)
-	}
-
-	hexStr := strings.TrimSpace(string(b))
+	hexStr := strings.TrimSpace(blobData)
 	hexStr = strings.TrimPrefix(hexStr, "0x")
 
 	// remove whitespace/newlines just in case

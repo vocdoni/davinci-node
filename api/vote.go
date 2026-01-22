@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -18,7 +17,6 @@ import (
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -32,7 +30,7 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	voteID, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, VoteIDURLParam)))
+	voteID, err := types.HexStringToVoteID(chi.URLParam(r, VoteIDURLParam))
 	if err != nil {
 		ErrMalformedBody.Withf("could not decode vote ID: %v", err).Write(w)
 		return
@@ -67,7 +65,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the address
-	address, err := types.HexStringToHexBytes(chi.URLParam(r, AddressURLParam))
+	address, err := types.HexStringToBallotIndex(chi.URLParam(r, AddressURLParam)) // are we going to make this BallotIndex instead?
 	if err != nil {
 		ErrMalformedAddress.Write(w)
 		return
@@ -86,7 +84,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Get the ballot by address
-	ballot, err := s.EncryptedBallot(address.BigInt().MathBigInt())
+	ballot, err := s.EncryptedBallot(address)
 	if err != nil {
 		if errors.Is(err, state.ErrKeyNotFound) {
 			ErrResourceNotFound.Write(w)
@@ -152,7 +150,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// check if the address has already voted, to determine if the vote is an
 	// overwrite or a new vote, if so check if the process has reached max
 	// voters
-	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), *process.ID, vote.Address.BigInt())
+	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), *process.ID, types.CalculateBallotIndex(vote.Address.BigInt().MathBigInt(), types.IndexTODO))
 	if err != nil {
 		ErrGenericInternalServerError.Withf("error checking if address has voted: %v", err).Write(w)
 		return
@@ -205,7 +203,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		circuits.BallotModeToCircuit(process.BallotMode),
 		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
 		vote.Address,
-		vote.VoteID.BigInt(),
+		vote.VoteID,
 		vote.Ballot.FromTEtoRTE(),
 		voterWeight,
 	)
@@ -225,7 +223,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	// convert the circom proof to gnark proof and verify it
 	ballotProofAddress := vote.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ballotProofVoteID := vote.VoteID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ballotProofVoteID := vote.VoteID.BigInt() // ToFF unneeded since VoteID is a uint64
 	proof, err := circomgnark.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
@@ -245,7 +243,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not decode signature: %v", err).Write(w)
 		return
 	}
-	signatureOk, pubkey := signature.Verify(vote.VoteID, common.BytesToAddress(vote.Address))
+	signatureOk, pubkey := signature.VerifyVoteID(vote.VoteID, common.BytesToAddress(vote.Address))
 	if !signatureOk {
 		ErrInvalidSignature.Write(w)
 		return

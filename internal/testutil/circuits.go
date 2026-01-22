@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"encoding/binary"
 	"math/big"
 	"math/rand/v2"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/vocdoni/davinci-node/circuits"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -78,17 +80,19 @@ func RandomStateRoot() *types.BigInt {
 }
 
 func DeterministicAddress(n uint64) common.Address {
-	if n < circuits.ReservedKeysOffset {
-		n += circuits.ReservedKeysOffset
-	}
-	return common.BigToAddress(new(big.Int).SetUint64(n))
+	var b [8]byte
+	binary.BigEndian.PutUint64(b[:], n)
+
+	prefix := []byte("deterministic-address:")
+	h := crypto.Keccak256(append(prefix, b[:]...))
+	return common.BytesToAddress(h[12:])
 }
 
 func RandomAddress() common.Address {
 	return DeterministicAddress(rand.Uint64())
 }
 
-func RandomVoteID() *big.Int {
+func RandomVoteID() types.VoteID {
 	k, err := circuits.RandK()
 	if err != nil {
 		panic(err)
@@ -100,7 +104,15 @@ func RandomVoteID() *big.Int {
 	if err != nil {
 		panic(err)
 	}
-	return voteID.MathBigInt()
+	return voteID
+}
+
+func RandomVoteIDs(n int) []types.VoteID {
+	s := make([]types.VoteID, 0, n)
+	for range n {
+		s = append(s, RandomVoteID())
+	}
+	return s
 }
 
 func RandomCensus(origin types.CensusOrigin) *types.Census {

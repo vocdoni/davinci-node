@@ -8,7 +8,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/davinci-node/util"
 )
 
 // BlobData represents the structured data extracted from a blob
@@ -55,7 +54,7 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 
 	// Then add votes sequentially (no padding)
 	for _, v := range st.Votes() {
-		push(new(big.Int).SetBytes(v.VoteID))             // voteId hash
+		push(v.VoteID.BigInt())                           // voteID
 		push(v.Address)                                   // address
 		for _, p := range v.ReencryptedBallot.BigInts() { // reencrypted ballot coordinates
 			push(p)
@@ -137,11 +136,11 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 
 	// Extract votes until we find voteID = 0x0 (sentinel)
 	for {
-		voteID := getCell(cellIndex)
+		voteIDcell := getCell(cellIndex)
 		cellIndex++
 
 		// Check for sentinel (voteID = 0x0)
-		if voteID.Cmp(big.NewInt(0)) == 0 {
+		if voteIDcell.Cmp(big.NewInt(0)) == 0 {
 			break
 		}
 
@@ -167,14 +166,15 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 			return nil, err
 		}
 
-		// Convert voteID back to byte array
-		voteIDBytes := make([]byte, params.VoteIDLen)
-		voteID = util.TruncateToLowerBits(voteID, params.VoteIDLen*8) // avoid panics in FillBytes
-		voteID.FillBytes(voteIDBytes)
+		// Convert voteID back to types.VoteID
+		voteID, err := types.BigIntToVoteID(voteIDcell)
+		if err != nil {
+			return nil, err
+		}
 
 		vote := &Vote{
 			Address:           address,
-			VoteID:            voteIDBytes,
+			VoteID:            voteID,
 			ReencryptedBallot: ballot,
 		}
 		data.Votes = append(data.Votes, vote)
@@ -198,29 +198,29 @@ func (st *State) ApplyBlobToState(blob *types.Blob) error {
 	// Add votes directly to the state tree without batch processing
 	for _, vote := range blobData.Votes {
 		// Add or update the vote ballot in the tree
-		if _, err := st.EncryptedBallot(vote.Address); err != nil {
+		ballotIndex := types.CalculateBallotIndex(vote.Address, types.IndexTODO)
+		if _, err := st.EncryptedBallot(ballotIndex); err != nil {
 			// Key doesn't exist, add it
-			if err := st.tree.AddBigInt(vote.Address, vote.ReencryptedBallot.BigInts()...); err != nil {
+			if err := st.tree.AddBigInt(ballotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {
 				return fmt.Errorf("failed to add vote with address %d to tree: %w", vote.Address, err)
 			}
 		} else {
 			// Key exists, update it
-			if err := st.tree.UpdateBigInt(vote.Address, vote.ReencryptedBallot.BigInts()...); err != nil {
+			if err := st.tree.UpdateBigInt(ballotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {
 				return fmt.Errorf("failed to update vote with address %d in tree: %w", vote.Address, err)
 			}
 		}
 
 		// Add or update the vote ID in the tree
-		voteIDKey := vote.VoteID.BigInt().MathBigInt()
-		if !st.ContainsVoteID(voteIDKey) {
+		if !st.ContainsVoteID(vote.VoteID) {
 			// Key doesn't exist, add it
-			if err := st.tree.AddBigInt(voteIDKey, VoteIDKeyValue); err != nil {
-				return fmt.Errorf("failed to add vote ID %d to tree: %w", voteIDKey, err)
+			if err := st.tree.AddBigInt(vote.VoteID.BigInt(), VoteIDKeyValue); err != nil {
+				return fmt.Errorf("failed to add vote ID %d to tree: %w", vote.VoteID, err)
 			}
 		} else {
 			// Key exists, update it
-			if err := st.tree.UpdateBigInt(voteIDKey, VoteIDKeyValue); err != nil {
-				return fmt.Errorf("failed to update vote ID %d in tree: %w", voteIDKey, err)
+			if err := st.tree.UpdateBigInt(vote.VoteID.BigInt(), VoteIDKeyValue); err != nil {
+				return fmt.Errorf("failed to update vote ID %d in tree: %w", vote.VoteID, err)
 			}
 		}
 	}

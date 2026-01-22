@@ -105,10 +105,10 @@ func NewVoteFromNonCensusVoter(pid types.ProcessID, bm *types.BallotMode, encKey
 	return NewVoteWithRandomFields(pid, bm, encKey, privKey, k)
 }
 
-func EnsureVotesStatus(cli *client.HTTPclient, pid types.ProcessID, voteIDs []types.HexBytes, expectedStatus string) (bool, []types.HexBytes, error) {
+func EnsureVotesStatus(cli *client.HTTPclient, pid types.ProcessID, voteIDs []types.VoteID, expectedStatus string) (bool, []types.VoteID, error) {
 	// Check vote status and return whether all votes have the expected status
 	allExpectedStatus := true
-	failed := []types.HexBytes{}
+	failed := []types.VoteID{}
 
 	// Check status for each vote
 	for _, voteID := range voteIDs {

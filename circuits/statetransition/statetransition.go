@@ -12,6 +12,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -323,12 +324,7 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Votes
 	for i, v := range circuit.Votes {
 		// Address
-		addressKey, err := merkleproof.TruncateMerkleTreeKey(api, v.Address, params.StateKeyMaxLen)
-		if err != nil {
-			circuits.FrontendError(api, "failed to truncate address key: ", err)
-			return
-		}
-		api.AssertIsEqual(addressKey, circuit.VotesProofs.Ballot[i].NewKey)
+		circuit.VotesProofs.Ballot[i].VerifyNewKey(api, v.Address, types.IndexTODO)
 		// Ballot
 		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.ReencryptedBallot.SerializeVars()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)

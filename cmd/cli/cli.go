@@ -500,13 +500,13 @@ func (s *CLIServices) CreateVote(
 // request to the votes endpoint with the vote data. If the request is
 // successful, it returns the vote ID. If any error occurs during the request
 // or if the response status code is not OK, it will be returned.
-func (s *CLIServices) SubmitVote(vote api.Vote) (types.HexBytes, error) {
+func (s *CLIServices) SubmitVote(vote api.Vote) (types.VoteID, error) {
 	// Make the request to cast the vote
 	body, status, err := s.cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to cast vote: %w", err)
+		return 0, fmt.Errorf("failed to cast vote: %w", err)
 	} else if status != http.StatusOK {
-		return nil, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
+		return 0, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
 }

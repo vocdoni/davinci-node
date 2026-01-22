@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -28,7 +27,7 @@ const defaultTickerInterval = 10 * time.Second
 // WorkerJob represents a job assigned to a worker. It contains the vote ID,
 // worker address, timestamp, and expiration time.
 type WorkerJob struct {
-	VoteID     types.HexBytes
+	VoteID     types.VoteID
 	Address    string
 	Timestamp  time.Time
 	Expiration time.Time // When the job should expire
@@ -41,7 +40,7 @@ type JobsManager struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	pendingMtx     sync.RWMutex
-	pending        map[string]*WorkerJob
+	pending        map[types.VoteID]*WorkerJob
 	tickerInterval time.Duration // Configurable ticker interval for timeout checking
 	closeOnce      sync.Once     // Ensures channel is closed only once
 
@@ -59,7 +58,7 @@ func NewJobsManager(storage *storage.Storage, jobTimeout time.Duration, banRules
 		interval = tickerInterval[0]
 	}
 	return &JobsManager{
-		pending:        make(map[string]*WorkerJob),
+		pending:        make(map[types.VoteID]*WorkerJob),
 		WorkerManager:  NewWorkerManager(storage, banRules),
 		FailedJobs:     make(chan *WorkerJob), // Unbuffered channel for failed jobs
 		JobTimeout:     jobTimeout,
@@ -104,8 +103,8 @@ func (jm *JobsManager) Stop() {
 	}
 	jm.pendingMtx.Lock()
 	defer jm.pendingMtx.Unlock()
-	jm.pending = make(map[string]*WorkerJob) // Clear all pending jobs
-	jm.WorkerManager.Stop()                  // Stop the worker manager
+	jm.pending = make(map[types.VoteID]*WorkerJob) // Clear all pending jobs
+	jm.WorkerManager.Stop()                        // Stop the worker manager
 
 	// Close the failed jobs channel safely using sync.Once
 	jm.closeOnce.Do(func() {
@@ -164,7 +163,7 @@ func (jm *JobsManager) IsWorkerAvailable(workerAddr string) (bool, error) {
 // with the provided vote ID, assigns it to the worker, and sets an expiration
 // time for the job. The job is then added to the pending jobs map. If the
 // worker is banned returns nil.
-func (jm *JobsManager) RegisterJob(workerAddr string, voteID types.HexBytes) (*WorkerJob, error) {
+func (jm *JobsManager) RegisterJob(workerAddr string, voteID types.VoteID) (*WorkerJob, error) {
 	jm.pendingMtx.Lock()
 	defer jm.pendingMtx.Unlock()
 	// Check if worker exists in the worker manager
@@ -182,16 +181,16 @@ func (jm *JobsManager) RegisterJob(workerAddr string, voteID types.HexBytes) (*W
 		Timestamp:  time.Now(),
 		Expiration: time.Now().Add(jm.JobTimeout), // Default expiration
 	}
-	jm.pending[hex.EncodeToString(voteID)] = job
+	jm.pending[voteID] = job
 	return job, nil
 }
 
 // Job retrieves a job by its vote ID and verifies that it is assigned to
 // the specified worker. If the job is found and matches the worker, it is returned.
-func (jm *JobsManager) Job(workerAddr string, voteID types.HexBytes) (*WorkerJob, error) {
+func (jm *JobsManager) Job(workerAddr string, voteID types.VoteID) (*WorkerJob, error) {
 	jm.pendingMtx.RLock()
 	defer jm.pendingMtx.RUnlock()
-	job, exists := jm.pending[hex.EncodeToString(voteID)]
+	job, exists := jm.pending[voteID]
 	if !exists {
 		return nil, ErrJobNotFound
 	}
@@ -208,11 +207,11 @@ func (jm *JobsManager) Job(workerAddr string, voteID types.HexBytes) (*WorkerJob
 // it sends the job to the failed jobs channel for further processing. This
 // function is called when a worker completes a job, either successfully or
 // with failure.
-func (jm *JobsManager) CompleteJob(voteID types.HexBytes, success bool) *WorkerJob {
+func (jm *JobsManager) CompleteJob(voteID types.VoteID, success bool) *WorkerJob {
 	jm.pendingMtx.Lock()
 	defer jm.pendingMtx.Unlock()
 	// Look up the job by vote ID
-	job, exists := jm.pending[hex.EncodeToString(voteID)]
+	job, exists := jm.pending[voteID]
 	if !exists {
 		return nil // Job not found
 	}
@@ -223,6 +222,6 @@ func (jm *JobsManager) CompleteJob(voteID types.HexBytes, success bool) *WorkerJ
 	if err := jm.WorkerManager.WorkerResult(job.Address, success); err == nil {
 		log.Debugw("job completed", "voteID", voteID.String(), "success", success)
 	}
-	delete(jm.pending, hex.EncodeToString(voteID)) // Remove the job from pending
+	delete(jm.pending, voteID) // Remove the job from pending
 	return job
 }
