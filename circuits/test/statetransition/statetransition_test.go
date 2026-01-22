@@ -609,8 +609,8 @@ func TestDummySlot(t *testing.T) {
 	// Create a transition with 2 votes (index 0 and 1)
 	// We will try to "hide" the second vote (index 1) by claiming VotersCount is 1.
 	witness := NewTransitionWithVotes(t, s,
-		*statetest.NewVoteForTest(publicKey, 1, 10), // valid vote 1
-		*statetest.NewVoteForTest(publicKey, 2, 20), // valid vote 2
+		statetest.NewVoteForTest(publicKey, 1, 10), // valid vote 1
+		statetest.NewVoteForTest(publicKey, 2, 20), // valid vote 2
 	)
 
 	// Hack the witness: reduce VotersCount from 2 to 1.
