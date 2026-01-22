@@ -148,15 +148,7 @@ func TestStateSync(t *testing.T) {
 	votes := createTestVotesWithOffset(t, publicKey, 3, i*1000)
 
 	// Perform batch operation on original state
-	err = originalState.StartBatch()
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to start batch %d", i+1))
-
-	for _, vote := range votes {
-		err = originalState.AddVote(vote)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to add vote in batch %d", i+1))
-	}
-
-	err = originalState.EndBatch()
+	err = originalState.AddVotesBatch(votes)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to end batch %d", i+1))
 
 	newStateRoot, err := originalState.RootAsBigInt()

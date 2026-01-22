@@ -48,7 +48,7 @@ func (v *Vote) SerializeBigInts() []*big.Int {
 // AddVote adds a vote to the state.
 // If v.Address exists already in the tree, it counts as vote overwrite.
 // Note that this method modifies passed v, sets v.OverwrittenBallot
-func (o *State) AddVote(v *Vote) error {
+func (o *State) addVote(v *Vote) error {
 	if o.dbTx == nil {
 		return fmt.Errorf("need to StartBatch() first")
 	}
