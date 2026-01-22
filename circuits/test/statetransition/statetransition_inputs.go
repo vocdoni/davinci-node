@@ -42,7 +42,7 @@ const testCSPSeed = "1f1e0cd27b4ecd1b71b6333790864ace2870222c"
 // inputs generation
 type StateTransitionTestResults struct {
 	Process      circuits.Process[*big.Int]
-	Votes        []state.Vote
+	Votes        []*state.Vote
 	PublicInputs *statetransition.PublicInputs
 }
 
@@ -160,22 +160,16 @@ func StateTransitionInputsForTest(
 	// init final assignments stuff
 	s := statetest.NewStateForTest(t, processID, testutil.BallotMode(), censusOrigin, aggInputs.Process.EncryptionKey)
 
-	err = s.StartBatch()
-	c.Assert(err, qt.IsNil, qt.Commentf("start batch"))
-
 	// iterate over the votes, reencrypting each time the zero ballot with the
-	// correct k value and adding it to the state
+	// correct k value
 	lastK := new(big.Int).Set(reencryptionK)
-	for _, v := range aggInputs.Votes {
-		v.ReencryptedBallot, lastK, err = v.Ballot.Reencrypt(encryptionKey, lastK)
+	for i := range aggInputs.Votes {
+		aggInputs.Votes[i].ReencryptedBallot, lastK, err = aggInputs.Votes[i].Ballot.Reencrypt(encryptionKey, lastK)
 		c.Assert(err, qt.IsNil, qt.Commentf("failed to reencrypt ballot"))
-
-		err = s.AddVote(&v)
-		c.Assert(err, qt.IsNil, qt.Commentf("add vote"))
 	}
 
-	err = s.EndBatch()
-	c.Assert(err, qt.IsNil, qt.Commentf("end batch"))
+	err = s.AddVotesBatch(aggInputs.Votes)
+	c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
 
 	// add census data to witness
 	censusRoot, censusProofs, err := CensusProofsForCircuitTest(
@@ -216,7 +210,7 @@ func StateTransitionInputsForTest(
 // It supports both Merkle tree and CSP-based by initializing a CSP instance
 // or generating a Merkle tree census as needed.
 func CensusProofsForCircuitTest(
-	votes []state.Vote,
+	votes []*state.Vote,
 	origin types.CensusOrigin,
 	pid types.ProcessID,
 ) (*big.Int, statetransition.CensusProofs, error) {
@@ -290,7 +284,7 @@ func CensusProofsForCircuitTest(
 // CensusIMTForTest creates a CensusIMT instance for testing purposes including
 // the provided votes as census participants. It returns the initialized
 // CensusIMT or an error if the process fails.
-func CensusIMTForTest(votes []state.Vote) (*imtcensus.CensusIMT, error) {
+func CensusIMTForTest(votes []*state.Vote) (*imtcensus.CensusIMT, error) {
 	// generate the census with voters information
 	votersData := map[*big.Int]*big.Int{}
 	for _, v := range votes {

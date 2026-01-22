@@ -331,19 +331,9 @@ func (s *Sequencer) stateBatchToWitness(
 	kSeed *types.BigInt,
 	innerProof groth16.Proof,
 ) (*statetransition.StateTransitionCircuit, *blobs.BlobEvalData, error) {
-	// start a new batch
-	if err := processState.StartBatch(); err != nil {
-		return nil, nil, fmt.Errorf("failed to start batch: %w", err)
-	}
-	// add the new ballots to the state
-	for _, v := range votes {
-		if err := processState.AddVote(v); err != nil {
-			return nil, nil, fmt.Errorf("failed to add vote: %w", err)
-		}
-	}
-	// end the batch
-	if err := processState.EndBatch(); err != nil {
-		return nil, nil, fmt.Errorf("failed to end batch: %w", err)
+	// add votes batch to state
+	if err := processState.AddVotesBatch(votes); err != nil {
+		return nil, nil, fmt.Errorf("failed to add votes batch to state: %w", err)
 	}
 
 	// generate the state transition vote witness

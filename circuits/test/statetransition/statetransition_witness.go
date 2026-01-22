@@ -32,28 +32,23 @@ func CircuitPlaceholderWithProof(
 	}
 }
 
-func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...state.Vote) *statetransition.StateTransitionCircuit {
+func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) *statetransition.StateTransitionCircuit {
 	reencryptionK, err := elgamal.RandK()
 	if err != nil {
 		t.Fatal(err)
 	}
 	originalEncKey := s.EncryptionKey()
 	encryptionKey := state.Curve.New().SetPoint(originalEncKey.PubKey[0], originalEncKey.PubKey[1])
-	if err := s.StartBatch(); err != nil {
-		t.Fatal(err)
-	}
+
 	lastK := new(big.Int).Set(reencryptionK)
-	for _, v := range votes {
-		v.ReencryptedBallot, lastK, err = v.Ballot.Reencrypt(encryptionKey, lastK)
+	for i := range votes {
+		votes[i].ReencryptedBallot, lastK, err = votes[i].Ballot.Reencrypt(encryptionKey, lastK)
 		if err != nil {
-			t.Fatal(err)
-		}
-		if err := s.AddVote(&v); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	if err := s.EndBatch(); err != nil {
+	if err := s.AddVotesBatch(votes); err != nil {
 		t.Fatal(err)
 	}
 
@@ -131,15 +126,15 @@ func NewTransitionWithOverwrittenVotes(t *testing.T, origin types.CensusOrigin) 
 	s := statetest.NewRandomState(t, origin)
 	publicKey := statetest.EncryptionKeyAsECCPoint(s)
 	_ = NewTransitionWithVotes(t, s,
-		*statetest.NewVoteForTest(publicKey, 0, 10),
-		*statetest.NewVoteForTest(publicKey, 1, 10),
+		statetest.NewVoteForTest(publicKey, 0, 10),
+		statetest.NewVoteForTest(publicKey, 1, 10),
 	)
 	// so now we can return a transition where vote 1 is overwritten
 	// and add 3 more votes
 	return NewTransitionWithVotes(t, s,
-		*statetest.NewVoteForTest(publicKey, 1, 20),
-		*statetest.NewVoteForTest(publicKey, 2, 20),
-		*statetest.NewVoteForTest(publicKey, 3, 20),
-		*statetest.NewVoteForTest(publicKey, 4, 20),
+		statetest.NewVoteForTest(publicKey, 1, 20),
+		statetest.NewVoteForTest(publicKey, 2, 20),
+		statetest.NewVoteForTest(publicKey, 3, 20),
+		statetest.NewVoteForTest(publicKey, 4, 20),
 	)
 }

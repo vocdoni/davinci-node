@@ -209,9 +209,24 @@ func (o *State) Close() error {
 	return nil
 }
 
+func (o *State) AddVotesBatch(votes []*Vote) error {
+	if err := o.startBatch(); err != nil {
+		return fmt.Errorf("failed to start batch: %w", err)
+	}
+	for _, v := range votes {
+		if err := o.addVote(v); err != nil {
+			return fmt.Errorf("failed to add vote: %w", err)
+		}
+	}
+	if err := o.endBatch(); err != nil {
+		return fmt.Errorf("failed to end batch: %w", err)
+	}
+	return nil
+}
+
 // StartBatch resets counters and sums to zero,
 // and creates a new write transaction in the db
-func (o *State) StartBatch() error {
+func (o *State) startBatch() error {
 	o.dbTx = o.db.WriteTx()
 	o.oldResultsAdd = elgamal.NewBallot(Curve)
 	o.oldResultsSub = elgamal.NewBallot(Curve)
@@ -230,7 +245,7 @@ func (o *State) StartBatch() error {
 // with the new results. The results are calculated by adding the old results
 // with the new results. The function returns an error if the commit fails or
 // if the Merkle proofs cannot be generated.
-func (o *State) EndBatch() error {
+func (o *State) endBatch() error {
 	var err error
 	// RootHashBefore
 	o.rootHashBefore, err = o.RootAsBigInt()
