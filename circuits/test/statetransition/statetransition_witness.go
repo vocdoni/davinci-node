@@ -10,9 +10,10 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -33,7 +34,7 @@ func CircuitPlaceholderWithProof(
 }
 
 func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) *statetransition.StateTransitionCircuit {
-	reencryptionK, err := elgamal.RandK()
+	reencryptionK, err := specutil.RandomK()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,18 +75,7 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 
 	// Calculate the actual aggregator hash from the vote data.
 	// This matches how the circuit recalculates the hash during verification.
-	// Get the ballot mode from state and convert to types.BallotMode
-	circuitBallotMode := s.BallotMode()
-	ballotMode := &types.BallotMode{
-		NumFields:      uint8(circuitBallotMode.NumFields.Int64()),
-		UniqueValues:   circuitBallotMode.UniqueValues.Cmp(big.NewInt(1)) == 0,
-		MaxValue:       (*types.BigInt)(circuitBallotMode.MaxValue),
-		MinValue:       (*types.BigInt)(circuitBallotMode.MinValue),
-		MaxValueSum:    (*types.BigInt)(circuitBallotMode.MaxValueSum),
-		MinValueSum:    (*types.BigInt)(circuitBallotMode.MinValueSum),
-		CostExponent:   uint8(circuitBallotMode.CostExponent.Int64()),
-		CostFromWeight: circuitBallotMode.CostFromWeight.Cmp(big.NewInt(1)) == 0,
-	}
+	ballotMode := testutil.BallotMode()
 
 	hashes := make([]*big.Int, 0, len(votes))
 	for _, v := range votes {
@@ -94,7 +84,7 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 			ballotMode,
 			encryptionKey,
 			v.Address.Bytes(),
-			v.VoteID.BigInt(),
+			v.VoteID,
 			v.Ballot,
 			types.BigIntConverter(v.Weight),
 		)

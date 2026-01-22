@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"fmt"
 	"math/big"
 	"path/filepath"
 	"sync"
@@ -31,8 +30,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 	// Create a process
 	processID := testutil.DeterministicProcessID(42)
 
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Test concurrent ballot processing
 	numGoroutines := 10
@@ -49,7 +47,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 				ballot := &Ballot{
 					ProcessID: processID,
 					Address:   big.NewInt(int64(routineID*10000 + j)),
-					VoteID:    fmt.Appendf(nil, "vote%d", routineID*100+j),
+					VoteID:    testutil.RandomVoteID(),
 				}
 
 				// Push ballot (pending +1)
@@ -117,8 +115,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 	// Create a process
 	processID := testutil.DeterministicProcessID(43)
 
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Create and process some ballots
 	numBallots := 10
@@ -126,7 +123,7 @@ func TestProcessStatsAggregation(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: processID,
 			Address:   big.NewInt(int64(i + 1000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i),
+			VoteID:    testutil.RandomVoteID(),
 		}
 
 		// Push ballot
@@ -212,8 +209,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 	// Create a process
 	processID := testutil.DeterministicProcessID(44)
 
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Simulate the race condition scenario
 	// Multiple goroutines processing ballots and aggregating simultaneously
@@ -230,7 +226,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 				ballot := &Ballot{
 					ProcessID: processID,
 					Address:   big.NewInt(int64(workerID*10000 + j)),
-					VoteID:    fmt.Appendf(nil, "vote%d-%d", workerID, j),
+					VoteID:    testutil.RandomVoteID(),
 				}
 
 				// Push and process ballot
@@ -351,40 +347,14 @@ func TestGetTotalPendingBallots(t *testing.T) {
 
 	// Create processes with different pending ballot counts
 	processes := []*types.Process{
-		{
-			ID:             &processID1,
-			Status:         0,
-			StartTime:      time.Now(),
-			Duration:       time.Hour,
-			MetadataURI:    "http://example.com/metadata",
-			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 5},
-			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
-			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
-		},
-		{
-			ID:             &processID2,
-			Status:         0,
-			StartTime:      time.Now(),
-			Duration:       time.Hour,
-			MetadataURI:    "http://example.com/metadata",
-			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 3},
-			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
-			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
-		},
-		{
-			ID:             &processID3,
-			Status:         0,
-			StartTime:      time.Now(),
-			Duration:       time.Hour,
-			MetadataURI:    "http://example.com/metadata",
-			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 7},
-			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
-			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
-		},
+		testutil.RandomProcess(processID1),
+		testutil.RandomProcess(processID2),
+		testutil.RandomProcess(processID3),
 	}
+
+	processes[0].SequencerStats = types.SequencerProcessStats{PendingVotesCount: 5}
+	processes[1].SequencerStats = types.SequencerProcessStats{PendingVotesCount: 3}
+	processes[2].SequencerStats = types.SequencerProcessStats{PendingVotesCount: 7}
 
 	// Store all processes
 	for _, process := range processes {
@@ -458,8 +428,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 	// Create a process
 	processID := testutil.DeterministicProcessID(100)
 
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Create and process some ballots to verified state
 	numBallots := 5
@@ -468,7 +437,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: processID,
 			Address:   big.NewInt(int64(i + 2000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i),
+			VoteID:    testutil.RandomVoteID(),
 		}
 
 		// Push ballot
@@ -476,7 +445,7 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 
 		// Get and mark as done (verified)
-		b, key, err := st.NextPendingBallot()
+		b, voteID, err := st.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
 
 		verifiedBallot := &VerifiedBallot{
@@ -485,11 +454,11 @@ func TestMarkVerifiedBallotsFailed(t *testing.T) {
 			VoteID:      b.VoteID,
 			VoterWeight: big.NewInt(1),
 		}
-		err = st.MarkBallotVerified(key, verifiedBallot)
+		err = st.MarkBallotVerified(voteID, verifiedBallot)
 		c.Assert(err, qt.IsNil)
 
 		// Store the verified ballot key for later failure
-		combKey := append(processID.Bytes(), key...)
+		combKey := append(processID.Bytes(), voteID.Bytes()...)
 		keys = append(keys, combKey)
 	}
 
@@ -540,8 +509,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 	// Create a process
 	processID := testutil.DeterministicProcessID(101)
 
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Create and process some ballots to verified state
 	numBallots := 8
@@ -549,7 +517,7 @@ func TestMarkBallotBatchFailed(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: processID,
 			Address:   big.NewInt(int64(i + 2000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i),
+			VoteID:    testutil.RandomVoteID(),
 		}
 
 		// Push ballot
@@ -647,8 +615,7 @@ func TestProcessStatsNegativeValuePrevention(t *testing.T) {
 	// Create a process
 	processID := testutil.DeterministicProcessID(102)
 
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Test attempting to set negative values (without clamping for some stats)
 	updates := []ProcessStatsUpdate{
@@ -761,12 +728,11 @@ func TestTotalStats(t *testing.T) {
 	process3 := testutil.DeterministicProcessID(3)
 
 	// Create processes
-	err = st.NewProcess(createTestProcess(process1))
-	c.Assert(err, qt.IsNil)
-	err = st.NewProcess(createTestProcess(process2))
-	c.Assert(err, qt.IsNil)
-	err = st.NewProcess(createTestProcess(process3))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, process1)
+
+	ensureProcess(t, st, process2)
+
+	ensureProcess(t, st, process3)
 
 	// Update stats for process1
 	updates1 := []ProcessStatsUpdate{
@@ -845,21 +811,20 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	process2 := testutil.DeterministicProcessID(2)
 
 	// Create processes
-	err = st.NewProcess(createTestProcess(process1))
-	c.Assert(err, qt.IsNil)
-	err = st.NewProcess(createTestProcess(process2))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, process1)
+
+	ensureProcess(t, st, process2)
 
 	// Test 3: Push ballots to process1 and verify total pending increases
 	ballot1 := &Ballot{
 		ProcessID: process1,
 		Address:   big.NewInt(1000),
-		VoteID:    fmt.Appendf(nil, "vote1"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 	ballot2 := &Ballot{
 		ProcessID: process1,
 		Address:   big.NewInt(1001),
-		VoteID:    fmt.Appendf(nil, "vote2"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 
 	err = st.PushPendingBallot(ballot1)
@@ -876,7 +841,7 @@ func TestTotalPendingBallotsNewFunctionality(t *testing.T) {
 	ballot3 := &Ballot{
 		ProcessID: process2,
 		Address:   big.NewInt(1002),
-		VoteID:    fmt.Appendf(nil, "vote3"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 
 	err = st.PushPendingBallot(ballot3)
@@ -946,8 +911,7 @@ func TestTotalStatsConcurrency(t *testing.T) {
 	processes := make([]types.ProcessID, numProcesses)
 	for i := range numProcesses {
 		processes[i] = testutil.DeterministicProcessID(uint64(i + 1))
-		err = st.NewProcess(createTestProcess(processes[i]))
-		c.Assert(err, qt.IsNil)
+		ensureProcess(t, st, processes[i])
 	}
 
 	// Run concurrent updates
@@ -1019,10 +983,9 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 
 	process2 := testutil.DeterministicProcessID(2)
 
-	err = st.NewProcess(createTestProcess(process1))
-	c.Assert(err, qt.IsNil)
-	err = st.NewProcess(createTestProcess(process2))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, process1)
+
+	ensureProcess(t, st, process2)
 
 	// Test the full workflow: push -> process -> aggregate
 	// Step 1: Push multiple ballots
@@ -1033,7 +996,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: process1,
 			Address:   big.NewInt(int64(i + 1000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i),
+			VoteID:    testutil.RandomVoteID(),
 		}
 		err = st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)
@@ -1043,7 +1006,7 @@ func TestTotalPendingBallotsIntegration(t *testing.T) {
 		ballot := &Ballot{
 			ProcessID: process2,
 			Address:   big.NewInt(int64(i + 3000)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i+numBallotsP1),
+			VoteID:    testutil.RandomVoteID(),
 		}
 		err = st.PushPendingBallot(ballot)
 		c.Assert(err, qt.IsNil)

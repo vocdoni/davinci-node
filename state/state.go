@@ -6,17 +6,15 @@ import (
 	"slices"
 
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 var (
@@ -27,14 +25,12 @@ var (
 )
 
 var (
-	KeyProcessID     = big.NewInt(circuits.KeyProcessID)
-	KeyBallotMode    = big.NewInt(circuits.KeyBallotMode)
-	KeyEncryptionKey = big.NewInt(circuits.KeyEncryptionKey)
-	KeyResultsAdd    = big.NewInt(circuits.KeyResultsAdd)
-	KeyResultsSub    = big.NewInt(circuits.KeyResultsSub)
-	KeyCensusOrigin  = big.NewInt(circuits.KeyCensusOrigin)
-
-	ReservedKeysOffset = big.NewInt(circuits.ReservedKeysOffset)
+	KeyProcessID     = types.StateKey(params.StateKeyProcessID)
+	KeyBallotMode    = types.StateKey(params.StateKeyBallotMode)
+	KeyEncryptionKey = types.StateKey(params.StateKeyEncryptionKey)
+	KeyResultsAdd    = types.StateKey(params.StateKeyResultsAdd)
+	KeyResultsSub    = types.StateKey(params.StateKeyResultsSub)
+	KeyCensusOrigin  = types.StateKey(params.StateKeyCensusOrigin)
 
 	ErrStateAlreadyInitialized = fmt.Errorf("state already initialized")
 )
@@ -84,13 +80,13 @@ type VotesProofs struct {
 // The processID is used as a prefix for the keys in the database.
 func New(db db.Database, processID types.ProcessID) (*State, error) {
 	// the process ID must be in the scalar field of the circuit curve
-	processID.ToFF(params.StateTransitionCurve.ScalarField())
+	ffProcessID := processID.ToFF(params.StateTransitionCurve.ScalarField())
 
-	if !processID.IsValid() {
+	if !ffProcessID.IsValid() {
 		return nil, fmt.Errorf("processID is not valid")
 	}
 
-	pdb := prefixeddb.NewPrefixedDatabase(db, processID.Bytes())
+	pdb := prefixeddb.NewPrefixedDatabase(db, ffProcessID.Bytes())
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     pdb,
 		MaxLevels:    params.StateTreeMaxLevels,
@@ -102,7 +98,7 @@ func New(db db.Database, processID types.ProcessID) (*State, error) {
 	return &State{
 		db:        pdb,
 		tree:      tree,
-		processID: processID,
+		processID: ffProcessID,
 	}, nil
 }
 
@@ -136,66 +132,35 @@ func RootExists(db db.Database, processId types.ProcessID, root *big.Int) error 
 	return nil
 }
 
-// CalculateInitialRoot returns the root of the tree that would result from
-// initializing a state with the passed parameters. It uses an ephemereal
-// tree, nothing is written down to storage.
-func CalculateInitialRoot(
-	processID types.ProcessID,
-	censusOrigin *big.Int,
-	ballotMode *types.BallotMode,
-	publicKey ecc.Point,
-) (*big.Int, error) {
-	// Initialize the state in a memDB, just to calculate stateRoot
-	st, err := New(memdb.New(), processID)
-	if err != nil {
-		return nil, fmt.Errorf("could not create state: %v", err)
-	}
-
-	defer func() {
-		if err := st.Close(); err != nil {
-			log.Warnw("failed to close state", "error", err)
-		}
-	}()
-
-	// Initialize the state with the census root, ballot mode and the encryption key
-	if err := st.Initialize(
-		censusOrigin,
-		circuits.BallotModeToCircuit(ballotMode),
-		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
-		return nil, fmt.Errorf("could not initialize state: %v", err)
-	}
-
-	return st.RootAsBigInt()
-}
-
 // Initialize creates a new State, initialized with the passed parameters.
 // After Initialize, caller is expected to StartBatch, AddVote, EndBatch,
 // StartBatch...
 func (o *State) Initialize(
 	censusOrigin *big.Int,
-	ballotMode circuits.BallotMode[*big.Int],
-	encryptionKey circuits.EncryptionKey[*big.Int],
+	ballotMode *big.Int,
+	encryptionKey types.EncryptionKey,
 ) error {
 	// Check if the state is already initialized
-	if _, _, err := o.tree.GetBigInt(KeyProcessID); err == nil {
+	// TODO: refactor arbo to use uint64 instead
+	if _, _, err := o.tree.GetBigInt(KeyProcessID.BigInt()); err == nil {
 		return ErrStateAlreadyInitialized
 	}
-	if err := o.tree.AddBigInt(KeyProcessID, o.processID.MathBigInt()); err != nil {
+	if err := o.tree.AddBigInt(KeyProcessID.BigInt(), o.processID.MathBigInt()); err != nil {
 		return fmt.Errorf("could not set process ID: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyBallotMode, ballotMode.Serialize()...); err != nil {
+	if err := o.tree.AddBigInt(KeyBallotMode.BigInt(), ballotMode); err != nil {
 		return fmt.Errorf("could not set ballot mode: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyEncryptionKey, encryptionKey.Serialize()...); err != nil {
+	if err := o.tree.AddBigInt(KeyEncryptionKey.BigInt(), encryptionKey.BigInts()...); err != nil {
 		return fmt.Errorf("could not set encryption key: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyResultsAdd, elgamal.NewBallot(Curve).BigInts()...); err != nil {
+	if err := o.tree.AddBigInt(KeyResultsAdd.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
 		return fmt.Errorf("could not set results add: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyResultsSub, elgamal.NewBallot(Curve).BigInts()...); err != nil {
+	if err := o.tree.AddBigInt(KeyResultsSub.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
 		return fmt.Errorf("could not set results sub: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyCensusOrigin, censusOrigin); err != nil {
+	if err := o.tree.AddBigInt(KeyCensusOrigin.BigInt(), censusOrigin); err != nil {
 		return fmt.Errorf("could not set census origin: %w", err)
 	}
 	return nil
@@ -276,10 +241,12 @@ func (o *State) endBatch() error {
 	for i := range o.votesProofs.Ballot {
 		var errBallot, errVoteID error
 		if i < len(o.Votes()) {
+			v := o.Votes()[i]
+			ballotIndex := types.CalculateBallotIndex(v.Address, types.IndexTODO)
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].Address, o.Votes()[i].ReencryptedBallot.BigInts()...)
+				ballotIndex.StateKey(), v.ReencryptedBallot.BigInts()...)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].VoteID.BigInt().MathBigInt(), VoteIDKeyValue)
+				v.VoteID.StateKey(), VoteIDKeyValue)
 		} else {
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromNoop(o)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromNoop(o)
@@ -435,14 +402,14 @@ func (o *State) ProcessSerializeBigInts() []*big.Int {
 	list := []*big.Int{}
 	list = append(list, o.ProcessID())
 	list = append(list, o.CensusOrigin())
-	list = append(list, o.BallotMode().Serialize()...)
+	list = append(list, o.BallotMode())
 	list = append(list, o.EncryptionKey().Serialize()...)
 	return list
 }
 
 // ProccessID returns the process ID of the state as a big.Int.
 func (o *State) ProcessID() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyProcessID)
+	_, v, err := o.tree.GetBigInt(KeyProcessID.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get process ID from state")
 	}
@@ -454,7 +421,7 @@ func (o *State) ProcessID() *big.Int {
 
 // CensusOrigin returns the census origin of the state as a *big.Int.
 func (o *State) CensusOrigin() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyCensusOrigin)
+	_, v, err := o.tree.GetBigInt(KeyCensusOrigin.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get census origin from state")
 	}
@@ -464,24 +431,22 @@ func (o *State) CensusOrigin() *big.Int {
 	return v[0]
 }
 
-// BallotMode returns the ballot mode of the state as a
-// circuits.BallotMode[*big.Int].
-func (o *State) BallotMode() circuits.BallotMode[*big.Int] {
-	_, v, err := o.tree.GetBigInt(KeyBallotMode)
+// BallotMode returns the packed ballot mode of the state as a *big.Int.
+func (o *State) BallotMode() *big.Int {
+	_, v, err := o.tree.GetBigInt(KeyBallotMode.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get ballot mode from state")
 	}
-	bm, err := new(circuits.BallotMode[*big.Int]).Deserialize(v)
-	if err != nil {
-		log.Errorw(err, "failed to deserialize ballot mode in state")
+	if len(v) == 0 {
+		return big.NewInt(0)
 	}
-	return bm
+	return v[0]
 }
 
 // EncryptionKey returns the encryption key of the state as a
 // circuits.EncryptionKey[*big.Int].
 func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
-	_, v, err := o.tree.GetBigInt(KeyEncryptionKey)
+	_, v, err := o.tree.GetBigInt(KeyEncryptionKey.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get encryption key from state")
 	}
@@ -494,7 +459,7 @@ func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
 
 // ResultsAdd returns the resultsAdd of the state as a elgamal.Ballot
 func (o *State) ResultsAdd() (*elgamal.Ballot, bool) {
-	_, v, err := o.tree.GetBigInt(KeyResultsAdd)
+	_, v, err := o.tree.GetBigInt(KeyResultsAdd.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get resultsAdd from state")
 		return elgamal.NewBallot(Curve), false
@@ -509,21 +474,21 @@ func (o *State) ResultsAdd() (*elgamal.Ballot, bool) {
 
 // SetResultsAdd sets the resultsAdd directly in the state tree
 func (o *State) SetResultsAdd(resultsAdd *elgamal.Ballot) {
-	if err := o.tree.UpdateBigInt(KeyResultsAdd, resultsAdd.BigInts()...); err != nil {
+	if err := o.tree.UpdateBigInt(KeyResultsAdd.BigInt(), resultsAdd.BigInts()...); err != nil {
 		log.Errorw(err, "failed to set resultsAdd in state")
 	}
 }
 
 // SetResultsSub sets the resultsSub directly in the state tree
 func (o *State) SetResultsSub(resultsSub *elgamal.Ballot) {
-	if err := o.tree.UpdateBigInt(KeyResultsSub, resultsSub.BigInts()...); err != nil {
+	if err := o.tree.UpdateBigInt(KeyResultsSub.BigInt(), resultsSub.BigInts()...); err != nil {
 		log.Errorw(err, "failed to set resultsSub in state")
 	}
 }
 
 // ResultsSub returns the resultsSub of the state as a elgamal.Ballot
 func (o *State) ResultsSub() (*elgamal.Ballot, bool) {
-	_, v, err := o.tree.GetBigInt(KeyResultsSub)
+	_, v, err := o.tree.GetBigInt(KeyResultsSub.BigInt())
 	if err != nil {
 		return elgamal.NewBallot(Curve), false
 	}
@@ -554,9 +519,4 @@ func (o *State) ProcessProofs() ProcessProofs {
 // VotesProofs returns a pointer to the votes proofs for the state.
 func (o *State) VotesProofs() VotesProofs {
 	return o.votesProofs
-}
-
-// keyIsBelowReservedOffset returns true when passed key is below the ReservedKeysOffset
-func keyIsBelowReservedOffset(key *big.Int) bool {
-	return key.Cmp(ReservedKeysOffset) == -1
 }

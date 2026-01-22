@@ -7,8 +7,8 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -62,7 +62,7 @@ func (mp *MerkleProof) Verify(api frontend.API, hFn utils.Hasher, root frontend.
 // that arbo does when it works with big.Ints. It returns an error if the
 // encoding fails.
 func (mp *MerkleProof) VerifyLeafHash(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) error {
-	encodedValue, err := hFn(api, values...)
+	encodedValue, err := encodeLeafValue(api, hFn, values...)
 	if err != nil {
 		return fmt.Errorf("encode the values of the leaf: %w", err)
 	}
@@ -171,13 +171,34 @@ func verifyLeafHash(
 	key, leafHash, skip frontend.Variable,
 	values ...frontend.Variable,
 ) error {
-	encodedValue, err := hFn(api, values...)
+	encodedValue, err := encodeLeafValue(api, hFn, values...)
 	if err != nil {
 		return fmt.Errorf("encode the values of the leaf: %w", err)
 	}
 	// used to skip the assert, for example when MerkleTransition is NOOP or not an UPDATE
 	api.AssertIsEqual(leafHash, api.Select(skip, leafHash, smt.Hash1(api, hFn, key, encodedValue)))
 	return nil
+}
+
+// encodeLeafValue mirrors arbo bigIntsToLeaf behavior:
+// single-value leaves use the value directly, while multi-value leaves hash
+// values first and use that hash as the leaf value.
+func encodeLeafValue(api frontend.API, hFn utils.Hasher, values ...frontend.Variable) (frontend.Variable, error) {
+	if len(values) == 1 {
+		return values[0], nil
+	}
+	return hFn(api, values...)
+}
+
+// VerifyNewKey asserts that value matches mp.NewKey,
+// only when the MerkleTransition is not a NOOP
+func (mp *MerkleTransition) VerifyNewKey(api frontend.API, value frontend.Variable) {
+	verifyLeafKey(api, mp.NewKey, mp.IsNoop(api), value)
+}
+
+func verifyLeafKey(api frontend.API, key, skip frontend.Variable, value frontend.Variable) {
+	// used to skip the assert, for example when MerkleTransition is NOOP or not an UPDATE
+	api.AssertIsEqual(key, api.Select(skip, key, value))
 }
 
 func (mp *MerkleTransition) String() string {
@@ -218,22 +239,6 @@ func padStateSiblings(unpackedSiblings []*big.Int) [params.StateTreeMaxLevels]fr
 		paddedSiblings[i] = v
 	}
 	return paddedSiblings
-}
-
-// TruncateMerkleTreeKey helper function truncates a key to a given size to be
-// compared with the key included in an arbo proof. It only matches if the
-// tree was generated with the BigInt API of arbo. It converts the key to
-// bytes, swaps the endianness, crops it to the given size, and then swaps
-// the endianness back. It returns the truncated key as a frontend.Variable.
-func TruncateMerkleTreeKey(api frontend.API, input frontend.Variable, size int) (frontend.Variable, error) {
-	bInput, err := utils.VarToU8(api, input)
-	if err != nil {
-		return 0, err
-	}
-	swappedInput := utils.SwapEndianness(bInput)
-	croppedInput := swappedInput[:size]
-	reSwappedInput := utils.SwapEndianness(croppedInput)
-	return utils.U8ToVar(api, reSwappedInput)
 }
 
 // AssertDummyIsNoop fails when isDummy is 1 and mp is not a NOOP

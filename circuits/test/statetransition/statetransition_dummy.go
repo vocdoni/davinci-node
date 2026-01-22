@@ -15,7 +15,7 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/prover"
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/spec/params"
 )
 
 // DummyAggCircuit is dummy aggregator circuit

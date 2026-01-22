@@ -16,9 +16,10 @@ import (
 	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -253,7 +254,7 @@ func (s *CLIServices) CreateCensus(
 // error occurs, it will be returned.
 func (s *CLIServices) CreateProcess(
 	census *types.Census,
-	ballotMode *types.BallotMode,
+	ballotMode spec.BallotMode,
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
 	// Make the request to create the encryption keys
@@ -384,7 +385,7 @@ func (s *CLIServices) VoterWeight(pid types.ProcessID, addr common.Address) (*ty
 func (s *CLIServices) CreateVote(
 	privKey *ethereum.Signer,
 	pid types.ProcessID,
-	bm *types.BallotMode,
+	bm spec.BallotMode,
 ) (api.Vote, error) {
 	// Fetch the encryption key for the process
 	encKey, err := s.ProcessEncKey(pid)
@@ -394,7 +395,7 @@ func (s *CLIServices) CreateVote(
 
 	// Get voter address
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	k, err := elgamal.RandK()
+	k, err := specutil.RandomK()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate random k: %v", err)
 	}
@@ -408,8 +409,8 @@ func (s *CLIServices) CreateVote(
 	// Generate random ballot fields based on the ballot mode
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
-		int(bm.MaxValue.MathBigInt().Int64()),
-		int(bm.MinValue.MathBigInt().Int64()),
+		int(bm.MaxValue),
+		int(bm.MinValue),
 		bm.UniqueValues)
 
 	// Cast fields to types.BigInt
@@ -481,13 +482,13 @@ func (s *CLIServices) CreateVote(
 // request to the votes endpoint with the vote data. If the request is
 // successful, it returns the vote ID. If any error occurs during the request
 // or if the response status code is not OK, it will be returned.
-func (s *CLIServices) SubmitVote(vote api.Vote) (types.HexBytes, error) {
+func (s *CLIServices) SubmitVote(vote api.Vote) (types.VoteID, error) {
 	// Make the request to cast the vote
 	body, status, err := s.cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to cast vote: %w", err)
+		return 0, fmt.Errorf("failed to cast vote: %w", err)
 	} else if status != http.StatusOK {
-		return nil, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
+		return 0, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
 }

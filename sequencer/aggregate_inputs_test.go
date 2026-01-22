@@ -10,9 +10,9 @@ import (
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 type mockAggregationStore struct {
@@ -35,13 +35,13 @@ type mockAggregationState struct {
 	addresses map[string]struct{}
 }
 
-func (m mockAggregationState) ContainsVoteID(voteID *big.Int) bool {
+func (m mockAggregationState) ContainsVoteID(voteID types.VoteID) bool {
 	_, exists := m.voteIDs[voteID.String()]
 	return exists
 }
 
-func (m mockAggregationState) ContainsAddress(address *types.BigInt) bool {
-	_, exists := m.addresses[address.MathBigInt().String()]
+func (m mockAggregationState) ContainsBallot(ballotIndex types.BallotIndex) bool {
+	_, exists := m.addresses[ballotIndex.String()]
 	return exists
 }
 
@@ -59,7 +59,7 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 	keys := make([][]byte, 0, params.VotesPerBatch+1)
 
 	for i := 0; i < params.VotesPerBatch+1; i++ {
-		voteID := types.HexBytes{byte(i + 1)}
+		voteID := types.VoteID(i + 1)
 		ballots = append(ballots, &storage.VerifiedBallot{
 			VoteID:     voteID,
 			Address:    big.NewInt(int64(i + 1)),
@@ -69,7 +69,7 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 		keys = append(keys, []byte{0xAA, byte(i + 1)})
 	}
 
-	processState.voteIDs[ballots[0].VoteID.BigInt().MathBigInt().String()] = struct{}{}
+	processState.voteIDs[ballots[0].VoteID.String()] = struct{}{}
 
 	proofToRecursion := func(_ groth16.Proof) (stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine], error) {
 		return stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}, nil

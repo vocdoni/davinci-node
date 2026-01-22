@@ -4,7 +4,6 @@ import (
 	"math/big"
 	"path/filepath"
 	"testing"
-	"time"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits/results"
@@ -15,10 +14,11 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
@@ -103,25 +103,14 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	// if err != nil {
 	// 	t.Fatalf("failed to store encryption keys: %v", err)
 	// }
-	// Create a process
-	process := &types.Process{
-		ID:          &processID,
-		Status:      0,
-		StartTime:   time.Now(),
-		Duration:    time.Hour,
-		MetadataURI: "http://example.com/metadata",
-		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
-		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
-	}
 
 	// Store the process
-	err = stg.NewProcess(process)
+	err = stg.NewProcess(testutil.RandomProcess(processID))
 	if err != nil {
 		t.Fatalf("failed to store process: %v", err)
 	}
 
-	process, err = stg.Process(processID)
+	process, err := stg.Process(processID)
 	if err != nil {
 		t.Fatalf("failed to get process: %v", err)
 	}
@@ -170,7 +159,7 @@ func setupTestState(
 		addValues[i] = big.NewInt(addValue)
 	}
 	// Encrypt the values
-	k1, err := elgamal.RandK()
+	k1, err := specutil.RandomK()
 	if err != nil {
 		t.Fatalf("failed to generate k1: %v", err)
 	}
@@ -187,7 +176,7 @@ func setupTestState(
 		subValues[i] = big.NewInt(subValue)
 	}
 	// Encrypt the values
-	k2, err := elgamal.RandK()
+	k2, err := specutil.RandomK()
 	if err != nil {
 		t.Fatalf("failed to generate k2: %v", err)
 	}

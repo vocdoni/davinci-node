@@ -3,9 +3,7 @@ package storage
 import (
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
@@ -61,17 +59,7 @@ func TestProcess(t *testing.T) {
 		},
 	}
 
-	testProcess := &types.Process{
-		ID:             &processID,
-		Status:         0,
-		OrganizationId: common.Address{},
-		StartTime:      time.Now(),
-		Duration:       time.Hour,
-		MetadataURI:    "https://example.com/metadata",
-		StateRoot:      testutil.StateRoot(),
-		BallotMode:     testutil.BallotModeInternal(),
-		Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
-	}
+	testProcess := testutil.RandomProcess(processID)
 
 	err = st.NewProcess(testProcess)
 	c.Assert(err, qt.IsNil)
@@ -90,7 +78,7 @@ func TestProcess(t *testing.T) {
 
 	// Test 4: Set another process
 	anotherProcessID := testutil.RandomProcessID()
-	process.ID = &anotherProcessID
+	process = testutil.RandomProcess(anotherProcessID)
 
 	err = st.NewProcess(process)
 	c.Assert(err, qt.IsNil)

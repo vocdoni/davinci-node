@@ -25,7 +25,7 @@ func BallotHash(
 ) []frontend.Variable {
 	inputs := []frontend.Variable{}
 	inputs = append(inputs, process.ID)
-	inputs = append(inputs, process.BallotMode.Serialize()...)
+	inputs = append(inputs, process.BallotMode)
 	encKeyX, encKeyY := format.FromRTEtoTEVar(api, process.EncryptionKey.PubKey[0], process.EncryptionKey.PubKey[1])
 	inputs = append(inputs, encKeyX, encKeyY)
 	inputs = append(inputs, vote.Address, vote.VoteID)

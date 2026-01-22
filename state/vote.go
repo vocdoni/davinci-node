@@ -9,8 +9,8 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 var (
@@ -24,25 +24,11 @@ var (
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
 	Address           *big.Int
-	VoteID            types.HexBytes
+	VoteID            types.VoteID
 	Ballot            *elgamal.Ballot
 	OverwrittenBallot *elgamal.Ballot
 	Weight            *big.Int
 	ReencryptedBallot *elgamal.Ballot // Reencrypted ballot for the state transition circuit
-}
-
-// SerializeBigInts returns
-//   - vote.Address
-//   - vote.VoteID
-//   - vote.UserWeight
-//   - vote.Ballot
-func (v *Vote) SerializeBigInts() []*big.Int {
-	list := []*big.Int{}
-	list = append(list, v.Address)
-	list = append(list, v.VoteID.BigInt().MathBigInt())
-	list = append(list, v.Weight)
-	list = append(list, v.Ballot.BigInts()...)
-	return list
 }
 
 // AddVote adds a vote to the state.
@@ -55,12 +41,9 @@ func (o *State) addVote(v *Vote) error {
 	if len(o.votes) >= params.VotesPerBatch {
 		return fmt.Errorf("too many votes for this batch")
 	}
-	if keyIsBelowReservedOffset(v.Address) {
-		return fmt.Errorf("vote address %d is below the reserved offset", v.Address)
-	}
 	// if address exists, it's a vote overwrite, need to count the overwritten
 	// vote so it's later added to circuit.ResultsSub
-	if oldVote, err := o.EncryptedBallot(v.Address); err == nil {
+	if oldVote, err := o.EncryptedBallot(types.CalculateBallotIndex(v.Address, types.IndexTODO)); err == nil {
 		o.overwrittenSum.Add(o.overwrittenSum, oldVote)
 		o.overwrittenVotesCount++
 		v.OverwrittenBallot = oldVote
@@ -75,11 +58,8 @@ func (o *State) addVote(v *Vote) error {
 }
 
 // EncryptedBallot returns the ballot associated with a address
-func (o *State) EncryptedBallot(address *big.Int) (*elgamal.Ballot, error) {
-	if keyIsBelowReservedOffset(address) {
-		return nil, fmt.Errorf("vote address %d is below the reserved offset", address)
-	}
-	_, value, err := o.tree.GetBigInt(address)
+func (o *State) EncryptedBallot(ballotIndex types.BallotIndex) (*elgamal.Ballot, error) {
+	_, value, err := o.tree.GetBigInt(ballotIndex.BigInt())
 	if err != nil {
 		// Wrap arbo.ErrKeyNotFound to a specific error
 		if errors.Is(err, arbo.ErrKeyNotFound) {
@@ -95,18 +75,18 @@ func (o *State) EncryptedBallot(address *big.Int) (*elgamal.Ballot, error) {
 }
 
 // ContainsVoteID checks if the state contains a vote ID
-func (o *State) ContainsVoteID(voteID *big.Int) bool {
-	if keyIsBelowReservedOffset(voteID) {
-		log.Errorf("voteID %d is below the reserved offset", voteID)
+func (o *State) ContainsVoteID(voteID types.VoteID) bool {
+	if !voteID.Valid() {
+		log.Errorf("voteID %d is invalid", voteID)
 		return false
 	}
-	_, _, err := o.tree.GetBigInt(voteID)
+	_, _, err := o.tree.GetBigInt(voteID.BigInt())
 	return err == nil
 }
 
-// ContainsAddress checks if the state contains an address
-func (o *State) ContainsAddress(address *types.BigInt) bool {
-	_, _, err := o.tree.GetBigInt(address.MathBigInt())
+// ContainsBallot checks if the state contains an address
+func (o *State) ContainsBallot(ballotIndex types.BallotIndex) bool {
+	_, _, err := o.tree.GetBigInt(ballotIndex.BigInt())
 	return err == nil
 }
 
@@ -114,10 +94,10 @@ func (o *State) ContainsAddress(address *types.BigInt) bool {
 // the current process state and checks for the address. If found,
 // it returns true, otherwise false. If there's an error opening the state or
 // during the check, it returns the error.
-func HasAddressVoted(db db.Database, processID types.ProcessID, address *types.BigInt) (bool, error) {
+func HasAddressVoted(db db.Database, processID types.ProcessID, ballotIndex types.BallotIndex) (bool, error) {
 	s, err := New(db, processID)
 	if err != nil {
 		return false, fmt.Errorf("could not open state: %v", err)
 	}
-	return s.ContainsAddress(address), nil
+	return s.ContainsBallot(ballotIndex), nil
 }

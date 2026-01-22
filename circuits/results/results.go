@@ -7,8 +7,8 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 )
@@ -68,7 +68,7 @@ func (c *ResultsVerifierCircuit) VerifyAccumulatorsHashes(api frontend.API) {
 		return
 	}
 	// Compute the hash of the leaf in the merkle tree
-	addLeafHash, err := HashFn(api, state.KeyResultsAdd, addMerkletreeValue, 1)
+	addLeafHash, err := HashFn(api, state.KeyResultsAdd.ToGnark(), addMerkletreeValue, 1)
 	if err != nil {
 		circuits.FrontendError(api, "failed to hash add leaf", err)
 		return
@@ -83,7 +83,7 @@ func (c *ResultsVerifierCircuit) VerifyAccumulatorsHashes(api frontend.API) {
 		return
 	}
 	// Compute the hash of the leaf in the merkle tree
-	subLeafHash, err := HashFn(api, state.KeyResultsSub, subMerkletreeValue, 1)
+	subLeafHash, err := HashFn(api, state.KeyResultsSub.ToGnark(), subMerkletreeValue, 1)
 	if err != nil {
 		circuits.FrontendError(api, "failed to hash sub leaf", err)
 		return

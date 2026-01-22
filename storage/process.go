@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -55,20 +54,23 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	}
 
 	// If process already has an EncryptionKey, store it
-	if process.EncryptionKey != nil {
-		if err := s.setEncryptionPubKeyUnsafe(ProcessEncryptionKeyToPoint(process.EncryptionKey)); err != nil {
-			log.Warnw("failed to store encryption keys for process",
-				"processID", process.ID.String(), "error", err.Error())
-		}
-	} else {
+	if process.EncryptionKey == nil {
 		return fmt.Errorf("invalid process: no encryption keys provided")
+	}
+	if err := s.setEncryptionPubKeyUnsafe(ProcessEncryptionKeyToPoint(process.EncryptionKey)); err != nil {
+		log.Warnw("failed to store encryption keys for process",
+			"processID", process.ID.String(), "error", err.Error())
 	}
 
 	// Initialize the process state to store the process data
+	packedBallotMode, err := process.BallotMode.Pack()
+	if err != nil {
+		return fmt.Errorf("failed to pack ballot mode: %w", err)
+	}
 	if err := pState.Initialize(
 		process.Census.CensusOrigin.BigInt().MathBigInt(),
-		circuits.BallotModeToCircuit(process.BallotMode),
-		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),
+		packedBallotMode,
+		*process.EncryptionKey,
 	); err != nil {
 		return fmt.Errorf("failed to initialize process state: %w", err)
 	}
