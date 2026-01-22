@@ -235,6 +235,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	if f.getStateRoot != nil {
 		contractStateRoot, err := f.getStateRoot(processID)
 		if err != nil {
+			setProcessInvalid()
 			return fmt.Errorf("could not fetch contract state root for process %s: %w", processID.String(), err)
 		}
 		if contractStateRoot.MathBigInt().Cmp(process.StateRoot.MathBigInt()) != 0 {
