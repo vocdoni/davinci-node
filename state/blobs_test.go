@@ -58,17 +58,8 @@ func TestBlobDataStructures(t *testing.T) {
 	// Create test votes
 	votes := statetest.NewVotesForTest(publicKey, 3, 1)
 
-	// Perform batch operation
-	err = state.StartBatch()
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to start batch"))
-
-	for _, vote := range votes {
-		err = state.AddVote(vote)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to add vote"))
-	}
-
-	err = state.EndBatch()
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to end batch"))
+	err = state.AddVotesBatch(votes)
+	c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
 
 	// Test blob data serialization logic
 	t.Run("TestBlobDataSerialization", func(t *testing.T) {
@@ -208,16 +199,8 @@ func TestBlobStateTransition(t *testing.T) {
 		votes := statetest.NewVotesForTest(publicKey, 3, i)
 
 		// Perform batch operation on original state
-		err = originalState.StartBatch()
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to start batch %d", i+1))
-
-		for _, vote := range votes {
-			err = originalState.AddVote(vote)
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to add vote in batch %d", i+1))
-		}
-
-		err = originalState.EndBatch()
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to end batch %d", i+1))
+		err = originalState.AddVotesBatch(votes)
+		c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
 
 		// Get state root after this transition
 		root, err := originalState.RootAsBigInt()
@@ -282,16 +265,8 @@ func TestBlobStateTransition(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize test state"))
 
 		// Apply first transition
-		err = testState.StartBatch()
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to start batch"))
-
-		for _, vote := range firstTransition.Votes {
-			err = testState.AddVote(vote)
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to add vote"))
-		}
-
-		err = testState.EndBatch()
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to end batch"))
+		err = testState.AddVotesBatch(firstTransition.Votes)
+		c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
 
 		expectedRoot, err := testState.RootAsBigInt()
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get expected root"))
@@ -347,17 +322,9 @@ func TestBlobStateTransition(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize test state"))
 
 		// Apply all transitions except the last one
-		for i := 0; i < numTransitions-1; i++ {
-			err = testState.StartBatch()
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to start batch %d", i+1))
-
-			for _, vote := range transitions[i].Votes {
-				err = testState.AddVote(vote)
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to add vote in batch %d", i+1))
-			}
-
-			err = testState.EndBatch()
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to end batch %d", i+1))
+		for i := range numTransitions - 1 {
+			err = testState.AddVotesBatch(transitions[i].Votes)
+			c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
 		}
 
 		// Now apply the last transition using the blob
@@ -375,7 +342,7 @@ func TestBlobStateTransition(t *testing.T) {
 
 	// Verify that all transitions have different roots (state is actually changing)
 	t.Run("VerifyUniqueRoots", func(t *testing.T) {
-		for i := 0; i < numTransitions; i++ {
+		for i := range numTransitions {
 			for j := i + 1; j < numTransitions; j++ {
 				c.Assert(transitions[i].Root.Cmp(transitions[j].Root), qt.Not(qt.Equals), 0,
 					qt.Commentf("Transitions %d and %d have the same root, but should be different", i+1, j+1))
