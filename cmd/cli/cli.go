@@ -21,7 +21,6 @@ import (
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
@@ -330,7 +329,6 @@ func (s *CLIServices) CreateProcess(
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
-
 	processId, err := s.contracts.NextProcessID(s.contracts.AccountAddress())
 	if err != nil {
 		return types.ProcessID{}, nil, fmt.Errorf("failed to get next process ID: %v", err)
@@ -419,20 +417,69 @@ func (s *CLIServices) CreateProcess(
 	return pid, encryptionKeys, nil
 }
 
+func (s *CLIServices) ProcessEncKey(pid types.ProcessID) (*types.EncryptionKey, error) {
+	// Get the encryption keys from the sequencer
+	processEndpoint := api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String())
+	log.Debugw("getting encryption keys",
+		"pid", pid.String(),
+		"endpoint", processEndpoint)
+	processResponse, status, err := s.cli.Request(http.MethodGet, nil, nil, processEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process info from sequencer: %v", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("failed to get process info from sequencer, status code: %d", status)
+	}
+	var processInfo api.ProcessResponse
+	if err := json.Unmarshal(processResponse, &processInfo); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal process info: %v", err)
+	}
+	return processInfo.EncryptionKey, nil
+}
+
+func (s *CLIServices) VoterWeight(pid types.ProcessID, addr common.Address) (*types.BigInt, error) {
+	participantEndpoint := api.EndpointWithParam(api.CensusParticipantEndpoint, api.ProcessURLParam, pid.String())
+	participantEndpoint = api.EndpointWithParam(participantEndpoint, api.AddressURLParam, addr.Hex())
+
+	participantResponse, status, err := s.cli.Request(http.MethodGet, nil, nil, participantEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get participant info from sequencer: %v", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("failed to get participant info from sequencer, status code: %d", status)
+	}
+	var participantInfo api.CensusParticipant
+	if err := json.Unmarshal(participantResponse, &participantInfo); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal participant info: %v", err)
+	}
+	return participantInfo.Weight, nil
+}
+
 func (s *CLIServices) CreateVote(
 	privKey *ethereum.Signer,
 	pid types.ProcessID,
-	encKey *types.EncryptionKey,
 	bm *types.BallotMode,
 ) (api.Vote, error) {
-	// Emulate user inputs
+	// Fetch the encryption key for the process
+	encKey, err := s.ProcessEncKey(pid)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to get encryption key for process %s: %v", pid.String(), err)
+	}
+
+	// Get voter address
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	k, err := elgamal.RandK()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate random k: %v", err)
 	}
 
-	// Generate random ballot fields
+	// Get voter weight
+	weight, err := s.VoterWeight(pid, address)
+	if err != nil {
+		return api.Vote{}, fmt.Errorf("failed to get voter weight: %v", err)
+	}
+
+	// Generate random ballot fields based on the ballot mode
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
 		int(bm.MaxValue.MathBigInt().Int64()),
@@ -455,7 +502,7 @@ func (s *CLIServices) CreateVote(
 		},
 		K:           (*types.BigInt)(k),
 		BallotMode:  bm,
-		Weight:      new(types.BigInt).SetInt(testutil.Weight),
+		Weight:      weight,
 		FieldValues: fields,
 	}
 
@@ -499,7 +546,7 @@ func (s *CLIServices) CreateVote(
 		Signature:        signature.Bytes(),
 		VoteID:           wasmResult.VoteID,
 		CensusProof: types.CensusProof{
-			Weight: new(types.BigInt).SetInt(testutil.Weight),
+			Weight: weight,
 		},
 	}, nil
 }
@@ -513,4 +560,12 @@ func (s *CLIServices) SubmitVote(vote api.Vote) (types.HexBytes, error) {
 		return nil, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
+}
+
+func (s *CLIServices) StopProcess(pid types.ProcessID) error {
+	tx, err := s.contracts.SetProcessStatus(pid, types.ProcessStatusEnded)
+	if err != nil {
+		return fmt.Errorf("failed to stop process in contracts: %w", err)
+	}
+	return s.contracts.WaitTxByHash(*tx, time.Minute)
 }
