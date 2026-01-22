@@ -50,7 +50,7 @@ type EncryptionKeys struct {
 // the proof itself. The proof should be in the BLS12-377 curve, which is the
 // one used by the verifier circuit and verified by the aggregator circuit.
 type VerifiedBallot struct {
-	VoteID          types.HexBytes          `json:"voteId"`
+	VoteID          types.VoteID            `json:"voteId"`
 	ProcessID       types.ProcessID         `json:"processId"`
 	VoterWeight     *big.Int                `json:"voterWeight"`
 	EncryptedBallot *elgamal.Ballot         `json:"encryptedBallot"`
@@ -77,7 +77,7 @@ type Ballot struct {
 	Signature        *ethereum.ECDSASignature                              `json:"signature"`
 	CensusProof      *types.CensusProof                                    `json:"censusProof"`
 	PubKey           types.HexBytes                                        `json:"publicKey"`
-	VoteID           types.HexBytes                                        `json:"voteId"`
+	VoteID           types.VoteID                                          `json:"voteId"`
 }
 
 // Valid method checks if the Ballot is valid. A ballot is valid if all its
@@ -138,7 +138,7 @@ func (b *Ballot) String() string {
 // which has been verified and aggregated in a batch by the sequencer. It
 // includes the address and the encrypted ballot.
 type AggregatorBallot struct {
-	VoteID          types.HexBytes     `json:"voteId"`
+	VoteID          types.VoteID       `json:"voteId"`
 	Address         *big.Int           `json:"address"`
 	Weight          *big.Int           `json:"weight"`
 	EncryptedBallot *elgamal.Ballot    `json:"encryptedBallot"`

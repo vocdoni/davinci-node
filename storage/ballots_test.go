@@ -2,8 +2,6 @@ package storage
 
 import (
 	"errors"
-	"fmt"
-	"math/big"
 	"testing"
 
 	qt "github.com/frankban/quicktest"
@@ -24,25 +22,25 @@ func newTestStorage(t *testing.T) *Storage {
 	return New(testdb)
 }
 
-func mkBallot(pid types.ProcessID, id []byte) *Ballot {
+func mkBallot(pid types.ProcessID, voteID types.VoteID) *Ballot {
 	return &Ballot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(id),
-		Address:   new(big.Int).SetBytes(append(pid.Bytes(), id...)),
+		VoteID:    voteID,
+		Address:   testutil.DeterministicAddress(voteID.Uint64()).Big(),
 	}
 }
 
-func mkVerifiedBallot(pid types.ProcessID, id []byte) *VerifiedBallot {
+func mkVerifiedBallot(pid types.ProcessID, voteID types.VoteID) *VerifiedBallot {
 	return &VerifiedBallot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(id),
-		Address:   new(big.Int).SetBytes(append(pid.Bytes(), id...)),
+		VoteID:    voteID,
+		Address:   testutil.DeterministicAddress(voteID.Uint64()).Big(),
 	}
 }
 
-func mkAggBallot(id []byte) *AggregatorBallot {
+func mkAggBallot(voteID types.VoteID) *AggregatorBallot {
 	return &AggregatorBallot{
-		VoteID: types.HexBytes(id),
+		VoteID: voteID,
 	}
 }
 
@@ -78,7 +76,7 @@ func TestBallotQueue_RemoveBallot(t *testing.T) {
 	defer stg.Close()
 
 	pid := testutil.RandomProcessID()
-	id1 := []byte("id1")
+	id1 := testutil.RandomVoteID()
 	ensureProcess(t, stg, pid)
 
 	// push a pending ballot
@@ -106,7 +104,11 @@ func TestBallotQueue_RemovePendingBallotsByProcess_OnlyRemovesTargetProcess(t *t
 
 	pid1 := testutil.RandomProcessID()
 	pid2 := testutil.RandomProcessID()
-	ids := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
+	ids := []types.VoteID{
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+	}
 	ensureProcess(t, stg, pid1)
 	ensureProcess(t, stg, pid2)
 
@@ -125,7 +127,7 @@ func TestBallotQueue_RemovePendingBallotsByProcess_OnlyRemovesTargetProcess(t *t
 	ballot, _, err := stg.NextPendingBallot()
 	c.Assert(err, qt.IsNil)
 	c.Assert(ballot.ProcessID.Bytes(), qt.DeepEquals, pid2.Bytes())
-	c.Assert([]byte(ballot.VoteID), qt.DeepEquals, ids[2])
+	c.Assert(ballot.VoteID, qt.DeepEquals, ids[2])
 
 	// verify pid1's ballots still have pending status (removePendingBallot doesn't change status)
 	status1, err := stg.VoteIDStatus(pid1, ids[0])
@@ -148,10 +150,9 @@ func TestBallotQueue_ReleaseBallotReservation(t *testing.T) {
 	defer stg.Close()
 
 	pid := testutil.RandomProcessID()
-	id1 := []byte("id1")
 	ensureProcess(t, stg, pid)
 
-	c.Assert(stg.PushPendingBallot(mkBallot(pid, id1)), qt.IsNil)
+	c.Assert(stg.PushPendingBallot(mkBallot(pid, testutil.RandomVoteID())), qt.IsNil)
 	c.Assert(stg.CountPendingBallots(), qt.Equals, 1)
 
 	// reserve the ballot
@@ -171,7 +172,7 @@ func TestBallotQueue_MarkBallotDoneAndPullVerified(t *testing.T) {
 	defer stg.Close()
 
 	pid := testutil.RandomProcessID()
-	id1 := []byte("id1")
+	id1 := testutil.RandomVoteID()
 	ensureProcess(t, stg, pid)
 
 	c.Assert(stg.PushPendingBallot(mkBallot(pid, id1)), qt.IsNil)
@@ -197,7 +198,7 @@ func TestBallotQueue_MarkBallotDoneAndPullVerified(t *testing.T) {
 	c.Assert(len(vbs), qt.Equals, 1)
 	c.Assert(len(keys), qt.Equals, 1)
 	c.Assert(vbs[0].ProcessID.Bytes(), qt.DeepEquals, pid.Bytes())
-	c.Assert([]byte(vbs[0].VoteID), qt.DeepEquals, id1)
+	c.Assert(vbs[0].VoteID, qt.DeepEquals, id1)
 
 	// status should be verified
 	status, err := stg.VoteIDStatus(pid, id1)
@@ -216,7 +217,11 @@ func TestBallotQueue_PullVerifiedBallots_ReservationsAndLimits(t *testing.T) {
 	defer stg.Close()
 
 	pid := testutil.RandomProcessID()
-	ids := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
+	ids := []types.VoteID{
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+	}
 	ensureProcess(t, stg, pid)
 
 	// create 3 verified ballots via Push + Next + MarkDone
@@ -254,15 +259,15 @@ func TestBallotQueue_RemoveVerifiedBallotsByProcess(t *testing.T) {
 	ensureProcess(t, stg, pid2)
 
 	// create verified for pid1 and pid2
-	for i := range 2 {
-		id := []byte(fmt.Sprintf("a%d", i))
+	for range 2 {
+		id := testutil.RandomVoteID()
 		c.Assert(stg.PushPendingBallot(mkBallot(pid1, id)), qt.IsNil)
 		_, key, err := stg.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
 		c.Assert(stg.MarkBallotVerified(key, mkVerifiedBallot(pid1, id)), qt.IsNil)
 	}
-	for i := range 1 {
-		id := []byte(fmt.Sprintf("b%d", i))
+	for range 1 {
+		id := testutil.RandomVoteID()
 		c.Assert(stg.PushPendingBallot(mkBallot(pid2, id)), qt.IsNil)
 		_, key, err := stg.NextPendingBallot()
 		c.Assert(err, qt.IsNil)
@@ -286,7 +291,10 @@ func TestBallotQueue_MarkVerifiedBallotsFailed(t *testing.T) {
 	defer stg.Close()
 
 	pid := testutil.RandomProcessID()
-	ids := [][]byte{[]byte("a"), []byte("b")}
+	ids := []types.VoteID{
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+	}
 	ensureProcess(t, stg, pid)
 
 	// create verified ballots

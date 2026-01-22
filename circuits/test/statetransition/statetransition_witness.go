@@ -94,7 +94,7 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 			ballotMode,
 			encryptionKey,
 			v.Address.Bytes(),
-			v.VoteID.BigInt(),
+			v.VoteID,
 			v.Ballot,
 			types.BigIntConverter(v.Weight),
 		)

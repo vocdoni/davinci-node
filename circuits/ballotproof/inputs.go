@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 )
@@ -34,23 +33,22 @@ type BallotProofInputs struct {
 // invalid or something goes wrong during the generation of the ID. It calls
 // the VoteID function with the process ID, address and k value converted to
 // the appropriate types.
-func (b *BallotProofInputs) VoteID() (*types.BigInt, error) {
+func (b *BallotProofInputs) VoteID() (types.VoteID, error) {
 	if b == nil {
-		return nil, fmt.Errorf("ballot proof inputs cannot be nil")
+		return 0, fmt.Errorf("ballot proof inputs cannot be nil")
 	}
-	return circuits.VoteID(b.ProcessID, common.BytesToAddress(b.Address), b.K)
-}
-
-// VoteIDForSign returns the vote ID in a format suitable for signing and
-// verify the signature inside the circuit. It pads the vote ID to ensure it
-// is of the correct length for signing.
-func (b *BallotProofInputs) VoteIDForSign() (types.HexBytes, error) {
-	voteID, err := b.VoteID()
+	if !b.ProcessID.IsValid() {
+		return 0, fmt.Errorf("a valid processID is required")
+	}
+	voteID, err := spec.VoteID(
+		b.ProcessID.MathBigInt(),
+		b.Address.BigInt().MathBigInt(),
+		b.K.MathBigInt(),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("error generating vote ID: %v", err.Error())
+		return 0, err
 	}
-	// return crypto.BigIntToFFToSign(voteID.MathBigInt(), params.VoteVerifierCurve.ScalarField()), nil
-	return crypto.PadToSign(voteID.Bytes()), err
+	return types.VoteID(voteID), nil
 }
 
 // BallotInputsHash helper function calculates the hash of the public inputs
@@ -68,7 +66,7 @@ func BallotInputsHashGnark(
 	ballotMode *types.BallotMode,
 	encryptionKey ecc.Point,
 	address types.HexBytes,
-	voteID *types.BigInt,
+	voteID types.VoteID,
 	ballot *elgamal.Ballot,
 	weight *types.BigInt,
 ) (*types.BigInt, error) {
@@ -93,7 +91,7 @@ func BallotInputsHashGnark(
 		encryptionKeyXTE,       // encryption key x coordinate
 		encryptionKeyYTE,       // encryption key y coordinate
 		ffAddress.MathBigInt(), // address
-		voteID.MathBigInt(),    // vote ID
+		voteID.BigInt(),        // vote ID
 	)
 	// ballot (in twisted edwards form)
 	inputsHash = append(inputsHash, ballot.FromRTEtoTE().BigInts()...)
@@ -112,7 +110,7 @@ func BallotInputsHashIden3(
 	ballotMode *types.BallotMode,
 	encryptionKey ecc.Point,
 	address types.HexBytes,
-	voteID *types.BigInt,
+	voteID types.VoteID,
 	ballot *elgamal.Ballot, // Expected to be in RTE format (snarkjs and circom output)
 	weight *types.BigInt,
 ) (*types.BigInt, error) {
@@ -140,7 +138,7 @@ func BallotInputsHashIden3(
 		encryptionKeyXTE,       // encryption key x (TE - no conversion)
 		encryptionKeyYTE,       // encryption key y (TE - no conversion)
 		ffAddress.MathBigInt(), // address
-		voteID.MathBigInt(),    // vote ID
+		voteID.BigInt(),        // vote ID
 	)
 	// ballot (from reduced twisted edwards to twisted edwards form)
 	inputsHash = append(inputsHash, ballot.BigInts()...)
@@ -198,10 +196,6 @@ func GenerateBallotProofInputs(
 	if err != nil {
 		return nil, fmt.Errorf("error generating vote ID: %w", err)
 	}
-	voteIDForSign, err := inputs.VoteIDForSign()
-	if err != nil {
-		return nil, fmt.Errorf("error generating vote ID for sign: %w", err)
-	}
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := BallotInputsHashGnark(
 		inputs.ProcessID,
@@ -221,7 +215,7 @@ func GenerateBallotProofInputs(
 		Weight:           inputs.Weight,
 		Ballot:           ballot.FromRTEtoTE(),
 		BallotInputsHash: ballotInputsHash,
-		VoteID:           voteIDForSign,
+		VoteID:           voteID,
 		CircomInputs: &CircomInputs{
 			Fields:         circuits.BigIntArrayToNInternal(fields[:], params.FieldsPerBallot),
 			NumFields:      new(types.BigInt).SetBigInt(ballotMode.NumFields),
@@ -235,7 +229,7 @@ func GenerateBallotProofInputs(
 			Address:        inputs.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField()),
 			Weight:         inputs.Weight,
 			ProcessID:      inputs.ProcessID.BigInt().ToFF(params.BallotProofCurve.ScalarField()),
-			VoteID:         voteID,
+			VoteID:         new(types.BigInt).SetBigInt(voteID.BigInt()),
 			EncryptionKey:  types.SliceOf([]*big.Int{circomEncryptionKeyX, circomEncryptionKeyY}, types.BigIntConverter),
 			K:              inputs.K,
 			Cipherfields:   circuits.BigIntArrayToNInternal(ballot.FromRTEtoTE().BigInts(), params.FieldsPerBallot*elgamal.BigIntsPerCiphertext),

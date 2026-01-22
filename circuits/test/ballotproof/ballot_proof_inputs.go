@@ -13,6 +13,7 @@ import (
 	"github.com/iden3/go-rapidsnark/prover"
 	"github.com/iden3/go-rapidsnark/witness"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
+	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
@@ -43,8 +44,8 @@ func GenDeterministicECDSAaccountForTest(index int) (*ethereum.Signer, error) {
 
 // SignECDSAForTest signs the data with the private key provided and returns the R and
 // S values of the signature.
-func SignECDSAForTest(privKey *ethereum.Signer, data []byte) (*ethereum.ECDSASignature, error) {
-	return privKey.Sign(data)
+func SignECDSAForTest(privKey *ethereum.Signer, voteID types.VoteID) (*ethereum.ECDSASignature, error) {
+	return privKey.Sign(crypto.PadToSign(voteID.Bytes()))
 }
 
 // GenDeterministicEncryptionKeyForTest generates a deterministic encryption key
@@ -151,7 +152,7 @@ type BallotProofResult struct {
 	Proof      string
 	PubInputs  string
 	InputsHash *big.Int
-	VoteID     types.HexBytes
+	VoteID     types.VoteID
 }
 
 // BallotProofForTestDeterministic function returns the information after proving a valid

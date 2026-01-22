@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/vocdoni/arbo"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // ArboProof stores the proof in arbo native types
@@ -18,8 +19,8 @@ type ArboProof struct {
 }
 
 // GenArboProof generates a ArboProof for the given key
-func (o *State) GenArboProof(k *big.Int) (*ArboProof, error) {
-	proof, err := o.tree.GenerateGnarkVerifierProofBigInt(k)
+func (o *State) GenArboProof(key types.StateKey) (*ArboProof, error) {
+	proof, err := o.tree.GenerateGnarkVerifierProofBigInt(key.BigInt()) // TODO: refactor arbo to use uint64 instead
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +34,8 @@ func (o *State) GenArboProof(k *big.Int) (*ArboProof, error) {
 
 // ArboProofsFromAddOrUpdate generates an ArboProof before adding (or updating) the given leaf,
 // and another ArboProof after updating, and returns both.
-func (o *State) ArboProofsFromAddOrUpdate(k *big.Int, v []*big.Int) (*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error) {
+func (o *State) ArboProofsFromAddOrUpdate(key types.StateKey, v []*big.Int) (*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error) {
+	k := key.BigInt() // TODO: refactor arbo to use uint64 instead
 	mpBefore, err := o.tree.GenerateGnarkVerifierProofBigInt(k)
 	if err != nil {
 		return nil, nil, err
@@ -120,7 +122,7 @@ func ArboTransitionFromArboProofPair(before, after *arbo.GnarkVerifierProof) *Ar
 
 // ArboTransitionFromAddOrUpdate adds or updates a key in the tree,
 // and returns a ArboTransition.
-func ArboTransitionFromAddOrUpdate(o *State, k *big.Int, v ...*big.Int) (*ArboTransition, error) {
+func ArboTransitionFromAddOrUpdate(o *State, k types.StateKey, v ...*big.Int) (*ArboTransition, error) {
 	mpBefore, mpAfter, err := o.ArboProofsFromAddOrUpdate(k, v)
 	if err != nil {
 		return &ArboTransition{}, err

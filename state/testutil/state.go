@@ -64,7 +64,7 @@ func NewVoteForTest(publicKey ecc.Point, index uint64, value int) *state.Vote {
 	}
 	return &state.Vote{
 		Address:           testutil.DeterministicAddress(index).Big(),
-		VoteID:            testutil.RandomVoteID().Bytes(),
+		VoteID:            testutil.RandomVoteID(),
 		Ballot:            ballot,
 		ReencryptedBallot: reencryptedBallot,
 		Weight:            big.NewInt(testutil.Weight),

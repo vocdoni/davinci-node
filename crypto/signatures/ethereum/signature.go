@@ -126,7 +126,15 @@ func (sig *ECDSASignature) VerifyBLS12377(signedInput *big.Int, expectedAddress 
 	return sig.Verify(ffInput, expectedAddress)
 }
 
-// Verify checks if the signature is valid for the given input and public key.
+// VerifyVoteID checks if the signature is valid for the given voteID.
+// This method also checks that the public key matches the passed expectedAddress
+func (sig *ECDSASignature) VerifyVoteID(voteID types.VoteID, expectedAddress common.Address) (bool, []byte) {
+	return sig.Verify(crypto.PadToSign(voteID.Bytes()), expectedAddress)
+}
+
+// Verify checks that `sig` is a valid signature of `signedInput` produced by `expectedAddress`,
+// by recovering the public key from (signedInput, sig) and comparing its derived address.
+// It returns the recovered public key.
 func (sig *ECDSASignature) Verify(signedInput []byte, expectedAddress common.Address) (bool, []byte) {
 	if !sig.Valid() {
 		return false, nil

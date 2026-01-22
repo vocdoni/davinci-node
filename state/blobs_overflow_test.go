@@ -38,14 +38,14 @@ func TestBuildKZGCommitmentOverflow(t *testing.T) {
 	for i := 0; i < maxVotes+1; i++ {
 		votes = append(votes, &Vote{
 			Address:           big.NewInt(int64(i + 1)),
-			VoteID:            testutil.RandomVoteID().Bytes(),
+			VoteID:            testutil.RandomVoteID(),
 			Ballot:            elgamal.NewBallot(Curve),
 			ReencryptedBallot: elgamal.NewBallot(Curve),
 			Weight:            big.NewInt(1),
 		})
 	}
 
-	err = st.StartBatch()
+	err = st.startBatch()
 	c.Assert(err, qt.IsNil)
 	st.votes = votes
 

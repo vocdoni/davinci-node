@@ -10,16 +10,13 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	tweds "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/math/emulated"
-	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
-	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	gnark_poseidon "github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -29,17 +26,6 @@ import (
 const (
 	BallotModeSerializedLen    = 8
 	EncryptionKeySerializedLen = 2
-
-	KeyProcessID     = 0x00
-	KeyBallotMode    = 0x02
-	KeyEncryptionKey = 0x03
-	KeyResultsAdd    = 0x04
-	KeyResultsSub    = 0x05
-	KeyCensusOrigin  = 0x06
-
-	// ReservedKeysOffset is used to prevent collisions in edge cases
-	// where a VoteID or Address is near zero (e.g. in badly designed tests)
-	ReservedKeysOffset = 0x10
 )
 
 // Poseidon377Domain is the domain used for Poseidon377 hashing
@@ -664,30 +650,4 @@ func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.
 		panic(err)
 	}
 	return elem
-}
-
-// VoteID calculates the vote ID, which is the poseidon hash of:
-// the process ID, voter's address and a secret value k.
-// This is truncated to the least significant 64 bits.
-// The vote ID is used to identify a vote in the system. The
-// function transforms the inputs to safe values of ballot proof curve scalar
-// field, then hashes them using iden3 poseidon. The resulting vote ID is a hex byte
-// array. If something goes wrong during the hashing process, it returns an
-// error.
-func VoteID(processID types.ProcessID, address common.Address, k *types.BigInt) (*types.BigInt, error) {
-	if !processID.IsValid() || address.Cmp(common.Address{}) == 0 || k == nil {
-		return nil, fmt.Errorf("a valid processID, address and k is required")
-	}
-	// encode the process ID and address to hex bytes
-	hexAddress := types.HexBytes(address.Bytes())
-	// safe address, processID and k
-	ffAddress := hexAddress.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ffK := k.ToFF(params.BallotProofCurve.ScalarField())
-	// calculate the vote ID hash using poseidon
-	hash, err := poseidon.MultiPoseidon(ffProcessID.MathBigInt(), ffAddress.MathBigInt(), ffK.MathBigInt())
-	if err != nil {
-		return nil, fmt.Errorf("error hashing vote ID inputs: %v", err.Error())
-	}
-	return new(types.BigInt).SetBigInt(util.TruncateToLowerBits(hash, params.VoteIDLen*8)), nil
 }

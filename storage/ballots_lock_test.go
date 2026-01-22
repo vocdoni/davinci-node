@@ -6,7 +6,6 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/internal/testutil"
-	"github.com/vocdoni/davinci-node/types"
 )
 
 // TestVoteIDLockRelease verifies that vote ID locks are properly released
@@ -18,15 +17,15 @@ func TestVoteIDLockRelease(t *testing.T) {
 
 	pid := testutil.RandomProcessID()
 	address := []byte("address1")
-	voteID1 := []byte("voteID1")
-	voteID2 := []byte("voteID2")
+	voteID1 := testutil.RandomVoteID()
+	voteID2 := testutil.RandomVoteID()
 
 	ensureProcess(t, stg, pid)
 
 	// Create first ballot from address1 with voteID1
 	ballot1 := &Ballot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(voteID1),
+		VoteID:    voteID1,
 		Address:   new(big.Int).SetBytes(address),
 	}
 
@@ -35,7 +34,7 @@ func TestVoteIDLockRelease(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Verify vote ID is locked
-	c.Assert(stg.IsVoteIDProcessing(ballot1.VoteID.BigInt().MathBigInt()), qt.IsTrue)
+	c.Assert(stg.IsVoteIDProcessing(ballot1.VoteID), qt.IsTrue)
 
 	// Try to push same vote ID again - should fail with ErrNullifierProcessing
 	err = stg.PushPendingBallot(ballot1)
@@ -48,14 +47,14 @@ func TestVoteIDLockRelease(t *testing.T) {
 	// Mark as verified
 	verifiedBallot1 := &VerifiedBallot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(voteID1),
+		VoteID:    voteID1,
 		Address:   new(big.Int).SetBytes(address),
 	}
 	err = stg.MarkBallotVerified(key, verifiedBallot1)
 	c.Assert(err, qt.IsNil)
 
 	// Vote ID should still be locked (in verified queue)
-	c.Assert(stg.IsVoteIDProcessing(ballot1.VoteID.BigInt().MathBigInt()), qt.IsTrue)
+	c.Assert(stg.IsVoteIDProcessing(ballot1.VoteID), qt.IsTrue)
 
 	// Pull verified ballot
 	vbs, keys, err := stg.PullVerifiedBallots(pid, 1)
@@ -67,13 +66,13 @@ func TestVoteIDLockRelease(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Vote ID lock should now be released
-	c.Assert(stg.IsVoteIDProcessing(ballot1.VoteID.BigInt().MathBigInt()), qt.IsFalse,
+	c.Assert(stg.IsVoteIDProcessing(ballot1.VoteID), qt.IsFalse,
 		qt.Commentf("Vote ID lock should be released after successful aggregation"))
 
 	// Now user should be able to submit a new vote (overwrite) with different vote ID
 	ballot2 := &Ballot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(voteID2),
+		VoteID:    voteID2,
 		Address:   new(big.Int).SetBytes(address), // Same address
 	}
 
@@ -82,7 +81,7 @@ func TestVoteIDLockRelease(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("Should allow overwrite with new vote ID after first vote is aggregated"))
 
 	// Verify second vote ID is now locked
-	c.Assert(stg.IsVoteIDProcessing(ballot2.VoteID.BigInt().MathBigInt()), qt.IsTrue)
+	c.Assert(stg.IsVoteIDProcessing(ballot2.VoteID), qt.IsTrue)
 }
 
 // TestVoteIDLockReleaseOnFailure verifies that vote ID locks are released
@@ -93,7 +92,7 @@ func TestVoteIDLockReleaseOnFailure(t *testing.T) {
 	defer stg.Close()
 
 	pid := testutil.RandomProcessID()
-	voteID := []byte("voteID1")
+	voteID := testutil.RandomVoteID()
 
 	ensureProcess(t, stg, pid)
 
@@ -104,7 +103,7 @@ func TestVoteIDLockReleaseOnFailure(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Verify vote ID is locked
-	c.Assert(stg.IsVoteIDProcessing(ballot.VoteID.BigInt().MathBigInt()), qt.IsTrue)
+	c.Assert(stg.IsVoteIDProcessing(ballot.VoteID), qt.IsTrue)
 
 	// Process through to verified
 	_, key, err := stg.NextPendingBallot()
@@ -123,7 +122,7 @@ func TestVoteIDLockReleaseOnFailure(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Vote ID lock should be released on failure
-	c.Assert(stg.IsVoteIDProcessing(ballot.VoteID.BigInt().MathBigInt()), qt.IsFalse,
+	c.Assert(stg.IsVoteIDProcessing(ballot.VoteID), qt.IsFalse,
 		qt.Commentf("Vote ID lock should be released after failure"))
 }
 
@@ -136,20 +135,20 @@ func TestNoDuplicateAddressesInBatch(t *testing.T) {
 
 	pid := testutil.RandomProcessID()
 	address := []byte("address1")
-	voteID1 := []byte("voteID1")
-	voteID2 := []byte("voteID2")
+	voteID1 := testutil.RandomVoteID()
+	voteID2 := testutil.RandomVoteID()
 
 	ensureProcess(t, stg, pid)
 
 	// Create two ballots from same address with different vote IDs
 	ballot1 := &Ballot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(voteID1),
+		VoteID:    voteID1,
 		Address:   new(big.Int).SetBytes(address),
 	}
 	ballot2 := &Ballot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(voteID2),
+		VoteID:    voteID2,
 		Address:   new(big.Int).SetBytes(address), // Same address
 	}
 
@@ -167,7 +166,7 @@ func TestNoDuplicateAddressesInBatch(t *testing.T) {
 
 	verifiedBallot := &VerifiedBallot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(voteID1),
+		VoteID:    voteID1,
 		Address:   new(big.Int).SetBytes(address),
 	}
 	c.Assert(stg.MarkBallotVerified(key, verifiedBallot), qt.IsNil)
@@ -183,7 +182,7 @@ func TestNoDuplicateAddressesInBatch(t *testing.T) {
 	// may have left some state
 	ballot2Fresh := &Ballot{
 		ProcessID: pid,
-		VoteID:    types.HexBytes(voteID2),
+		VoteID:    voteID2,
 		Address:   new(big.Int).SetBytes(address),
 	}
 	c.Assert(stg.PushPendingBallot(ballot2Fresh), qt.IsNil,
@@ -203,11 +202,11 @@ func TestMultipleOverwrites(t *testing.T) {
 
 	// Simulate 3 overwrites from the same address
 	for i := 1; i <= 3; i++ {
-		voteID := []byte{byte(i)}
+		voteID := testutil.RandomVoteID()
 
 		ballot := &Ballot{
 			ProcessID: pid,
-			VoteID:    types.HexBytes(voteID),
+			VoteID:    voteID,
 			Address:   new(big.Int).SetBytes(address),
 		}
 
@@ -221,7 +220,7 @@ func TestMultipleOverwrites(t *testing.T) {
 
 		verifiedBallot := &VerifiedBallot{
 			ProcessID: pid,
-			VoteID:    types.HexBytes(voteID),
+			VoteID:    voteID,
 			Address:   new(big.Int).SetBytes(address),
 		}
 		c.Assert(stg.MarkBallotVerified(key, verifiedBallot), qt.IsNil)
@@ -232,7 +231,7 @@ func TestMultipleOverwrites(t *testing.T) {
 		c.Assert(stg.MarkVerifiedBallotsDone(keys...), qt.IsNil)
 
 		// Verify lock is released
-		c.Assert(stg.IsVoteIDProcessing(ballot.VoteID.BigInt().MathBigInt()), qt.IsFalse,
+		c.Assert(stg.IsVoteIDProcessing(ballot.VoteID), qt.IsFalse,
 			qt.Commentf("Vote ID lock should be released after overwrite %d", i))
 	}
 }
