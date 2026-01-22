@@ -76,10 +76,3 @@ func PrettyHex(v frontend.Variable) string {
 		return fmt.Sprintf("(%v)=%+v", reflect.TypeOf(v), v)
 	}
 }
-
-// TruncateToLowerBits returns a big.Int truncated to the least-significant `bits`.
-func TruncateToLowerBits(input *big.Int, bits uint) *big.Int {
-	mask := new(big.Int).Lsh(big.NewInt(1), bits) // 1 << bits
-	mask.Sub(mask, big.NewInt(1))                 // (1 << bits) - 1
-	return new(big.Int).And(input, mask)          // input & ((1 << bits) - 1)
-}

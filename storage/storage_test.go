@@ -2,7 +2,6 @@ package storage
 
 import (
 	"bytes"
-	"fmt"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -12,21 +11,42 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	spechash "github.com/vocdoni/davinci-node/spec/hash"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// createTestProcess creates a standard test process with the given process ID
-func createTestProcess(pid types.ProcessID) *types.Process {
-	return &types.Process{
-		ID:             &pid,
-		Status:         0,
-		StartTime:      time.Now(),
-		Duration:       time.Hour,
-		MetadataURI:    "http://example.com/metadata",
-		StateRoot:      testutil.StateRoot(),
-		SequencerStats: types.SequencerProcessStats{},
-		BallotMode:     testutil.BallotModeInternal(),
-		Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
+func ensureProcess(t *testing.T, stg *Storage, pid types.ProcessID) {
+	t.Helper()
+	censusRoot := make([]byte, types.CensusRootLength)
+	encryptionKey := testutil.RandomEncryptionPubKey()
+	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
+	stateRoot, err := spechash.StateRoot(
+		pid.ToFF(params.StateTransitionCurve.ScalarField()).MathBigInt(),
+		censusOrigin.BigInt().MathBigInt(),
+		encryptionKey.X.MathBigInt(),
+		encryptionKey.Y.MathBigInt(),
+		testutil.BallotModePacked(),
+	)
+	if err != nil {
+		t.Fatalf("spechash.StateRoot(%x): %v", pid.Bytes(), err)
+	}
+	proc := &types.Process{
+		ID:            &pid,
+		Status:        types.ProcessStatusReady,
+		StartTime:     time.Now(),
+		Duration:      time.Hour,
+		MetadataURI:   "http://example.com/metadata",
+		BallotMode:    testutil.BallotMode(),
+		EncryptionKey: &encryptionKey,
+		StateRoot:     types.BigIntConverter(stateRoot),
+		Census: &types.Census{
+			CensusOrigin: censusOrigin,
+			CensusRoot:   types.HexBytes(censusRoot),
+		},
+	}
+	if err := stg.NewProcess(proc); err != nil {
+		t.Fatalf("NewProcess(%x): %v", pid.Bytes(), err)
 	}
 }
 
@@ -44,8 +64,7 @@ func TestBallotQueue(t *testing.T) {
 	processID := testutil.DeterministicProcessID(1)
 
 	// Create the process first
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Scenario: No ballots initially
 	c.Assert(st.CountPendingBallots(), qt.Equals, 0, qt.Commentf("no pending ballots expected initially"))
@@ -56,12 +75,12 @@ func TestBallotQueue(t *testing.T) {
 	ballot1 := &Ballot{
 		ProcessID: processID,
 		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{1}, 20)),
-		VoteID:    fmt.Append(nil, "vote1"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 	ballot2 := &Ballot{
 		ProcessID: processID,
 		Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{2}, 20)),
-		VoteID:    fmt.Append(nil, "vote2"),
+		VoteID:    testutil.RandomVoteID(),
 	}
 
 	// Push the ballots
@@ -163,8 +182,7 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(err, qt.Equals, ErrNoMoreElements, qt.Commentf("no more ballots expected"))
 
 	// Additional scenario: MarkBallotDone on a non-existent/reserved key
-	nonExistentKey := []byte("fakekey")
-	err = st.MarkBallotVerified(nonExistentKey, verified1)
+	err = st.MarkBallotVerified(testutil.RandomVoteID(), verified1)
 	c.Assert(err, qt.IsNil)
 
 	// Additional scenario: no verified ballots if none processed
@@ -191,15 +209,14 @@ func TestPullVerifiedBallotsReservation(t *testing.T) {
 	processID := testutil.RandomProcessID()
 
 	// Create the process first
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Create 5 ballots with fixed data for deterministic testing
 	for i := range 5 {
 		ballot := &Ballot{
 			ProcessID: processID,
 			Address:   new(big.Int).SetBytes(bytes.Repeat([]byte{byte(i + 1)}, 20)),
-			VoteID:    fmt.Appendf(nil, "vote%d", i+1),
+			VoteID:    testutil.RandomVoteID(),
 		}
 		c.Assert(st.PushPendingBallot(ballot), qt.IsNil)
 	}
@@ -302,8 +319,7 @@ func TestBallotBatchQueue(t *testing.T) {
 	processID := testutil.RandomProcessID()
 
 	// Create the process first
-	err = st.NewProcess(createTestProcess(processID))
-	c.Assert(err, qt.IsNil)
+	ensureProcess(t, st, processID)
 
 	// Test 1: Empty state
 	_, _, err = st.NextAggregatorBatch(processID)

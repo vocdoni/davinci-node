@@ -3,8 +3,8 @@ package helpers
 import (
 	"fmt"
 
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/web3"
 )
 

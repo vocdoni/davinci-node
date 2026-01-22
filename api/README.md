@@ -372,13 +372,13 @@ Register a new vote for a voting process.
 - 40020: Process is not accepting votes
 - 50002: Internal server error
 
-#### GET /votes/{processId}/address/{address}
+#### GET /votes/{processId}/ballot/{ballotIndex}
 
-Gets a vote by its address for a specific process.
+Gets an encrypted ballot by its index for a specific process.
 
 **URL Parameters**:
 - processId: Process ID in hexadecimal format
-- address: address value as a hexdecimal string
+- ballotIndex: ballot index value as a hexadecimal string
 
 **Response Body**:
 Returns the encrypted ballot if found.
@@ -386,7 +386,7 @@ Returns the encrypted ballot if found.
 **Errors**:
 - 40001: Resource not found
 - 40006: Malformed process ID
-- 40017: Malformed address
+- 40015: Malformed parameter (`ballotIndex`)
 - 40007: Process not found
 - 50002: Internal server error
 

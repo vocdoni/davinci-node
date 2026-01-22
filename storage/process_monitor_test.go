@@ -29,16 +29,10 @@ func TestMonitorEndedProcesses(t *testing.T) {
 	pastTime := time.Now().Add(-2 * time.Hour) // Started 2 hours ago
 	shortDuration := 1 * time.Hour             // Should have ended 1 hour ago
 
-	process := &types.Process{
-		ID:          &processID,
-		Status:      types.ProcessStatusReady, // Still ready, should be ended
-		StartTime:   pastTime,
-		Duration:    shortDuration,
-		MetadataURI: "http://example.com/metadata",
-		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
-		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
-	}
+	process := testutil.RandomProcess(processID)
+	process.Status = types.ProcessStatusReady // Still ready, should be ended
+	process.StartTime = pastTime
+	process.Duration = shortDuration
 
 	// Store the process
 	err = st.NewProcess(process)
@@ -75,16 +69,10 @@ func TestMonitorEndedProcessesNotYetEnded(t *testing.T) {
 	recentTime := time.Now().Add(-30 * time.Minute) // Started 30 minutes ago
 	longDuration := 2 * time.Hour                   // Should end in 1.5 hours
 
-	process := &types.Process{
-		ID:          &processID,
-		Status:      types.ProcessStatusReady,
-		StartTime:   recentTime,
-		Duration:    longDuration,
-		MetadataURI: "http://example.com/metadata",
-		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
-		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
-	}
+	process := testutil.RandomProcess(processID)
+	process.Status = types.ProcessStatusReady
+	process.StartTime = recentTime
+	process.Duration = longDuration
 
 	// Store the process
 	err = st.NewProcess(process)
@@ -121,16 +109,10 @@ func TestMonitorEndedProcessesSkipsAlreadyEnded(t *testing.T) {
 	pastTime := time.Now().Add(-2 * time.Hour)
 	shortDuration := 1 * time.Hour
 
-	process := &types.Process{
-		ID:          &processID,
-		Status:      types.ProcessStatusEnded, // Already ended
-		StartTime:   pastTime,
-		Duration:    shortDuration,
-		MetadataURI: "http://example.com/metadata",
-		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
-		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
-	}
+	process := testutil.RandomProcess(processID)
+	process.Status = types.ProcessStatusEnded // Already ended
+	process.StartTime = pastTime
+	process.Duration = shortDuration
 
 	// Store the process
 	err = st.NewProcess(process)

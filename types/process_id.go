@@ -123,10 +123,11 @@ func (p *ProcessID) UnmarshalJSON(data []byte) error {
 
 // ToFF returns the finite field representation of the ProcessID.
 // It uses the curve scalar field to represent the ProcessID.
-func (p *ProcessID) ToFF(baseField *big.Int) ProcessID {
-	bi := crypto.BigToFF(baseField, p.MathBigInt())
-	bi.FillBytes(p[:])
-	return *p
+func (p *ProcessID) ToFF(field *big.Int) ProcessID {
+	bi := crypto.BigToFF(field, p.MathBigInt())
+	var processID ProcessID
+	bi.FillBytes(processID[:])
+	return processID
 }
 
 // ProcessIDVersion computes the version for a ProcessID. It is defined as the

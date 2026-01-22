@@ -26,5 +26,5 @@ type VoteVerifierTestResults struct {
 	CensusOrigin     types.CensusOrigin
 	CensusRoot       *big.Int
 	Ballots          []elgamal.Ballot
-	VoteIDs          []types.HexBytes
+	VoteIDs          []types.VoteID
 }

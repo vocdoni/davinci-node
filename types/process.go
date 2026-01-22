@@ -3,10 +3,12 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/spec"
 )
 
 type ProcessStatus uint8
@@ -165,7 +167,7 @@ type Process struct {
 	StartTime             time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
 	Duration              time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
 	MetadataURI           string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
-	BallotMode            *BallotMode           `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
+	BallotMode            spec.BallotMode       `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
 	Census                *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
 	Metadata              *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
 	VotersCount           *BigInt               `json:"votersCount"        cbor:"12,keyasint,omitempty"`
@@ -219,6 +221,10 @@ func EncryptionKeyFromPoint(publicKey ecc.Point) EncryptionKey {
 		X: BigIntConverter(x),
 		Y: BigIntConverter(y),
 	}
+}
+
+func (k EncryptionKey) BigInts() []*big.Int {
+	return []*big.Int{k.X.MathBigInt(), k.Y.MathBigInt()}
 }
 
 type OrganizationInfo struct {

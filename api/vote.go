@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,11 +15,10 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -34,7 +32,7 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	voteID, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, VoteIDURLParam)))
+	voteID, err := types.HexStringToVoteID(chi.URLParam(r, VoteIDURLParam))
 	if err != nil {
 		ErrMalformedBody.Withf("could not decode vote ID: %v", err).Write(w)
 		return
@@ -57,10 +55,10 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	httpWriteJSON(w, response)
 }
 
-// voteByAddress retrieves an encrypted ballot by its address for a given
+// ballotByIndex retrieves an encrypted ballot by its index for a given
 // processID
-// GET /votes/{processId}/address/{address}
-func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
+// GET /votes/{processId}/ballot/{ballotIndex}
+func (a *API) ballotByIndex(w http.ResponseWriter, r *http.Request) {
 	// Get the processID
 	processID, err := types.HexStringToProcessID(chi.URLParam(r, ProcessURLParam))
 	if err != nil {
@@ -68,10 +66,10 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the address
-	address, err := types.HexStringToHexBytes(chi.URLParam(r, AddressURLParam))
+	// Get the ballotIndex
+	ballotIndex, err := types.HexStringToBallotIndex(chi.URLParam(r, BallotIndexURLParam))
 	if err != nil {
-		ErrMalformedAddress.Write(w)
+		ErrMalformedParam.With("ballotIndex").Write(w)
 		return
 	}
 
@@ -87,8 +85,8 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Get the ballot by address
-	ballot, err := s.EncryptedBallot(address.BigInt().MathBigInt())
+	// Get the ballot by index
+	ballot, err := s.EncryptedBallot(ballotIndex)
 	if err != nil {
 		if errors.Is(err, state.ErrKeyNotFound) {
 			ErrResourceNotFound.Write(w)
@@ -166,7 +164,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// check if the address has already voted, to determine if the vote is an
 	// overwrite or a new vote, if so check if the process has reached max
 	// voters
-	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), *process.ID, vote.Address.BigInt())
+	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), *process.ID, types.CalculateBallotIndex(vote.Address.BigInt().MathBigInt(), types.IndexTODO))
 	if err != nil {
 		ErrGenericInternalServerError.Withf("error checking if address has voted: %v", err).Write(w)
 		return
@@ -219,7 +217,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		process.BallotMode,
 		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
 		vote.Address,
-		vote.VoteID.BigInt(),
+		vote.VoteID,
 		vote.Ballot,
 		voterWeight,
 	)
@@ -239,7 +237,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	// convert the circom proof to gnark proof and verify it
 	ballotProofAddress := vote.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ballotProofVoteID := vote.VoteID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ballotProofVoteID := vote.VoteID.BigInt() // ToFF unneeded since VoteID is a uint64
 	proof, err := circomgnark.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
@@ -259,7 +257,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not decode signature: %v", err).Write(w)
 		return
 	}
-	signatureOk, pubkey := signature.Verify(vote.VoteID, common.BytesToAddress(vote.Address))
+	signatureOk, pubkey := signature.VerifyVoteID(vote.VoteID, common.BytesToAddress(vote.Address))
 	if !signatureOk {
 		ErrInvalidSignature.Write(w)
 		return

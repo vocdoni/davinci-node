@@ -1,31 +1,23 @@
 package testutil
 
 import (
+	"encoding/binary"
+	"fmt"
 	"math/big"
 	"math/rand/v2"
+	"time"
 
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
-	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/babyjub"
-	"github.com/vocdoni/davinci-node/circuits"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
+	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
+	spectestutil "github.com/vocdoni/davinci-node/spec/testutil"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
-)
-
-const (
-	numFields      = 5
-	uniqueValues   = 0
-	maxValue       = 16
-	minValue       = 0
-	maxValueSum    = 1280 // (maxValue ^ costExponent) * numFields
-	minValueSum    = numFields
-	costExponent   = 2
-	costFromWeight = 0
 )
 
 const (
@@ -61,7 +53,7 @@ func RandomCensusRoot() *big.Int {
 	return new(big.Int).SetBytes(util.RandomBytes(16))
 }
 
-func StateRoot() *types.BigInt {
+func FixedStateRoot() *types.BigInt {
 	bi, ok := new(big.Int).SetString("6980206406614621291864198316968348419717519918519760483937482600927519745732", 10)
 	if !ok {
 		panic("bad const in TestStateRoot")
@@ -78,29 +70,40 @@ func RandomStateRoot() *types.BigInt {
 }
 
 func DeterministicAddress(n uint64) common.Address {
-	if n < circuits.ReservedKeysOffset {
-		n += circuits.ReservedKeysOffset
-	}
-	return common.BigToAddress(new(big.Int).SetUint64(n))
+	var b [8]byte
+	binary.BigEndian.PutUint64(b[:], n)
+
+	prefix := []byte("deterministic-address:")
+	h := crypto.Keccak256(append(prefix, b[:]...))
+	return common.BytesToAddress(h[12:])
 }
 
 func RandomAddress() common.Address {
 	return DeterministicAddress(rand.Uint64())
 }
 
-func RandomVoteID() *big.Int {
-	k, err := circuits.RandK()
+func RandomVoteID() types.VoteID {
+	k, err := specutil.RandomK()
 	if err != nil {
 		panic(err)
 	}
-	voteID, err := circuits.VoteID(
-		RandomProcessID(),
-		RandomAddress(),
-		new(types.BigInt).SetBigInt(k))
+	voteID, err := spec.VoteID(
+		RandomProcessID().MathBigInt(),
+		RandomAddress().Big(),
+		k,
+	)
 	if err != nil {
 		panic(err)
 	}
-	return voteID.MathBigInt()
+	return types.VoteID(voteID)
+}
+
+func RandomVoteIDs(n int) []types.VoteID {
+	s := make([]types.VoteID, 0, n)
+	for range n {
+		s = append(s, RandomVoteID())
+	}
+	return s
 }
 
 func RandomCensus(origin types.CensusOrigin) *types.Census {
@@ -111,76 +114,58 @@ func RandomCensus(origin types.CensusOrigin) *types.Census {
 	}
 }
 
-func RandomEncryptionKeys() (babyjub.PrivateKey, circuits.EncryptionKey[*big.Int]) {
+func RandomEncryptionKeys() (babyjub.PrivateKey, types.EncryptionKey) {
 	privkey := babyjub.NewRandPrivKey()
 
 	x, y := format.FromTEtoRTE(privkey.Public().X, privkey.Public().Y)
 	ek := new(bjj.BJJ).SetPoint(x, y)
-	encKey := circuits.EncryptionKeyFromECCPoint(ek)
+	encKey := types.EncryptionKeyFromPoint(ek)
 
 	return privkey, encKey
 }
 
-func RandomEncryptionPubKey() circuits.EncryptionKey[*big.Int] {
+func RandomEncryptionPubKey() types.EncryptionKey {
 	_, encryptionKey := RandomEncryptionKeys()
 	return encryptionKey
 }
 
-func BallotMode() circuits.BallotMode[*big.Int] {
-	return circuits.BallotMode[*big.Int]{
-		NumFields:      big.NewInt(numFields),
-		UniqueValues:   big.NewInt(uniqueValues),
-		MaxValue:       big.NewInt(maxValue),
-		MinValue:       big.NewInt(minValue),
-		MaxValueSum:    big.NewInt(maxValueSum),
-		MinValueSum:    big.NewInt(minValueSum),
-		CostExponent:   big.NewInt(costExponent),
-		CostFromWeight: big.NewInt(costFromWeight),
+func RandomProcess(processID types.ProcessID) *types.Process {
+	ek := RandomEncryptionPubKey()
+	stateRoot, err := spec.StateRoot(processID.MathBigInt(),
+		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
+		ek.X.MathBigInt(), ek.Y.MathBigInt(), BallotModePacked())
+	if err != nil {
+		panic(fmt.Sprintf("stateroot: %v", err))
+	}
+	return &types.Process{
+		ID:            &processID,
+		Status:        types.ProcessStatusReady,
+		StartTime:     time.Now(),
+		Duration:      time.Hour,
+		MetadataURI:   "http://example.com/metadata",
+		EncryptionKey: &ek,
+		StateRoot:     types.BigIntConverter(stateRoot),
+		BallotMode:    BallotMode(),
+		Census:        RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 }
 
-func BallotModeVar() circuits.BallotMode[frontend.Variable] {
-	return circuits.BallotMode[frontend.Variable]{
-		NumFields:      numFields,
-		UniqueValues:   uniqueValues,
-		MaxValue:       maxValue,
-		MinValue:       minValue,
-		MaxValueSum:    maxValueSum,
-		MinValueSum:    minValueSum,
-		CostExponent:   costExponent,
-		CostFromWeight: costFromWeight,
+func BallotModePacked() *big.Int {
+	packed, err := BallotMode().Pack()
+	if err != nil {
+		panic(err)
 	}
+	return packed
 }
 
-func BallotModeEmulated() circuits.BallotMode[emulated.Element[sw_bn254.ScalarField]] {
-	return circuits.BallotMode[emulated.Element[sw_bn254.ScalarField]]{
-		NumFields:      emulated.ValueOf[sw_bn254.ScalarField](numFields),
-		UniqueValues:   emulated.ValueOf[sw_bn254.ScalarField](uniqueValues),
-		MaxValue:       emulated.ValueOf[sw_bn254.ScalarField](maxValue),
-		MinValue:       emulated.ValueOf[sw_bn254.ScalarField](minValue),
-		MaxValueSum:    emulated.ValueOf[sw_bn254.ScalarField](maxValueSum),
-		MinValueSum:    emulated.ValueOf[sw_bn254.ScalarField](minValueSum),
-		CostExponent:   emulated.ValueOf[sw_bn254.ScalarField](costExponent),
-		CostFromWeight: emulated.ValueOf[sw_bn254.ScalarField](costFromWeight),
-	}
-}
-
-func BallotModeInternal() *types.BallotMode {
-	return &types.BallotMode{
-		NumFields:      numFields,
-		UniqueValues:   uniqueValues == 1,
-		MaxValue:       new(types.BigInt).SetInt(maxValue),
-		MinValue:       new(types.BigInt).SetInt(minValue),
-		MaxValueSum:    new(types.BigInt).SetInt(maxValueSum),
-		MinValueSum:    new(types.BigInt).SetInt(minValueSum),
-		CostExponent:   costExponent,
-		CostFromWeight: costFromWeight == 1,
-	}
+func BallotMode() spec.BallotMode {
+	return spectestutil.FixedBallotMode()
 }
 
 // GenDeterministicBallotFields generates a list of n deterministic fields
 // based on the provided seed for consistent testing and caching.
 func GenDeterministicBallotFields(seed int64) [params.FieldsPerBallot]*types.BigInt {
+	bm := spectestutil.FixedBallotMode()
 	fields := [params.FieldsPerBallot]*types.BigInt{}
 	for i := range len(fields) {
 		fields[i] = types.NewInt(0)
@@ -188,15 +173,15 @@ func GenDeterministicBallotFields(seed int64) [params.FieldsPerBallot]*types.Big
 
 	// Use seed-based deterministic generation
 	stored := map[string]bool{}
-	for i := range numFields {
+	for i := range bm.NumFields {
 		for attempt := 0; ; attempt++ {
 			// Generate deterministic field based on seed, index, and attempt
-			fieldSeed := seed + int64(i*1000) + int64(attempt)
-			fieldValue := int64(minValue) + (fieldSeed % int64(maxValue-minValue))
+			fieldSeed := seed + int64(i)*1000 + int64(attempt)
+			fieldValue := int64(bm.MinValue) + (fieldSeed % int64(bm.MaxValue-bm.MinValue))
 			field := big.NewInt(fieldValue)
 
 			// if it should be unique and it's already stored, try next attempt
-			if uniqueValues != 0 || !stored[field.String()] {
+			if bm.UniqueValues || !stored[field.String()] {
 				fields[i] = fields[i].SetBigInt(field)
 				stored[field.String()] = true
 				break

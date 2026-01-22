@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/consensys/gnark/frontend"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -49,16 +47,7 @@ func GenerateWitness(
 	// Process info
 	witness.Process.ID = o.Process().ID
 	witness.Process.CensusOrigin = o.Process().CensusOrigin
-	witness.Process.BallotMode = circuits.BallotMode[frontend.Variable]{
-		NumFields:      o.Process().BallotMode.NumFields,
-		UniqueValues:   o.Process().BallotMode.UniqueValues,
-		MaxValue:       o.Process().BallotMode.MaxValue,
-		MinValue:       o.Process().BallotMode.MinValue,
-		MaxValueSum:    o.Process().BallotMode.MaxValueSum,
-		MinValueSum:    o.Process().BallotMode.MinValueSum,
-		CostExponent:   o.Process().BallotMode.CostExponent,
-		CostFromWeight: o.Process().BallotMode.CostFromWeight,
-	}
+	witness.Process.BallotMode = o.Process().BallotMode
 	witness.Process.EncryptionKey.PubKey[0] = o.Process().EncryptionKey.PubKey[0]
 	witness.Process.EncryptionKey.PubKey[1] = o.Process().EncryptionKey.PubKey[1]
 
@@ -71,7 +60,7 @@ func GenerateWitness(
 		witness.Votes[i].ReencryptedBallot = *v.ReencryptedBallot.ToGnark()
 		witness.Votes[i].Address = v.Address
 		witness.Votes[i].VoteWeight = v.Weight
-		witness.Votes[i].VoteID = v.VoteID.BigInt().MathBigInt()
+		witness.Votes[i].VoteID = v.VoteID.Uint64()
 		witness.Votes[i].OverwrittenBallot = *v.OverwrittenBallot.ToGnark()
 	}
 

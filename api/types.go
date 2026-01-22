@@ -23,7 +23,7 @@ type Vote struct {
 	BallotInputsHash *types.BigInt            `json:"ballotInputsHash"`
 	Address          types.HexBytes           `json:"address"`
 	Signature        types.HexBytes           `json:"signature"`
-	VoteID           types.HexBytes           `json:"voteId"`
+	VoteID           types.VoteID             `json:"voteId"`
 }
 
 // ContractAddresses holds the smart contract addresses needed by the client
@@ -53,7 +53,7 @@ type SequencerInfo struct {
 
 // VoteResponse is the response returned by the vote submission endpoint.
 type VoteResponse struct {
-	VoteID types.HexBytes `json:"voteId"`
+	VoteID types.VoteID `json:"voteId"`
 }
 
 // VoteStatusResponse is the response returned by the vote status endpoint.
@@ -72,10 +72,10 @@ type WorkerAuthDataResponse struct {
 
 // WorkerJobResponse is the response returned by the worker job submission endpoint.
 type WorkerJobResponse struct {
-	VoteID       types.HexBytes `json:"voteId"`
-	Address      string         `json:"address"`
-	SuccessCount int64          `json:"successCount"`
-	FailedCount  int64          `json:"failedCount"`
+	VoteID       types.VoteID `json:"voteId"`
+	Address      string       `json:"address"`
+	SuccessCount int64        `json:"successCount"`
+	FailedCount  int64        `json:"failedCount"`
 }
 
 // WorkerInfo contains information about a worker node.

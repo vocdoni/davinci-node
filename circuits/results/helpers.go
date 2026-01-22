@@ -7,8 +7,9 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 func GenerateWitness(
@@ -68,7 +69,7 @@ func GenerateWitness(
 	return witness, nil
 }
 
-func merkleProofFromKey(o *state.State, key *big.Int) (merkleproof.MerkleProof, error) {
+func merkleProofFromKey(o *state.State, key types.StateKey) (merkleproof.MerkleProof, error) {
 	proof, err := o.GenArboProof(key)
 	if err != nil {
 		return merkleproof.MerkleProof{}, fmt.Errorf("failed to generate arbo proof: %w", err)

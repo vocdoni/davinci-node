@@ -13,8 +13,8 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_iden3"
 	"github.com/vocdoni/davinci-node/prover"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // FillWithDummy function fills the assignments provided with a dummy proofs

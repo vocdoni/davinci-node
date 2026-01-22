@@ -8,7 +8,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/spec/params"
 )
 
 // TestHasVerifiedResults tests the HasVerifiedResults functionality
@@ -35,7 +35,7 @@ func TestHasVerifiedResults(t *testing.T) {
 	results := &VerifiedResults{
 		ProcessID: processID,
 		Inputs: ResultsVerifierProofInputs{
-			StateRoot: testutil.StateRoot().MathBigInt(),
+			StateRoot: testutil.FixedStateRoot().MathBigInt(),
 			Results: [params.FieldsPerBallot]*big.Int{
 				big.NewInt(100),
 				big.NewInt(200),

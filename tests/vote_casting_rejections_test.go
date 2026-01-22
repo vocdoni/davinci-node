@@ -8,10 +8,10 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/api"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover/debug"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/tests/helpers"
 	"github.com/vocdoni/davinci-node/types"
@@ -37,7 +37,7 @@ func TestVoteCastingRejections(t *testing.T) {
 		censusRoot    []byte
 		censusURI     string
 		// Store the voteIDs returned from the API to check their status later
-		voteIDs []types.HexBytes
+		voteIDs []types.VoteID
 		ks      []*big.Int
 	)
 
@@ -97,7 +97,7 @@ func TestVoteCastingRejections(t *testing.T) {
 	c.Run("create votes", func(c *qt.C) {
 		for i, signer := range signers {
 			// generate a vote for the first participant
-			k, err := elgamal.RandK()
+			k, err := specutil.RandomK()
 			c.Assert(err, qt.IsNil)
 			vote, randFields, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
@@ -142,7 +142,7 @@ func TestVoteCastingRejections(t *testing.T) {
 			if allSettled, failed, err := helpers.EnsureVotesStatus(services.HTTPClient, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
 				if len(failed) > 0 {
-					hexFailed := types.SliceOf(failed, func(v types.HexBytes) string { return v.String() })
+					hexFailed := types.SliceOf(failed, func(v types.VoteID) string { return v.String() })
 					t.Fatalf("Some votes failed to be settled: %v", hexFailed)
 				}
 			}

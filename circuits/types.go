@@ -2,7 +2,6 @@ package circuits
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	"math/big"
 
@@ -10,16 +9,13 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	tweds "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/math/emulated"
-	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
-	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	gnark_poseidon "github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -27,19 +23,7 @@ import (
 )
 
 const (
-	BallotModeSerializedLen    = 8
 	EncryptionKeySerializedLen = 2
-
-	KeyProcessID     = 0x00
-	KeyBallotMode    = 0x02
-	KeyEncryptionKey = 0x03
-	KeyResultsAdd    = 0x04
-	KeyResultsSub    = 0x05
-	KeyCensusOrigin  = 0x06
-
-	// ReservedKeysOffset is used to prevent collisions in edge cases
-	// where a VoteID or Address is near zero (e.g. in badly designed tests)
-	ReservedKeysOffset = 0x10
 )
 
 // Poseidon377Domain is the domain used for Poseidon377 hashing
@@ -47,141 +31,6 @@ var Poseidon377Domain = poseidon377.DomainFromLEBytes([]byte("/davinci/"))
 
 // Poseidon377DomainVar is the domain as a frontend.Variable for use in circuits
 var Poseidon377DomainVar frontend.Variable
-
-// BallotMode is a struct that contains the common inputs for all the voters.
-// The values of this struct should be the same for all the voters in the same
-// process. Is a generic struct that can be used with any type of circuit input.
-type BallotMode[T any] struct {
-	NumFields      T
-	UniqueValues   T
-	MaxValue       T
-	MinValue       T
-	MaxValueSum    T
-	MinValueSum    T
-	CostExponent   T
-	CostFromWeight T
-}
-
-func (bm BallotMode[T]) Serialize() []T {
-	return []T{
-		bm.NumFields,
-		bm.UniqueValues,
-		bm.MaxValue,
-		bm.MinValue,
-		bm.MaxValueSum,
-		bm.MinValueSum,
-		bm.CostExponent,
-		bm.CostFromWeight,
-	}
-}
-
-func (bm BallotMode[T]) Deserialize(values []T) (BallotMode[T], error) {
-	if len(values) != 8 {
-		return BallotMode[T]{}, fmt.Errorf("invalid input length for BallotMode: expected 8 values")
-	}
-	return BallotMode[T]{
-		NumFields:      values[0],
-		UniqueValues:   values[1],
-		MaxValue:       values[2],
-		MinValue:       values[3],
-		MaxValueSum:    values[4],
-		MinValueSum:    values[5],
-		CostExponent:   values[6],
-		CostFromWeight: values[7],
-	}, nil
-}
-
-// Bytes returns 8*32 bytes representing BallotMode components.
-// Returns an empty slice if T is not *big.Int.
-func (bm BallotMode[T]) Bytes() []byte {
-	bmbi, ok := any(bm).(BallotMode[*big.Int])
-	if !ok {
-		return []byte{}
-	}
-	buf := bytes.Buffer{}
-	for _, bigint := range bmbi.Serialize() {
-		buf.Write(arbo.BigIntToBytes(crypto.SignatureCircuitVariableLen, bigint))
-	}
-	return buf.Bytes()
-}
-
-// BigIntsToEmulatedElementBN254 casts BallotMode[*big.Int] into a
-// BallotMode[emulated.Element[sw_bn254.ScalarField]]
-func (bm BallotMode[T]) BigIntsToEmulatedElementBN254() BallotMode[emulated.Element[sw_bn254.ScalarField]] {
-	bmbi, ok := any(bm).(BallotMode[*big.Int])
-	if !ok {
-		return BallotMode[emulated.Element[sw_bn254.ScalarField]]{}
-	}
-	return BallotMode[emulated.Element[sw_bn254.ScalarField]]{
-		NumFields:      emulated.ValueOf[sw_bn254.ScalarField](bmbi.NumFields),
-		UniqueValues:   emulated.ValueOf[sw_bn254.ScalarField](bmbi.UniqueValues),
-		MaxValue:       emulated.ValueOf[sw_bn254.ScalarField](bmbi.MaxValue),
-		MinValue:       emulated.ValueOf[sw_bn254.ScalarField](bmbi.MinValue),
-		MaxValueSum:    emulated.ValueOf[sw_bn254.ScalarField](bmbi.MaxValueSum),
-		MinValueSum:    emulated.ValueOf[sw_bn254.ScalarField](bmbi.MinValueSum),
-		CostExponent:   emulated.ValueOf[sw_bn254.ScalarField](bmbi.CostExponent),
-		CostFromWeight: emulated.ValueOf[sw_bn254.ScalarField](bmbi.CostFromWeight),
-	}
-}
-
-// VarsToEmulatedElementBN254 casts BallotMode[frontend.Variable] into a BallotMode[emulated.Element[sw_bn254.ScalarField]]
-func (bm BallotMode[T]) VarsToEmulatedElementBN254(api frontend.API) BallotMode[emulated.Element[sw_bn254.ScalarField]] {
-	bmv, ok := any(bm).(BallotMode[frontend.Variable])
-	if !ok {
-		return BallotMode[emulated.Element[sw_bn254.ScalarField]]{}
-	}
-	return BallotMode[emulated.Element[sw_bn254.ScalarField]]{
-		NumFields:      *varToEmulatedElementBN254(api, bmv.NumFields),
-		UniqueValues:   *varToEmulatedElementBN254(api, bmv.UniqueValues),
-		MaxValue:       *varToEmulatedElementBN254(api, bmv.MaxValue),
-		MinValue:       *varToEmulatedElementBN254(api, bmv.MinValue),
-		MaxValueSum:    *varToEmulatedElementBN254(api, bmv.MaxValueSum),
-		MinValueSum:    *varToEmulatedElementBN254(api, bmv.MinValueSum),
-		CostExponent:   *varToEmulatedElementBN254(api, bmv.CostExponent),
-		CostFromWeight: *varToEmulatedElementBN254(api, bmv.CostFromWeight),
-	}
-}
-
-// DeserializeBallotMode reconstructs a BallotMode from a slice of bytes.
-// The input must be of len 8*32 bytes (otherwise it returns an error),
-// representing 8 big.Ints as little-endian.
-func DeserializeBallotMode(data []byte) (BallotMode[*big.Int], error) {
-	// Validate the input length
-	expectedSize := 8 * crypto.SignatureCircuitVariableLen
-	if len(data) != expectedSize {
-		return BallotMode[*big.Int]{}, fmt.Errorf("invalid input length for BallotMode: got %d bytes, expected %d bytes", len(data), expectedSize)
-	}
-	// Helper function to extract *big.Int from a serialized slice
-	readBigInt := func(offset int) *big.Int {
-		return arbo.BytesToBigInt(data[offset : offset+crypto.SignatureCircuitVariableLen])
-	}
-	return BallotMode[*big.Int]{
-		NumFields:      readBigInt(0 * crypto.SignatureCircuitVariableLen),
-		UniqueValues:   readBigInt(1 * crypto.SignatureCircuitVariableLen),
-		MaxValue:       readBigInt(2 * crypto.SignatureCircuitVariableLen),
-		MinValue:       readBigInt(3 * crypto.SignatureCircuitVariableLen),
-		MaxValueSum:    readBigInt(4 * crypto.SignatureCircuitVariableLen),
-		MinValueSum:    readBigInt(5 * crypto.SignatureCircuitVariableLen),
-		CostExponent:   readBigInt(6 * crypto.SignatureCircuitVariableLen),
-		CostFromWeight: readBigInt(7 * crypto.SignatureCircuitVariableLen),
-	}, nil
-}
-
-// BallotModeToCircuit converts a BallotMode to a circuit BallotMode which can
-// be implemented with different base types.
-// Before calling this function, the BallotMode must be validated.
-func BallotModeToCircuit(b *types.BallotMode) BallotMode[*big.Int] {
-	return BallotMode[*big.Int]{
-		NumFields:      big.NewInt(int64(b.NumFields)),
-		UniqueValues:   BoolToBigInt(b.UniqueValues),
-		MaxValue:       b.MaxValue.MathBigInt(),
-		MinValue:       b.MinValue.MathBigInt(),
-		MaxValueSum:    b.MaxValueSum.MathBigInt(),
-		MinValueSum:    b.MinValueSum.MathBigInt(),
-		CostExponent:   big.NewInt(int64(b.CostExponent)),
-		CostFromWeight: BoolToBigInt(b.CostFromWeight),
-	}
-}
 
 type EncryptionKey[T any] struct {
 	PubKey [2]T
@@ -307,7 +156,7 @@ func EncryptionKeyToCircuit(k types.EncryptionKey) EncryptionKey[*big.Int] {
 type Process[T any] struct {
 	ID            T
 	CensusOrigin  T
-	BallotMode    BallotMode[T]
+	BallotMode    T
 	EncryptionKey EncryptionKey[T]
 }
 
@@ -321,7 +170,7 @@ func (p Process[T]) Serialize() []T {
 	list := []T{}
 	list = append(list, p.ID)
 	list = append(list, p.CensusOrigin)
-	list = append(list, p.BallotMode.Serialize()...)
+	list = append(list, p.BallotMode)
 	list = append(list, p.EncryptionKey.Serialize()...)
 	return list
 }
@@ -338,7 +187,7 @@ func (pt Process[T]) SerializeForBallotProof(api frontend.API) []emulated.Elemen
 	}
 	list := []emulated.Element[sw_bn254.ScalarField]{}
 	list = append(list, p.ID)
-	list = append(list, p.BallotMode.Serialize()...)
+	list = append(list, p.BallotMode)
 	list = append(list, p.EncryptionKey.SerializeAsTE(api)...)
 	return list
 }
@@ -347,7 +196,7 @@ func (p Process[T]) VarsToEmulatedElementBN254(api frontend.API) Process[emulate
 	return Process[emulated.Element[sw_bn254.ScalarField]]{
 		ID:            *varToEmulatedElementBN254(api, p.ID),
 		CensusOrigin:  *varToEmulatedElementBN254(api, p.CensusOrigin),
-		BallotMode:    p.BallotMode.VarsToEmulatedElementBN254(api),
+		BallotMode:    *varToEmulatedElementBN254(api, p.BallotMode),
 		EncryptionKey: p.EncryptionKey.VarsToEmulatedElementBN254(api),
 	}
 }
@@ -646,48 +495,10 @@ func NextK(api frontend.API, k frontend.Variable) frontend.Variable {
 	return newK
 }
 
-// RandK function generates a random k value for encryption,
-// inside the scalar field of the BallotProof curve
-func RandK() (*big.Int, error) {
-	kBytes := make([]byte, 20)
-	_, err := rand.Read(kBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate random k: %v", err)
-	}
-	k := new(big.Int).SetBytes(kBytes)
-	return crypto.BigToFF(params.BallotProofCurve.ScalarField(), k), nil
-}
-
 func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.Element[sw_bn254.ScalarField] {
 	elem, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, v)
 	if err != nil {
 		panic(err)
 	}
 	return elem
-}
-
-// VoteID calculates the vote ID, which is the poseidon hash of:
-// the process ID, voter's address and a secret value k.
-// This is truncated to the least significant 64 bits.
-// The vote ID is used to identify a vote in the system. The
-// function transforms the inputs to safe values of ballot proof curve scalar
-// field, then hashes them using iden3 poseidon. The resulting vote ID is a hex byte
-// array. If something goes wrong during the hashing process, it returns an
-// error.
-func VoteID(processID types.ProcessID, address common.Address, k *types.BigInt) (*types.BigInt, error) {
-	if !processID.IsValid() || address.Cmp(common.Address{}) == 0 || k == nil {
-		return nil, fmt.Errorf("a valid processID, address and k is required")
-	}
-	// encode the process ID and address to hex bytes
-	hexAddress := types.HexBytes(address.Bytes())
-	// safe address, processID and k
-	ffAddress := hexAddress.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ffK := k.ToFF(params.BallotProofCurve.ScalarField())
-	// calculate the vote ID hash using poseidon
-	hash, err := poseidon.MultiPoseidon(ffProcessID.MathBigInt(), ffAddress.MathBigInt(), ffK.MathBigInt())
-	if err != nil {
-		return nil, fmt.Errorf("error hashing vote ID inputs: %v", err.Error())
-	}
-	return new(types.BigInt).SetBigInt(util.TruncateToLowerBits(hash, params.VoteIDLen*8)), nil
 }

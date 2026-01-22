@@ -137,7 +137,7 @@ func (s *Storage) MarkAggregatorBatchFailed(key []byte) error {
 		}
 
 		// Release nullifier lock
-		s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+		s.releaseVoteID(ballot.VoteID)
 
 		// Set vote ID status to error
 		if err := s.setVoteIDStatus(agg.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
@@ -437,12 +437,12 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, processID types.Process
 			)
 		} else {
 			// Extract vote IDs from the batch
-			voteIDs := make([][]byte, len(stb.Ballots))
+			voteIDs := make([]types.VoteID, len(stb.Ballots))
 			for i, ballot := range stb.Ballots {
 				voteIDs[i] = ballot.VoteID
 
 				// Release nullifier lock
-				s.releaseVoteID(ballot.VoteID.BigInt().MathBigInt())
+				s.releaseVoteID(ballot.VoteID)
 			}
 
 			// Mark all vote IDs in the batch as settled (using unsafe version to avoid deadlock)
@@ -666,7 +666,7 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 		// Check which votes are already in the state and filter them out
 		validBallots := make([]*AggregatorBallot, 0, len(pendingBatch.Ballots))
 		for _, v := range stb.Ballots {
-			if currentState.ContainsVoteID(v.VoteID.BigInt().MathBigInt()) {
+			if currentState.ContainsVoteID(v.VoteID) {
 				log.Debugw("vote already in state, marking as failed",
 					"processID", stb.ProcessID.String(),
 					"voteID", v.VoteID.String())

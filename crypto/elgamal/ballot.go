@@ -14,7 +14,8 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 )
 
 type Ballot struct {
@@ -66,7 +67,7 @@ func (z *Ballot) IsZero() bool {
 func (z *Ballot) Encrypt(message [params.FieldsPerBallot]*big.Int, publicKey ecc.Point, k *big.Int) (*Ballot, error) {
 	var err error
 	if k == nil {
-		k, err = RandK()
+		k, err = specutil.RandomK()
 		if err != nil {
 			return nil, fmt.Errorf("elgamal encryption failed: %w", err)
 		}
