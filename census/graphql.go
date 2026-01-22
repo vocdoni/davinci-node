@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/vocdoni/census3-bigquery/censusdb"
+	"github.com/vocdoni/davinci-node/census/censusdb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/lean-imt-go/census"
@@ -156,7 +156,7 @@ func (d *graphqlImporter) DownloadAndImportCensus(
 	// update the existing census with the new events
 	if skip == 0 {
 		// Import all the available events into the census DB
-		if _, err := censusDB.ImportEvents(expectedRoot.BigInt().MathBigInt(), events); err != nil {
+		if _, err := censusDB.ImportEvents(expectedRoot, events); err != nil {
 			return 0, fmt.Errorf("failed to update census from events: %w", err)
 		}
 	} else {
@@ -166,7 +166,7 @@ func (d *graphqlImporter) DownloadAndImportCensus(
 			return 0, fmt.Errorf("failed to load census by root %x: %w", oldRoot, err)
 		}
 		// Update the census with the new events
-		if err = ref.ApplyEvents(expectedRoot.BigInt().MathBigInt(), events); err != nil {
+		if err = ref.ApplyEvents(expectedRoot, events); err != nil {
 			return 0, fmt.Errorf("failed to update census from events: %w", err)
 		}
 	}

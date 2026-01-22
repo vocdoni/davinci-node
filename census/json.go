@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/vocdoni/census3-bigquery/censusdb"
+	"github.com/vocdoni/davinci-node/census/censusdb"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -173,7 +173,7 @@ func importJSONDump(
 	switch format {
 	case JSONL:
 		// Import JSONL directly into census DB by expected root
-		if ref, err = censusDB.Import(expectedRoot.BigInt().MathBigInt(), dataReader); err != nil {
+		if ref, err = censusDB.Import(expectedRoot, dataReader); err != nil {
 			return 0, fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 	case JSONArray:
