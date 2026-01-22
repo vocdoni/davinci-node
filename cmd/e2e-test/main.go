@@ -20,12 +20,13 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/config"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
+	"github.com/vocdoni/davinci-node/spec"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -48,7 +49,7 @@ var (
 	localSequencerEndpoint = fmt.Sprintf("http://%s:%d", localSequencerHost, localSequencerPort)
 
 	userWeight = uint64(testutil.Weight)
-	ballotMode = testutil.BallotModeInternal()
+	ballotMode = testutil.BallotMode()
 )
 
 func main() {
@@ -464,7 +465,7 @@ func createProcess(
 	cli *client.HTTPclient,
 	censusRoot types.HexBytes,
 	censusURI string,
-	ballotMode *types.BallotMode,
+	ballotMode spec.BallotMode,
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
 	// Make the request to get the encryption keys
@@ -549,11 +550,11 @@ func createVote(
 	privKey *ethereum.Signer,
 	processID types.ProcessID,
 	encKey *types.EncryptionKey,
-	bm *types.BallotMode,
+	bm spec.BallotMode,
 ) (api.Vote, error) {
 	// Emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	k, err := elgamal.RandK()
+	k, err := specutil.RandomK()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate random k: %v", err)
 	}
@@ -561,8 +562,8 @@ func createVote(
 	// Generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
-		int(bm.MaxValue.MathBigInt().Int64()),
-		int(bm.MinValue.MathBigInt().Int64()),
+		int(bm.MaxValue),
+		int(bm.MinValue),
 		bm.UniqueValues)
 
 	// Cast fields to types.BigInt
@@ -630,13 +631,13 @@ func createVote(
 	}, nil
 }
 
-func sendVote(cli *client.HTTPclient, vote api.Vote) (types.HexBytes, error) {
+func sendVote(cli *client.HTTPclient, vote api.Vote) (types.VoteID, error) {
 	// Make the request to cast the vote
 	body, status, err := cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to cast vote: %w", err)
+		return 0, fmt.Errorf("failed to cast vote: %w", err)
 	} else if status != http.StatusOK {
-		return nil, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
+		return 0, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
 }

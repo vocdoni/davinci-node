@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	gethkzg "github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/vocdoni/davinci-node/types/params"
+	gethparams "github.com/ethereum/go-ethereum/params"
 )
 
 // Blob represents a unified blob type that can be converted to/from external blob types.
@@ -77,11 +77,11 @@ func (b *Blob) Bytes() []byte { return b[:] }
 func (b *Blob) Clone() Blob { return *b }
 
 // ToGnark splits the blob into 4096 big.Int and returns them as a slice of frontend.Variable
-func (b *Blob) ToGnark() [params.BlobTxFieldElementsPerBlob]frontend.Variable {
-	var s [params.BlobTxFieldElementsPerBlob]frontend.Variable
+func (b *Blob) ToGnark() [gethparams.BlobTxFieldElementsPerBlob]frontend.Variable {
+	var s [gethparams.BlobTxFieldElementsPerBlob]frontend.Variable
 	for i := range s {
-		offset := i * params.BlobTxBytesPerFieldElement
-		s[i] = new(big.Int).SetBytes(b[offset : offset+params.BlobTxBytesPerFieldElement])
+		offset := i * gethparams.BlobTxBytesPerFieldElement
+		s[i] = new(big.Int).SetBytes(b[offset : offset+gethparams.BlobTxBytesPerFieldElement])
 	}
 	return s
 }

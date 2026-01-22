@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestBallotQueue_RemoveBallotBatchesByProcess(t *testing.T) {
@@ -25,13 +26,13 @@ func TestBallotQueue_RemoveBallotBatchesByProcess(t *testing.T) {
 	batch1 := &AggregatorBallotBatch{
 		ProcessID: pid1,
 		Ballots: []*AggregatorBallot{
-			mkAggBallot([]byte("a1")),
+			mkAggBallot(testutil.RandomVoteID()),
 		},
 	}
 	batch2 := &AggregatorBallotBatch{
 		ProcessID: pid2,
 		Ballots: []*AggregatorBallot{
-			mkAggBallot([]byte("b1")),
+			mkAggBallot(testutil.RandomVoteID()),
 		},
 	}
 
@@ -57,7 +58,10 @@ func TestBallotQueue_MarkBallotBatchFailed(t *testing.T) {
 	defer stg.Close()
 
 	pid := testutil.RandomProcessID()
-	ids := [][]byte{[]byte("a"), []byte("b")}
+	ids := []types.VoteID{
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+	}
 	ensureProcess(t, stg, pid)
 
 	batch := &AggregatorBallotBatch{
@@ -104,13 +108,13 @@ func TestBallotQueue_RemoveStateTransitionBatchesByProcess(t *testing.T) {
 	stb1 := &StateTransitionBatch{
 		ProcessID: pid1,
 		Ballots: []*AggregatorBallot{
-			mkAggBallot([]byte("a1")),
+			mkAggBallot(testutil.RandomVoteID()),
 		},
 	}
 	stb2 := &StateTransitionBatch{
 		ProcessID: pid2,
 		Ballots: []*AggregatorBallot{
-			mkAggBallot([]byte("b1")),
+			mkAggBallot(testutil.RandomVoteID()),
 		},
 	}
 
@@ -136,7 +140,10 @@ func TestBallotQueue_MarkStateTransitionBatchDone(t *testing.T) {
 	defer stg.Close()
 
 	pid := testutil.RandomProcessID()
-	ids := [][]byte{[]byte("a"), []byte("b")}
+	ids := []types.VoteID{
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+	}
 	ensureProcess(t, stg, pid)
 
 	// push a state transition batch (also sets statuses to processed)
@@ -188,15 +195,15 @@ func TestMarkStateTransitionOutdated(t *testing.T) {
 	// Create test ballots
 	ballots := []*AggregatorBallot{
 		{
-			VoteID:  []byte("vote1"),
+			VoteID:  testutil.RandomVoteID(),
 			Address: big.NewInt(1001),
 		},
 		{
-			VoteID:  []byte("vote2"),
+			VoteID:  testutil.RandomVoteID(),
 			Address: big.NewInt(1002),
 		},
 		{
-			VoteID:  []byte("vote3"),
+			VoteID:  testutil.RandomVoteID(),
 			Address: big.NewInt(1003),
 		},
 	}
@@ -281,11 +288,11 @@ func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 	// Create test ballots
 	ballots := []*AggregatorBallot{
 		{
-			VoteID:  []byte("vote1"),
+			VoteID:  testutil.RandomVoteID(),
 			Address: big.NewInt(2001),
 		},
 		{
-			VoteID:  []byte("vote2"),
+			VoteID:  testutil.RandomVoteID(),
 			Address: big.NewInt(2002),
 		},
 	}

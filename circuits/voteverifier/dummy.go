@@ -8,7 +8,7 @@ import (
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 

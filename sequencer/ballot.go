@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -16,8 +15,8 @@ import (
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // startBallotProcessor starts a background goroutine that continuously processes ballots.
@@ -89,8 +88,8 @@ func (s *Sequencer) processAvailableBallots() bool {
 		}
 
 		log.Infow("processing ballot",
-			"address", hex.EncodeToString(ballot.Address.Bytes()),
-			"voteID", hex.EncodeToString(ballot.VoteID),
+			"address", ballot.Address.String(),
+			"voteID", ballot.VoteID.String(),
 			"processID", ballot.ProcessID.String(),
 		)
 
@@ -160,7 +159,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		IsValid:    1,
 		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](b.BallotInputsHash),
 		Address:    emulated.ValueOf[sw_bn254.ScalarField](b.Address),
-		VoteID:     b.VoteID.BigInt().MathBigInt(),
+		VoteID:     b.VoteID.BigInt(),
 		PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.X),
 			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKey.Y),
@@ -184,7 +183,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		params.AggregatorCurve.ScalarField(),
 		params.VoteVerifierCurve.ScalarField(),
 	)
-	log.Debugw("generating vote verification proof...", "processID", b.ProcessID.String(), "voteID", hex.EncodeToString(b.VoteID))
+	log.Debugw("generating vote verification proof...", "processID", b.ProcessID.String(), "voteID", b.VoteID.String())
 	proof, err := s.prover(params.VoteVerifierCurve, s.vvCcs, s.vvPk, &assignment, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
@@ -211,8 +210,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 
 	log.Infow("vote verification proof generated",
 		"processID", b.ProcessID.String(),
-		"voteID", hex.EncodeToString(b.VoteID),
-		"address", hex.EncodeToString(b.Address.Bytes()),
+		"voteID", b.VoteID.String(),
+		"address", b.Address.String(),
 		"took", time.Since(startTime).String(),
 	)
 

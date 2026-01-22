@@ -437,9 +437,9 @@ func (s *Storage) recoverNullifiers() error {
 			outerErr = fmt.Errorf("failed to decode verified ballot: %w", err)
 			return false
 		}
-		s.lockVoteID(vb.VoteID.BigInt().MathBigInt())
+		s.lockVoteID(vb.VoteID)
 		s.lockAddress(vb.ProcessID, vb.Address)
-		s.voteIDToAddress.Store(vb.VoteID.String(), addressInfo{
+		s.voteIDToAddress.Store(vb.VoteID, addressInfo{
 			ProcessID: vb.ProcessID,
 			Address:   vb.Address,
 		})
@@ -463,9 +463,9 @@ func (s *Storage) recoverNullifiers() error {
 		}
 		// ProcessID is at the batch level, not per ballot
 		for _, ballot := range abb.Ballots {
-			s.lockVoteID(ballot.VoteID.BigInt().MathBigInt())
+			s.lockVoteID(ballot.VoteID)
 			s.lockAddress(abb.ProcessID, ballot.Address)
-			s.voteIDToAddress.Store(ballot.VoteID.String(), addressInfo{
+			s.voteIDToAddress.Store(ballot.VoteID, addressInfo{
 				ProcessID: abb.ProcessID,
 				Address:   ballot.Address,
 			})
@@ -478,21 +478,21 @@ func (s *Storage) recoverNullifiers() error {
 }
 
 // lockVoteID locks a voteID to prevent concurrent processing.
-func (s *Storage) lockVoteID(bigVoteID *big.Int) {
-	s.processingVoteIDs.Store(bigVoteID.String(), struct{}{})
+func (s *Storage) lockVoteID(voteID types.VoteID) {
+	s.processingVoteIDs.Store(voteID, struct{}{})
 }
 
 // IsVoteIDProcessing checks if a voteID is currently being processed.
-func (s *Storage) IsVoteIDProcessing(bigVoteID *big.Int) bool {
-	if _, exists := s.processingVoteIDs.Load(bigVoteID.String()); exists {
+func (s *Storage) IsVoteIDProcessing(voteID types.VoteID) bool {
+	if _, exists := s.processingVoteIDs.Load(voteID); exists {
 		return true // Is processing
 	}
 	return false // Not processing
 }
 
 // releaseVoteID releases a voteID after processing is complete or failed.
-func (s *Storage) releaseVoteID(bigVoteID *big.Int) {
-	s.processingVoteIDs.Delete(bigVoteID.String())
+func (s *Storage) releaseVoteID(voteID types.VoteID) {
+	s.processingVoteIDs.Delete(voteID)
 }
 
 // lockAddress attempts to lock an address to prevent concurrent processing.

@@ -161,20 +161,20 @@ func (i *BigInt) LessThanOrEqual(j *BigInt) bool {
 	return i.MathBigInt().Cmp(j.MathBigInt()) <= 0
 }
 
-func (i *BigInt) ToFF(baseField *big.Int) *BigInt {
+func (i *BigInt) ToFF(field *big.Int) *BigInt {
 	iv := i.MathBigInt()
 	z := big.NewInt(0)
-	if c := iv.Cmp(baseField); c == 0 {
+	if c := iv.Cmp(field); c == 0 {
 		return (*BigInt)(z)
 	} else if c != 1 && iv.Cmp(z) != -1 {
 		return (*BigInt)(iv)
 	}
-	return (*BigInt)(z.Mod(iv, baseField))
+	return (*BigInt)(z.Mod(iv, field))
 }
 
-func (i *BigInt) IsInField(baseField *big.Int) bool {
+func (i *BigInt) IsInField(field *big.Int) bool {
 	if i == nil {
 		return false
 	}
-	return i.MathBigInt().Cmp(baseField) < 0
+	return i.MathBigInt().Cmp(field) < 0
 }

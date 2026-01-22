@@ -6,7 +6,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/spec/params"
 )
 
 // MarshalJSON serializes the Ballot to JSON.

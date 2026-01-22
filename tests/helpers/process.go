@@ -9,6 +9,7 @@ import (
 
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
 )
@@ -51,7 +52,7 @@ func NewProcessOnChain(
 	censusOrigin types.CensusOrigin,
 	censusURI string,
 	censusRoot []byte,
-	ballotMode *types.BallotMode,
+	ballotMode spec.BallotMode,
 	encryptionKey *types.EncryptionKey,
 	numVoters int,
 	duration ...time.Duration,

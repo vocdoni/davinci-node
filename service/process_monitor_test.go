@@ -67,11 +67,11 @@ func TestProcessMonitor(t *testing.T) {
 	processID, createTx, err := contracts.CreateProcess(&types.Process{
 		Status:         types.ProcessStatusReady,
 		OrganizationId: contracts.AccountAddress(),
-		StateRoot:      testutil.StateRoot(),
+		StateRoot:      testutil.FixedStateRoot(),
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
-		BallotMode:     testutil.BallotModeInternal(),
+		BallotMode:     testutil.BallotMode(),
 		Census:         census,
 	})
 	c.Assert(err, qt.IsNil)

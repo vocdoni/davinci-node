@@ -10,6 +10,7 @@ import (
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	gethapitypes "github.com/ethereum/go-ethereum/signer/core/apitypes"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3/rpc"
 )
@@ -60,18 +61,16 @@ type CallResult struct {
 
 // contractProcess2Process converts a contractProcess to a types.Process
 func contractProcess2Process(p npbindings.DAVINCITypesProcess) (*types.Process, error) {
-	mode := types.BallotMode{
+	ballotMode := spec.BallotMode{
 		UniqueValues:   p.BallotMode.UniqueValues,
 		CostFromWeight: p.BallotMode.CostFromWeight,
 		NumFields:      p.BallotMode.NumFields,
+		GroupSize:      p.BallotMode.GroupSize,
 		CostExponent:   p.BallotMode.CostExponent,
-		MaxValue:       new(types.BigInt).SetBigInt(p.BallotMode.MaxValue),
-		MinValue:       new(types.BigInt).SetBigInt(p.BallotMode.MinValue),
-		MaxValueSum:    new(types.BigInt).SetBigInt(p.BallotMode.MaxValueSum),
-		MinValueSum:    new(types.BigInt).SetBigInt(p.BallotMode.MinValueSum),
-	}
-	if err := mode.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid ballot mode: %w", err)
+		MaxValue:       p.BallotMode.MaxValue.Uint64(),
+		MinValue:       p.BallotMode.MinValue.Uint64(),
+		MaxValueSum:    p.BallotMode.MaxValueSum.Uint64(),
+		MinValueSum:    p.BallotMode.MinValueSum.Uint64(),
 	}
 
 	// Validate the census origin
@@ -106,7 +105,7 @@ func contractProcess2Process(p npbindings.DAVINCITypesProcess) (*types.Process, 
 		VotersCount:           (*types.BigInt)(p.VotersCount),
 		OverwrittenVotesCount: (*types.BigInt)(p.OverwrittenVotesCount),
 		MetadataURI:           p.MetadataURI,
-		BallotMode:            &mode,
+		BallotMode:            ballotMode,
 		Census:                &census,
 		Result:                results,
 	}, nil
@@ -133,11 +132,12 @@ func process2ContractProcess(p *types.Process) npbindings.DAVINCITypesProcess {
 		CostFromWeight: p.BallotMode.CostFromWeight,
 		UniqueValues:   p.BallotMode.UniqueValues,
 		NumFields:      p.BallotMode.NumFields,
+		GroupSize:      p.BallotMode.GroupSize,
 		CostExponent:   p.BallotMode.CostExponent,
-		MaxValue:       p.BallotMode.MaxValue.MathBigInt(),
-		MinValue:       p.BallotMode.MinValue.MathBigInt(),
-		MaxValueSum:    p.BallotMode.MaxValueSum.MathBigInt(),
-		MinValueSum:    p.BallotMode.MinValueSum.MathBigInt(),
+		MaxValue:       new(big.Int).SetUint64(p.BallotMode.MaxValue),
+		MinValue:       new(big.Int).SetUint64(p.BallotMode.MinValue),
+		MaxValueSum:    new(big.Int).SetUint64(p.BallotMode.MaxValueSum),
+		MinValueSum:    new(big.Int).SetUint64(p.BallotMode.MinValueSum),
 	}
 
 	// Set census stuff

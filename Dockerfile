@@ -17,6 +17,8 @@ FROM golang:1.25 AS builder
 WORKDIR /src
 # Copy go mod files
 COPY go.mod go.sum ./
+# Copy local spec module files for replace directive
+COPY spec/go.mod spec/go.sum ./spec/
 # Download dependencies with cache
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download

@@ -18,8 +18,8 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // cacheKeyVersion defines the version of the cache key format, used to invalidate old caches

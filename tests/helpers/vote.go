@@ -11,20 +11,21 @@ import (
 	"github.com/vocdoni/davinci-node/api/client"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
-func NewVote(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
+func NewVote(pid types.ProcessID, bm spec.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
 	var err error
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	if k == nil {
-		k, err = elgamal.RandK()
+		k, err = specutil.RandomK()
 		if err != nil {
 			return api.Vote{}, fmt.Errorf("failed to generate random k: %w", err)
 		}
@@ -78,12 +79,12 @@ func NewVote(pid types.ProcessID, bm *types.BallotMode, encKey *types.Encryption
 	}, nil
 }
 
-func NewVoteWithRandomFields(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, error) {
+func NewVoteWithRandomFields(pid types.ProcessID, bm spec.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, error) {
 	// generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
-		int(bm.MaxValue.MathBigInt().Int64()),
-		int(bm.MinValue.MathBigInt().Int64()),
+		int(bm.MaxValue),
+		int(bm.MinValue),
 		bm.UniqueValues)
 	// cast fields to types.BigInt
 	fields := []*types.BigInt{}
@@ -93,22 +94,22 @@ func NewVoteWithRandomFields(pid types.ProcessID, bm *types.BallotMode, encKey *
 	return NewVote(pid, bm, encKey, privKey, k, fields)
 }
 
-func NewVoteFromNonCensusVoter(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
+func NewVoteFromNonCensusVoter(pid types.ProcessID, bm spec.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
 	privKey, err := ethereum.NewSigner()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate signer: %w", err)
 	}
-	k, err := elgamal.RandK()
+	k, err := specutil.RandomK()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate random k: %w", err)
 	}
 	return NewVoteWithRandomFields(pid, bm, encKey, privKey, k)
 }
 
-func EnsureVotesStatus(cli *client.HTTPclient, pid types.ProcessID, voteIDs []types.HexBytes, expectedStatus string) (bool, []types.HexBytes, error) {
+func EnsureVotesStatus(cli *client.HTTPclient, pid types.ProcessID, voteIDs []types.VoteID, expectedStatus string) (bool, []types.VoteID, error) {
 	// Check vote status and return whether all votes have the expected status
 	allExpectedStatus := true
-	failed := []types.HexBytes{}
+	failed := []types.VoteID{}
 
 	// Check status for each vote
 	for _, voteID := range voteIDs {

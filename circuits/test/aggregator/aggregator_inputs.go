@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/vocdoni/davinci-node/prover"
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/spec/params"
 
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"

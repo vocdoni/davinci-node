@@ -14,8 +14,8 @@ const SignatureCircuitVariableLen = 32 // bytes
 // and the resulting hash will be different. Moreover, the input hash should
 // be 32 bytes so if it is not, fill with zeros at the beginning of the bytes
 // representation.
-func BigIntToFFToSign(input, base *big.Int) []byte {
-	return BigIntToBytesToSign(BigToFF(base, input))
+func BigIntToFFToSign(input, field *big.Int) []byte {
+	return BigIntToBytesToSign(BigToFF(field, input))
 }
 
 // BigIntToBytesToSign converts a big.Int to a byte slice, ensuring that
@@ -49,12 +49,12 @@ func PadToSign(input []byte) []byte {
 
 // BigToFF function returns the finite field representation of the big.Int
 // provided. It uses the curve scalar field to represent the provided number.
-func BigToFF(baseField, iv *big.Int) *big.Int {
+func BigToFF(field, iv *big.Int) *big.Int {
 	z := big.NewInt(0)
-	if c := iv.Cmp(baseField); c == 0 {
+	if c := iv.Cmp(field); c == 0 {
 		return z
 	} else if c != 1 && iv.Cmp(z) != -1 {
 		return iv
 	}
-	return z.Mod(iv, baseField)
+	return z.Mod(iv, field)
 }

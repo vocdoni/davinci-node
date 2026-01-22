@@ -5,6 +5,7 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
@@ -16,7 +17,9 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 	ensureProcess(t, stg, pid)
 
 	// 1) Verified ballots (push pending -> reserve -> mark done)
-	verifiedIDs := [][]byte{[]byte("vv1")}
+	verifiedIDs := []types.VoteID{
+		testutil.RandomVoteID(),
+	}
 	for _, id := range verifiedIDs {
 		c.Assert(stg.PushPendingBallot(mkBallot(pid, id)), qt.IsNil)
 		_, key, err := stg.NextPendingBallot()
@@ -25,13 +28,18 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 	}
 
 	// 2) Pending ballots
-	pendingIDs := [][]byte{[]byte("pv1"), []byte("pv2")}
+	pendingIDs := []types.VoteID{
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+	}
 	for _, id := range pendingIDs {
 		c.Assert(stg.PushPendingBallot(mkBallot(pid, id)), qt.IsNil)
 	}
 
 	// 3) Aggregator batch (ready for state transition)
-	aggIDs := [][]byte{[]byte("ab1")}
+	aggIDs := []types.VoteID{
+		testutil.RandomVoteID(),
+	}
 	aggBallots := make([]*AggregatorBallot, 0, len(aggIDs))
 	for _, id := range aggIDs {
 		aggBallots = append(aggBallots, mkAggBallot(id))
@@ -42,7 +50,10 @@ func TestCleanProcessStaleVotes_RemovesAll(t *testing.T) {
 	}), qt.IsNil)
 
 	// 4) State transition batch (pending state transitions)
-	stIDs := [][]byte{[]byte("st1"), []byte("st2")}
+	stIDs := []types.VoteID{
+		testutil.RandomVoteID(),
+		testutil.RandomVoteID(),
+	}
 	stBallots := make([]*AggregatorBallot, 0, len(stIDs))
 	for _, id := range stIDs {
 		stBallots = append(stBallots, mkAggBallot(id))

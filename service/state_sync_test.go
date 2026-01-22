@@ -8,17 +8,18 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func TestStateSync(t *testing.T) {
@@ -72,12 +73,14 @@ func TestStateSync(t *testing.T) {
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
-		BallotMode: &types.BallotMode{
+		BallotMode: spec.BallotMode{
 			NumFields:      2,
-			MaxValue:       new(types.BigInt).SetUint64(100),
-			MinValue:       new(types.BigInt).SetUint64(0),
-			MaxValueSum:    new(types.BigInt).SetUint64(0),
-			MinValueSum:    new(types.BigInt).SetUint64(0),
+			GroupSize:      2,
+			MaxValue:       100,
+			MinValue:       0,
+			MaxValueSum:    0,
+			MinValueSum:    0,
+			CostExponent:   0,
 			UniqueValues:   false,
 			CostFromWeight: false,
 		},
@@ -121,22 +124,23 @@ func TestStateSync(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &types.BallotMode{
+	ballotMode := spec.BallotMode{
 		NumFields:      3,
-		MaxValue:       types.NewInt(100),
-		MinValue:       types.NewInt(0),
-		MaxValueSum:    types.NewInt(1000),
-		MinValueSum:    types.NewInt(0),
+		GroupSize:      3,
+		MaxValue:       100,
+		MinValue:       0,
+		MaxValueSum:    1000,
+		MinValueSum:    0,
 		CostExponent:   1,
 		UniqueValues:   false,
 		CostFromWeight: false,
 	}
-	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
-	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
+	ballotModeCircuit, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 	err = originalState.Initialize(
 		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
 		ballotModeCircuit,
-		encryptionKeyCircuit)
+		types.EncryptionKeyFromPoint(publicKey))
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize original state"))
 
 	oldStateRoot, err := originalState.RootAsBigInt()
@@ -268,18 +272,6 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 	votes := make([]*state.Vote, numVotes)
 
 	for i := range numVotes {
-		// Create vote address with offset to ensure uniqueness across transitions
-		address := big.NewInt(int64(1000 + offset + i))
-
-		// Create vote ID (use StateKeyMaxLen bytes) with offset
-		voteID := make([]byte, params.StateKeyMaxLen)
-		voteIDValue := offset + i + 1
-		// Store the vote ID value in the last few bytes to ensure uniqueness
-		voteID[params.StateKeyMaxLen-4] = byte(voteIDValue >> 24)
-		voteID[params.StateKeyMaxLen-3] = byte(voteIDValue >> 16)
-		voteID[params.StateKeyMaxLen-2] = byte(voteIDValue >> 8)
-		voteID[params.StateKeyMaxLen-1] = byte(voteIDValue)
-
 		// Create ballot with test values (vary based on offset and index)
 		ballot := elgamal.NewBallot(state.Curve)
 		messages := [params.FieldsPerBallot]*big.Int{}
@@ -294,14 +286,14 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 
 		// Create reencrypted ballot (for state transition circuit)
 		// Generate a random k for reencryption
-		k, err := elgamal.RandK()
+		k, err := specutil.RandomK()
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate random k for ballot %d with offset %d", i, offset))
 		reencryptedBallot, _, err := ballot.Reencrypt(publicKey, k)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to reencrypt ballot %d with offset %d", i, offset))
 
 		votes[i] = &state.Vote{
-			Address:           address,
-			VoteID:            voteID,
+			Address:           testutil.RandomAddress().Big(),
+			VoteID:            testutil.RandomVoteID(),
 			Ballot:            ballot,
 			ReencryptedBallot: reencryptedBallot,
 		}

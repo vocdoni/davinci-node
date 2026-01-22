@@ -20,8 +20,9 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // Process is the struct that contains the information of a process. It includes
@@ -31,10 +32,10 @@ import (
 // the process. The metadata hash is the hash of the metadata of the process.
 // The encryption key is the public key used to encrypt the ballots.
 type Process struct {
-	CensusRoot    types.HexBytes   `json:"censusRoot"`
-	BallotMode    types.BallotMode `json:"ballotMode"`
-	MetadataHash  types.HexBytes   `json:"metadataID"`
-	EncryptionKey EncryptionKeys   `json:"encryptionKey"`
+	CensusRoot    types.HexBytes  `json:"censusRoot"`
+	BallotMode    spec.BallotMode `json:"ballotMode"`
+	MetadataHash  types.HexBytes  `json:"metadataID"`
+	EncryptionKey EncryptionKeys  `json:"encryptionKey"`
 }
 
 // EncryptionKeys is the struct that contains the public key used to encrypt
@@ -57,7 +58,7 @@ func (e *EncryptionKeys) Point() ecc.Point {
 // the proof itself. The proof should be in the BLS12-377 curve, which is the
 // one used by the verifier circuit and verified by the aggregator circuit.
 type VerifiedBallot struct {
-	VoteID          types.HexBytes          `json:"voteId"`
+	VoteID          types.VoteID            `json:"voteId"`
 	ProcessID       types.ProcessID         `json:"processId"`
 	VoterWeight     *big.Int                `json:"voterWeight"`
 	EncryptedBallot *elgamal.Ballot         `json:"encryptedBallot"`
@@ -84,7 +85,7 @@ type Ballot struct {
 	Signature        *ethereum.ECDSASignature                              `json:"signature"`
 	CensusProof      *types.CensusProof                                    `json:"censusProof"`
 	PubKey           types.HexBytes                                        `json:"publicKey"`
-	VoteID           types.HexBytes                                        `json:"voteId"`
+	VoteID           types.VoteID                                          `json:"voteId"`
 }
 
 // Valid method checks if the Ballot is valid. A ballot is valid if all its
@@ -145,7 +146,7 @@ func (b *Ballot) String() string {
 // which has been verified and aggregated in a batch by the sequencer. It
 // includes the address and the encrypted ballot.
 type AggregatorBallot struct {
-	VoteID          types.HexBytes     `json:"voteId"`
+	VoteID          types.VoteID       `json:"voteId"`
 	Address         *big.Int           `json:"address"`
 	Weight          *big.Int           `json:"weight"`
 	EncryptedBallot *elgamal.Ballot    `json:"encryptedBallot"`
