@@ -32,17 +32,12 @@ jobs:
           echo github.head_ref: ${{ github.head_ref }}
           echo github.base_ref: ${{ github.base_ref }}
 
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          fetch-depth: 1
+          go-version-file: go.mod
 
-      - name: Set up Go environment
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-
-      - name: Tidy go module
+      - name: Run go mod tidy
         run: |
           go mod tidy
           if [[ $(git status --porcelain) ]]; then
@@ -65,7 +60,7 @@ jobs:
             exit 1
           fi
 
-      - name: golangci-lint
+      - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.5
@@ -109,10 +104,7 @@ jobs:
             echo "Go directory not found at $GO_DIR"
           fi
             
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
+      - uses: actions/checkout@v6
 
       - name: Cache circuit artifacts
         uses: actions/cache@v3
@@ -152,9 +144,9 @@ jobs:
             
       - uses: benjlevesque/short-sha@v3.0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: '1.25'
+          go-version-file: go.mod
           cache: false # we manage cache oruselves
 
       - name: Prep Go module cache
