@@ -101,7 +101,7 @@ func TestVoteCastingRejections(t *testing.T) {
 			vote, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof
-			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainStaticV1, pid, signers[i].Address().Bytes())
+			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainStaticV1, pid, signers[i].Address())
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			// Make the request to cast the vote
 			_, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
@@ -122,7 +122,7 @@ func TestVoteCastingRejections(t *testing.T) {
 			vote, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, ks[i])
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof for the participant
-			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainStaticV1, pid, signers[i].Address().Bytes())
+			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainStaticV1, pid, signers[i].Address())
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			// Make the request to cast the vote
 			body, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
@@ -178,7 +178,7 @@ func TestVoteCastingRejections(t *testing.T) {
 			vote, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signers[i], nil)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof for the participant
-			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainStaticV1, pid, signers[i].Address().Bytes())
+			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainStaticV1, pid, signers[i].Address())
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			// Make the request to cast the vote
 			body, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
