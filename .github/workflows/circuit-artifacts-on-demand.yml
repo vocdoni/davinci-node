@@ -1,0 +1,93 @@
+name: Compile Circuits
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: circuits-upload-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  upload:
+    if: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'trigger-upload-circuits' &&
+        github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+      }}
+    runs-on: [self-hosted]
+    timeout-minutes: 90
+    env:
+      LOG_LEVEL: debug
+
+    steps:
+      - name: Remove PR label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                name: 'trigger-upload-circuits',
+              });
+            } catch (err) {
+              core.warning(`Failed to remove label: ${err.message}`);
+            }
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # needed to describe git-version
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Compile circuits and upload to S3
+        env:
+          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+        run: |
+          go run ./cmd/circuit-compile \
+            --s3.enabled \
+            --s3.secret-key="$S3_SECRET_KEY" \
+            --s3.access-key="$S3_ACCESS_KEY" \
+            --update-config
+
+      - name: Describe Git Version
+        id: git-version
+        uses: codacy/git-version@2.7.1
+
+      - name: Store circuit artifacts config
+        uses: actions/upload-artifact@v4
+        with:
+          name: davinci-gnark-circuits-config@${{ steps.git-version.outputs.version }}
+          path: |
+            config/circuit_artifacts.go
+            config/resultsverifier_vkey.sol
+            config/statetransition_vkey.sol
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = context.runId || process.env.GITHUB_RUN_ID || 'UNKNOWN_RUN_ID';
+            const body =
+              `Circuit artifacts upload finished.\n\n` +
+              `\`\`\`bash\n` +
+              `gh run download ${runId} -R ${context.repo.owner}/${context.repo.repo}\n` +
+              `\`\`\`\n`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
