@@ -103,14 +103,14 @@ func NewCensusWithVoters(ctx context.Context, origin types.CensusOrigin, signers
 	}
 }
 
-func CreateCensusProof(origin types.CensusOrigin, pid types.ProcessID, key []byte) (types.CensusProof, error) {
+func CreateCensusProof(origin types.CensusOrigin, pid types.ProcessID, address common.Address) (types.CensusProof, error) {
 	if origin.IsCSP() {
 		weight := new(types.BigInt).SetUint64(testutil.Weight)
 		eddsaCSP, err := csp.New(types.CensusOriginCSPEdDSABabyJubJubV1, []byte(LocalCSPSeed))
 		if err != nil {
 			return types.CensusProof{}, fmt.Errorf("failed to create CSP: %w", err)
 		}
-		cspProof, err := eddsaCSP.GenerateProof(pid, common.BytesToAddress(key), weight)
+		cspProof, err := eddsaCSP.GenerateProof(pid, address, weight)
 		if err != nil {
 			return types.CensusProof{}, fmt.Errorf("failed to generate CSP proof: %w", err)
 		}

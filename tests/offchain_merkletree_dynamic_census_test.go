@@ -91,7 +91,7 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 			vote, randFields, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof
-			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainDynamicV1, pid, signers[i].Address().Bytes())
+			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainDynamicV1, pid, signers[i].Address())
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			// Make the request to cast the vote
 			_, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
@@ -118,7 +118,7 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 		vote, randFields, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 		// generate census proof
-		vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainDynamicV1, pid, signer.Address().Bytes())
+		vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainDynamicV1, pid, signer.Address())
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 
 		c.Run("try to vote with a non-census voter", func(c *qt.C) {
