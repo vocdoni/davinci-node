@@ -1,8 +1,10 @@
 package log
 
 import (
+	"bytes"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -45,6 +47,25 @@ func TestCheckInvalidChars(t *testing.T) {
 	defer func() { _ = recover() }()
 	Debugf("%s", v)
 	t.Errorf("Debugf(%s) should have panicked because of invalid char", v)
+}
+
+func TestFixedWidthMillis(t *testing.T) {
+	var buf bytes.Buffer
+	logTestWriter = &buf
+	t.Cleanup(func() { logTestWriter = nil })
+
+	Init("info", logTestWriterName, nil)
+
+	logTestTime, _ = time.Parse(RFC3339Milli, "2006-01-02T15:04:05.000Z")
+	Info("fixed width")
+
+	logTestTime, _ = time.Parse(RFC3339Milli, "2006-01-02T15:04:12.340Z")
+	Info("fixed width 2")
+
+	output := buf.String()
+	if !strings.Contains(output, ":04:05.000") || !strings.Contains(output, ":04:12.340") {
+		t.Fatalf("expected fixed-width millis timestamp, got %q", output)
+	}
 }
 
 func BenchmarkLogger(b *testing.B) {
