@@ -101,9 +101,9 @@ func cspSign(args []js.Value) any {
 	if err != nil {
 		return JSResult(nil, fmt.Errorf("Invalid process ID decoding: %v", err))
 	}
-	processID := new(types.ProcessID).SetBytes(bProcessID)
-	if !processID.IsValid() {
-		return JSResult(nil, fmt.Errorf("Invalid process ID: %s", bProcessID.String()))
+	processID, err := types.BytesToProcessID(bProcessID)
+	if err != nil {
+		return JSResult(nil, fmt.Errorf("Invalid process ID %s: %w", bProcessID.String(), err))
 	}
 	// decode the address from the fourth argument
 	bAddress, err := FromHexBytes(args[3])
