@@ -268,24 +268,20 @@ func (c *CensusDB) ExistsByAddress(address common.Address) bool {
 
 // Load returns a census from memory or from the persistent KV database.
 func (c *CensusDB) Load(censusID uuid.UUID) (*CensusRef, error) {
-	ref, err := c.loadCensusRef(censusID)
-	if err != nil {
-		return nil, err
-	}
-	return ref, nil
+	return c.loadCensusRef(censusID, censusDBWorkingOnQueries, censusIDDBPrefix(censusID))
 }
 
 // LoadByRoot loads a census by its root from memory or from the persistent KV database.
 func (c *CensusDB) LoadByRoot(root types.HexBytes) (*CensusRef, error) {
-	return c.loadCensusRefByRoot(rootToCensusID(root), root.LeftTrim())
+	return c.loadCensusRef(rootToCensusID(root), censusDBRootPrefix, rootDBPrefix(root))
 }
 
 func (c *CensusDB) LoadByAddress(address common.Address) (*CensusRef, error) {
-	return c.loadCensusRefByRoot(addressToCensusID(address), address.Bytes())
+	return c.loadCensusRef(addressToCensusID(address), censusDBAddrPrefix, addressDBPrefix(address))
 }
 
 // loadCensusRef loads a census reference from memory or persistent DB using a double‑check.
-func (c *CensusDB) loadCensusRef(censusID uuid.UUID) (*CensusRef, error) {
+func (c *CensusDB) loadCensusRef(censusID uuid.UUID, dbprefix string, key types.HexBytes) (*CensusRef, error) {
 	c.mu.RLock()
 	if ref, exists := c.loadedCensus[censusID]; exists {
 		c.mu.RUnlock()
@@ -296,7 +292,6 @@ func (c *CensusDB) loadCensusRef(censusID uuid.UUID) (*CensusRef, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	key := censusIDDBPrefix(censusID)
 	b, err := c.db.Get(key)
 	if err != nil {
 		if errors.Is(err, db.ErrKeyNotFound) {
@@ -329,64 +324,7 @@ func (c *CensusDB) loadCensusRef(censusID uuid.UUID) (*CensusRef, error) {
 
 	// Update the LastUsed timestamp and write back to the database.
 	ref.LastUsed = time.Now()
-	if err := c.writeReferenceWithPrefix(&ref, censusDBWorkingOnQueries, censusID[:]); err != nil {
-		return nil, err
-	}
-
-	c.loadedCensus[censusID] = &ref
-	rk := rootKey(ref.currentRoot)
-	if _, exists := c.rootIndex[rk]; !exists {
-		c.rootIndex[rk] = censusID
-	}
-	return &ref, nil
-}
-
-// loadCensusRefByRoot loads a census reference by root from memory or persistent DB.
-func (c *CensusDB) loadCensusRefByRoot(censusID uuid.UUID, root types.HexBytes) (*CensusRef, error) {
-	c.mu.RLock()
-	if ref, exists := c.loadedCensus[censusID]; exists {
-		c.mu.RUnlock()
-		return ref, nil
-	}
-	c.mu.RUnlock()
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	key := rootDBPrefix(root)
-	b, err := c.db.Get(key)
-	if err != nil {
-		if errors.Is(err, db.ErrKeyNotFound) {
-			return nil, fmt.Errorf("%w: %x", ErrCensusNotFound, root)
-		}
-		return nil, err
-	}
-
-	var ref CensusRef
-	if err := gob.NewDecoder(bytes.NewReader(b)).Decode(&ref); err != nil {
-		return nil, err
-	}
-
-	// Reopen the census tree.
-	censusTree, err := census.NewCensusIMTWithPebble(
-		censusPrefix(censusID),
-		censusHasher,
-	)
-	if err != nil {
-		return nil, err
-	}
-	ref.tree = censusTree
-	ref.updateRootRequest = c.updateRootChan
-
-	treeRoot, exists := censusTree.Root()
-	if !exists {
-		treeRoot = big.NewInt(0)
-	}
-	ref.currentRoot = treeRoot.Bytes()
-
-	// Update the LastUsed timestamp and write back to the database.
-	ref.LastUsed = time.Now()
-	if err := c.writeReferenceWithPrefix(&ref, censusDBRootPrefix, root); err != nil {
+	if err := c.writeReferenceWithPrefix(&ref, dbprefix, censusID[:]); err != nil {
 		return nil, err
 	}
 

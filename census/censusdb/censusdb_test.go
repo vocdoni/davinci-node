@@ -26,7 +26,6 @@ func makeAddress(s string) []byte {
 }
 
 func TestCensusDBNewByRoot(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	// Use unique root for this test to avoid conflicts with other tests
 	root := []byte("test_root_newbyroot_12345678901")
@@ -45,7 +44,6 @@ func TestCensusDBNewByRoot(t *testing.T) {
 }
 
 func TestCensusDBExists(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	censusID := uuid.New()
 
@@ -62,7 +60,6 @@ func TestCensusDBExists(t *testing.T) {
 }
 
 func TestCensusDBExistsByRoot(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	// Use unique root for this test to avoid conflicts with other tests
 	root := []byte("test_root_existsbyroot_123456789")
@@ -87,7 +84,6 @@ func TestCensusDBExistsByRoot(t *testing.T) {
 }
 
 func TestCensusDBDel(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	censusID := uuid.New()
 
@@ -108,7 +104,6 @@ func TestCensusDBDel(t *testing.T) {
 }
 
 func TestSequentialLoadReturnsSamePointer(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	censusID := uuid.New()
 
@@ -121,7 +116,6 @@ func TestSequentialLoadReturnsSamePointer(t *testing.T) {
 }
 
 func TestLoadNonExistingCensus(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	censusID := uuid.New() // Not created.
 
@@ -132,7 +126,6 @@ func TestLoadNonExistingCensus(t *testing.T) {
 }
 
 func TestLoadNonExistingCensusByRoot(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	root := []byte("nonexistent_root_123456789012")
 
@@ -143,7 +136,6 @@ func TestLoadNonExistingCensusByRoot(t *testing.T) {
 }
 
 func TestPersistenceAcrossCensusDBInstances(t *testing.T) {
-	t.Parallel()
 	db := newDatabase(t)
 	censusID := uuid.New()
 
@@ -172,7 +164,6 @@ func TestPersistenceAcrossCensusDBInstances(t *testing.T) {
 }
 
 func TestLoadAfterDelete(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	censusID := uuid.New()
 
@@ -345,7 +336,6 @@ func TestMultipleCensuses(t *testing.T) {
 }
 
 func TestCleanupWorkingCensus(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 	censusID := uuid.New()
 
@@ -367,7 +357,6 @@ func TestCleanupWorkingCensus(t *testing.T) {
 }
 
 func TestBasicProofGeneration(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 
 	// Create a working census first
@@ -424,7 +413,6 @@ func TestBasicProofGeneration(t *testing.T) {
 }
 
 func TestPurgeWorkingCensusesBasic(t *testing.T) {
-	t.Parallel()
 	censusDB := NewCensusDB(newDatabase(t))
 
 	// Create a few working censuses
