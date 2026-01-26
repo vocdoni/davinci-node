@@ -9,6 +9,8 @@ on:
       - release**
   pull_request:
       types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: "0 1 * * *" # 02:00 UTC+1
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-push-{0}-{1}', github.ref, github.run_id) }}
@@ -205,7 +207,7 @@ jobs:
             -covermode=atomic \
             -args -test.gocoverdir="$PWD/gocoverage-unit/"
 
-      - name: Run Go test
+      - name: Run unit tests
         if: steps.go-test-race.outcome == 'skipped'
         env:
           # Temporary disabled until we can fix the circuit tests
@@ -213,6 +215,13 @@ jobs:
           RUN_CIRCUIT_TESTS: false
           RUN_INTEGRATION_TESTS: false
         run: go test -v ./... -timeout=1h -vet=off -failfast
+
+      - name: Run circuit tests
+        if: steps.go-test-race.outcome == 'skipped' && github.event.pull_request.draft != true
+        env:
+          RUN_CIRCUIT_TESTS: true
+        run: go test -v ./circuits/... -timeout=1h -vet=off -failfast
+
       - name: Run integration tests
         if: steps.go-test-race.outcome == 'skipped' && github.event.pull_request.draft != true
         env:
@@ -228,4 +237,3 @@ jobs:
     secrets: inherit
     with:
       image-tag: ${{ github.ref_name }}
-
