@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/davinci-node/census/censusdb"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -221,7 +222,12 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the participant info
-	census, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+	var census *censusdb.CensusRef
+	if process.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+		census, err = a.storage.CensusDB().LoadByAddress(process.Census.ContractAddress)
+	} else {
+		census, err = a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+	}
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
 		return

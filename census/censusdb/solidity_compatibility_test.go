@@ -12,7 +12,8 @@ import (
 // TestSolidityCompatibility verifies that our censusdb implementation produces
 // the same leaf values and Merkle root as the Solidity DavinciDaoCensus contract.
 func TestSolidityCompatibility(t *testing.T) {
-	t.Parallel()
+	c := qt.New(t)
+	c.Parallel()
 
 	// Test data from Solidity contract
 	type testNode struct {
@@ -60,7 +61,7 @@ func TestSolidityCompatibility(t *testing.T) {
 	// Create a new census
 	censusDB := NewCensusDB(newDatabase(t))
 	ref, err := censusDB.New(uuid.New())
-	qt.Assert(t, err, qt.IsNil)
+	c.Assert(err, qt.IsNil)
 
 	// Insert nodes in order and verify leaf values
 	for _, node := range nodes {
@@ -74,7 +75,7 @@ func TestSolidityCompatibility(t *testing.T) {
 
 		// Insert into census
 		err := ref.Insert(addr.Bytes(), weightBytes)
-		qt.Assert(t, err, qt.IsNil, qt.Commentf("Failed to insert node %d", node.index))
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to insert node %d", node.index))
 
 		// Calculate expected packed leaf: (address << 88) | weight
 		expectedLeaf := new(big.Int)
@@ -86,7 +87,7 @@ func TestSolidityCompatibility(t *testing.T) {
 		actualLeaf.Or(actualLeaf, weightBig)
 
 		// Verify the packed leaf matches expected
-		qt.Assert(t, actualLeaf.String(), qt.Equals, expectedLeaf.String(),
+		c.Assert(actualLeaf.String(), qt.Equals, expectedLeaf.String(),
 			qt.Commentf("Leaf mismatch for node %d (address: %s, weight: %d)",
 				node.index, node.address, node.weight))
 
@@ -96,13 +97,13 @@ func TestSolidityCompatibility(t *testing.T) {
 
 	// Verify the final Merkle root
 	actualRoot := ref.Root()
-	qt.Assert(t, actualRoot, qt.IsNotNil, qt.Commentf("Root should not be nil"))
+	c.Assert(actualRoot, qt.IsNotNil, qt.Commentf("Root should not be nil"))
 
 	actualRootBig := new(big.Int).SetBytes(actualRoot)
 	expectedRootBig := new(big.Int)
 	expectedRootBig.SetString(expectedRoot, 10)
 
-	qt.Assert(t, actualRootBig.String(), qt.Equals, expectedRootBig.String(),
+	c.Assert(actualRootBig.String(), qt.Equals, expectedRootBig.String(),
 		qt.Commentf("Merkle root mismatch. Expected: %s, Got: %s",
 			expectedRoot, actualRootBig.String()))
 
@@ -110,7 +111,7 @@ func TestSolidityCompatibility(t *testing.T) {
 
 	// Verify tree size
 	size := ref.Size()
-	qt.Assert(t, size, qt.Equals, len(nodes),
+	c.Assert(size, qt.Equals, len(nodes),
 		qt.Commentf("Tree size mismatch. Expected: %d, Got: %d", len(nodes), size))
 
 	// Generate and verify proofs for each address
@@ -118,22 +119,21 @@ func TestSolidityCompatibility(t *testing.T) {
 		addr := common.HexToAddress(node.address)
 
 		// Generate proof
-		key, value, siblings, index, included, err := ref.GenProof(addr.Bytes())
-		qt.Assert(t, err, qt.IsNil, qt.Commentf("Failed to generate proof for node %d", node.index))
-		qt.Assert(t, included, qt.IsTrue, qt.Commentf("Node %d should be included", node.index))
-		qt.Assert(t, key, qt.DeepEquals, addr.Bytes(), qt.Commentf("Key mismatch for node %d", node.index))
+		proof, err := ref.GenProof(addr.Bytes())
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate proof for node %d", node.index))
+		c.Assert(proof.Address.Bytes(), qt.DeepEquals, addr.Bytes(), qt.Commentf("Key mismatch for node %d", node.index))
 
 		// Verify the proof value matches expected leaf
-		valueBig := new(big.Int).SetBytes(value)
+		valueBig := proof.Value.BigInt().MathBigInt()
 		expectedLeafBig := new(big.Int)
 		expectedLeafBig.SetString(node.leaf, 10)
 
-		qt.Assert(t, valueBig.String(), qt.Equals, expectedLeafBig.String(),
+		c.Assert(valueBig.String(), qt.Equals, expectedLeafBig.String(),
 			qt.Commentf("Proof value mismatch for node %d", node.index))
 
 		// Verify the proof is valid
-		isValid := VerifyProof(key, value, actualRoot, siblings, index)
-		qt.Assert(t, isValid, qt.IsTrue, qt.Commentf("Proof verification failed for node %d", node.index))
+		isValid := VerifyProof(proof.Address, proof.Value, actualRoot, proof.Siblings, proof.Index)
+		c.Assert(isValid, qt.IsTrue, qt.Commentf("Proof verification failed for node %d", node.index))
 
 		t.Logf("Proof for node %d verified ✓", node.index)
 	}
@@ -148,7 +148,8 @@ func TestSolidityCompatibility(t *testing.T) {
 
 // TestSolidityLeafPacking verifies the leaf packing formula matches Solidity's implementation.
 func TestSolidityLeafPacking(t *testing.T) {
-	t.Parallel()
+	c := qt.New(t)
+	c.Parallel()
 
 	testCases := []struct {
 		address      string
@@ -190,10 +191,10 @@ func TestSolidityLeafPacking(t *testing.T) {
 		expectedLeafBig := new(big.Int)
 		expectedLeafBig.SetString(tc.expectedLeaf, 10)
 
-		qt.Assert(t, packedLeaf.String(), qt.Equals, expectedLeafBig.String(),
+		c.Assert(packedLeaf.String(), qt.Equals, expectedLeafBig.String(),
 			qt.Commentf("Test case %d: address=%s, weight=%d", i, tc.address, tc.weight))
 
-		t.Logf("Test case %d: address=%s, weight=%d, leaf=%s ✓",
+		c.Logf("Test case %d: address=%s, weight=%d, leaf=%s ✓",
 			i, tc.address, tc.weight, packedLeaf.String())
 	}
 }
@@ -201,7 +202,8 @@ func TestSolidityLeafPacking(t *testing.T) {
 // TestSolidityRootCalculation verifies that inserting nodes produces the expected roots
 // at each step, matching the Solidity contract's behavior.
 func TestSolidityRootCalculation(t *testing.T) {
-	t.Parallel()
+	c := qt.New(t)
+	c.Parallel()
 
 	// Test data from Solidity testData.json - BasicOperations scenario
 	type step struct {
@@ -228,7 +230,7 @@ func TestSolidityRootCalculation(t *testing.T) {
 
 	censusDB := NewCensusDB(newDatabase(t))
 	ref, err := censusDB.New(uuid.New())
-	qt.Assert(t, err, qt.IsNil)
+	c.Assert(err, qt.IsNil)
 
 	for i, step := range steps {
 		addr := common.HexToAddress(step.address)
@@ -236,14 +238,14 @@ func TestSolidityRootCalculation(t *testing.T) {
 		new(big.Int).SetUint64(step.weight).FillBytes(weightBytes)
 
 		err := ref.Insert(addr.Bytes(), weightBytes)
-		qt.Assert(t, err, qt.IsNil, qt.Commentf("Step %d: %s", i, step.description))
+		c.Assert(err, qt.IsNil, qt.Commentf("Step %d: %s", i, step.description))
 
 		actualRoot := ref.Root()
 		actualRootBig := new(big.Int).SetBytes(actualRoot)
 		expectedRootBig := new(big.Int)
 		expectedRootBig.SetString(step.expectedRoot, 10)
 
-		qt.Assert(t, actualRootBig.String(), qt.Equals, expectedRootBig.String(),
+		c.Assert(actualRootBig.String(), qt.Equals, expectedRootBig.String(),
 			qt.Commentf("Step %d: %s - Root mismatch", i, step.description))
 
 		t.Logf("Step %d: %s - Root: %s ✓", i, step.description, actualRootBig.String())

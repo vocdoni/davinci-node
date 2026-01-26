@@ -12,6 +12,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/davinci-node/census/censusdb"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
@@ -384,7 +385,12 @@ func (s *Sequencer) processCensusProofs(
 	switch {
 	case process.Census.CensusOrigin.IsMerkleTree():
 		// load the census from the storage
-		censusRef, err := s.stg.CensusDB().LoadByRoot(process.Census.CensusRoot)
+		var censusRef *censusdb.CensusRef
+		if process.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+			censusRef, err = s.stg.CensusDB().LoadByAddress(process.Census.ContractAddress)
+		} else {
+			censusRef, err = s.stg.CensusDB().LoadByRoot(process.Census.CensusRoot)
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to load census by root: %w", err)
 		}

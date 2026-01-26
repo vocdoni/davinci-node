@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/davinci-node/census/censusdb"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -170,7 +171,12 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case process.Census.CensusOrigin.IsMerkleTree():
 		// load the census from the census DB
-		censusRef, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+		var censusRef *censusdb.CensusRef
+		if process.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+			censusRef, err = a.storage.CensusDB().LoadByAddress(process.Census.ContractAddress)
+		} else {
+			censusRef, err = a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+		}
 		if err != nil {
 			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
 			return

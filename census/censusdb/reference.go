@@ -145,8 +145,7 @@ func (cr *CensusRef) FetchKeysAndValues() ([]types.HexBytes, []*types.BigInt, er
 func (cr *CensusRef) Root() types.HexBytes {
 	cr.treeMu.Lock()
 	defer cr.treeMu.Unlock()
-	root, exists := cr.tree.Root()
-	if exists {
+	if root, exists := cr.tree.Root(); exists {
 		return root.Bytes()
 	}
 	return nil
@@ -162,35 +161,40 @@ func (cr *CensusRef) Size() int {
 // GenProof safely generates a Merkle proof for the given leaf key.
 // It returns the proof components (key, value, siblings, index) and an inclusion boolean.
 // For lean-imt, key must be a 20-byte Ethereum address.
-func (cr *CensusRef) GenProof(key types.HexBytes) (types.HexBytes, types.HexBytes, types.HexBytes, uint64, bool, error) {
+func (cr *CensusRef) GenProof(key types.HexBytes) (*types.CensusProof, error) {
 	cr.treeMu.Lock()
 	defer cr.treeMu.Unlock()
 
 	if len(key) != 20 {
-		return nil, nil, nil, 0, false, fmt.Errorf("key must be 20 bytes")
+		return nil, fmt.Errorf("key must be 20 bytes")
 	}
 	addr := common.BytesToAddress(key)
 
 	proof, err := cr.tree.GenerateProof(addr)
 	if err != nil {
-		return nil, nil, nil, 0, false, err
+		return nil, err
 	}
 
 	// Reconstruct packed value from address and weight: packed = (address << 88) | weight
 	packedValue := new(big.Int).Lsh(new(big.Int).SetBytes(proof.Address.Bytes()), 88)
 	packedValue.Or(packedValue, proof.Weight)
 
-	siblings := packSiblings(proof.Siblings)
-
-	return key, packedValue.Bytes(), siblings, proof.Index, true, nil
+	return &types.CensusProof{
+		Root:     proof.Root.Bytes(),
+		Address:  addr.Bytes(),
+		Value:    packedValue.Bytes(),
+		Siblings: packSiblings(proof.Siblings),
+		Weight:   (*types.BigInt)(proof.Weight),
+		Index:    proof.Index,
+	}, nil
 }
 
 // ApplyEvents safely applies a list of census events to the Merkle tree.
-func (cr *CensusRef) ApplyEvents(root types.HexBytes, events []census.CensusEvent) error {
+func (cr *CensusRef) ApplyEvents(events []census.CensusEvent) error {
 	cr.treeMu.Lock()
 	defer cr.treeMu.Unlock()
 
-	return cr.tree.ApplyEvents(root.BigInt().MathBigInt(), events)
+	return cr.tree.ApplyEvents(events)
 }
 
 // VerifyProof verifies a Merkle proof for the given leaf key.
