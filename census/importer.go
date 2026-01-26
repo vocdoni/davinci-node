@@ -18,17 +18,7 @@ import (
 //     expectedRoot.
 type ImporterPlugin interface {
 	ValidURI(targetURI string) bool
-	DownloadAndImportCensus(ctx context.Context, db *censusdb.CensusDB, uri string, expRoot, oldRoot types.HexBytes, from int) (int, error)
-}
-
-// CensusToUpdate holds information about a census that should being updated.
-// It includes the old census root and the number of processed elements so far.
-// The old census root is used to get the current reference of the census in the
-// database, while the processed elements count is used to resume the import
-// from where it left off.
-type CensusToUpdate struct {
-	OldCensusRoot     types.HexBytes
-	ProcessedElements int
+	ImportCensus(ctx context.Context, db *censusdb.CensusDB, cesus *types.Census, from int) (int, error)
 }
 
 // CensusImporter is responsible for importing censuses from various origins.
@@ -54,7 +44,7 @@ func NewCensusImporter(stg *storage.Storage, plugins ...ImporterPlugin) *CensusI
 // censuses do not require downloading, as the census data is managed by the
 // CSP itself. Other census origins are not supported. It returns an error if
 // the download or import fails.
-func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census, updateInfo *CensusToUpdate) (int, error) {
+func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census, processedElements int) (int, error) {
 	if census == nil {
 		return 0, fmt.Errorf("census is nil")
 	}
@@ -67,27 +57,17 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census,
 		if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
 			log.Infow("census root already exists, skipping import",
 				"root", census.CensusRoot.String())
-			if updateInfo != nil {
-				return updateInfo.ProcessedElements, nil
-			}
-			return 0, nil
+
+			return processedElements, nil
 		}
 		// Find the appropriate plugin for the given URI.
 		for _, plugin := range d.plugins {
 			if plugin.ValidURI(census.CensusURI) {
-				if updateInfo == nil {
-					updateInfo = &CensusToUpdate{
-						OldCensusRoot:     nil,
-						ProcessedElements: 0,
-					}
-				}
-				return plugin.DownloadAndImportCensus(
+				return plugin.ImportCensus(
 					ctx,
 					d.storage.CensusDB(),
-					census.CensusURI,
-					census.CensusRoot,
-					updateInfo.OldCensusRoot,
-					updateInfo.ProcessedElements,
+					census,
+					processedElements,
 				)
 			}
 		}

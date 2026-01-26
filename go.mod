@@ -31,11 +31,11 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
-	github.com/vocdoni/census3-bigquery v0.0.0-20260121132159-ae2747a07408
-	github.com/vocdoni/davinci-contracts v0.0.32-0.20260119161928-95700d32237f
+	github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427
+	github.com/vocdoni/davinci-contracts v0.0.32-0.20260122163707-00e8e94c3a75
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9
-	github.com/vocdoni/lean-imt-go v0.0.0-20260119124918-dac024645bae
-	go.mongodb.org/mongo-driver v1.17.6
+	github.com/vocdoni/lean-imt-go v0.0.0-20260126110424-0b1c7ec41924
+	go.mongodb.org/mongo-driver v1.17.7
 	golang.org/x/mod v0.32.0
 	golang.org/x/sync v0.19.0
 )

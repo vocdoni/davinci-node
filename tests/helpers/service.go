@@ -91,13 +91,7 @@ func NewTestServices(
 	}
 
 	// Start census downloader
-	cd := service.NewCensusDownloader(contracts, services.Storage, service.CensusDownloaderConfig{
-		CleanUpInterval:      time.Second * 5,
-		OnchainCheckInterval: time.Second * 5,
-		Expiration:           time.Minute * 30,
-		Cooldown:             time.Second * 10,
-		Attempts:             5,
-	})
+	cd := service.NewCensusDownloader(contracts, services.Storage, service.DefaultCensusDownloaderConfig)
 	if err := cd.Start(ctx); err != nil {
 		vp.Stop()
 		seqCancel()

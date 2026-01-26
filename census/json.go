@@ -55,38 +55,37 @@ func (jsonImporter) ValidURI(targetURI string) bool {
 	return strings.HasPrefix(targetURI, "http://") || strings.HasPrefix(targetURI, "https://")
 }
 
-// DownloadAndImportCensus downloads the census merkle tree dump from the
+// ImportCensus downloads the census merkle tree dump from the
 // specified targetURL and imports it into the census DB based on the
 // expectedRoot. It returns an error if the download or import fails.
-func (jsonImporter) DownloadAndImportCensus(
+func (jsonImporter) ImportCensus(
 	ctx context.Context,
 	censusDB *censusdb.CensusDB,
-	targetURI string,
-	expectedRoot, _ types.HexBytes,
+	census *types.Census,
 	_ int,
 ) (int, error) {
 	// Download the census merkle tree dump
-	res, err := requestRawDump(ctx, targetURI)
+	res, err := requestRawDump(ctx, census.CensusURI)
 	if err != nil {
-		return 0, fmt.Errorf("failed to download JSON dump from %s: %w", targetURI, err)
+		return 0, fmt.Errorf("failed to download JSON dump from %s: %w", census.CensusURI, err)
 	}
 	// Ensure the response body is closed
 	defer func() {
 		if err := res.Body.Close(); err != nil {
 			log.Warnw("failed to close JSON dump response body",
-				"root", expectedRoot.String(),
-				"uri", targetURI,
+				"root", census.CensusRoot.String(),
+				"uri", census.CensusURI,
 				"error", err.Error())
 		}
 	}()
 	// Create a reader that detects the JSON format
 	jsonReader, jsonFormat, err := jsonReader(res)
 	if err != nil {
-		return 0, fmt.Errorf("failed to download census merkle tree from %s: %w", targetURI, err)
+		return 0, fmt.Errorf("failed to download census merkle tree from %s: %w", census.CensusURI, err)
 	}
-	size, err := importJSONDump(censusDB, jsonFormat, expectedRoot, jsonReader)
+	size, err := importJSONDump(censusDB, jsonFormat, census.CensusRoot, jsonReader)
 	if err != nil {
-		return 0, fmt.Errorf("failed to import census merkle tree from %s: %w", targetURI, err)
+		return 0, fmt.Errorf("failed to import census merkle tree from %s: %w", census.CensusURI, err)
 	}
 	return size, nil
 }
