@@ -45,6 +45,7 @@ func main() {
 	var updateConfig bool
 	var configPath string
 	var updateWasm bool
+	var uploadBallotProof bool
 	s3Config := NewDefaultS3Config()
 
 	// Define flags
@@ -52,6 +53,7 @@ func main() {
 	flag.BoolVar(&updateConfig, "update-config", false, "update circuit_artifacts.go file with new hashes")
 	flag.StringVar(&configPath, "config-path", "", "path to circuit_artifacts.go file (auto-detected if not specified)")
 	flag.BoolVar(&updateWasm, "update-wasm", false, "compile and update WASM files only")
+	flag.BoolVar(&uploadBallotProof, "upload-ballotproof", false, "write embedded ballot proof circom artifacts to destination")
 
 	// S3 configuration flags
 	flag.BoolVar(&s3Config.Enabled, "s3.enabled", false, "enable S3 uploads")
@@ -88,6 +90,64 @@ func main() {
 		if err := compileAndUpdateWasm(destination, hashList, s3Config, updateConfig, configPath); err != nil {
 			log.Fatalf("failed to compile and update WASM: %v", err)
 		}
+		return
+	}
+
+	// Handle BallotProof-only upload if flag is set
+	if uploadBallotProof {
+		if err := writeBallotProofAssets(destination, hashList); err != nil {
+			log.Fatalf("failed to write ballot proof assets: %v", err)
+		}
+
+		hashListData, err := json.MarshalIndent(hashList, "", "  ")
+		if err != nil {
+			log.Fatalf("error marshalling hash list: %v", err)
+		}
+
+		fmt.Printf("Hash list: \n%s\n", hashListData)
+
+		if s3Config.Enabled {
+			ctx := context.Background()
+			log.Infow("starting S3 upload", "files_count", len(createdFiles))
+			if err := UploadFiles(ctx, createdFiles, s3Config); err != nil {
+				log.Warnw("failed to upload artifacts to S3", "error", err)
+			}
+		}
+
+		if updateConfig {
+			log.Infow("updating circuit artifacts config file")
+
+			if configPath == "" {
+				var err error
+				configPath, err = FindCircuitArtifactsFile()
+				if err != nil {
+					log.Warnw("failed to find circuit_artifacts.go file", "error", err)
+					return
+				}
+				log.Infow("found circuit artifacts config file", "path", configPath)
+			}
+
+			changes, err := CheckHashChanges(hashList, configPath)
+			if err != nil {
+				log.Warnw("failed to check hash changes", "error", err)
+				return
+			}
+
+			if len(changes) == 0 {
+				log.Infow("no changes needed for circuit artifacts config file")
+				return
+			}
+
+			log.Infow("the following changes will be made to the config file", "changes", changes)
+
+			if err := UpdateCircuitArtifactsConfig(hashList, configPath); err != nil {
+				log.Warnw("failed to update circuit artifacts config file", "error", err)
+				return
+			}
+
+			log.Infow("circuit artifacts config file updated successfully", "path", configPath)
+		}
+
 		return
 	}
 
@@ -485,6 +545,44 @@ func writeVK(vk groth16.VerifyingKey, to string) (string, error) {
 		_, err := vk.WriteTo(w)
 		return err
 	})
+}
+
+func writeBallotProofAssets(destination string, hashList map[string]string) error {
+	log.Infow("writing ballot proof circom assets to disk")
+
+	hash, err := writeToFile(destination, "wasm", func(w io.Writer) error {
+		_, err := w.Write(ballottest.TestCircomCircuit)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("write ballot proof wasm: %w", err)
+	}
+	hashList["BallotProofCircuitHash"] = hash
+
+	hash, err = writeToFile(destination, "zkey", func(w io.Writer) error {
+		_, err := w.Write(ballottest.TestCircomProvingKey)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("write ballot proof proving key: %w", err)
+	}
+	hashList["BallotProofProvingKeyHash"] = hash
+
+	hash, err = writeToFile(destination, "json", func(w io.Writer) error {
+		_, err := w.Write(ballottest.TestCircomVerificationKey)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("write ballot proof verification key: %w", err)
+	}
+	hashList["BallotProofVerificationKeyHash"] = hash
+
+	log.Infow("ballot proof circom assets written", "hashes", map[string]string{
+		"BallotProofCircuitHash":         hashList["BallotProofCircuitHash"],
+		"BallotProofProvingKeyHash":      hashList["BallotProofProvingKeyHash"],
+		"BallotProofVerificationKeyHash": hashList["BallotProofVerificationKeyHash"],
+	})
+	return nil
 }
 
 // writeToFile handles efficient writing to a file and computing its SHA256 hash
