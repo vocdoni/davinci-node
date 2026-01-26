@@ -88,13 +88,7 @@ func (s *CLIServices) Start(ctx context.Context, contracts *web3.Contracts, netw
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
 	// Start census downloader
-	s.censusDownloader = service.NewCensusDownloader(contracts, s.storage, service.CensusDownloaderConfig{
-		CleanUpInterval:      time.Second * 5,
-		OnchainCheckInterval: time.Second * 5,
-		Attempts:             5,
-		Expiration:           time.Minute * 30,
-		Cooldown:             time.Second * 10,
-	})
+	s.censusDownloader = service.NewCensusDownloader(contracts, s.storage, service.DefaultCensusDownloaderConfig)
 	if err := s.censusDownloader.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start census downloader: %w", err)
 	}
@@ -322,9 +316,7 @@ func (s *CLIServices) CreateCensus(
 }
 
 func (s *CLIServices) CreateProcess(
-	censusOrigin types.CensusOrigin,
-	censusRoot types.HexBytes,
-	censusURI string,
+	census *types.Census,
 	ballotMode *types.BallotMode,
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
@@ -345,11 +337,7 @@ func (s *CLIServices) CreateProcess(
 		ProcessID:  processId,
 		BallotMode: ballotMode,
 		Signature:  signature,
-		Census: &types.Census{
-			CensusRoot:   censusRoot,
-			CensusURI:    censusURI,
-			CensusOrigin: censusOrigin,
-		},
+		Census:     census,
 	}
 	body, code, err := s.cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
 	if err != nil {
@@ -378,11 +366,7 @@ func (s *CLIServices) CreateProcess(
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode:     ballotMode,
 		MaxVoters:      maxVoters,
-		Census: &types.Census{
-			CensusRoot:   censusRoot,
-			CensusURI:    censusURI,
-			CensusOrigin: censusOrigin,
-		},
+		Census:         census,
 	}
 	// Create process in the contracts
 	pid, txHash, err := s.contracts.CreateProcess(newProcess)

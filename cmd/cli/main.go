@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	flag "github.com/spf13/pflag"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
@@ -45,6 +46,7 @@ var (
 	testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 	sequencerEndpoints               = flag.StringSlice("sequencerEndpoint", []string{}, "sequencer endpoint(s)")
 	census3URL                       = flag.String("census3URL", defaultCensus3URL, "census3 endpoint")
+	cAddress                         = flag.BytesHex("censusContractAddress", nil, "census manager contract address")
 	cOrigin                          = flag.String("censusOrigin", types.CensusOriginMerkleTreeOffchainStaticV1.String(), "census origin to use")
 	cRoot                            = flag.BytesHex("censusRoot", nil, "census root to use (if empty, a new census will be created)")
 	cURI                             = flag.String("censusURI", "", "census URI to use (if empty, a new census will be created)")
@@ -96,9 +98,10 @@ func main() {
 		}
 
 		var (
-			censusRoot types.HexBytes
-			censusURI  string
-			signers    []*ethereum.Signer
+			censusContractAddress common.Address
+			censusRoot            types.HexBytes
+			censusURI             string
+			signers               []*ethereum.Signer
 		)
 		if cRoot == nil || len(*cURI) == 0 {
 			// Create a new census with numBallot participants
@@ -111,6 +114,9 @@ func main() {
 				"root", censusRoot.String(),
 				"size", len(signers))
 		} else {
+			if censusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+				censusContractAddress = common.BytesToAddress(*cAddress)
+			}
 			censusRoot = *cRoot
 			censusURI = *cURI
 		}
@@ -119,15 +125,17 @@ func main() {
 			"root", censusRoot.String(),
 			"uri", censusURI)
 		// Create a new process with mocked ballot mode
-		pid, encryptionKeys, err := cliSrv.CreateProcess(censusOrigin, censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
+		pid, _, err := cliSrv.CreateProcess(&types.Census{
+			CensusOrigin:    censusOrigin,
+			CensusRoot:      censusRoot,
+			CensusURI:       censusURI,
+			ContractAddress: censusContractAddress,
+		}, ballotMode, new(types.BigInt).SetInt(*votersCount))
 		if err != nil {
 			log.Errorw(err, "failed to create process")
 			return
 		}
-		log.Infow("process created",
-			"pid", pid.String(),
-			"encKeysX", encryptionKeys.X.String(),
-			"encKeysY", encryptionKeys.Y.String())
+		log.Infow("process created", "pid", pid.String())
 	case "vote":
 		processID, err := types.HexStringToProcessID(*pid)
 		if err != nil {

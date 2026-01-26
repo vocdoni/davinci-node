@@ -81,9 +81,10 @@ func contractProcess2Process(p npbindings.IProcessRegistryProcess) (*types.Proce
 	}
 
 	census := types.Census{
-		CensusRoot:   p.Census.CensusRoot[:],
-		CensusURI:    p.Census.CensusURI,
-		CensusOrigin: types.CensusOrigin(p.Census.CensusOrigin),
+		CensusRoot:      p.Census.CensusRoot[:],
+		CensusURI:       p.Census.CensusURI,
+		CensusOrigin:    types.CensusOrigin(p.Census.CensusOrigin),
+		ContractAddress: p.Census.ContractAddress,
 	}
 
 	results := make([]*types.BigInt, len(p.Result))
@@ -139,7 +140,11 @@ func process2ContractProcess(p *types.Process) npbindings.IProcessRegistryProces
 		MinValueSum:    p.BallotMode.MinValueSum.MathBigInt(),
 	}
 
-	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
+	if p.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+		prp.Census.ContractAddress = p.Census.ContractAddress
+	} else {
+		copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
+	}
 	prp.Census.CensusOrigin = uint8(p.Census.CensusOrigin)
 	prp.Census.CensusURI = p.Census.CensusURI
 	prp.VotersCount = p.VotersCount.MathBigInt()
