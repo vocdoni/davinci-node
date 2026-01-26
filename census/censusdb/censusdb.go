@@ -107,30 +107,25 @@ func NewCensusDB(db db.Database) *CensusDB {
 // database. It returns ErrCensusAlreadyExists if a census with the given UUID
 // is already present.
 func (c *CensusDB) New(censusID uuid.UUID) (*CensusRef, error) {
-	return c.newCensus(censusID, censusDBWorkingOnQueries, censusID[:], nil)
+	return c.newCensus(censusID, censusIDDBPrefix(censusID), nil)
 }
 
 // NewByRoot creates a new census identified by its root. It returns
 // ErrCensusAlreadyExists if a census with the given root is already present.
 func (c *CensusDB) NewByRoot(root types.HexBytes) (*CensusRef, error) {
-	// Generate a deterministic UUID from the root for internal use
-	censusID := rootToCensusID(root)
-	return c.newCensus(censusID, censusDBRootPrefix, root, nil)
+	return c.newCensus(rootToCensusID(root), rootDBPrefix(root), nil)
 }
 
 // NewByAddress creates a new census identified by an Ethereum address. It
 // returns ErrCensusAlreadyExists if a census with the given address is already
 // present.
 func (c *CensusDB) NewByAddress(address common.Address) (*CensusRef, error) {
-	censusID := addressToCensusID(address)
-	return c.newCensus(censusID, censusDBAddrPrefix, address.Bytes(), nil)
+	return c.newCensus(addressToCensusID(address), addressDBPrefix(address), nil)
 }
 
 // newCensus is the internal method that creates a new census with the given parameters.
 // The tree parameter is optional; if nil, a new empty tree is created.
-func (c *CensusDB) newCensus(censusID uuid.UUID, prefix string, keyIdentifier types.HexBytes, tree *census.CensusIMT) (*CensusRef, error) {
-	key := append([]byte(prefix), keyIdentifier...)
-
+func (c *CensusDB) newCensus(censusID uuid.UUID, key types.HexBytes, tree *census.CensusIMT) (*CensusRef, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -174,7 +169,7 @@ func (c *CensusDB) newCensus(censusID uuid.UUID, prefix string, keyIdentifier ty
 	ref.currentRoot = root.Bytes()
 
 	// Store the reference in the database.
-	if err := c.writeReferenceWithPrefix(ref, prefix, keyIdentifier); err != nil {
+	if err := c.writeReferenceWithPrefix(ref, key); err != nil {
 		return nil, fmt.Errorf("failed to write census reference to db: %w", err)
 	}
 
@@ -188,9 +183,8 @@ func (c *CensusDB) newCensus(censusID uuid.UUID, prefix string, keyIdentifier ty
 	return ref, nil
 }
 
-// writeReferenceWithPrefix writes a census reference to the database with a specific prefix.
-func (c *CensusDB) writeReferenceWithPrefix(ref *CensusRef, prefix string, identifier types.HexBytes) error {
-	key := append([]byte(prefix), identifier...)
+// writeReferenceWithPrefix writes a census reference to the database using the provided key.
+func (c *CensusDB) writeReferenceWithPrefix(ref *CensusRef, key types.HexBytes) error {
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(ref); err != nil {
 		return err
@@ -268,24 +262,24 @@ func (c *CensusDB) ExistsByAddress(address common.Address) bool {
 
 // Load returns a census from memory or from the persistent KV database.
 func (c *CensusDB) Load(censusID uuid.UUID) (*CensusRef, error) {
-	return c.loadCensusRef(censusID, censusDBWorkingOnQueries, censusIDDBPrefix(censusID))
+	return c.loadCensusRef(censusID, censusIDDBPrefix(censusID))
 }
 
 // LoadByRoot loads a census by its root from memory or from the persistent KV
 // database.
 func (c *CensusDB) LoadByRoot(root types.HexBytes) (*CensusRef, error) {
-	return c.loadCensusRef(rootToCensusID(root), censusDBRootPrefix, rootDBPrefix(root))
+	return c.loadCensusRef(rootToCensusID(root), rootDBPrefix(root))
 }
 
 // LoadByAddress loads a census by its Ethereum address from memory or from the
 // persistent KV database.
 func (c *CensusDB) LoadByAddress(address common.Address) (*CensusRef, error) {
-	return c.loadCensusRef(addressToCensusID(address), censusDBAddrPrefix, addressDBPrefix(address))
+	return c.loadCensusRef(addressToCensusID(address), addressDBPrefix(address))
 }
 
 // loadCensusRef loads a census reference from memory or persistent DB using a
-// double‑check. It takes the censusID, the DB prefix, and the key to use.
-func (c *CensusDB) loadCensusRef(censusID uuid.UUID, dbprefix string, key types.HexBytes) (*CensusRef, error) {
+// double‑check. It takes the censusID and the key to use.
+func (c *CensusDB) loadCensusRef(censusID uuid.UUID, key types.HexBytes) (*CensusRef, error) {
 	c.mu.RLock()
 	if ref, exists := c.loadedCensus[censusID]; exists {
 		c.mu.RUnlock()
@@ -328,7 +322,7 @@ func (c *CensusDB) loadCensusRef(censusID uuid.UUID, dbprefix string, key types.
 
 	// Update the LastUsed timestamp and write back to the database.
 	ref.LastUsed = time.Now()
-	if err := c.writeReferenceWithPrefix(&ref, dbprefix, censusID[:]); err != nil {
+	if err := c.writeReferenceWithPrefix(&ref, key); err != nil {
 		return nil, err
 	}
 
@@ -781,7 +775,7 @@ func (c *CensusDB) Import(root types.HexBytes, reader io.Reader) (*CensusRef, er
 		return nil, fmt.Errorf("failed to sync census tree after import: %w", err)
 	}
 	// Create a new CensusRef with the imported tree
-	return c.newCensus(censusID, censusDBRootPrefix, root.Bytes(), tree)
+	return c.newCensus(censusID, rootDBPrefix(root), tree)
 }
 
 // ImportAll imports a census from a JSON-encoded census dump. It decodes the
@@ -809,7 +803,7 @@ func (c *CensusDB) ImportAll(data []byte) (*CensusRef, error) {
 		return nil, fmt.Errorf("failed to import census dump into tree: %w", err)
 	}
 	// Create a new CensusRef with the imported tree
-	return c.newCensus(censusID, censusDBRootPrefix, dump.Root.Bytes(), tree)
+	return c.newCensus(censusID, rootDBPrefix(dump.Root.Bytes()), tree)
 }
 
 // ImportEvents imports a census from a list of census events. It creates a

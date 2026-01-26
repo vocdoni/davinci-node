@@ -51,7 +51,6 @@ var (
 	cRoot                            = flag.BytesHex("censusRoot", nil, "census root to use (if empty, a new census will be created)")
 	cURI                             = flag.String("censusURI", "", "census URI to use (if empty, a new census will be created)")
 	votersCount                      = flag.Int("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
-	voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 	web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
 	action                           = flag.String("action", "create", "create|stop|vote")
 	pid                              = flag.String("pid", "", "process ID to perform the action on")
@@ -103,7 +102,8 @@ func main() {
 			censusURI             string
 			signers               []*ethereum.Signer
 		)
-		if cRoot == nil || len(*cURI) == 0 {
+		switch {
+		case cRoot == nil || len(*cURI) == 0:
 			// Create a new census with numBallot participants
 			censusRoot, censusURI, signers, err = cliSrv.CreateCensus(censusOrigin, *votersCount, userWeight, *census3URL, *voterPrivkey)
 			if err != nil {
@@ -113,7 +113,7 @@ func main() {
 			log.Infow("census created",
 				"root", censusRoot.String(),
 				"size", len(signers))
-		} else {
+		default:
 			if censusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
 				censusContractAddress = common.BytesToAddress(*cAddress)
 			}

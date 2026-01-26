@@ -11,35 +11,25 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/vocdoni/arbo/memdb"
-	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/api/client"
 	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/sequencer"
-	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 	"github.com/vocdoni/davinci-node/web3"
 )
 
+// CLIServices holds the services required for the CLI operations
 type CLIServices struct {
-	sequencer        *service.SequencerService
-	censusDownloader *service.CensusDownloader
-	processMonitor   *service.ProcessMonitor
-	storage          *storage.Storage
-	api              *service.APIService
+	cli *client.HTTPclient
 
-	cli       *client.HTTPclient
 	contracts *web3.Contracts
 	addresses *web3.Addresses
 	network   string
@@ -48,6 +38,7 @@ type CLIServices struct {
 	cancel context.CancelFunc
 }
 
+// NewCLIServices creates a new CLIServices instance
 func NewCLIServices(ctx context.Context) *CLIServices {
 	ctx, cancel := context.WithCancel(ctx)
 	return &CLIServices{
@@ -56,6 +47,8 @@ func NewCLIServices(ctx context.Context) *CLIServices {
 	}
 }
 
+// Init initializes the CLI services with the provided configuration. It sets
+// up the web3 contracts and the sequencer client.
 func (s *CLIServices) Init(
 	network string,
 	rpcs []string,
@@ -82,72 +75,6 @@ func (s *CLIServices) Init(
 	return s.initSequencerCLI()
 }
 
-func (s *CLIServices) Start(ctx context.Context, contracts *web3.Contracts, network string) error {
-	// Create storage with a in-memory database
-	s.storage = storage.New(memdb.New())
-	sequencer.AggregatorTickerInterval = time.Second * 2
-	sequencer.NewProcessMonitorInterval = time.Second * 5
-	// Start census downloader
-	s.censusDownloader = service.NewCensusDownloader(contracts, s.storage, service.DefaultCensusDownloaderConfig)
-	if err := s.censusDownloader.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start census downloader: %w", err)
-	}
-	// Start StateSync
-	stateSync := service.NewStateSync(contracts, s.storage)
-	if err := stateSync.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start state sync: %v", err)
-	}
-	// Monitor new processes from the contracts
-	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, s.censusDownloader, stateSync, time.Second*2)
-	if err := s.processMonitor.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start process monitor: %v", err)
-	}
-	// Start sequencer service
-	s.sequencer = service.NewSequencer(s.storage, contracts, time.Second*30, nil)
-	if err := s.sequencer.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start sequencer: %v", err)
-	}
-	// Start API service
-	_, ok := npbindings.AvailableNetworksByName[network]
-	if !ok {
-		return fmt.Errorf("invalid network configuration for %s", network)
-	}
-	c := npbindings.GetAllContractAddresses(network)
-	web3Conf := config.DavinciWeb3Config{
-		ProcessRegistrySmartContract:      c[npbindings.ProcessRegistryContract],
-		OrganizationRegistrySmartContract: c[npbindings.OrganizationRegistryContract],
-		ResultsZKVerifier:                 c[npbindings.ResultsVerifierGroth16Contract],
-		StateTransitionZKVerifier:         c[npbindings.StateTransitionVerifierGroth16Contract],
-	}
-	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, network, web3Conf, false)
-	if err := s.api.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start API: %v", err)
-	}
-	return nil
-}
-
-func (s *CLIServices) Stop() {
-	if s.cancel != nil {
-		s.cancel()
-	}
-	// Stop services
-	if s.sequencer != nil {
-		s.sequencer.Stop()
-	}
-	if s.censusDownloader != nil {
-		s.censusDownloader.Stop()
-	}
-	if s.processMonitor != nil {
-		s.processMonitor.Stop()
-	}
-	if s.api != nil {
-		s.api.Stop()
-	}
-	if s.storage != nil {
-		s.storage.Close()
-	}
-}
-
 func (s *CLIServices) initContracts(
 	network string,
 	rpcs []string,
@@ -166,7 +93,6 @@ func (s *CLIServices) initContracts(
 		"resultsZKVerifierAddress", resultsZKVerifierAddress,
 		"web3rpcs", rpcs,
 		"consensusAPI", consensusAPI,
-		"voteSleepTime", *voteSleepTime,
 	)
 
 	// Instance contracts with the provided web3rpcs
@@ -253,6 +179,9 @@ func (s *CLIServices) initSequencerCLI() error {
 	return nil
 }
 
+// CreateAccountOrganization creates an organization using the account address.
+// If the organization already exists, it returns the existing organization
+// address. If some error occurs during the creation, it will be returned.
 func (s *CLIServices) CreateAccountOrganization() (common.Address, error) {
 	orgAddr := s.contracts.AccountAddress()
 	if _, err := s.contracts.Organization(orgAddr); err == nil {
@@ -275,6 +204,10 @@ func (s *CLIServices) CreateAccountOrganization() (common.Address, error) {
 	return orgAddr, nil
 }
 
+// CreateCensus creates a census with the given parameters and returns the
+// census root, census URI and the list of signers used to create the census.
+// If privKey is provided, it will be used as the first participant in the
+// census. If some error occurs, it will be returned.
 func (s *CLIServices) CreateCensus(
 	origin types.CensusOrigin,
 	size int,
@@ -315,6 +248,9 @@ func (s *CLIServices) CreateCensus(
 	return censusRoot, censusURI, signers, nil
 }
 
+// CreateProcess creates a new process with the given census and ballot mode.
+// It returns the process ID and encryption key used for the process. If some
+// error occurs, it will be returned.
 func (s *CLIServices) CreateProcess(
 	census *types.Census,
 	ballotMode *types.BallotMode,
@@ -401,6 +337,23 @@ func (s *CLIServices) CreateProcess(
 	return pid, encryptionKeys, nil
 }
 
+// StopProcess stops the process with the given process ID by setting its
+// status to Ended in the smart contracts. It sends a transaction to update
+// the process status and waits for the transaction to be mined. If any error
+// occurs during the process, it will be returned.
+func (s *CLIServices) StopProcess(pid types.ProcessID) error {
+	tx, err := s.contracts.SetProcessStatus(pid, types.ProcessStatusEnded)
+	if err != nil {
+		return fmt.Errorf("failed to stop process in contracts: %w", err)
+	}
+	return s.contracts.WaitTxByHash(*tx, time.Minute)
+}
+
+// ProcessEncKey retrieves the encryption key for the given process ID from
+// the sequencer. It request the process information to the sequencer API and
+// extracts the encryption key from the response. If any error occurs during
+// the request or unmarshalling, it will be returned.
+// The encryption key can be used to encrypt ballots for the specified process.
 func (s *CLIServices) ProcessEncKey(pid types.ProcessID) (*types.EncryptionKey, error) {
 	// Get the encryption keys from the sequencer
 	processEndpoint := api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String())
@@ -421,6 +374,10 @@ func (s *CLIServices) ProcessEncKey(pid types.ProcessID) (*types.EncryptionKey, 
 	return processInfo.EncryptionKey, nil
 }
 
+// VoterWeight retrieves the voter weight for a given process ID and address
+// from the sequencer. It makes a request to the census participant endpoint
+// of the sequencer API and extracts the weight from the response. If any
+// error occurs during the request or unmarshalling, it will be returned.
 func (s *CLIServices) VoterWeight(pid types.ProcessID, addr common.Address) (*types.BigInt, error) {
 	participantEndpoint := api.EndpointWithParam(api.CensusParticipantEndpoint, api.ProcessURLParam, pid.String())
 	participantEndpoint = api.EndpointWithParam(participantEndpoint, api.AddressURLParam, addr.Hex())
@@ -439,6 +396,10 @@ func (s *CLIServices) VoterWeight(pid types.ProcessID, addr common.Address) (*ty
 	return participantInfo.Weight, nil
 }
 
+// CreateVote creates a new vote for the given process ID and ballot mode. It
+// generates a random ballot based on the ballot mode and constructs the vote
+// structure with the necessary fields, including the ballot proof and
+// signature. If any error occurs during the process, it will be returned.
 func (s *CLIServices) CreateVote(
 	privKey *ethereum.Signer,
 	pid types.ProcessID,
@@ -535,6 +496,10 @@ func (s *CLIServices) CreateVote(
 	}, nil
 }
 
+// SubmitVote submits the given vote to the sequencer API. It makes a POST
+// request to the votes endpoint with the vote data. If the request is
+// successful, it returns the vote ID. If any error occurs during the request
+// or if the response status code is not OK, it will be returned.
 func (s *CLIServices) SubmitVote(vote api.Vote) (types.HexBytes, error) {
 	// Make the request to cast the vote
 	body, status, err := s.cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
@@ -544,12 +509,4 @@ func (s *CLIServices) SubmitVote(vote api.Vote) (types.HexBytes, error) {
 		return nil, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
-}
-
-func (s *CLIServices) StopProcess(pid types.ProcessID) error {
-	tx, err := s.contracts.SetProcessStatus(pid, types.ProcessStatusEnded)
-	if err != nil {
-		return fmt.Errorf("failed to stop process in contracts: %w", err)
-	}
-	return s.contracts.WaitTxByHash(*tx, time.Minute)
 }

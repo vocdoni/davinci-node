@@ -222,11 +222,12 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the participant info
-	var census *censusdb.CensusRef
-	if process.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-		census, err = a.storage.CensusDB().LoadByAddress(process.Census.ContractAddress)
-	} else {
-		census, err = a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+	var censusRef *censusdb.CensusRef
+	switch process.Census.CensusOrigin {
+	case types.CensusOriginMerkleTreeOffchainDynamicV1:
+		censusRef, err = a.storage.CensusDB().LoadByAddress(process.Census.ContractAddress)
+	default:
+		censusRef, err = a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
 	}
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
@@ -234,7 +235,7 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the participant weight
-	weight, ok := census.Tree().GetWeight(address)
+	weight, ok := censusRef.Tree().GetWeight(address)
 	if !ok {
 		ErrResourceNotFound.Withf("participant not found in census: %s", address.String()).Write(w)
 		return

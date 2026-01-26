@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // newDatabase returns a new in-memory test database.
@@ -32,6 +33,23 @@ func TestCensusDBNewByRoot(t *testing.T) {
 	root := testutil.RandomCensusRoot().Bytes()
 
 	censusRef, err := censusDB.NewByRoot(root)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, censusRef, qt.IsNotNil)
+	qt.Assert(t, censusRef.Tree(), qt.IsNotNil)
+
+	// Cleanup
+	defer func() {
+		if censusRef.tree != nil {
+			_ = censusRef.tree.Close()
+		}
+	}()
+}
+
+func TestCensusDBNewByAddress(t *testing.T) {
+	censusDB := NewCensusDB(newDatabase(t))
+	address := testutil.RandomAddress()
+
+	censusRef, err := censusDB.NewByAddress(address)
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, censusRef, qt.IsNotNil)
 	qt.Assert(t, censusRef.Tree(), qt.IsNotNil)
@@ -81,6 +99,29 @@ func TestCensusDBExistsByRoot(t *testing.T) {
 	}()
 
 	existsAfter := censusDB.ExistsByRoot(root)
+	qt.Assert(t, existsAfter, qt.IsTrue)
+}
+
+func TestCensusDBExistsByAddress(t *testing.T) {
+	censusDB := NewCensusDB(newDatabase(t))
+	address := testutil.RandomAddress()
+
+	// Before creation.
+	existsBefore := censusDB.ExistsByAddress(address)
+	qt.Assert(t, existsBefore, qt.IsFalse)
+
+	// Create a new census.
+	ref, err := censusDB.NewByAddress(address)
+	qt.Assert(t, err, qt.IsNil)
+
+	// Cleanup
+	defer func() {
+		if ref.tree != nil {
+			_ = ref.tree.Close()
+		}
+	}()
+
+	existsAfter := censusDB.ExistsByAddress(address)
 	qt.Assert(t, existsAfter, qt.IsTrue)
 }
 
@@ -136,6 +177,16 @@ func TestLoadNonExistingCensusByRoot(t *testing.T) {
 	qt.Assert(t, err.Error(), qt.Contains, "census not found")
 }
 
+func TestLoadNonExistingCensusByAddress(t *testing.T) {
+	censusDB := NewCensusDB(newDatabase(t))
+	address := testutil.RandomAddress()
+
+	ref, err := censusDB.LoadByAddress(address)
+	qt.Assert(t, ref, qt.IsNil)
+	qt.Assert(t, err, qt.Not(qt.IsNil))
+	qt.Assert(t, err.Error(), qt.Contains, "census not found")
+}
+
 func TestPersistenceAcrossCensusDBInstances(t *testing.T) {
 	db := newDatabase(t)
 	censusID := uuid.New()
@@ -155,6 +206,62 @@ func TestPersistenceAcrossCensusDBInstances(t *testing.T) {
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, ref2, qt.IsNotNil)
 	qt.Assert(t, ref2.Tree(), qt.IsNotNil)
+
+	// Cleanup
+	defer func() {
+		if ref2.tree != nil {
+			_ = ref2.tree.Close()
+		}
+	}()
+}
+
+func TestLoadByAddressAcrossInstances(t *testing.T) {
+	db := newDatabase(t)
+	censusDB1 := NewCensusDB(db)
+	address := testutil.RandomAddress()
+
+	ref1, err := censusDB1.NewByAddress(address)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, ref1, qt.IsNotNil)
+
+	// Close the first tree before loading with second instance.
+	_ = ref1.tree.Close()
+
+	censusDB2 := NewCensusDB(db)
+	exists := censusDB2.ExistsByAddress(address)
+	qt.Assert(t, exists, qt.IsTrue)
+
+	ref2, err := censusDB2.LoadByAddress(address)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, ref2, qt.IsNotNil)
+
+	// Cleanup
+	defer func() {
+		if ref2.tree != nil {
+			_ = ref2.tree.Close()
+		}
+	}()
+}
+
+func TestLoadByRootLeadingZerosAcrossInstances(t *testing.T) {
+	db := newDatabase(t)
+	censusDB1 := NewCensusDB(db)
+
+	rootWithZeros := types.HexBytes{0x00, 0x00, 0x01, 0x02, 0x03}
+	ref1, err := censusDB1.NewByRoot(rootWithZeros)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, ref1, qt.IsNotNil)
+
+	// Close the first tree before loading with second instance.
+	_ = ref1.tree.Close()
+
+	censusDB2 := NewCensusDB(db)
+	exists := censusDB2.ExistsByRoot(rootWithZeros)
+	qt.Assert(t, exists, qt.IsTrue)
+
+	ref2, err := censusDB2.LoadByRoot(rootWithZeros)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, ref2, qt.IsNotNil)
 
 	// Cleanup
 	defer func() {

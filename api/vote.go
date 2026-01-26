@@ -172,9 +172,10 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	case process.Census.CensusOrigin.IsMerkleTree():
 		// load the census from the census DB
 		var censusRef *censusdb.CensusRef
-		if process.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+		switch process.Census.CensusOrigin {
+		case types.CensusOriginMerkleTreeOffchainDynamicV1:
 			censusRef, err = a.storage.CensusDB().LoadByAddress(process.Census.ContractAddress)
-		} else {
+		default:
 			censusRef, err = a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
 		}
 		if err != nil {
