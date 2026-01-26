@@ -240,9 +240,9 @@ func (pm *ProcessMonitor) monitorProcesses(
 					continue
 				}
 				// After census is downloaded and imported, store the new process
-				downloadCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				defer cancel()
+				downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, 30*time.Second)
 				pm.censusDownloader.OnCensusDownloaded(process.Census, downloadCtx, func(err error) {
+					defer downloadCtxCancel()
 					if err != nil {
 						log.Warnw("failed to download census for new process",
 							"processID", process.ID.String(),
@@ -325,9 +325,10 @@ func (pm *ProcessMonitor) monitorProcesses(
 					"newCensusRoot", update.NewCensusRoot.String(),
 					"newCensusURI", update.NewCensusURI)
 				newCensus := &types.Census{
-					CensusOrigin: process.Census.CensusOrigin,
-					CensusRoot:   update.NewCensusRoot,
-					CensusURI:    update.NewCensusURI,
+					CensusOrigin:    process.Census.CensusOrigin,
+					CensusRoot:      update.NewCensusRoot,
+					CensusURI:       update.NewCensusURI,
+					ContractAddress: process.Census.ContractAddress,
 				}
 				// download and import the new census
 				process.Census.CensusRoot, err = pm.censusDownloader.DownloadCensus(newCensus)

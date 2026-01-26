@@ -18,7 +18,7 @@ import (
 //     expectedRoot.
 type ImporterPlugin interface {
 	ValidURI(targetURI string) bool
-	ImportCensus(ctx context.Context, db *censusdb.CensusDB, cesus *types.Census, from int) (int, error)
+	ImportCensus(ctx context.Context, db *censusdb.CensusDB, census *types.Census, from int) (int, error)
 }
 
 // CensusImporter is responsible for importing censuses from various origins.
@@ -57,7 +57,6 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census,
 		if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
 			log.Infow("census root already exists, skipping import",
 				"root", census.CensusRoot.String())
-
 			return processedElements, nil
 		}
 		// Find the appropriate plugin for the given URI.

@@ -221,20 +221,20 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 // retries the download and import process up to the configured number of
 // attempts. After each attempt, it updates the status of the census in the
 // internal tracking map.
-func (cd *CensusDownloader) processCensusDownload(ctx context.Context, censusInfo internalCensus) error {
+func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census internalCensus) error {
 	var importErr error
-	for attempt := 0; attempt <= cd.config.Attempts; attempt++ {
-		initialElements := censusInfo.ProcessedElements
-		censusInfo.ProcessedElements, importErr = cd.importer.ImportCensus(ctx, censusInfo.Census, censusInfo.ProcessedElements)
-		cd.updateInternalStatus(censusInfo, importErr)
+	for attempt := 0; attempt < cd.config.Attempts; attempt++ {
+		initialProcessedElements := census.ProcessedElements
+		census.ProcessedElements, importErr = cd.importer.ImportCensus(ctx, census.Census, census.ProcessedElements)
+		cd.updateInternalStatus(census, importErr)
 		if importErr == nil {
-			if newElements := censusInfo.ProcessedElements - initialElements; newElements > 0 {
+			if newElements := census.ProcessedElements - initialProcessedElements; newElements > 0 {
 				log.Infow("census imported successfully",
 					"attempt", attempt+1,
-					"root", censusInfo.CensusRoot.String(),
-					"uri", censusInfo.CensusURI,
-					"newElements", censusInfo.ProcessedElements-initialElements,
-					"origin", censusInfo.CensusOrigin.String())
+					"root", census.CensusRoot.String(),
+					"uri", census.CensusURI,
+					"newElements", census.ProcessedElements-initialProcessedElements,
+					"origin", census.CensusOrigin.String())
 			}
 			return nil
 		}
@@ -243,9 +243,9 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, censusInf
 	log.Warnw("census import failed",
 		"error", importErr,
 		"attempts", cd.config.Attempts,
-		"root", censusInfo.CensusRoot.String(),
-		"uri", censusInfo.CensusURI,
-		"origin", censusInfo.CensusOrigin.String())
+		"root", census.CensusRoot.String(),
+		"uri", census.CensusURI,
+		"origin", census.CensusOrigin.String())
 	return importErr
 }
 

@@ -338,7 +338,7 @@ func TestImportJSONDump(t *testing.T) {
 	})
 }
 
-func ImportCensus(t *testing.T) {
+func TestJSONDownloadAndImportCensus(t *testing.T) {
 	c := qt.New(t)
 
 	censusDB := testNewCensusDB(c)

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 )
 
 // newDatabase returns a new in-memory test database.
@@ -28,7 +29,7 @@ func makeAddress(s string) []byte {
 func TestCensusDBNewByRoot(t *testing.T) {
 	censusDB := NewCensusDB(newDatabase(t))
 	// Use unique root for this test to avoid conflicts with other tests
-	root := []byte("test_root_newbyroot_12345678901")
+	root := testutil.RandomCensusRoot().Bytes()
 
 	censusRef, err := censusDB.NewByRoot(root)
 	qt.Assert(t, err, qt.IsNil)
@@ -62,7 +63,7 @@ func TestCensusDBExists(t *testing.T) {
 func TestCensusDBExistsByRoot(t *testing.T) {
 	censusDB := NewCensusDB(newDatabase(t))
 	// Use unique root for this test to avoid conflicts with other tests
-	root := []byte("test_root_existsbyroot_123456789")
+	root := testutil.RandomCensusRoot().Bytes()
 
 	// Before creation.
 	existsBefore := censusDB.ExistsByRoot(root)
@@ -127,7 +128,7 @@ func TestLoadNonExistingCensus(t *testing.T) {
 
 func TestLoadNonExistingCensusByRoot(t *testing.T) {
 	censusDB := NewCensusDB(newDatabase(t))
-	root := []byte("nonexistent_root_123456789012")
+	root := testutil.RandomCensusRoot().Bytes()
 
 	ref, err := censusDB.LoadByRoot(root)
 	qt.Assert(t, ref, qt.IsNil)

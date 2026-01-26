@@ -271,16 +271,20 @@ func (c *CensusDB) Load(censusID uuid.UUID) (*CensusRef, error) {
 	return c.loadCensusRef(censusID, censusDBWorkingOnQueries, censusIDDBPrefix(censusID))
 }
 
-// LoadByRoot loads a census by its root from memory or from the persistent KV database.
+// LoadByRoot loads a census by its root from memory or from the persistent KV
+// database.
 func (c *CensusDB) LoadByRoot(root types.HexBytes) (*CensusRef, error) {
 	return c.loadCensusRef(rootToCensusID(root), censusDBRootPrefix, rootDBPrefix(root))
 }
 
+// LoadByAddress loads a census by its Ethereum address from memory or from the
+// persistent KV database.
 func (c *CensusDB) LoadByAddress(address common.Address) (*CensusRef, error) {
 	return c.loadCensusRef(addressToCensusID(address), censusDBAddrPrefix, addressDBPrefix(address))
 }
 
-// loadCensusRef loads a census reference from memory or persistent DB using a double‑check.
+// loadCensusRef loads a census reference from memory or persistent DB using a
+// double‑check. It takes the censusID, the DB prefix, and the key to use.
 func (c *CensusDB) loadCensusRef(censusID uuid.UUID, dbprefix string, key types.HexBytes) (*CensusRef, error) {
 	c.mu.RLock()
 	if ref, exists := c.loadedCensus[censusID]; exists {
@@ -715,6 +719,8 @@ func rootDBPrefix(root types.HexBytes) []byte {
 	return append([]byte(censusDBRootPrefix), root.LeftTrim()...)
 }
 
+// addressDBPrefix generates the database key prefix for a census identified
+// by its Ethereum address.
 func addressDBPrefix(address common.Address) []byte {
 	return append([]byte(censusDBAddrPrefix), address.Bytes()...)
 }
