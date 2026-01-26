@@ -2,6 +2,7 @@ package log_test
 
 import (
 	"testing"
+	"time"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/log"
@@ -15,49 +16,73 @@ func TestLogMonitorPanicOnError(t *testing.T) {
 	c.Run("panic on log.Error", func(c *qt.C) {
 		log.Error("this should not panic before installing hook")
 
-		// Install the panic hook
-		previousLogger := log.EnablePanicOnError(c.Name())
+		ch := make(chan string, 1)
+		previousLogger := log.EnablePanicOnErrorWithHandler(c.Name(), 100*time.Millisecond, func(msg string) {
+			ch <- msg
+		})
 		defer log.RestoreLogger(previousLogger)
 
-		// This should panic
-		c.Assert(func() {
-			log.Error("test error message")
-		}, qt.PanicMatches, `ERROR found in logs during test TestLogMonitorPanicOnError/panic_on_log\.Error: test error message`)
+		log.Error("test error message")
+
+		select {
+		case got := <-ch:
+			c.Assert(got, qt.Matches, `ERROR found in logs during test TestLogMonitorPanicOnError/panic_on_log\.Error: test error message`)
+		case <-time.After(500 * time.Millisecond):
+			c.Fatalf("expected delayed panic handler to fire")
+		}
 	})
 
 	// Test that the hook panics on Errorw level logs
 	c.Run("panic on log.Errorw", func(c *qt.C) {
-		// Install the panic hook
-		previousLogger := log.EnablePanicOnError(c.Name())
+		ch := make(chan string, 1)
+		previousLogger := log.EnablePanicOnErrorWithHandler(c.Name(), 100*time.Millisecond, func(msg string) {
+			ch <- msg
+		})
 		defer log.RestoreLogger(previousLogger)
 
-		// This should panic
-		c.Assert(func() {
-			log.Errorw(nil, "test errorw message")
-		}, qt.PanicMatches, `ERROR found in logs during test TestLogMonitorPanicOnError/panic_on_log\.Errorw: test errorw message`)
+		log.Errorw(nil, "test errorw message")
+
+		select {
+		case got := <-ch:
+			c.Assert(got, qt.Matches, `ERROR found in logs during test TestLogMonitorPanicOnError/panic_on_log\.Errorw: test errorw message`)
+		case <-time.After(500 * time.Millisecond):
+			c.Fatalf("expected delayed panic handler to fire")
+		}
 	})
 
 	// Test that the hook does NOT panic on lower level logs
 	c.Run("no panic on log.Warn", func(c *qt.C) {
-		// Install the panic hook
-		previousLogger := log.EnablePanicOnError(c.Name())
+		ch := make(chan string, 1)
+		previousLogger := log.EnablePanicOnErrorWithHandler(c.Name(), 100*time.Millisecond, func(msg string) {
+			ch <- msg
+		})
 		defer log.RestoreLogger(previousLogger)
 
-		// This should NOT panic - test by executing without expecting a panic
 		log.Warn("test warning message")
 		log.Info("test info message")
 		log.Debug("test debug message")
-		// If we reach here, no panic occurred, which is what we want
+
+		select {
+		case got := <-ch:
+			c.Fatalf("unexpected panic handler call: %s", got)
+		case <-time.After(200 * time.Millisecond):
+		}
 	})
 
 	// Test that logger is properly restored
 	c.Run("logger restoration", func(c *qt.C) {
-		// Install and restore the panic hook
-		previousLogger := log.EnablePanicOnError(c.Name())
+		ch := make(chan string, 1)
+		previousLogger := log.EnablePanicOnErrorWithHandler(c.Name(), 100*time.Millisecond, func(msg string) {
+			ch <- msg
+		})
 		log.RestoreLogger(previousLogger)
 
-		// After restoration, error logs should not panic - test by executing
 		log.Error("this should not panic after restoration")
-		// If we reach here, no panic occurred, which means restoration worked
+
+		select {
+		case got := <-ch:
+			c.Fatalf("unexpected panic handler call after restoration: %s", got)
+		case <-time.After(200 * time.Millisecond):
+		}
 	})
 }

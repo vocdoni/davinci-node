@@ -68,12 +68,28 @@ var logTestTime, _ = time.Parse(RFC3339Milli, "2006-01-02T15:04:05.000Z")
 // This is useful for integration tests to catch unexpected errors.
 type panicOnErrorHook struct {
 	TestName string
+	Delay    time.Duration
+	Handler  func(string)
+	once     sync.Once
 }
 
 // Run panics if the log level is Error or higher.
 func (h *panicOnErrorHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
 	if level >= zerolog.ErrorLevel {
-		panic(fmt.Sprintf("ERROR found in logs during test %s: %s", h.TestName, msg))
+		panicMsg := fmt.Sprintf("ERROR found in logs during test %s: %s", h.TestName, msg)
+		h.once.Do(func() {
+			delay := h.Delay
+			if delay <= 0 {
+				delay = time.Second
+			}
+			handler := h.Handler
+			if handler == nil {
+				handler = func(message string) { panic(message) }
+			}
+			time.AfterFunc(delay, func() {
+				handler(panicMsg)
+			})
+		})
 	}
 }
 
@@ -82,8 +98,19 @@ func (h *panicOnErrorHook) Run(e *zerolog.Event, level zerolog.Level, msg string
 // Returns the previous logger so it can be restored later.
 // This is useful for integration tests to catch unexpected errors.
 func EnablePanicOnError(testName string) zerolog.Logger {
+	return EnablePanicOnErrorWithHandler(testName, time.Second, nil)
+}
+
+// EnablePanicOnErrorWithHandler installs a hook on the current logger that
+// triggers the handler after the provided delay when Error level logs occur.
+// If handler is nil, it panics with the error message.
+func EnablePanicOnErrorWithHandler(testName string, delay time.Duration, handler func(string)) zerolog.Logger {
 	previousLogger := getLogger()
-	setLogger(previousLogger.Hook(&panicOnErrorHook{TestName: testName}))
+	setLogger(previousLogger.Hook(&panicOnErrorHook{
+		TestName: testName,
+		Delay:    delay,
+		Handler:  handler,
+	}))
 	return previousLogger
 }
 
