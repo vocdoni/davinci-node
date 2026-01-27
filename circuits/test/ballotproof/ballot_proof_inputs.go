@@ -23,17 +23,6 @@ import (
 	"github.com/vocdoni/davinci-node/types/params"
 )
 
-// GenECDSAaccountForTest generates a new ECDSA account and returns the private
-// key, public key and address.
-func GenECDSAaccountForTest() (*ethereum.Signer, error) {
-	// generate ecdsa keys and address (privKey and publicKey)
-	privKey, err := ethereum.NewSigner()
-	if err != nil {
-		return nil, err
-	}
-	return privKey, nil
-}
-
 // GenDeterministicECDSAaccountForTest generates a deterministic ECDSA account
 // based on the provided index for consistent testing and caching.
 func GenDeterministicECDSAaccountForTest(index int) (*ethereum.Signer, error) {
