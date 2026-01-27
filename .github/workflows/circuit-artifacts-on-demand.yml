@@ -1,0 +1,132 @@
+name: Compile Circuits
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    # types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: circuits-upload-pr-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  debug:
+    runs-on: self-hosted
+
+    steps:
+      - name: Runner context (pre-checkout)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "=== BASIC ==="
+          date -Is
+          uname -a
+          id
+          whoami
+          pwd
+          echo
+          echo "=== KEY ENV ==="
+          (env | sort | egrep '^(HOME|XDG_CACHE_HOME|USER|LOGNAME|SHELL|PATH|RUNNER_|GITHUB_|CI|GOCACHE|GOMODCACHE)=' ) || true
+          echo
+          echo "=== FILESYSTEM ==="
+          ls -la
+          echo
+          echo "HOME dir listing (if exists):"
+          if [ -n "${HOME:-}" ] && [ -d "${HOME:-/nonexistent}" ]; then
+            ls -la "$HOME"
+          else
+            echo "HOME is unset or does not exist"
+          fi
+
+      - name: Show container/cgroup hints
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "=== CGROUP ==="
+          (cat /proc/1/cgroup || true) | head -n 200
+          echo
+          echo "=== /proc/1/environ (keys only, best-effort) ==="
+          # Some systems restrict this; don't fail if denied.
+          (tr '\0' '\n' < /proc/1/environ | cut -d= -f1 | sort | uniq | head -n 200) || true
+          echo
+          echo "=== DOCKER/K8S HINTS ==="
+          test -f /.dockerenv && echo "Inside Docker: /.dockerenv present" || echo "No /.dockerenv"
+          grep -qiE '(docker|kubepods|containerd)' /proc/1/cgroup && echo "Cgroup suggests container" || echo "Cgroup does not suggest container"
+
+      - name: Install Go (setup-go)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.1"
+          check-latest: true
+
+      - name: After setup-go (sanity)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "=== WHICH GO ==="
+          which go || true
+          ls -l "$(which go)" || true
+          go version
+          echo
+          echo "=== KEY ENV (again) ==="
+          (env | sort | egrep '^(HOME|XDG_CACHE_HOME|PATH|GOCACHE|GOMODCACHE|RUNNER_TEMP|GITHUB_WORKSPACE)=' ) || true
+
+      - name: Probe go env (without forcing anything)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "=== go env (raw) ==="
+          # Don't let the workflow die here; we want the error output.
+          go env || true
+
+      - name: Force cache dirs and retry go env
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Prefer runner temp if available; else fall back to /tmp.
+          BASE="${RUNNER_TEMP:-/tmp}"
+          export HOME="${HOME:-$BASE}"
+          export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$BASE/xdg-cache}"
+          export GOCACHE="${GOCACHE:-$BASE/go-build}"
+          export GOMODCACHE="${GOMODCACHE:-$BASE/go-mod}"
+
+          echo "=== FORCED VARS ==="
+          echo "HOME=$HOME"
+          echo "XDG_CACHE_HOME=$XDG_CACHE_HOME"
+          echo "GOCACHE=$GOCACHE"
+          echo "GOMODCACHE=$GOMODCACHE"
+
+          echo "=== mkdir + perms ==="
+          mkdir -p "$XDG_CACHE_HOME" "$GOCACHE" "$GOMODCACHE"
+          ls -ld "$HOME" "$XDG_CACHE_HOME" "$GOCACHE" "$GOMODCACHE" || true
+
+          echo "=== write test ==="
+          echo test > "$GOCACHE/.write_test"
+          rm -f "$GOCACHE/.write_test"
+
+          echo "=== go env (forced) ==="
+          go env
+
+      - name: Minimal build to exercise cache
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat > hello.go <<'EOF'
+          package main
+          import "fmt"
+          func main(){ fmt.Println("hello") }
+          EOF
+          go run hello.go
+
+      - name: Print full env at end (for diffing)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "=== FULL ENV (sorted) ==="
+          env | sort
