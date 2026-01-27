@@ -146,15 +146,7 @@ func TestStateSync(t *testing.T) {
 	votes := createTestVotesWithOffset(t, publicKey, 3, i*1000)
 
 	// Perform batch operation on original state
-	err = originalState.StartBatch()
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to start batch %d", i+1))
-
-	for _, vote := range votes {
-		err = originalState.AddVote(vote)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to add vote in batch %d", i+1))
-	}
-
-	err = originalState.EndBatch()
+	err = originalState.AddVotesBatch(votes)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to end batch %d", i+1))
 
 	newStateRoot, err := originalState.RootAsBigInt()
@@ -274,18 +266,6 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 	votes := make([]*state.Vote, numVotes)
 
 	for i := range numVotes {
-		// Create vote address with offset to ensure uniqueness across transitions
-		address := big.NewInt(int64(1000 + offset + i))
-
-		// Create vote ID (use StateKeyMaxLen bytes) with offset
-		voteID := make([]byte, params.StateKeyMaxLen)
-		voteIDValue := offset + i + 1
-		// Store the vote ID value in the last few bytes to ensure uniqueness
-		voteID[params.StateKeyMaxLen-4] = byte(voteIDValue >> 24)
-		voteID[params.StateKeyMaxLen-3] = byte(voteIDValue >> 16)
-		voteID[params.StateKeyMaxLen-2] = byte(voteIDValue >> 8)
-		voteID[params.StateKeyMaxLen-1] = byte(voteIDValue)
-
 		// Create ballot with test values (vary based on offset and index)
 		ballot := elgamal.NewBallot(state.Curve)
 		messages := [params.FieldsPerBallot]*big.Int{}
@@ -306,8 +286,8 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to reencrypt ballot %d with offset %d", i, offset))
 
 		votes[i] = &state.Vote{
-			Address:           address,
-			VoteID:            voteID,
+			Address:           testutil.RandomAddress().Big(),
+			VoteID:            testutil.RandomVoteID(),
 			Ballot:            ballot,
 			ReencryptedBallot: reencryptedBallot,
 		}

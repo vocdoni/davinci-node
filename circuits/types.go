@@ -19,7 +19,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	gnark_poseidon "github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -29,17 +28,6 @@ import (
 const (
 	BallotModeSerializedLen    = 8
 	EncryptionKeySerializedLen = 2
-
-	KeyProcessID     = 0x00
-	KeyBallotMode    = 0x02
-	KeyEncryptionKey = 0x03
-	KeyResultsAdd    = 0x04
-	KeyResultsSub    = 0x05
-	KeyCensusOrigin  = 0x06
-
-	// ReservedKeysOffset is used to prevent collisions in edge cases
-	// where a VoteID or Address is near zero (e.g. in badly designed tests)
-	ReservedKeysOffset = 0x10
 )
 
 // Poseidon377Domain is the domain used for Poseidon377 hashing
@@ -668,15 +656,16 @@ func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.
 
 // VoteID calculates the vote ID, which is the poseidon hash of:
 // the process ID, voter's address and a secret value k.
-// This is truncated to the least significant 64 bits.
+// This is truncated to the least significant 63 bits, and this is shifted to the upper half of the 64 bit
+// by setting the first bit to 1.
 // The vote ID is used to identify a vote in the system. The
 // function transforms the inputs to safe values of ballot proof curve scalar
 // field, then hashes them using iden3 poseidon. The resulting vote ID is a hex byte
 // array. If something goes wrong during the hashing process, it returns an
 // error.
-func VoteID(processID types.ProcessID, address common.Address, k *types.BigInt) (*types.BigInt, error) {
+func VoteID(processID types.ProcessID, address common.Address, k *types.BigInt) (types.VoteID, error) {
 	if !processID.IsValid() || address.Cmp(common.Address{}) == 0 || k == nil {
-		return nil, fmt.Errorf("a valid processID, address and k is required")
+		return 0, fmt.Errorf("a valid processID, address and k is required")
 	}
 	// encode the process ID and address to hex bytes
 	hexAddress := types.HexBytes(address.Bytes())
@@ -687,7 +676,8 @@ func VoteID(processID types.ProcessID, address common.Address, k *types.BigInt) 
 	// calculate the vote ID hash using poseidon
 	hash, err := poseidon.MultiPoseidon(ffProcessID.MathBigInt(), ffAddress.MathBigInt(), ffK.MathBigInt())
 	if err != nil {
-		return nil, fmt.Errorf("error hashing vote ID inputs: %v", err.Error())
+		return 0, fmt.Errorf("error hashing vote ID inputs: %w", err)
 	}
-	return new(types.BigInt).SetBigInt(util.TruncateToLowerBits(hash, params.VoteIDLen*8)), nil
+	// VoteID = VoteIDMin + (hash mod VoteIDRange)
+	return types.MapHashToVoteID(hash), nil
 }

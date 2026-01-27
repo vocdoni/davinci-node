@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -22,7 +22,7 @@ const (
 	testWorkerName = "TestWorker1"
 )
 
-var testVoteID = types.HexBytes([]byte("vote123"))
+var testVoteID = testutil.RandomVoteID()
 
 func storageForTest(t *testing.T) *storage.Storage {
 	c := qt.New(t)
@@ -114,7 +114,7 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 
 		// Verify job is in pending map
 		c.Assert(len(jm.pending), qt.Equals, 1)
-		storedJob, exists := jm.pending[hex.EncodeToString(testVoteID)]
+		storedJob, exists := jm.pending[testVoteID]
 		c.Assert(exists, qt.IsTrue)
 		c.Assert(storedJob, qt.Equals, job)
 	})
@@ -153,11 +153,11 @@ func TestJobsManagerRegisterJob(t *testing.T) {
 
 		jobs := []struct {
 			worker string
-			voteID []byte
+			voteID types.VoteID
 		}{
-			{"worker1", []byte("vote1")},
-			{"worker2", []byte("vote2")},
-			{"worker1", []byte("vote3")}, // Same worker, different vote
+			{"worker1", testutil.RandomVoteID()},
+			{"worker2", testutil.RandomVoteID()},
+			{"worker1", testutil.RandomVoteID()}, // Same worker, different vote
 		}
 
 		for _, jobData := range jobs {
@@ -290,7 +290,7 @@ func TestJobsManagerCompleteJob(t *testing.T) {
 
 	t.Run("Complete non-existent job", func(t *testing.T) {
 		jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
-		voteID := []byte("nonexistent")
+		voteID := testutil.RandomVoteID()
 
 		completedJob := jm.CompleteJob(voteID, true)
 
@@ -366,13 +366,7 @@ func TestJobsManagerCheckTimeouts(t *testing.T) {
 		jm := NewJobsManager(storageForTest(t), 1*time.Millisecond, nil, 50*time.Millisecond)
 
 		// Register multiple jobs
-		jobs := [][]byte{
-			[]byte("vote1"),
-			[]byte("vote2"),
-			[]byte("vote3"),
-		}
-
-		for _, testVoteID := range jobs {
+		for _, testVoteID := range testutil.RandomVoteIDs(3) {
 			// Add worker first
 			jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 			_, err := jm.RegisterJob(testWorkerAddr, testVoteID)
@@ -529,7 +523,7 @@ func TestJobsManagerConcurrency(t *testing.T) {
 				testWorkerAddr := fmt.Sprintf("worker-%d", workerID)
 
 				for j := range numJobs {
-					voteID := fmt.Appendf(nil, "vote-%d-%d", workerID, j)
+					voteID := testutil.RandomVoteID()
 					jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 					job, err := jm.RegisterJob(testWorkerAddr, testVoteID)
 					if err == nil && job != nil {
@@ -586,7 +580,7 @@ func TestJobsManagerWorkerManagerIntegration(t *testing.T) {
 		c.Assert(worker.SetConsecutiveFails(), qt.Equals, 0)
 
 		// Register and fail a job
-		voteID2 := []byte("vote456")
+		voteID2 := testutil.RandomVoteID()
 		_, err = jm.RegisterJob(testWorkerAddr, voteID2)
 		c.Assert(err, qt.IsNil)
 
@@ -690,14 +684,14 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 		// Add worker first
 		jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 
-		// Register job with nil vote ID
-		job, err := jm.RegisterJob(testWorkerAddr, nil)
+		// Register job with 0 vote ID
+		job, err := jm.RegisterJob(testWorkerAddr, 0)
 		c.Assert(err, qt.IsNil)
 		c.Assert(job, qt.IsNotNil)
-		c.Assert(job.VoteID, qt.IsNil)
+		c.Assert(job.VoteID.Uint64(), qt.Equals, uint64(0))
 
 		// Should be able to complete it
-		completedJob := jm.CompleteJob(nil, true)
+		completedJob := jm.CompleteJob(0, true)
 		c.Assert(completedJob, qt.IsNotNil)
 	})
 
@@ -714,8 +708,8 @@ func TestJobsManagerEdgeCases(t *testing.T) {
 		jm := NewJobsManager(storageForTest(t), 1*time.Millisecond, nil, 50*time.Millisecond)
 
 		// Register multiple jobs that will expire
-		for i := range 5 {
-			voteID := fmt.Appendf(nil, "vote%d", i)
+		for range 5 {
+			voteID := testutil.RandomVoteID()
 			// Add worker first
 			jm.WorkerManager.AddWorker(testWorkerAddr, testWorkerName)
 			_, err := jm.RegisterJob(testWorkerAddr, voteID)

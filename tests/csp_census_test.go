@@ -39,7 +39,7 @@ func TestCSPCensus(t *testing.T) {
 		censusRoot    []byte
 		censusURI     string
 		// Store the voteIDs returned from the API to check their status later
-		voteIDs []types.HexBytes
+		voteIDs []types.VoteID
 		ks      []*big.Int
 	)
 
@@ -91,7 +91,7 @@ func TestCSPCensus(t *testing.T) {
 			vote, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof
-			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginCSPEdDSABabyJubJubV1, pid, signers[i].Address().Bytes())
+			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginCSPEdDSABabyJubJubV1, pid, signers[i].Address())
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 			// Make the request to cast the vote
 			_, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
@@ -113,7 +113,7 @@ func TestCSPCensus(t *testing.T) {
 			if allSettled, failed, err := helpers.EnsureVotesStatus(services.HTTPClient, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
 				if len(failed) > 0 {
-					hexFailed := types.SliceOf(failed, func(v types.HexBytes) string { return v.String() })
+					hexFailed := types.SliceOf(failed, func(v types.VoteID) string { return v.String() })
 					t.Fatalf("Some votes failed to be settled: %v", hexFailed)
 				}
 			}

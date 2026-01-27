@@ -27,14 +27,12 @@ var (
 )
 
 var (
-	KeyProcessID     = big.NewInt(circuits.KeyProcessID)
-	KeyBallotMode    = big.NewInt(circuits.KeyBallotMode)
-	KeyEncryptionKey = big.NewInt(circuits.KeyEncryptionKey)
-	KeyResultsAdd    = big.NewInt(circuits.KeyResultsAdd)
-	KeyResultsSub    = big.NewInt(circuits.KeyResultsSub)
-	KeyCensusOrigin  = big.NewInt(circuits.KeyCensusOrigin)
-
-	ReservedKeysOffset = big.NewInt(circuits.ReservedKeysOffset)
+	KeyProcessID     = types.StateKey(params.StateKeyProcessID)
+	KeyBallotMode    = types.StateKey(params.StateKeyBallotMode)
+	KeyEncryptionKey = types.StateKey(params.StateKeyEncryptionKey)
+	KeyResultsAdd    = types.StateKey(params.StateKeyResultsAdd)
+	KeyResultsSub    = types.StateKey(params.StateKeyResultsSub)
+	KeyCensusOrigin  = types.StateKey(params.StateKeyCensusOrigin)
 
 	ErrStateAlreadyInitialized = fmt.Errorf("state already initialized")
 )
@@ -177,25 +175,26 @@ func (o *State) Initialize(
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) error {
 	// Check if the state is already initialized
-	if _, _, err := o.tree.GetBigInt(KeyProcessID); err == nil {
+	// TODO: refactor arbo to use uint64 instead
+	if _, _, err := o.tree.GetBigInt(KeyProcessID.BigInt()); err == nil {
 		return ErrStateAlreadyInitialized
 	}
-	if err := o.tree.AddBigInt(KeyProcessID, o.processID.MathBigInt()); err != nil {
+	if err := o.tree.AddBigInt(KeyProcessID.BigInt(), o.processID.MathBigInt()); err != nil {
 		return fmt.Errorf("could not set process ID: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyBallotMode, ballotMode.Serialize()...); err != nil {
+	if err := o.tree.AddBigInt(KeyBallotMode.BigInt(), ballotMode.Serialize()...); err != nil {
 		return fmt.Errorf("could not set ballot mode: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyEncryptionKey, encryptionKey.Serialize()...); err != nil {
+	if err := o.tree.AddBigInt(KeyEncryptionKey.BigInt(), encryptionKey.Serialize()...); err != nil {
 		return fmt.Errorf("could not set encryption key: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyResultsAdd, elgamal.NewBallot(Curve).BigInts()...); err != nil {
+	if err := o.tree.AddBigInt(KeyResultsAdd.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
 		return fmt.Errorf("could not set results add: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyResultsSub, elgamal.NewBallot(Curve).BigInts()...); err != nil {
+	if err := o.tree.AddBigInt(KeyResultsSub.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
 		return fmt.Errorf("could not set results sub: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyCensusOrigin, censusOrigin); err != nil {
+	if err := o.tree.AddBigInt(KeyCensusOrigin.BigInt(), censusOrigin); err != nil {
 		return fmt.Errorf("could not set census origin: %w", err)
 	}
 	return nil
@@ -209,9 +208,24 @@ func (o *State) Close() error {
 	return nil
 }
 
+func (o *State) AddVotesBatch(votes []*Vote) error {
+	if err := o.startBatch(); err != nil {
+		return fmt.Errorf("failed to start batch: %w", err)
+	}
+	for _, v := range votes {
+		if err := o.addVote(v); err != nil {
+			return fmt.Errorf("failed to add vote: %w", err)
+		}
+	}
+	if err := o.endBatch(); err != nil {
+		return fmt.Errorf("failed to end batch: %w", err)
+	}
+	return nil
+}
+
 // StartBatch resets counters and sums to zero,
 // and creates a new write transaction in the db
-func (o *State) StartBatch() error {
+func (o *State) startBatch() error {
 	o.dbTx = o.db.WriteTx()
 	o.oldResultsAdd = elgamal.NewBallot(Curve)
 	o.oldResultsSub = elgamal.NewBallot(Curve)
@@ -230,7 +244,7 @@ func (o *State) StartBatch() error {
 // with the new results. The results are calculated by adding the old results
 // with the new results. The function returns an error if the commit fails or
 // if the Merkle proofs cannot be generated.
-func (o *State) EndBatch() error {
+func (o *State) endBatch() error {
 	var err error
 	// RootHashBefore
 	o.rootHashBefore, err = o.RootAsBigInt()
@@ -261,10 +275,11 @@ func (o *State) EndBatch() error {
 	for i := range o.votesProofs.Ballot {
 		var errBallot, errVoteID error
 		if i < len(o.Votes()) {
+			ballotIndex := types.CalculateBallotIndex(o.Votes()[i].Address, types.IndexTODO)
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].Address, o.Votes()[i].ReencryptedBallot.BigInts()...)
+				ballotIndex.StateKey(), o.Votes()[i].ReencryptedBallot.BigInts()...)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].VoteID.BigInt().MathBigInt(), VoteIDKeyValue)
+				o.Votes()[i].VoteID.StateKey(), VoteIDKeyValue)
 		} else {
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromNoop(o)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromNoop(o)
@@ -427,7 +442,7 @@ func (o *State) ProcessSerializeBigInts() []*big.Int {
 
 // ProccessID returns the process ID of the state as a big.Int.
 func (o *State) ProcessID() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyProcessID)
+	_, v, err := o.tree.GetBigInt(KeyProcessID.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get process ID from state")
 	}
@@ -439,7 +454,7 @@ func (o *State) ProcessID() *big.Int {
 
 // CensusOrigin returns the census origin of the state as a *big.Int.
 func (o *State) CensusOrigin() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyCensusOrigin)
+	_, v, err := o.tree.GetBigInt(KeyCensusOrigin.BigInt())
 	if err != nil {
 		panic(err)
 	}
@@ -452,7 +467,7 @@ func (o *State) CensusOrigin() *big.Int {
 // BallotMode returns the ballot mode of the state as a
 // circuits.BallotMode[*big.Int].
 func (o *State) BallotMode() circuits.BallotMode[*big.Int] {
-	_, v, err := o.tree.GetBigInt(KeyBallotMode)
+	_, v, err := o.tree.GetBigInt(KeyBallotMode.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get ballot mode from state")
 	}
@@ -466,7 +481,7 @@ func (o *State) BallotMode() circuits.BallotMode[*big.Int] {
 // EncryptionKey returns the encryption key of the state as a
 // circuits.EncryptionKey[*big.Int].
 func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
-	_, v, err := o.tree.GetBigInt(KeyEncryptionKey)
+	_, v, err := o.tree.GetBigInt(KeyEncryptionKey.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get encryption key from state")
 	}
@@ -479,7 +494,7 @@ func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
 
 // ResultsAdd returns the resultsAdd of the state as a elgamal.Ballot
 func (o *State) ResultsAdd() (*elgamal.Ballot, bool) {
-	_, v, err := o.tree.GetBigInt(KeyResultsAdd)
+	_, v, err := o.tree.GetBigInt(KeyResultsAdd.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get resultsAdd from state")
 		return elgamal.NewBallot(Curve), false
@@ -494,21 +509,21 @@ func (o *State) ResultsAdd() (*elgamal.Ballot, bool) {
 
 // SetResultsAdd sets the resultsAdd directly in the state tree
 func (o *State) SetResultsAdd(resultsAdd *elgamal.Ballot) {
-	if err := o.tree.UpdateBigInt(KeyResultsAdd, resultsAdd.BigInts()...); err != nil {
+	if err := o.tree.UpdateBigInt(KeyResultsAdd.BigInt(), resultsAdd.BigInts()...); err != nil {
 		log.Errorw(err, "failed to set resultsAdd in state")
 	}
 }
 
 // SetResultsSub sets the resultsSub directly in the state tree
 func (o *State) SetResultsSub(resultsSub *elgamal.Ballot) {
-	if err := o.tree.UpdateBigInt(KeyResultsSub, resultsSub.BigInts()...); err != nil {
+	if err := o.tree.UpdateBigInt(KeyResultsSub.BigInt(), resultsSub.BigInts()...); err != nil {
 		log.Errorw(err, "failed to set resultsSub in state")
 	}
 }
 
 // ResultsSub returns the resultsSub of the state as a elgamal.Ballot
 func (o *State) ResultsSub() (*elgamal.Ballot, bool) {
-	_, v, err := o.tree.GetBigInt(KeyResultsSub)
+	_, v, err := o.tree.GetBigInt(KeyResultsSub.BigInt())
 	if err != nil {
 		return elgamal.NewBallot(Curve), false
 	}
@@ -539,9 +554,4 @@ func (o *State) ProcessProofs() ProcessProofs {
 // VotesProofs returns a pointer to the votes proofs for the state.
 func (o *State) VotesProofs() VotesProofs {
 	return o.votesProofs
-}
-
-// keyIsBelowReservedOffset returns true when passed key is below the ReservedKeysOffset
-func keyIsBelowReservedOffset(key *big.Int) bool {
-	return key.Cmp(ReservedKeysOffset) == -1
 }

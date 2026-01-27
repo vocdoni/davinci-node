@@ -21,8 +21,8 @@ import (
 )
 
 type aggregationProcessState interface {
-	ContainsVoteID(voteID *big.Int) bool
-	ContainsAddress(address *types.BigInt) bool
+	ContainsVoteID(voteID types.VoteID) bool
+	ContainsBallot(ballotIndex types.BallotIndex) bool
 }
 
 type aggregationStorage interface {
@@ -78,7 +78,7 @@ func collectAggregationBatchInputs(
 			continue
 		}
 
-		if b.VoteID == nil {
+		if b.VoteID == 0 {
 			addressStr := ""
 			if b.Address != nil {
 				addressStr = b.Address.String()
@@ -132,7 +132,7 @@ func collectAggregationBatchInputs(
 		}
 
 		// if the vote ID already exists in the state, skip it
-		if processState.ContainsVoteID(b.VoteID.BigInt().MathBigInt()) {
+		if processState.ContainsVoteID(b.VoteID) {
 			log.Debugw("skipping ballot already in state",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
@@ -156,7 +156,8 @@ func collectAggregationBatchInputs(
 
 		// If the maxVoters is reached, check if the ballot is an overwrite
 		// and skip if not
-		if maxVotersReached && !processState.ContainsAddress(new(types.BigInt).SetBigInt(b.Address)) {
+
+		if maxVotersReached && !processState.ContainsBallot(types.CalculateBallotIndex(b.Address, types.IndexTODO)) {
 			log.Debugw("skipping ballot due to max voters reached",
 				"address", b.Address.String(),
 				"processID", processID.String())
@@ -616,7 +617,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 				voteIDStr := "<nil>"
 				addressStr := "<nil>"
 				if vb != nil {
-					if vb.VoteID != nil {
+					if vb.VoteID != 0 {
 						voteIDStr = vb.VoteID.String()
 					}
 					if vb.Address != nil {

@@ -231,12 +231,12 @@ func (s *Sequencer) processStateTransitionBatch(
 	}
 	log.Debugw("state transition assignments ready for proof generation",
 		"took", time.Since(startTime).String(),
-		"processID", fmt.Sprintf("%x", processState.ProcessID().Bytes()),
+		"processID", processState.ProcessID(),
 		"votersCount", assignments.VotersCount,
 		"overwrittenVotesCount", assignments.OverwrittenVotesCount,
 		"rootHashBefore", assignments.RootHashBefore,
 		"rootHashAfter", assignments.RootHashAfter,
-		"censusRoot", fmt.Sprintf("%x", censusRoot.Bytes()),
+		"censusRoot", censusRoot.String(),
 	)
 
 	// Prepare the options for the prover - use solidity verifier target
@@ -331,19 +331,9 @@ func (s *Sequencer) stateBatchToWitness(
 	kSeed *types.BigInt,
 	innerProof groth16.Proof,
 ) (*statetransition.StateTransitionCircuit, *blobs.BlobEvalData, error) {
-	// start a new batch
-	if err := processState.StartBatch(); err != nil {
-		return nil, nil, fmt.Errorf("failed to start batch: %w", err)
-	}
-	// add the new ballots to the state
-	for _, v := range votes {
-		if err := processState.AddVote(v); err != nil {
-			return nil, nil, fmt.Errorf("failed to add vote: %w", err)
-		}
-	}
-	// end the batch
-	if err := processState.EndBatch(); err != nil {
-		return nil, nil, fmt.Errorf("failed to end batch: %w", err)
+	// add votes batch to state
+	if err := processState.AddVotesBatch(votes); err != nil {
+		return nil, nil, fmt.Errorf("failed to add votes batch to state: %w", err)
 	}
 
 	// generate the state transition vote witness

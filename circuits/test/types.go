@@ -13,7 +13,7 @@ import (
 type AggregatorTestResults struct {
 	InputsHash *big.Int
 	Process    circuits.Process[*big.Int]
-	Votes      []state.Vote
+	Votes      []*state.Vote
 }
 
 // VoteVerifierTestResults struct includes relevant data after VerifyVoteCircuit inputs generation
@@ -26,5 +26,5 @@ type VoteVerifierTestResults struct {
 	CensusOrigin     types.CensusOrigin
 	CensusRoot       *big.Int
 	Ballots          []elgamal.Ballot
-	VoteIDs          []types.HexBytes
+	VoteIDs          []types.VoteID
 }
