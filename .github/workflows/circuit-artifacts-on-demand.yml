@@ -15,6 +15,10 @@ concurrency:
   group: circuits-upload-pr-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    working-directory: davinci-node-src
+
 jobs:
   upload:
     if: >-
@@ -31,9 +35,6 @@ jobs:
     env:
       LOG_LEVEL: debug
       DAVINCI_ARTIFACTS_DIR: ~/.cache/davinci-artifacts
-      GOPATH:     ${{ github.workspace }}/.go
-      GOMODCACHE: ${{ github.workspace }}/.go/pkg/mod
-      GOCACHE:    ${{ github.workspace }}/.go/cache
 
     steps:
       - name: Guard and react
@@ -74,24 +75,20 @@ jobs:
             core.setOutput('pr_number', pr.number.toString());
 
       - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
       - name: Cache circuit artifacts
         uses: actions/cache@v3
         with:
           # Cache the artifact directory so tests don't force re-downloads.
           path: |
             ${{ env.DAVINCI_ARTIFACTS_DIR }}
-            ${{ env.GOMODCACHE }}
-            ${{ env.GOCACHE }}
           key: ${{ runner.name }}-circuits-go-${{ hashFiles('**/go.sum') }}-v1
           restore-keys: |
             ${{ runner.name }}-circuits-go-
             ${{ runner.os }}-circuits-go-
-
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: false # we manage cache ourselves
 
       - name: Debug token permissions
         uses: actions/github-script@v7
