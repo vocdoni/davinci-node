@@ -170,9 +170,13 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case process.Census.CensusOrigin.IsMerkleTree():
 		// load the census from the census DB
-		censusRef, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+		censusRef, err := a.storage.LoadCensus(process.Census)
 		if err != nil {
 			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
+			return
+		}
+		if censusRef == nil {
+			ErrMalformedParam.With("census not compatible with local processing").Write(w)
 			return
 		}
 		// verify the census proof

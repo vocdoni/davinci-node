@@ -221,14 +221,18 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the participant info
-	census, err := a.storage.CensusDB().LoadByRoot(process.Census.CensusRoot)
+	censusRef, err := a.storage.LoadCensus(process.Census)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
 		return
 	}
+	if censusRef == nil {
+		ErrMalformedParam.With("census not compatible with local processing").Write(w)
+		return
+	}
 
 	// Get the participant weight
-	weight, ok := census.Tree().GetWeight(address)
+	weight, ok := censusRef.Tree().GetWeight(address)
 	if !ok {
 		ErrResourceNotFound.Withf("participant not found in census: %s", address.String()).Write(w)
 		return

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	flag "github.com/spf13/pflag"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
@@ -23,7 +24,17 @@ const (
 
 var (
 	userWeight = uint64(testutil.Weight)
-	ballotMode = testutil.BallotModeInternal()
+	// ballotMode = testutil.BallotModeInternal()
+	ballotMode = &types.BallotMode{
+		NumFields:      2,
+		UniqueValues:   false,
+		MaxValue:       types.NewInt(100),
+		MinValue:       types.NewInt(0),
+		MaxValueSum:    types.NewInt(200),
+		MinValueSum:    types.NewInt(0),
+		CostExponent:   1,
+		CostFromWeight: false,
+	}
 
 	privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
 	web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
@@ -35,12 +46,14 @@ var (
 	testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
 	sequencerEndpoints               = flag.StringSlice("sequencerEndpoint", []string{}, "sequencer endpoint(s)")
 	census3URL                       = flag.String("census3URL", defaultCensus3URL, "census3 endpoint")
+	cAddress                         = flag.BytesHex("censusContractAddress", nil, "census manager contract address")
 	cOrigin                          = flag.String("censusOrigin", types.CensusOriginMerkleTreeOffchainStaticV1.String(), "census origin to use")
 	cRoot                            = flag.BytesHex("censusRoot", nil, "census root to use (if empty, a new census will be created)")
 	cURI                             = flag.String("censusURI", "", "census URI to use (if empty, a new census will be created)")
 	votersCount                      = flag.Int("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
-	voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 	web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
+	action                           = flag.String("action", "create", "create|stop|vote")
+	pid                              = flag.String("pid", "", "process ID to perform the action on")
 	voterPrivkey                     = flag.String("voterPrivkey", "", "private key to use for the voter account")
 )
 
@@ -66,60 +79,76 @@ func main() {
 		log.Fatalf("failed to initialize web3 contracts: %w", err)
 	}
 
-	// Create a new organization
-	organizationAddr, err := cliSrv.CreateAccountOrganization()
-	if err != nil {
-		log.Errorw(err, "failed to create organization")
-		log.Warn("check if the organization is already created or the account has enough funds")
-		return
-	}
-	log.Infow("organization ready", "address", organizationAddr.Hex())
-
-	censusOrigin := types.CensusOriginFromString(*cOrigin)
-	if !censusOrigin.Valid() {
-		log.Errorw(fmt.Errorf("invalid census origin: %s", *cOrigin), "failed to create census")
-		return
-	}
-
-	var (
-		censusRoot types.HexBytes
-		censusURI  string
-		signers    []*ethereum.Signer
-	)
-	if cRoot == nil || len(*cURI) == 0 {
-		// Create a new census with numBallot participants
-		censusRoot, censusURI, signers, err = cliSrv.CreateCensus(censusOrigin, *votersCount, userWeight, *census3URL, *voterPrivkey)
+	switch *action {
+	case "create":
+		// Create a new organization
+		organizationAddr, err := cliSrv.CreateAccountOrganization()
 		if err != nil {
-			log.Errorw(err, "failed to create census")
+			log.Errorw(err, "failed to create organization")
+			log.Warn("check if the organization is already created or the account has enough funds")
 			return
 		}
-		log.Infow("census created",
+		log.Infow("organization ready", "address", organizationAddr.Hex())
+
+		censusOrigin := types.CensusOriginFromString(*cOrigin)
+		if !censusOrigin.Valid() {
+			log.Errorw(fmt.Errorf("invalid census origin: %s", *cOrigin), "failed to create census")
+			return
+		}
+
+		var (
+			censusContractAddress common.Address
+			censusRoot            types.HexBytes
+			censusURI             string
+			signers               []*ethereum.Signer
+		)
+		switch {
+		case cRoot == nil || len(*cURI) == 0:
+			// Create a new census with numBallot participants
+			censusRoot, censusURI, signers, err = cliSrv.CreateCensus(censusOrigin, *votersCount, userWeight, *census3URL, *voterPrivkey)
+			if err != nil {
+				log.Errorw(err, "failed to create census")
+				return
+			}
+			log.Infow("census created",
+				"root", censusRoot.String(),
+				"size", len(signers))
+		default:
+			if censusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+				censusContractAddress = common.BytesToAddress(*cAddress)
+			}
+			censusRoot = *cRoot
+			censusURI = *cURI
+		}
+		log.Debugw("census parameters",
+			"origin", censusOrigin.String(),
 			"root", censusRoot.String(),
-			"size", len(signers))
-	} else {
-		censusRoot = *cRoot
-		censusURI = *cURI
-	}
-	log.Debugw("census parameters",
-		"origin", censusOrigin.String(),
-		"root", censusRoot.String(),
-		"uri", censusURI)
-
-	// Create a new process with mocked ballot mode
-	pid, encryptionKey, err := cliSrv.CreateProcess(censusOrigin, censusRoot, censusURI, ballotMode, new(types.BigInt).SetInt(*votersCount))
-	if err != nil {
-		log.Errorw(err, "failed to create process")
-		return
-	}
-	log.Infow("process created", "pid", pid.String())
-
-	if voterPrivkey != nil && len(*voterPrivkey) > 0 {
-		voterSigner, err := ethereum.NewSignerFromHex(*voterPrivkey)
+			"uri", censusURI)
+		// Create a new process with mocked ballot mode
+		pid, _, err := cliSrv.CreateProcess(&types.Census{
+			CensusOrigin:    censusOrigin,
+			CensusRoot:      censusRoot,
+			CensusURI:       censusURI,
+			ContractAddress: censusContractAddress,
+		}, ballotMode, new(types.BigInt).SetInt(*votersCount))
 		if err != nil {
-			log.Errorw(err, "failed to create voter signer")
+			log.Errorw(err, "failed to create process")
 			return
 		}
-		vote, err := cliSrv.CreateVote(voterSigner, pid, encryptionKey, ballotMode)
+		log.Infow("process created", "pid", pid.String())
+	case "vote":
+		processID, err := types.HexStringToProcessID(*pid)
+		if err != nil {
+			log.Errorw(err, "invalid process ID")
+			return
+		}
+		signer, err := ethereum.NewSignerFromHex(*voterPrivkey)
+		if err != nil {
+			log.Errorw(err, "invalid voter private key")
+			return
+		}
+		// Cast votes for an existing process
+		vote, err := cliSrv.CreateVote(signer, processID, ballotMode)
 		if err != nil {
 			log.Errorw(err, "failed to create vote")
 			return
@@ -129,6 +158,18 @@ func main() {
 			log.Errorw(err, "failed to submit vote")
 			return
 		}
-		log.Infow("vote submitted", "voteID", voteID.String(), "pid", pid.String())
+		log.Infow("vote submitted", "voteID", voteID.String())
+	case "stop":
+		// Stop an existing process
+		processID, err := types.HexStringToProcessID(*pid)
+		if err != nil {
+			log.Errorw(err, "invalid process ID")
+			return
+		}
+		if err := cliSrv.StopProcess(processID); err != nil {
+			log.Errorw(err, "failed to stop process")
+			return
+		}
+		log.Infow("process stopped", "pid", processID.String())
 	}
 }

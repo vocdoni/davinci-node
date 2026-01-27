@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark-crypto/ecc/twistededwards"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // CensusOrigin represents the origin of the census used in a voting process.
@@ -118,8 +119,7 @@ type Census struct {
 	//  - CensusOriginMerkleTreeOffchainDynamicV1: Merkle Root (could change
 	// 	  via tx).
 	//  - CensusOriginCSPEdDSABN254V1: MiMC7 of CSP PubKey (fixed).
-	//  - CensusOriginMerkleTreeOnchainV1: Address of census manager
-	//    contract.
+	//  - CensusOriginMerkleTreeOnchainV1: Merkle Root (could change).
 	CensusRoot HexBytes `json:"censusRoot" cbor:"2,keyasint,omitempty"`
 	// CensusURI contains the following information depending on the CensusOrigin:
 	//  - CensusOriginMerkleTreeOffchainStaticV1: URL where the sequencer can
@@ -128,10 +128,12 @@ type Census struct {
 	// 	  download the census snapshot used to compute the Merkle Proofs.
 	//  - CensusOriginCSPEdDSABN254V1: URL where the voters can generate their
 	// 	  signatures.
-	// TODO: Extend with other census origins:
 	// 	- CensusOriginMerkleTreeOnchainV1: URL where the sequencer can
 	// 	  download the census snapshot used to compute the Merkle Proofs.
 	CensusURI string `json:"censusURI" cbor:"3,keyasint,omitempty"`
+	// ContractAddress contains the address of the census manager contract, but
+	// only for the CensusOriginMerkleTreeOnchainV1 origin.
+	ContractAddress common.Address `json:"contractAddress,omitempty" cbor:"4,keyasint,omitempty"`
 }
 
 // CensusProof is the struct to represent a proof of inclusion in the census

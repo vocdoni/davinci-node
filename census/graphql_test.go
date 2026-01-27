@@ -5,6 +5,8 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/census/test"
+	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestGraphQLDownloadAndImportCensus(t *testing.T) {
@@ -24,11 +26,15 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 		censusURI, err := testServer.GraphQLEndpoint()
 		c.Assert(err, qt.IsNil)
 
-		_, err = gi.DownloadAndImportCensus(
+		_, err = gi.ImportCensus(
 			c.Context(),
 			censusDB,
-			censusURI,
-			test.DefaultExpectedRoot,
+			&types.Census{
+				ContractAddress: testutil.RandomAddress(),
+				CensusURI:       censusURI,
+				CensusRoot:      test.DefaultExpectedRoot,
+			},
+			0,
 		)
 		c.Assert(err, qt.IsNil)
 	})
