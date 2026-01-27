@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/vocdoni/davinci-node/api"
-	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
@@ -94,7 +94,7 @@ func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, w
 	}
 
 	s.internalCircuits = new(internalCircuits)
-	s.bVkCircom = ballotprooftest.TestCircomVerificationKey
+	s.bVkCircom = ballotproof.CircomVerificationKey
 
 	log.Debugw("reading ccs and pk cicuit artifact", "circuit", "voteVerifier")
 	s.vvCcs, s.vvPk, err = loadCircuitArtifacts(voteverifier.Artifacts)

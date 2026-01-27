@@ -7,9 +7,9 @@ import (
 	"github.com/consensys/gnark/constraint"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/results"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 )
@@ -40,8 +40,7 @@ func (s *Sequencer) loadInternalCircuitArtifacts() error {
 	var err error
 	s.internalCircuits = new(internalCircuits)
 	// Load circom verification key for ballot proof
-	// TODO: replace with the production verification key
-	s.bVkCircom = ballotprooftest.TestCircomVerificationKey
+	s.bVkCircom = ballotproof.CircomVerificationKey
 	// Load vote verifier definition and proving key
 	log.Debugw("reading ccs and pk cicuit artifact", "circuit", "voteVerifier")
 	s.vvCcs, s.vvPk, err = loadCircuitArtifacts(voteverifier.Artifacts)

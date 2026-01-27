@@ -27,9 +27,9 @@ import (
 	flag "github.com/spf13/pflag"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/results"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types/params"
@@ -92,13 +92,40 @@ func main() {
 	}
 
 	////////////////////////////////////////
+	// Ballot Proof Circom Artifacts
+	////////////////////////////////////////
+	{
+		ballotProofStart := time.Now()
+		log.Infow("copying ballot proof circom artifacts...")
+		hash, err := copyAndHashArtifact(filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof.wasm"), destination, "wasm")
+		if err != nil {
+			log.Fatalf("error copying ballot proof wasm: %v", err)
+		}
+		hashList["BallotProofCircuitHash"] = hash
+
+		hash, err = copyAndHashArtifact(filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof_pkey.zkey"), destination, "zkey")
+		if err != nil {
+			log.Fatalf("error copying ballot proof proving key: %v", err)
+		}
+		hashList["BallotProofProvingKeyHash"] = hash
+
+		hash, err = copyAndHashArtifact(filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof_vkey.json"), destination, "json")
+		if err != nil {
+			log.Fatalf("error copying ballot proof verification key: %v", err)
+		}
+		hashList["BallotProofVerificationKeyHash"] = hash
+
+		log.Infow("ballot proof circom artifacts copied", "elapsed", time.Since(ballotProofStart).String())
+	}
+
+	////////////////////////////////////////
 	// Vote Verifier Circuit Compilation
 	////////////////////////////////////////
 	startTime := time.Now()
 	log.Infow("compiling vote verifier circuit...")
 	// generate the placeholders for the recursion
 	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-		ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
+		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
 	if err != nil {
 		log.Fatalf("error generating circom2gnark placeholder: %v", err)
 	}
@@ -576,6 +603,25 @@ func executeCommand(command, dir string) error {
 
 	log.Infow("command executed successfully", "command", command, "dir", dir, "output", string(output))
 	return nil
+}
+
+func copyAndHashArtifact(srcPath, destDir, ext string) (string, error) {
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open artifact %s: %w", srcPath, err)
+	}
+	defer func() {
+		if err := srcFile.Close(); err != nil {
+			log.Warnw("failed to close artifact file", "error", err)
+		}
+	}()
+
+	return writeToFile(destDir, ext, func(w io.Writer) error {
+		if _, err := io.Copy(w, srcFile); err != nil {
+			return fmt.Errorf("failed to copy artifact content: %w", err)
+		}
+		return nil
+	})
 }
 
 // copyAndHashWasmFile copies a WASM file to the destination directory with versioned naming and returns its hash

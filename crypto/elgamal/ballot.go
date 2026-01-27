@@ -8,11 +8,11 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
+	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types/params"
 )
 
@@ -57,8 +57,8 @@ func (z *Ballot) IsZero() bool {
 
 // Encrypt encrypts a message using the public key provided as elliptic curve
 // point. The randomness k can be provided or nil to generate a new one. Each
-// ciphertext uses a different k derived from the previous one using mimc7 hash
-// function. The first k is the hash of the provided one.
+// ciphertext uses a different k derived from the previous one using Poseidon
+// hash. The first k is the hash of the provided one.
 func (z *Ballot) Encrypt(message [params.FieldsPerBallot]*big.Int, publicKey ecc.Point, k *big.Int) (*Ballot, error) {
 	var err error
 	if k == nil {
@@ -67,7 +67,7 @@ func (z *Ballot) Encrypt(message [params.FieldsPerBallot]*big.Int, publicKey ecc
 			return nil, fmt.Errorf("elgamal encryption failed: %w", err)
 		}
 	}
-	lastK, err := mimc7.Hash([]*big.Int{k}, nil)
+	lastK, err := poseidon.MultiPoseidon(k)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (z *Ballot) Encrypt(message [params.FieldsPerBallot]*big.Int, publicKey ecc
 		if _, err := z.Ciphertexts[i].Encrypt(message[i], publicKey, lastK); err != nil {
 			return nil, err
 		}
-		lastK, err = mimc7.Hash([]*big.Int{lastK}, nil)
+		lastK, err = poseidon.MultiPoseidon(lastK)
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +88,7 @@ func (z *Ballot) Encrypt(message [params.FieldsPerBallot]*big.Int, publicKey ecc
 // if the re-encryption fails. The re-encryption is done by adding the
 // encrypted zero ballot to the original ballot.
 func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, error) {
-	reencryptionK, err := mimc7.Hash([]*big.Int{k}, nil)
+	reencryptionK, err := poseidon.MultiPoseidon(k)
 	if err != nil {
 		return nil, nil, err
 	}

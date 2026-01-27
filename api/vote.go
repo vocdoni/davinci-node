@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -16,6 +17,7 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -200,7 +202,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := ballotproof.BallotInputsHash(
 		vote.ProcessID,
-		process.BallotMode,
+		circuits.BallotModeToCircuit(process.BallotMode),
 		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
 		vote.Address,
 		vote.VoteID.BigInt(),
@@ -222,10 +224,16 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// convert the circom proof to gnark proof and verify it
+	ballotProofAddress := vote.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ballotProofVoteID := vote.VoteID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	proof, err := circomgnark.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
-		[]string{vote.BallotInputsHash.String()},
+		[]string{
+			ballotProofAddress.String(),
+			ballotProofVoteID.String(),
+			vote.BallotInputsHash.String(),
+		},
 	)
 	if err != nil {
 		ErrInvalidBallotProof.Withf("could not verify and convert proof: %v", err).Write(w)

@@ -13,7 +13,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/types/params"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	imt "github.com/vocdoni/lean-imt-go/circuit"
@@ -149,14 +148,14 @@ func (c StateTransitionCircuit) VoteMask(api frontend.API) []frontend.Variable {
 
 // paddedElement helper function returns an bw6761 curve emulated element with
 // the limb provided as the first limb and the rest as 0. This is used to
-// transform the mimc7 hash output to an emulated element of the bw6761 curve.
+// transform the Poseidon hash output to an emulated element of the bw6761 curve.
 func paddedElement(limb frontend.Variable) emulated.Element[sw_bw6761.ScalarField] {
 	return emulated.Element[sw_bw6761.ScalarField]{
 		Limbs: []frontend.Variable{limb, 0, 0, 0, 0, 0},
 	}
 }
 
-// inputHashToElements transforms the mimc7 hash output to an array of emulated
+// inputHashToElements transforms the Poseidon hash output to an array of emulated
 // elements of the bw6761 curve. It transform the hash output to an emulated
 // element of the bn254 curve, and then split each limb of the element to single
 // emulated element of the bw6761 curve. Each bn254 limb will be placed as the
@@ -174,24 +173,17 @@ func inputsHashToElements(api frontend.API, inputsHash frontend.Variable) []emul
 	return finalElements
 }
 
-// proofInputsHash calculates the mimc7 hash of the public inputs of the proof
-// of the i-th vote. It uses the native mimc7 hash function to calculate the
+// proofInputsHash calculates the Poseidon hash of the public inputs of the proof
+// of the i-th vote. It uses the native Poseidon hash function to calculate the
 // hash, and then transform the hash to an emulated element of the bw6761 curve.
 // The hash is calculated using the public inputs of the proof of the i-th vote.
 func (c StateTransitionCircuit) proofInputsHash(api frontend.API, idx int) frontend.Variable {
-	// init native mimc7 hash function
-	hFn, err := mimc7.NewMiMC(api)
+	inputsHash, err := poseidon.MultiHash(api, circuits.BallotHash(api, c.Process, c.Votes[idx].Vote)...)
 	if err != nil {
-		circuits.FrontendError(api, "failed to create mimc7 hash function: ", err)
+		circuits.FrontendError(api, "failed to hash proof inputs with Poseidon: ", err)
 		return 0
 	}
-	// calculate the hash of the public inputs of the proof of the i-th vote
-	if err := hFn.Write(circuits.VoteVerifierInputs(c.Process, c.Votes[idx].Vote)...); err != nil {
-		circuits.FrontendError(api, "failed to write mimc7 hash function: ", err)
-		return 0
-	}
-	// transform the hash to an emulated element of the bn254 curve
-	return hFn.Sum()
+	return inputsHash
 }
 
 // CalculateAggregatorWitness calculates the witness for the Aggregator proof.
@@ -200,7 +192,7 @@ func (c StateTransitionCircuit) proofInputsHash(api frontend.API, idx int) front
 // composed by the hash of the public-private inputs of the proof, which is an
 // emulated.Element[sw_bn254.ScalarField]. To calculate the witness we need to
 // calculate each hash of the public inputs of the proof of each vote (it can
-// be done using native mimc7 because this circuit should be work in the bn254
+// be done using native Poseidon because this circuit should work in the bn254
 // curve). But the witness should be an emulated element of the bw6761 curve,
 // that contains the hash as a emulated element of the bn254 curve. So we need
 // to transform the hash, first to an emulated element of the bn254 curve,
@@ -219,15 +211,12 @@ func (c StateTransitionCircuit) CalculateAggregatorWitness(api frontend.API, mas
 		hashes = append(hashes, api.Select(mask[i], inputsHash, dummyProofInputsHash))
 	}
 	// hash the inputs hashes to get the final witness
-	hFn, err := mimc7.NewMiMC(api)
+	res, err := poseidon.MultiHash(api, hashes...)
 	if err != nil {
 		return groth16.Witness[sw_bw6761.ScalarField]{}, err
 	}
-	if err := hFn.Write(hashes...); err != nil {
-		return groth16.Witness[sw_bw6761.ScalarField]{}, err
-	}
 	// include the inputs hash in the witness as elements of the bw6761
-	witness.Public = append(witness.Public, inputsHashToElements(api, hFn.Sum())...)
+	witness.Public = append(witness.Public, inputsHashToElements(api, res)...)
 	return witness, nil
 }
 

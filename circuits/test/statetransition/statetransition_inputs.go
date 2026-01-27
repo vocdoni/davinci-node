@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	groth16bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/prover"
@@ -62,7 +63,7 @@ func StateTransitionInputsForTest(
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
 
-	cacheKey := cache.GenerateCacheKey("statetransition-test-aggregator", processID, nValidVoters)
+	cacheKey := cache.GenerateCacheKey("statetransition-test-aggregator", processID, circuitstest.AggregatorCacheKeyVersion, nValidVoters)
 	cachedData := &circuitstest.AggregatorCacheData{}
 
 	var proof groth16.Proof
@@ -112,6 +113,30 @@ func StateTransitionInputsForTest(
 		agVk = cachedData.VerifyingKey
 		fullWitness = cachedData.Witness
 		aggInputs = &cachedData.Inputs
+	}
+
+	if proof == nil {
+		c.Logf("aggregator proof is nil for cache key %s", cacheKey)
+	} else if proofBW, ok := proof.(*groth16bw6761.Proof); ok {
+		c.Logf(
+			"aggregator proof curve=%s ar{onCurve=%t inSubGroup=%t infinity=%t} krs{onCurve=%t inSubGroup=%t infinity=%t} bs{onCurve=%t inSubGroup=%t infinity=%t}",
+			proofBW.CurveID().String(),
+			proofBW.Ar.IsOnCurve(),
+			proofBW.Ar.IsInSubGroup(),
+			proofBW.Ar.IsInfinity(),
+			proofBW.Krs.IsOnCurve(),
+			proofBW.Krs.IsInSubGroup(),
+			proofBW.Krs.IsInfinity(),
+			proofBW.Bs.IsOnCurve(),
+			proofBW.Bs.IsInSubGroup(),
+			proofBW.Bs.IsInfinity(),
+		)
+	} else {
+		c.Logf("aggregator proof type mismatch: %T", proof)
+	}
+
+	if agVk != nil {
+		c.Logf("aggregator vk curve=%s", agVk.CurveID().String())
 	}
 
 	// convert the proof to the circuit proof type
