@@ -5,14 +5,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
-	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
 // FetchOnchainCensusRoot retrieves the census root from the specified census
 // validator contract address.
 func (c *Contracts) FetchOnchainCensusRoot(address common.Address) (types.HexBytes, error) {
-	log.Debugw("fetching on-chain census root", "contractAddress", address.Hex())
 	// Ensure the address is valid
 	if address == (common.Address{}) {
 		return nil, fmt.Errorf("invalid contract address")

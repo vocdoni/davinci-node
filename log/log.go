@@ -20,6 +20,8 @@ const (
 	LogLevelInfo  = "info"
 	LogLevelWarn  = "warn"
 	LogLevelError = "error"
+
+	RFC3339Milli = "2006-01-02T15:04:05.000Z07:00" // like time.RFC3339Nano but with 3 fixed-width decimals
 )
 
 var (
@@ -59,25 +61,35 @@ func setLogger(logger zerolog.Logger) {
 var logTestWriter io.Writer // for TestLogger
 const logTestWriterName = "log_test_writer"
 
-var logTestTime, _ = time.Parse(time.RFC3339, "2006-01-02T15:04:05Z")
-
-type testHook struct{}
-
-// Run ensure that the log output in the test is deterministic.
-func (*testHook) Run(e *zerolog.Event, _ zerolog.Level, _ string) {
-	e.Stringer("time", logTestTime)
-}
+// logTestTime is used to ensure that the log output in the test is deterministic.
+var logTestTime, _ = time.Parse(RFC3339Milli, "2006-01-02T15:04:05.000Z")
 
 // panicOnErrorHook panics when encountering Error level logs.
 // This is useful for integration tests to catch unexpected errors.
 type panicOnErrorHook struct {
 	TestName string
+	Delay    time.Duration
+	Handler  func(string)
+	once     sync.Once
 }
 
 // Run panics if the log level is Error or higher.
 func (h *panicOnErrorHook) Run(e *zerolog.Event, level zerolog.Level, msg string) {
 	if level >= zerolog.ErrorLevel {
-		panic(fmt.Sprintf("ERROR found in logs during test %s: %s", h.TestName, msg))
+		panicMsg := fmt.Sprintf("ERROR found in logs during test %s: %s", h.TestName, msg)
+		h.once.Do(func() {
+			delay := h.Delay
+			if delay <= 0 {
+				delay = time.Second
+			}
+			handler := h.Handler
+			if handler == nil {
+				handler = func(message string) { panic(message) }
+			}
+			time.AfterFunc(delay, func() {
+				handler(panicMsg)
+			})
+		})
 	}
 }
 
@@ -86,8 +98,19 @@ func (h *panicOnErrorHook) Run(e *zerolog.Event, level zerolog.Level, msg string
 // Returns the previous logger so it can be restored later.
 // This is useful for integration tests to catch unexpected errors.
 func EnablePanicOnError(testName string) zerolog.Logger {
+	return EnablePanicOnErrorWithHandler(testName, time.Second, nil)
+}
+
+// EnablePanicOnErrorWithHandler installs a hook on the current logger that
+// triggers the handler after the provided delay when Error level logs occur.
+// If handler is nil, it panics with the error message.
+func EnablePanicOnErrorWithHandler(testName string, delay time.Duration, handler func(string)) zerolog.Logger {
 	previousLogger := getLogger()
-	setLogger(previousLogger.Hook(&panicOnErrorHook{TestName: testName}))
+	setLogger(previousLogger.Hook(&panicOnErrorHook{
+		TestName: testName,
+		Delay:    delay,
+		Handler:  handler,
+	}))
 	return previousLogger
 }
 
@@ -154,14 +177,14 @@ func Init(level, output string, errorOutput io.Writer) {
 	}
 	out = zerolog.ConsoleWriter{
 		Out:        out,
-		TimeFormat: time.RFC3339Nano,
+		TimeFormat: RFC3339Milli,
 	}
 	outputs = append(outputs, out)
 
 	if errorOutput != nil {
 		outputs = append(outputs, &errorLevelWriter{zerolog.ConsoleWriter{
 			Out:        errorOutput,
-			TimeFormat: time.RFC3339Nano,
+			TimeFormat: RFC3339Milli,
 			NoColor:    true, // error log files should not be colored
 		}})
 	}
@@ -175,7 +198,7 @@ func Init(level, output string, errorOutput io.Writer) {
 	// Init the global logger var, with millisecond timestamps
 	logger := zerolog.New(out).With().Timestamp().Logger()
 	if output == logTestWriterName {
-		logger = logger.Hook(&testHook{})
+		zerolog.TimestampFunc = func() time.Time { return logTestTime }
 	}
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
 
