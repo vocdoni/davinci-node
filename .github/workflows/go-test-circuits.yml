@@ -1,0 +1,40 @@
+name: Test Circuits
+
+on:
+  pull_request:
+    paths:
+      - 'circuits/**'
+  push:
+    paths:
+      - 'circuits/**'
+    branches:
+      - dev
+      - stage
+      - main
+      - release*
+  schedule:
+    - cron: "0 1 * * *" # 02:00 UTC+1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-push-{0}-{1}', github.ref, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  job_go_test_circuits:
+    runs-on: [self-hosted]
+    env:
+      LOG_PANIC_ON_INVALIDCHARS: true
+      LOG_LEVEL: debug
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run circuit tests
+        env:
+          RUN_CIRCUIT_TESTS: true
+        run: go test -v ./circuits/... -timeout=1h -vet=off

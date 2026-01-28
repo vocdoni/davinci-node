@@ -7,10 +7,14 @@ on:
       - stage
       - main
       - release**
+      - ci/go-test-race
   pull_request:
       types: [opened, synchronize, reopened, ready_for_review]
   schedule:
     - cron: "0 1 * * *" # 02:00 UTC+1
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-push-{0}-{1}', github.ref, github.run_id) }}
@@ -19,13 +23,15 @@ concurrency:
 jobs:
   job_go_checks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         shell: bash
     steps:
-      - name: Print github env vars
+      - name: Debug github context
         run: |
-          echo "HOME: $HOME"
           echo github.event_name: ${{ github.event_name }}
           echo github.ref: ${{ github.ref }}
           echo github.ref_name: ${{ github.ref_name }}
@@ -68,14 +74,18 @@ jobs:
       - name: Run deadcode
         run: go run golang.org/x/tools/cmd/deadcode@v0.41.0 -test ./... | tee deadcode.out
 
-      - uses: aki77/delete-pr-comments-action@v3
+      - name: Delete outdated PR review
+        uses: aki77/delete-pr-comments-action@v3
+        if: github.event_name == 'pull_request'
         with:
           bodyContains: |-
             [reviewdog]
             [deadcode]
           noReply: "true"
       - uses: reviewdog/action-setup@v1
-      - name: Reviewdog
+        if: github.event_name == 'pull_request'
+      - name: Submit fresh PR review
+        if: github.event_name == 'pull_request'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cat deadcode.out | reviewdog -f=golint -name=deadcode -reporter=github-pr-review -filter-mode=diff_context
@@ -171,39 +181,15 @@ jobs:
           # Set permissive permissions
           chmod -R 755 "$GOPATH" || true
 
-      - name: Check if /circuits changed
-        id: check_circuits
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin ${{ github.base_ref }} --depth=1
-            DIFF_TARGET="origin/${{ github.base_ref }}"
-          else
-            if git rev-parse --quiet --verify HEAD^ >/dev/null; then
-              DIFF_TARGET="HEAD^"
-            else
-              echo "HEAD^ not found, falling back to HEAD"
-              DIFF_TARGET="HEAD"
-            fi
-          fi
-
-          echo "Comparing HEAD to $DIFF_TARGET"
-          if git diff --name-only "$DIFF_TARGET" HEAD | grep '^circuits/'; then
-            echo "RUN_CIRCUIT_TESTS=true" >> "$GITHUB_ENV"
-            echo "Found changes under /circuits."
-          else
-            echo "RUN_CIRCUIT_TESTS=false" >> "$GITHUB_ENV"
-            echo "No changes under /circuits."
-          fi
-
       - run: mkdir -p "$PWD/gocoverage-unit/"
 
       - name: Run Go test -race
         # disabled, it makes the crypto too slow to pass any test.
         id: go-test-race
-        if: github.event_name == 'push' && github.ref == 'refs/heads/race' && env.RUN_CIRCUIT_TESTS == 'false'
+        if: github.event_name == 'push' && github.ref_name == 'ci/go-test-race'
         env:
           GORACE: atexit_sleep_ms=10
-          RUN_CIRCUIT_TESTS: ${{ env.RUN_CIRCUIT_TESTS }}
+          RUN_CIRCUIT_TESTS: false
         run: |
           go test ./... \
             -race \
@@ -217,20 +203,12 @@ jobs:
       - name: Run unit tests
         if: steps.go-test-race.outcome == 'skipped'
         env:
-          # Temporary disabled until we can fix the circuit tests
-          #RUN_CIRCUIT_TESTS: ${{ env.RUN_CIRCUIT_TESTS }}
           RUN_CIRCUIT_TESTS: false
           RUN_INTEGRATION_TESTS: false
         run: go test -v ./... -timeout=1h -vet=off -failfast
 
-      - name: Run circuit tests
-        if: steps.go-test-race.outcome == 'skipped' && github.event.pull_request.draft != true
-        env:
-          RUN_CIRCUIT_TESTS: true
-        run: go test -v ./circuits/... -timeout=1h -vet=off -failfast
-
       - name: Run integration tests
-        if: steps.go-test-race.outcome == 'skipped' && github.event.pull_request.draft != true
+        if: github.event.pull_request.draft != true
         env:
           RUN_INTEGRATION_TESTS: true
         run: go test -v ./tests/ -timeout=1h -vet=off -failfast
@@ -238,6 +216,9 @@ jobs:
   call-docker-release:
     name: Docker
     needs: [job_go_checks, job_go_test]
+    permissions:
+      contents: read
+      packages: write
     # docker releases are triggered only on push to the selected branches at the beginning of this file
     if: github.event_name == 'push'
     uses: vocdoni/davinci-node/.github/workflows/docker-release.yml@main
