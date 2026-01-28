@@ -23,6 +23,9 @@ concurrency:
 jobs:
   job_go_checks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         shell: bash
@@ -73,13 +76,16 @@ jobs:
 
       - name: Delete outdated PR review
         uses: aki77/delete-pr-comments-action@v3
+        if: github.event_name == 'pull_request'
         with:
           bodyContains: |-
             [reviewdog]
             [deadcode]
           noReply: "true"
       - uses: reviewdog/action-setup@v1
+        if: github.event_name == 'pull_request'
       - name: Submit fresh PR review
+        if: github.event_name == 'pull_request'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cat deadcode.out | reviewdog -f=golint -name=deadcode -reporter=github-pr-review -filter-mode=diff_context
@@ -131,6 +137,9 @@ jobs:
   call-docker-release:
     name: Docker
     needs: [job_go_checks, job_go_test]
+    permissions:
+      contents: read
+      packages: write
     # docker releases are triggered only on push to the selected branches at the beginning of this file
     if: github.event_name == 'push'
     uses: vocdoni/davinci-node/.github/workflows/docker-release.yml@main
