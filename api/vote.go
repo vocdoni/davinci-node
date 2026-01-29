@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -11,7 +12,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/crypto/csp"
-	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -104,7 +105,13 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// decode the vote
 	vote := &Vote{}
-	if err := json.NewDecoder(r.Body).Decode(vote); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		ErrMalformedBody.Withf("could not read request body: %v", err).Write(w)
+		return
+	}
+
+	if err := json.Unmarshal(body, vote); err != nil {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
 	}
@@ -137,6 +144,9 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("invalid census proof").Write(w)
 		return
 	}
+	// Print vote for debugging
+	log.Debugf("Received new vote: %s", string(body))
+
 	// check that the process is ready to accept votes, it does not mean that
 	// the vote will be accepted, but it is a precondition to accept the vote,
 	// for example, if the process is not in this sequencer, the vote will be
@@ -199,14 +209,22 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidCensusProof.Withf("unsupported census origin").Write(w)
 		return
 	}
-	// calculate the ballot inputs hash
-	ballotInputsHash, err := ballotproof.BallotInputsHash(
+	// Calculate the ballot inputs hash.
+	// The JS client sends the ballot in TE format (curveType: "bjj_iden3").
+	// The encryption key is stored in RTE format (Gnark), so we convert it to TE.
+	// We use BallotInputsHashTE which expects all curve points already in TE format.
+	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(
+		process.EncryptionKey.X.MathBigInt(),
+		process.EncryptionKey.Y.MathBigInt(),
+	)
+	ballotInputsHash, err := ballotproof.BallotInputsHashTE(
 		vote.ProcessID,
 		circuits.BallotModeToCircuit(process.BallotMode),
-		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
+		encryptionKeyXTE,
+		encryptionKeyYTE,
 		vote.Address,
 		vote.VoteID.BigInt(),
-		vote.Ballot.FromTEtoRTE(),
+		vote.Ballot, // Already in TE format from JS client
 		voterWeight,
 	)
 	if err != nil {

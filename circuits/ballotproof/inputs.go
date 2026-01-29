@@ -53,23 +53,98 @@ func (b *BallotProofInputs) VoteIDForSign() (types.HexBytes, error) {
 	return crypto.PadToSign(voteID.Bytes()), err
 }
 
-// BallotInputsHash helper function calculates the hash of the public inputs
-// of the ballot proof circuit. This hash is used to verify the proof generated
-// by the user and is also used to generate the voteID. The hash is calculated
-// using the poseidon hash function and includes the process ID, ballot mode,
-// encryption key, address, ballot and weight, in that particular order. The
-// function transforms the inputs to the correct format:
+// BallotInputsHashTE calculates the hash of the public inputs of the ballot
+// proof circuit when all curve points (encryption key and ballot) are already
+// in Twisted Edwards (TE) format.
+//
+// This is the format used by the JavaScript/TypeScript client which uses iden3's
+// BabyJubJub implementation (circomlibjs). Use this function when verifying
+// votes submitted from the JS client.
+//
+// The hash is calculated using the poseidon hash function and includes:
+// processID, ballot mode, encryption key, address, voteID, ballot, and weight
+// in that particular order.
+//
+// Parameters:
+//   - processID and address: will be reduced to field elements (FF)
+//   - encryptionKeyX, encryptionKeyY: must be in TE format
+//   - ballot: must be in TE format (curveType: "bjj_iden3")
+//   - voteID and weight: must already be valid field elements
+func BallotInputsHashTE(
+	processID types.ProcessID,
+	ballotMode circuits.BallotMode[*big.Int],
+	encryptionKeyX, encryptionKeyY *big.Int, // Already in TE format
+	address types.HexBytes,
+	voteID *types.BigInt,
+	ballot *elgamal.Ballot, // Already in TE format (curveType: "bjj_iden3")
+	weight *types.BigInt,
+) (*types.BigInt, error) {
+	// check if unconverted parameters are in the field
+	if !voteID.IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("voteID is not in the scalar field")
+	}
+	if !weight.IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("weight is not in the scalar field")
+	}
+	// safe address and processID (reduce to field)
+	ffAddress := address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+
+	// compose a list with the inputs of the circuit to hash them
+	// ORDER MUST MATCH ballot_proof.circom:
+	// 1. ProcessID
+	// 2. BallotMode (8 fields)
+	// 3. EncryptionKey (2 fields) - already TE
+	// 4. Address
+	// 5. VoteID
+	// 6. Cipherfields (n_fields * 4) - already TE
+	// 7. Weight
+
+	inputsHash := []*big.Int{ffProcessID.MathBigInt()}         // process id
+	inputsHash = append(inputsHash, ballotMode.Serialize()...) // ballot mode serialized
+	inputsHash = append(inputsHash,
+		encryptionKeyX,         // encryption key x (TE format)
+		encryptionKeyY,         // encryption key y (TE format)
+		ffAddress.MathBigInt(), // address
+		voteID.MathBigInt(),    // vote ID
+	)
+	// ballot cipherfields - already in TE format, use BigInts() directly
+	inputsHash = append(inputsHash, ballot.BigInts()...)
+	// weight
+	inputsHash = append(inputsHash, weight.MathBigInt())
+
+	// hash the inputs with poseidon
+	ballotInputHash, err := poseidon.MultiPoseidon(inputsHash...)
+	if err != nil {
+		return nil, fmt.Errorf("error hashing inputs: %v", err.Error())
+	}
+	return (*types.BigInt)(ballotInputHash), nil
+}
+
+// BallotInputsHash calculates the hash of the public inputs of the ballot
+// proof circuit. This is the LEGACY function that expects inputs in RTE format
+// (Gnark's Reduced Twisted Edwards) and converts them to TE format internally.
+//
+// Use this function when:
+// - The encryption key comes from Go/Gnark storage (RTE format)
+// - The ballot was encrypted using Gnark's BabyJubJub (RTE format)
+//
+// For votes from the JavaScript client, prefer BallotInputsHashTE() instead.
+//
+// The hash is calculated using the poseidon hash function and includes:
+// processID, ballot mode, encryption key, address, voteID, ballot, and weight.
+//
+// The function transforms the inputs:
 //   - processID and address are converted to FF
-//   - encryption key is converted to twisted edwards form
-//   - ballot mode is converted to circuit ballot mode
-//   - ballot is converted to twisted edwards form
+//   - encryption key is converted from RTE to TE
+//   - ballot is converted from RTE to TE
 func BallotInputsHash(
 	processID types.ProcessID,
 	ballotMode circuits.BallotMode[*big.Int],
-	encryptionKey ecc.Point,
+	encryptionKey ecc.Point, // RTE format (from Gnark)
 	address types.HexBytes,
 	voteID *types.BigInt,
-	ballot *elgamal.Ballot,
+	ballot *elgamal.Ballot, // RTE format (from Gnark)
 	weight *types.BigInt,
 ) (*types.BigInt, error) {
 	// check if unconverted parameters are in the field
