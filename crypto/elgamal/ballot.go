@@ -10,6 +10,7 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
@@ -95,11 +96,16 @@ func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, 
 	if z.IsZero() {
 		return z, reencryptionK, nil
 	}
-	encZero, err := NewBallot(publicKey).EncryptedZero(publicKey, reencryptionK)
+	// Use the same curve type as the original ballot to avoid type mismatches
+	// between different BJJ implementations (bjj_gnark vs bjj_iden3).
+	// Convert the public key coordinates to the ballot's curve type.
+	ballotCurve := curves.New(z.CurveType)
+	convertedPubKey := ballotCurve.SetPoint(publicKey.Point())
+	encZero, err := NewBallot(ballotCurve).EncryptedZero(convertedPubKey, reencryptionK)
 	if err != nil {
 		return nil, nil, err
 	}
-	return NewBallot(publicKey).Add(z, encZero), reencryptionK, nil
+	return NewBallot(ballotCurve).Add(z, encZero), reencryptionK, nil
 }
 
 // EncryptedZero returns a new ballot with all fields set to the encrypted
@@ -268,13 +274,18 @@ func (z *Ballot) FromRTEtoTE() *Ballot {
 	return teBallot
 }
 
+// FromTEtoRTE converts a ballot from Twisted Edwards form (used by circom/iden3)
+// to Reduced Twisted Edwards form (used by gnark). The resulting ballot uses
+// bjj_gnark curve type for compatibility with the state package.
 func (z *Ballot) FromTEtoRTE() *Ballot {
-	teBallot := NewBallot(curves.New(z.CurveType))
+	// Always use bjj_gnark for the output since the state package
+	// uses bjj_gnark for all internal operations
+	rteBallot := NewBallot(curves.New(bjj.CurveType))
 	for i := range z.Ciphertexts {
-		teBallot.Ciphertexts[i].C1 = teBallot.Ciphertexts[i].C1.SetPoint(
+		rteBallot.Ciphertexts[i].C1 = rteBallot.Ciphertexts[i].C1.SetPoint(
 			format.FromTEtoRTE(z.Ciphertexts[i].C1.Point()))
-		teBallot.Ciphertexts[i].C2 = teBallot.Ciphertexts[i].C2.SetPoint(
+		rteBallot.Ciphertexts[i].C2 = rteBallot.Ciphertexts[i].C2.SetPoint(
 			format.FromTEtoRTE(z.Ciphertexts[i].C2.Point()))
 	}
-	return teBallot
+	return rteBallot
 }
