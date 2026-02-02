@@ -118,13 +118,16 @@ func BuildDecryptionProof(
 	D.Add(D, negM) // D = C2 – M·G
 
 	// 4. Fiat–Shamir challenge e = H(G,P,C1,D,A1,A2) mod order
-	e := HashPointsToScalar(publicKey, // G is implicit in Point, but include for domain-sep
+	e, err := HashPointsToScalar(publicKey, // G is implicit in Point, but include for domain-sep
 		publicKey, // P
 		c1,
 		D,
 		A1,
 		A2,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	// 5. Response z = r + e·d mod order
 	z := new(big.Int).Mul(e, privateKey)
@@ -156,13 +159,16 @@ func VerifyDecryptionProof(
 	D.Add(D, negM) // D = C2 – M·G
 
 	// Recompute Fiat–Shamir challenge e
-	e := HashPointsToScalar(publicKey, // G (domain separation)
+	e, err := HashPointsToScalar(publicKey, // G (domain separation)
 		publicKey, // P
 		c1,
 		D,
 		proof.A1,
 		proof.A2,
 	)
+	if err != nil {
+		return err
+	}
 
 	// Check 1:  z·G  ==  A1 + e·P
 	left1 := publicKey.New()
@@ -196,7 +202,7 @@ func VerifyDecryptionProof(
 
 // Helper: hash a sequence of points to a scalar < order using Poseidon.
 // This is the Fiat–Shamir transform.
-func HashPointsToScalar(pts ...ecc.Point) *big.Int {
+func HashPointsToScalar(pts ...ecc.Point) (*big.Int, error) {
 	points := []*big.Int{}
 	for _, p := range pts {
 		// ecc.Point.Marshal() must be deterministic.
@@ -205,7 +211,7 @@ func HashPointsToScalar(pts ...ecc.Point) *big.Int {
 	}
 	digest, err := poseidon.MultiPoseidon(points...)
 	if err != nil {
-		panic(fmt.Sprintf("failed to hash points: %v", err))
+		return nil, fmt.Errorf("failed to hash points: %w", err)
 	}
-	return digest
+	return digest, nil
 }

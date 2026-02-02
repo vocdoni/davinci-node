@@ -160,13 +160,14 @@ func TestDKG(t *testing.T) {
 			S.Add(S, tmp)
 		}
 
-		e := elgamal.HashPointsToScalar(
+		e, err := elgamal.HashPointsToScalar(
 			firstPubKey, // G domain-sep
 			firstPubKey, // P
 			aggC1,       // C1
 			S,           // aggregate share
 			sumA1, sumA2,
 		)
+		c.Assert(err, qt.IsNil)
 
 		// 3. each trustee sends its partial response z_i   (phase-2)
 		partZ := make(map[int]*big.Int)

@@ -6,12 +6,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
@@ -110,6 +112,12 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := json.Unmarshal(body, vote); err != nil {
+		if errors.Is(err, elgamal.ErrInvalidCurveType) {
+			curveDetail := strings.TrimPrefix(err.Error(), ErrInvalidCurveType.Err.Error()+": ")
+			ErrInvalidCurveType.Withf("%s", curveDetail).Write(w)
+			return
+		}
+
 		ErrMalformedBody.Withf("could not unmarshal request body: %v", err).Write(w)
 		return
 	}

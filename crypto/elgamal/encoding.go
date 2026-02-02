@@ -14,8 +14,8 @@ func (z *Ballot) MarshalJSON() ([]byte, error) {
 	// Prepare an array of raw JSON messages for each ciphertext.
 	rawCts := make([]json.RawMessage, len(z.Ciphertexts))
 	// check if the curve type is valid
-	if !curves.IsValid(z.CurveType) {
-		return nil, fmt.Errorf("invalid curve type: %s", z.CurveType)
+	if z.CurveType != "" && !curves.IsValid(z.CurveType) {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCurveType, z.CurveType)
 	}
 	// Only marshal if the curve type is set. Else we assume the ballot is not initialized.
 	if z.CurveType != "" {
@@ -54,6 +54,9 @@ func (z *Ballot) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("failed to unmarshal ballot container: %w", err)
 	}
 	z.CurveType = tmp.CurveType
+	if z.CurveType != "" && !curves.IsValid(z.CurveType) {
+		return fmt.Errorf("%w: %s", ErrInvalidCurveType, z.CurveType)
+	}
 
 	if len(tmp.Ciphertexts) != params.FieldsPerBallot {
 		return fmt.Errorf("expected %d ciphertexts, got %d", params.FieldsPerBallot, len(tmp.Ciphertexts))
@@ -171,6 +174,9 @@ func (z *Ballot) UnmarshalCBOR(buf []byte) error {
 		return err
 	}
 	z.CurveType = tmp.CurveType
+	if z.CurveType != "" && !curves.IsValid(z.CurveType) {
+		return fmt.Errorf("%w: %s", ErrInvalidCurveType, z.CurveType)
+	}
 
 	if len(tmp.Ciphertexts) != params.FieldsPerBallot {
 		return fmt.Errorf("expected %d ciphertexts, got %d", params.FieldsPerBallot, len(tmp.Ciphertexts))
