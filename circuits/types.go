@@ -52,7 +52,8 @@ func (k EncryptionKey[T]) Deserialize(values []T) (EncryptionKey[T], error) {
 func (kt EncryptionKey[T]) SerializeAsTE(api frontend.API) []emulated.Element[sw_bn254.ScalarField] {
 	k, ok := any(kt).(EncryptionKey[emulated.Element[sw_bn254.ScalarField]])
 	if !ok {
-		panic("EncryptionKey type assertion failed")
+		FrontendError(api, "encryption key type assertion failed", fmt.Errorf("expected EncryptionKey[emulated.Element[sw_bn254.ScalarField]]"))
+		return nil
 	}
 	kTE0, kTE1, err := format.FromEmulatedRTEtoTE(api, k.PubKey[0], k.PubKey[1])
 	if err != nil {
@@ -157,7 +158,8 @@ func (p Process[T]) Serialize() []T {
 func (pt Process[T]) SerializeForBallotProof(api frontend.API) []emulated.Element[sw_bn254.ScalarField] {
 	p, ok := any(pt).(Process[emulated.Element[sw_bn254.ScalarField]])
 	if !ok {
-		panic("Process type assertion failed")
+		FrontendError(api, "process type assertion failed", fmt.Errorf("expected Process[emulated.Element[sw_bn254.ScalarField]]"))
+		return nil
 	}
 	list := []emulated.Element[sw_bn254.ScalarField]{}
 	list = append(list, p.ID)
@@ -193,11 +195,12 @@ func (v Vote[T]) ToEmulated(api frontend.API) EmulatedVote[sw_bn254.ScalarField]
 	}
 }
 
-func (v Vote[T]) SerializeAsVars() []frontend.Variable {
+func (v Vote[T]) SerializeAsVars(api frontend.API) []frontend.Variable {
 	// enforce that T is frontend.Variable
 	_, ok := any(v).(Vote[frontend.Variable])
 	if !ok {
-		panic("Vote type assertion failed")
+		FrontendError(api, "vote type assertion failed", fmt.Errorf("expected Vote[frontend.Variable]"))
+		return nil
 	}
 	list := []frontend.Variable{}
 	list = append(list, v.Address)
@@ -317,7 +320,8 @@ func (z *Ballot) Serialize(api frontend.API) []emulated.Element[sw_bn254.ScalarF
 		for _, zi := range z[i].Serialize() {
 			elem, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, zi)
 			if err != nil {
-				panic(err)
+				FrontendError(api, "failed to unpack ballot element", err)
+				return nil
 			}
 			vars = append(vars, *elem)
 		}
@@ -395,7 +399,8 @@ func (z *EmulatedVote[F]) Serialize() []emulated.Element[F] {
 func (zt *EmulatedVote[F]) SerializeForBallotProof(api frontend.API) []emulated.Element[sw_bn254.ScalarField] {
 	z, ok := any(zt).(*EmulatedVote[sw_bn254.ScalarField])
 	if !ok {
-		panic("EmulatedVote type assertion failed")
+		FrontendError(api, "emulated vote type assertion failed", fmt.Errorf("expected *EmulatedVote[sw_bn254.ScalarField]"))
+		return nil
 	}
 	list := []emulated.Element[sw_bn254.ScalarField]{}
 	list = append(list, z.Address)
@@ -437,7 +442,8 @@ func (z *EmulatedBallot[F]) Serialize() []emulated.Element[F] {
 func (zt *EmulatedBallot[F]) SerializeAsTE(api frontend.API) []emulated.Element[sw_bn254.ScalarField] {
 	z, ok := any(zt).(*EmulatedBallot[sw_bn254.ScalarField])
 	if !ok {
-		panic("EmulatedBallot type assertion failed")
+		FrontendError(api, "emulated ballot type assertion failed", fmt.Errorf("expected *EmulatedBallot[sw_bn254.ScalarField]"))
+		return nil
 	}
 	list := []emulated.Element[sw_bn254.ScalarField]{}
 	for _, zi := range z {
@@ -472,7 +478,8 @@ func NextK(api frontend.API, k frontend.Variable) frontend.Variable {
 func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.Element[sw_bn254.ScalarField] {
 	elem, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, v)
 	if err != nil {
-		panic(err)
+		FrontendError(api, "failed to unpack variable to scalar", err)
+		return nil
 	}
 	return elem
 }
