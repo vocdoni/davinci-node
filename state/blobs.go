@@ -29,9 +29,9 @@ type BlobData struct {
 func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 	var cells [params.BlobTxFieldElementsPerBlob][params.BlobTxBytesPerFieldElement]byte
 	cell := 0
-	push := func(bi *big.Int) {
+	push := func(bi *big.Int) error {
 		if cell >= params.BlobTxFieldElementsPerBlob {
-			panic("blob overflow")
+			return fmt.Errorf("blob overflow")
 		}
 		biBytes := bi.Bytes()
 		// Pad to 32 bytes if necessary (big-endian)
@@ -43,28 +43,41 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 		// Copy as big-endian
 		copy(cells[cell][:], biBytes)
 		cell++
+		return nil
 	}
 
 	// First, add results (always present)
 	for _, p := range st.newResultsAdd.BigInts() {
-		push(p)
+		if err := push(p); err != nil {
+			return nil, err
+		}
 	}
 	for _, p := range st.newResultsSub.BigInts() {
-		push(p)
+		if err := push(p); err != nil {
+			return nil, err
+		}
 	}
 
 	// Then add votes sequentially (no padding)
 	for _, v := range st.Votes() {
-		push(new(big.Int).SetBytes(v.VoteID))             // voteId hash
-		push(v.Address)                                   // address
+		if err := push(new(big.Int).SetBytes(v.VoteID)); err != nil { // voteId hash
+			return nil, err
+		}
+		if err := push(v.Address); err != nil { // address
+			return nil, err
+		}
 		for _, p := range v.ReencryptedBallot.BigInts() { // reencrypted ballot coordinates
-			push(p)
+			if err := push(p); err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	// Add sentinel (voteID = 0x0) to mark end of votes
 	// remaining cells are zero-initialised already
-	push(big.NewInt(0))
+	if err := push(big.NewInt(0)); err != nil {
+		return nil, err
+	}
 
 	// Convert 2D cell array to flat blob format
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement)

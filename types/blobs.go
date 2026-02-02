@@ -119,9 +119,12 @@ func (b *Blob) ComputeBlobProof(commitment KZGCommitment) (KZGProof, error) {
 // ComputeProof computes the KZG proof at the given point for the polynomial
 // represented by the blob.
 //
-// If the absolute value of point doesn't fit in [32]byte, this method will panic.
+// If the absolute value of point doesn't fit in [32]byte, returns an error.
 func (b *Blob) ComputeProof(point *big.Int) (proof KZGProof, claim *big.Int, err error) {
 	var gethPoint gethkzg.Point
+	if point.BitLen() > len(gethPoint)*8 {
+		return KZGProof{}, nil, fmt.Errorf("point does not fit in %d bytes", len(gethPoint))
+	}
 	point.FillBytes(gethPoint[:])
 	gethProof, gethClaim, err := gethkzg.ComputeProof(b.AsGeth(), gethPoint)
 	if err != nil {

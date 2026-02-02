@@ -441,7 +441,7 @@ func (o *State) ProcessID() *big.Int {
 func (o *State) CensusOrigin() *big.Int {
 	_, v, err := o.tree.GetBigInt(KeyCensusOrigin)
 	if err != nil {
-		panic(err)
+		log.Errorw(err, "failed to get census origin from state")
 	}
 	if len(v) == 0 {
 		return big.NewInt(0) // default value if not set

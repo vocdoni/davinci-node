@@ -47,6 +47,9 @@ func (z *Ballot) Valid() bool {
 
 // IsZero checks if the Ballot is zero, meaning all Ciphertexts are zero.
 func (z *Ballot) IsZero() bool {
+	if !curves.IsValid(z.CurveType) {
+		return false
+	}
 	curve := curves.New(z.CurveType)
 	for _, c := range z.Ciphertexts {
 		if !c.IsZero(curve) {
@@ -171,7 +174,7 @@ func (z *Ballot) BigInts() []*big.Int {
 func (z *Ballot) SetBigInts(list []*big.Int) (*Ballot, error) {
 	// check if the curve type is valid
 	if !curves.IsValid(z.CurveType) {
-		return nil, fmt.Errorf("invalid curve type: %s", z.CurveType)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCurveType, z.CurveType)
 	}
 	// check if the list has the right length
 	if len(list) != params.FieldsPerBallot*4 {
@@ -264,6 +267,9 @@ func (z *Ballot) ToGnarkEmulatedBN254() *circuits.EmulatedBallot[sw_bn254.Scalar
 // Edwards format. It returns a new Ballot with the same Ciphertexts but in
 // twisted Edwards format.
 func (z *Ballot) FromRTEtoTE() *Ballot {
+	if !curves.IsValid(z.CurveType) {
+		return nil
+	}
 	teBallot := NewBallot(curves.New(z.CurveType))
 	for i := range z.Ciphertexts {
 		teBallot.Ciphertexts[i].C1 = teBallot.Ciphertexts[i].C1.SetPoint(
