@@ -8,14 +8,44 @@ import (
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 const (
-	dummyBallotProof     = `{"pi_a":["14317803560450518007258622782079415124606968983609047458603560773139573642372","13220836507919417810102500022053425847740793328680001481379588806373283435361","1"],"pi_b":[["13131863189118794736690050998331043576859490243826740722208778384318162975934","18778894917155800116078575126586542650582442463212848856829492469703094920614"],["5945565767923009887391492296076444978379707852528868231882627488814132645166","20656224691041450440102411065063016103413397995305538083438605043395017567283"],["1","0"]],"pi_c":["18636900127581479314580037530074764023654009190543056388408062565167626098061","5693628415107779555184896561874457697545026007594250545815021277644031507852","1"],"protocol":"groth16"}`
-	dummyBallotPubInputs = `["3606337145402298579036699230083186742509778949285840724557626377163275164810"]`
+	dummyBallotProof = `{
+ "pi_a": [
+  "11711080065308007682838320732817046446099838935738802330966049640254691191206",
+  "17850983632338003012778437738834870617367310716158639359113239661166347758019",
+  "1"
+ ],
+ "pi_b": [
+  [
+   "8825235276620994813470418380223243496774006915527119606983048301671588119024",
+   "2226303267471545357145519696076194402397717063319440340904386422082448596035"
+  ],
+  [
+   "8568618036867104573055602703586133087480374891027401247685709167152098077693",
+   "1803786236097892649915632611783799060891816616100592289329778375159898063175"
+  ],
+  [
+   "1",
+   "0"
+  ]
+ ],
+ "pi_c": [
+  "443251187306603655641512095920183574737557831206616603914644748264416016054",
+  "4110411832118690910191887320272248494012149664813960539989768130756673868858",
+  "1"
+ ],
+ "protocol": "groth16",
+ "curve": "bn128"
+}`
+	dummyBallotPubInputs = `[
+ "1220176476709744867553669165001455267652926745576",
+ "1150356464581538673947970931497476016316344861907",
+ "16723164540749581091497422535343559644999010121456604327047742204957502303153"
+]`
 )
 
 // DummyPlaceholder function returns a placeholder for the VerifyVoteCircuit
@@ -50,30 +80,9 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 	dummyEmulatedSecp256k1Fr := emulated.ValueOf[emulated.Secp256k1Fr](1)
 	return &VerifyVoteCircuit{
 		IsValid:    0,
-		InputsHash: dummyEmulatedBN254,
-		Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-			Address:    dummyEmulatedBN254,
-			VoteID:     dummyEmulatedBN254,
-			VoteWeight: dummyEmulatedBN254,
-			Ballot:     *elgamal.NewBallot(curve).ToGnarkEmulatedBN254(),
-		},
-		Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-			ID:           dummyEmulatedBN254,
-			CensusOrigin: dummyEmulatedBN254,
-			EncryptionKey: circuits.EncryptionKey[emulated.Element[sw_bn254.ScalarField]]{
-				PubKey: [2]emulated.Element[sw_bn254.ScalarField]{dummyEmulatedBN254, dummyEmulatedBN254},
-			},
-			BallotMode: circuits.BallotMode[emulated.Element[sw_bn254.ScalarField]]{
-				NumFields:      dummyEmulatedBN254,
-				UniqueValues:   dummyEmulatedBN254,
-				MaxValue:       dummyEmulatedBN254,
-				MinValue:       dummyEmulatedBN254,
-				MaxValueSum:    dummyEmulatedBN254,
-				MinValueSum:    dummyEmulatedBN254,
-				CostExponent:   dummyEmulatedBN254,
-				CostFromWeight: dummyEmulatedBN254,
-			},
-		},
+		BallotHash: dummyEmulatedBN254,
+		Address:    dummyEmulatedBN254,
+		VoteID:     1,
 		PublicKey: ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 			X: dummyEmulatedSecp256k1Fp,
 			Y: dummyEmulatedSecp256k1Fp,

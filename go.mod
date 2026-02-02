@@ -1,8 +1,6 @@
 module github.com/vocdoni/davinci-node
 
-go 1.25.1
-
-replace github.com/consensys/gnark => github.com/p4u/gnark v0.0.0-20251225172317-373b7ed338e2
+go 1.25.5
 
 require (
 	github.com/attestantio/go-eth2-client v0.27.1
@@ -11,8 +9,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.62
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/consensys/gnark v0.14.1-0.20251208223249-9af46fd442f3
-	github.com/consensys/gnark-crypto v0.19.3-0.20251208215708-a16777bf2020
+	github.com/consensys/gnark v0.14.1-0.20260126121332-407111efab55
+	github.com/consensys/gnark-crypto v0.19.3-0.20260126145145-b5cf053fbc34
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/frankban/quicktest v1.14.6
 	github.com/fxamacker/cbor/v2 v2.9.0
@@ -32,9 +30,10 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427
-	github.com/vocdoni/davinci-contracts v0.0.32-0.20260122163707-00e8e94c3a75
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20251209100355-b3b6e5e96af9
+	github.com/vocdoni/davinci-contracts v0.0.36-0.20260127115855-462b73308f89
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260115102516-64ce9c3fd55d
 	github.com/vocdoni/lean-imt-go v0.0.0-20260126110424-0b1c7ec41924
+	github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69
 	go.mongodb.org/mongo-driver v1.17.7
 	golang.org/x/mod v0.32.0
 	golang.org/x/sync v0.19.0
@@ -146,7 +145,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6 // indirect
+	github.com/google/pprof v0.0.0-20251213031049-b05bdaca462f // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect

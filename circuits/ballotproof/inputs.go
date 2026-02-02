@@ -5,13 +5,13 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/iden3/go-iden3-crypto/mimc7"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/types/params"
 )
@@ -56,14 +56,14 @@ func (b *BallotProofInputs) VoteIDForSign() (types.HexBytes, error) {
 // BallotInputsHash helper function calculates the hash of the public inputs
 // of the ballot proof circuit. This hash is used to verify the proof generated
 // by the user and is also used to generate the voteID. The hash is calculated
-// using the mimc7 hash function and includes the process ID, ballot mode,
+// using the poseidon hash function and includes the process ID, ballot mode,
 // encryption key, address, ballot and weight, in that particular order. The
 // function transforms the inputs to the correct format:
 //   - processID and address are converted to FF
 //   - encryption key is converted to twisted edwards form
 //   - ballot mode is converted to circuit ballot mode
 //   - ballot is converted to twisted edwards form
-func BallotInputsHash(
+func BallotInputsHashGnark(
 	processID types.ProcessID,
 	ballotMode *types.BallotMode,
 	encryptionKey ecc.Point,
@@ -99,8 +99,57 @@ func BallotInputsHash(
 	inputsHash = append(inputsHash, ballot.FromRTEtoTE().BigInts()...)
 	// weight
 	inputsHash = append(inputsHash, weight.MathBigInt())
-	// hash the inputs with mimc7
-	ballotInputHash, err := mimc7.Hash(inputsHash, nil)
+	// hash the inputs with poseidon
+	ballotInputHash, err := poseidon.MultiPoseidon(inputsHash...)
+	if err != nil {
+		return nil, fmt.Errorf("error hashing inputs: %v", err.Error())
+	}
+	return (*types.BigInt)(ballotInputHash), nil
+}
+
+func BallotInputsHashIden3(
+	processID types.ProcessID,
+	ballotMode *types.BallotMode,
+	encryptionKey ecc.Point,
+	address types.HexBytes,
+	voteID *types.BigInt,
+	ballot *elgamal.Ballot, // Expected to be in RTE format (snarkjs and circom output)
+	weight *types.BigInt,
+) (*types.BigInt, error) {
+	// check if unconverted parameters are in the field
+	if !voteID.IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("voteID is not in the scalar field")
+	}
+	if !weight.IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("weight is not in the scalar field")
+	}
+	// safe address and processID
+	ffAddress := address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+
+	// ballot mode as circuit ballot mode
+	circuitBallotMode := circuits.BallotModeToCircuit(ballotMode)
+
+	// convert the encryption key to twisted edwards form
+	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(encryptionKey.Point())
+
+	// compose a list with the inputs of the circuit to hash them
+	inputsHash := []*big.Int{ffProcessID.MathBigInt()}                // process id
+	inputsHash = append(inputsHash, circuitBallotMode.Serialize()...) // ballot mode serialized
+	inputsHash = append(inputsHash,
+		encryptionKeyXTE,       // encryption key x (TE - no conversion)
+		encryptionKeyYTE,       // encryption key y (TE - no conversion)
+		ffAddress.MathBigInt(), // address
+		voteID.MathBigInt(),    // vote ID
+	)
+	// ballot (from reduced twisted edwards to twisted edwards form)
+	inputsHash = append(inputsHash, ballot.BigInts()...)
+
+	// weight
+	inputsHash = append(inputsHash, weight.MathBigInt())
+
+	// hash the inputs with poseidon
+	ballotInputHash, err := poseidon.MultiPoseidon(inputsHash...)
 	if err != nil {
 		return nil, fmt.Errorf("error hashing inputs: %v", err.Error())
 	}
@@ -154,7 +203,7 @@ func GenerateBallotProofInputs(
 		return nil, fmt.Errorf("error generating vote ID for sign: %w", err)
 	}
 	// calculate the ballot inputs hash
-	ballotInputsHash, err := BallotInputsHash(
+	ballotInputsHash, err := BallotInputsHashGnark(
 		inputs.ProcessID,
 		inputs.BallotMode,
 		encryptionKey,

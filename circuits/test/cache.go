@@ -22,6 +22,9 @@ import (
 	"github.com/vocdoni/davinci-node/types/params"
 )
 
+// cacheKeyVersion defines the version of the cache key format, used to invalidate old caches
+const cacheKeyVersion = 2
+
 // CacheableData defines the interface for data that can be cached
 type CacheableData interface {
 	WriteToCache(cacheDir, cacheKey string) error
@@ -245,7 +248,7 @@ func NewCircuitCache() (*CircuitCache, error) {
 // GenerateCacheKey creates a deterministic cache key based on circuit type and parameters
 func (c *CircuitCache) GenerateCacheKey(circuitType string, processID types.ProcessID, params ...any) string {
 	// Build cache key with circuit type, ProcessID, and additional parameters
-	keyData := fmt.Sprintf("%s-%s-%d-%x", circuitType, processID.Address().Hex(), processID.Nonce(), processID.Version())
+	keyData := fmt.Sprintf("%d-%s-%s-%d-%x", cacheKeyVersion, circuitType, processID.Address().Hex(), processID.Nonce(), processID.Version())
 
 	// Append additional parameters
 	for _, param := range params {

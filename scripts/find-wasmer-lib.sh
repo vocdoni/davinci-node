@@ -1,10 +1,29 @@
 #!/bin/sh
 set -e
 
+wasmer_arch_dir() {
+    arch=$(go env GOARCH 2>/dev/null || uname -m)
+    case "$arch" in
+        amd64|x86_64)
+            echo "linux-amd64"
+            ;;
+        arm64|aarch64)
+            echo "linux-aarch64"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 case "$1" in
     "save")
+        ARCH_DIR=$(wasmer_arch_dir) || {
+            echo "Error: unsupported architecture for libwasmer.so" >&2
+            exit 1
+        }
         # First, find all potential libwasmer.so files
-        WASMER_PATHS=$(find /go/pkg/mod -name "libwasmer.so" -type f | grep iden3/wasmer-go || true)
+        WASMER_PATHS=$(find /go/pkg/mod -path "*/packaged/lib/${ARCH_DIR}/libwasmer.so" -type f | grep iden3/wasmer-go || true)
         
         if [ -z "$WASMER_PATHS" ]; then
             echo "Error: No libwasmer.so found in go mod cache" >&2
@@ -26,6 +45,11 @@ case "$1" in
             exit 1
         fi
         
+        ARCH_DIR=$(wasmer_arch_dir) || {
+            echo "Error: unsupported architecture for libwasmer.so" >&2
+            exit 1
+        }
+
         # Use ldd to find the actual libwasmer.so path the binary expects
         LDD_OUTPUT=$(ldd /src/davinci-sequencer | grep libwasmer.so || true)
         
@@ -45,7 +69,7 @@ case "$1" in
             echo "Library $LIB_NAME not found, searching in go mod cache..."
             
             # Find the correct libwasmer.so that matches the architecture
-            WASMER_PATH=$(find /go/pkg/mod -name "libwasmer.so" -type f | grep iden3/wasmer-go | head -1 || true)
+            WASMER_PATH=$(find /go/pkg/mod -path "*/packaged/lib/${ARCH_DIR}/libwasmer.so" -type f | grep iden3/wasmer-go | head -1 || true)
             
             if [ -z "$WASMER_PATH" ]; then
                 echo "Error: Could not find libwasmer.so in go mod cache" >&2
@@ -55,9 +79,23 @@ case "$1" in
             # Extract the relative path from /go/pkg/mod
             WASMER_REL_PATH=${WASMER_PATH#/go/pkg/mod/}
         else
-            # Extract the relative path from the expected path
-            WASMER_REL_PATH=${EXPECTED_PATH#/go/pkg/mod/}
-            WASMER_PATH="/go/pkg/mod/$WASMER_REL_PATH"
+            case "$EXPECTED_PATH" in
+                /go/pkg/mod/*)
+                    # Extract the relative path from the expected path
+                    WASMER_REL_PATH=${EXPECTED_PATH#/go/pkg/mod/}
+                    WASMER_PATH="/go/pkg/mod/$WASMER_REL_PATH"
+                    ;;
+                *)
+                    echo "Unexpected libwasmer.so path: $EXPECTED_PATH" >&2
+                    echo "Searching in go mod cache..."
+                    WASMER_PATH=$(find /go/pkg/mod -path "*/packaged/lib/${ARCH_DIR}/libwasmer.so" -type f | grep iden3/wasmer-go | head -1 || true)
+                    if [ -z "$WASMER_PATH" ]; then
+                        echo "Error: Could not find libwasmer.so in go mod cache" >&2
+                        exit 1
+                    fi
+                    WASMER_REL_PATH=${WASMER_PATH#/go/pkg/mod/}
+                    ;;
+            esac
         fi
         
         echo "Using libwasmer.so from: $WASMER_PATH"

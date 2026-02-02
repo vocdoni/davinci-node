@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
@@ -50,7 +51,7 @@ func VoteVerifierInputsForTest(
 	now := time.Now()
 	log.Println("voteVerifier inputs generation start")
 	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-		ballottest.TestCircomVerificationKey, circuits.BallotProofNPubInputs)
+		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
 	c.Assert(err, qt.IsNil, qt.Commentf("circom placeholder"))
 
 	// Use deterministic encryption key for consistent caching
@@ -63,55 +64,30 @@ func VoteVerifierInputsForTest(
 	var finalProcessID *big.Int
 	for i, voter := range votersData {
 		// Use deterministic ballot proof generation for consistent caching
-		voterProof, err := ballottest.BallotProofForTestDeterministic(voter.Address.Bytes(), processID, ek, circuitstest.GenerateDeterministicSeed(processID, i+100))
+		ballotProof, err := ballottest.BallotProofForTestDeterministic(voter.Address.Bytes(), processID, ek, circuitstest.GenerateDeterministicSeed(processID, i+100))
 		c.Assert(err, qt.IsNil, qt.Commentf("ballotproof inputs for voter %d", i))
 
 		if finalProcessID == nil {
-			finalProcessID = voterProof.ProcessID
+			finalProcessID = ballotProof.ProcessID
 		}
-		addresses = append(addresses, voterProof.Address)
+		addresses = append(addresses, ballotProof.Address)
 		weights = append(weights, big.NewInt(testutil.Weight))
-		voteIDs = append(voteIDs, voterProof.VoteID)
-		ballots = append(ballots, *voterProof.Ballot)
-		// sign the inputs hash with the private key
-		signature, err := ballottest.SignECDSAForTest(voter.PrivKey, voterProof.VoteID)
+		voteIDs = append(voteIDs, ballotProof.VoteID)
+		inputsHashes = append(inputsHashes, ballotProof.InputsHash)
+		ballots = append(ballots, *ballotProof.Ballot)
+		// sign the voteID with the private key
+		signature, err := ballottest.SignECDSAForTest(voter.PrivKey, ballotProof.VoteID)
 		c.Assert(err, qt.IsNil, qt.Commentf("sign ECDSA for voter %d", i))
 
-		// hash the inputs of gnark circuit (except weight and including census root)
-		vvInputs := voteverifier.VoteVerifierInputs{
-			ProcessID:       voterProof.ProcessID,
-			CensusOrigin:    censusOrigin,
-			BallotMode:      testutil.BallotMode(),
-			EncryptionKey:   encryptionKey,
-			Address:         voterProof.Address,
-			VoteID:          voterProof.VoteID,
-			UserWeight:      big.NewInt(testutil.Weight),
-			EncryptedBallot: voterProof.Ballot.FromTEtoRTE(),
-		}
-		inputsHash, err := vvInputs.InputsHash()
-		c.Assert(err, qt.IsNil, qt.Commentf("vote verifier input hash for voter %d", i))
-
-		inputsHashes = append(inputsHashes, inputsHash)
 		// compose circuit placeholders
-		recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballottest.TestCircomVerificationKey, voterProof.Proof, voterProof.PubInputs)
+		recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballotproof.CircomVerificationKey, ballotProof.Proof, ballotProof.PubInputs)
 		c.Assert(err, qt.IsNil, qt.Commentf("circom to gnark proof for voter %d", i))
 
 		assignments = append(assignments, voteverifier.VerifyVoteCircuit{
 			IsValid:    1,
-			InputsHash: emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
-			// circom inputs
-			Vote: circuits.EmulatedVote[sw_bn254.ScalarField]{
-				Address:    emulated.ValueOf[sw_bn254.ScalarField](voterProof.Address),
-				VoteID:     emulated.ValueOf[sw_bn254.ScalarField](voterProof.VoteID.BigInt().MathBigInt()),
-				VoteWeight: emulated.ValueOf[sw_bn254.ScalarField](testutil.Weight),
-				Ballot:     *voterProof.Ballot.FromTEtoRTE().ToGnarkEmulatedBN254(),
-			},
-			Process: circuits.Process[emulated.Element[sw_bn254.ScalarField]]{
-				ID:            emulated.ValueOf[sw_bn254.ScalarField](voterProof.ProcessID),
-				CensusOrigin:  emulated.ValueOf[sw_bn254.ScalarField](censusOrigin.BigInt().MathBigInt()),
-				EncryptionKey: encryptionKey.BigIntsToEmulatedElementBN254(),
-				BallotMode:    testutil.BallotModeEmulated(),
-			},
+			BallotHash: emulated.ValueOf[sw_bn254.ScalarField](ballotProof.InputsHash),
+			Address:    emulated.ValueOf[sw_bn254.ScalarField](ballotProof.Address),
+			VoteID:     ballotProof.VoteID.BigInt().MathBigInt(),
 			// signature
 			PublicKey: gnarkecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
 				X: emulated.ValueOf[emulated.Secp256k1Fp](voter.PubKey.X),

@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -16,6 +17,7 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -102,10 +104,16 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// decode the vote
 	vote := &Vote{}
-	if err := json.NewDecoder(r.Body).Decode(vote); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
 	}
+	if err := json.Unmarshal(body, vote); err != nil {
+		ErrMalformedBody.Withf("could not unmarshal request body: %v", err).Write(w)
+		return
+	}
+
 	// sanity checks
 	if vote.Ballot == nil || vote.BallotInputsHash == nil ||
 		vote.Address == nil || vote.Signature == nil {
@@ -198,13 +206,13 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// calculate the ballot inputs hash
-	ballotInputsHash, err := ballotproof.BallotInputsHash(
+	ballotInputsHash, err := ballotproof.BallotInputsHashIden3(
 		vote.ProcessID,
 		process.BallotMode,
 		new(bjj.BJJ).SetPoint(process.EncryptionKey.X.MathBigInt(), process.EncryptionKey.Y.MathBigInt()),
 		vote.Address,
 		vote.VoteID.BigInt(),
-		vote.Ballot.FromTEtoRTE(),
+		vote.Ballot,
 		voterWeight,
 	)
 	if err != nil {
@@ -222,10 +230,16 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// convert the circom proof to gnark proof and verify it
+	ballotProofAddress := vote.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	ballotProofVoteID := vote.VoteID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	proof, err := circomgnark.VerifyAndConvertToRecursion(
 		ballotproof.Artifacts.RawVerifyingKey(),
 		vote.BallotProof,
-		[]string{vote.BallotInputsHash.String()},
+		[]string{
+			ballotProofAddress.String(),
+			ballotProofVoteID.String(),
+			vote.BallotInputsHash.String(),
+		},
 	)
 	if err != nil {
 		ErrInvalidBallotProof.Withf("could not verify and convert proof: %v", err).Write(w)

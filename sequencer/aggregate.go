@@ -519,7 +519,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		inputsHashValue := emulated.ValueOf[sw_bn254.ScalarField](vb.InputsHash)
 		pubAssignment := &voteverifier.VerifyVoteCircuit{
 			IsValid:    1,
-			InputsHash: inputsHashValue,
+			BallotHash: inputsHashValue,
 		}
 		pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 		if err != nil {
@@ -528,7 +528,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		if err := groth16.Verify(vb.Proof, s.vvVk, pubWitness, verifyOpts); err != nil {
 			pubAssignmentIsValid0 := &voteverifier.VerifyVoteCircuit{
 				IsValid:    0,
-				InputsHash: inputsHashValue,
+				BallotHash: inputsHashValue,
 			}
 			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 			if errIsValid0 == nil {
@@ -574,10 +574,10 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 
 	// Create the aggregator circuit assignment
 	assignment := &aggregator.AggregatorCircuit{
-		ValidProofs:        len(batchInputs.AggBallots),
-		InputsHash:         emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
-		Proofs:             batchInputs.Proofs,
-		ProofsInputsHashes: batchInputs.ProofsInputHash,
+		ValidProofs:  len(batchInputs.AggBallots),
+		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
+		BallotHashes: batchInputs.ProofsInputHash,
+		Proofs:       batchInputs.Proofs,
 	}
 
 	// Fill any remaining slots with dummy proofs if needed

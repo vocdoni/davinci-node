@@ -92,7 +92,7 @@ func (s *Sequencer) debugAggregationFailure(
 		inputsHashValue := emulated.ValueOf[sw_bn254.ScalarField](vb.InputsHash)
 		pubAssignment := &voteverifier.VerifyVoteCircuit{
 			IsValid:    1,
-			InputsHash: inputsHashValue,
+			BallotHash: inputsHashValue,
 		}
 		pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 		if err != nil {
@@ -111,7 +111,7 @@ func (s *Sequencer) debugAggregationFailure(
 
 			pubAssignmentIsValid0 := &voteverifier.VerifyVoteCircuit{
 				IsValid:    0,
-				InputsHash: inputsHashValue,
+				BallotHash: inputsHashValue,
 			}
 			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 			if errIsValid0 == nil {
