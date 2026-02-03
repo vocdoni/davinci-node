@@ -113,7 +113,6 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("could not unmarshal request body: %v", err).Write(w)
 		return
 	}
-
 	// sanity checks
 	if vote.Ballot == nil || vote.BallotInputsHash == nil ||
 		vote.Address == nil || vote.Signature == nil {

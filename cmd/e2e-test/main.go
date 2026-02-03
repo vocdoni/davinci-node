@@ -8,10 +8,13 @@ import (
 	"math/big"
 	"net/http"
 	"time"
+	"sync"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	flag "github.com/spf13/pflag"
+	"github.com/iden3/go-rapidsnark/witness"
 	"github.com/vocdoni/arbo/memdb"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/api"
@@ -67,7 +70,6 @@ func main() {
 		votersCount                      = flag.Int("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
-		parallel                         = flag.Bool("parallel", false, "cast votes to different sequencers at the same time")
 	)
 	flag.Parse()
 	log.Init("debug", "stdout", nil)
@@ -216,67 +218,33 @@ func main() {
 	}
 	log.Infow("process created", "processID", processID.String())
 
-	// Generate votes for each participant and send them to the sequencer
+	// Generate votes and send them via a shared pool: failed sends are requeued for another sequencer
 	{
-		votes, err := createVotes(signers, processID, encryptionKey)
-		if err != nil {
-			log.Errorw(err, "failed to create votes")
-			return
-		}
-
-		if err := sendVotesToSequencer(testCtx, sequencers[0], *voteSleepTime, votes); err != nil {
+		if err := sendVotesWithPool(testCtx, sequencers, signers, processID, encryptionKey, *voteSleepTime, len(signers)); err != nil {
 			log.Errorw(err, "failed to send votes")
 			return
 		}
 
-		// Wait for the votes to be registered in the smart contract
 		log.Info("all votes sent, waiting for votes to be registered in smart contract...")
-
 		if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, 0); err != nil {
 			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 			return
 		}
-
 	}
 
 	log.Info("first batch of votes registered in smart contract, will now overwrite half of them")
 	overwriters := signers[:len(signers)/2]
-	overwrittenVotesCount := 0
-	group, groupCtx := errgroup.WithContext(testCtx)
-	for i, sequencer := range sequencers {
-		votes, err := createVotes(overwriters, processID, encryptionKey)
-		if err != nil {
-			log.Errorw(err, "failed to create vote overwrites")
-			return
-		}
-		overwrittenVotesCount += len(overwriters)
-		log.Infof("now overwriting votes, using sequencer %d (%s)", i, sequencer)
-		if *parallel {
-			sequencer, votes := sequencer, votes
-			group.Go(func() error { return sendVotesToSequencer(groupCtx, sequencer, *voteSleepTime, votes) })
-		} else {
-			if err := sendVotesToSequencer(testCtx, sequencer, *voteSleepTime, votes); err != nil {
-				log.Errorw(err, "failed to send vote overwrites")
-				return
-			}
+	overwrittenVotesCount := len(overwriters)
 
-			log.Infof("overwrite votes sent to sequencer %d (%s), waiting for votes to be registered in smart contract...", i, sequencer)
-			if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, overwrittenVotesCount); err != nil {
-				log.Errorw(err, "failed to wait for votes to be registered in smart contract")
-				return
-			}
-		}
-	}
-	if err := group.Wait(); err != nil {
+	if err := sendVotesWithPool(testCtx, sequencers, overwriters, processID, encryptionKey, *voteSleepTime, len(overwriters)); err != nil {
 		log.Errorw(err, "failed to send vote overwrites")
 		return
 	}
-	if *parallel {
-		log.Info("all overwrite votes sent, waiting for votes to be registered in smart contract...")
-		if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, overwrittenVotesCount); err != nil {
-			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
-			return
-		}
+
+	log.Info("all overwrite votes sent, waiting for votes to be registered in smart contract...")
+	if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, overwrittenVotesCount); err != nil {
+		log.Errorw(err, "failed to wait for votes to be registered in smart contract")
+		return
 	}
 
 	log.Info("finishing the process in the smart contract...")
@@ -389,14 +357,76 @@ func createOrganization(contracts *web3.Contracts) (common.Address, error) {
 	return orgAddr, nil
 }
 
-func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime time.Duration, votes []api.Vote) error {
-	// Create a API client
-	cli, err := client.New(seqEndpoint)
-	if err != nil {
-		return fmt.Errorf("failed to create client: %w", err)
+// sendVotesWithPool sends all votes using a shared pool of signers. Workers pull from the pool,
+// try their sequencer, and on failure put the signer back so another sequencer can try.
+// Tolerant to sequencer failures: votes are not lost and get retried via the pool.
+func sendVotesWithPool(
+	ctx context.Context,
+	sequencers []string,
+	signers []*ethereum.Signer,
+	processID types.ProcessID,
+	encryptionKey *types.EncryptionKey,
+	sleepTime time.Duration,
+	totalVotes int,
+) error {
+	poolCh := make(chan *ethereum.Signer, totalVotes)
+	for _, s := range signers {
+		poolCh <- s
 	}
 
-	// Wait for the sequencer to be ready, make ping request until it responds
+	stopCh := make(chan struct{})
+	var stopOnce sync.Once
+	var successCount, globalCounter uint64
+
+	// Close stopCh when all votes are sent so workers exit
+	go func() {
+		for atomic.LoadUint64(&successCount) < uint64(totalVotes) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+		stopOnce.Do(func() { close(stopCh) })
+	}()
+
+	grp, grpCtx := errgroup.WithContext(ctx)
+	for i, endpoint := range sequencers {
+		workerID, seqEndpoint := i, endpoint
+		grp.Go(func() error {
+			return poolWorker(grpCtx, seqEndpoint, workerID, poolCh, stopCh,
+				&successCount, &globalCounter, totalVotes, processID, encryptionKey, sleepTime)
+		})
+	}
+
+	if err := grp.Wait(); err != nil {
+		return err
+	}
+	if atomic.LoadUint64(&successCount) != uint64(totalVotes) {
+		return fmt.Errorf("only %d/%d votes sent", atomic.LoadUint64(&successCount), totalVotes)
+	}
+	return nil
+}
+
+// poolWorker consumes signers from the pool, creates votes, sends to its sequencer;
+// on send failure requeues the signer so another worker can try.
+func poolWorker(
+	ctx context.Context,
+	seqEndpoint string,
+	workerID int,
+	poolCh chan *ethereum.Signer,
+	stopCh <-chan struct{},
+	successCount, globalCounter *uint64,
+	totalVotes int,
+	processID types.ProcessID,
+	encryptionKey *types.EncryptionKey,
+	sleepTime time.Duration,
+) error {
+	cli, err := client.New(seqEndpoint)
+	if err != nil {
+		return fmt.Errorf("worker %d failed to create client: %w", workerID, err)
+	}
+
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for isConnected := false; !isConnected; {
@@ -404,36 +434,52 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-pingCtx.Done():
-			return fmt.Errorf("ping timeout: %w", pingCtx.Err())
+			return fmt.Errorf("worker %d ping timeout: %w", workerID, pingCtx.Err())
 		default:
 			_, status, err := cli.Request(http.MethodGet, nil, nil, api.PingEndpoint)
 			if err == nil && status == http.StatusOK {
 				isConnected = true
 				break
 			}
-			log.Warnw("failed to ping sequencer", "status", status, "error", err)
+			log.Warnw("worker failed to ping sequencer", "workerID", workerID, "endpoint", seqEndpoint, "status", status, "error", err)
 			time.Sleep(10 * time.Second)
 		}
 	}
-	log.Infow("connected to sequencer", "endpoint", seqEndpoint)
+	log.Infow("worker connected to sequencer", "workerID", workerID, "endpoint", seqEndpoint)
 
-	// Generate votes for each participant and send them to the sequencer
-	for i, vote := range votes {
-		// Send the vote to the sequencer
-		voteID, err := sendVote(cli, vote)
-		if err != nil {
-			log.Errorf("failed to send this vote: %+v", vote)
-			return fmt.Errorf("failed to send vote: %w", err)
-		}
-		log.Infow("vote sent",
-			"voteID", voteID.String(),
-			"currentVote", i+1,
-			"totalVotes", len(votes))
-
-		// Wait the sleepTime before sending the next vote
-		time.Sleep(sleepTime)
+	calc, err := ballotprooftest.NewBallotWitnessCalculator()
+	if err != nil {
+		return fmt.Errorf("worker %d failed to create witness calculator: %w", workerID, err)
 	}
-	return nil
+
+	for {
+		select {
+		case <-stopCh:
+			return nil
+		case signer := <-poolCh:
+			vote, err := createVote(signer, processID, encryptionKey, ballotMode, calc)
+			if err != nil {
+				return fmt.Errorf("worker %d failed to create vote: %w", workerID, err)
+			}
+
+			_, err = sendVote(cli, vote)
+			if err != nil {
+				log.Warnw("send failed, requeuing for another sequencer", "workerID", workerID, "endpoint", seqEndpoint, "error", err)
+				select {
+				case poolCh <- signer:
+				case <-stopCh:
+					return nil
+				}
+				time.Sleep(sleepTime)
+				continue
+			}
+
+			atomic.AddUint64(successCount, 1)
+			cur := atomic.AddUint64(globalCounter, 1)
+			log.Infow("vote sent", "workerID", workerID, "voteID", vote.VoteID.String(), "currentVote", cur, "totalVotes", totalVotes)
+			time.Sleep(sleepTime)
+		}
+	}
 }
 
 func createCensus(ctx context.Context, size int, weight uint64, c3URL string) (types.HexBytes, string, []*ethereum.Signer, error) {
@@ -557,23 +603,13 @@ func createProcess(
 	return processID, encryptionKeys, nil
 }
 
-func createVotes(signers []*ethereum.Signer, processID types.ProcessID, encryptionKey *types.EncryptionKey) ([]api.Vote, error) {
-	votes := make([]api.Vote, 0, len(signers))
-	for _, signer := range signers {
-		vote, err := createVote(signer, processID, encryptionKey, ballotMode)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create vote: %w", err)
-		}
-		votes = append(votes, vote)
-	}
-	return votes, nil
-}
 
 func createVote(
 	privKey *ethereum.Signer,
 	processID types.ProcessID,
 	encKey *types.EncryptionKey,
 	bm *types.BallotMode,
+	calc *witness.Circom2WitnessCalculator,
 ) (api.Vote, error) {
 	// Emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
@@ -622,7 +658,7 @@ func createVote(
 	}
 
 	// Generate the proof using the circom circuit
-	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
+	rawProof, pubInputs, err := ballotprooftest.GenerateProofWithCalculator(calc, encodedCircomInputs)
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate proof: %v", err)
 	}

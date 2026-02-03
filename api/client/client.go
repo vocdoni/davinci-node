@@ -158,6 +158,7 @@ func (c *HTTPclient) Request(method string, jsonBody any, params []string, urlPa
 	)
 
 	var resp *http.Response
+	var lastErr error
 	for i := 1; i <= c.retries; i++ {
 		// Create a fresh request each attempt
 		var reqBody io.ReadCloser
@@ -172,6 +173,7 @@ func (c *HTTPclient) Request(method string, jsonBody any, params []string, urlPa
 
 		resp, err = c.c.Do(req)
 		if err != nil {
+			lastErr = err
 			log.Warnw("http request failed", "error", err.Error(), "attempt", i, "retries", c.retries)
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -179,6 +181,13 @@ func (c *HTTPclient) Request(method string, jsonBody any, params []string, urlPa
 
 		// Successfully got a response, break out of the retry loop
 		break
+	}
+
+	if resp == nil {
+		if lastErr != nil {
+			return nil, 0, fmt.Errorf("all %d attempts failed: %w", c.retries, lastErr)
+		}
+		return nil, 0, fmt.Errorf("all %d attempts failed", c.retries)
 	}
 
 	defer func() {
