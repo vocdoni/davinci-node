@@ -146,7 +146,10 @@ func process2ContractProcess(p *types.Process) npbindings.IProcessRegistryProces
 		copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
 	}
 	prp.Census.CensusOrigin = uint8(p.Census.CensusOrigin)
+	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
 	prp.Census.CensusURI = p.Census.CensusURI
+	prp.Census.ContractAddress = p.Census.ContractAddress
+
 	prp.VotersCount = p.VotersCount.MathBigInt()
 	prp.OverwrittenVotesCount = p.OverwrittenVotesCount.MathBigInt()
 	if p.Result != nil {

@@ -96,7 +96,7 @@ services:
   # ---------------------------------------------------------------------------
 
   sequencer:
-    profiles: ["prod", "dev", "prod-test"]
+    profiles: ["prod", "dev", "prod-test", "dev-test"]
     build:
       context: ./
     image: "ghcr.io/vocdoni/davinci-node:${DAVINCI_NODE_TAG:-main}"

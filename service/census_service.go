@@ -34,7 +34,7 @@ var DefaultCensusDownloaderConfig = CensusDownloaderConfig{
 	CleanUpInterval:      time.Second * 5,
 	OnchainCheckInterval: time.Second * 15,
 	Attempts:             5,
-	Expiration:           time.Minute * 10,
+	Expiration:           time.Minute * 2,
 	Cooldown:             time.Second * 10,
 }
 
@@ -161,15 +161,17 @@ func (cd *CensusDownloader) DownloadCensus(censusInfo *types.Census) (types.HexB
 	}
 	// Add on-chain census to the on-chain census map if applicable
 	if censusInfo.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-		if err := cd.addOnchainCensus(icensus); err != nil {
+		var err error
+		if censusInfo.CensusRoot, err = cd.addOnchainCensus(icensus); err != nil {
 			return nil, fmt.Errorf("failed to add on-chain census: %w", err)
 		}
 	}
 	// Add the census to the queue to be downloaded
 	log.Infow("starting census download",
+		"origin", censusInfo.CensusOrigin.String(),
 		"root", censusInfo.CensusRoot.String(),
 		"uri", censusInfo.CensusURI,
-		"origin", censusInfo.CensusOrigin.String())
+		"address", censusInfo.ContractAddress.String())
 	cd.queue <- icensus
 	return censusInfo.CensusRoot, nil
 }
@@ -180,8 +182,7 @@ func (cd *CensusDownloader) DownloadCensus(censusInfo *types.Census) (types.HexB
 func (cd *CensusDownloader) DownloadCensusStatus(census *types.Census) (DownloadStatus, bool) {
 	cd.mu.RLock()
 	defer cd.mu.RUnlock()
-	censusKey := census.CensusRoot.String()
-	status, exists := cd.censusStatus[censusKey]
+	status, exists := cd.censusStatus[censusKey(census)]
 	return status, exists
 }
 
@@ -209,6 +210,7 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 					return
 				}
 				if status.Complete {
+					cd.CleanUp(status.census)
 					callback(nil)
 					return
 				}
@@ -254,31 +256,31 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census in
 func (cd *CensusDownloader) addPendingCensus(census *types.Census) {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
-	censusKey := census.CensusRoot.String()
-	if _, exists := cd.censusStatus[censusKey]; exists {
+	key := censusKey(census)
+	if _, exists := cd.censusStatus[key]; exists {
 		return
 	}
-	cd.censusStatus[censusKey] = DownloadStatus{
+	cd.censusStatus[key] = DownloadStatus{
 		Attempts: 0,
 		census:   census,
 	}
 }
 
-func (cd *CensusDownloader) addOnchainCensus(icensus internalCensus) error {
+func (cd *CensusDownloader) addOnchainCensus(icensus internalCensus) (types.HexBytes, error) {
 	// Convert the root to a contract address and validate it
 	if icensus.ContractAddress == (common.Address{}) {
-		return fmt.Errorf("invalid on-chain census contract address")
+		return nil, fmt.Errorf("invalid on-chain census contract address")
 	}
 	// Fetch the current census root from the on-chain contract and update
 	// it in the original census
 	var err error
 	icensus.CensusRoot, err = cd.onchainFetcher.FetchOnchainCensusRoot(icensus.ContractAddress)
 	if err != nil {
-		return fmt.Errorf("failed to fetch on-chain census root: %w", err)
+		return nil, fmt.Errorf("failed to fetch on-chain census root: %w", err)
 	}
 	// Store the on-chain census information for later processing
 	cd.onchainCensuses.Store(icensus.ContractAddress.String(), icensus)
-	return nil
+	return icensus.CensusRoot, nil
 }
 
 // updateInternalStatus updates the status of a pending census download
@@ -298,8 +300,8 @@ func (cd *CensusDownloader) updateInternalStatus(icensus internalCensus, err err
 	defer cd.mu.Unlock()
 
 	// Ensure the census exists in the pending map
-	censusKey := icensus.CensusRoot.String()
-	if status, exists := cd.censusStatus[censusKey]; exists {
+	key := censusKey(icensus.Census)
+	if status, exists := cd.censusStatus[key]; exists {
 		// Update the status with the current attempt results
 		status.lastUpdated = time.Now()
 		status.Complete = err == nil
@@ -309,7 +311,7 @@ func (cd *CensusDownloader) updateInternalStatus(icensus internalCensus, err err
 		} else if err != nil {
 			status.LastErr = fmt.Errorf("maximum attempts reached: %w", err)
 		}
-		cd.censusStatus[censusKey] = status
+		cd.censusStatus[key] = status
 	}
 }
 
@@ -346,9 +348,32 @@ func (cd *CensusDownloader) cleanUpPendingCensuses() {
 	defer cd.mu.Unlock()
 
 	now := time.Now()
-	for key, status := range cd.censusStatus {
+	for _, status := range cd.censusStatus {
 		if status.lastUpdated.Add(cd.config.Expiration).Before(now) {
-			delete(cd.censusStatus, key)
+			cd.cleanUpStatusUnsafe(status.census)
 		}
 	}
+}
+
+// CleanUp is a thread-safe wrapper around cleanUpStatusUnsafe that locks
+// the mutex before calling the unsafe version to remove a census status from
+// the internal tracking map based on the given census root.
+func (cd *CensusDownloader) CleanUp(census *types.Census) {
+	cd.mu.Lock()
+	defer cd.mu.Unlock()
+	cd.cleanUpStatusUnsafe(census)
+}
+
+// cleanUpStatusUnsafe removes a census status from the internal tracking
+// map based on the given census root. The caller should ensure that holds
+// the mutex lock before calling this function to avoid data races.
+func (cd *CensusDownloader) cleanUpStatusUnsafe(census *types.Census) {
+	delete(cd.censusStatus, censusKey(census))
+}
+
+// censusKey generates a unique key for a census based on its root hash. This
+// key is used for tracking the status of census downloads in the internal
+// map.
+func censusKey(census *types.Census) string {
+	return census.CensusRoot.String()
 }
