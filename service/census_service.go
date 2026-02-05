@@ -204,11 +204,23 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 				callback(fmt.Errorf("context done before census downloaded"))
 				return
 			case <-ticker.C:
+				// Get the current download status of the census
 				status, exists := cd.DownloadCensusStatus(census)
+				// If the census is not found in the pending list, it means it
+				// was never queued for download or it was cleaned up after
+				// completion/failure, so we can return an error
 				if !exists {
 					callback(fmt.Errorf("census not found in pending list"))
 					return
 				}
+				// Return the last error if the downloader has reached the
+				// maximum number of attempts.
+				if status.LastErr != nil && status.Attempts >= cd.config.Attempts {
+					callback(status.LastErr)
+					return
+				}
+				// If the census download is complete, clean up the pending
+				// status and call the callback with nil error
 				if status.Complete {
 					cd.CleanUp(status.census)
 					callback(nil)

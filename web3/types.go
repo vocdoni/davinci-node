@@ -140,15 +140,15 @@ func process2ContractProcess(p *types.Process) npbindings.IProcessRegistryProces
 		MinValueSum:    p.BallotMode.MinValueSum.MathBigInt(),
 	}
 
-	if p.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-		prp.Census.ContractAddress = p.Census.ContractAddress
-	} else {
-		copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
-	}
+	// Set census stuff
 	prp.Census.CensusOrigin = uint8(p.Census.CensusOrigin)
 	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
 	prp.Census.CensusURI = p.Census.CensusURI
-	prp.Census.ContractAddress = p.Census.ContractAddress
+	// Only set the contract address if the census origin is
+	// MerkleTreeOffchainDynamicV1, as it's the only one that uses it.
+	if p.Census.CensusOrigin == types.CensusOriginMerkleTreeOffchainDynamicV1 {
+		prp.Census.ContractAddress = p.Census.ContractAddress
+	}
 
 	prp.VotersCount = p.VotersCount.MathBigInt()
 	prp.OverwrittenVotesCount = p.OverwrittenVotesCount.MathBigInt()
