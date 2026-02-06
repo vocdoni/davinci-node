@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/vocdoni/davinci-node/types/params"
+	"github.com/vocdoni/davinci-node/spec/params"
 )
 
 // BallotMode is the struct to define the rules of a ballot

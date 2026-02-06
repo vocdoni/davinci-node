@@ -10,9 +10,9 @@ import (
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 type mockAggregationStore struct {

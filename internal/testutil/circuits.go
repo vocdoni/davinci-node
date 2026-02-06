@@ -15,8 +15,9 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -94,7 +95,7 @@ func RandomAddress() common.Address {
 }
 
 func RandomVoteID() types.VoteID {
-	k, err := circuits.RandK()
+	k, err := specutil.RandomK()
 	if err != nil {
 		panic(err)
 	}

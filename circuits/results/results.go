@@ -7,8 +7,8 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 )

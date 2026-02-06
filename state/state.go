@@ -15,9 +15,8 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 var (
@@ -28,12 +27,12 @@ var (
 )
 
 var (
-	KeyProcessID     = types.StateKey(spec.StateKeyProcessID)
-	KeyBallotMode    = types.StateKey(spec.StateKeyBallotMode)
-	KeyEncryptionKey = types.StateKey(spec.StateKeyEncryptionKey)
-	KeyResultsAdd    = types.StateKey(spec.StateKeyResultsAdd)
-	KeyResultsSub    = types.StateKey(spec.StateKeyResultsSub)
-	KeyCensusOrigin  = types.StateKey(spec.StateKeyCensusOrigin)
+	KeyProcessID     = types.StateKey(params.StateKeyProcessID)
+	KeyBallotMode    = types.StateKey(params.StateKeyBallotMode)
+	KeyEncryptionKey = types.StateKey(params.StateKeyEncryptionKey)
+	KeyResultsAdd    = types.StateKey(params.StateKeyResultsAdd)
+	KeyResultsSub    = types.StateKey(params.StateKeyResultsSub)
+	KeyCensusOrigin  = types.StateKey(params.StateKeyCensusOrigin)
 
 	ErrStateAlreadyInitialized = fmt.Errorf("state already initialized")
 )
@@ -92,7 +91,7 @@ func New(db db.Database, processID types.ProcessID) (*State, error) {
 	pdb := prefixeddb.NewPrefixedDatabase(db, processID.Bytes())
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     pdb,
-		MaxLevels:    spec.StateTreeMaxLevels,
+		MaxLevels:    params.StateTreeMaxLevels,
 		HashFunction: HashFn,
 	})
 	if err != nil {
@@ -538,7 +537,7 @@ func (o *State) ResultsSub() (*elgamal.Ballot, bool) {
 // EncodeKey encodes a key to a byte array using the maximum key length for the
 // current number of levels in the state tree and the hash function length.
 func EncodeKey(key *big.Int) []byte {
-	maxKeyLen := arbo.MaxKeyLen(spec.StateTreeMaxLevels, HashFn.Len())
+	maxKeyLen := arbo.MaxKeyLen(params.StateTreeMaxLevels, HashFn.Len())
 	return arbo.BigIntToBytes(maxKeyLen, key)
 }
 

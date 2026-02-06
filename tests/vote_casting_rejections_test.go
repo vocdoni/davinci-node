@@ -8,10 +8,10 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/api"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover/debug"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/tests/helpers"
 	"github.com/vocdoni/davinci-node/types"
@@ -117,7 +117,7 @@ func TestVoteCastingRejections(t *testing.T) {
 	c.Run("create votes", func(c *qt.C) {
 		for i, signer := range signers {
 			// generate a vote for the first participant
-			k, err := elgamal.RandK()
+			k, err := specutil.RandomK()
 			c.Assert(err, qt.IsNil)
 			vote, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))

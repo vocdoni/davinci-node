@@ -5,29 +5,16 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
-	"github.com/vocdoni/davinci-node/types/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 )
-
-// RandK function generates a random k value for encryption,
-// inside the scalar field of the BallotProof curve
-func RandK() (*big.Int, error) {
-	kBytes := make([]byte, 20)
-	_, err := rand.Read(kBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate random k: %v", err)
-	}
-	k := new(big.Int).SetBytes(kBytes)
-	return crypto.BigToFF(params.BallotProofCurve.ScalarField(), k), nil
-}
 
 // Encrypt function encrypts a message using the public key provided as
 // elliptic curve point. It generates a random k and returns the two points
 // that represent the encrypted message and the random k used to encrypt it.
 // It returns an error if any.
 func Encrypt(publicKey ecc.Point, msg *big.Int) (ecc.Point, ecc.Point, *big.Int, error) {
-	k, err := RandK()
+	k, err := specutil.RandomK()
 	if err != nil {
 		return nil, nil, nil, err
 	}

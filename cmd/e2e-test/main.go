@@ -20,12 +20,12 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/config"
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -577,7 +577,7 @@ func createVote(
 ) (api.Vote, error) {
 	// Emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
-	k, err := elgamal.RandK()
+	k, err := specutil.RandomK()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate random k: %v", err)
 	}

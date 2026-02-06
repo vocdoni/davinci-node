@@ -15,8 +15,8 @@ import (
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // startBallotProcessor starts a background goroutine that continuously processes ballots.

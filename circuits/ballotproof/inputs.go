@@ -11,8 +11,9 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 // BallotProofInputs struct contains the required inputs to compose the
@@ -37,8 +38,8 @@ func (b *BallotProofInputs) VoteID() (types.VoteID, error) {
 	if b == nil {
 		return 0, fmt.Errorf("ballot proof inputs cannot be nil")
 	}
-	if !b.ProcessID.IsValid() {
-		return 0, fmt.Errorf("a valid processID is required")
+	if !b.ProcessID.IsValid() || len(b.Address) == 0 || b.K == nil {
+		return 0, fmt.Errorf("a valid processID, address and k is required")
 	}
 	voteID, err := spec.VoteID(
 		b.ProcessID.MathBigInt(),
@@ -174,7 +175,7 @@ func GenerateBallotProofInputs(
 	}
 	// if no k is provided, generate a random one
 	if inputs.K == nil {
-		k, err := elgamal.RandK()
+		k, err := specutil.RandomK()
 		if err != nil {
 			return nil, fmt.Errorf("error generating random k: %w", err)
 		}

@@ -8,7 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/util"
 	"github.com/vocdoni/gnark-crypto-primitives/tree/smt"
@@ -19,7 +19,7 @@ import (
 type MerkleProof struct {
 	// Key + Value hashed through Siblings path, should produce Root hash
 	Root     frontend.Variable
-	Siblings [spec.StateTreeMaxLevels]frontend.Variable
+	Siblings [params.StateTreeMaxLevels]frontend.Variable
 	Key      frontend.Variable
 	LeafHash frontend.Variable
 }
@@ -79,7 +79,7 @@ func (mp *MerkleProof) String() string {
 type MerkleTransition struct {
 	// NewKey + NewValue hashed through Siblings path, should produce NewRoot hash
 	NewRoot     frontend.Variable
-	Siblings    [spec.StateTreeMaxLevels]frontend.Variable
+	Siblings    [params.StateTreeMaxLevels]frontend.Variable
 	NewKey      frontend.Variable
 	NewLeafHash frontend.Variable
 	// OldKey + OldValue hashed through same Siblings should produce OldRoot hash
@@ -224,9 +224,9 @@ func (mp *MerkleTransition) IsNoop(api frontend.API) frontend.Variable {
 // padStateSiblings pads the unpacked siblings to the maximum number of levels
 // in the census tree, filling with 0s if needed. It returns a fixed-size array
 // of the maximum number of levels of frontend.Variable.
-func padStateSiblings(unpackedSiblings []*big.Int) [spec.StateTreeMaxLevels]frontend.Variable {
-	paddedSiblings := [spec.StateTreeMaxLevels]frontend.Variable{}
-	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, spec.StateTreeMaxLevels) {
+func padStateSiblings(unpackedSiblings []*big.Int) [params.StateTreeMaxLevels]frontend.Variable {
+	paddedSiblings := [params.StateTreeMaxLevels]frontend.Variable{}
+	for i, v := range circuits.BigIntArrayToN(unpackedSiblings, params.StateTreeMaxLevels) {
 		paddedSiblings[i] = v
 	}
 	return paddedSiblings
@@ -234,14 +234,14 @@ func padStateSiblings(unpackedSiblings []*big.Int) [spec.StateTreeMaxLevels]fron
 
 // CalculateBallotIndex replicates spec.BallotIndex inside the circuit.
 // It takes the low 16 bits of the address, applies the censusIndex offset,
-// and shifts into the Ballot namespace (starting at spec.BallotMin).
+// and shifts into the Ballot namespace (starting at params.BallotMin).
 //
 //	BallotIndex = BallotMin + (index * 2^CensusAddressBitLen) + (address mod 2^CensusAddressBitLen)
 func CalculateBallotIndex(api frontend.API, address, censusIndex frontend.Variable) frontend.Variable {
-	censusIndexShifted := api.Mul(censusIndex, 1<<spec.CensusAddressBitLen)
+	censusIndexShifted := api.Mul(censusIndex, 1<<params.CensusAddressBitLen)
 	addressLE := api.ToBinary(address, common.AddressLength*8)
-	addressTruncated := api.FromBinary(addressLE[:spec.CensusAddressBitLen]...)
-	return api.Add(spec.BallotMin, censusIndexShifted, addressTruncated)
+	addressTruncated := api.FromBinary(addressLE[:params.CensusAddressBitLen]...)
+	return api.Add(params.BallotMin, censusIndexShifted, addressTruncated)
 }
 
 // AssertDummyIsNoop fails when isDummy is 1 and mp is not a NOOP

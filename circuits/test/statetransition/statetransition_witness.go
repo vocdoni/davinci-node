@@ -12,7 +12,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 
-	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -33,7 +33,7 @@ func CircuitPlaceholderWithProof(
 }
 
 func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) *statetransition.StateTransitionCircuit {
-	reencryptionK, err := elgamal.RandK()
+	reencryptionK, err := specutil.RandomK()
 	if err != nil {
 		t.Fatal(err)
 	}

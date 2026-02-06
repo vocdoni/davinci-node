@@ -4,10 +4,17 @@ import (
 	"fmt"
 	"math/big"
 
+	gethparams "github.com/ethereum/go-ethereum/params"
+
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
+)
+
+const (
+	BlobTxBytesPerFieldElement = gethparams.BlobTxBytesPerFieldElement
+	BlobTxFieldElementsPerBlob = gethparams.BlobTxFieldElementsPerBlob
 )
 
 // BlobData represents the structured data extracted from a blob
@@ -26,17 +33,17 @@ type BlobData struct {
 //  3. Votes sequentially until voteID = 0x0 (sentinel):
 //     Each vote: voteID + address + reencryptedBallot coordinates
 func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
-	var cells [params.BlobTxFieldElementsPerBlob][params.BlobTxBytesPerFieldElement]byte
+	var cells [BlobTxFieldElementsPerBlob][BlobTxBytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) error {
-		if cell >= params.BlobTxFieldElementsPerBlob {
+		if cell >= BlobTxFieldElementsPerBlob {
 			return fmt.Errorf("blob overflow")
 		}
 		biBytes := bi.Bytes()
 		// Pad to 32 bytes if necessary (big-endian)
-		if len(biBytes) < params.BlobTxBytesPerFieldElement {
-			padded := make([]byte, params.BlobTxBytesPerFieldElement)
-			copy(padded[params.BlobTxBytesPerFieldElement-len(biBytes):], biBytes)
+		if len(biBytes) < BlobTxBytesPerFieldElement {
+			padded := make([]byte, BlobTxBytesPerFieldElement)
+			copy(padded[BlobTxBytesPerFieldElement-len(biBytes):], biBytes)
 			biBytes = padded
 		}
 		// Copy as big-endian
@@ -81,9 +88,9 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 	// Convert 2D cell array to flat blob format
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement)
 	blob := new(types.Blob)
-	for i := range params.BlobTxFieldElementsPerBlob {
-		start := i * params.BlobTxBytesPerFieldElement
-		end := start + params.BlobTxBytesPerFieldElement
+	for i := range BlobTxFieldElementsPerBlob {
+		start := i * BlobTxBytesPerFieldElement
+		end := start + BlobTxBytesPerFieldElement
 		copy(blob[start:end], cells[i][:])
 	}
 
@@ -124,11 +131,11 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 
 	// extract big.Int from blob cell
 	getCell := func(cellIndex int) *big.Int {
-		if cellIndex >= params.BlobTxFieldElementsPerBlob {
+		if cellIndex >= BlobTxFieldElementsPerBlob {
 			return big.NewInt(0)
 		}
-		start := cellIndex * params.BlobTxBytesPerFieldElement
-		cellBytes := blob[start : start+params.BlobTxBytesPerFieldElement]
+		start := cellIndex * BlobTxBytesPerFieldElement
+		cellBytes := blob[start : start+BlobTxBytesPerFieldElement]
 		// Read blob cells as big-endian (canonical form)
 		return new(big.Int).SetBytes(cellBytes)
 	}
@@ -158,7 +165,7 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 		}
 
 		// Check if we have enough cells for a complete vote
-		if cellIndex+1+coordsPerBallot > params.BlobTxFieldElementsPerBlob {
+		if cellIndex+1+coordsPerBallot > BlobTxFieldElementsPerBlob {
 			return nil, fmt.Errorf("incomplete vote data in blob")
 		}
 

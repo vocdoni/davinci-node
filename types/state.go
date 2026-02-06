@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
 )
 
 // TODO: implement CensusIndex and remove this
@@ -56,7 +57,6 @@ func CalculateBallotIndex(address *big.Int, censusIndex uint64) BallotIndex {
 	return BallotIndex(ballotIndex)
 }
 
-// TruncateToLowerBits returns a big.Int truncated to the least-significant `bits`
 func HexStringToBallotIndex(s string) (BallotIndex, error) {
 	k, err := hexStringToStateKey("BallotIndex", s)
 	if err != nil {
@@ -109,7 +109,7 @@ func (k *StateKey) UnmarshalJSON(data []byte) error {
 
 func (v VoteID) StateKey() StateKey { return StateKey(v) }
 func (v VoteID) Valid() bool {
-	return uint64(v) >= spec.VoteIDMin && uint64(v) <= spec.VoteIDMax
+	return uint64(v) >= params.VoteIDMin && uint64(v) <= params.VoteIDMax
 }
 func (v VoteID) Uint64() uint64                { return StateKey(v).Uint64() }
 func (v VoteID) ToGnark() uint64               { return StateKey(v).ToGnark() }
@@ -129,7 +129,7 @@ func (v *VoteID) UnmarshalJSON(data []byte) error {
 
 func (b BallotIndex) StateKey() StateKey { return StateKey(b) }
 func (b BallotIndex) Valid() bool {
-	return uint64(b) >= spec.BallotMin && uint64(b) <= spec.BallotMax
+	return uint64(b) >= params.BallotMin && uint64(b) <= params.BallotMax
 }
 func (b BallotIndex) Uint64() uint64                { return StateKey(b).Uint64() }
 func (b BallotIndex) ToGnark() uint64               { return StateKey(b).ToGnark() }

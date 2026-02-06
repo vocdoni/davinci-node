@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/davinci-node/spec"
+	"github.com/vocdoni/davinci-node/spec/params"
 )
 
 func TestStateKeys(t *testing.T) {
@@ -26,13 +26,13 @@ func TestStateKeys(t *testing.T) {
 	_, err = HexStringToBallotIndex("0x10")
 	qt.Assert(t, err, qt.IsNil)
 
-	_, err = BigIntToBallotIndex(new(big.Int).SetUint64(spec.BallotMin - 1))
+	_, err = BigIntToBallotIndex(new(big.Int).SetUint64(params.BallotMin - 1))
 	qt.Assert(t, err, qt.ErrorMatches, ".*out of range.*")
-	_, err = BigIntToBallotIndex(new(big.Int).SetUint64(spec.BallotMax + 1))
+	_, err = BigIntToBallotIndex(new(big.Int).SetUint64(params.BallotMax + 1))
 	qt.Assert(t, err, qt.ErrorMatches, ".*out of range.*")
 
-	_, err = BigIntToBallotIndex(new(big.Int).SetUint64(spec.BallotMin))
+	_, err = BigIntToBallotIndex(new(big.Int).SetUint64(params.BallotMin))
 	qt.Assert(t, err, qt.IsNil)
-	_, err = BigIntToBallotIndex(new(big.Int).SetUint64(spec.BallotMax))
+	_, err = BigIntToBallotIndex(new(big.Int).SetUint64(params.BallotMax))
 	qt.Assert(t, err, qt.IsNil)
 }

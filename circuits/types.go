@@ -2,7 +2,6 @@ package circuits
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	"math/big"
 
@@ -15,8 +14,8 @@ import (
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	gnark_poseidon "github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -630,18 +629,6 @@ func NextK(api frontend.API, k frontend.Variable) frontend.Variable {
 		return nil
 	}
 	return newK
-}
-
-// RandK function generates a random k value for encryption,
-// inside the scalar field of the BallotProof curve
-func RandK() (*big.Int, error) {
-	kBytes := make([]byte, 20)
-	_, err := rand.Read(kBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate random k: %v", err)
-	}
-	k := new(big.Int).SetBytes(kBytes)
-	return crypto.BigToFF(params.BallotProofCurve.ScalarField(), k), nil
 }
 
 func varToEmulatedElementBN254(api frontend.API, v frontend.Variable) *emulated.Element[sw_bn254.ScalarField] {

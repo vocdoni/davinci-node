@@ -42,6 +42,8 @@ require (
 	golang.org/x/sync v0.19.0
 )
 
+replace github.com/vocdoni/davinci-node/spec => ./spec
+
 require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.17.0 // indirect

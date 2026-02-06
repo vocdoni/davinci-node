@@ -9,8 +9,8 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func TestBuildKZGCommitmentOverflow(t *testing.T) {
@@ -33,7 +33,7 @@ func TestBuildKZGCommitmentOverflow(t *testing.T) {
 	coordsPerBallot := params.FieldsPerBallot * 4
 	resultsCells := 2 * coordsPerBallot
 	cellsPerVote := 1 + 1 + coordsPerBallot
-	maxVotes := (params.BlobTxFieldElementsPerBlob - resultsCells - 1) / cellsPerVote
+	maxVotes := (BlobTxFieldElementsPerBlob - resultsCells - 1) / cellsPerVote
 	votes := make([]*Vote, 0, maxVotes+1)
 	for i := 0; i < maxVotes+1; i++ {
 		votes = append(votes, &Vote{

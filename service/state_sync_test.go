@@ -15,10 +15,11 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func TestStateSync(t *testing.T) {
@@ -280,7 +281,7 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 
 		// Create reencrypted ballot (for state transition circuit)
 		// Generate a random k for reencryption
-		k, err := elgamal.RandK()
+		k, err := specutil.RandomK()
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate random k for ballot %d with offset %d", i, offset))
 		reencryptedBallot, _, err := ballot.Reencrypt(publicKey, k)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to reencrypt ballot %d with offset %d", i, offset))

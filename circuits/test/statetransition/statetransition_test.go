@@ -35,9 +35,9 @@ import (
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/prover"
 	davinci_solidity "github.com/vocdoni/davinci-node/solidity"
+	"github.com/vocdoni/davinci-node/spec/params"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/util"
 )
 

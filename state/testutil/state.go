@@ -12,9 +12,10 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec/params"
+	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/types/params"
 )
 
 func NewStateForTest(t *testing.T,
@@ -54,7 +55,7 @@ func NewVoteForTest(publicKey ecc.Point, index uint64, value int) *state.Vote {
 	if err != nil {
 		panic(fmt.Errorf("failed to encrypt ballot: %v", err))
 	}
-	k, err := elgamal.RandK()
+	k, err := specutil.RandomK()
 	if err != nil {
 		panic(fmt.Errorf("failed to generate k: %v", err))
 	}
