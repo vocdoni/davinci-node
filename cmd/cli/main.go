@@ -15,11 +15,9 @@ import (
 )
 
 const (
-	defaultNetwork     = "sepolia"
-	defaultCAPI        = "https://ethereum-sepolia-beacon-api.publicnode.com"
-	localSequencerHost = "0.0.0.0"
-	localSequencerPort = 8080
-	defaultCensus3URL  = "https://c3-dev.davinci.vote"
+	defaultNetwork    = "sepolia"
+	defaultCAPI       = "https://ethereum-sepolia-beacon-api.publicnode.com"
+	defaultCensus3URL = "https://c3-dev.davinci.vote"
 )
 
 var (
