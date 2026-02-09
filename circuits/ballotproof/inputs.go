@@ -19,13 +19,13 @@ import (
 // BallotProofInputs struct contains the required inputs to compose the
 // data to generate the witness for a ballot proof using the circom circuit.
 type BallotProofInputs struct {
-	ProcessID     types.ProcessID   `json:"processId"`
-	Address       types.HexBytes    `json:"address"`
-	EncryptionKey []*types.BigInt   `json:"encryptionKey"`
-	K             *types.BigInt     `json:"k"`
+	ProcessID     types.ProcessID  `json:"processId"`
+	Address       types.HexBytes   `json:"address"`
+	EncryptionKey []*types.BigInt  `json:"encryptionKey"`
+	K             *types.BigInt    `json:"k"`
 	BallotMode    *spec.BallotMode `json:"ballotMode"`
-	Weight        *types.BigInt     `json:"weight"`
-	FieldValues   []*types.BigInt   `json:"fieldValues"`
+	Weight        *types.BigInt    `json:"weight"`
+	FieldValues   []*types.BigInt  `json:"fieldValues"`
 }
 
 // VoteID generates a unique identifier for the vote based on the process ID,
@@ -210,24 +210,19 @@ func GenerateBallotProofInputs(
 	if err != nil {
 		return nil, fmt.Errorf("error calculating ballot input hash: %w", err)
 	}
-		var groupSize *types.BigInt
-		if inputs.BallotMode.GroupSize != inputs.BallotMode.NumFields {
-			groupSize = new(types.BigInt).SetInt(int(inputs.BallotMode.GroupSize))
-		}
-
-		return &BallotProofInputsResult{
-			ProcessID:        inputs.ProcessID,
-			Address:          inputs.Address,
-			Weight:           inputs.Weight,
-			Ballot:           ballot.FromRTEtoTE(),
-			BallotInputsHash: ballotInputsHash,
-			VoteID:           voteID,
-			CircomInputs: &CircomInputs{
-				Fields:         circuits.BigIntArrayToNInternal(fields[:], params.FieldsPerBallot),
-				NumFields:      new(types.BigInt).SetBigInt(ballotMode.NumFields),
-				GroupSize:      groupSize,
-				UniqueValues:   new(types.BigInt).SetBigInt(ballotMode.UniqueValues),
-				MaxValue:       new(types.BigInt).SetBigInt(ballotMode.MaxValue),
+	return &BallotProofInputsResult{
+		ProcessID:        inputs.ProcessID,
+		Address:          inputs.Address,
+		Weight:           inputs.Weight,
+		Ballot:           ballot.FromRTEtoTE(),
+		BallotInputsHash: ballotInputsHash,
+		VoteID:           voteID,
+		CircomInputs: &CircomInputs{
+			Fields:         circuits.BigIntArrayToNInternal(fields[:], params.FieldsPerBallot),
+			NumFields:      new(types.BigInt).SetBigInt(ballotMode.NumFields),
+			GroupSize:      new(types.BigInt).SetInt(int(inputs.BallotMode.GroupSize)),
+			UniqueValues:   new(types.BigInt).SetBigInt(ballotMode.UniqueValues),
+			MaxValue:       new(types.BigInt).SetBigInt(ballotMode.MaxValue),
 			MinValue:       new(types.BigInt).SetBigInt(ballotMode.MinValue),
 			MaxValueSum:    new(types.BigInt).SetBigInt(ballotMode.MaxValueSum),
 			MinValueSum:    new(types.BigInt).SetBigInt(ballotMode.MinValueSum),
