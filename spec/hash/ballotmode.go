@@ -1,13 +1,13 @@
 package hash
 
-// ZeroBallotHash (a.k.a ZERO_BALLOT_HASH) is the Poseidon hash of 8 fields where each
+// ZeroBallotHashHex (a.k.a ZERO_BALLOT_HASH) is the Poseidon hash of 8 fields where each
 // field is the 4-tuple (0, 1, 0, 1) (babyjubjub identity points):
 //
 //	zeroBallotValues = [
 //	 0,1,0,1,  0,1,0,1,  0,1,0,1,  0,1,0,1,
 //	 0,1,0,1,  0,1,0,1,  0,1,0,1,  0,1,0,1
 //	]
-const ZeroBallotHash = 0x2c66ee3d8ff0f86c2251e885d4c207e5162c05d0b458c773106cd5579c58bf36
+const ZeroBallotHashHex = "2c66ee3d8ff0f86c2251e885d4c207e5162c05d0b458c773106cd5579c58bf36"
 
 // Results leaves are constants derived from ZERO_BALLOT_HASH:
 //
