@@ -8,8 +8,8 @@ import (
 )
 
 // StateRoot computes the state root hash for the process parameters.
-func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, packedBallotMode *big.Int) (*big.Int, error) {
-	if processID == nil || censusOrigin == nil || pubKeyX == nil || pubKeyY == nil || packedBallotMode == nil {
+func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, ballotMode *big.Int) (*big.Int, error) {
+	if processID == nil || censusOrigin == nil || pubKeyX == nil || pubKeyY == nil || ballotMode == nil {
 		return nil, fmt.Errorf("state root: all inputs are required")
 	}
 
@@ -17,15 +17,13 @@ func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, packedBallotMode *big.
 	keyProcessID := bigFromUint64(params.StateKeyProcessID)
 	keyBallotMode := bigFromUint64(params.StateKeyBallotMode)
 	keyEncryptionKey := bigFromUint64(params.StateKeyEncryptionKey)
-	keyResultsAdd := bigFromUint64(params.StateKeyResultsAdd)
-	keyResultsSub := bigFromUint64(params.StateKeyResultsSub)
 	keyCensusOrigin := bigFromUint64(params.StateKeyCensusOrigin)
 
 	leafProcess, err := PoseidonHash(keyProcessID, processID, leafDomain)
 	if err != nil {
 		return nil, fmt.Errorf("state root: leaf process: %w", err)
 	}
-	leafBallot, err := PoseidonHash(keyBallotMode, packedBallotMode, leafDomain)
+	leafBallot, err := PoseidonHash(keyBallotMode, ballotMode, leafDomain)
 	if err != nil {
 		return nil, fmt.Errorf("state root: leaf ballot mode: %w", err)
 	}
@@ -42,15 +40,8 @@ func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, packedBallotMode *big.
 		return nil, fmt.Errorf("state root: leaf census origin: %w", err)
 	}
 
-	zeroBallotHash := zeroBallotHashBig()
-	leafResultsAdd, err := PoseidonHash(keyResultsAdd, zeroBallotHash, leafDomain)
-	if err != nil {
-		return nil, fmt.Errorf("state root: leaf results add: %w", err)
-	}
-	leafResultsSub, err := PoseidonHash(keyResultsSub, zeroBallotHash, leafDomain)
-	if err != nil {
-		return nil, fmt.Errorf("state root: leaf results sub: %w", err)
-	}
+	leafResultsAdd := leafResultsAddBig()
+	leafResultsSub := leafResultsSubBig()
 
 	nodeA0, err := PoseidonHash(leafProcess, leafResultsAdd)
 	if err != nil {
@@ -79,6 +70,22 @@ func zeroBallotHashBig() *big.Int {
 	value, ok := new(big.Int).SetString(ZeroBallotHashHex, 16)
 	if !ok {
 		panic("state root: invalid ZeroBallotHash hex")
+	}
+	return value
+}
+
+func leafResultsAddBig() *big.Int {
+	value, ok := new(big.Int).SetString(LeafResultsAddHex, 16)
+	if !ok {
+		panic("state root: invalid LeafResultsAddHex")
+	}
+	return value
+}
+
+func leafResultsSubBig() *big.Int {
+	value, ok := new(big.Int).SetString(LeafResultsSubHex, 16)
+	if !ok {
+		panic("state root: invalid LeafResultsSubHex")
 	}
 	return value
 }
