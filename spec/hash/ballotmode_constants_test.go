@@ -12,7 +12,7 @@ func TestZeroBallotHashConstant(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		inputs = append(inputs, big.NewInt(0), big.NewInt(1), big.NewInt(0), big.NewInt(1))
 	}
-	got, err := MultiHash(inputs)
+	got, err := PoseidonMultiHash(inputs)
 	if err != nil {
 		t.Fatalf("PoseidonHash error: %v", err)
 	}

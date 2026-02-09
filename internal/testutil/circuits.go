@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	numFields      = 5
+	numFields      = 6
+	groupSize      = 2
 	uniqueValues   = 0
 	maxValue       = 16
 	minValue       = 0
@@ -183,7 +184,7 @@ func BallotModeEmulated() circuits.BallotMode[emulated.Element[sw_bn254.ScalarFi
 func BallotModeInternal() spec.BallotMode {
 	return spec.BallotMode{
 		NumFields:      numFields,
-		GroupSize:      numFields,
+		GroupSize:      groupSize,
 		UniqueValues:   uniqueValues == 1,
 		MaxValue:       maxValue,
 		MinValue:       minValue,

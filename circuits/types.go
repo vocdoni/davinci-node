@@ -39,6 +39,7 @@ var Poseidon377DomainVar frontend.Variable
 // process. Is a generic struct that can be used with any type of circuit input.
 type BallotMode[T any] struct {
 	NumFields      T
+	GroupSize      T
 	UniqueValues   T
 	MaxValue       T
 	MinValue       T
