@@ -2,8 +2,6 @@ module github.com/vocdoni/davinci-node
 
 go 1.25.5
 
-replace github.com/vocdoni/davinci-node/spec => ./spec
-
 require (
 	github.com/attestantio/go-eth2-client v0.27.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
