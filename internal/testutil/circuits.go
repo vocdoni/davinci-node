@@ -180,8 +180,8 @@ func BallotModeEmulated() circuits.BallotMode[emulated.Element[sw_bn254.ScalarFi
 	}
 }
 
-func BallotModeInternal() *spec.BallotMode {
-	return &spec.BallotMode{
+func BallotModeInternal() spec.BallotMode {
+	return spec.BallotMode{
 		NumFields:      numFields,
 		GroupSize:      numFields,
 		UniqueValues:   uniqueValues == 1,

@@ -73,7 +73,7 @@ func TestStateSync(t *testing.T) {
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
-		BallotMode: &spec.BallotMode{
+		BallotMode: spec.BallotMode{
 			NumFields:      2,
 			GroupSize:      2,
 			MaxValue:       100,
@@ -123,7 +123,7 @@ func TestStateSync(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &spec.BallotMode{
+	ballotMode := spec.BallotMode{
 		NumFields:      3,
 		GroupSize:      3,
 		MaxValue:       100,

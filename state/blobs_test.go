@@ -40,7 +40,7 @@ func TestBlobDataStructures(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &spec.BallotMode{
+	ballotMode := spec.BallotMode{
 		NumFields:      3,
 		GroupSize:      3,
 		MaxValue:       100,
@@ -168,17 +168,7 @@ func TestBlobStateTransition(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &spec.BallotMode{
-		NumFields:      3,
-		GroupSize:      3,
-		MaxValue:       100,
-		MinValue:       0,
-		MaxValueSum:    1000,
-		MinValueSum:    0,
-		CostExponent:   1,
-		UniqueValues:   false,
-		CostFromWeight: false,
-	}
+	ballotMode := testutil.BallotModeInternal()
 	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
 	err = originalState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
@@ -274,7 +264,7 @@ func TestBlobStateTransition(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get expected root"))
 
 		// Now test restoration from blob
-		restoreStateFromBlob(t, firstTransition.Blob.Blob, processID, *ballotMode, publicKey, expectedRoot)
+		restoreStateFromBlob(t, firstTransition.Blob.Blob, processID, ballotMode, publicKey, expectedRoot)
 	})
 
 	// Test state restoration by applying all blobs in sequence
@@ -430,7 +420,7 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	}()
 
 	// Initialize new state with same parameters
-	ballotModeCircuit := circuits.BallotModeToCircuit(&ballotMode)
+	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(encryptionKey)
 	err = newState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize new state"))

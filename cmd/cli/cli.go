@@ -254,7 +254,7 @@ func (s *CLIServices) CreateCensus(
 // error occurs, it will be returned.
 func (s *CLIServices) CreateProcess(
 	census *types.Census,
-	ballotMode *spec.BallotMode,
+	ballotMode spec.BallotMode,
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
@@ -404,7 +404,7 @@ func (s *CLIServices) VoterWeight(pid types.ProcessID, addr common.Address) (*ty
 func (s *CLIServices) CreateVote(
 	privKey *ethereum.Signer,
 	pid types.ProcessID,
-	bm *spec.BallotMode,
+	bm spec.BallotMode,
 ) (api.Vote, error) {
 	// Fetch the encryption key for the process
 	encKey, err := s.ProcessEncKey(pid)

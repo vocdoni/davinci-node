@@ -11,7 +11,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -23,18 +22,7 @@ const (
 
 var (
 	userWeight = uint64(testutil.Weight)
-	// ballotMode = testutil.BallotModeInternal()
-	ballotMode = &spec.BallotMode{
-		NumFields:      2,
-		GroupSize:      2,
-		UniqueValues:   false,
-		MaxValue:       100,
-		MinValue:       0,
-		MaxValueSum:    200,
-		MinValueSum:    0,
-		CostExponent:   1,
-		CostFromWeight: false,
-	}
+	ballotMode = testutil.BallotModeInternal()
 
 	privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
 	web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")

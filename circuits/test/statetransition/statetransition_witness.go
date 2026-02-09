@@ -77,7 +77,7 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 	// This matches how the circuit recalculates the hash during verification.
 	// Get the ballot mode from state and convert to spec.BallotMode
 	circuitBallotMode := s.BallotMode()
-	ballotMode := &spec.BallotMode{
+	ballotMode := spec.BallotMode{
 		NumFields:      uint8(circuitBallotMode.NumFields.Int64()),
 		GroupSize:      uint8(circuitBallotMode.NumFields.Int64()),
 		UniqueValues:   circuitBallotMode.UniqueValues.Cmp(big.NewInt(1)) == 0,

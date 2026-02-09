@@ -20,7 +20,7 @@ import (
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
-func NewVote(pid types.ProcessID, bm *spec.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
+func NewVote(pid types.ProcessID, bm spec.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int, fields []*types.BigInt) (api.Vote, error) {
 	var err error
 	// emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
@@ -79,7 +79,7 @@ func NewVote(pid types.ProcessID, bm *spec.BallotMode, encKey *types.EncryptionK
 	}, nil
 }
 
-func NewVoteWithRandomFields(pid types.ProcessID, bm *spec.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, error) {
+func NewVoteWithRandomFields(pid types.ProcessID, bm spec.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, error) {
 	// generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
@@ -94,7 +94,7 @@ func NewVoteWithRandomFields(pid types.ProcessID, bm *spec.BallotMode, encKey *t
 	return NewVote(pid, bm, encKey, privKey, k, fields)
 }
 
-func NewVoteFromNonCensusVoter(pid types.ProcessID, bm *spec.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
+func NewVoteFromNonCensusVoter(pid types.ProcessID, bm spec.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
 	privKey, err := ethereum.NewSigner()
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate signer: %w", err)

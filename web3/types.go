@@ -61,11 +61,11 @@ type CallResult struct {
 
 // contractProcess2Process converts a contractProcess to a types.Process
 func contractProcess2Process(p npbindings.IProcessRegistryProcess) (*types.Process, error) {
-	mode := spec.BallotMode{
+	ballotMode := spec.BallotMode{
 		UniqueValues:   p.BallotMode.UniqueValues,
 		CostFromWeight: p.BallotMode.CostFromWeight,
 		NumFields:      p.BallotMode.NumFields,
-		GroupSize:      p.BallotMode.NumFields,
+		GroupSize:      p.BallotMode.NumFields, // TODO: should be p.BallotMode.GroupSize
 		CostExponent:   p.BallotMode.CostExponent,
 		MaxValue:       p.BallotMode.MaxValue.Uint64(),
 		MinValue:       p.BallotMode.MinValue.Uint64(),
@@ -105,7 +105,7 @@ func contractProcess2Process(p npbindings.IProcessRegistryProcess) (*types.Proce
 		VotersCount:           (*types.BigInt)(p.VotersCount),
 		OverwrittenVotesCount: (*types.BigInt)(p.OverwrittenVotesCount),
 		MetadataURI:           p.MetadataURI,
-		BallotMode:            &mode,
+		BallotMode:            ballotMode,
 		Census:                &census,
 		Result:                results,
 	}, nil

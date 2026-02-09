@@ -141,7 +141,7 @@ func RootExists(db db.Database, processId types.ProcessID, root *big.Int) error 
 func CalculateInitialRoot(
 	processID types.ProcessID,
 	censusOrigin *big.Int,
-	ballotMode *spec.BallotMode,
+	ballotMode spec.BallotMode,
 	publicKey ecc.Point,
 ) (*big.Int, error) {
 	// Initialize the state in a memDB, just to calculate stateRoot

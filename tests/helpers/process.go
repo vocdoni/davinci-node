@@ -20,7 +20,7 @@ func NewProcess(
 	censusOrigin types.CensusOrigin,
 	censusURI string,
 	censusRoot []byte,
-	ballotMode *spec.BallotMode,
+	ballotMode spec.BallotMode,
 ) (types.ProcessID, *types.EncryptionKey, *types.HexBytes, error) {
 	// Get the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
@@ -77,7 +77,7 @@ func NewProcessOnChain(
 	censusOrigin types.CensusOrigin,
 	censusURI string,
 	censusRoot []byte,
-	ballotMode *spec.BallotMode,
+	ballotMode spec.BallotMode,
 	encryptionKey *types.EncryptionKey,
 	stateRoot *types.HexBytes,
 	numVoters int,

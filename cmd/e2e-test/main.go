@@ -465,7 +465,7 @@ func createProcess(
 	cli *client.HTTPclient,
 	censusRoot types.HexBytes,
 	censusURI string,
-	ballotMode *spec.BallotMode,
+	ballotMode spec.BallotMode,
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
@@ -574,7 +574,7 @@ func createVote(
 	privKey *ethereum.Signer,
 	processID types.ProcessID,
 	encKey *types.EncryptionKey,
-	bm *spec.BallotMode,
+	bm spec.BallotMode,
 ) (api.Vote, error) {
 	// Emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)

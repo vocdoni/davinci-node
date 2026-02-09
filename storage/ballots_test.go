@@ -8,8 +8,6 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
-	"github.com/vocdoni/davinci-node/spec"
-	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -47,21 +45,11 @@ func mkAggBallot(voteID types.VoteID) *AggregatorBallot {
 
 func ensureProcess(t *testing.T, stg *Storage, pid types.ProcessID) {
 	t.Helper()
-	bm := &spec.BallotMode{
-		NumFields:    uint8(params.FieldsPerBallot),
-		GroupSize:    uint8(params.FieldsPerBallot),
-		UniqueValues: false,
-		MaxValue:     1000,
-		MinValue:     0,
-		MaxValueSum:  1000,
-		MinValueSum:  0,
-		CostExponent: 0,
-	}
 	censusRoot := make([]byte, types.CensusRootLength)
 	proc := &types.Process{
 		ID:         &pid,
 		Status:     types.ProcessStatusReady,
-		BallotMode: bm,
+		BallotMode: testutil.BallotModeInternal(),
 		Census: &types.Census{
 			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 			CensusRoot:   types.HexBytes(censusRoot),

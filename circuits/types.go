@@ -156,7 +156,7 @@ func DeserializeBallotMode(data []byte) (BallotMode[*big.Int], error) {
 // BallotModeToCircuit converts a BallotMode to a circuit BallotMode which can
 // be implemented with different base types.
 // Before calling this function, the BallotMode must be validated.
-func BallotModeToCircuit(b *spec.BallotMode) BallotMode[*big.Int] {
+func BallotModeToCircuit(b spec.BallotMode) BallotMode[*big.Int] {
 	return BallotMode[*big.Int]{
 		NumFields:      big.NewInt(int64(b.NumFields)),
 		UniqueValues:   BoolToBigInt(b.UniqueValues),
