@@ -313,7 +313,7 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 		circuits.FrontendError(api, "failed to verify census origin process proof leaf hash: ", err)
 		return
 	}
-	if err := circuit.ProcessProofs.BallotMode.VerifyLeafHash(api, hFn, circuit.Process.BallotMode.Serialize()...); err != nil {
+	if err := circuit.ProcessProofs.BallotMode.VerifyLeafHash(api, hFn, circuit.Process.BallotMode); err != nil {
 		circuits.FrontendError(api, "failed to verify ballot mode process proof leaf hash: ", err)
 		return
 	}

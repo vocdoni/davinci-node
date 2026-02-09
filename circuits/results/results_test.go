@@ -38,6 +38,8 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	processID := testutil.RandomProcessID()
 	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
 	ballotMode := testutil.BallotMode()
+	packedBallotMode, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 
 	// Generate a random ElGamal key pair
 	pubKey, privKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
@@ -47,7 +49,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	// Initialize the state
 	st, err := state.New(memdb.New(), processID)
 	c.Assert(err, qt.IsNil)
-	err = st.Initialize(censusOrigin.BigInt().MathBigInt(), ballotMode, encryptionKeys)
+	err = st.Initialize(censusOrigin.BigInt().MathBigInt(), packedBallotMode, encryptionKeys)
 	c.Assert(err, qt.IsNil)
 
 	// Generate a batch of random votes
@@ -61,7 +63,7 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	c.Assert(subOk, qt.IsTrue, qt.Commentf("Sub accumulator should be available"))
 
 	// Decrypt the votes and generate the decryption proofs
-	maxValue := ballotMode.MaxValue.Uint64() * 1000
+	maxValue := ballotMode.MaxValue * 1000
 	addAccumulator := [params.FieldsPerBallot]*big.Int{}
 	addCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
 	addDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}

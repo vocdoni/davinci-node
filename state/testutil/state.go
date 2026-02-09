@@ -20,7 +20,7 @@ import (
 
 func NewStateForTest(t *testing.T,
 	processID types.ProcessID,
-	ballotMode circuits.BallotMode[*big.Int],
+	ballotMode *big.Int,
 	censusOrigin types.CensusOrigin,
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) *state.State {
@@ -40,7 +40,7 @@ func NewStateForTest(t *testing.T,
 func NewRandomState(t *testing.T, origin types.CensusOrigin) *state.State {
 	return NewStateForTest(t,
 		testutil.RandomProcessID(),
-		testutil.BallotMode(),
+		testutil.BallotModePacked(),
 		origin,
 		testutil.RandomEncryptionPubKey(),
 	)

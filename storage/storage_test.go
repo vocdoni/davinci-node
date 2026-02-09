@@ -24,7 +24,7 @@ func createTestProcess(pid types.ProcessID) *types.Process {
 		MetadataURI:    "http://example.com/metadata",
 		StateRoot:      testutil.StateRoot(),
 		SequencerStats: types.SequencerProcessStats{},
-		BallotMode:     testutil.BallotModeInternal(),
+		BallotMode:     testutil.BallotMode(),
 		Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 }

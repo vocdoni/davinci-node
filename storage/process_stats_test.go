@@ -358,7 +358,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 			MetadataURI:    "http://example.com/metadata",
 			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 5},
 			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
+			BallotMode:     testutil.BallotMode(),
 			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 		},
 		{
@@ -369,7 +369,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 			MetadataURI:    "http://example.com/metadata",
 			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 3},
 			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
+			BallotMode:     testutil.BallotMode(),
 			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 		},
 		{
@@ -380,7 +380,7 @@ func TestGetTotalPendingBallots(t *testing.T) {
 			MetadataURI:    "http://example.com/metadata",
 			SequencerStats: types.SequencerProcessStats{PendingVotesCount: 7},
 			StateRoot:      testutil.StateRoot(),
-			BallotMode:     testutil.BallotModeInternal(),
+			BallotMode:     testutil.BallotMode(),
 			Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 		},
 	}

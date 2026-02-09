@@ -49,7 +49,7 @@ func ensureProcess(t *testing.T, stg *Storage, pid types.ProcessID) {
 	proc := &types.Process{
 		ID:         &pid,
 		Status:     types.ProcessStatusReady,
-		BallotMode: testutil.BallotModeInternal(),
+		BallotMode: testutil.BallotMode(),
 		Census: &types.Census{
 			CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 			CensusRoot:   types.HexBytes(censusRoot),

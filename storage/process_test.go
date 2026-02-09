@@ -69,7 +69,7 @@ func TestProcess(t *testing.T) {
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
 		StateRoot:      testutil.StateRoot(),
-		BallotMode:     testutil.BallotModeInternal(),
+		BallotMode:     testutil.BallotMode(),
 		Census:         testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 

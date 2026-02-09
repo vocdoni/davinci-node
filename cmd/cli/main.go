@@ -22,7 +22,7 @@ const (
 
 var (
 	userWeight = uint64(testutil.Weight)
-	ballotMode = testutil.BallotModeInternal()
+	ballotMode = testutil.BallotMode()
 
 	privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
 	web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")

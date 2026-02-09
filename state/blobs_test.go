@@ -51,7 +51,8 @@ func TestBlobDataStructures(t *testing.T) {
 		UniqueValues:   false,
 		CostFromWeight: false,
 	}
-	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
+	ballotModeCircuit, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
 	err = state.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize state"))
@@ -168,8 +169,9 @@ func TestBlobStateTransition(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := testutil.BallotModeInternal()
-	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
+	ballotMode := testutil.BallotMode()
+	ballotModeCircuit, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
 	err = originalState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize original state"))
@@ -420,7 +422,8 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	}()
 
 	// Initialize new state with same parameters
-	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
+	ballotModeCircuit, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(encryptionKey)
 	err = newState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize new state"))

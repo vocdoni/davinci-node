@@ -49,7 +49,7 @@ var (
 	localSequencerEndpoint = fmt.Sprintf("http://%s:%d", localSequencerHost, localSequencerPort)
 
 	userWeight = uint64(testutil.Weight)
-	ballotMode = testutil.BallotModeInternal()
+	ballotMode = testutil.BallotMode()
 )
 
 func main() {

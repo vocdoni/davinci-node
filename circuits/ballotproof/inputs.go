@@ -173,8 +173,7 @@ func GenerateBallotProofInputs(
 	}
 	// get encryption key point for circom
 	circomEncryptionKeyX, circomEncryptionKeyY := format.FromRTEtoTE(encryptionKey.Point())
-	// ballot mode as circuit ballot mode
-	ballotMode := circuits.BallotModeToCircuit(inputs.BallotMode)
+	ballotMode := inputs.BallotMode
 	// calculate the vote ID
 	voteID, err := inputs.VoteID()
 	if err != nil {
@@ -202,15 +201,15 @@ func GenerateBallotProofInputs(
 		VoteID:           voteID,
 		CircomInputs: &CircomInputs{
 			Fields:         circuits.BigIntArrayToNInternal(fields[:], params.FieldsPerBallot),
-			NumFields:      new(types.BigInt).SetBigInt(ballotMode.NumFields),
+			NumFields:      new(types.BigInt).SetInt(int(ballotMode.NumFields)),
 			GroupSize:      new(types.BigInt).SetInt(int(inputs.BallotMode.GroupSize)),
-			UniqueValues:   new(types.BigInt).SetBigInt(ballotMode.UniqueValues),
-			MaxValue:       new(types.BigInt).SetBigInt(ballotMode.MaxValue),
-			MinValue:       new(types.BigInt).SetBigInt(ballotMode.MinValue),
-			MaxValueSum:    new(types.BigInt).SetBigInt(ballotMode.MaxValueSum),
-			MinValueSum:    new(types.BigInt).SetBigInt(ballotMode.MinValueSum),
-			CostExponent:   new(types.BigInt).SetBigInt(ballotMode.CostExponent),
-			CostFromWeight: new(types.BigInt).SetBigInt(ballotMode.CostFromWeight),
+			UniqueValues:   new(types.BigInt).SetInt(boolToInt(ballotMode.UniqueValues)),
+			MaxValue:       new(types.BigInt).SetUint64(ballotMode.MaxValue),
+			MinValue:       new(types.BigInt).SetUint64(ballotMode.MinValue),
+			MaxValueSum:    new(types.BigInt).SetUint64(ballotMode.MaxValueSum),
+			MinValueSum:    new(types.BigInt).SetUint64(ballotMode.MinValueSum),
+			CostExponent:   new(types.BigInt).SetInt(int(ballotMode.CostExponent)),
+			CostFromWeight: new(types.BigInt).SetInt(boolToInt(ballotMode.CostFromWeight)),
 			Address:        inputs.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField()),
 			Weight:         inputs.Weight,
 			ProcessID:      inputs.ProcessID.BigInt().ToFF(params.BallotProofCurve.ScalarField()),
@@ -221,4 +220,11 @@ func GenerateBallotProofInputs(
 			InputsHash:     ballotInputsHash,
 		},
 	}, nil
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

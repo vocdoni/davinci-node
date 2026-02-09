@@ -156,10 +156,14 @@ func CalculateInitialRoot(
 		}
 	}()
 
+	packedBallotMode, err := ballotMode.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("could not pack ballot mode: %v", err)
+	}
 	// Initialize the state with the census root, ballot mode and the encryption key
 	if err := st.Initialize(
 		censusOrigin,
-		circuits.BallotModeToCircuit(ballotMode),
+		packedBallotMode,
 		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
 		return nil, fmt.Errorf("could not initialize state: %v", err)
 	}
@@ -172,7 +176,7 @@ func CalculateInitialRoot(
 // StartBatch...
 func (o *State) Initialize(
 	censusOrigin *big.Int,
-	ballotMode circuits.BallotMode[*big.Int],
+	ballotMode *big.Int,
 	encryptionKey circuits.EncryptionKey[*big.Int],
 ) error {
 	// Check if the state is already initialized
@@ -183,7 +187,7 @@ func (o *State) Initialize(
 	if err := o.tree.AddBigInt(KeyProcessID.BigInt(), o.processID.MathBigInt()); err != nil {
 		return fmt.Errorf("could not set process ID: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyBallotMode.BigInt(), ballotMode.Serialize()...); err != nil {
+	if err := o.tree.AddBigInt(KeyBallotMode.BigInt(), ballotMode); err != nil {
 		return fmt.Errorf("could not set ballot mode: %w", err)
 	}
 	if err := o.tree.AddBigInt(KeyEncryptionKey.BigInt(), encryptionKey.Serialize()...); err != nil {
@@ -436,7 +440,7 @@ func (o *State) ProcessSerializeBigInts() []*big.Int {
 	list := []*big.Int{}
 	list = append(list, o.ProcessID())
 	list = append(list, o.CensusOrigin())
-	list = append(list, o.BallotMode().Serialize()...)
+	list = append(list, o.BallotMode())
 	list = append(list, o.EncryptionKey().Serialize()...)
 	return list
 }
@@ -465,18 +469,16 @@ func (o *State) CensusOrigin() *big.Int {
 	return v[0]
 }
 
-// BallotMode returns the ballot mode of the state as a
-// circuits.BallotMode[*big.Int].
-func (o *State) BallotMode() circuits.BallotMode[*big.Int] {
+// BallotMode returns the packed ballot mode of the state as a *big.Int.
+func (o *State) BallotMode() *big.Int {
 	_, v, err := o.tree.GetBigInt(KeyBallotMode.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get ballot mode from state")
 	}
-	bm, err := new(circuits.BallotMode[*big.Int]).Deserialize(v)
-	if err != nil {
-		log.Errorw(err, "failed to deserialize ballot mode in state")
+	if len(v) == 0 {
+		return big.NewInt(0)
 	}
-	return bm
+	return v[0]
 }
 
 // EncryptionKey returns the encryption key of the state as a

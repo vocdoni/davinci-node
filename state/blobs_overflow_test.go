@@ -25,9 +25,10 @@ func TestBuildKZGCommitmentOverflow(t *testing.T) {
 		c.Assert(st.Close(), qt.IsNil)
 	}()
 
-	ballotModeCircuit := circuits.BallotModeToCircuit(testutil.BallotModeInternal())
-	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
-	err = st.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, encryptionKeyCircuit)
+	err = st.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
+		testutil.BallotModePacked(),
+		circuits.EncryptionKeyFromECCPoint(publicKey),
+	)
 	c.Assert(err, qt.IsNil)
 
 	coordsPerBallot := params.FieldsPerBallot * 4

@@ -110,7 +110,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 		Duration:    time.Hour,
 		MetadataURI: "http://example.com/metadata",
 		StateRoot:   testutil.StateRoot(),
-		BallotMode:  testutil.BallotModeInternal(),
+		BallotMode:  testutil.BallotMode(),
 		Census:      testutil.RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
 	}
 

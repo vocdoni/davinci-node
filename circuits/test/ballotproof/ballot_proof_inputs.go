@@ -172,7 +172,7 @@ func BallotProofForTestDeterministic(address []byte, processID types.ProcessID, 
 		Address:       address,
 		EncryptionKey: types.SliceOf(encryptionKey.BigInts(), types.BigIntConverter),
 		K:             new(types.BigInt).SetBigInt(k),
-		BallotMode:    testutil.BallotModeInternal(),
+		BallotMode:    testutil.BallotMode(),
 		Weight:        new(types.BigInt).SetInt(testutil.Weight),
 		FieldValues:   fields[:],
 	}

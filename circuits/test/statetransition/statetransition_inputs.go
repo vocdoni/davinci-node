@@ -158,7 +158,7 @@ func StateTransitionInputsForTest(
 	// get the encryption key from the aggregator inputs
 	encryptionKey := state.Curve.New().SetPoint(aggInputs.Process.EncryptionKey.PubKey[0], aggInputs.Process.EncryptionKey.PubKey[1])
 	// init final assignments stuff
-	s := statetest.NewStateForTest(t, processID, testutil.BallotMode(), censusOrigin, aggInputs.Process.EncryptionKey)
+	s := statetest.NewStateForTest(t, processID, testutil.BallotModePacked(), censusOrigin, aggInputs.Process.EncryptionKey)
 
 	// iterate over the votes, reencrypting each time the zero ballot with the
 	// correct k value

@@ -134,7 +134,8 @@ func TestStateSync(t *testing.T) {
 		UniqueValues:   false,
 		CostFromWeight: false,
 	}
-	ballotModeCircuit := circuits.BallotModeToCircuit(ballotMode)
+	ballotModeCircuit, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
 	encryptionKeyCircuit := circuits.EncryptionKeyFromECCPoint(publicKey)
 	err = originalState.Initialize(
 		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),

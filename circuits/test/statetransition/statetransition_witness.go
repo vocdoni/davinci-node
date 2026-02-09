@@ -10,9 +10,9 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 
-	"github.com/vocdoni/davinci-node/spec"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -75,19 +75,7 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 
 	// Calculate the actual aggregator hash from the vote data.
 	// This matches how the circuit recalculates the hash during verification.
-	// Get the ballot mode from state and convert to spec.BallotMode
-	circuitBallotMode := s.BallotMode()
-	ballotMode := spec.BallotMode{
-		NumFields:      uint8(circuitBallotMode.NumFields.Int64()),
-		GroupSize:      uint8(circuitBallotMode.NumFields.Int64()),
-		UniqueValues:   circuitBallotMode.UniqueValues.Cmp(big.NewInt(1)) == 0,
-		MaxValue:       circuitBallotMode.MaxValue.Uint64(),
-		MinValue:       circuitBallotMode.MinValue.Uint64(),
-		MaxValueSum:    circuitBallotMode.MaxValueSum.Uint64(),
-		MinValueSum:    circuitBallotMode.MinValueSum.Uint64(),
-		CostExponent:   uint8(circuitBallotMode.CostExponent.Int64()),
-		CostFromWeight: circuitBallotMode.CostFromWeight.Cmp(big.NewInt(1)) == 0,
-	}
+	ballotMode := testutil.BallotMode()
 
 	hashes := make([]*big.Int, 0, len(votes))
 	for _, v := range votes {

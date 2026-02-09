@@ -5,9 +5,6 @@ import (
 	"math/big"
 	"math/rand/v2"
 
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
-	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/babyjub"
@@ -142,46 +139,15 @@ func RandomEncryptionPubKey() circuits.EncryptionKey[*big.Int] {
 	return encryptionKey
 }
 
-func BallotMode() circuits.BallotMode[*big.Int] {
-	return circuits.BallotMode[*big.Int]{
-		NumFields:      big.NewInt(numFields),
-		UniqueValues:   big.NewInt(uniqueValues),
-		MaxValue:       big.NewInt(maxValue),
-		MinValue:       big.NewInt(minValue),
-		MaxValueSum:    big.NewInt(maxValueSum),
-		MinValueSum:    big.NewInt(minValueSum),
-		CostExponent:   big.NewInt(costExponent),
-		CostFromWeight: big.NewInt(costFromWeight),
+func BallotModePacked() *big.Int {
+	packed, err := BallotMode().Pack()
+	if err != nil {
+		panic(err)
 	}
+	return packed
 }
 
-func BallotModeVar() circuits.BallotMode[frontend.Variable] {
-	return circuits.BallotMode[frontend.Variable]{
-		NumFields:      numFields,
-		UniqueValues:   uniqueValues,
-		MaxValue:       maxValue,
-		MinValue:       minValue,
-		MaxValueSum:    maxValueSum,
-		MinValueSum:    minValueSum,
-		CostExponent:   costExponent,
-		CostFromWeight: costFromWeight,
-	}
-}
-
-func BallotModeEmulated() circuits.BallotMode[emulated.Element[sw_bn254.ScalarField]] {
-	return circuits.BallotMode[emulated.Element[sw_bn254.ScalarField]]{
-		NumFields:      emulated.ValueOf[sw_bn254.ScalarField](numFields),
-		UniqueValues:   emulated.ValueOf[sw_bn254.ScalarField](uniqueValues),
-		MaxValue:       emulated.ValueOf[sw_bn254.ScalarField](maxValue),
-		MinValue:       emulated.ValueOf[sw_bn254.ScalarField](minValue),
-		MaxValueSum:    emulated.ValueOf[sw_bn254.ScalarField](maxValueSum),
-		MinValueSum:    emulated.ValueOf[sw_bn254.ScalarField](minValueSum),
-		CostExponent:   emulated.ValueOf[sw_bn254.ScalarField](costExponent),
-		CostFromWeight: emulated.ValueOf[sw_bn254.ScalarField](costFromWeight),
-	}
-}
-
-func BallotModeInternal() spec.BallotMode {
+func BallotMode() spec.BallotMode {
 	return spec.BallotMode{
 		NumFields:      numFields,
 		GroupSize:      groupSize,

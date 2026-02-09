@@ -34,9 +34,13 @@ func (s *Sequencer) currentProcessState(processID types.ProcessID) (*state.State
 	}
 
 	// Initialize if this is the first time
+	packedBallotMode, err := process.BallotMode.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack ballot mode: %w", err)
+	}
 	if err := st.Initialize(
 		process.Census.CensusOrigin.BigInt().MathBigInt(),
-		circuits.BallotModeToCircuit(process.BallotMode),
+		packedBallotMode,
 		circuits.EncryptionKeyToCircuit(*process.EncryptionKey),
 	); err != nil && !errors.Is(err, state.ErrStateAlreadyInitialized) {
 		return nil, fmt.Errorf("failed to init state: %w", err)
