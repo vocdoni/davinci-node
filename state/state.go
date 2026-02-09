@@ -15,6 +15,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -140,7 +141,7 @@ func RootExists(db db.Database, processId types.ProcessID, root *big.Int) error 
 func CalculateInitialRoot(
 	processID types.ProcessID,
 	censusOrigin *big.Int,
-	ballotMode *types.BallotMode,
+	ballotMode *spec.BallotMode,
 	publicKey ecc.Point,
 ) (*big.Int, error) {
 	// Initialize the state in a memDB, just to calculate stateRoot

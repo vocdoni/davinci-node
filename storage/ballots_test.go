@@ -8,6 +8,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -46,13 +47,14 @@ func mkAggBallot(voteID types.VoteID) *AggregatorBallot {
 
 func ensureProcess(t *testing.T, stg *Storage, pid types.ProcessID) {
 	t.Helper()
-	bm := &types.BallotMode{
+	bm := &spec.BallotMode{
 		NumFields:    uint8(params.FieldsPerBallot),
+		GroupSize:    uint8(params.FieldsPerBallot),
 		UniqueValues: false,
-		MaxValue:     types.NewInt(1000),
-		MinValue:     types.NewInt(0),
-		MaxValueSum:  types.NewInt(1000),
-		MinValueSum:  types.NewInt(0),
+		MaxValue:     1000,
+		MinValue:     0,
+		MaxValueSum:  1000,
+		MinValueSum:  0,
 		CostExponent: 0,
 	}
 	censusRoot := make([]byte, types.CensusRootLength)

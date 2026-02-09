@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/spec"
 )
 
 type ProcessStatus uint8
@@ -165,7 +166,7 @@ type Process struct {
 	StartTime             time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
 	Duration              time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
 	MetadataURI           string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
-	BallotMode            *BallotMode           `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
+	BallotMode            *spec.BallotMode      `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
 	Census                *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
 	Metadata              *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
 	VotersCount           *BigInt               `json:"votersCount"        cbor:"12,keyasint,omitempty"`
@@ -239,7 +240,7 @@ func (o *OrganizationInfo) String() string {
 type ProcessSetup struct {
 	ProcessID  ProcessID   `json:"processId"`
 	Census     *Census     `json:"census"`
-	BallotMode *BallotMode `json:"ballotMode"`
+	BallotMode *spec.BallotMode `json:"ballotMode"`
 	Signature  HexBytes    `json:"signature"`
 }
 
@@ -248,5 +249,5 @@ type ProcessSetupResponse struct {
 	ProcessID        *ProcessID  `json:"processId,omitempty"`
 	EncryptionPubKey [2]*BigInt  `json:"encryptionPubKey,omitempty"`
 	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
-	BallotMode       *BallotMode `json:"ballotMode,omitempty"`
+	BallotMode       *spec.BallotMode `json:"ballotMode,omitempty"`
 }

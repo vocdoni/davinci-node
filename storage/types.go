@@ -19,6 +19,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -30,7 +31,7 @@ import (
 // The encryption key is the public key used to encrypt the ballots.
 type Process struct {
 	CensusRoot    types.HexBytes   `json:"censusRoot"`
-	BallotMode    types.BallotMode `json:"ballotMode"`
+	BallotMode    spec.BallotMode `json:"ballotMode"`
 	MetadataHash  types.HexBytes   `json:"metadataID"`
 	EncryptionKey EncryptionKeys   `json:"encryptionKey"`
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
@@ -155,14 +156,14 @@ func DeserializeBallotMode(data []byte) (BallotMode[*big.Int], error) {
 // BallotModeToCircuit converts a BallotMode to a circuit BallotMode which can
 // be implemented with different base types.
 // Before calling this function, the BallotMode must be validated.
-func BallotModeToCircuit(b *types.BallotMode) BallotMode[*big.Int] {
+func BallotModeToCircuit(b *spec.BallotMode) BallotMode[*big.Int] {
 	return BallotMode[*big.Int]{
 		NumFields:      big.NewInt(int64(b.NumFields)),
 		UniqueValues:   BoolToBigInt(b.UniqueValues),
-		MaxValue:       b.MaxValue.MathBigInt(),
-		MinValue:       b.MinValue.MathBigInt(),
-		MaxValueSum:    b.MaxValueSum.MathBigInt(),
-		MinValueSum:    b.MinValueSum.MathBigInt(),
+		MaxValue:       new(big.Int).SetUint64(b.MaxValue),
+		MinValue:       new(big.Int).SetUint64(b.MinValue),
+		MaxValueSum:    new(big.Int).SetUint64(b.MaxValueSum),
+		MinValueSum:    new(big.Int).SetUint64(b.MinValueSum),
 		CostExponent:   big.NewInt(int64(b.CostExponent)),
 		CostFromWeight: BoolToBigInt(b.CostFromWeight),
 	}

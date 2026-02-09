@@ -180,14 +180,15 @@ func BallotModeEmulated() circuits.BallotMode[emulated.Element[sw_bn254.ScalarFi
 	}
 }
 
-func BallotModeInternal() *types.BallotMode {
-	return &types.BallotMode{
+func BallotModeInternal() *spec.BallotMode {
+	return &spec.BallotMode{
 		NumFields:      numFields,
+		GroupSize:      numFields,
 		UniqueValues:   uniqueValues == 1,
-		MaxValue:       new(types.BigInt).SetInt(maxValue),
-		MinValue:       new(types.BigInt).SetInt(minValue),
-		MaxValueSum:    new(types.BigInt).SetInt(maxValueSum),
-		MinValueSum:    new(types.BigInt).SetInt(minValueSum),
+		MaxValue:       maxValue,
+		MinValue:       minValue,
+		MaxValueSum:    maxValueSum,
+		MinValueSum:    minValueSum,
 		CostExponent:   costExponent,
 		CostFromWeight: costFromWeight == 1,
 	}

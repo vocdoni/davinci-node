@@ -16,6 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
@@ -39,12 +40,13 @@ func TestBlobDataStructures(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &types.BallotMode{
+	ballotMode := &spec.BallotMode{
 		NumFields:      3,
-		MaxValue:       types.NewInt(100),
-		MinValue:       types.NewInt(0),
-		MaxValueSum:    types.NewInt(1000),
-		MinValueSum:    types.NewInt(0),
+		GroupSize:      3,
+		MaxValue:       100,
+		MinValue:       0,
+		MaxValueSum:    1000,
+		MinValueSum:    0,
 		CostExponent:   1,
 		UniqueValues:   false,
 		CostFromWeight: false,
@@ -166,12 +168,13 @@ func TestBlobStateTransition(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &types.BallotMode{
+	ballotMode := &spec.BallotMode{
 		NumFields:      3,
-		MaxValue:       types.NewInt(100),
-		MinValue:       types.NewInt(0),
-		MaxValueSum:    types.NewInt(1000),
-		MinValueSum:    types.NewInt(0),
+		GroupSize:      3,
+		MaxValue:       100,
+		MinValue:       0,
+		MaxValueSum:    1000,
+		MinValueSum:    0,
 		CostExponent:   1,
 		UniqueValues:   false,
 		CostFromWeight: false,
@@ -411,7 +414,7 @@ func verifyKZGCommitment(t *testing.T, blob *types.Blob, commit *types.KZGCommit
 	c.Assert(y.Cmp(recomputedY), qt.Equals, 0, qt.Commentf("KZG evaluation (y value) mismatch"))
 }
 
-func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.ProcessID, ballotMode types.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
+func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.ProcessID, ballotMode spec.BallotMode, encryptionKey ecc.Point, expectedRoot *big.Int) {
 	c := qt.New(t)
 	// Parse blob data
 	blobData, err := state.ParseBlobData(blob.Bytes())

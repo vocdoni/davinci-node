@@ -18,6 +18,7 @@ import (
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -253,7 +254,7 @@ func (s *CLIServices) CreateCensus(
 // error occurs, it will be returned.
 func (s *CLIServices) CreateProcess(
 	census *types.Census,
-	ballotMode *types.BallotMode,
+	ballotMode *spec.BallotMode,
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
@@ -403,7 +404,7 @@ func (s *CLIServices) VoterWeight(pid types.ProcessID, addr common.Address) (*ty
 func (s *CLIServices) CreateVote(
 	privKey *ethereum.Signer,
 	pid types.ProcessID,
-	bm *types.BallotMode,
+	bm *spec.BallotMode,
 ) (api.Vote, error) {
 	// Fetch the encryption key for the process
 	encKey, err := s.ProcessEncKey(pid)
@@ -427,8 +428,8 @@ func (s *CLIServices) CreateVote(
 	// Generate random ballot fields based on the ballot mode
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
-		int(bm.MaxValue.MathBigInt().Int64()),
-		int(bm.MinValue.MathBigInt().Int64()),
+		int(bm.MaxValue),
+		int(bm.MinValue),
 		bm.UniqueValues)
 
 	// Cast fields to types.BigInt

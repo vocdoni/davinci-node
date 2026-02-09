@@ -25,6 +25,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
+	"github.com/vocdoni/davinci-node/spec"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
@@ -464,7 +465,7 @@ func createProcess(
 	cli *client.HTTPclient,
 	censusRoot types.HexBytes,
 	censusURI string,
-	ballotMode *types.BallotMode,
+	ballotMode *spec.BallotMode,
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
 	// Create test process request
@@ -573,7 +574,7 @@ func createVote(
 	privKey *ethereum.Signer,
 	processID types.ProcessID,
 	encKey *types.EncryptionKey,
-	bm *types.BallotMode,
+	bm *spec.BallotMode,
 ) (api.Vote, error) {
 	// Emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
@@ -585,8 +586,8 @@ func createVote(
 	// Generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
-		int(bm.MaxValue.MathBigInt().Int64()),
-		int(bm.MinValue.MathBigInt().Int64()),
+		int(bm.MaxValue),
+		int(bm.MinValue),
 		bm.UniqueValues)
 
 	// Cast fields to types.BigInt

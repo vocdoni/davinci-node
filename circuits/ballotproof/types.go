@@ -10,6 +10,7 @@ import (
 type CircomInputs struct {
 	Fields         []*types.BigInt `json:"fields"`
 	NumFields      *types.BigInt   `json:"num_fields"`
+	GroupSize      *types.BigInt   `json:"group_size,omitempty"`
 	UniqueValues   *types.BigInt   `json:"unique_values"`
 	MaxValue       *types.BigInt   `json:"max_value"`
 	MinValue       *types.BigInt   `json:"min_value"`

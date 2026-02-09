@@ -15,6 +15,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/spec/params"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
@@ -72,12 +73,14 @@ func TestStateSync(t *testing.T) {
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
-		BallotMode: &types.BallotMode{
+		BallotMode: &spec.BallotMode{
 			NumFields:      2,
-			MaxValue:       new(types.BigInt).SetUint64(100),
-			MinValue:       new(types.BigInt).SetUint64(0),
-			MaxValueSum:    new(types.BigInt).SetUint64(0),
-			MinValueSum:    new(types.BigInt).SetUint64(0),
+			GroupSize:      2,
+			MaxValue:       100,
+			MinValue:       0,
+			MaxValueSum:    0,
+			MinValueSum:    0,
+			CostExponent:   0,
 			UniqueValues:   false,
 			CostFromWeight: false,
 		},
@@ -120,12 +123,13 @@ func TestStateSync(t *testing.T) {
 	}()
 
 	// Initialize state with process parameters
-	ballotMode := &types.BallotMode{
+	ballotMode := &spec.BallotMode{
 		NumFields:      3,
-		MaxValue:       types.NewInt(100),
-		MinValue:       types.NewInt(0),
-		MaxValueSum:    types.NewInt(1000),
-		MinValueSum:    types.NewInt(0),
+		GroupSize:      3,
+		MaxValue:       100,
+		MinValue:       0,
+		MaxValueSum:    1000,
+		MinValueSum:    0,
 		CostExponent:   1,
 		UniqueValues:   false,
 		CostFromWeight: false,

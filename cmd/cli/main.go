@@ -11,6 +11,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -23,13 +24,14 @@ const (
 var (
 	userWeight = uint64(testutil.Weight)
 	// ballotMode = testutil.BallotModeInternal()
-	ballotMode = &types.BallotMode{
+	ballotMode = &spec.BallotMode{
 		NumFields:      2,
+		GroupSize:      2,
 		UniqueValues:   false,
-		MaxValue:       types.NewInt(100),
-		MinValue:       types.NewInt(0),
-		MaxValueSum:    types.NewInt(200),
-		MinValueSum:    types.NewInt(0),
+		MaxValue:       100,
+		MinValue:       0,
+		MaxValueSum:    200,
+		MinValueSum:    0,
 		CostExponent:   1,
 		CostFromWeight: false,
 	}
