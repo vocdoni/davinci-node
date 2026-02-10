@@ -146,7 +146,7 @@ func process2ContractProcess(p *types.Process) npbindings.IProcessRegistryProces
 	prp.Census.CensusURI = p.Census.CensusURI
 	// Only set the contract address if the census origin is
 	// MerkleTreeOffchainDynamicV1, as it's the only one that uses it.
-	if p.Census.CensusOrigin == types.CensusOriginMerkleTreeOffchainDynamicV1 {
+	if p.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
 		prp.Census.ContractAddress = p.Census.ContractAddress
 	}
 

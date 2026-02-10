@@ -789,6 +789,10 @@ func (c *CensusDB) ImportAll(data []byte) (*CensusRef, error) {
 	if err := json.Unmarshal(data, &dump); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal census dump: %w", err)
 	}
+	// Check that the root is not nil
+	if dump.Root == nil {
+		return nil, fmt.Errorf("census dump root is nil")
+	}
 	// Create a new census tree by its root
 	censusID := rootToCensusID(dump.Root.Bytes())
 	tree, err := census.NewCensusIMTWithPebble(

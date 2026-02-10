@@ -160,20 +160,20 @@ func (cd *CensusDownloader) DownloadCensus(censusInfo *types.Census) (types.HexB
 		ProcessedElements: 0,
 	}
 	// Add on-chain census to the on-chain census map if applicable
-	if censusInfo.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+	if icensus.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
 		var err error
-		if censusInfo.CensusRoot, err = cd.addOnchainCensus(icensus); err != nil {
+		if icensus.CensusRoot, err = cd.addOnchainCensus(icensus); err != nil {
 			return nil, fmt.Errorf("failed to add on-chain census: %w", err)
 		}
 	}
 	// Add the census to the queue to be downloaded
 	log.Infow("starting census download",
-		"origin", censusInfo.CensusOrigin.String(),
-		"root", censusInfo.CensusRoot.String(),
-		"uri", censusInfo.CensusURI,
-		"address", censusInfo.ContractAddress.String())
+		"origin", icensus.CensusOrigin.String(),
+		"root", icensus.CensusRoot.String(),
+		"uri", icensus.CensusURI,
+		"address", icensus.ContractAddress.String())
 	cd.queue <- icensus
-	return censusInfo.CensusRoot, nil
+	return icensus.CensusRoot, nil
 }
 
 // DownloadCensusStatus retrieves the current download status of the specified
@@ -337,6 +337,12 @@ func (cd *CensusDownloader) checkOnchainCensuses() {
 		}
 		// Skip those that are already downloading and not complete
 		if status, exists := cd.censusStatus[icensus.CensusRoot.String()]; exists && !status.Complete {
+			return true
+		}
+		// Add on-chain census to the on-chain census map if applicable
+		var err error
+		if icensus.CensusRoot, err = cd.addOnchainCensus(icensus); err != nil {
+			log.Warnw("failed to add on-chain census", "address", icensus.ContractAddress.Hex(), "error", err)
 			return true
 		}
 		cd.queue <- icensus
