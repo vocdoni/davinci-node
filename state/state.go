@@ -280,11 +280,12 @@ func (o *State) endBatch() error {
 	for i := range o.votesProofs.Ballot {
 		var errBallot, errVoteID error
 		if i < len(o.Votes()) {
-			ballotIndex := types.CalculateBallotIndex(o.Votes()[i].Address, types.IndexTODO)
+			v := o.Votes()[i]
+			ballotIndex := types.CalculateBallotIndex(v.Address, v.CensusIndex)
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
-				ballotIndex.StateKey(), o.Votes()[i].ReencryptedBallot.BigInts()...)
+				ballotIndex.StateKey(), v.ReencryptedBallot.BigInts()...)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
-				o.Votes()[i].VoteID.StateKey(), VoteIDKeyValue)
+				v.VoteID.StateKey(), VoteIDKeyValue)
 		} else {
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromNoop(o)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromNoop(o)
