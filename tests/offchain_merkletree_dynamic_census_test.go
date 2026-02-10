@@ -83,12 +83,13 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 		}
 	})
 
+	votersFieldsValues := [][]*types.BigInt{}
 	c.Run("create votes", func(c *qt.C) {
 		for i, signer := range signers {
 			// generate a vote for the first participant
 			k, err := elgamal.RandK()
 			c.Assert(err, qt.IsNil)
-			vote, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
+			vote, randFields, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 			// generate census proof
 			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainDynamicV1, pid, signers[i].Address().Bytes())
@@ -101,6 +102,8 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 			// Save the voteID for status checks
 			voteIDs = append(voteIDs, vote.VoteID)
 			ks = append(ks, k)
+			// Save vote fields for results checks
+			votersFieldsValues = append(votersFieldsValues, randFields)
 		}
 		c.Assert(ks, qt.HasLen, numVoters)
 		c.Assert(voteIDs, qt.HasLen, numVoters)
@@ -113,7 +116,7 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 		// try to vote with the new signer, should fail
 		k, err := elgamal.RandK()
 		c.Assert(err, qt.IsNil)
-		vote, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
+		vote, randFields, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
 		// generate census proof
 		vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainDynamicV1, pid, signer.Address().Bytes())
@@ -164,6 +167,8 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 			// Save the voteID for status checks
 			voteIDs = append(voteIDs, vote.VoteID)
 			ks = append(ks, k)
+			// Save vote fields for results checks
+			votersFieldsValues = append(votersFieldsValues, randFields)
 		})
 	})
 
@@ -189,6 +194,10 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 	})
 
 	c.Run("finish process and wait for results", func(c *qt.C) {
+		// Calculate expected results
+		expectedResults := helpers.CalculateExpectedResults(votersFieldsValues)
+		t.Logf("Expected results: %v", expectedResults)
+
 		err := helpers.FinishProcessOnChain(services.Contracts, pid)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to finish process on contract"))
 		results, err := services.Sequencer.WaitUntilResults(t.Context(), pid)
@@ -205,5 +214,6 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 			c.FailNow()
 		}
 		t.Logf("Results published: %v", pubResults)
+		c.Assert(pubResults, qt.DeepEquals, expectedResults)
 	})
 }

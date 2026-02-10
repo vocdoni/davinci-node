@@ -17,3 +17,23 @@ func FetchResultsOnChain(contracts *web3.Contracts, pid types.ProcessID) ([]*typ
 	}
 	return process.Result, nil
 }
+
+func CalculateExpectedResults(fieldValuesPerVoter [][]*types.BigInt) []*types.BigInt {
+	expectedResults := []*types.BigInt{
+		types.NewInt(0),
+		types.NewInt(0),
+		types.NewInt(0),
+		types.NewInt(0),
+		types.NewInt(0),
+		types.NewInt(0),
+		types.NewInt(0),
+		types.NewInt(0),
+	}
+
+	for _, fieldValues := range fieldValuesPerVoter {
+		for i, fieldValue := range fieldValues {
+			expectedResults[i] = expectedResults[i].Add(expectedResults[i], fieldValue)
+		}
+	}
+	return expectedResults
+}
