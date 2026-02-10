@@ -49,10 +49,6 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 		}
 	}
 
-	if err := s.AddVotesBatch(votes); err != nil {
-		t.Fatal(err)
-	}
-
 	censusOrigin := types.CensusOrigin(s.CensusOrigin().Uint64())
 	processID, err := types.BigIntToProcessID(s.ProcessID())
 	if err != nil {
@@ -61,6 +57,9 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 
 	censusRoot, censusProofs, err := CensusProofsForCircuitTest(votes, censusOrigin, processID)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddVotesBatch(votes); err != nil {
 		t.Fatal(err)
 	}
 

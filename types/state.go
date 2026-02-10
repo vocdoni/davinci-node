@@ -12,9 +12,6 @@ import (
 	"github.com/vocdoni/davinci-node/spec/params"
 )
 
-// TODO: implement CensusIndex and remove this
-const IndexTODO = 0
-
 type (
 	StateKey    uint64
 	VoteID      uint64
@@ -46,11 +43,11 @@ func BigIntToVoteID(x *big.Int) (VoteID, error) {
 }
 
 // CalculateBallotIndex returns a BallotIndex on the lower half of the 64 bit space,
-// BallotMin and BallotMax.
+// between BallotMin and BallotMax.
 //
-//	BallotIndex = BallotMin + (censusIndex * 2^CensusAddressBitLen) + (address mod 2^CensusAddressBitLen)
-func CalculateBallotIndex(address *big.Int, censusIndex uint64) BallotIndex {
-	ballotIndex, err := spec.BallotIndex(address, censusIndex)
+//	BallotIndex = BallotMin + censusIndex
+func CalculateBallotIndex(censusIndex uint64) BallotIndex {
+	ballotIndex, err := spec.BallotIndex(censusIndex)
 	if err != nil {
 		panic(err)
 	}

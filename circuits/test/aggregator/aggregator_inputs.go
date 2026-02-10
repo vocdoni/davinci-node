@@ -163,10 +163,11 @@ func AggregatorInputsForTest(
 	votes := []*state.Vote{}
 	for i := range nValidVoters {
 		votes = append(votes, &state.Vote{
-			Address: vvInputs.Addresses[i],
-			VoteID:  vvInputs.VoteIDs[i],
-			Weight:  vvInputs.Weights[i],
-			Ballot:  vvInputs.Ballots[i].FromTEtoRTE(),
+			Address:     vvInputs.Addresses[i],
+			BallotIndex: types.CalculateBallotIndex(uint64(i)),
+			VoteID:      vvInputs.VoteIDs[i],
+			Weight:      vvInputs.Weights[i],
+			Ballot:      vvInputs.Ballots[i].FromTEtoRTE(),
 		})
 	}
 	log.Printf("aggregator inputs generation ends, it tooks %s", time.Since(now))

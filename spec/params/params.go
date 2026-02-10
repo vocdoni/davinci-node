@@ -46,8 +46,4 @@ const (
 	VoteIDMax uint64 = math.MaxUint64                           // 0xFFFF_FFFF_FFFF_FFFF
 
 	VoteIDHashBits uint = 63 // bits
-
-	CensusAddressBitLen uint = 16 // bits
-
-	CensusIndexMax = BallotMax>>CensusAddressBitLen - ConfigMax // 0x0000_7FFF_FFFF_FFF0
 )

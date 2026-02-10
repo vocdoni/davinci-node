@@ -108,9 +108,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Calculate the ballot index
-	hexAddress := types.HexBytes(address.Bytes())
-	ballotIndex := types.CalculateBallotIndex(hexAddress.BigInt().MathBigInt(), proof.Index)
-
+	ballotIndex := types.CalculateBallotIndex(proof.AddressIndex)
 	// Open the state for the process
 	s, err := state.New(a.storage.StateDB(), processID)
 	if err != nil {
@@ -249,25 +247,9 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrProcessNotAcceptingVotes.Write(w)
 		return
 	}
-	// check if the address has already voted, to determine if the vote is an
-	// overwrite or a new vote, if so check if the process has reached max
-	// voters
-	isOverwrite, err := state.HasAddressVoted(a.storage.StateDB(), *process.ID, types.CalculateBallotIndex(vote.Address.BigInt().MathBigInt(), types.IndexTODO))
-	if err != nil {
-		ErrGenericInternalServerError.Withf("error checking if address has voted: %v", err).Write(w)
-		return
-	}
-	if !isOverwrite {
-		if maxVotersReached, err := a.storage.ProcessMaxVotersReached(vote.ProcessID); err != nil {
-			ErrGenericInternalServerError.Withf("could not check max voters: %v", err).Write(w)
-			return
-		} else if maxVotersReached {
-			ErrProcessMaxVotersReached.Write(w)
-			return
-		}
-	}
-	// verify the census proof accordingly to the census origin and get the
-	// voter weight
+	// verify the census proof according to the census origin and get the
+	// voter weight. For Merkle censuses, always derive CensusIndex from the
+	// local census tree to avoid relying on client-provided indexes.
 	var voterWeight *types.BigInt
 	switch {
 	case process.Census.CensusOrigin.IsMerkleTree():
@@ -281,14 +263,14 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			ErrMalformedParam.With("census not compatible with local processing").Write(w)
 			return
 		}
-		// verify the census proof
-		weight, exists := censusRef.Tree().GetWeight(common.BytesToAddress(vote.Address))
-		if !exists {
+		// Generate proof from the local census tree and derive index+weight.
+		proof, err := censusRef.Tree().GenerateProof(common.BytesToAddress(vote.Address))
+		if err != nil {
 			ErrInvalidCensusProof.Withf("address not in census").Write(w)
 			return
 		}
-		// overwrite the voter weight with the one from the census
-		voterWeight = new(types.BigInt).SetBigInt(weight)
+		vote.CensusProof.CensusIndex = proof.AddressIndex
+		voterWeight = new(types.BigInt).SetBigInt(proof.Weight)
 	case process.Census.CensusOrigin.IsCSP():
 		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {
 			ErrInvalidCensusProof.Withf("census proof verification failed").WithErr(err).Write(w)
@@ -298,6 +280,23 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	default:
 		ErrInvalidCensusProof.Withf("unsupported census origin").Write(w)
 		return
+	}
+	// check if the address has already voted, to determine if the vote is an
+	// overwrite or a new vote. If it is new, check process max voters.
+	isOverwrite, err := state.IndexContainsBallot(a.storage.StateDB(), *process.ID,
+		types.CalculateBallotIndex(vote.CensusProof.CensusIndex))
+	if err != nil {
+		ErrGenericInternalServerError.Withf("error checking if address has voted: %v", err).Write(w)
+		return
+	}
+	if !isOverwrite {
+		if maxVotersReached, err := a.storage.ProcessMaxVotersReached(vote.ProcessID); err != nil {
+			ErrGenericInternalServerError.Withf("could not check max voters: %v", err).Write(w)
+			return
+		} else if maxVotersReached {
+			ErrProcessMaxVotersReached.Write(w)
+			return
+		}
 	}
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := ballotproof.BallotInputsHashIden3(

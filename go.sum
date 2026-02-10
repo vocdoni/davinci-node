@@ -814,8 +814,8 @@ github.com/vocdoni/davinci-contracts v0.0.36-0.20260224095644-d9b45f061336 h1:sB
 github.com/vocdoni/davinci-contracts v0.0.36-0.20260224095644-d9b45f061336/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260218072319-01482f6ccc38 h1:GcmtjOe1mLMq9SnyhVzDpr909c5HjOJB1rhTZdZPHP4=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260218072319-01482f6ccc38/go.mod h1:kmd5T6ucuWbT9rFC4ACxXztHBq8WEt1uaYoTm8ziLyU=
-github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e h1:y1NrunNzanqBl2Msz4H8UTS7BzoijpdkwWhtXQu4Ji0=
-github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e/go.mod h1:vNrjyvkA9CJ+8soChyCgS8CDCZcxmnzwNSX9Zo220v4=
+github.com/vocdoni/lean-imt-go v0.0.1 h1:qNQfSzBrNy1WJEJ8ve3B7yQR6Qt5aEe2+WGY2kSxQOs=
+github.com/vocdoni/lean-imt-go v0.0.1/go.mod h1:kzutM982wYEgEpuiw23mghA1o9UMXyK8Uauu0L0k2OA=
 github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69 h1:7EEC/z+kkStPQmDHI8O5r7W/QbXxs2Cu2s0D17AQfUs=
 github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69/go.mod h1:ijYD7K9FeUALuNLRVLkMl5aa3sHg69eN3z3SMQPB/TU=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
