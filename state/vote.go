@@ -24,6 +24,7 @@ var (
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
 	Address           *big.Int
+	CensusIndex       uint64
 	VoteID            types.VoteID
 	Ballot            *elgamal.Ballot
 	OverwrittenBallot *elgamal.Ballot
@@ -43,7 +44,7 @@ func (o *State) addVote(v *Vote) error {
 	}
 	// if address exists, it's a vote overwrite, need to count the overwritten
 	// vote so it's later added to circuit.ResultsSub
-	if oldVote, err := o.EncryptedBallot(types.CalculateBallotIndex(v.Address, types.IndexTODO)); err == nil {
+	if oldVote, err := o.EncryptedBallot(types.CalculateBallotIndex(v.Address, v.CensusIndex)); err == nil {
 		o.overwrittenSum.Add(o.overwrittenSum, oldVote)
 		o.overwrittenVotesCount++
 		v.OverwrittenBallot = oldVote

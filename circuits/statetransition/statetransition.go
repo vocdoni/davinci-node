@@ -13,7 +13,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/spec/params"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	imt "github.com/vocdoni/lean-imt-go/circuit"
@@ -324,7 +323,7 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Votes
 	for i, v := range circuit.Votes {
 		// Address
-		circuit.VotesProofs.Ballot[i].VerifyNewKey(api, v.Address, types.IndexTODO)
+		circuit.VotesProofs.Ballot[i].VerifyNewKey(api, v.Address, circuit.CensusProofs.MerkleProofs[i].Index)
 		// Ballot
 		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.ReencryptedBallot.SerializeVars()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)

@@ -12,9 +12,6 @@ import (
 	"github.com/vocdoni/davinci-node/spec/params"
 )
 
-// TODO: implement CensusIndex and remove this
-const IndexTODO = 0
-
 type (
 	StateKey    uint64
 	VoteID      uint64

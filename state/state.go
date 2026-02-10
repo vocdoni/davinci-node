@@ -412,6 +412,7 @@ func (o *State) PaddedVotes() []*Vote {
 	for len(v) < params.VotesPerBatch {
 		v = append(v, &Vote{
 			Address:           big.NewInt(0),
+			CensusIndex:       0,
 			Ballot:            elgamal.NewBallot(Curve),
 			ReencryptedBallot: elgamal.NewBallot(Curve),
 			OverwrittenBallot: elgamal.NewBallot(Curve),
