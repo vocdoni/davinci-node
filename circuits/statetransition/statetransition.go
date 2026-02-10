@@ -7,14 +7,12 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/spec/params"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/native/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	imt "github.com/vocdoni/lean-imt-go/circuit"
@@ -103,6 +101,7 @@ type ResultsProofs struct {
 // Vote struct contains the circuits.Vote struct and the overwritten ballot.
 type Vote struct {
 	circuits.Vote[frontend.Variable]
+	BallotIndex       frontend.Variable
 	ReencryptedBallot circuits.Ballot
 	OverwrittenBallot circuits.Ballot
 }
@@ -329,7 +328,7 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Votes
 	for i, v := range circuit.Votes {
 		// Address
-		circuit.VotesProofs.Ballot[i].VerifyNewKey(api, CalculateBallotIndex(api, v.Address, types.IndexTODO))
+		circuit.VotesProofs.Ballot[i].VerifyNewKey(api, v.BallotIndex)
 		// Ballot
 		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.ReencryptedBallot.SerializeVars()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
@@ -394,10 +393,12 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 		notZero := api.Sub(1, isZero) // 1 if voteID!=0 else 0
 		// Only write this vote if keep==1 AND voteID!=0
 		writeMask := api.Mul(keep, notZero)
-		// VoteID and address (masked)
+		// VoteID, Address and BallotIndex
 		blob[blobIndex] = api.Mul(writeMask, voteID)
 		blobIndex++
 		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].Address)
+		blobIndex++
+		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].BallotIndex)
 		blobIndex++
 		// Reencrypted ballot (masked)
 		appendBallotMasked(circuit.Votes[i].ReencryptedBallot, writeMask)
@@ -461,21 +462,21 @@ func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API, isRea
 	isMerkleTreeCensus := census.IsMerkleTreeCensusOrigin(api, c.Process.CensusOrigin)
 	for i := range params.VotesPerBatch {
 		vote := c.Votes[i]
-		// check if the proof is valid only if the census origin is MerkleTree
-		// and the current vote inputs are from a real vote.
+		cspProof := c.CensusProofs.MerkleProofs[i]
 		shouldBeValid := api.And(isRealVote[i], isMerkleTreeCensus)
 		// check that calculated leaf is equal to the one in the proof
 		leaf := imt.PackLeaf(api, vote.Address, vote.VoteWeight)
-		// assert leaf equality only if the proof should be valid
-		circuits.AssertIsEqualIf(api, shouldBeValid, leaf, c.CensusProofs.MerkleProofs[i].Leaf)
-		// verify the census proof using the lean imt circuit
-		isValid, err := c.CensusProofs.MerkleProofs[i].Verify(api, c.CensusRoot)
+		circuits.AssertIsEqualIf(api, shouldBeValid, leaf, cspProof.Leaf)
+		// verify the CSP proof
+		isValid, err := cspProof.Verify(api, c.CensusRoot)
 		if err != nil {
 			circuits.FrontendError(api, "failed to verify merkle census proof: ", err)
 			return
 		}
-		// assert the validity of the proof only if it should be valid
 		circuits.AssertTrueIf(api, shouldBeValid, isValid)
+		// assert that the vote BallotIndex matches the expected derivation from the VoterIndex
+		ballotIndex := BallotIndex(api, cspProof.LeafIndex)
+		circuits.AssertIsEqualIf(api, shouldBeValid, ballotIndex, vote.BallotIndex)
 	}
 }
 
@@ -487,22 +488,21 @@ func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API, isRealVo
 	for i := range params.VotesPerBatch {
 		vote := c.Votes[i]
 		cspProof := c.CensusProofs.CSPProofs[i]
-		// verify the CSP proof
-		isValidProof := cspProof.IsValid(api, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
-		// the proof should be valid only if it's a real proof and the census origin is CSP
 		shouldBeValid := api.And(isRealVote[i], isCSPCensus)
-		circuits.AssertTrueIf(api, shouldBeValid, isValidProof)
+		// verify the CSP proof
+		isValid := cspProof.IsValid(api, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
+		circuits.AssertTrueIf(api, shouldBeValid, isValid)
+		// assert that the vote BallotIndex matches the expected derivation from the VoterIndex
+		ballotIndex := BallotIndex(api, cspProof.VoterIndex)
+		circuits.AssertIsEqualIf(api, shouldBeValid, ballotIndex, vote.BallotIndex)
 	}
 }
 
-// CalculateBallotIndex replicates spec.BallotIndex inside the circuit.
-// It takes the low 16 bits of the address, applies the censusIndex offset,
-// and shifts into the Ballot namespace (starting at params.BallotMin).
+// BallotIndex returns a BallotIndex on the lower half of the 64 bit space,
+// between BallotMin and BallotMax.
 //
-//	BallotIndex = BallotMin + (index * 2^CensusAddressBitLen) + (address mod 2^CensusAddressBitLen)
-func CalculateBallotIndex(api frontend.API, address, censusIndex frontend.Variable) frontend.Variable {
-	censusIndexShifted := api.Mul(censusIndex, 1<<params.CensusAddressBitLen)
-	addressLE := api.ToBinary(address, common.AddressLength*8)
-	addressTruncated := api.FromBinary(addressLE[:params.CensusAddressBitLen]...)
-	return api.Add(params.BallotMin, censusIndexShifted, addressTruncated)
+//	BallotIndex = BallotMin + voterIndex
+func BallotIndex(api frontend.API, voterIndex frontend.Variable) frontend.Variable {
+	api.AssertIsLessOrEqual(voterIndex, params.VoterIndexMax)
+	return api.Add(params.BallotMin, voterIndex)
 }

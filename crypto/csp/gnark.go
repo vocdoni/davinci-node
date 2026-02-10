@@ -19,8 +19,9 @@ import (
 // ID and address as variables. The IsValid method checks if the signature is
 // valid or not using the gnark API.
 type CSPProof struct {
-	Signature eddsa.Signature
-	PublicKey eddsa.PublicKey
+	Signature  eddsa.Signature
+	PublicKey  eddsa.PublicKey
+	VoterIndex frontend.Variable
 }
 
 // IsValid method checks if the signature is valid or not using the gnark API.
@@ -111,7 +112,8 @@ func CensusProofToCSPProof(curveID ecc_twedwards.ID, censusProof *types.CensusPr
 	}
 	// Convert public key and signature to gnark circuit types
 	return &CSPProof{
-		Signature: eddsa.SignatureFromIden3(signature),
-		PublicKey: eddsa.PublicKeyFromIden3(*pubKey),
+		Signature:  eddsa.SignatureFromIden3(signature),
+		PublicKey:  eddsa.PublicKeyFromIden3(*pubKey),
+		VoterIndex: censusProof.VoterIndex,
 	}, nil
 }

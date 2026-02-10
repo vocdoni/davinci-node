@@ -68,14 +68,14 @@ func testMakeImportJSONL(c *qt.C) (io.Reader, types.HexBytes) {
 
 	participants := []leancensus.CensusParticipant{
 		{
-			Index:   1,
-			Address: testutil.RandomAddress(),
-			Weight:  big.NewInt(2),
+			AddressIndex: 1,
+			Address:      testutil.RandomAddress(),
+			Weight:       big.NewInt(2),
 		},
 		{
-			Index:   0,
-			Address: testutil.RandomAddress(),
-			Weight:  big.NewInt(1),
+			AddressIndex: 0,
+			Address:      testutil.RandomAddress(),
+			Weight:       big.NewInt(1),
 		},
 	}
 

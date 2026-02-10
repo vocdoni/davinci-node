@@ -132,7 +132,7 @@ func TestSolidityCompatibility(t *testing.T) {
 			qt.Commentf("Proof value mismatch for node %d", node.index))
 
 		// Verify the proof is valid
-		isValid := VerifyProof(proof.Address, proof.Value, actualRoot, proof.Siblings, proof.Index)
+		isValid := VerifyProof(proof.Address, proof.Value, actualRoot, proof.Siblings, proof.PathBits)
 		c.Assert(isValid, qt.IsTrue, qt.Commentf("Proof verification failed for node %d", node.index))
 
 		t.Logf("Proof for node %d verified ✓", node.index)

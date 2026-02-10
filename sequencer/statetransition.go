@@ -285,6 +285,7 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 			"index", i,
 			"voteID", v.VoteID.String(),
 			"address", fmt.Sprintf("%x", v.Address.Bytes()),
+			"ballotIndex", v.BallotIndex.String(),
 			"weight", v.Weight.String(),
 		)
 	}
@@ -306,6 +307,9 @@ func (s *Sequencer) reencryptVotes(processID types.ProcessID, votes []*storage.A
 	reencryptedVotes := make([]*state.Vote, len(votes))
 	lastK := new(big.Int).Set(kSeed)
 	for i, v := range votes {
+		if v.CensusProof == nil {
+			return nil, nil, fmt.Errorf("missing census proof for vote index %d", i)
+		}
 		var reencryptedBallot *elgamal.Ballot
 		reencryptedBallot, lastK, err = v.EncryptedBallot.Reencrypt(encryptionKey, lastK)
 		if err != nil {
@@ -314,6 +318,7 @@ func (s *Sequencer) reencryptVotes(processID types.ProcessID, votes []*storage.A
 		// sum the encrypted zero ballot with the original ballot
 		reencryptedVotes[i] = &state.Vote{
 			Address:           v.Address,
+			BallotIndex:       types.CalculateBallotIndex(v.CensusProof.VoterIndex),
 			VoteID:            v.VoteID,
 			Ballot:            v.EncryptedBallot,
 			Weight:            v.Weight,

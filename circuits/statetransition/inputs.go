@@ -59,6 +59,7 @@ func GenerateWitness(
 		witness.Votes[i].Ballot = *v.Ballot.ToGnark()
 		witness.Votes[i].ReencryptedBallot = *v.ReencryptedBallot.ToGnark()
 		witness.Votes[i].Address = v.Address
+		witness.Votes[i].BallotIndex = v.BallotIndex.Uint64()
 		witness.Votes[i].VoteWeight = v.Weight
 		witness.Votes[i].VoteID = v.VoteID.Uint64()
 		witness.Votes[i].OverwrittenBallot = *v.OverwrittenBallot.ToGnark()

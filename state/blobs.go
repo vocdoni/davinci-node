@@ -72,6 +72,9 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 		if err := push(v.Address); err != nil { // address
 			return nil, err
 		}
+		if err := push(v.BallotIndex.BigInt()); err != nil { // ballot index
+			return nil, err
+		}
 		for _, p := range v.ReencryptedBallot.BigInts() { // reencrypted ballot coordinates
 			if err := push(p); err != nil {
 				return nil, err
@@ -173,6 +176,10 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 		address := getCell(cellIndex)
 		cellIndex++
 
+		// Extract ballotIndex
+		ballotIndexCell := getCell(cellIndex)
+		cellIndex++
+
 		// Extract ballot coordinates
 		ballotCoords := make([]*big.Int, coordsPerBallot)
 		for j := 0; j < coordsPerBallot; j++ {
@@ -192,8 +199,15 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 			return nil, err
 		}
 
+		// Convert ballotIndex back to types.VoteID
+		ballotIndex, err := types.BigIntToBallotIndex(ballotIndexCell)
+		if err != nil {
+			return nil, err
+		}
+
 		vote := &Vote{
 			Address:           address,
+			BallotIndex:       ballotIndex,
 			VoteID:            voteID,
 			ReencryptedBallot: ballot,
 		}
@@ -218,15 +232,14 @@ func (st *State) ApplyBlobToState(blob *types.Blob) error {
 	// Add votes directly to the state tree without batch processing
 	for _, vote := range blobData.Votes {
 		// Add or update the vote ballot in the tree
-		ballotIndex := types.CalculateBallotIndex(vote.Address, types.IndexTODO)
-		if _, err := st.EncryptedBallot(ballotIndex); err != nil {
+		if _, err := st.EncryptedBallot(vote.BallotIndex); err != nil {
 			// Key doesn't exist, add it
-			if err := st.tree.AddBigInt(ballotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {
+			if err := st.tree.AddBigInt(vote.BallotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {
 				return fmt.Errorf("failed to add vote with address %d to tree: %w", vote.Address, err)
 			}
 		} else {
 			// Key exists, update it
-			if err := st.tree.UpdateBigInt(ballotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {
+			if err := st.tree.UpdateBigInt(vote.BallotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {
 				return fmt.Errorf("failed to update vote with address %d in tree: %w", vote.Address, err)
 			}
 		}

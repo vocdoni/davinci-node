@@ -525,7 +525,7 @@ func (c *CensusDB) VerifyProof(proof *types.CensusProof) bool {
 	merkleProof := leanimt.MerkleProof[*big.Int]{
 		Root:     new(big.Int).SetBytes(proof.Root),
 		Leaf:     new(big.Int).SetBytes(proof.Value),
-		Index:    proof.Index,
+		PathBits: proof.PathBits,
 		Siblings: siblings,
 	}
 	return leanimt.VerifyProofWith(merkleProof, censusHasher, leanimt.BigIntEqual)
@@ -557,12 +557,13 @@ func (c *CensusDB) ProofByRoot(root, leafKey types.HexBytes) (*types.CensusProof
 	packedValue.Or(packedValue, proof.Weight)
 
 	return &types.CensusProof{
-		Root:     proof.Root.Bytes(),
-		Address:  addr.Bytes(),
-		Value:    packedValue.Bytes(),
-		Siblings: packSiblings(proof.Siblings),
-		Weight:   (*types.BigInt)(proof.Weight),
-		Index:    proof.Index,
+		Root:       proof.Root.Bytes(),
+		Address:    addr.Bytes(),
+		Value:      packedValue.Bytes(),
+		Siblings:   packSiblings(proof.Siblings),
+		Weight:     (*types.BigInt)(proof.Weight),
+		VoterIndex: proof.AddressIndex,
+		PathBits:   proof.PathBits,
 	}, nil
 }
 

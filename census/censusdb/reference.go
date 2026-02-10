@@ -180,12 +180,13 @@ func (cr *CensusRef) GenProof(key types.HexBytes) (*types.CensusProof, error) {
 	packedValue.Or(packedValue, proof.Weight)
 
 	return &types.CensusProof{
-		Root:     proof.Root.Bytes(),
-		Address:  addr.Bytes(),
-		Value:    packedValue.Bytes(),
-		Siblings: packSiblings(proof.Siblings),
-		Weight:   (*types.BigInt)(proof.Weight),
-		Index:    proof.Index,
+		Root:       proof.Root.Bytes(),
+		Address:    addr.Bytes(),
+		Value:      packedValue.Bytes(),
+		Siblings:   packSiblings(proof.Siblings),
+		Weight:     (*types.BigInt)(proof.Weight),
+		VoterIndex: proof.AddressIndex,
+		PathBits:   proof.PathBits,
 	}, nil
 }
 
@@ -199,7 +200,7 @@ func (cr *CensusRef) ApplyEvents(events []census.CensusEvent) error {
 
 // VerifyProof verifies a Merkle proof for the given leaf key.
 // Uses lean-imt verification with the configured hash function.
-func VerifyProof(key, value, root, siblings types.HexBytes, index uint64) bool {
+func VerifyProof(key, value, root, siblings types.HexBytes, pathBits uint64) bool {
 	// Unpack siblings from bytes to []*big.Int
 	siblingsUnpacked := unpackSiblings(siblings)
 
@@ -207,7 +208,7 @@ func VerifyProof(key, value, root, siblings types.HexBytes, index uint64) bool {
 	merkleProof := leanimt.MerkleProof[*big.Int]{
 		Root:     root.BigInt().MathBigInt(),
 		Leaf:     value.BigInt().MathBigInt(),
-		Index:    index,
+		PathBits: pathBits,
 		Siblings: siblingsUnpacked,
 	}
 

@@ -23,7 +23,7 @@ import (
 )
 
 // CSP defines the interface for a Credential Service Providers (CSP). It
-// provides methods to set a function to calculate the census index (must be
+// provides methods to set a function to calculate the VoterIndex (must be
 // deterministic), retrieve census origin and root, and generate and verify
 // census proofs. The CSP is responsible for handling cryptographic operations
 // related to census proofs, which are used to verify the integrity and

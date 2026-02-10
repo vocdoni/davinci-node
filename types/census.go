@@ -145,10 +145,12 @@ type CensusProof struct {
 	Root         HexBytes     `json:"root"`
 	Address      HexBytes     `json:"address"`
 	Weight       *BigInt      `json:"weight,omitempty"`
-	Index        uint64       `json:"index,omitempty"`
+	// VoterIndex is a unique census participant index, used to derive the ballot index.
+	VoterIndex uint64 `json:"voterIndex,omitempty"`
 	// Merkletree related fields
 	Siblings HexBytes `json:"siblings,omitempty"`
 	Value    HexBytes `json:"value,omitempty"`
+	PathBits uint64   `json:"pathBits,omitempty"`
 	// CSP related fields
 	ProcessID ProcessID `json:"processId,omitempty"`
 	PublicKey HexBytes  `json:"publicKey,omitempty"`
@@ -170,7 +172,7 @@ func (cp *CensusProof) Valid() bool {
 		// By default the census proof is not required to this census origin.
 		return true
 	case cp.CensusOrigin.IsCSP():
-		return cp.Root != nil && cp.Address != nil && cp.Index != 0 &&
+		return cp.Root != nil && cp.Address != nil &&
 			cp.ProcessID.IsValid() && cp.PublicKey != nil && cp.Signature != nil
 	default:
 		return false

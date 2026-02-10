@@ -119,12 +119,13 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling public key: %w", err)
 	}
+	voterIndex := c.indexFn(processID, address, weight)
 	return &types.CensusProof{
 		CensusOrigin: c.CensusOrigin(),
 		Root:         censusRoot,
 		Address:      address.Bytes(),
 		Weight:       weight,
-		Index:        c.indexFn(processID, address, weight),
+		VoterIndex:   voterIndex,
 		ProcessID:    processID,
 		PublicKey:    publicKey.Bytes(),
 		Signature:    signature.Bytes(),
@@ -158,8 +159,8 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
 	// Verify the index
-	if idx := c.indexFn(proof.ProcessID, common.BytesToAddress(proof.Address), proof.Weight); proof.Index != idx {
-		return fmt.Errorf("index mismatch: expected %d, got %d", idx, proof.Index)
+	if idx := c.indexFn(proof.ProcessID, common.BytesToAddress(proof.Address), proof.Weight); proof.VoterIndex != idx {
+		return fmt.Errorf("index mismatch: expected %d, got %d", idx, proof.VoterIndex)
 	}
 	// Decompress the signature
 	signature, err := DecompressSignature(proof.Signature)
@@ -245,10 +246,10 @@ func (c *BabyJubJubEdDSA) sign(
 	return compressedSignature, nil
 }
 
-// DefaultCSPIndexFn is the default function to compute the census index for
+// DefaultCSPIndexFn is the default function to compute the VoterIndex for
 // a given process ID, address and weight. It uses the poseidon hash function
 // to compute a deterministic index based on the inputs. It ensures that the
-// result is in the range [params.BallotMin, params.BallotMax].
+// result is in the VoterIndex range [0, params.VoterIndexMax].
 func DefaultCSPIndexFn(processID types.ProcessID, address common.Address, weight *types.BigInt) uint64 {
 	bigHash, err := DefaultHashFn.BigIntsSum([]*big.Int{
 		processID.BigInt().MathBigInt(),
@@ -258,7 +259,6 @@ func DefaultCSPIndexFn(processID types.ProcessID, address common.Address, weight
 	if err != nil {
 		panic(err)
 	}
-	rangeSize := new(big.Int).SetUint64(params.BallotMax - params.BallotMin + 1)
-	mod := new(big.Int).Mod(bigHash, rangeSize)
-	return mod.Uint64() + params.BallotMin
+
+	return new(big.Int).Mod(bigHash, new(big.Int).SetUint64(params.VoterIndexMax)).Uint64()
 }

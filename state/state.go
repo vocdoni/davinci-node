@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"slices"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -243,10 +242,8 @@ func (o *State) endBatch() error {
 		var errBallot, errVoteID error
 		if i < len(o.Votes()) {
 			v := o.Votes()[i]
-			ballotIndex := types.CalculateBallotIndex(v.Address, types.IndexTODO)
-			log.Infow("new ballot in the state", "ballotIndex", ballotIndex, "address", common.BigToAddress(v.Address).Hex())
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
-				ballotIndex.StateKey(), v.ReencryptedBallot.BigInts()...)
+				v.BallotIndex.StateKey(), v.ReencryptedBallot.BigInts()...)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
 				v.VoteID.StateKey(), VoteIDKeyValue)
 		} else {
@@ -375,6 +372,7 @@ func (o *State) PaddedVotes() []*Vote {
 	for len(v) < params.VotesPerBatch {
 		v = append(v, &Vote{
 			Address:           big.NewInt(0),
+			BallotIndex:       0,
 			Ballot:            elgamal.NewBallot(Curve),
 			ReencryptedBallot: elgamal.NewBallot(Curve),
 			OverwrittenBallot: elgamal.NewBallot(Curve),

@@ -45,7 +45,7 @@ func NewRandomState(t *testing.T, origin types.CensusOrigin) *state.State {
 	)
 }
 
-func NewVoteForTest(publicKey ecc.Point, index uint64, value int) *state.Vote {
+func NewVoteForTest(publicKey ecc.Point, voterIndex uint64, value int) *state.Vote {
 	fields := [params.FieldsPerBallot]*big.Int{}
 	for i := range fields {
 		fields[i] = big.NewInt(int64(value + i))
@@ -63,7 +63,8 @@ func NewVoteForTest(publicKey ecc.Point, index uint64, value int) *state.Vote {
 		panic(fmt.Errorf("failed to reencrypt ballot: %v", err))
 	}
 	return &state.Vote{
-		Address:           testutil.DeterministicAddress(index).Big(),
+		Address:           testutil.DeterministicAddress(voterIndex).Big(),
+		BallotIndex:       types.CalculateBallotIndex(voterIndex),
 		VoteID:            testutil.RandomVoteID(),
 		Ballot:            ballot,
 		ReencryptedBallot: reencryptedBallot,

@@ -19,9 +19,10 @@ func DummyMerkleProof() imt.MerkleProof {
 		dummySiblings[i] = big.NewInt(1) // dummy value for the siblings
 	}
 	return imt.MerkleProof{
-		Leaf:     big.NewInt(1), // dummy value for the key
-		Index:    big.NewInt(1), // dummy value for the leaf hash
-		Siblings: dummySiblings,
+		Leaf:      big.NewInt(1), // dummy value for the key
+		PathBits:  big.NewInt(1), // dummy value for the path bits
+		LeafIndex: big.NewInt(1), // dummy value for the leaf index
+		Siblings:  dummySiblings,
 	}
 }
 
@@ -37,5 +38,6 @@ func DummyCSPProof() csp.CSPProof {
 			R: dummyTwistedPoint,
 			S: 1,
 		},
+		VoterIndex: 0,
 	}
 }

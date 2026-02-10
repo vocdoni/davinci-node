@@ -65,7 +65,7 @@ func StateTransitionInputsForTest(
 	aggCCSHash, err := circuitstest.AggregatorCircuitCCSHash()
 	c.Assert(err, qt.IsNil, qt.Commentf("compute aggregator CCS hash"))
 
-	cacheKey := cache.GenerateCacheKey(aggCCSHash, processID, "statetransition-test-aggregator", censusOrigin.String(), nValidVoters)
+	cacheKey := cache.GenerateCacheKey(aggCCSHash, processID, "statetransition-test-aggregator-v2", censusOrigin.String(), nValidVoters)
 	cachedData := &circuitstest.AggregatorCacheData{}
 
 	var proof groth16.Proof
@@ -170,9 +170,6 @@ func StateTransitionInputsForTest(
 		c.Assert(err, qt.IsNil, qt.Commentf("failed to reencrypt ballot"))
 	}
 
-	err = s.AddVotesBatch(aggInputs.Votes)
-	c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
-
 	// add census data to witness
 	censusRoot, censusProofs, err := CensusProofsForCircuitTest(
 		aggInputs.Votes,
@@ -180,6 +177,8 @@ func StateTransitionInputsForTest(
 		processID,
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("generate census proofs for test"))
+	err = s.AddVotesBatch(aggInputs.Votes)
+	c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
 
 	witness, publicInputs, err := statetransition.GenerateWitness(
 		s,
@@ -227,6 +226,11 @@ func CensusProofsForCircuitTest(
 		if err != nil {
 			return nil, statetransition.CensusProofs{}, fmt.Errorf("error generating census merkle tree: %w", err)
 		}
+		defer func() {
+			if err := census.Close(); err != nil {
+				log.Printf("Warning: failed to close census IMT: %v", err)
+			}
+		}()
 		var ok bool
 		if root, ok = census.Root(); !ok {
 			return nil, statetransition.CensusProofs{}, fmt.Errorf("error getting census merkle tree root")
@@ -264,6 +268,7 @@ func CensusProofsForCircuitTest(
 				if err != nil {
 					return nil, statetransition.CensusProofs{}, fmt.Errorf("failed to generate census proof: %w", err)
 				}
+				votes[i].BallotIndex = types.CalculateBallotIndex(cspProof.VoterIndex)
 				// convert to gnark csp proof
 				gnarkCSPProof, err := csp.CensusProofToCSPProof(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID(), cspProof)
 				if err != nil {
@@ -287,10 +292,27 @@ func CensusProofsForCircuitTest(
 // the provided votes as census participants. It returns the initialized
 // CensusIMT or an error if the process fails.
 func CensusIMTForTest(votes []*state.Vote) (*imtcensus.CensusIMT, error) {
-	// generate the census with voters information
-	votersData := map[*big.Int]*big.Int{}
+	entriesByIndex := map[uint64]struct {
+		address common.Address
+		weight  *big.Int
+	}{}
+	var maxIndex uint64
 	for _, v := range votes {
-		votersData[v.Address] = v.Weight
+		ballotIndex := v.BallotIndex.Uint64()
+		if ballotIndex < params.BallotMin {
+			return nil, fmt.Errorf("ballot index out of range for census vote: %d", ballotIndex)
+		}
+		voterIndex := ballotIndex - params.BallotMin
+		entriesByIndex[voterIndex] = struct {
+			address common.Address
+			weight  *big.Int
+		}{
+			address: common.BigToAddress(v.Address),
+			weight:  v.Weight,
+		}
+		if voterIndex > maxIndex {
+			maxIndex = voterIndex
+		}
 	}
 
 	// Create a unique directory name to avoid lock conflicts
@@ -303,20 +325,18 @@ func CensusIMTForTest(votes []*state.Vote) (*imtcensus.CensusIMT, error) {
 		return nil, fmt.Errorf("failed to create census IMT: %w", err)
 	}
 
-	// Clean up the census directory when done
-	defer func() {
-		if err := censusTree.Close(); err != nil {
-			log.Printf("Warning: failed to close census IMT: %v", err)
+	bAddresses := make([]common.Address, 0, maxIndex+1)
+	bWeights := make([]*big.Int, 0, maxIndex+1)
+	for i := uint64(0); i <= maxIndex; i++ {
+		entry, ok := entriesByIndex[i]
+		if !ok {
+			// Fill gaps so generated Merkle proof indexes remain aligned with VoterIndex.
+			bAddresses = append(bAddresses, testutil.DeterministicAddress(i))
+			bWeights = append(bWeights, big.NewInt(testutil.Weight))
+			continue
 		}
-		if err := os.RemoveAll(censusDir); err != nil {
-			log.Printf("Warning: failed to cleanup census directory %s: %v", censusDir, err)
-		}
-	}()
-
-	bAddresses, bWeights := []common.Address{}, []*big.Int{}
-	for address, weight := range votersData {
-		bAddresses = append(bAddresses, common.BigToAddress(address))
-		bWeights = append(bWeights, weight)
+		bAddresses = append(bAddresses, entry.address)
+		bWeights = append(bWeights, entry.weight)
 	}
 	if err := censusTree.AddBulk(bAddresses, bWeights); err != nil {
 		return nil, fmt.Errorf("failed to add bulk to census IMT: %w", err)

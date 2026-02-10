@@ -47,7 +47,5 @@ const (
 
 	VoteIDHashBits uint = 63 // bits
 
-	CensusAddressBitLen uint = 16 // bits
-
-	CensusIndexMax = BallotMax>>CensusAddressBitLen - ConfigMax // 0x0000_7FFF_FFFF_FFF0
+	VoterIndexMax uint64 = BallotMax - BallotMin
 )
