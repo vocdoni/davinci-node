@@ -24,6 +24,7 @@ var (
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
 	Address           *big.Int
+	CensusIndex       uint64
 	VoteID            types.VoteID
 	Ballot            *elgamal.Ballot
 	OverwrittenBallot *elgamal.Ballot
@@ -43,7 +44,7 @@ func (o *State) addVote(v *Vote) error {
 	}
 	// if address exists, it's a vote overwrite, need to count the overwritten
 	// vote so it's later added to circuit.ResultsSub
-	if oldVote, err := o.EncryptedBallot(types.CalculateBallotIndex(v.Address, types.IndexTODO)); err == nil {
+	if oldVote, err := o.EncryptedBallot(types.CalculateBallotIndex(v.CensusIndex)); err == nil {
 		o.overwrittenSum.Add(o.overwrittenSum, oldVote)
 		o.overwrittenVotesCount++
 		v.OverwrittenBallot = oldVote
@@ -90,11 +91,11 @@ func (o *State) ContainsBallot(ballotIndex types.BallotIndex) bool {
 	return err == nil
 }
 
-// HasAddressVoted checks if an address has voted in a given process. It opens
+// IndexContainsBallot checks if an address has voted in a given process. It opens
 // the current process state and checks for the address. If found,
 // it returns true, otherwise false. If there's an error opening the state or
 // during the check, it returns the error.
-func HasAddressVoted(db db.Database, processID types.ProcessID, ballotIndex types.BallotIndex) (bool, error) {
+func IndexContainsBallot(db db.Database, processID types.ProcessID, ballotIndex types.BallotIndex) (bool, error) {
 	s, err := New(db, processID)
 	if err != nil {
 		return false, fmt.Errorf("could not open state: %v", err)
