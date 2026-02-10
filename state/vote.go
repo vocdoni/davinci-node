@@ -31,20 +31,6 @@ type Vote struct {
 	ReencryptedBallot *elgamal.Ballot // Reencrypted ballot for the state transition circuit
 }
 
-// SerializeBigInts returns
-//   - vote.Address
-//   - vote.VoteID
-//   - vote.UserWeight
-//   - vote.Ballot
-func (v *Vote) SerializeBigInts() []*big.Int {
-	list := []*big.Int{}
-	list = append(list, v.Address)
-	list = append(list, v.VoteID.BigInt())
-	list = append(list, v.Weight)
-	list = append(list, v.Ballot.BigInts()...)
-	return list
-}
-
 // AddVote adds a vote to the state.
 // If v.Address exists already in the tree, it counts as vote overwrite.
 // Note that this method modifies passed v, sets v.OverwrittenBallot
