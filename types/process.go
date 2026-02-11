@@ -253,6 +253,5 @@ type ProcessSetupResponse struct {
 
 // ProcessEncryptionKeysResponse represents the response for a request for encryption keys for a process
 type ProcessEncryptionKeysResponse struct {
-	ProcessID        *ProcessID `json:"processId,omitempty"`
 	EncryptionPubKey [2]*BigInt `json:"encryptionPubKey,omitempty"`
 }

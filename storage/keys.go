@@ -34,6 +34,14 @@ func (s *Storage) FetchOrGenerateEncryptionKeys(processID types.ProcessID) (ecc.
 	return s.fetchOrGenerateEncryptionKeysUnsafe(processID)
 }
 
+// GenerateEncryptionKeysByPubKey generates a new encryption key pair and stores
+// it in storage by using the public key as the key.
+func (s *Storage) GenerateEncryptionKeysByPubKey() (ecc.Point, *big.Int, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.generateEncryptionKeysByPubKeyUnsafe()
+}
+
 // setEncryptionKeysUnsafe stores both the private and public encryption keys for a process, without locking.
 func (s *Storage) setEncryptionKeysUnsafe(processID types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
 	x, y := publicKey.Point()
@@ -43,6 +51,19 @@ func (s *Storage) setEncryptionKeysUnsafe(processID types.ProcessID, publicKey e
 		PrivateKey: privateKey,
 	}
 	return s.setArtifact(encryptionKeyPrefix, processID.Bytes(), eks)
+}
+
+// setEncryptionKeysByPubKeyUnsafe stores the given encryption public and
+// private keys, without locking the storage and using the public key as the
+// key in storage.
+func (s *Storage) setEncryptionKeysByPubKeyUnsafe(publicKey ecc.Point, privateKey *big.Int) error {
+	x, y := publicKey.Point()
+	eks := &EncryptionKeys{
+		X:          x,
+		Y:          y,
+		PrivateKey: privateKey,
+	}
+	return s.setArtifact(encryptionKeyPrefix, publicKey.Marshal(), eks)
 }
 
 // setEncryptionPubKeyUnsafe stores only the encryption public key for a process, without locking.
@@ -92,6 +113,22 @@ func (s *Storage) fetchOrGenerateEncryptionKeysUnsafe(processID types.ProcessID)
 		if err := s.setEncryptionKeysUnsafe(processID, publicKey, privateKey); err != nil {
 			return nil, nil, fmt.Errorf("could not store encryption keys: %v", err)
 		}
+	}
+	return publicKey, privateKey, nil
+}
+
+// generateEncryptionKeysByPubKeyUnsafe generates a new encryption key pair,
+// using Baby-Jubjub as the curve, and stores them in the storage. It does
+// not lock the storage, so it should be used with caution.
+// It returns the public and private keys, and an error if the keys could not
+// be generated or stored.
+func (s *Storage) generateEncryptionKeysByPubKeyUnsafe() (ecc.Point, *big.Int, error) {
+	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not generate elgamal key: %v", err)
+	}
+	if err := s.setEncryptionKeysByPubKeyUnsafe(publicKey, privateKey); err != nil {
+		return nil, nil, fmt.Errorf("could not store encryption keys: %v", err)
 	}
 	return publicKey, privateKey, nil
 }

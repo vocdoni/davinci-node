@@ -178,21 +178,18 @@ It can be:
 - 40005: Invalid signature
 - 50002: Internal server error
 
-#### GET /processes/{processId}/keys
+#### POST /processes/keys
 
-Returns the encryption keys for the given `processId`. If they do not exists, it generates, stores and returns a new ones.
+Returns a new encryption keys.
 
 **Response Body**:
 ```json
 {
-  "processId": "hexBytes",
   "encryptionPubKey": ["bigintStr", "bigintStr"]
 }
 ```
 
 **Errors**:
-- 40006: Malformed process ID
-- 40021: Not supported contract version
 - 50002: Internal server error
 
 ### Metadata Management
