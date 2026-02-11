@@ -15,6 +15,7 @@ services:
       - "2"
       - --hardfork
       - "cancun"
+      - --disable-code-size-limit
       - -vvvvv
     ports:
       - "${ANVIL_PORT_RPC_HTTP:-8545}:8545"

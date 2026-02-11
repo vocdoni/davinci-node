@@ -95,6 +95,11 @@ func (i *BigInt) Bytes() []byte {
 	return (*big.Int)(i).Bytes()
 }
 
+// HexBytes returns the bytes representation of the big number as a HexBytes
+func (i *BigInt) HexBytes() HexBytes {
+	return i.Bytes()
+}
+
 // MathBigInt converts b to a math/big *Int.
 func (i *BigInt) MathBigInt() *big.Int {
 	return (*big.Int)(i)
@@ -113,6 +118,11 @@ func (i *BigInt) Sub(x, y *BigInt) *BigInt {
 // Mul multiplies x*y
 func (i *BigInt) Mul(x, y *BigInt) *BigInt {
 	return (*BigInt)(i.MathBigInt().Mul(x.MathBigInt(), y.MathBigInt()))
+}
+
+// Cmp compares x and y
+func (x *BigInt) Cmp(y *BigInt) int {
+	return x.MathBigInt().Cmp(y.MathBigInt())
 }
 
 // SetUint64 sets the value of x to the big number

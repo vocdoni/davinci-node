@@ -73,8 +73,59 @@ cp .env.example .env
 export CHAIN_ID=1337
 export PRIVATE_KEY=${SEPOLIA_PRIVATE_KEY}
 export FOUNDRY_DISABLE_NIGHTLY_WARNING=1
+export FOUNDRY_VIA_IR=true
+export CI=true
+export TERM=dumb
+export FOUNDRY_COLOR=never
 
-forge clean && forge build
+deploy_poseidon() {
+  local contract_name=$1
+  local contract_path="lib/poseidon-solidity/contracts/${contract_name}.sol:${contract_name}"
+  local output
+  local address
+
+  echo "🚀 Deploying ${contract_name}" >&2
+  output=$(forge create "$contract_path" \
+    --rpc-url http://anvil:8545 \
+    --private-key "$PRIVATE_KEY" \
+    --optimize \
+    --optimizer-runs 200 \
+    --via-ir \
+    --broadcast \
+    -vv 2>&1)
+
+  address=$(echo "$output" | awk -F': ' '/Deployed to:/ {print $2; exit}')
+  if [ -z "$address" ]; then
+    echo "❌ Failed to deploy ${contract_name}. Output:"
+    echo "$output"
+    exit 1
+  fi
+
+  printf '%s\n' "$address"
+}
+
+POSEIDON_T3_ADDRESS=$(deploy_poseidon "PoseidonT3")
+POSEIDON_T4_ADDRESS=$(deploy_poseidon "PoseidonT4")
+echo "🔗 PoseidonT3: ${POSEIDON_T3_ADDRESS}"
+echo "🔗 PoseidonT4: ${POSEIDON_T4_ADDRESS}"
+
+if [ -f foundry.toml ]; then
+  echo "" >> foundry.toml
+fi
+cat >> foundry.toml <<EOF
+[profile.anvil]
+via_ir = true
+optimizer = true
+optimizer_runs = 200
+libraries = [
+  "lib/poseidon-solidity/contracts/PoseidonT3.sol:PoseidonT3:${POSEIDON_T3_ADDRESS}",
+  "lib/poseidon-solidity/contracts/PoseidonT4.sol:PoseidonT4:${POSEIDON_T4_ADDRESS}"
+]
+EOF
+
+export FOUNDRY_PROFILE=anvil
+
+forge clean && forge build --via-ir
 
 forge script \
   script/DeployAll.s.sol:DeployAllScript \
@@ -86,7 +137,7 @@ forge script \
   --optimizer-runs 200 \
   --gas-price 0 \
   --base-fee 0 \
-  -vvvv
+  -vv
 
 # 4) extract addresses into JSON
 OUTPUT=/addresses.json

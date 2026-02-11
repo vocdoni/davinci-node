@@ -235,18 +235,7 @@ func (o *OrganizationInfo) String() string {
 	return string(data)
 }
 
-// ProcessSetup is the struct to create a new voting process
-type ProcessSetup struct {
-	ProcessID  ProcessID   `json:"processId"`
-	Census     *Census     `json:"census"`
-	BallotMode *BallotMode `json:"ballotMode"`
-	Signature  HexBytes    `json:"signature"`
-}
-
-// ProcessSetupResponse represents the response of a voting process
-type ProcessSetupResponse struct {
-	ProcessID        *ProcessID  `json:"processId,omitempty"`
-	EncryptionPubKey [2]*BigInt  `json:"encryptionPubKey,omitempty"`
-	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
-	BallotMode       *BallotMode `json:"ballotMode,omitempty"`
+// ProcessEncryptionKeysResponse represents the response for a request for encryption keys for a process
+type ProcessEncryptionKeysResponse struct {
+	EncryptionPubKey [2]*BigInt `json:"encryptionPubKey,omitempty"`
 }

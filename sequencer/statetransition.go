@@ -296,7 +296,7 @@ func (s *Sequencer) reencryptVotes(processID types.ProcessID, votes []*storage.A
 		return nil, nil, fmt.Errorf("failed to generate random k: %w", err)
 	}
 	// get encryption key from the storage
-	encryptionKey, _, err := s.stg.EncryptionKeys(processID)
+	encryptionKey, _, err := s.stg.ProcessEncryptionKeys(processID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get encryption key: %w", err)
 	}
