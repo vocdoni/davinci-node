@@ -21,8 +21,8 @@ func (b *HexBytes) Bytes() []byte {
 
 // String returns the hexadecimal string representation of the HexBytes,
 // prefixed with "0x".
-func (b *HexBytes) String() string {
-	return "0x" + hex.EncodeToString(*b)
+func (b HexBytes) String() string {
+	return "0x" + hex.EncodeToString(b)
 }
 
 // BigInt converts the HexBytes to a BigInt.

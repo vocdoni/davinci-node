@@ -210,7 +210,9 @@ func (pm *ProcessMonitor) monitorProcesses(
 			if _, err := pm.storage.Process(*process.ID); err == nil {
 				continue
 			}
-			log.Debugw("new process found", "processID", process.ID.String())
+			log.Debugw("new process found",
+				"processID", process.ID.String(),
+				"stateRoot", process.StateRoot.HexBytes().String())
 
 			// Create a function to store the new process
 			processSetup := func(p *types.Process) {
@@ -218,10 +220,11 @@ func (pm *ProcessMonitor) monitorProcesses(
 					log.Warnw("failed to store new process",
 						"processID", p.ID.String(),
 						"error", err.Error())
+					return
 				}
 				log.Debugw("process created",
 					"processID", p.ID.String(),
-					"stateRoot", p.StateRoot.String(),
+					"stateRoot", p.StateRoot.HexBytes().String(),
 					"censusRoot", p.Census.CensusRoot.String())
 			}
 

@@ -33,7 +33,7 @@ func TestMaxVoters(t *testing.T) {
 	var (
 		err           error
 		pid           types.ProcessID
-		stateRoot     *types.HexBytes
+		stateRoot     types.HexBytes
 		encryptionKey *types.EncryptionKey
 		signers       []*ethereum.Signer
 		censusRoot    []byte
@@ -57,17 +57,20 @@ func TestMaxVoters(t *testing.T) {
 		c.Assert(len(signers), qt.Equals, totalVoters)
 
 		// create process in the sequencer
-		pid, encryptionKey, stateRoot, err = helpers.NewProcess(services.Contracts, services.HTTPClient, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode)
+		pid, encryptionKey, err = helpers.NewProcess(services.Contracts, services.HTTPClient)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts with initialVoters as maxVoters
-		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, stateRoot, initialVoters)
+		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, initialVoters)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(onchainPID.String(), qt.Equals, pid.String())
 
 		if err := helpers.WaitUntilCondition(globalCtx, time.Millisecond*200, func() bool {
-			_, err := services.Storage.Process(pid)
-			return err == nil
+			if process, err := services.Storage.Process(pid); err == nil {
+				stateRoot = process.StateRoot.Bytes()
+				return true
+			}
+			return false
 		}); err != nil {
 			c.Fatal("Timeout waiting for process to be created in storage")
 			c.FailNow()

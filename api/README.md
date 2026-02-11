@@ -178,6 +178,20 @@ It can be:
 - 40005: Invalid signature
 - 50002: Internal server error
 
+#### POST /processes/keys
+
+Returns a new encryption keys.
+
+**Response Body**:
+```json
+{
+  "encryptionPubKey": ["bigintStr", "bigintStr"]
+}
+```
+
+**Errors**:
+- 50002: Internal server error
+
 ### Metadata Management
 
 #### POST /metadata

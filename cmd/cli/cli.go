@@ -256,26 +256,8 @@ func (s *CLIServices) CreateProcess(
 	ballotMode *types.BallotMode,
 	maxVoters *types.BigInt,
 ) (types.ProcessID, *types.EncryptionKey, error) {
-	// Create test process request
-	processId, err := s.contracts.NextProcessID(s.contracts.AccountAddress())
-	if err != nil {
-		return types.ProcessID{}, nil, fmt.Errorf("failed to get next process ID: %v", err)
-	}
-
-	// Sign the process creation request
-	signature, err := s.contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processId.String()))
-	if err != nil {
-		return types.ProcessID{}, nil, fmt.Errorf("failed to sign process creation request: %v", err)
-	}
-
-	// Make the request to create the process
-	process := &types.ProcessSetup{
-		ProcessID:  processId,
-		BallotMode: ballotMode,
-		Signature:  signature,
-		Census:     census,
-	}
-	body, code, err := s.cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
+	// Make the request to create the encryption keys
+	body, code, err := s.cli.Request(http.MethodPost, nil, nil, api.NewEncryptionKeysEndpoint)
 	if err != nil {
 		return types.ProcessID{}, nil, fmt.Errorf("failed to create process: %v", err)
 	} else if code != http.StatusOK {
@@ -283,7 +265,7 @@ func (s *CLIServices) CreateProcess(
 	}
 
 	// Decode process response
-	var resp types.ProcessSetupResponse
+	var resp types.ProcessEncryptionKeysResponse
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&resp); err != nil {
 		return types.ProcessID{}, nil, fmt.Errorf("failed to decode process response: %v", err)
 	}
@@ -296,7 +278,6 @@ func (s *CLIServices) CreateProcess(
 		Status:         0,
 		OrganizationId: s.contracts.AccountAddress(),
 		EncryptionKey:  encryptionKeys,
-		StateRoot:      resp.StateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",

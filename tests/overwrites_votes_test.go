@@ -32,7 +32,6 @@ func TestOverwriteVotes(t *testing.T) {
 	var (
 		err           error
 		pid           types.ProcessID
-		stateRoot     *types.HexBytes
 		encryptionKey *types.EncryptionKey
 		signers       []*ethereum.Signer
 		censusRoot    []byte
@@ -56,11 +55,11 @@ func TestOverwriteVotes(t *testing.T) {
 		c.Assert(len(signers), qt.Equals, numVoters)
 
 		// create process in the sequencer
-		pid, encryptionKey, stateRoot, err = helpers.NewProcess(services.Contracts, services.HTTPClient, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode)
+		pid, encryptionKey, err = helpers.NewProcess(services.Contracts, services.HTTPClient)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts
-		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, stateRoot, numVoters)
+		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, numVoters)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(onchainPID.String(), qt.Equals, pid.String())
 
