@@ -59,7 +59,7 @@ type CallResult struct {
 }
 
 // contractProcess2Process converts a contractProcess to a types.Process
-func contractProcess2Process(p npbindings.IProcessRegistryProcess) (*types.Process, error) {
+func contractProcess2Process(p npbindings.DAVINCITypesProcess) (*types.Process, error) {
 	mode := types.BallotMode{
 		UniqueValues:   p.BallotMode.UniqueValues,
 		CostFromWeight: p.BallotMode.CostFromWeight,
@@ -113,12 +113,12 @@ func contractProcess2Process(p npbindings.IProcessRegistryProcess) (*types.Proce
 }
 
 // process2ContractProcess converts a types.Process to a contractProcess
-func process2ContractProcess(p *types.Process) npbindings.IProcessRegistryProcess {
-	var prp npbindings.IProcessRegistryProcess
+func process2ContractProcess(p *types.Process) npbindings.DAVINCITypesProcess {
+	var prp npbindings.DAVINCITypesProcess
 
 	prp.Status = uint8(p.Status)
 	prp.OrganizationId = p.OrganizationId
-	prp.EncryptionKey = npbindings.IProcessRegistryEncryptionKey{
+	prp.EncryptionKey = npbindings.DAVINCITypesEncryptionKey{
 		X: p.EncryptionKey.X.MathBigInt(),
 		Y: p.EncryptionKey.Y.MathBigInt(),
 	}
@@ -129,7 +129,7 @@ func process2ContractProcess(p *types.Process) npbindings.IProcessRegistryProces
 	prp.MaxVoters = p.MaxVoters.MathBigInt()
 	prp.MetadataURI = p.MetadataURI
 
-	prp.BallotMode = npbindings.IProcessRegistryBallotMode{
+	prp.BallotMode = npbindings.DAVINCITypesBallotMode{
 		CostFromWeight: p.BallotMode.CostFromWeight,
 		UniqueValues:   p.BallotMode.UniqueValues,
 		NumFields:      p.BallotMode.NumFields,

@@ -101,7 +101,7 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	httpWriteJSON(w, pr)
 }
 
-// processEncryptionKeys creates a new encryption key 
+// processEncryptionKeys creates a new encryption key
 // POST /processes/keys
 func (a *API) processEncryptionKeys(w http.ResponseWriter, r *http.Request) {
 	// Fetch or create the elgamal key from storage

@@ -414,8 +414,6 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 						contractsAddresses.StateTransitionZKVerifier = common.HexToAddress(tx.ContractAddress)
 					case "ResultsVerifierGroth16":
 						contractsAddresses.ResultsZKVerifier = common.HexToAddress(tx.ContractAddress)
-					default:
-						log.Infow("unknown contract name", "name", tx.ContractName)
 					}
 				}
 			}
