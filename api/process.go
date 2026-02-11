@@ -101,6 +101,44 @@ func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
 	httpWriteJSON(w, pr)
 }
 
+// processEncryptionKeys creates a new encryption key for a given processID
+// GET /processes/{processId}/keys
+func (a *API) processEncryptionKeys(w http.ResponseWriter, r *http.Request) {
+	// Unmarshal the process ID
+	processID, err := types.HexStringToProcessID(chi.URLParam(r, ProcessURLParam))
+	if err != nil {
+		ErrMalformedProcessID.Withf("could not parse process ID: %v", err).Write(w)
+		return
+	}
+
+	// Validate the process ID version
+	if processID.Version() != a.processIDsVersion {
+		ErrInvalidContractVersion.Withf("%x", processID.Version()).Write(w)
+		return
+	}
+
+	// Fetch or create the elgamal key from storage
+	publicKey, _, err := a.storage.FetchOrGenerateEncryptionKeys(processID)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not fetch or generate encryption keys: %v", err).Write(w)
+		return
+	}
+
+	// Create the process response
+	x, y := publicKey.Point()
+	pr := &types.ProcessEncryptionKeysResponse{
+		ProcessID:        &processID,
+		EncryptionPubKey: [2]*types.BigInt{(*types.BigInt)(x), (*types.BigInt)(y)},
+	}
+
+	// Write the response
+	log.Infow("new process encryption keys query",
+		"processId", processID.String(),
+		"pubKeyX", pr.EncryptionPubKey[0].String(),
+		"pubKeyY", pr.EncryptionPubKey[1].String())
+	httpWriteJSON(w, pr)
+}
+
 // getProcess retrieves a voting process
 // GET /processes/{processId}
 func (a *API) process(w http.ResponseWriter, r *http.Request) {

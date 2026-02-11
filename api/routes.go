@@ -17,6 +17,7 @@ const (
 	AddressURLParam           = "address"                                                                     // URL parameter for address                                                                    // URL parameter for participant address
 	ProcessesEndpoint         = "/processes"                                                                  // GET: List processes, POST: Create process
 	ProcessEndpoint           = "/processes/{" + ProcessURLParam + "}"                                        // GET: Get process info
+	ProcessEncryptionKeys     = "/processes/{" + ProcessURLParam + "}/keys"                                   // GET: Get or create process encryption keys
 	CensusParticipantEndpoint = "/processes/{" + ProcessURLParam + "}/participants/{" + AddressURLParam + "}" // GET: Get participant info for a process
 
 	// Vote endpoints

@@ -250,3 +250,9 @@ type ProcessSetupResponse struct {
 	StateRoot        HexBytes    `json:"stateRoot,omitempty"`
 	BallotMode       *BallotMode `json:"ballotMode,omitempty"`
 }
+
+// ProcessEncryptionKeysResponse represents the response for a request for encryption keys for a process
+type ProcessEncryptionKeysResponse struct {
+	ProcessID        *ProcessID `json:"processId,omitempty"`
+	EncryptionPubKey [2]*BigInt `json:"encryptionPubKey,omitempty"`
+}
