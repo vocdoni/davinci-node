@@ -16,59 +16,34 @@ import (
 func NewProcess(
 	contracts *web3.Contracts,
 	cli *client.HTTPclient,
-	censusOrigin types.CensusOrigin,
-	censusURI string,
-	censusRoot []byte,
-	ballotMode *types.BallotMode,
-) (types.ProcessID, *types.EncryptionKey, *types.HexBytes, error) {
+) (types.ProcessID, *types.EncryptionKey, error) {
 	// Get the next process ID from the contracts
 	processID, err := contracts.NextProcessID(contracts.AccountAddress())
 	if err != nil {
-		return types.ProcessID{}, nil, nil, fmt.Errorf("failed to get next process ID: %w", err)
+		return types.ProcessID{}, nil, fmt.Errorf("failed to get next process ID: %w", err)
 	}
 
-	// Sign the process creation request
-	signature, err := contracts.SignMessage(fmt.Appendf(nil, types.NewProcessMessageToSign, processID.String()))
+	body, code, err := cli.Request(http.MethodPost, nil, nil, api.NewEncryptionKeysEndpoint)
 	if err != nil {
-		return types.ProcessID{}, nil, nil, fmt.Errorf("failed to sign message: %w", err)
-	}
-
-	process := &types.ProcessSetup{
-		ProcessID: processID,
-		Census: &types.Census{
-			CensusOrigin: censusOrigin,
-			CensusURI:    censusURI,
-			CensusRoot:   censusRoot,
-		},
-		BallotMode: ballotMode,
-		Signature:  signature,
-	}
-
-	body, code, err := cli.Request(http.MethodPost, process, nil, api.ProcessesEndpoint)
-	if err != nil {
-		return types.ProcessID{}, nil, nil, fmt.Errorf("failed to create process: %w", err)
+		return types.ProcessID{}, nil, fmt.Errorf("failed to create process: %w", err)
 	}
 	if code != http.StatusOK {
-		return types.ProcessID{}, nil, nil, fmt.Errorf("unexpected status code creating process: %d, body: %s", code, string(body))
+		return types.ProcessID{}, nil, fmt.Errorf("unexpected status code creating process: %d, body: %s", code, string(body))
 	}
 
-	var resp types.ProcessSetupResponse
+	var resp types.ProcessEncryptionKeysResponse
 	err = json.NewDecoder(bytes.NewReader(body)).Decode(&resp)
 	if err != nil {
-		return types.ProcessID{}, nil, nil, fmt.Errorf("failed to decode process response: %w", err)
-	}
-	if resp.ProcessID == nil {
-		return types.ProcessID{}, nil, nil, fmt.Errorf("process ID is nil")
+		return types.ProcessID{}, nil, fmt.Errorf("failed to decode process response: %w", err)
 	}
 	if resp.EncryptionPubKey[0] == nil || resp.EncryptionPubKey[1] == nil {
-		return types.ProcessID{}, nil, nil, fmt.Errorf("encryption public key is nil")
+		return types.ProcessID{}, nil, fmt.Errorf("encryption public key is nil")
 	}
 
-	encryptionKeys := &types.EncryptionKey{
+	return processID, &types.EncryptionKey{
 		X: resp.EncryptionPubKey[0],
 		Y: resp.EncryptionPubKey[1],
-	}
-	return processID, encryptionKeys, &resp.StateRoot, nil
+	}, nil
 }
 
 func NewProcessOnChain(
@@ -78,7 +53,6 @@ func NewProcessOnChain(
 	censusRoot []byte,
 	ballotMode *types.BallotMode,
 	encryptionKey *types.EncryptionKey,
-	stateRoot *types.HexBytes,
 	numVoters int,
 	duration ...time.Duration,
 ) (types.ProcessID, error) {
@@ -91,7 +65,6 @@ func NewProcessOnChain(
 		Status:         types.ProcessStatusReady,
 		OrganizationId: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKey,
-		StateRoot:      stateRoot.BigInt(),
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       finalDuration,
 		MaxVoters:      types.NewInt(numVoters),

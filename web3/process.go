@@ -41,7 +41,6 @@ func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *com
 		p.Census,
 		p.MetadataURI,
 		p.EncryptionKey,
-		p.LatestStateRoot,
 	)
 	if err != nil {
 		if reason, ok := c.DecodeError(err); ok {
@@ -317,10 +316,11 @@ func (c *Contracts) SetProcessCensus(processID types.ProcessID, census types.Cen
 
 	var newCensusRoot [32]byte
 	copy(newCensusRoot[:], census.CensusRoot)
-	tx, err := c.processes.SetProcessCensus(autOpts, processID, npbindings.IProcessRegistryCensus{
-		CensusRoot:   newCensusRoot,
-		CensusURI:    census.CensusURI,
-		CensusOrigin: uint8(census.CensusOrigin),
+	tx, err := c.processes.SetProcessCensus(autOpts, processID, npbindings.DAVINCITypesCensus{
+		CensusRoot:      newCensusRoot,
+		CensusURI:       census.CensusURI,
+		CensusOrigin:    uint8(census.CensusOrigin),
+		ContractAddress: census.ContractAddress,
 	})
 	if err != nil {
 		if reason, ok := c.DecodeError(err); ok {

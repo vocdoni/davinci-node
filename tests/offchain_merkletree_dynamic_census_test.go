@@ -56,12 +56,11 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 		c.Assert(len(signers), qt.Equals, numVoters)
 
 		// create process in sequencer
-		var stateRoot *types.HexBytes
-		pid, encryptionKey, stateRoot, err = helpers.NewProcess(services.Contracts, services.HTTPClient, types.CensusOriginMerkleTreeOffchainDynamicV1, censusURI, censusRoot, defaultBallotMode)
+		pid, encryptionKey, err = helpers.NewProcess(services.Contracts, services.HTTPClient)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts
-		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainDynamicV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, stateRoot, numVoters)
+		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainDynamicV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, numVoters)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(onchainPID.String(), qt.Equals, pid.String())
 

@@ -248,7 +248,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	}
 
 	// Fetch the encryption key
-	encryptionPubKey, encryptionPrivKey, err := f.stg.EncryptionKeys(processID)
+	encryptionPubKey, encryptionPrivKey, err := f.stg.ProcessEncryptionKeys(processID)
 	if err != nil || encryptionPubKey == nil || encryptionPrivKey == nil {
 		setProcessInvalid()
 		finalErr := fmt.Errorf("encryption keys are nil for process %s", processID.String())

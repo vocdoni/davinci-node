@@ -32,7 +32,6 @@ func TestVoteCastingRejections(t *testing.T) {
 	var (
 		err           error
 		pid           types.ProcessID
-		stateRoot     *types.HexBytes
 		encryptionKey *types.EncryptionKey
 		signers       []*ethereum.Signer
 		censusRoot    []byte
@@ -56,33 +55,13 @@ func TestVoteCastingRejections(t *testing.T) {
 		c.Assert(len(signers), qt.Equals, numVoters)
 	})
 
-	c.Run("same state root with different process parameters", func(c *qt.C) {
-		// createProcessInSequencer should be idempotent, but there was
-		// a bug in this, test it's fixed
-		pid1, encryptionKey1, stateRoot1, err := helpers.NewProcess(services.Contracts, services.HTTPClient, helpers.CurrentCensusOrigin(), censusURI, censusRoot, defaultBallotMode)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
-		pid2, encryptionKey2, stateRoot2, err := helpers.NewProcess(services.Contracts, services.HTTPClient, helpers.CurrentCensusOrigin(), censusURI, censusRoot, defaultBallotMode)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
-		c.Assert(pid2.String(), qt.Equals, pid1.String())
-		c.Assert(encryptionKey2, qt.DeepEquals, encryptionKey1)
-		c.Assert(stateRoot2.String(), qt.Equals, stateRoot1.String())
-		// a subsequent call to create process, same processID but with
-		// different censusOrigin should return the same encryptionKey
-		// but yield a different stateRoot
-		pid3, encryptionKey3, stateRoot3, err := helpers.NewProcess(services.Contracts, services.HTTPClient, helpers.WrongCensusOrigin(), censusURI, censusRoot, defaultBallotMode)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
-		c.Assert(pid3.String(), qt.Equals, pid1.String())
-		c.Assert(encryptionKey3, qt.DeepEquals, encryptionKey1)
-		c.Assert(stateRoot3.String(), qt.Not(qt.Equals), stateRoot1.String(), qt.Commentf("sequencer is returning the same state root although process parameters changed"))
-	})
-
 	c.Run("create process", func(c *qt.C) {
 		// create process in the sequencer
-		pid, encryptionKey, stateRoot, err = helpers.NewProcess(services.Contracts, services.HTTPClient, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode)
+		pid, encryptionKey, err = helpers.NewProcess(services.Contracts, services.HTTPClient)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
 		// now create process in contracts
-		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, stateRoot, numVoters)
+		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, numVoters)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
 		c.Assert(onchainPID.String(), qt.Equals, pid.String())
 

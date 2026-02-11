@@ -143,14 +143,14 @@ func (a *API) registerHandlers() {
 	a.router.Get(StaticFilesEndpoint, staticHandler)
 
 	// processes endpoints
-	log.Infow("register handler", "endpoint", ProcessesEndpoint, "method", "POST")
-	a.router.Post(ProcessesEndpoint, a.newProcess)
 	log.Infow("register handler", "endpoint", ProcessEndpoint, "method", "GET")
 	a.router.Get(ProcessEndpoint, a.process)
 	log.Infow("register handler", "endpoint", ProcessesEndpoint, "method", "GET")
 	a.router.Get(ProcessesEndpoint, a.processList)
 	log.Infow("register handler", "endpoint", CensusParticipantEndpoint, "method", "GET")
 	a.router.Get(CensusParticipantEndpoint, a.processParticipant)
+	log.Infow("register handler", "endpoint", NewEncryptionKeysEndpoint, "method", "POST")
+	a.router.Post(NewEncryptionKeysEndpoint, a.processEncryptionKeys)
 
 	// metadata endpoints
 	log.Infow("register handler", "endpoint", MetadataSetEndpoint, "method", "POST")
