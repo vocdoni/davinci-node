@@ -124,6 +124,7 @@ func (i *BigInt) Mul(x, y *BigInt) *BigInt {
 func (x *BigInt) Cmp(y *BigInt) int {
 	return x.MathBigInt().Cmp(y.MathBigInt())
 }
+
 // SetUint64 sets the value of x to the big number
 func (i *BigInt) SetUint64(x uint64) *BigInt {
 	return (*BigInt)(i.MathBigInt().SetUint64(x))
