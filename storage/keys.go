@@ -8,55 +8,41 @@ import (
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
-	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// SetEncryptionKeys stores the encryption keys for a process.
-func (s *Storage) SetEncryptionKeys(processID types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
+const encKeyCurveType = bjj.CurveType
+
+// ProcessEncryptionKeys loads the encryption keys for a process. It checks for
+// the public key in storage and then tries to load the full encryption keys.
+// If the encryption keys are not found, it returns an error.
+func (s *Storage) ProcessEncryptionKeys(processID types.ProcessID) (ecc.Point, *big.Int, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	return s.setEncryptionKeysUnsafe(processID, publicKey, privateKey)
-}
-
-// EncryptionKeys loads the encryption keys for a process. Returns ErrNotFound if the keys do not exist
-func (s *Storage) EncryptionKeys(processID types.ProcessID) (ecc.Point, *big.Int, error) {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-	return s.encryptionKeysUnsafe(processID)
-}
-
-// FetchOrGenerateEncryptionKeys loads the encryption keys for a process.
-// If the keys do not exist, new ones are generated and persisted to storage.
-func (s *Storage) FetchOrGenerateEncryptionKeys(processID types.ProcessID) (ecc.Point, *big.Int, error) {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-	return s.fetchOrGenerateEncryptionKeysUnsafe(processID)
-}
-
-// GenerateEncryptionKeysByPubKey generates a new encryption key pair and stores
-// it in storage by using the public key as the key.
-func (s *Storage) GenerateEncryptionKeysByPubKey() (ecc.Point, *big.Int, error) {
-	s.globalLock.Lock()
-	defer s.globalLock.Unlock()
-	return s.generateEncryptionKeysByPubKeyUnsafe()
-}
-
-// setEncryptionKeysUnsafe stores both the private and public encryption keys for a process, without locking.
-func (s *Storage) setEncryptionKeysUnsafe(processID types.ProcessID, publicKey ecc.Point, privateKey *big.Int) error {
-	x, y := publicKey.Point()
-	eks := &EncryptionKeys{
-		X:          x,
-		Y:          y,
-		PrivateKey: privateKey,
+	// Get the process from storage
+	process, err := s.process(processID)
+	if err != nil {
+		return nil, nil, err
 	}
-	return s.setArtifact(encryptionKeyPrefix, processID.Bytes(), eks)
+	// Check if the process has encryption keys
+	if process.EncryptionKey == nil {
+		return nil, nil, ErrNotFound
+	}
+	// Return the encryption keys by public key
+	return s.encryptionKeysUnsafe(ProcessEncryptionKeyToPoint(process.EncryptionKey))
 }
 
-// setEncryptionKeysByPubKeyUnsafe stores the given encryption public and
-// private keys, without locking the storage and using the public key as the
-// key in storage.
-func (s *Storage) setEncryptionKeysByPubKeyUnsafe(publicKey ecc.Point, privateKey *big.Int) error {
+// GenerateProcessEncryptionKeys generates a new encryption key pair and stores
+// it in storage by using the public key as the key.
+func (s *Storage) GenerateProcessEncryptionKeys() (ecc.Point, *big.Int, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.generateEncryptionKeysUnsafe()
+}
+
+// setEncryptionKeysUnsafe stores the given encryption public and private keys,
+// without locking the storage and using the public key as the key in storage.
+func (s *Storage) setEncryptionKeysUnsafe(publicKey ecc.Point, privateKey *big.Int) error {
 	x, y := publicKey.Point()
 	eks := &EncryptionKeys{
 		X:          x,
@@ -66,69 +52,52 @@ func (s *Storage) setEncryptionKeysByPubKeyUnsafe(publicKey ecc.Point, privateKe
 	return s.setArtifact(encryptionKeyPrefix, publicKey.Marshal(), eks)
 }
 
-// setEncryptionPubKeyUnsafe stores only the encryption public key for a process, without locking.
-// If there's already a matching EncryptionKey (PubKey) in storage, it won't rewrite it.
-func (s *Storage) setEncryptionPubKeyUnsafe(processID types.ProcessID, ek *types.EncryptionKey) error {
-	publicKey, _, err := s.encryptionKeysUnsafe(processID)
-	if err == nil {
-		if types.EncryptionKeyFromPoint(publicKey).X.Equal(ek.X) &&
-			types.EncryptionKeyFromPoint(publicKey).Y.Equal(ek.Y) {
-			return nil
-		}
-		log.Warnf("stored encryption key for process %s mismatch, overwriting stored %+v with new %+v", processID.String(),
-			types.EncryptionKeyFromPoint(publicKey), ek)
+// setEncryptionPubKeyUnsafe stores the given encryption public key, without
+// locking the storage and using the public key as the key and nil private key
+// as the value in storage.
+func (s *Storage) setEncryptionPubKeyUnsafe(publicKey ecc.Point) error {
+	// Check if the encryption keys already exist
+	if _, _, err := s.encryptionKeysUnsafe(publicKey); err == nil {
+		return nil
 	}
-
-	eks := &EncryptionKeys{
-		X: ek.X.MathBigInt(),
-		Y: ek.Y.MathBigInt(),
-	}
-	return s.setArtifact(encryptionKeyPrefix, processID.Bytes(), eks)
+	// If not, create them but just with the public key
+	return s.setEncryptionKeysUnsafe(publicKey, nil)
 }
 
-// encryptionKeysUnsafe loads the encryption keys for a process without locking.
-func (s *Storage) encryptionKeysUnsafe(processID types.ProcessID) (ecc.Point, *big.Int, error) {
+// encryptionKeysUnsafe loads the encryption keys for the given public key,
+// without locking the storage.
+func (s *Storage) encryptionKeysUnsafe(publicKey ecc.Point) (ecc.Point, *big.Int, error) {
 	eks := new(EncryptionKeys)
-	if err := s.getArtifact(encryptionKeyPrefix, processID.Bytes(), eks); err != nil {
+	if err := s.getArtifact(encryptionKeyPrefix, publicKey.Marshal(), eks); err != nil {
 		return nil, nil, err
 	}
 	if eks.X == nil || eks.Y == nil {
 		return nil, nil, fmt.Errorf("not found or malformed encryption keys")
 	}
-
-	pubKey := curves.New(bjj.CurveType).SetPoint(eks.X, eks.Y)
-	return pubKey, eks.PrivateKey, nil
+	return eks.Point(), eks.PrivateKey, nil
 }
 
-// fetchOrGenerateEncryptionKeysUnsafe loads the encryption keys for a process.
-// If the keys do not exist, new ones are generated and persisted to storage.
-// It does not lock the storage, so it should be used with caution.
-func (s *Storage) fetchOrGenerateEncryptionKeysUnsafe(processID types.ProcessID) (ecc.Point, *big.Int, error) {
-	publicKey, privateKey, err := s.encryptionKeysUnsafe(processID)
-	if err != nil {
-		publicKey, privateKey, err = elgamal.GenerateKey(curves.New(bjj.CurveType))
-		if err != nil {
-			return nil, nil, fmt.Errorf("could not generate elgamal key: %v", err)
-		}
-		if err := s.setEncryptionKeysUnsafe(processID, publicKey, privateKey); err != nil {
-			return nil, nil, fmt.Errorf("could not store encryption keys: %v", err)
-		}
-	}
-	return publicKey, privateKey, nil
-}
-
-// generateEncryptionKeysByPubKeyUnsafe generates a new encryption key pair,
-// using Baby-Jubjub as the curve, and stores them in the storage. It does
-// not lock the storage, so it should be used with caution.
-// It returns the public and private keys, and an error if the keys could not
-// be generated or stored.
-func (s *Storage) generateEncryptionKeysByPubKeyUnsafe() (ecc.Point, *big.Int, error) {
-	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
+// generateEncryptionKeysUnsafe generates a new encryption key pair, using
+// Baby-Jubjub as the curve, and stores them in the storage. It does not lock
+// the storage, so it should be used with caution. It returns the public and
+// private keys, and an error if the keys could not be generated or stored.
+func (s *Storage) generateEncryptionKeysUnsafe() (ecc.Point, *big.Int, error) {
+	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(encKeyCurveType))
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not generate elgamal key: %v", err)
 	}
-	if err := s.setEncryptionKeysByPubKeyUnsafe(publicKey, privateKey); err != nil {
+	if err := s.setEncryptionKeysUnsafe(publicKey, privateKey); err != nil {
 		return nil, nil, fmt.Errorf("could not store encryption keys: %v", err)
 	}
 	return publicKey, privateKey, nil
+}
+
+// ProcessEncryptionKeyToPoint converts a process encryption key to an ecc.Point
+// using the Baby-Jubjub curve.
+func ProcessEncryptionKeyToPoint(pk *types.EncryptionKey) ecc.Point {
+	eks := &EncryptionKeys{
+		X: pk.X.MathBigInt(),
+		Y: pk.Y.MathBigInt(),
+	}
+	return eks.Point()
 }

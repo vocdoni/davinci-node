@@ -56,18 +56,12 @@ func (s *Storage) NewProcess(process *types.Process) error {
 
 	// If process already has an EncryptionKey, store it
 	if process.EncryptionKey != nil {
-		if err := s.setEncryptionPubKeyUnsafe(*process.ID, process.EncryptionKey); err != nil {
+		if err := s.setEncryptionPubKeyUnsafe(ProcessEncryptionKeyToPoint(process.EncryptionKey)); err != nil {
 			log.Warnw("failed to store encryption keys for process",
 				"processID", process.ID.String(), "error", err.Error())
 		}
-	} else { // otherwise fetch or generate encryption keys for the process
-		publicKey, _, err := s.fetchOrGenerateEncryptionKeysUnsafe(*process.ID)
-		if err != nil {
-			log.Warnw("failed to fetch or generate encryption keys for process",
-				"processID", process.ID.String(), "error", err.Error())
-		}
-		ek := types.EncryptionKeyFromPoint(publicKey)
-		process.EncryptionKey = &ek
+	} else {
+		return fmt.Errorf("invalid process: no encryption keys provided")
 	}
 
 	// Initialize the process state to store the process data
@@ -78,13 +72,10 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	); err != nil {
 		return fmt.Errorf("failed to initialize process state: %w", err)
 	}
-	// Get the initial state root as big int to store in the process
-	stateRoot, err := pState.RootAsBigInt()
-	if err != nil {
-		return fmt.Errorf("failed to get process state root: %w", err)
+	// Set the process state root with the provided state root
+	if err := pState.SetRootAsBigInt(process.StateRoot.MathBigInt()); err != nil {
+		return fmt.Errorf("failed to set process state root: %w", err)
 	}
-	process.StateRoot = new(types.BigInt).SetBigInt(stateRoot)
-
 	return s.setArtifact(processPrefix, process.ID.Bytes(), process)
 }
 

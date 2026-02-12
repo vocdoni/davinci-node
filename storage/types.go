@@ -15,6 +15,8 @@ import (
 
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	recursion "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -42,6 +44,11 @@ type EncryptionKeys struct {
 	X          *big.Int `json:"publicKeyX" cbor:"0,keyasint,omitempty"`
 	Y          *big.Int `json:"publicKeyY" cbor:"1,keyasint,omitempty"`
 	PrivateKey *big.Int `json:"-" cbor:"2,keyasint,omitempty"`
+}
+
+// Point returns the public key as a point on the elliptic curve.
+func (e *EncryptionKeys) Point() ecc.Point {
+	return curves.New(encKeyCurveType).SetPoint(e.X, e.Y)
 }
 
 // VerifiedBallot is the struct that contains the information of a ballot which
