@@ -166,7 +166,7 @@ func (cd *CensusDownloader) DownloadCensus(censusInfo *types.Census) (types.HexB
 		}
 	}
 	// Add the census to the queue to be downloaded
-	log.Infow("starting census download",
+	log.Infow("census added to downloader",
 		"root", censusInfo.CensusRoot.String(),
 		"uri", censusInfo.CensusURI,
 		"origin", censusInfo.CensusOrigin.String())

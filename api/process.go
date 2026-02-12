@@ -4,108 +4,22 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/big"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
-	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
 
-// newProcess creates a new voting process
-// POST /processes
-func (a *API) newProcess(w http.ResponseWriter, r *http.Request) {
-	p := &types.ProcessSetup{}
-	if err := json.NewDecoder(r.Body).Decode(p); err != nil {
-		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
-		return
-	}
-
-	// Unmarshal the process ID
-	if !p.ProcessID.IsValid() {
-		ErrMalformedProcessID.With("invalid process ID").Write(w)
-		return
-	}
-
-	// Validate the census origin
-	if !p.Census.CensusOrigin.Valid() {
-		ErrMalformedBody.Withf("invalid census origin: %d", p.Census.CensusOrigin).Write(w)
-		return
-	}
-
-	// Validate the process ID version
-	if p.ProcessID.Version() != a.processIDsVersion {
-		ErrInvalidContractVersion.Withf("%x", p.ProcessID.Version()).Write(w)
-		return
-	}
-
-	// Extract the address from the signature
-	signedMessage := fmt.Sprintf(types.NewProcessMessageToSign, p.ProcessID.String())
-	address, err := ethereum.AddrFromSignature([]byte(signedMessage), new(ethereum.ECDSASignature).SetBytes(p.Signature))
-	if err != nil {
-		ErrInvalidSignature.Withf("could not extract address from signature: %v", err).Write(w)
-		return
-	}
-
-	// Validate the ballot mode
-	if err := p.BallotMode.Validate(); err != nil {
-		ErrMalformedBody.Withf("invalid ballot mode: %v", err).Write(w)
-		return
-	}
-
-	// Fetch the elgamal key from storage
-	publicKey, _, err := a.storage.FetchOrGenerateEncryptionKeys(p.ProcessID)
-	if err != nil {
-		ErrGenericInternalServerError.Withf("could not fetch or generate encryption keys: %v", err).Write(w)
-		return
-	}
-
-	// Prepare inputs for the state ready for the state transition circuit:
-	// - the census root must be encoded according to the arbo format
-	root, err := state.CalculateInitialRoot(
-		p.ProcessID,
-		p.Census.CensusOrigin.BigInt().MathBigInt(),
-		p.BallotMode,
-		publicKey)
-	if err != nil {
-		ErrGenericInternalServerError.Withf("could not calculate state root: %v", err).Write(w)
-		return
-	}
-
-	// Create the process response
-	x, y := publicKey.Point()
-	pr := &types.ProcessSetupResponse{
-		ProcessID:        &p.ProcessID,
-		EncryptionPubKey: [2]*types.BigInt{(*types.BigInt)(x), (*types.BigInt)(y)},
-		StateRoot:        root.Bytes(),
-		BallotMode:       p.BallotMode,
-	}
-
-	// Write the response
-	log.Infow("new process setup query",
-		"address", address.String(),
-		"censusOrigin", p.Census.CensusOrigin.String(),
-		"censusRoot", p.Census.CensusRoot.String(),
-		"censusURI", p.Census.CensusURI,
-		"processId", p.ProcessID.String(),
-		"pubKeyX", pr.EncryptionPubKey[0].String(),
-		"pubKeyY", pr.EncryptionPubKey[1].String(),
-		"stateRoot", pr.StateRoot.String(),
-		"ballotMode", pr.BallotMode.String())
-	httpWriteJSON(w, pr)
-}
-
 // processEncryptionKeys creates a new encryption key
 // POST /processes/keys
 func (a *API) processEncryptionKeys(w http.ResponseWriter, r *http.Request) {
 	// Fetch or create the elgamal key from storage
-	publicKey, _, err := a.storage.GenerateEncryptionKeysByPubKey()
+	publicKey, _, err := a.storage.GenerateProcessEncryptionKeys()
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not fetch or generate encryption keys: %v", err).Write(w)
 		return
