@@ -748,13 +748,6 @@ func unpackSiblings(packed []byte) []*big.Int {
 	return siblings
 }
 
-// BigIntSiblings converts packed siblings bytes to a slice of big.Int siblings.
-// This is a public wrapper for unpackSiblings, provided for compatibility with
-// existing code that expects big.Int siblings.
-func BigIntSiblings(siblings []byte) ([]*big.Int, error) {
-	return unpackSiblings(siblings), nil
-}
-
 // Import imports a census from a JSON-encoded census dump read from an
 // io.Reader. It creates a new census tree, populates it with the data from the
 // dump, and creates a new CensusRef with the imported tree. It returns the
