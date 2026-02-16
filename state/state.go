@@ -6,16 +6,13 @@ import (
 	"slices"
 
 	"github.com/vocdoni/arbo"
-	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -133,42 +130,6 @@ func RootExists(db db.Database, processId types.ProcessID, root *big.Int) error 
 		return fmt.Errorf("could not find root in state: %v", err)
 	}
 	return nil
-}
-
-// CalculateInitialRoot returns the root of the tree that would result from
-// initializing a state with the passed parameters. It uses an ephemereal
-// tree, nothing is written down to storage.
-func CalculateInitialRoot(
-	processID types.ProcessID,
-	censusOrigin *big.Int,
-	ballotMode spec.BallotMode,
-	publicKey ecc.Point,
-) (*big.Int, error) {
-	// Initialize the state in a memDB, just to calculate stateRoot
-	st, err := New(memdb.New(), processID)
-	if err != nil {
-		return nil, fmt.Errorf("could not create state: %v", err)
-	}
-
-	defer func() {
-		if err := st.Close(); err != nil {
-			log.Warnw("failed to close state", "error", err)
-		}
-	}()
-
-	packedBallotMode, err := ballotMode.Pack()
-	if err != nil {
-		return nil, fmt.Errorf("could not pack ballot mode: %v", err)
-	}
-	// Initialize the state with the census root, ballot mode and the encryption key
-	if err := st.Initialize(
-		censusOrigin,
-		packedBallotMode,
-		circuits.EncryptionKeyFromECCPoint(publicKey)); err != nil {
-		return nil, fmt.Errorf("could not initialize state: %v", err)
-	}
-
-	return st.RootAsBigInt()
 }
 
 // Initialize creates a new State, initialized with the passed parameters.
