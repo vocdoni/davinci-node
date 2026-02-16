@@ -30,7 +30,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/testcontainers/testcontainers-go/modules/compose v0.35.0
-	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
+	github.com/vocdoni/arbo v0.0.0-20260216104828-6bf3dbaeb1af
 	github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427
 	github.com/vocdoni/davinci-contracts v0.0.36-0.20260211114851-cff1efe6cbe7
 	github.com/vocdoni/davinci-node/spec v0.0.0-00010101000000-000000000000
