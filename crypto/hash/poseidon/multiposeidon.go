@@ -7,6 +7,8 @@ import (
 	"math/big"
 
 	"github.com/iden3/go-iden3-crypto/poseidon"
+	"github.com/iden3/go-iden3-crypto/utils"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 // MultiPoseidon computes the Poseidon hash of a variable number of big.Int inputs.
@@ -22,7 +24,9 @@ func MultiPoseidon(inputs ...*big.Int) (*big.Int, error) {
 
 	// For 16 or fewer inputs, hash directly
 	if len(inputs) <= 16 {
-		return poseidon.Hash(inputs)
+		hash, err := poseidon.Hash(inputs)
+		log.Warnf("\n  poseidon.Hash(%+v) \n = %d = %x (%v)", inputs, hash, utils.SwapEndianness(hash.Bytes()), err)
+		return hash, err
 	}
 
 	// Pre-calculate number of chunks for memory efficiency
@@ -34,6 +38,7 @@ func MultiPoseidon(inputs ...*big.Int) (*big.Int, error) {
 		end := min(i+16, len(inputs))
 
 		hash, err := poseidon.Hash(inputs[i:end])
+		log.Warnf("\n  poseidon.Hash(%+v) \n = %d = %x (%v)", inputs[i:end], hash, utils.SwapEndianness(hash.Bytes()), err)
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +53,9 @@ func MultiPoseidon(inputs ...*big.Int) (*big.Int, error) {
 	// Multiple chunks - recursively hash chunk hashes if needed
 	// If we have more than 16 chunk hashes, recursively apply MultiPoseidon
 	if len(hashes) <= 16 {
-		return poseidon.Hash(hashes)
+		hash, err := poseidon.Hash(hashes)
+		log.Warnf("\n  poseidon.Hash(%+v) \n = %d = %x (%v)", hashes, hash, utils.SwapEndianness(hash.Bytes()), err)
+		return hash, err
 	}
 
 	// Recursively hash the chunk hashes
