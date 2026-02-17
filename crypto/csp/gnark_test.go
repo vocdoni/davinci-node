@@ -1,12 +1,17 @@
 package csp
 
 import (
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
+	"github.com/consensys/gnark/profile"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/test"
@@ -75,7 +80,7 @@ type cspProofCircuit struct {
 }
 
 func (c *cspProofCircuit) Define(api frontend.API) error {
-	api.AssertIsEqual(c.Proof.IsValid(api, types.CensusOriginCSPEdDSABabyJubJubV1.CurveID(), c.CensusRoot, c.ProcessID, c.Address, c.Weight), 1)
+	api.AssertIsEqual(c.Proof.IsValid(api, c.CensusRoot, c.ProcessID, c.Address, c.Weight), 1)
 	return nil
 }
 
@@ -111,4 +116,11 @@ func TestCSPProofCircuit(t *testing.T) {
 	assert.SolvingSucceeded(&cspProofCircuit{}, assignments,
 		test.WithCurves(params.StateTransitionCurve),
 		test.WithBackends(backend.GROTH16))
+
+	p := profile.Start()
+	now := time.Now()
+	_, _ = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &cspProofCircuit{})
+	fmt.Println("elapsed", time.Since(now))
+	p.Stop()
+	fmt.Println("constrains", p.NbConstraints())
 }

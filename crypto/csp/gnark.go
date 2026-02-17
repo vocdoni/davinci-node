@@ -1,6 +1,8 @@
 package csp
 
 import (
+	"fmt"
+
 	ecc_twedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
@@ -8,10 +10,11 @@ import (
 	"github.com/consensys/gnark/std/hash/mimc"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/signature/eddsa"
+	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/types"
-	emumimc7 "github.com/vocdoni/gnark-crypto-primitives/emulated/bn254/twistededwards/mimc7"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/mimc7"
+	emumimc7 "github.com/vocdoni/gnark-crypto-primitives/hash/emulated/bn254/mimc7"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/native/bn254/mimc7"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 )
 
@@ -48,13 +51,13 @@ func (proof *CSPProof) IsValidEmulated(
 		return 0
 	}
 	// initialize the mimc hash function
-	hashFn, err := mimc.NewMiMC(api)
+	hashFn, err := mimc.New(api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create mimc hash function", err)
 		return 0
 	}
 	// check if the signature is valid
-	validSignature, err := eddsa.IsValid(curve, proof.Signature, msg, proof.PublicKey, &hashFn)
+	validSignature, err := eddsa.IsValid(curve, proof.Signature, msg, proof.PublicKey, hashFn)
 	if err != nil {
 		circuits.FrontendError(api, "failed to verify signature", err)
 		return 0
@@ -64,7 +67,6 @@ func (proof *CSPProof) IsValidEmulated(
 
 func (proof *CSPProof) IsValid(
 	api frontend.API,
-	curveID ecc_twedwards.ID,
 	censusRoot, processID, address, weight frontend.Variable,
 ) frontend.Variable {
 	// check if the census root matches the expected one
@@ -76,19 +78,19 @@ func (proof *CSPProof) IsValid(
 	// recompute the message hash with the process ID and address
 	msg := signatureMessage(api, processID, address, weight)
 	// inititialize the twistededwards curve
-	curve, err := twistededwards.NewEdCurve(api, curveID)
+	curve, err := twistededwards.NewEdCurve(api, census.CSPCensusOriginCurveID())
 	if err != nil {
 		circuits.FrontendError(api, "failed to create twistededwards curve", err)
 		return 0
 	}
 	// initialize the mimc hash function
-	hashFn, err := mimc.NewMiMC(api)
+	hashFn, err := mimc.New(api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create mimc hash function", err)
 		return 0
 	}
 	// check if the signature is valid
-	validSignature, err := eddsa.IsValid(curve, proof.Signature, msg, proof.PublicKey, &hashFn)
+	validSignature, err := eddsa.IsValid(curve, proof.Signature, msg, proof.PublicKey, hashFn)
 	if err != nil {
 		circuits.FrontendError(api, "failed to verify signature", err)
 		return 0
@@ -109,28 +111,30 @@ func (proof *CSPProof) isEmulatedPubKeyValid(
 		return 0, err
 	}
 
-	pubKeyHasher, err := emumimc7.NewMiMC(api)
+	pubKeyHasher, err := emumimc7.New(api)
 	if err != nil {
 		return 0, err
 	}
-	if err := pubKeyHasher.Write(*emulatedPubKeyX, *emulatedPubKeyY); err != nil {
-		return 0, err
+	pubKeyHasher.Write(*emulatedPubKeyX, *emulatedPubKeyY)
+	if !pubKeyHasher.WriteSucceeded() {
+		return 0, fmt.Errorf("error writing hash inputs")
 	}
-	return pubKeyHasher.AssertSumIsEqualFlag(censusRoot), nil
+	return pubKeyHasher.SumIsEqual(censusRoot), nil
 }
 
 func (proof *CSPProof) isPubKeyValid(
 	api frontend.API,
 	censusRoot frontend.Variable,
 ) (frontend.Variable, error) {
-	pubKeyHasher, err := mimc7.NewMiMC(api)
+	pubKeyHasher, err := mimc7.New(api)
 	if err != nil {
 		return 0, err
 	}
-	if err := pubKeyHasher.Write(proof.PublicKey.A.X, proof.PublicKey.A.Y); err != nil {
-		return 0, err
+	pubKeyHasher.Write(proof.PublicKey.A.X, proof.PublicKey.A.Y)
+	if !pubKeyHasher.WriteSucceeded() {
+		return 0, fmt.Errorf("error writing hash inputs")
 	}
-	return pubKeyHasher.AssertSumIsEqualFlag(censusRoot), nil
+	return pubKeyHasher.SumIsEqual(censusRoot), nil
 }
 
 // emulatedSignatureMessage computes the message hash for the signature. It
@@ -139,13 +143,14 @@ func (proof *CSPProof) isPubKeyValid(
 // address and then packs the result into a frontend variable of the circuit
 // curve.
 func emulatedSignatureMessage(api frontend.API, processID, address, weight emulated.Element[sw_bn254.ScalarField]) frontend.Variable {
-	msgHasher, err := emumimc7.NewMiMC(api)
+	msgHasher, err := emumimc7.New(api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create mimc7 hash function for message", err)
 		return 0
 	}
-	if err := msgHasher.Write(processID, address, weight); err != nil {
-		circuits.FrontendError(api, "failed to write process ID and address to message hasher", err)
+	msgHasher.Write(processID, address, weight)
+	if !msgHasher.WriteSucceeded() {
+		circuits.FrontendError(api, "failed to write process ID and address to message hasher", nil)
 		return 0
 	}
 	msg, err := utils.PackScalarToVar(api, msgHasher.Sum())
@@ -157,13 +162,14 @@ func emulatedSignatureMessage(api frontend.API, processID, address, weight emula
 }
 
 func signatureMessage(api frontend.API, processID, address, weight frontend.Variable) frontend.Variable {
-	msgHasher, err := mimc7.NewMiMC(api)
+	msgHasher, err := mimc7.New(api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create mimc7 hash function for message", err)
 		return 0
 	}
-	if err := msgHasher.Write(processID, address, weight); err != nil {
-		circuits.FrontendError(api, "failed to write process ID and address to message hasher", err)
+	msgHasher.Write(processID, address, weight)
+	if !msgHasher.WriteSucceeded() {
+		circuits.FrontendError(api, "failed to write process ID and address to message hasher", nil)
 		return 0
 	}
 	return msgHasher.Sum()
