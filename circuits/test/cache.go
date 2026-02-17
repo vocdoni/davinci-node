@@ -490,10 +490,10 @@ func (dg *DeterministicGenerator) BigInt(nValidVoters int) *big.Int {
 // GenerateDeterministicSeed creates a deterministic seed based on ProcessID and index
 // This ensures the same ProcessID + index always generates the same seed
 func GenerateDeterministicSeed(processID types.ProcessID, index int) int64 {
-	// PID (32 bytes) + index (8 bytes) -> hash -> take 8 bytes as seed
-	var buf [40]byte
-	copy(buf[0:32], processID[:])
-	binary.BigEndian.PutUint64(buf[32:40], uint64(index))
+	// PID (ProcessIDLen bytes) + index (8 bytes) -> hash -> take 8 bytes as seed
+	var buf [types.ProcessIDLen + 8]byte
+	copy(buf[0:types.ProcessIDLen], processID[:])
+	binary.BigEndian.PutUint64(buf[types.ProcessIDLen:types.ProcessIDLen+8], uint64(index))
 
 	sum := crypto.Keccak256(buf[:]) // 32 bytes
 
