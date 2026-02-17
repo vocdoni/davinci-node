@@ -15,23 +15,25 @@ import (
 // ProcessID is the type to identify a voting process. It is composed of:
 //   - Address (20 bytes)
 //   - Version keccak(chainID + contractAddress) (4 bytes)
-//   - Nonce (8 bytes, big-endian)
+//   - Nonce (7 bytes, big-endian)
 type ProcessID [ProcessIDLen]byte
 
 // ProcessIDLen is the length in bytes of a ProcessID
-const ProcessIDLen = 32
+const ProcessIDLen = 31
 
 // NewProcessID builds a ProcessID using the passed params.
 func NewProcessID(addr common.Address, version [4]byte, nonce uint64) ProcessID {
 	var processID ProcessID
 	copy(processID[0:20], addr.Bytes())
 	copy(processID[20:24], version[:])
-	binary.BigEndian.PutUint64(processID[24:32], nonce)
+	var nonceBytes [8]byte
+	binary.BigEndian.PutUint64(nonceBytes[:], nonce)
+	copy(processID[24:31], nonceBytes[1:])
 	return processID
 }
 
 // HexStringToProcessID parses a ProcessID from a hex string.
-// It accepts optional "0x" prefix and requires exactly 32 bytes (64 hex chars).
+// It accepts optional "0x" prefix and requires exactly 31 bytes (62 hex chars).
 func HexStringToProcessID(s string) (ProcessID, error) {
 	s = util.TrimHex(s) // strips 0x if present
 
@@ -70,7 +72,11 @@ func BigIntToProcessID(bi *big.Int) (ProcessID, error) {
 
 func (p ProcessID) Address() common.Address { return common.BytesToAddress(p[0:20]) }
 func (p ProcessID) Version() [4]byte        { var v [4]byte; copy(v[:], p[20:24]); return v }
-func (p ProcessID) Nonce() uint64           { return binary.BigEndian.Uint64(p[24:32]) }
+func (p ProcessID) Nonce() uint64 {
+	var nonceBytes [8]byte
+	copy(nonceBytes[1:], p[24:31])
+	return binary.BigEndian.Uint64(nonceBytes[:])
+}
 
 // IsValid checks if the ProcessID is valid.
 // A valid ProcessID must have a non-zero Address and Version

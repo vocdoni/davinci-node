@@ -33,7 +33,7 @@ type ContractsService interface {
 	MonitorProcessChanges(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
 	CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error)
 	Process(processID types.ProcessID) (*types.Process, error)
-	RegisterKnownProcess(processID string)
+	RegisterKnownProcess(processID types.ProcessID)
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
@@ -115,7 +115,7 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 
 	// Register each process ID in the contracts' knownProcesses map
 	for _, processID := range processIDs {
-		pm.contracts.RegisterKnownProcess(processID.String())
+		pm.contracts.RegisterKnownProcess(processID)
 	}
 
 	log.Infow("initialized known processes from storage", "count", len(processIDs))

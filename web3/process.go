@@ -366,16 +366,15 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 				c.lastWatchProcessCreationBlock = end
 				c.watchBlockMutex.Unlock()
 				for iter.Next() {
-					processID := fmt.Sprintf("%x", iter.Event.ProcessId)
 					// Thread-safe check and update of knownProcesses map
 					c.knownProcessesMutex.RLock()
-					_, exists := c.knownProcesses[processID]
+					_, exists := c.knownProcesses[iter.Event.ProcessId]
 					c.knownProcessesMutex.RUnlock()
 					if exists {
 						continue
 					}
 					c.knownProcessesMutex.Lock()
-					c.knownProcesses[processID] = struct{}{}
+					c.knownProcesses[iter.Event.ProcessId] = struct{}{}
 					c.knownProcessesMutex.Unlock()
 					process, err := c.Process(iter.Event.ProcessId)
 					if err != nil {
