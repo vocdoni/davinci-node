@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -100,7 +99,7 @@ type Contracts struct {
 	currentBlockLastUpdate time.Time
 	currentBlockMutex      sync.Mutex
 
-	knownProcesses                map[string]struct{}
+	knownProcesses                map[types.ProcessID]struct{}
 	knownProcessesMutex           sync.RWMutex
 	lastWatchProcessCreationBlock uint64
 	lastWatchProcessChangesBlock  uint64
@@ -174,7 +173,7 @@ func New(web3rpcs []string, web3cApi string, gasMultiplier float64) (*Contracts,
 		cli:                           cli,
 		Web3ConsensusAPIEndpoint:      web3cApi,
 		GasMultiplier:                 gasMultiplier,
-		knownProcesses:                make(map[string]struct{}),
+		knownProcesses:                make(map[types.ProcessID]struct{}),
 		knownOrganizations:            make(map[string]struct{}),
 		lastWatchProcessCreationBlock: uint64(startBlock),
 		lastWatchProcessChangesBlock:  uint64(startBlock),
@@ -676,24 +675,20 @@ func (c *Contracts) OrganizationRegistryAddress() (string, error) {
 // RegisterKnownProcess adds a process ID to the knownProcesses map.
 // This is used during initialization to register processes that were
 // created before the monitor started, ensuring their events are not filtered out.
-func (c *Contracts) RegisterKnownProcess(processID string) {
+func (c *Contracts) RegisterKnownProcess(processID types.ProcessID) {
 	c.knownProcessesMutex.Lock()
 	defer c.knownProcessesMutex.Unlock()
 	c.knownProcesses[processID] = struct{}{}
 }
 
-// knownPIDs returns a slice of known process IDs as [32]byte arrays, ready to
+// knownPIDs returns a slice of known process IDs as [types.ProcessIDLen]byte arrays, ready to
 // be used as filter topics.
-func (c *Contracts) knownPIDs() [][32]byte {
+func (c *Contracts) knownPIDs() [][types.ProcessIDLen]byte {
 	c.knownProcessesMutex.RLock()
 	defer c.knownProcessesMutex.RUnlock()
-	pids := make([][32]byte, 0, len(c.knownProcesses))
-	for pidStr := range c.knownProcesses {
-		if pidBytes, err := hex.DecodeString(pidStr); err == nil {
-			var pid [32]byte
-			copy(pid[:], pidBytes)
-			pids = append(pids, pid)
-		}
+	pids := make([][types.ProcessIDLen]byte, 0, len(c.knownProcesses))
+	for processID := range c.knownProcesses {
+		pids = append(pids, processID)
 	}
 	return pids
 }

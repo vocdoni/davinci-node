@@ -104,7 +104,7 @@ func (m *MockContracts) Process(processID types.ProcessID) (*types.Process, erro
 	return nil, fmt.Errorf("process not found")
 }
 
-func (m *MockContracts) RegisterKnownProcess(processID string) {
+func (m *MockContracts) RegisterKnownProcess(processID types.ProcessID) {
 	// No-op for mock
 }
 
