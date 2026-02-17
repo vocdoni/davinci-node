@@ -810,10 +810,10 @@ github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427 h1:agxi6v
 github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427/go.mod h1:8kDd6AYVCW9HKBng4O0bkNHgameysPWztt502FcQL1c=
 github.com/vocdoni/davinci-contracts v0.0.36-0.20260220075931-af94d8ee8026 h1:Graxoh7f40QAwSOs5OoZ7pedYTKMi7uUxq76ehyKCNc=
 github.com/vocdoni/davinci-contracts v0.0.36-0.20260220075931-af94d8ee8026/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
-github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260115102516-64ce9c3fd55d h1:g/v2DQK3u62nEspG3htAksWof4hGpiPECjwWyBnIkGM=
-github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260115102516-64ce9c3fd55d/go.mod h1:vbpZOw6IYuRzO1gdpuW2+Ppnq/v9cscWGcdWiZ2rWi8=
-github.com/vocdoni/lean-imt-go v0.0.0-20260126110424-0b1c7ec41924 h1:RxK5uDIhXuC0XsaW6FxHIqctIO8wCG5sz4V7gJUhKcI=
-github.com/vocdoni/lean-imt-go v0.0.0-20260126110424-0b1c7ec41924/go.mod h1:PAMhuVa6EhWlHxUjakg9MLY82mX0apJUNbZQyUFMOW4=
+github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260216160026-8dfbbf829faf h1:jANqGPdrVlUT77QERCgbaOB8yz7OUUQ85iIWjw7J0yM=
+github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260216160026-8dfbbf829faf/go.mod h1:vbpZOw6IYuRzO1gdpuW2+Ppnq/v9cscWGcdWiZ2rWi8=
+github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e h1:y1NrunNzanqBl2Msz4H8UTS7BzoijpdkwWhtXQu4Ji0=
+github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e/go.mod h1:vNrjyvkA9CJ+8soChyCgS8CDCZcxmnzwNSX9Zo220v4=
 github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69 h1:7EEC/z+kkStPQmDHI8O5r7W/QbXxs2Cu2s0D17AQfUs=
 github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69/go.mod h1:ijYD7K9FeUALuNLRVLkMl5aa3sHg69eN3z3SMQPB/TU=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=

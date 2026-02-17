@@ -9,7 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
 	"github.com/vocdoni/davinci-node/types"
-	gnarkposeidon "github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
+	gnarkposeidon "github.com/vocdoni/gnark-crypto-primitives/hash/native/bn254/poseidon"
 )
 
 // BlobEvalData holds the evaluation data for a blob.

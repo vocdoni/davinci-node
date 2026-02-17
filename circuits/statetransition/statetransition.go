@@ -15,7 +15,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/native/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	imt "github.com/vocdoni/lean-imt-go/circuit"
 )
@@ -481,12 +481,11 @@ func (c StateTransitionCircuit) VerifyMerkleCensusProofs(api frontend.API, mask 
 // result is only asserted if the census origin is CSP and the vote is real.
 func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API, mask []frontend.Variable) {
 	isCSPCensus := census.IsCSPCensusOrigin(api, c.Process.CensusOrigin)
-	curveID := census.CSPCensusOriginCurveID()
 	for i := range params.VotesPerBatch {
 		vote := c.Votes[i]
 		cspProof := c.CensusProofs.CSPProofs[i]
 		// verify the CSP proof
-		isValidProof := cspProof.IsValid(api, curveID, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
+		isValidProof := cspProof.IsValid(api, c.CensusRoot, c.Process.ID, vote.Address, vote.VoteWeight)
 		// the proof should be valid only if it's a real proof and the census origin is CSP
 		shouldBeValid := api.And(mask[i], isCSPCensus)
 		// assert the validity of the proof only if it should be valid, using
