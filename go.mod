@@ -19,7 +19,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/holiman/uint256 v1.3.2
-	github.com/iden3/go-iden3-crypto v0.0.17
+	github.com/iden3/go-iden3-crypto v0.0.18-0.20241128121142-625bf563ffc5
 	github.com/iden3/go-rapidsnark/prover v0.0.12
 	github.com/iden3/go-rapidsnark/witness v0.0.6
 	github.com/pressly/goose/v3 v3.26.0
@@ -31,7 +31,7 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20250904220709-07ccfd3090b5
 	github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427
 	github.com/vocdoni/davinci-contracts v0.0.36-0.20260203150051-1cf18a3330a0
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260216160026-8dfbbf829faf
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260218072319-01482f6ccc38
 	github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e
 	github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69
 	go.mongodb.org/mongo-driver v1.17.7
@@ -162,6 +162,7 @@ require (
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
 	github.com/huandu/go-clone v1.6.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
+	github.com/iden3/go-iden3-crypto/v2 v2.0.0 // indirect
 	github.com/iden3/go-rapidsnark/types v0.0.3 // indirect
 	github.com/iden3/wasmer-go v0.0.1 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect

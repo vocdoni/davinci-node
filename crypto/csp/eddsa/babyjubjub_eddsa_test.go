@@ -17,13 +17,10 @@ func TestGenerateVerifyProof(t *testing.T) {
 	userAddress := testutil.RandomAddress()
 	userWeight := types.NewInt(testutil.Weight)
 
-	csp, err := CSP(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID())
+	csp, err := New(DefaultHashFn)
 	c.Assert(err, qt.IsNil)
 
 	t.Run("invalid inputs", func(t *testing.T) {
-		_, err := new(EdDSA).GenerateProof(processID, userAddress, userWeight)
-		c.Assert(err, qt.IsNotNil)
-
 		_, err = csp.GenerateProof(types.ProcessID{}, userAddress, userWeight)
 		c.Assert(err, qt.IsNotNil)
 
@@ -78,11 +75,11 @@ func TestCensusRootLengthAndValue(t *testing.T) {
 	c := qt.New(t)
 
 	for range 1000 {
-		csp, err := CSP(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID())
+		csp, err := New(DefaultHashFn)
 		c.Assert(err, qt.IsNil)
 		root := csp.CensusRoot().Root
 		c.Assert(len(root), qt.Equals, types.CensusRootLength)
-		rawRoot, err := pubKeyPointToCensusRoot(csp.curve, csp.signer.Public())
+		rawRoot, err := pubKeyPointToCensusRoot(csp.privKey.Public())
 		c.Assert(err, qt.IsNil)
 		c.Assert(rawRoot.BigInt().String(), qt.Equals, root.BigInt().String())
 	}
