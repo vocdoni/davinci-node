@@ -447,6 +447,10 @@ github.com/huin/goupnp v1.3.0/go.mod h1:gnGPsThkYa7bFi/KWmEysQRf48l2dvR5bxr2OFck
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/iden3/go-iden3-crypto v0.0.17 h1:NdkceRLJo/pI4UpcjVah4lN/a3yzxRUGXqxbWcYh9mY=
 github.com/iden3/go-iden3-crypto v0.0.17/go.mod h1:dLpM4vEPJ3nDHzhWFXDjzkn1qHoBeOT/3UEhXsEsP3E=
+github.com/iden3/go-iden3-crypto v0.0.18-0.20241128121142-625bf563ffc5 h1:eK9iwg2bd2F6Hpe2gx+UCbu2vlAuzJB5IVlTctWAHxE=
+github.com/iden3/go-iden3-crypto v0.0.18-0.20241128121142-625bf563ffc5/go.mod h1:dLpM4vEPJ3nDHzhWFXDjzkn1qHoBeOT/3UEhXsEsP3E=
+github.com/iden3/go-iden3-crypto/v2 v2.0.0 h1:MpP+NlT1l5g9T9Y1m486eWnM1cojqa9K0qxd+kv3E/M=
+github.com/iden3/go-iden3-crypto/v2 v2.0.0/go.mod h1:9C3wVqOVNHd00rNZTR1tXd9pUwGTPyY7beJGmmHxUCc=
 github.com/iden3/go-rapidsnark/prover v0.0.12 h1:IOqZrK+0J91zU7goB74qAzdwPg1ZRpZvsGjgpz4c+MQ=
 github.com/iden3/go-rapidsnark/prover v0.0.12/go.mod h1:mUNLeDXYOW2igiPuhHZHD7kzSp/GjHSWND03aYyECvQ=
 github.com/iden3/go-rapidsnark/types v0.0.3 h1:f0s1Qdut1qHe1O67+m+xUVRBPwSXnq5j0xSrBi0jqM4=
@@ -812,6 +816,8 @@ github.com/vocdoni/davinci-contracts v0.0.36-0.20260220075931-af94d8ee8026 h1:Gr
 github.com/vocdoni/davinci-contracts v0.0.36-0.20260220075931-af94d8ee8026/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260216160026-8dfbbf829faf h1:jANqGPdrVlUT77QERCgbaOB8yz7OUUQ85iIWjw7J0yM=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260216160026-8dfbbf829faf/go.mod h1:vbpZOw6IYuRzO1gdpuW2+Ppnq/v9cscWGcdWiZ2rWi8=
+github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260218072319-01482f6ccc38 h1:GcmtjOe1mLMq9SnyhVzDpr909c5HjOJB1rhTZdZPHP4=
+github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260218072319-01482f6ccc38/go.mod h1:kmd5T6ucuWbT9rFC4ACxXztHBq8WEt1uaYoTm8ziLyU=
 github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e h1:y1NrunNzanqBl2Msz4H8UTS7BzoijpdkwWhtXQu4Ji0=
 github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e/go.mod h1:vNrjyvkA9CJ+8soChyCgS8CDCZcxmnzwNSX9Zo220v4=
 github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69 h1:7EEC/z+kkStPQmDHI8O5r7W/QbXxs2Cu2s0D17AQfUs=

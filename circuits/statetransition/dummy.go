@@ -5,8 +5,8 @@ import (
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
-	"github.com/consensys/gnark/std/signature/eddsa"
 	"github.com/vocdoni/davinci-node/crypto/csp"
+	"github.com/vocdoni/gnark-crypto-primitives/ecc/bn254/eddsa"
 	imt "github.com/vocdoni/lean-imt-go/circuit"
 )
 
