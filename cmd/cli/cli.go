@@ -54,7 +54,6 @@ func (s *CLIServices) Init(
 	network string,
 	rpcs []string,
 	consensusAPI string,
-	organizationRegistryAddress string,
 	processRegistryAddress string,
 	stateTransitionZKVerifierAddress string,
 	resultsZKVerifierAddress string,
@@ -64,7 +63,6 @@ func (s *CLIServices) Init(
 		network,
 		rpcs,
 		consensusAPI,
-		organizationRegistryAddress,
 		processRegistryAddress,
 		stateTransitionZKVerifierAddress,
 		resultsZKVerifierAddress,
@@ -80,7 +78,6 @@ func (s *CLIServices) initContracts(
 	network string,
 	rpcs []string,
 	consensusAPI string,
-	organizationRegistryAddress string,
 	processRegistryAddress string,
 	stateTransitionZKVerifierAddress string,
 	resultsZKVerifierAddress string,
@@ -88,7 +85,6 @@ func (s *CLIServices) initContracts(
 ) error {
 	log.Infow("using web3 configuration",
 		"network", network,
-		"organizationRegistryAddress", organizationRegistryAddress,
 		"processRegistryAddress", processRegistryAddress,
 		"stateTransitionZKVerifierAddress", stateTransitionZKVerifierAddress,
 		"resultsZKVerifierAddress", resultsZKVerifierAddress,
@@ -106,10 +102,6 @@ func (s *CLIServices) initContracts(
 	s.network = network
 	// Set contract addresses
 	s.addresses = s.contracts.ContractsAddresses
-	if organizationRegistryAddress != "" {
-		s.addresses.OrganizationRegistry = common.HexToAddress(organizationRegistryAddress)
-	}
-
 	if processRegistryAddress != "" {
 		s.addresses.ProcessRegistry = common.HexToAddress(processRegistryAddress)
 	}
@@ -178,31 +170,6 @@ func (s *CLIServices) initSequencerCLI() error {
 	log.Info("connected to sequencer")
 
 	return nil
-}
-
-// CreateAccountOrganization creates an organization using the account address.
-// If the organization already exists, it returns the existing organization
-// address. If some error occurs during the creation, it will be returned.
-func (s *CLIServices) CreateAccountOrganization() (common.Address, error) {
-	orgAddr := s.contracts.AccountAddress()
-	if _, err := s.contracts.Organization(orgAddr); err == nil {
-		return orgAddr, nil // Organization already exists
-	}
-	// Create a new organization in the contracts
-	txHash, err := s.contracts.CreateOrganization(orgAddr, &types.OrganizationInfo{
-		Name:        fmt.Sprintf("Vocdoni test %x", orgAddr[:4]),
-		MetadataURI: "https://vocdoni.io",
-	})
-	if err != nil {
-		return common.Address{}, err
-	}
-
-	// Wait for the transaction to be mined
-	if err := s.contracts.WaitTxByHash(txHash, time.Second*30); err != nil {
-		return common.Address{}, err
-	}
-
-	return orgAddr, nil
 }
 
 // CreateCensus creates a census with the given parameters and returns the
@@ -277,7 +244,7 @@ func (s *CLIServices) CreateProcess(
 
 	newProcess := &types.Process{
 		Status:         0,
-		OrganizationId: s.contracts.AccountAddress(),
+		OrganizationID: s.contracts.AccountAddress(),
 		EncryptionKey:  encryptionKeys,
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       time.Hour,

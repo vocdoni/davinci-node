@@ -48,13 +48,12 @@ type Config struct {
 
 // Web3Config holds Ethereum-related configuration
 type Web3Config struct {
-	PrivKey           string   `mapstructure:"privkey"`       // Private key for the Ethereum account
-	Network           string   `mapstructure:"network"`       // Network shortname
-	Rpc               []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
-	Capi              string   `mapstructure:"capi"`          // Consensus API URL
-	ProcessAddr       string   `mapstructure:"process"`       // Custom contract addresses, overrides network defaults
-	OrganizationsAddr string   `mapstructure:"orgs"`          // Custom contract addresses, overrides network defaults
-	GasMultiplier     float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
+	PrivKey       string   `mapstructure:"privkey"`       // Private key for the Ethereum account
+	Network       string   `mapstructure:"network"`       // Network shortname
+	Rpc           []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
+	Capi          string   `mapstructure:"capi"`          // Consensus API URL
+	ProcessAddr   string   `mapstructure:"process"`       // Custom contract addresses, overrides network defaults
+	GasMultiplier float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
 }
 
 // APIConfig holds the API-specific configuration
@@ -109,7 +108,6 @@ func loadConfig() (*Config, error) {
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
 	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")
 	flag.String("web3.process", "", "custom process registry contract address (overrides network default)")
-	flag.String("web3.orgs", "", "custom organization registry contract address (overrides network default)")
 	flag.String("web3.results", "", "custom results registry contract address (overrides network default)")
 	flag.StringP("log.level", "l", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
 	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")

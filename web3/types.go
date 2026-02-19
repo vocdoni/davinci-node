@@ -93,7 +93,7 @@ func contractProcess2Process(p npbindings.DAVINCITypesProcess) (*types.Process, 
 
 	return &types.Process{
 		Status:         types.ProcessStatus(p.Status),
-		OrganizationId: p.OrganizationId,
+		OrganizationID: p.OrganizationId,
 		EncryptionKey: &types.EncryptionKey{
 			X: (*types.BigInt)(p.EncryptionKey.X),
 			Y: (*types.BigInt)(p.EncryptionKey.Y),
@@ -116,7 +116,7 @@ func process2ContractProcess(p *types.Process) npbindings.DAVINCITypesProcess {
 	var prp npbindings.DAVINCITypesProcess
 
 	prp.Status = uint8(p.Status)
-	prp.OrganizationId = p.OrganizationId
+	prp.OrganizationId = p.OrganizationID
 	prp.EncryptionKey = npbindings.DAVINCITypesEncryptionKey{
 		X: p.EncryptionKey.X.MathBigInt(),
 		Y: p.EncryptionKey.Y.MathBigInt(),

@@ -33,7 +33,6 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 		WASMhelperExecJsHash: config.BallotProofWasmExecJsHash,
 		Contracts: ContractAddresses{
 			ProcessRegistry:           contracts[npbindings.ProcessRegistryContract],
-			OrganizationRegistry:      contracts[npbindings.OrganizationRegistryContract],
 			StateTransitionZKVerifier: contracts[npbindings.StateTransitionVerifierGroth16Contract],
 			ResultsZKVerifier:         contracts[npbindings.ResultsVerifierGroth16Contract],
 		},

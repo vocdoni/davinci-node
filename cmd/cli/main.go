@@ -27,7 +27,6 @@ var (
 	privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
 	web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
 	consensusAPI                     = flag.String("consensusAPI", defaultCAPI, "web3 consensus API http endpoint")
-	organizationRegistryAddress      = flag.String("organizationRegistryAddress", "", "organization registry smart contract address")
 	processRegistryAddress           = flag.String("processRegistryAddress", "", "process registry smart contract address")
 	stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", "", "state transition zk verifier smart contract address")
 	resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", "", " results zk verifier smart contract address")
@@ -58,7 +57,6 @@ func main() {
 		*web3Network,
 		*web3rpcs,
 		*consensusAPI,
-		*organizationRegistryAddress,
 		*processRegistryAddress,
 		*stateTransitionZKVerifierAddress,
 		*resultsZKVerifierAddress,
@@ -69,15 +67,6 @@ func main() {
 
 	switch *action {
 	case "create":
-		// Create a new organization
-		organizationAddr, err := cliSrv.CreateAccountOrganization()
-		if err != nil {
-			log.Errorw(err, "failed to create organization")
-			log.Warn("check if the organization is already created or the account has enough funds")
-			return
-		}
-		log.Infow("organization ready", "address", organizationAddr.Hex())
-
 		censusOrigin := types.CensusOriginFromString(*cOrigin)
 		if !censusOrigin.Valid() {
 			log.Errorw(fmt.Errorf("invalid census origin: %s", *cOrigin), "failed to create census")
@@ -85,6 +74,7 @@ func main() {
 		}
 
 		var (
+			err                   error
 			censusContractAddress common.Address
 			censusRoot            types.HexBytes
 			censusURI             string

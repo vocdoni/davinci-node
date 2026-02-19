@@ -100,7 +100,6 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
   "ballotProofWasmHelperExecJsHash": "hexString",
   "contracts": {
     "process": "address",
-    "organization": "address",
     "stateTransitionVerifier": "address",
     "resultsVerifier": "address",
   },

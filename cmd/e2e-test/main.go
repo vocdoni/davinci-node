@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	flag "github.com/spf13/pflag"
 	"github.com/vocdoni/arbo/memdb"
@@ -58,7 +57,6 @@ func main() {
 		privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
 		web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
 		consensusAPI                     = flag.String("consensusAPI", defaultCAPI, "web3 consensus API http endpoint")
-		organizationRegistryAddress      = flag.String("organizationRegistryAddress", "", "organization registry smart contract address")
 		processRegistryAddress           = flag.String("processRegistryAddress", "", "process registry smart contract address")
 		stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", "", "state transition zk verifier smart contract address")
 		resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", "", " results zk verifier smart contract address")
@@ -94,7 +92,6 @@ func main() {
 
 	log.Infow("using web3 configuration",
 		"network", *web3Network,
-		"organizationRegistryAddress", *organizationRegistryAddress,
 		"processRegistryAddress", *processRegistryAddress,
 		"stateTransitionZKVerifierAddress", *stateTransitionZKVerifierAddress,
 		"resultsZKVerifierAddress", *resultsZKVerifierAddress,
@@ -106,13 +103,6 @@ func main() {
 	contracts, err := web3.New(*web3rpcs, *consensusAPI, 1.0)
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	if organizationRegistryAddress == nil || *organizationRegistryAddress == "" {
-		*organizationRegistryAddress, err = contracts.OrganizationRegistryAddress()
-		if err != nil {
-			log.Fatal(err)
-		}
 	}
 
 	if processRegistryAddress == nil || *processRegistryAddress == "" {
@@ -189,15 +179,6 @@ func main() {
 		}
 	}
 	log.Info("connected to sequencer")
-
-	// Create a new organization
-	organizationAddr, err := createOrganization(contracts)
-	if err != nil {
-		log.Errorw(err, "failed to create organization")
-		log.Warn("check if the organization is already created or the account has enough funds")
-		return
-	}
-	log.Infow("organization ready", "address", organizationAddr.Hex())
 
 	// Create a new census with numBallot participants
 	censusRoot, censusURI, signers, err := createCensus(testCtx, *votersCount, userWeight, *census3URL)
@@ -338,10 +319,9 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 	}
 	c := npbindings.GetAllContractAddresses(network)
 	web3Conf := config.DavinciWeb3Config{
-		ProcessRegistrySmartContract:      c[npbindings.ProcessRegistryContract],
-		OrganizationRegistrySmartContract: c[npbindings.OrganizationRegistryContract],
-		ResultsZKVerifier:                 c[npbindings.ResultsVerifierGroth16Contract],
-		StateTransitionZKVerifier:         c[npbindings.StateTransitionVerifierGroth16Contract],
+		ProcessRegistrySmartContract: c[npbindings.ProcessRegistryContract],
+		ResultsZKVerifier:            c[npbindings.ResultsVerifierGroth16Contract],
+		StateTransitionZKVerifier:    c[npbindings.StateTransitionVerifierGroth16Contract],
 	}
 	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, network, web3Conf, false)
 	if err := s.api.Start(ctx); err != nil {
@@ -366,28 +346,6 @@ func (s *localService) Stop() {
 	if s.storage != nil {
 		s.storage.Close()
 	}
-}
-
-func createOrganization(contracts *web3.Contracts) (common.Address, error) {
-	orgAddr := contracts.AccountAddress()
-	if _, err := contracts.Organization(orgAddr); err == nil {
-		return orgAddr, nil // Organization already exists
-	}
-	// Create a new organization in the contracts
-	txHash, err := contracts.CreateOrganization(orgAddr, &types.OrganizationInfo{
-		Name:        fmt.Sprintf("Vocdoni test %x", orgAddr[:4]),
-		MetadataURI: "https://vocdoni.io",
-	})
-	if err != nil {
-		return common.Address{}, err
-	}
-
-	// Wait for the transaction to be mined
-	if err := contracts.WaitTxByHash(txHash, time.Second*30); err != nil {
-		return common.Address{}, err
-	}
-
-	return orgAddr, nil
 }
 
 func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime time.Duration, votes []api.Vote) error {
@@ -488,7 +446,7 @@ func createProcess(
 
 	newProcess := &types.Process{
 		Status:         0,
-		OrganizationId: contracts.AccountAddress(),
+		OrganizationID: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKeys,
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       time.Hour,
