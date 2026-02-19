@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -44,14 +43,12 @@ func main() {
 	var destination string
 	var updateConfig bool
 	var configPath string
-	var updateWasm bool
 	s3Config := NewDefaultS3Config()
 
 	// Define flags
 	flag.StringVar(&destination, "destination", "artifacts", "destination folder for the artifacts")
 	flag.BoolVar(&updateConfig, "update-config", false, "update circuit_artifacts.go file with new hashes")
 	flag.StringVar(&configPath, "config-path", "", "path to circuit_artifacts.go file (auto-detected if not specified)")
-	flag.BoolVar(&updateWasm, "update-wasm", false, "compile and update WASM files only")
 
 	// S3 configuration flags
 	flag.BoolVar(&s3Config.Enabled, "s3.enabled", false, "enable S3 uploads")
@@ -82,14 +79,6 @@ func main() {
 		log.Fatalf("error creating destination folder: %v", err)
 	}
 	log.Infow("destination folder", "path", destination)
-
-	// Handle WASM-only compilation if flag is set
-	if updateWasm {
-		if err := compileAndUpdateWasm(destination, hashList, s3Config, updateConfig, configPath); err != nil {
-			log.Fatalf("failed to compile and update WASM: %v", err)
-		}
-		return
-	}
 
 	////////////////////////////////////////
 	// Ballot Proof Circom Artifacts
@@ -591,20 +580,6 @@ func insertProvingKeyHashToVkeySolidity(filePath, hexHash string) error {
 	return nil
 }
 
-// executeCommand executes a command in the specified directory
-func executeCommand(command, dir string) error {
-	cmd := exec.Command("make")
-	cmd.Dir = dir
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("command failed: %w, output: %s", err, string(output))
-	}
-
-	log.Infow("command executed successfully", "command", command, "dir", dir, "output", string(output))
-	return nil
-}
-
 func copyAndHashArtifact(srcPath, destDir, ext string) (string, error) {
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
@@ -622,156 +597,4 @@ func copyAndHashArtifact(srcPath, destDir, ext string) (string, error) {
 		}
 		return nil
 	})
-}
-
-// copyAndHashWasmFile copies a WASM file to the destination directory with versioned naming and returns its hash
-func copyAndHashWasmFile(srcPath, destDir, baseFileName string) (string, error) {
-	// Read the source file
-	srcFile, err := os.Open(srcPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to open source file %s: %w", srcPath, err)
-	}
-	defer func() {
-		if err := srcFile.Close(); err != nil {
-			log.Warnw("failed to close source file", "error", err)
-		}
-	}()
-
-	// First pass: compute the hash
-	hashFn := sha256.New()
-	if _, err := io.Copy(hashFn, srcFile); err != nil {
-		return "", fmt.Errorf("failed to compute hash: %w", err)
-	}
-	hash := hex.EncodeToString(hashFn.Sum(nil))
-
-	// Get the last 4 hex digits for versioning
-	hashSuffix := hash[len(hash)-4:]
-
-	// Create versioned filename based on baseFileName
-	var versionedName string
-	if filepath.Ext(baseFileName) != "" {
-		// Has extension (e.g., "davinci_crypto.wasm" -> "davinci_crypto_ba1f.wasm")
-		ext := filepath.Ext(baseFileName)
-		nameWithoutExt := baseFileName[:len(baseFileName)-len(ext)]
-		versionedName = fmt.Sprintf("%s_%s%s", nameWithoutExt, hashSuffix, ext)
-	} else {
-		// No extension
-		versionedName = fmt.Sprintf("%s_%s", baseFileName, hashSuffix)
-	}
-
-	finalFilename := filepath.Join(destDir, versionedName)
-
-	// Reset file pointer to beginning for second pass
-	if _, err := srcFile.Seek(0, 0); err != nil {
-		return "", fmt.Errorf("failed to reset file pointer: %w", err)
-	}
-
-	// Second pass: copy to destination with versioned name
-	destFile, err := os.Create(finalFilename)
-	if err != nil {
-		return "", fmt.Errorf("failed to create destination file %s: %w", finalFilename, err)
-	}
-	defer func() {
-		if err := destFile.Close(); err != nil {
-			log.Warnw("failed to close destination file", "error", err)
-		}
-	}()
-
-	// Copy the file content
-	if _, err := io.Copy(destFile, srcFile); err != nil {
-		return "", fmt.Errorf("failed to copy file content: %w", err)
-	}
-
-	// Add the created file to the global list
-	createdFiles = append(createdFiles, finalFilename)
-
-	log.Infow("WASM file copied and hashed with versioned name", "src", srcPath, "dest", finalFilename, "hash", hash, "version_suffix", hashSuffix)
-	return hash, nil
-}
-
-// compileAndUpdateWasm compiles the WASM files and updates the configuration
-func compileAndUpdateWasm(destination string, hashList map[string]string, s3Config *S3Config, updateConfig bool, configPath string) error {
-	log.Infow("compiling WASM files...")
-
-	// Change to the WASM directory and run make
-	wasmDir := "cmd/davincicrypto-wasm"
-	startTime := time.Now()
-
-	// Execute make command in the WASM directory
-	if err := executeCommand("make", wasmDir); err != nil {
-		return fmt.Errorf("failed to compile WASM: %w", err)
-	}
-
-	log.Infow("WASM compilation completed", "elapsed", time.Since(startTime).String())
-
-	// Copy and hash the WASM file with fixed name
-	wasmFile := filepath.Join(wasmDir, "davinci_crypto.wasm")
-	wasmHash, err := copyAndHashWasmFile(wasmFile, destination, "davinci_crypto.wasm")
-	if err != nil {
-		return fmt.Errorf("failed to process WASM file: %w", err)
-	}
-	hashList["BallotProofWasmHelperHash"] = wasmHash
-
-	// Copy and hash the JS file with fixed name
-	jsFile := filepath.Join(wasmDir, "wasm_exec.js")
-	jsHash, err := copyAndHashWasmFile(jsFile, destination, "wasm_exec.js")
-	if err != nil {
-		return fmt.Errorf("failed to process JS file: %w", err)
-	}
-	hashList["BallotProofWasmExecJsHash"] = jsHash
-
-	log.Infow("WASM files processed", "wasm_hash", wasmHash, "js_hash", jsHash)
-
-	// Print hash list
-	hashListData, err := json.MarshalIndent(hashList, "", "  ")
-	if err != nil {
-		return fmt.Errorf("error marshalling hash list: %w", err)
-	}
-	fmt.Printf("Hash list: \n%s\n", hashListData)
-
-	// Upload files to S3 if enabled
-	if s3Config.Enabled {
-		ctx := context.Background()
-		log.Infow("starting S3 upload", "files_count", len(createdFiles))
-		if err := UploadFiles(ctx, createdFiles, s3Config); err != nil {
-			log.Warnw("failed to upload WASM files to S3", "error", err)
-		}
-	}
-
-	// Update config file if enabled
-	if updateConfig {
-		log.Infow("updating circuit artifacts config file")
-
-		// Find the config file if path not specified
-		if configPath == "" {
-			var err error
-			configPath, err = FindCircuitArtifactsFile()
-			if err != nil {
-				return fmt.Errorf("failed to find circuit_artifacts.go file: %w", err)
-			}
-			log.Infow("found circuit artifacts config file", "path", configPath)
-		}
-
-		// Check what changes would be made
-		changes, err := CheckHashChanges(hashList, configPath)
-		if err != nil {
-			return fmt.Errorf("failed to check hash changes: %w", err)
-		}
-
-		if len(changes) == 0 {
-			log.Infow("no changes needed for circuit artifacts config file")
-			return nil
-		}
-
-		log.Infow("the following changes will be made to the config file", "changes", changes)
-
-		// Update the config file
-		if err := UpdateCircuitArtifactsConfig(hashList, configPath); err != nil {
-			return fmt.Errorf("failed to update circuit artifacts config file: %w", err)
-		}
-
-		log.Infow("circuit artifacts config file updated successfully", "path", configPath)
-	}
-
-	return nil
 }
