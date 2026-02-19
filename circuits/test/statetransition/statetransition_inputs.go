@@ -63,7 +63,13 @@ func StateTransitionInputsForTest(
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
 
-	cacheKey := cache.GenerateCacheKey("statetransition-test-aggregator", processID, circuitstest.AggregatorCacheKeyVersion, nValidVoters)
+	cacheKey := cache.GenerateCacheKey(
+		"statetransition-test-aggregator",
+		processID,
+		circuitstest.AggregatorCacheKeyVersion,
+		uint64(censusOrigin),
+		nValidVoters,
+	)
 	cachedData := &circuitstest.AggregatorCacheData{}
 
 	var proof groth16.Proof
