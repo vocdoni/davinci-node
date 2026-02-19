@@ -49,7 +49,13 @@ func AggregatorInputsForTest(
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
 
-	cacheKey := cache.GenerateCacheKey("voteverifier", processID, nValidVotes)
+	cacheKey := cache.GenerateCacheKey(
+		"voteverifier",
+		processID,
+		circuitstest.VoteVerifierCacheKeyVersion,
+		uint64(censusOrigin),
+		nValidVotes,
+	)
 	cachedData := &circuitstest.VoteVerifierCacheData{}
 
 	var vvPk groth16.ProvingKey
