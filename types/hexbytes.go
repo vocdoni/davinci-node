@@ -19,10 +19,15 @@ func (b *HexBytes) Bytes() []byte {
 	return *b
 }
 
+// Hex returns the hexadecimal string representation of the HexBytes.
+func (b *HexBytes) Hex() string {
+	return hex.EncodeToString(*b)
+}
+
 // String returns the hexadecimal string representation of the HexBytes,
 // prefixed with "0x".
-func (b HexBytes) String() string {
-	return "0x" + hex.EncodeToString(b)
+func (b *HexBytes) String() string {
+	return "0x" + b.Hex()
 }
 
 // BigInt converts the HexBytes to a BigInt.

@@ -180,7 +180,7 @@ func (cp *CensusProof) Valid() bool {
 // String returns a string representation of the CensusProof
 // in JSON format. It returns an empty string if the JSON marshaling fails.
 func (cp *CensusProof) String() string {
-	data, err := json.Marshal(cp)
+	data, err := json.MarshalIndent(cp, "", "  ")
 	if err != nil {
 		return ""
 	}
