@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/service"
@@ -15,7 +14,6 @@ import (
 )
 
 var (
-	orgAddr           common.Address
 	services          *helpers.TestServices
 	defaultBallotMode = testutil.BallotMode()
 )
@@ -45,12 +43,6 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatalf("failed to setup test services: %v", err)
 	}
-
-	// create organization
-	if orgAddr, err = helpers.CreateOrganization(services.Contracts); err != nil {
-		log.Fatalf("failed to create organization: %v", err)
-	}
-	log.Infof("Organization address: %s", orgAddr.String())
 
 	code := m.Run()
 

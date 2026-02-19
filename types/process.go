@@ -160,7 +160,7 @@ func (m *Metadata) String() string {
 type Process struct {
 	ID                    *ProcessID            `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
 	Status                ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
-	OrganizationId        common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
+	OrganizationID        common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
 	EncryptionKey         *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
 	StateRoot             *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
 	Result                []*BigInt             `json:"result"                   cbor:"5,keyasint,omitempty"`
@@ -170,7 +170,7 @@ type Process struct {
 	BallotMode            spec.BallotMode       `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
 	Census                *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
 	Metadata              *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
-	VotersCount           *BigInt               `json:"votersCount"        cbor:"12,keyasint,omitempty"`
+	VotersCount           *BigInt               `json:"votersCount"              cbor:"12,keyasint,omitempty"`
 	OverwrittenVotesCount *BigInt               `json:"overwrittenVotesCount"    cbor:"13,keyasint,omitempty"`
 	MaxVoters             *BigInt               `json:"maxVoters"                cbor:"14,keyasint,omitempty"`
 	SequencerStats        SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`

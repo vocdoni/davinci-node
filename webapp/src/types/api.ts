@@ -2,7 +2,6 @@
 
 export interface ContractAddresses {
   process: string
-  organization: string
   stateTransitionVerifier: string
   resultsVerifier: string
 }

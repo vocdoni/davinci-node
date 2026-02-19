@@ -64,7 +64,7 @@ func NewProcessOnChain(
 
 	pid, txHash, err := contracts.CreateProcess(&types.Process{
 		Status:         types.ProcessStatusReady,
-		OrganizationId: contracts.AccountAddress(),
+		OrganizationID: contracts.AccountAddress(),
 		EncryptionKey:  encryptionKey,
 		StartTime:      time.Now().Add(1 * time.Minute),
 		Duration:       finalDuration,

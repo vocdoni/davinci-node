@@ -121,10 +121,9 @@ func NewTestServices(
 	}
 	// Start API service
 	web3Conf := config.DavinciWeb3Config{
-		ProcessRegistrySmartContract:      contracts.ContractsAddresses.ProcessRegistry.String(),
-		OrganizationRegistrySmartContract: contracts.ContractsAddresses.OrganizationRegistry.String(),
-		ResultsZKVerifier:                 contracts.ContractsAddresses.ResultsZKVerifier.String(),
-		StateTransitionZKVerifier:         contracts.ContractsAddresses.StateTransitionZKVerifier.String(),
+		ProcessRegistrySmartContract: contracts.ContractsAddresses.ProcessRegistry.String(),
+		ResultsZKVerifier:            contracts.ContractsAddresses.ResultsZKVerifier.String(),
+		StateTransitionZKVerifier:    contracts.ContractsAddresses.StateTransitionZKVerifier.String(),
 	}
 	api, err := setupAPI(ctx, stg, workerSecret, workerTokenExpiration, workerTimeout, banRules, web3Conf)
 	if err != nil {
@@ -229,15 +228,14 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 	var (
 		privKey                       = os.Getenv(PrivKeyEnvVarName)
 		rpcUrl                        = os.Getenv(RPCUrlEnvVarName)
-		orgRegistryAddr               = os.Getenv(OrgRegistryEnvVarName)
 		processRegistryAddr           = os.Getenv(ProcessRegistryEnvVarName)
 		stateTransitionZKVerifierAddr = os.Getenv(StateTransitionVerifierEnvVarName)
 		resultsZKVerifierAddr         = os.Getenv(ResultsVerifierEnvVarName)
 	)
 	// Check if the environment variables are set to run the tests over local
 	// geth node or remote blockchain environment
-	localEnv := privKey == "" || rpcUrl == "" || orgRegistryAddr == "" ||
-		processRegistryAddr == "" || resultsZKVerifierAddr == "" || stateTransitionZKVerifierAddr == ""
+	localEnv := privKey == "" || rpcUrl == "" || processRegistryAddr == "" ||
+		resultsZKVerifierAddr == "" || stateTransitionZKVerifierAddr == ""
 
 	// Store cleanup functions
 	var cleanupFuncs []func()
@@ -406,8 +404,6 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 					"logs", deployerResp.Txs)
 				for _, tx := range deployerResp.Txs {
 					switch tx.ContractName {
-					case "OrganizationRegistry":
-						contractsAddresses.OrganizationRegistry = common.HexToAddress(tx.ContractAddress)
 					case "ProcessRegistry":
 						contractsAddresses.ProcessRegistry = common.HexToAddress(tx.ContractAddress)
 					case "StateTransitionVerifierGroth16":
@@ -442,7 +438,6 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		}
 		// Create the contracts object with the addresses from the environment
 		err = contracts.LoadContracts(&web3.Addresses{
-			OrganizationRegistry:      common.HexToAddress(orgRegistryAddr),
 			ProcessRegistry:           common.HexToAddress(processRegistryAddr),
 			ResultsZKVerifier:         common.HexToAddress(resultsZKVerifierAddr),
 			StateTransitionZKVerifier: common.HexToAddress(stateTransitionZKVerifierAddr),
@@ -467,7 +462,6 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 	// Set contracts ABIs
 	contracts.ContractABIs = &web3.ContractABIs{
 		ProcessRegistry:           contracts.ProcessRegistryABI(),
-		OrganizationRegistry:      contracts.OrganizationRegistryABI(),
 		StateTransitionZKVerifier: contracts.StateTransitionVerifierABI(),
 		ResultsZKVerifier:         contracts.ResultsVerifierABI(),
 	}

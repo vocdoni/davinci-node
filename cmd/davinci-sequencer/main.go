@@ -200,8 +200,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 
 	// Load contract bindings
 	if err := services.Contracts.LoadContracts(&web3.Addresses{
-		OrganizationRegistry: common.HexToAddress(cfg.Web3.OrganizationsAddr),
-		ProcessRegistry:      common.HexToAddress(cfg.Web3.ProcessAddr),
+		ProcessRegistry: common.HexToAddress(cfg.Web3.ProcessAddr),
 	}); err != nil {
 		return nil, fmt.Errorf("failed to initialize contracts: %w", err)
 	}
@@ -251,10 +250,9 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 	contracts := npbindings.GetAllContractAddresses(cfg.Web3.Network)
 	web3Conf := config.DavinciWeb3Config{
-		ProcessRegistrySmartContract:      contracts[npbindings.ProcessRegistryContract],
-		OrganizationRegistrySmartContract: contracts[npbindings.OrganizationRegistryContract],
-		ResultsZKVerifier:                 contracts[npbindings.ResultsVerifierGroth16Contract],
-		StateTransitionZKVerifier:         contracts[npbindings.StateTransitionVerifierGroth16Contract],
+		ProcessRegistrySmartContract: contracts[npbindings.ProcessRegistryContract],
+		ResultsZKVerifier:            contracts[npbindings.ResultsVerifierGroth16Contract],
+		StateTransitionZKVerifier:    contracts[npbindings.StateTransitionVerifierGroth16Contract],
 	}
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
 	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network, web3Conf, cfg.Log.DisableAPI)

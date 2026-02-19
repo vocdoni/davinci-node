@@ -70,7 +70,7 @@ func (m *MockContracts) CreateProcess(process *types.Process) (types.ProcessID, 
 	defer m.mu.Unlock()
 
 	processID := types.NewProcessID(
-		process.OrganizationId,
+		process.OrganizationID,
 		[4]byte{0x00, 0x00, 0x00, 0x01},
 		uint64(len(m.processes)),
 	)

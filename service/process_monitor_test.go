@@ -66,7 +66,7 @@ func TestProcessMonitor(t *testing.T) {
 	// Create a new process
 	processID, createTx, err := contracts.CreateProcess(&types.Process{
 		Status:         types.ProcessStatusReady,
-		OrganizationId: contracts.AccountAddress(),
+		OrganizationID: contracts.AccountAddress(),
 		StateRoot:      testutil.FixedStateRoot(),
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,

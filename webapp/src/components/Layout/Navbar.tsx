@@ -42,7 +42,6 @@ export const Navbar = () => {
               {isLoading ? (
                 <>
                   <Skeleton height="20px" width="100px" />
-                  <Skeleton height="20px" width="100px" />
                 </>
               ) : (
                 <>
@@ -70,29 +69,6 @@ export const Navbar = () => {
                     </HStack>
                   </Tooltip>
                   
-                  <Tooltip label={info?.contracts?.organization || 'Not available'}>
-                    <HStack spacing={1}>
-                      <Text>Org:</Text>
-                      {info?.contracts?.organization ? (
-                        <Link
-                          href={`${blockExplorerUrl}/${info.contracts.organization}`}
-                          isExternal
-                          display="inline-flex"
-                          alignItems="center"
-                          gap={1}
-                          color="purple.500"
-                          _hover={{ color: 'purple.600' }}
-                        >
-                          <Badge colorScheme="purple" fontSize="xs" fontFamily="mono">
-                            {info.contracts.organization.slice(0, 6)}...{info.contracts.organization.slice(-4)}
-                          </Badge>
-                          <FaExternalLinkAlt size={10} />
-                        </Link>
-                      ) : (
-                        <Text color="gray.400" fontSize="xs">N/A</Text>
-                      )}
-                    </HStack>
-                  </Tooltip>
                 </>
               )}
             </HStack>

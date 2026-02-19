@@ -21,7 +21,6 @@ const (
 	PrivKeyEnvVarName                 = "SEQUENCER_PRIV_KEY"                     // environment variable name for private key
 	RPCUrlEnvVarName                  = "SEQUENCER_RPC_URL"                      // environment variable name for RPC URL
 	AnvilPortEnvVarName               = "ANVIL_PORT_RPC_HTTP"                    // environment variable name for Anvil port
-	OrgRegistryEnvVarName             = "SEQUENCER_ORGANIZATION_REGISTRY"        // environment variable name for organization registry
 	ProcessRegistryEnvVarName         = "SEQUENCER_PROCESS_REGISTRY"             // environment variable name for process registry
 	ResultsVerifierEnvVarName         = "SEQUENCER_RESULTS_ZK_VERIFIER"          // environment variable name for results zk verifier
 	StateTransitionVerifierEnvVarName = "SEQUENCER_STATE_TRANSITION_ZK_VERIFIER" // environment variable name for state transition zk verifier
