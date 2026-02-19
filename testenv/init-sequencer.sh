@@ -27,7 +27,6 @@ fi
 
 echo "📋 Contract addresses loaded:"
 echo "  ProcessRegistry: $PROCESS_REGISTRY"
-echo "  OrganizationRegistry: $ORG_REGISTRY"
 
 # Set environment variables for the sequencer
 export DAVINCI_WEB3_PROCESS="$PROCESS_REGISTRY"

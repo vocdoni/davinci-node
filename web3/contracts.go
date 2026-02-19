@@ -43,7 +43,6 @@ const (
 )
 
 var (
-	organizationRegistryABI      *abi.ABI
 	processRegistryABI           *abi.ABI
 	stateTransitionZKVerifierABI *abi.ABI
 	resultsZKVerifierABI         *abi.ABI
@@ -58,7 +57,6 @@ func init() {
 		}
 		return &parsedABI
 	}
-	organizationRegistryABI = parseABI(npbindings.OrganizationRegistryMetaData.ABI)
 	processRegistryABI = parseABI(npbindings.ProcessRegistryMetaData.ABI)
 	stateTransitionZKVerifierABI = parseABI(vbindings.StateTransitionVerifierGroth16MetaData.ABI)
 	resultsZKVerifierABI = parseABI(vbindings.ResultsVerifierGroth16MetaData.ABI)
@@ -67,7 +65,6 @@ func init() {
 
 // Addresses contains the addresses of the contracts deployed in the network.
 type Addresses struct {
-	OrganizationRegistry      common.Address
 	ProcessRegistry           common.Address
 	StateTransitionZKVerifier common.Address
 	ResultsZKVerifier         common.Address
@@ -75,7 +72,6 @@ type Addresses struct {
 
 // ContractABIs contains the ABIs of the deployed contracts.
 type ContractABIs struct {
-	OrganizationRegistry      *abi.ABI
 	ProcessRegistry           *abi.ABI
 	StateTransitionZKVerifier *abi.ABI
 	ResultsZKVerifier         *abi.ABI
@@ -89,7 +85,6 @@ type Contracts struct {
 	ContractABIs             *ContractABIs
 	Web3ConsensusAPIEndpoint string
 	GasMultiplier            float64
-	organizations            *npbindings.OrganizationRegistry
 	processes                *npbindings.ProcessRegistry
 	web3pool                 *rpc.Web3Pool
 	cli                      *rpc.Client
@@ -249,14 +244,6 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 		addresses = &Addresses{}
 	}
 
-	if addresses.OrganizationRegistry == (common.Address{}) {
-		organizationRegistryAddr, err := c.OrganizationRegistryAddress()
-		if err != nil {
-			return fmt.Errorf("failed to get organization registry address: %w", err)
-		}
-		addresses.OrganizationRegistry = common.HexToAddress(organizationRegistryAddr)
-	}
-
 	if addresses.ProcessRegistry == (common.Address{}) {
 		processRegistryAddr, err := c.ProcessRegistryAddress()
 		if err != nil {
@@ -266,13 +253,8 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	}
 	log.Debugw("loading contracts",
 		"chainID", c.ChainID,
-		"organizationRegistry", addresses.OrganizationRegistry.Hex(),
 		"processRegistry", addresses.ProcessRegistry.Hex())
 
-	organizations, err := npbindings.NewOrganizationRegistry(addresses.OrganizationRegistry, c.cli)
-	if err != nil {
-		return fmt.Errorf("failed to bind organization registry: %w", err)
-	}
 	process, err := npbindings.NewProcessRegistry(addresses.ProcessRegistry, c.cli)
 	if err != nil {
 		return fmt.Errorf("failed to bind process registry: %w", err)
@@ -301,10 +283,8 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 
 	c.ContractsAddresses = addresses
 	c.processes = process
-	c.organizations = organizations
 
 	c.ContractABIs = &ContractABIs{
-		OrganizationRegistry:      organizationRegistryABI,
 		ProcessRegistry:           processRegistryABI,
 		StateTransitionZKVerifier: stateTransitionZKVerifierABI,
 		ResultsZKVerifier:         resultsZKVerifierABI,
@@ -628,9 +608,6 @@ func (c *ContractABIs) forEachABI(fn func(fieldName string, a *abi.ABI) error) e
 // ProcessRegistryABI returns the ABI of the ProcessRegistry contract.
 func (c *Contracts) ProcessRegistryABI() *abi.ABI { return processRegistryABI }
 
-// ResultsRegistryABI returns the ABI of the ResultsRegistry contract.
-func (c *Contracts) OrganizationRegistryABI() *abi.ABI { return organizationRegistryABI }
-
 // StateTransitionVerifierABI returns the ABI of the ZKVerifier contract.
 func (c *Contracts) StateTransitionVerifierABI() *abi.ABI { return stateTransitionZKVerifierABI }
 
@@ -662,14 +639,6 @@ func (c *Contracts) ResultsVerifierAddress() (string, error) {
 		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
 	}
 	return npbindings.GetContractAddress(npbindings.ResultsVerifierGroth16Contract, chainName), nil
-}
-
-func (c *Contracts) OrganizationRegistryAddress() (string, error) {
-	chainName, ok := npbindings.AvailableNetworksByID[uint32(c.ChainID)]
-	if !ok {
-		return "", fmt.Errorf("unknown chain ID %d", c.ChainID)
-	}
-	return npbindings.GetContractAddress(npbindings.OrganizationRegistryContract, chainName), nil
 }
 
 // RegisterKnownProcess adds a process ID to the knownProcesses map.

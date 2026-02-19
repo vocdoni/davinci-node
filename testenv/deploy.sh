@@ -51,7 +51,6 @@ echo "🔧 Parsing contract addresses with jq..."
 
 # Extract contract addresses using jq and create environment variables
 PROCESS_REGISTRY=$(jq -r '.transactions[] | select(.contractName == "ProcessRegistry") | .contractAddress' $OUTPUT_JSON)
-ORG_REGISTRY=$(jq -r '.transactions[] | select(.contractName == "OrganizationRegistry") | .contractAddress' $OUTPUT_JSON)
 
 # Create environment file
 cat > $OUTPUT_ENV << EOF
@@ -62,4 +61,3 @@ EOF
 echo "✅ Environment file created at $OUTPUT_ENV"
 echo "📋 Contract addresses:"
 echo "  ProcessRegistry: $PROCESS_REGISTRY"
-echo "  OrganizationRegistry: $ORG_REGISTRY"

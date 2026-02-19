@@ -29,7 +29,6 @@ type Vote struct {
 // ContractAddresses holds the smart contract addresses needed by the client
 type ContractAddresses struct {
 	ProcessRegistry           string `json:"process"`
-	OrganizationRegistry      string `json:"organization"`
 	StateTransitionZKVerifier string `json:"stateTransitionVerifier"`
 	ResultsZKVerifier         string `json:"resultsVerifier"`
 }
