@@ -28,8 +28,8 @@ func init() {
 	negScalingInv.BigInt(negScalingInvBig)
 }
 
-// FromRTEtoTE converts a point from Reduced TwistedEdwards to TwistedEdwards coordinates.
-// It applies the transformation:
+// FromRTEtoTE converts a point from Reduced TwistedEdwards to TwistedEdwards
+// coordinates (from Gnark to Iden3). It applies the transformation:
 //
 //	x = x'/(-f)
 //	y' = y
@@ -46,8 +46,8 @@ func FromRTEtoTE(x, y *big.Int) (*big.Int, *big.Int) {
 	return xRTEBigInt, y // x = x' / (-f) & y' = y
 }
 
-// FromTEtoRTE converts a point from TwistedEdwards to Reduced TwistedEdwards coordinates.
-// It applies the transformation:
+// FromTEtoRTE converts a point from TwistedEdwards to Reduced TwistedEdwards
+// coordinates (from Iden3 to Gnark). It applies the transformation:
 //
 //	x' = x*(-f)
 //	y = y'

@@ -150,9 +150,9 @@ type CensusProof struct {
 	Value    HexBytes `json:"value,omitempty"`
 	Index    uint64   `json:"index,omitempty"`
 	// CSP related fields
-	ProcessID *ProcessID `json:"processId,omitempty"`
-	PublicKey HexBytes   `json:"publicKey,omitempty"`
-	Signature HexBytes   `json:"signature,omitempty"`
+	ProcessID ProcessID `json:"processId,omitempty"`
+	PublicKey HexBytes  `json:"publicKey,omitempty"`
+	Signature HexBytes  `json:"signature,omitempty"`
 }
 
 // CensusRoot represents the census root used in a voting process.
@@ -170,7 +170,7 @@ func (cp *CensusProof) Valid() bool {
 		// By default the census proof is not required to this census origin.
 		return true
 	case cp.CensusOrigin.IsCSP():
-		return cp.Root != nil && cp.Address != nil && cp.ProcessID != nil &&
+		return cp.Root != nil && cp.Address != nil && cp.ProcessID.IsValid() &&
 			cp.PublicKey != nil && cp.Signature != nil
 	default:
 		return false
@@ -180,7 +180,7 @@ func (cp *CensusProof) Valid() bool {
 // String returns a string representation of the CensusProof
 // in JSON format. It returns an empty string if the JSON marshaling fails.
 func (cp *CensusProof) String() string {
-	data, err := json.Marshal(cp)
+	data, err := json.MarshalIndent(cp, "", "  ")
 	if err != nil {
 		return ""
 	}
