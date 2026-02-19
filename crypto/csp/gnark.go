@@ -105,7 +105,7 @@ func CensusProofToCSPProof(curveID ecc_twedwards.ID, censusProof *types.CensusPr
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshaling public key: %w", err)
 	}
-	decSignature, err := cspeddsa.DecodeBigIntStringBytes(censusProof.Signature)
+	decSignature, err := cspeddsa.HexBytesToDecimalStringBytes(censusProof.Signature)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding signature: %w", err)
 	}
