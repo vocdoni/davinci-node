@@ -79,7 +79,7 @@ func TestCensusRootLengthAndValue(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 		root := csp.CensusRoot().Root
 		c.Assert(len(root), qt.Equals, types.CensusRootLength)
-		rawRoot, err := pubKeyPointToCensusRoot(csp.privKey.Public())
+		rawRoot, err := pubKeyPointToCensusRoot(DefaultHashFn, csp.privKey.Public())
 		c.Assert(err, qt.IsNil)
 		c.Assert(rawRoot.BigInt().String(), qt.Equals, root.BigInt().String())
 	}

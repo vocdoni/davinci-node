@@ -2,31 +2,18 @@ package eddsa
 
 import (
 	"fmt"
-	"hash"
 	"math/big"
 
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/iden3/go-iden3-crypto/babyjub"
-	"github.com/iden3/go-iden3-crypto/poseidon"
 	"github.com/vocdoni/davinci-node/types"
 )
-
-// DefaultHashFn is the default hash function used by the BabyJubJubEdDSA
-var DefaultHashFn hash.Hash
-
-func init() {
-	var err error
-	// Initialize the default hash function as Poseidon
-	if DefaultHashFn, err = poseidon.New(6); err != nil {
-		panic(err)
-	}
-}
 
 // BabyJubJubEdDSA struct implements the CSP interface for the
 // BabyJubJubEdDSA over multiple curves.
 type BabyJubJubEdDSA struct {
-	hashFn  hash.Hash
+	hashFn  Hash
 	privKey babyjub.PrivateKey
 }
 
@@ -34,7 +21,7 @@ type BabyJubJubEdDSA struct {
 // It implements the CSP interface and can be used to generate and verify
 // proofs for voters. It generates a new random private key. If something goes
 // wrong during the key generation, it returns an error.
-func New(hashFn hash.Hash) (*BabyJubJubEdDSA, error) {
+func New(hashFn Hash) (*BabyJubJubEdDSA, error) {
 	randPrivKey := babyjub.NewRandPrivKey()
 	return &BabyJubJubEdDSA{
 		hashFn:  hashFn,
@@ -51,12 +38,13 @@ func (c *BabyJubJubEdDSA) SetSeed(seed []byte) error {
 	if len(seed) == 0 {
 		return fmt.Errorf("seed cannot be empty")
 	}
+	// Reset the hash function before using it
+	c.hashFn.Reset()
 	// Compute the hash of the seed
 	if _, err := c.hashFn.Write(seed); err != nil {
 		return fmt.Errorf("error hashing seed: %w", err)
 	}
 	seedBytes := c.hashFn.Sum(nil)
-	c.hashFn.Reset()
 	// Convert seed to [32]byte
 	var rawPrivKey [32]byte
 	copy(rawPrivKey[:], seedBytes)
@@ -81,7 +69,7 @@ func (c *BabyJubJubEdDSA) PublicKey() (types.HexBytes, error) {
 	}
 	// Use EncodeBigIntBytes to convert the string bigint []bytes into a real
 	// hex bytes.
-	return EncodeBigIntBytes(marshaledPubKey)
+	return DecimalStringBytesToHexBytes(marshaledPubKey)
 }
 
 // CensusRoot returns the census root computed from the public key of the
@@ -91,7 +79,7 @@ func (c *BabyJubJubEdDSA) PublicKey() (types.HexBytes, error) {
 // nil.
 func (c *BabyJubJubEdDSA) CensusRoot() *types.CensusRoot {
 	// Convert the public key into a census root
-	censusRoot, err := pubKeyPointToCensusRoot(c.privKey.Public())
+	censusRoot, err := pubKeyPointToCensusRoot(c.hashFn, c.privKey.Public())
 	if err != nil {
 		return nil
 	}
@@ -125,7 +113,7 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 	}
 	// Sign the message composed by the process ID and address using the hash
 	// function and the private key of the CSP
-	message, err := signatureMessage(processID, address.Bytes(), weight)
+	message, err := signatureMessage(c.hashFn, processID, address.Bytes(), weight)
 	if err != nil {
 		return nil, fmt.Errorf("error composing signature message: %w", err)
 	}
@@ -137,12 +125,12 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 		return nil, fmt.Errorf("error marshaling signature: %w", err)
 	}
 	// Encode the signature into real hex bytes
-	encSignature, err := EncodeBigIntBytes(bSignature)
+	encSignature, err := DecimalStringBytesToHexBytes(bSignature)
 	if err != nil {
 		return nil, fmt.Errorf("error encoding signature: %w", err)
 	}
 	// Convert the public key to a census root
-	censusRoot, err := pubKeyPointToCensusRoot(c.privKey.Public())
+	censusRoot, err := pubKeyPointToCensusRoot(c.hashFn, c.privKey.Public())
 	if err != nil {
 		return nil, fmt.Errorf("error computing census root: %w", err)
 	}
@@ -184,16 +172,16 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("error getting public key from census proof: %w", err)
 	}
 	// Recompute the signature message
-	message, err := signatureMessage(proof.ProcessID, proof.Address, proof.Weight)
+	message, err := signatureMessage(c.hashFn, proof.ProcessID, proof.Address, proof.Weight)
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
 	// Decode the signature from hex bytes to a bigint string bytes
-	decSignature, err := DecodeBigIntStringBytes(proof.Signature)
+	decSignature, err := HexBytesToDecimalStringBytes(proof.Signature)
 	if err != nil {
 		return fmt.Errorf("error decoding signature: %w", err)
 	}
-	// Decompres the signature
+	// Decompress the signature
 	signature, err := babyjub.DecompressSig(decSignature)
 	if err != nil {
 		return fmt.Errorf("error decompressing signature: %w", err)
@@ -211,10 +199,13 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 // key coords. It returns an error if the public key provided is invalid for
 // the desired curve or if the curve is not supported.
 func pubKeyPointToCensusRoot(
+	hashFn Hash,
 	publicKey *babyjub.PublicKey,
 ) (types.HexBytes, error) {
+	// Reset the hash function before using it
+	hashFn.Reset()
 	// Hash the public key using the poseidon hash function
-	hashedPubKey, err := poseidon.Hash([]*big.Int{publicKey.X, publicKey.Y})
+	hashedPubKey, err := hashFn.BigIntsSum([]*big.Int{publicKey.X, publicKey.Y})
 	if err != nil {
 		return nil, fmt.Errorf("error hashing public key: %w", err)
 	}
@@ -224,7 +215,12 @@ func pubKeyPointToCensusRoot(
 // signatureMessage composes the message to be signed by the CSP. The message
 // is the concatenation of the process ID and address, both converted to field
 // elements suitable for the circuit.
-func signatureMessage(processID types.ProcessID, address types.HexBytes, weight *types.BigInt) (types.HexBytes, error) {
+func signatureMessage(
+	hashFn Hash,
+	processID types.ProcessID,
+	address types.HexBytes,
+	weight *types.BigInt,
+) (types.HexBytes, error) {
 	// Inputs checks
 	if !processID.IsValid() {
 		return nil, fmt.Errorf("invalid process ID")
@@ -232,10 +228,12 @@ func signatureMessage(processID types.ProcessID, address types.HexBytes, weight 
 	if len(address) == 0 {
 		return nil, fmt.Errorf("address must not be empty")
 	}
+	// Reset the hash function before using it
+	hashFn.Reset()
 	// Hash the process ID and address to create a message suitable for signing
 	// using the poseidon hash function. Ensure that the process ID and address
 	// are converted to field elements for the curve.
-	res, err := poseidon.Hash([]*big.Int{
+	res, err := hashFn.BigIntsSum([]*big.Int{
 		processID.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
 		address.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
 		weight.ToFF(bn254.ID.ScalarField()).MathBigInt(),
@@ -251,7 +249,7 @@ func signatureMessage(processID types.ProcessID, address types.HexBytes, weight 
 // then unmarshaling the big int string bytes into a babyjub public key.
 func PublicKeyFromBytes(publicKey types.HexBytes) (*babyjub.PublicKey, error) {
 	// Decode the public key from hex bytes to a big int string bytes
-	decodedBytes, err := DecodeBigIntStringBytes(publicKey)
+	decodedBytes, err := HexBytesToDecimalStringBytes(publicKey)
 	if err != nil {
 		return nil, fmt.Errorf("decode public key: %w", err)
 	}
@@ -263,9 +261,9 @@ func PublicKeyFromBytes(publicKey types.HexBytes) (*babyjub.PublicKey, error) {
 	return pubKey, nil
 }
 
-// EncodeBigIntBytes function encodes a bigint string bytes into a real hex
+// DecimalStringBytesToHexBytes function encodes a bigint string bytes into a real hex
 // bytes.
-func EncodeBigIntBytes(biStrBytes types.HexBytes) (types.HexBytes, error) {
+func DecimalStringBytesToHexBytes(biStrBytes types.HexBytes) (types.HexBytes, error) {
 	if len(biStrBytes) == 0 {
 		return nil, fmt.Errorf("bytes provided are empty")
 	}
@@ -276,9 +274,9 @@ func EncodeBigIntBytes(biStrBytes types.HexBytes) (types.HexBytes, error) {
 	return biPubKey.Bytes(), nil
 }
 
-// DecodeBigIntStringBytes function decodes a real hex bytes into a bigint
+// HexBytesToDecimalStringBytes function decodes a real hex bytes into a bigint
 // string bytes.
-func DecodeBigIntStringBytes(hexBytes types.HexBytes) (types.HexBytes, error) {
+func HexBytesToDecimalStringBytes(hexBytes types.HexBytes) (types.HexBytes, error) {
 	if len(hexBytes) == 0 {
 		return nil, fmt.Errorf("bytes provided are empty")
 	}
