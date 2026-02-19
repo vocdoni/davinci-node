@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/types/params"
 	"github.com/vocdoni/davinci-node/web3"
 )
 
@@ -19,15 +20,9 @@ func FetchResultsOnChain(contracts *web3.Contracts, pid types.ProcessID) ([]*typ
 }
 
 func CalculateExpectedResults(fieldValuesPerVoter [][]*types.BigInt) []*types.BigInt {
-	expectedResults := []*types.BigInt{
-		types.NewInt(0),
-		types.NewInt(0),
-		types.NewInt(0),
-		types.NewInt(0),
-		types.NewInt(0),
-		types.NewInt(0),
-		types.NewInt(0),
-		types.NewInt(0),
+	expectedResults := [params.FieldsPerBallot]*types.BigInt{}
+	for i := range expectedResults {
+		expectedResults[i] = types.NewInt(0)
 	}
 
 	for _, fieldValues := range fieldValuesPerVoter {
@@ -35,5 +30,5 @@ func CalculateExpectedResults(fieldValuesPerVoter [][]*types.BigInt) []*types.Bi
 			expectedResults[i] = expectedResults[i].Add(expectedResults[i], fieldValue)
 		}
 	}
-	return expectedResults
+	return expectedResults[:]
 }
