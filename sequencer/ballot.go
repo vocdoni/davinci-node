@@ -3,8 +3,12 @@ package sequencer
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
+	bn254fr "github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	secp256k1fp "github.com/consensys/gnark-crypto/ecc/secp256k1/fp"
+	secp256k1fr "github.com/consensys/gnark-crypto/ecc/secp256k1/fr"
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	"github.com/consensys/gnark/frontend"
@@ -153,6 +157,9 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress voter public key: %w", err)
 	}
+	if err := validateVoteVerifierAssignmentBounds(b, pubKey.X, pubKey.Y); err != nil {
+		return nil, fmt.Errorf("invalid assignment bounds: %w", err)
+	}
 
 	// Create the circuit assignment
 	assignment := voteverifier.VerifyVoteCircuit{
@@ -231,4 +238,52 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		InputsHash:      b.BallotInputsHash,
 		CensusProof:     b.CensusProof,
 	}, nil
+}
+
+func validateVoteVerifierAssignmentBounds(b *storage.Ballot, pubKeyX, pubKeyY *big.Int) error {
+	if b == nil {
+		return fmt.Errorf("nil ballot")
+	}
+	bn254Scalar := bn254fr.Modulus()
+	secpBase := secp256k1fp.Modulus()
+	secpScalar := secp256k1fr.Modulus()
+	vvScalar := params.VoteVerifierCurve.ScalarField()
+
+	checkInField := func(name string, v, field *big.Int) error {
+		if v == nil {
+			return fmt.Errorf("%s is nil", name)
+		}
+		if v.Sign() < 0 || v.Cmp(field) >= 0 {
+			return fmt.Errorf("%s out of field", name)
+		}
+		return nil
+	}
+
+	if err := checkInField("BallotInputsHash", b.BallotInputsHash, bn254Scalar); err != nil {
+		return err
+	}
+	if err := checkInField("Address", b.Address, bn254Scalar); err != nil {
+		return err
+	}
+	if err := checkInField("VoteID", b.VoteID.BigInt(), vvScalar); err != nil {
+		return err
+	}
+	if err := checkInField("PublicKey.X", pubKeyX, secpBase); err != nil {
+		return err
+	}
+	if err := checkInField("PublicKey.Y", pubKeyY, secpBase); err != nil {
+		return err
+	}
+	if err := checkInField("Signature.R", b.Signature.R, secpScalar); err != nil {
+		return err
+	}
+	if err := checkInField("Signature.S", b.Signature.S, secpScalar); err != nil {
+		return err
+	}
+	for i, c := range b.EncryptedBallot.BigInts() {
+		if err := checkInField(fmt.Sprintf("EncryptedBallot[%d]", i), c, bn254Scalar); err != nil {
+			return err
+		}
+	}
+	return nil
 }
