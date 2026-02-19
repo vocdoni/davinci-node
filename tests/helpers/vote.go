@@ -78,7 +78,7 @@ func NewVote(pid types.ProcessID, bm *types.BallotMode, encKey *types.Encryption
 	}, nil
 }
 
-func NewVoteWithRandomFields(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, error) {
+func NewVoteWithRandomFields(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey, privKey *ethereum.Signer, k *big.Int) (api.Vote, []*types.BigInt, error) {
 	// generate random ballot fields
 	randFields := ballotprooftest.GenBallotFieldsForTest(
 		int(bm.NumFields),
@@ -90,7 +90,13 @@ func NewVoteWithRandomFields(pid types.ProcessID, bm *types.BallotMode, encKey *
 	for _, f := range randFields {
 		fields = append(fields, (*types.BigInt)(f))
 	}
-	return NewVote(pid, bm, encKey, privKey, k, fields)
+	// create the vote
+	vote, err := NewVote(pid, bm, encKey, privKey, k, fields)
+	if err != nil {
+		return api.Vote{}, nil, err
+	}
+	// return the vote and the generated fields
+	return vote, fields, nil
 }
 
 func NewVoteFromNonCensusVoter(pid types.ProcessID, bm *types.BallotMode, encKey *types.EncryptionKey) (api.Vote, error) {
@@ -102,7 +108,8 @@ func NewVoteFromNonCensusVoter(pid types.ProcessID, bm *types.BallotMode, encKey
 	if err != nil {
 		return api.Vote{}, fmt.Errorf("failed to generate random k: %w", err)
 	}
-	return NewVoteWithRandomFields(pid, bm, encKey, privKey, k)
+	vote, _, err := NewVoteWithRandomFields(pid, bm, encKey, privKey, k)
+	return vote, err
 }
 
 func EnsureVotesStatus(cli *client.HTTPclient, pid types.ProcessID, voteIDs []types.HexBytes, expectedStatus string) (bool, []types.HexBytes, error) {
