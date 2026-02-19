@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 // BigInt is a big.Int wrapper which marshals JSON to a string representation of
@@ -165,10 +166,12 @@ func (i *BigInt) ToFF(field *big.Int) *BigInt {
 	iv := i.MathBigInt()
 	z := big.NewInt(0)
 	if c := iv.Cmp(field); c == 0 {
+		log.Warnf("ToFF: %s < 0, returning zero", iv)
 		return (*BigInt)(z)
 	} else if c != 1 && iv.Cmp(z) != -1 {
 		return (*BigInt)(iv)
 	}
+	log.Warnf("ToFF: %s > %s", iv, field)
 	return (*BigInt)(z.Mod(iv, field))
 }
 

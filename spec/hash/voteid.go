@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 )
 
@@ -15,9 +16,9 @@ func VoteID(processID, address, k *big.Int) (*big.Int, error) {
 	}
 	baseField := params.BallotProofCurve.ScalarField()
 	h, err := PoseidonHash(
-		bigToFF(baseField, processID),
-		bigToFF(baseField, address),
-		bigToFF(baseField, k),
+		bigToFF(baseField, processID, "processID"),
+		bigToFF(baseField, address, "address"),
+		bigToFF(baseField, k, "k"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate vote ID: %w", err)
@@ -33,12 +34,14 @@ func TruncateToLowerBits(input *big.Int, bits uint) *big.Int {
 	return new(big.Int).And(input, mask)          // input & ((1 << bits) - 1)
 }
 
-func bigToFF(field, value *big.Int) *big.Int {
+func bigToFF(field, value *big.Int, name string) *big.Int {
 	z := big.NewInt(0)
 	if c := value.Cmp(field); c == 0 {
+		log.Warnf("bigToFF(%s): %s < 0, returning zero", name, value)
 		return z
 	} else if c != 1 && value.Cmp(z) != -1 {
 		return value
 	}
+	log.Warnf("bigToFF(%s): %s > %s", name, value, field)
 	return z.Mod(value, field)
 }

@@ -87,7 +87,7 @@ func TestStateRootMatchesManualConstruction(t *testing.T) {
 	keyCensusOrigin := big.NewInt(int64(params.StateKeyCensusOrigin))
 
 	leafProcess, err := PoseidonHash(keyProcessID,
-		bigToFF(params.StateTransitionCurve.ScalarField(), processID), leafDomain)
+		bigToFF(params.StateTransitionCurve.ScalarField(), processID, "test_processID"), leafDomain)
 	if err != nil {
 		t.Fatalf("leafProcess error: %v", err)
 	}
