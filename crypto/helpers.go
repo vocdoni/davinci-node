@@ -3,7 +3,11 @@
 // serialization, and other cryptographic operations.
 package crypto
 
-import "math/big"
+import (
+	"math/big"
+
+	"github.com/vocdoni/davinci-node/log"
+)
 
 // SignatureCircuitVariableLen is the standard size in bytes for serialized
 // field elements
@@ -52,9 +56,11 @@ func PadToSign(input []byte) []byte {
 func BigToFF(field, iv *big.Int) *big.Int {
 	z := big.NewInt(0)
 	if c := iv.Cmp(field); c == 0 {
+		log.Warnf("BigToFF: %s < 0, returning zero", iv)
 		return z
 	} else if c != 1 && iv.Cmp(z) != -1 {
 		return iv
 	}
+	log.Warnf("BigToFF: %s > %s", iv, field)
 	return z.Mod(iv, field)
 }
