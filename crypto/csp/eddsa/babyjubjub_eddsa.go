@@ -30,10 +30,10 @@ type BabyJubJubEdDSA struct {
 	privKey babyjub.PrivateKey
 }
 
-// New creates a new New for the bn254 curve using Poseidon as hash function. It implements the CSP interface and can be
-// used to generate and verify proofs for voters. It generates a new random
-// private key. If something goes wrong during the key generation, it returns
-// an error.
+// New creates a new New for the bn254 curve using Poseidon as hash function.
+// It implements the CSP interface and can be used to generate and verify
+// proofs for voters. It generates a new random private key. If something goes
+// wrong during the key generation, it returns an error.
 func New(hashFn hash.Hash) (*BabyJubJubEdDSA, error) {
 	randPrivKey := babyjub.NewRandPrivKey()
 	return &BabyJubJubEdDSA{
@@ -68,6 +68,20 @@ func (c *BabyJubJubEdDSA) SetSeed(seed []byte) error {
 // returns the type of the CSP, which is EdDSA in this case.
 func (c *BabyJubJubEdDSA) CensusOrigin() types.CensusOrigin {
 	return types.CensusOriginCSPEdDSABabyJubJubV1
+}
+
+// PublicKey returns the public key of the EdDSA instance. It returns the
+// public key as a hex bytes.
+func (c *BabyJubJubEdDSA) PublicKey() (types.HexBytes, error) {
+	// Encode the public key into bytes using the babyjubjub format, which
+	// results in a big int string into []bytes.
+	marshaledPubKey, err := c.privKey.Public().MarshalText()
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling public key: %w", err)
+	}
+	// Use EncodeBigIntBytes to convert the string bigint []bytes into a real
+	// hex bytes.
+	return EncodeBigIntBytes(marshaledPubKey)
 }
 
 // CensusRoot returns the census root computed from the public key of the
@@ -115,19 +129,25 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 	if err != nil {
 		return nil, fmt.Errorf("error composing signature message: %w", err)
 	}
-	// Compute the signature of the message and encode it into bytes
+	// Compute the signature of the message
 	signature := c.privKey.SignPoseidon(message.BigInt().MathBigInt())
-	encSignature, err := signature.Compress().MarshalText()
+	// Compress the signature to a bigint string bytes
+	bSignature, err := signature.Compress().MarshalText()
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling signature: %w", err)
+	}
+	// Encode the signature into real hex bytes
+	encSignature, err := EncodeBigIntBytes(bSignature)
+	if err != nil {
+		return nil, fmt.Errorf("error encoding signature: %w", err)
 	}
 	// Convert the public key to a census root
 	censusRoot, err := pubKeyPointToCensusRoot(c.privKey.Public())
 	if err != nil {
 		return nil, fmt.Errorf("error computing census root: %w", err)
 	}
-	// Encode the public key into bytes
-	encPublicKey, err := c.privKey.Public().MarshalText()
+	// Get the public key in hex bytes
+	publicKey, err := c.PublicKey()
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling public key: %w", err)
 	}
@@ -137,7 +157,7 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 		Address:      address.Bytes(),
 		Weight:       weight,
 		ProcessID:    processID,
-		PublicKey:    encPublicKey,
+		PublicKey:    publicKey,
 		Signature:    encSignature,
 	}, nil
 }
@@ -159,7 +179,7 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("proof origin mismatch: expected %s, got %s", c.CensusOrigin(), proof.CensusOrigin)
 	}
 	// Get the public key from the proof
-	pubKey, err := pubKeyFromCensusProof(proof)
+	pubKey, err := PublicKeyFromBytes(proof.PublicKey)
 	if err != nil {
 		return fmt.Errorf("error getting public key from census proof: %w", err)
 	}
@@ -168,8 +188,13 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
-	// Decode the signature bytes
-	signature, err := babyjub.DecompressSig(proof.Signature)
+	// Decode the signature from hex bytes to a bigint string bytes
+	decSignature, err := DecodeBigIntStringBytes(proof.Signature)
+	if err != nil {
+		return fmt.Errorf("error decoding signature: %w", err)
+	}
+	// Decompres the signature
+	signature, err := babyjub.DecompressSig(decSignature)
 	if err != nil {
 		return fmt.Errorf("error decompressing signature: %w", err)
 	}
@@ -178,22 +203,6 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("signature verification failed for address %s", proof.Address.String())
 	}
 	return nil
-}
-
-// pubKeyFromCensusProof function returns a decoded public key from the proof
-// provided acording to its census origin.
-func pubKeyFromCensusProof(proof *types.CensusProof) (*babyjub.PublicKey, error) {
-	switch proof.CensusOrigin {
-	case types.CensusOriginCSPEdDSABabyJubJubV1:
-		// Decode the public key into bytes
-		pubKey := &babyjub.PublicKey{}
-		if err := pubKey.UnmarshalText(proof.PublicKey); err != nil {
-			return nil, fmt.Errorf("error unmarshaling public key: %w", err)
-		}
-		return pubKey, nil
-	default:
-		return nil, fmt.Errorf("unsupported census origin: %d", proof.CensusOrigin)
-	}
 }
 
 // pubKeyPointToCensusRoot function encodes the public key provided as a census
@@ -235,4 +244,50 @@ func signatureMessage(processID types.ProcessID, address types.HexBytes, weight 
 		return nil, fmt.Errorf("error hashing signature message: %w", err)
 	}
 	return res.Bytes(), nil
+}
+
+// PublicKeyFromBytes function decodes the public key hex bytes into a babyjub
+// public key format by decoding the hex bytes into a big int string bytes and
+// then unmarshaling the big int string bytes into a babyjub public key.
+func PublicKeyFromBytes(publicKey types.HexBytes) (*babyjub.PublicKey, error) {
+	// Decode the public key from hex bytes to a big int string bytes
+	decodedBytes, err := DecodeBigIntStringBytes(publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("decode public key: %w", err)
+	}
+	// Unmarshal the big int string bytes into a babyjub public key
+	pubKey := &babyjub.PublicKey{}
+	if err := pubKey.UnmarshalText(decodedBytes); err != nil {
+		return nil, fmt.Errorf("unmarshal public key: %w", err)
+	}
+	return pubKey, nil
+}
+
+// EncodeBigIntBytes function encodes a bigint string bytes into a real hex
+// bytes.
+func EncodeBigIntBytes(biStrBytes types.HexBytes) (types.HexBytes, error) {
+	if len(biStrBytes) == 0 {
+		return nil, fmt.Errorf("bytes provided are empty")
+	}
+	biPubKey, ok := new(big.Int).SetString(biStrBytes.Hex(), 10)
+	if !ok {
+		return nil, fmt.Errorf("error converting bytes to big int")
+	}
+	return biPubKey.Bytes(), nil
+}
+
+// DecodeBigIntStringBytes function decodes a real hex bytes into a bigint
+// string bytes.
+func DecodeBigIntStringBytes(hexBytes types.HexBytes) (types.HexBytes, error) {
+	if len(hexBytes) == 0 {
+		return nil, fmt.Errorf("bytes provided are empty")
+	}
+	// Convert the hex bytes into a big int string
+	encodedHexText := new(big.Int).SetBytes(hexBytes).String()
+	// Decode the big int string into a bytes
+	decodedBytes, err := types.HexStringToHexBytes(encodedHexText)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding bytes text: %w", err)
+	}
+	return decodedBytes, nil
 }

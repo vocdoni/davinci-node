@@ -8,6 +8,7 @@ import (
 
 	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/vocdoni/davinci-node/circuits"
+	cspeddsa "github.com/vocdoni/davinci-node/crypto/csp/eddsa"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/ecc/bn254/eddsa"
 	"github.com/vocdoni/gnark-crypto-primitives/hash"
@@ -23,6 +24,10 @@ type CSPProof struct {
 	PublicKey eddsa.PublicKey
 }
 
+// IsValid method checks if the signature is valid or not using the gnark API.
+// It initializes the poseidon hash function, checks if the public key is valid,
+// recomputes the message hash with the process ID and address, and finally
+// checks if the signature is valid using the eddsa verifier with poseidon hash.
 func (proof *CSPProof) IsValid(
 	api frontend.API,
 	censusRoot, processID, address, weight frontend.Variable,
@@ -56,17 +61,30 @@ func (proof *CSPProof) IsValid(
 	return api.And(validPubKey, validSignature)
 }
 
+// isPubKeyValid checks if the public key is valid using the provided hash
+// function and the provided census root. It recomputes the census root by
+// hashing the public key point coordinates and compares it with the provided
+// census root. It returns the result of the comparison.
 func (proof *CSPProof) isPubKeyValid(
 	hashFn hash.Hash[frontend.Variable],
 	censusRoot frontend.Variable,
 ) (frontend.Variable, error) {
+	// Write the public key
 	hashFn.Write(proof.PublicKey.A.X, proof.PublicKey.A.Y)
 	if !hashFn.WriteSucceeded() {
 		return 0, fmt.Errorf("error writing hash inputs")
 	}
-	return hashFn.SumIsEqual(censusRoot), nil
+	// Get the result
+	isValid := hashFn.SumIsEqual(censusRoot)
+	// Reset the hash
+	hashFn.Reset()
+	// Return the result
+	return isValid, nil
 }
 
+// signatureMessage composes the message to be signed by the CSP. The message
+// is the hash of the concatenation of the process ID, the address and the
+// weight, using the hash function provided.
 func signatureMessage(
 	hashFn hash.Hash[frontend.Variable],
 	processID, address, weight frontend.Variable,
@@ -83,12 +101,16 @@ func signatureMessage(
 // the CensusProof and converts them to gnark circuit types.
 func CensusProofToCSPProof(curveID ecc_twedwards.ID, censusProof *types.CensusProof) (*CSPProof, error) {
 	// Unmarshal public key and convert to gnark circuit eddsa public key
-	pubKey := new(babyjub.PublicKey)
-	if err := pubKey.UnmarshalText(censusProof.PublicKey); err != nil {
+	pubKey, err := cspeddsa.PublicKeyFromBytes(censusProof.PublicKey)
+	if err != nil {
 		return nil, fmt.Errorf("error unmarshaling public key: %w", err)
 	}
+	decSignature, err := cspeddsa.DecodeBigIntStringBytes(censusProof.Signature)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding signature: %w", err)
+	}
 	// Unmarshal signature and convert to gnark circuit eddsa signature
-	signature, err := babyjub.DecompressSig(censusProof.Signature)
+	signature, err := babyjub.DecompressSig(decSignature)
 	if err != nil {
 		return nil, fmt.Errorf("error decompressing signature: %w", err)
 	}
