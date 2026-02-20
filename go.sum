@@ -808,6 +808,8 @@ github.com/vocdoni/arbo v0.0.0-20260216104828-6bf3dbaeb1af h1:naevAspPry5jSYcJHj
 github.com/vocdoni/arbo v0.0.0-20260216104828-6bf3dbaeb1af/go.mod h1:SUsNx5GJJunlEMBo6ETTmys88B4bkTgqNV5N1jN3iic=
 github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427 h1:agxi6vKY/QlChr+hjr6+4uPUwrFFleg/PntJdJP695g=
 github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427/go.mod h1:8kDd6AYVCW9HKBng4O0bkNHgameysPWztt502FcQL1c=
+github.com/vocdoni/davinci-circom v0.1.0 h1:bx3JlqaUOQ2dStGo9lySA2Eu1ZsIWrJ3BBTyc6cRQd4=
+github.com/vocdoni/davinci-circom v0.1.0/go.mod h1:7CdVIumC1seueKlazgQDPNhCwnZhu9gRDlSiBKEM4Sc=
 github.com/vocdoni/davinci-contracts v0.0.36-0.20260220075931-af94d8ee8026 h1:Graxoh7f40QAwSOs5OoZ7pedYTKMi7uUxq76ehyKCNc=
 github.com/vocdoni/davinci-contracts v0.0.36-0.20260220075931-af94d8ee8026/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260115102516-64ce9c3fd55d h1:g/v2DQK3u62nEspG3htAksWof4hGpiPECjwWyBnIkGM=
