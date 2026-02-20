@@ -1,17 +1,14 @@
 package ballotproof
 
-import _ "embed"
+import circomartifacts "github.com/vocdoni/davinci-circom/artifacts"
 
 var (
-	// CircomCircuitWasm is the ballot proof Circom circuit compiled to WASM.
-	//go:embed circom_assets/ballot_proof.wasm
-	CircomCircuitWasm []byte
+	// CircomCircuitWasm contains the ballot proof Circom circuit compiled to WASM.
+	CircomCircuitWasm = circomartifacts.BallotProofWasm
 
-	// CircomProvingKey is the Groth16 proving key for the ballot proof circuit.
-	//go:embed circom_assets/ballot_proof_pkey.zkey
-	CircomProvingKey []byte
+	// CircomProvingKey contains the Groth16 proving key for the ballot proof circuit.
+	CircomProvingKey = circomartifacts.BallotProofProvingKey
 
-	// CircomVerificationKey is the verification key for the ballot proof circuit.
-	//go:embed circom_assets/ballot_proof_vkey.json
-	CircomVerificationKey []byte
+	// CircomVerificationKey contains the Groth16 verification key for the ballot proof circuit.
+	CircomVerificationKey = circomartifacts.BallotProofVerificationKey
 )
