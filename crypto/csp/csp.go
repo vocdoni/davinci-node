@@ -6,7 +6,7 @@
 //
 // The CSP interface defines methods to set a seed, retrieve census origin and
 // root, generate and verify census proofs. The package currently supports the
-// EdDSA BLS12-377 origin for census proofs.
+// EdDSA BN254 origin for census proofs.
 //
 //   - The `New` function creates a new CSP based on the provided origin and
 //     seed.
@@ -17,7 +17,6 @@ package csp
 import (
 	"fmt"
 
-	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/csp/eddsa"
 	"github.com/vocdoni/davinci-node/types"
@@ -47,7 +46,7 @@ func New(origin types.CensusOrigin, seed []byte) (CSP, error) {
 	switch origin {
 	case types.CensusOriginCSPEdDSABabyJubJubV1:
 		var err error
-		if csp, err = eddsa.CSP(twistededwards.BN254); err != nil {
+		if csp, err = eddsa.New(eddsa.DefaultHashFn); err != nil {
 			return nil, fmt.Errorf("failed to create EdDSA BN254 CSP: %w", err)
 		}
 	default:
@@ -70,7 +69,7 @@ func VerifyCensusProof(proof *types.CensusProof) error {
 	switch proof.CensusOrigin {
 	case types.CensusOriginCSPEdDSABabyJubJubV1:
 		var err error
-		csp, err = eddsa.CSP(twistededwards.BN254)
+		csp, err = eddsa.New(eddsa.DefaultHashFn)
 		if err != nil {
 			return fmt.Errorf("failed to create EdDSA BN254 CSP: %w", err)
 		}
