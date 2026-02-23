@@ -272,9 +272,7 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 			"censusRoot", censusRoot.String(),
 			"#votes", len(votes),
 		)
-
-		// Log assignment info (basic info only)
-		log.Infow("assignment details available for debugging")
+		s.logStateTransitionWitnessDump(assignments)
 	} else {
 		log.Warnw("assignments is nil, skipping detailed constraint error logging")
 	}
@@ -286,6 +284,51 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 			"voteID", v.VoteID.String(),
 			"address", fmt.Sprintf("%x", v.Address.Bytes()),
 			"weight", v.Weight.String(),
+		)
+	}
+}
+
+func (s *Sequencer) logStateTransitionWitnessDump(witness *statetransition.StateTransitionCircuit) {
+	witnessJSON, marshalErr := statetransition.MarshalWitnessForDebug(witness)
+	if marshalErr != nil {
+		log.Warnw("failed to marshal full witness dump", "error", marshalErr)
+		sanitizedWitness := statetransition.WitnessForDebug(witness)
+		log.Debugw("state transition full witness dump (fallback)")
+		log.Debugf("%+v", sanitizedWitness)
+	} else {
+		log.Debugw("state transition full witness dump")
+		log.Debug(string(witnessJSON))
+	}
+
+	for i := range params.VotesPerBatch {
+		vote := witness.Votes[i]
+		ballotTransition := witness.VotesProofs.Ballot[i]
+		voteIDTransition := witness.VotesProofs.VoteIDs[i]
+		censusMerkle := witness.CensusProofs.MerkleProofs[i]
+		censusCSP := witness.CensusProofs.CSPProofs[i]
+		log.Debugw("state transition witness slot",
+			"index", i,
+			"address", vote.Address,
+			"voteID", vote.VoteID,
+			"voteWeight", vote.VoteWeight,
+			"ballotTransitionOldRoot", ballotTransition.OldRoot,
+			"ballotTransitionNewRoot", ballotTransition.NewRoot,
+			"ballotTransitionOldKey", ballotTransition.OldKey,
+			"ballotTransitionNewKey", ballotTransition.NewKey,
+			"ballotTransitionIsOld0", ballotTransition.IsOld0,
+			"ballotTransitionFnc0", ballotTransition.Fnc0,
+			"ballotTransitionFnc1", ballotTransition.Fnc1,
+			"voteIDTransitionOldRoot", voteIDTransition.OldRoot,
+			"voteIDTransitionNewRoot", voteIDTransition.NewRoot,
+			"voteIDTransitionOldKey", voteIDTransition.OldKey,
+			"voteIDTransitionNewKey", voteIDTransition.NewKey,
+			"voteIDTransitionIsOld0", voteIDTransition.IsOld0,
+			"voteIDTransitionFnc0", voteIDTransition.Fnc0,
+			"voteIDTransitionFnc1", voteIDTransition.Fnc1,
+			"censusMerkleLeaf", censusMerkle.Leaf,
+			"censusMerkleIndex", censusMerkle.Index,
+			"censusCSPPublicKey", censusCSP.PublicKey,
+			"censusCSPSignature", censusCSP.Signature,
 		)
 	}
 }
