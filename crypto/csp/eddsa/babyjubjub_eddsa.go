@@ -17,11 +17,25 @@ type BabyJubJubEdDSA struct {
 	privKey babyjub.PrivateKey
 }
 
-// New creates a new New for the bn254 curve using Poseidon as hash function.
-// It implements the CSP interface and can be used to generate and verify
-// proofs for voters. It generates a new random private key. If something goes
+// NewBabyJubJubKeyFromSeed creates a new BabyJubJubEdDSA for the bn254 curve
+// using the hash function provided and the provided seed. It implements the
+// CSP interface and can be used to generate and verify proofs for voters. If
+// something goes wrong during the key generation, it returns an error.
+func NewBabyJubJubKeyFromSeed(hashFn Hash, seed []byte) (*BabyJubJubEdDSA, error) {
+	key := &BabyJubJubEdDSA{
+		hashFn: hashFn,
+	}
+	if err := key.SetSeed(seed); err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
+// NewBabyJubJubKeyRandom creates a new random BabyJubJubEdDSA for the bn254
+// curve using the hash function provided. It implements the CSP interface and
+// can be used to generate and verify proofs for voters. If something goes
 // wrong during the key generation, it returns an error.
-func New(hashFn Hash) (*BabyJubJubEdDSA, error) {
+func NewBabyJubJubKeyRandom(hashFn Hash) (*BabyJubJubEdDSA, error) {
 	randPrivKey := babyjub.NewRandPrivKey()
 	return &BabyJubJubEdDSA{
 		hashFn:  hashFn,
@@ -225,8 +239,11 @@ func signatureMessage(
 	if !processID.IsValid() {
 		return nil, fmt.Errorf("invalid process ID")
 	}
-	if len(address) == 0 {
-		return nil, fmt.Errorf("address must not be empty")
+	if len(address) == 0 || !address.BigInt().IsInField(bn254.ID.ScalarField()) {
+		return nil, fmt.Errorf("address must not be empty and must be in field %s", bn254.ID.ScalarField().String())
+	}
+	if weight == nil || !weight.IsInField(bn254.ID.ScalarField()) {
+		return nil, fmt.Errorf("weight must not be nil and must be in field %s", bn254.ID.ScalarField().String())
 	}
 	// Reset the hash function before using it
 	hashFn.Reset()
@@ -234,9 +251,9 @@ func signatureMessage(
 	// using the poseidon hash function. Ensure that the process ID and address
 	// are converted to field elements for the curve.
 	res, err := hashFn.BigIntsSum([]*big.Int{
-		processID.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
-		address.BigInt().ToFF(bn254.ID.ScalarField()).MathBigInt(),
-		weight.ToFF(bn254.ID.ScalarField()).MathBigInt(),
+		processID.BigInt().MathBigInt(),
+		address.BigInt().MathBigInt(),
+		weight.MathBigInt(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error hashing signature message: %w", err)

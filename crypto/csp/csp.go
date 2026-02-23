@@ -46,7 +46,7 @@ func New(origin types.CensusOrigin, seed []byte) (CSP, error) {
 	switch origin {
 	case types.CensusOriginCSPEdDSABabyJubJubV1:
 		var err error
-		if csp, err = eddsa.New(eddsa.DefaultHashFn); err != nil {
+		if csp, err = eddsa.NewBabyJubJubKeyRandom(eddsa.DefaultHashFn); err != nil {
 			return nil, fmt.Errorf("failed to create EdDSA BN254 CSP: %w", err)
 		}
 	default:
@@ -69,7 +69,7 @@ func VerifyCensusProof(proof *types.CensusProof) error {
 	switch proof.CensusOrigin {
 	case types.CensusOriginCSPEdDSABabyJubJubV1:
 		var err error
-		csp, err = eddsa.New(eddsa.DefaultHashFn)
+		csp, err = eddsa.NewBabyJubJubKeyRandom(eddsa.DefaultHashFn)
 		if err != nil {
 			return fmt.Errorf("failed to create EdDSA BN254 CSP: %w", err)
 		}
