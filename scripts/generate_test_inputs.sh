@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+if [ -z "${BASH_VERSION:-}" ]; then
+    exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 usage() {
@@ -31,10 +35,28 @@ LOG_PATH=${1:-ci.log}
 OUTPUT_PATH=${2:-output.sol}
 # Keep the organization address stable unless explicitly overridden.
 ORGANIZATION_ADDRESS=${ORGANIZATION_ADDRESS:-0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266}
+generated_log=0
 
 if [[ ! -f "$LOG_PATH" ]]; then
-    echo "error: log file '$LOG_PATH' not found" >&2
-    exit 1
+    if [[ "${1:-}" == "" ]]; then
+        cat <<'EOF' >&2
+log file 'ci.log' not found.
+
+Would you like to run the integration test now to generate it?
+Command:
+  RUN_INTEGRATION_TESTS=true go test -run ^TestOffChainMerkleTreeStaticCensus$ github.com/vocdoni/davinci-node/tests -timeout=1h -v > ci.log
+EOF
+        read -r -p "Run the command now? [y/N] " reply
+        if [[ "$reply" =~ ^[Yy]$ ]]; then
+            RUN_INTEGRATION_TESTS=true go test -run ^TestOffChainMerkleTreeStaticCensus$ github.com/vocdoni/davinci-node/tests -timeout=1h -v > ci.log
+            generated_log=1
+        else
+            exit 1
+        fi
+    else
+        echo "error: log file '$LOG_PATH' not found" >&2
+        exit 1
+    fi
 fi
 
 tmp_log=$(mktemp)
@@ -113,31 +135,36 @@ json.dump(stringify_ints(data), sys.stdout)
 PY
 }
 
-readarray -t transition_lines < <(grep -F "proof ready to submit to the contract" "$tmp_log")
-if ((${#transition_lines[@]} < 2)); then
-    echo "error: expected at least two state transition entries in the log" >&2
-    exit 1
-fi
-
-invalid_line=${transition_lines[0]}
-valid_line=${transition_lines[1]}
-
 results_line=$(grep -F "verified results ready to upload to contract" "$tmp_log" | head -n1 || true)
 if [[ -z "$results_line" ]]; then
     echo "error: unable to find results verifier entry in the log" >&2
     exit 1
 fi
 
-invalid_inputs_raw=$(extract_json_block "$invalid_line" "strInputs" "strProof") || {
-    echo "error: failed to parse invalid statetransition inputs" >&2
+results_process_id=$(extract_field "$results_line" "processID" || true)
+
+transition_lines=()
+while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    if [[ -n "$results_process_id" && "$line" != *"processID=$results_process_id"* ]]; then
+        continue
+    fi
+    transition_lines+=("$line")
+done < <(grep -F "proof ready to submit to the contract" "$tmp_log")
+
+if ((${#transition_lines[@]} < 1)); then
+    echo "error: expected at least one state transition entry in the log" >&2
     exit 1
-}
+fi
+
+valid_line=${transition_lines[-1]}
+invalid_line=""
+if ((${#transition_lines[@]} >= 2)); then
+    invalid_line=${transition_lines[-2]}
+fi
+
 valid_inputs_raw=$(extract_json_block "$valid_line" "strInputs" "strProof") || {
     echo "error: failed to parse valid statetransition inputs" >&2
-    exit 1
-}
-invalid_proof_raw=$(extract_json_block "$invalid_line" "strProof") || {
-    echo "error: failed to parse invalid statetransition proof" >&2
     exit 1
 }
 valid_proof_raw=$(extract_json_block "$valid_line" "strProof") || {
@@ -153,16 +180,53 @@ results_proof_raw=$(extract_json_block "$results_line" "strProof") || {
     exit 1
 }
 
-decode_json_string "$invalid_inputs_raw" >"$invalid_inputs_json"
 decode_json_string "$valid_inputs_raw" >"$valid_inputs_json"
-decode_json_string "$invalid_proof_raw" >"$invalid_proof_json"
 decode_json_string "$valid_proof_raw" >"$valid_proof_json"
 decode_json_string "$results_inputs_raw" >"$results_inputs_json"
 decode_json_string "$results_proof_raw" >"$results_proof_json"
 
+if [[ -n "$invalid_line" ]]; then
+    invalid_inputs_raw=$(extract_json_block "$invalid_line" "strInputs" "strProof") || {
+        echo "error: failed to parse invalid statetransition inputs" >&2
+        exit 1
+    }
+    invalid_proof_raw=$(extract_json_block "$invalid_line" "strProof") || {
+        echo "error: failed to parse invalid statetransition proof" >&2
+        exit 1
+    }
+    decode_json_string "$invalid_inputs_raw" >"$invalid_inputs_json"
+    decode_json_string "$invalid_proof_raw" >"$invalid_proof_json"
+else
+    python3 - "$valid_inputs_json" "$invalid_inputs_json" <<'PY'
+import json
+import sys
+
+source_path = sys.argv[1]
+dest_path = sys.argv[2]
+
+with open(source_path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+root = data.get("rootHashAfter")
+if root is None:
+    sys.stderr.write("missing rootHashAfter in valid inputs\n")
+    sys.exit(1)
+
+data["rootHashAfter"] = str(int(root) + 1)
+
+with open(dest_path, "w", encoding="utf-8") as handle:
+    json.dump(data, handle)
+PY
+    cp "$valid_proof_json" "$invalid_proof_json"
+    echo "warning: only one state transition entry found; generated invalid inputs by bumping rootHashAfter" >&2
+fi
+
 declare -A blob_hash_by_after
 while IFS= read -r line; do
     [[ -z "$line" ]] && continue
+    if [[ -n "$results_process_id" && "$line" != *"processID=$results_process_id"* ]]; then
+        continue
+    fi
     blob_hash=$(extract_field "$line" "blobHash" || true)
     root_after=$(extract_field "$line" "rootHashAfter" || true)
     if [[ -n "$blob_hash" && -n "$root_after" ]]; then
@@ -197,8 +261,11 @@ statetransition_abi_proof=$(extract_field "$valid_line" "abiProof") || {
     exit 1
 }
 statetransition_abi_proof_invalid=$(extract_field "$invalid_line" "abiProof") || {
-    echo "error: missing abiProof in invalid statetransition" >&2
-    exit 1
+    if [[ -n "$invalid_line" ]]; then
+        echo "error: missing abiProof in invalid statetransition" >&2
+        exit 1
+    fi
+    echo ""
 }
 results_abi_inputs=$(extract_field "$results_line" "abiInputs") || {
     echo "error: missing abiInputs in results entry" >&2
@@ -239,6 +306,10 @@ mapfile -t results_commitment_pok < <(jq -r '.commitment_pok[]' "$results_proof_
 if [[ "$results_state_root" != "$valid_root_after" ]]; then
     echo "error: results stateRoot ($results_state_root) does not match statetransition rootHashAfter ($valid_root_after)" >&2
     exit 1
+fi
+
+if [[ -z "$statetransition_abi_proof_invalid" ]]; then
+    statetransition_abi_proof_invalid=$statetransition_abi_proof
 fi
 
 normalize_hex() {
@@ -367,5 +438,9 @@ abstract contract TestInputs {
     uint256[8] public FINAL_RESULTS = [$(format_array_inline ", " "${final_results[@]}")];
 }
 EOF
+
+if ((generated_log)); then
+    rm -f "$LOG_PATH"
+fi
 
 echo "wrote $OUTPUT_PATH from $LOG_PATH"
