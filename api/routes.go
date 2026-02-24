@@ -27,6 +27,7 @@ const (
 	VoteIDURLParam        = "voteId"                                                                          // URL parameter for vote ID
 	BallotIndexURLParam   = "ballotIndex"                                                                     // URL parameter for ballot index
 	VoteStatusEndpoint    = VotesEndpoint + "/{" + ProcessURLParam + "}/voteId/{" + VoteIDURLParam + "}"      // GET: Check vote status
+	VoteByAddressEndpoint = VotesEndpoint + "/{" + ProcessURLParam + "}/address/{" + AddressURLParam + "}"    // GET: Get vote by address
 	BallotByIndexEndpoint = VotesEndpoint + "/{" + ProcessURLParam + "}/ballot/{" + BallotIndexURLParam + "}" // GET: Get ballot by index
 
 	// Info endpoint

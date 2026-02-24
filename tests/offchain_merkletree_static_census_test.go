@@ -102,6 +102,7 @@ func TestOffChainMerkleTreeStaticCensus(t *testing.T) {
 			ks = append(ks, k)
 			// Save vote fields for results checks
 			votersFieldsValues = append(votersFieldsValues, randFields)
+			c.Logf("vote submited for %s", signer.Address())
 		}
 		c.Assert(ks, qt.HasLen, numVoters)
 		c.Assert(voteIDs, qt.HasLen, numVoters)
@@ -126,6 +127,24 @@ func TestOffChainMerkleTreeStaticCensus(t *testing.T) {
 			c.FailNow()
 		}
 		t.Log("All votes settled.")
+	})
+
+	c.Run("ensure that every address has voted", func(c *qt.C) {
+		t.Logf("Checking for %d address to have a vote in the state", len(signers))
+		if err := helpers.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
+			for _, signer := range signers {
+				hasAlreadyVoted, err := helpers.HasAddressAlreadyVoted(services.HTTPClient, pid, signer.Address())
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
+				if !hasAlreadyVoted {
+					return false
+				}
+			}
+			return true
+		}); err != nil {
+			c.Fatalf("Timeout waiting for votes to be settled and published at contract")
+			c.FailNow()
+		}
+		t.Log("All address have a vote.")
 	})
 
 	c.Run("finish process and wait for results", func(c *qt.C) {
