@@ -17,7 +17,7 @@ func TestGenerateVerifyProof(t *testing.T) {
 	userAddress := testutil.RandomAddress()
 	userWeight := types.NewInt(testutil.Weight)
 
-	csp, err := New(DefaultHashFn)
+	csp, err := NewBabyJubJubKeyRandom(DefaultHashFn)
 	c.Assert(err, qt.IsNil)
 
 	t.Run("invalid inputs", func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestCensusRootLengthAndValue(t *testing.T) {
 	c := qt.New(t)
 
 	for range 1000 {
-		csp, err := New(DefaultHashFn)
+		csp, err := NewBabyJubJubKeyRandom(DefaultHashFn)
 		c.Assert(err, qt.IsNil)
 		root := csp.CensusRoot().Root
 		c.Assert(len(root), qt.Equals, types.CensusRootLength)

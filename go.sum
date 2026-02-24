@@ -808,8 +808,10 @@ github.com/vocdoni/arbo v0.0.0-20260216104828-6bf3dbaeb1af h1:naevAspPry5jSYcJHj
 github.com/vocdoni/arbo v0.0.0-20260216104828-6bf3dbaeb1af/go.mod h1:SUsNx5GJJunlEMBo6ETTmys88B4bkTgqNV5N1jN3iic=
 github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427 h1:agxi6vKY/QlChr+hjr6+4uPUwrFFleg/PntJdJP695g=
 github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427/go.mod h1:8kDd6AYVCW9HKBng4O0bkNHgameysPWztt502FcQL1c=
-github.com/vocdoni/davinci-contracts v0.0.36-0.20260223191906-bd9d89297a67 h1:1om2KS8JTy2RhsNSfY0f5luwESmGVxq2mU3ulNeCRok=
-github.com/vocdoni/davinci-contracts v0.0.36-0.20260223191906-bd9d89297a67/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
+github.com/vocdoni/davinci-contracts v0.0.36-0.20260224092855-88e168f58cdf h1:NYZQh2lJWPKPCxBO29n9mSiV4ifIeYwbUcGEkO6/NEM=
+github.com/vocdoni/davinci-contracts v0.0.36-0.20260224092855-88e168f58cdf/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
+github.com/vocdoni/davinci-contracts v0.0.36-0.20260224095644-d9b45f061336 h1:sBYJihWf6leD2WQf/RPtQdZntblQksJEfMvuOqYr45o=
+github.com/vocdoni/davinci-contracts v0.0.36-0.20260224095644-d9b45f061336/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260218072319-01482f6ccc38 h1:GcmtjOe1mLMq9SnyhVzDpr909c5HjOJB1rhTZdZPHP4=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260218072319-01482f6ccc38/go.mod h1:kmd5T6ucuWbT9rFC4ACxXztHBq8WEt1uaYoTm8ziLyU=
 github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e h1:y1NrunNzanqBl2Msz4H8UTS7BzoijpdkwWhtXQu4Ji0=
