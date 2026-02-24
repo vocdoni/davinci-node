@@ -55,6 +55,91 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 	httpWriteJSON(w, response)
 }
 
+// voteByAddress retrieves an encrypted ballot by its address for a given
+// processID
+// GET /votes/{processId}/address/{address}
+func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
+	// Get the processID
+	processID, err := types.HexStringToProcessID(chi.URLParam(r, ProcessURLParam))
+	if err != nil {
+		ErrMalformedProcessID.Withf("could not decode process ID: %v", err).Write(w)
+		return
+	}
+
+	// Get the address
+	address, err := types.HexStringToHexBytes(chi.URLParam(r, AddressURLParam))
+	if err != nil {
+		ErrMalformedAddress.Write(w)
+		return
+	}
+
+	// Get the process information from the storage
+	process, err := a.storage.Process(processID)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			ErrProcessNotFound.Withf("could not retrieve process: %v", err).Write(w)
+			return
+		}
+		ErrGenericInternalServerError.Withf("could not retrieve process: %v", err).Write(w)
+		return
+	}
+	if !process.Census.CensusOrigin.IsMerkleTree() {
+		ErrResourceNotFound.With("invalid census origin").Write(w)
+		return
+	}
+
+	// Load the process census
+	censusRef, err := a.storage.LoadCensus(process.Census)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
+		return
+	}
+	if censusRef == nil {
+		ErrMalformedParam.With("census not compatible with local processing").Write(w)
+		return
+	}
+
+	// Generate the census proof of the address to get the census index
+	ethAddr := common.BytesToAddress(address.Bytes())
+	proof, err := censusRef.Tree().GenerateProof(ethAddr)
+	if err != nil {
+		ErrResourceNotFound.Withf("participant '%s' not found in census: %s", address.String(), err.Error()).Write(w)
+		return
+	}
+
+	// Calculate the ballot index
+	hexAddress := types.HexBytes(address.Bytes())
+	ballotIndex := types.CalculateBallotIndex(hexAddress.BigInt().MathBigInt(), proof.Index)
+
+	// Open the state for the process
+	s, err := state.New(a.storage.StateDB(), processID)
+	if err != nil {
+		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
+		return
+	}
+	defer func() {
+		if err := s.Close(); err != nil {
+			log.Warnw("could not close state", "processID", processID.String(), "error", err.Error())
+		}
+	}()
+
+	// Set the state root at the latest in the storage
+	s.SetRootAsBigInt(process.StateRoot.MathBigInt())
+
+	// Get the ballot by its index
+	ballot, err := s.EncryptedBallot(ballotIndex)
+	if err != nil {
+		if errors.Is(err, state.ErrKeyNotFound) {
+			ErrResourceNotFound.Withf("ballot index not found: %s", ballotIndex.String()).Write(w)
+			return
+		}
+		ErrGenericInternalServerError.Withf("could not get commitment: %v", err).Write(w)
+		return
+	}
+
+	httpWriteJSON(w, ballot)
+}
+
 // ballotByIndex retrieves an encrypted ballot by its index for a given
 // processID
 // GET /votes/{processId}/ballot/{ballotIndex}
