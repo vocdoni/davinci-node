@@ -20,8 +20,9 @@ import (
 // ID and address as variables. The IsValid method checks if the signature is
 // valid or not using the gnark API.
 type CSPProof struct {
-	Signature eddsa.Signature
-	PublicKey eddsa.PublicKey
+	Signature   eddsa.Signature
+	PublicKey   eddsa.PublicKey
+	BallotIndex uint64
 }
 
 // IsValid checks if the signature is valid or not. It returns 1 as a frontend
