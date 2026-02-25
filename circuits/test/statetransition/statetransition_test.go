@@ -492,7 +492,7 @@ type CircuitMerkleTransitions struct {
 
 func (circuit CircuitMerkleTransitions) Define(api frontend.API) error {
 	isRealVote := circuit.VoteMask(api)
-	circuit.VerifyMerkleTransitions(api, statetransition.HashFn, isRealVote)
+	circuit.VerifyMerkleTransitions(api, isRealVote)
 	return nil
 }
 
@@ -503,6 +503,29 @@ func TestCircuitMerkleTransitionsCompile(t *testing.T) {
 func TestCircuitMerkleTransitionsProve(t *testing.T) {
 	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitMerkleTransitions{
+		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
+	}, witness)
+	if os.Getenv("DEBUG") != "" {
+		debugLog(t, witness)
+	}
+}
+
+type CircuitRootTransition struct {
+	statetransition.StateTransitionCircuit
+}
+
+func (circuit CircuitRootTransition) Define(api frontend.API) error {
+	circuit.VerifyRootTransition(api, statetransition.HashFn)
+	return nil
+}
+
+func TestCircuitRootTransitionCompile(t *testing.T) {
+	testCircuitCompile(t, &CircuitRootTransition{*CircuitPlaceholder()})
+}
+
+func TestCircuitRootTransitionProve(t *testing.T) {
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	testCircuitProve(t, &CircuitRootTransition{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
 	if os.Getenv("DEBUG") != "" {
