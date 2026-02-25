@@ -240,8 +240,3 @@ func padStateSiblings(unpackedSiblings []*big.Int) [params.StateTreeMaxLevels]fr
 	}
 	return paddedSiblings
 }
-
-// AssertDummyIsNoop fails when isDummy is 1 and mp is not a NOOP
-func (mp *MerkleTransition) AssertDummyIsNoop(api frontend.API, isDummy frontend.Variable) {
-	api.AssertIsEqual(api.Select(isDummy, mp.IsNoop(api), 1), 1)
-}

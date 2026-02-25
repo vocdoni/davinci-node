@@ -117,7 +117,8 @@ func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	// current state
 	circuit.VerifyMerkleProofs(api, HashFn)
 	// state transition
-	circuit.VerifyMerkleTransitions(api, HashFn, isRealVote)
+	circuit.VerifyMerkleTransitions(api, isRealVote)
+	circuit.VerifyRootTransition(api, HashFn)
 	// leaf hashes
 	circuit.VerifyLeafHashes(api, HashFn)
 	// censuses
@@ -273,23 +274,27 @@ func (circuit StateTransitionCircuit) VerifyMerkleProofs(api frontend.API, hFn u
 	circuit.ProcessProofs.EncryptionKey.Verify(api, hFn, circuit.RootHashBefore)
 }
 
-// VerifyMerkleTransitions verifies that the chain of tree transitions is valid.
-// It first verifies the chain of tree transitions of the ballots, then the
-// chain of tree transitions of the commitments, and finally the chain of tree
-// transitions of the results. The order of the transitions is fundamental to
-// achieve the final root hash.
-func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, hFn utils.Hasher, isRealVote []frontend.Variable) {
-	// verify chain of tree transitions, order here is fundamental.
-	root := circuit.RootHashBefore
-	for i := range circuit.VotesProofs.Ballot {
-		// if the vote is dummy, the transition must be a NOOP (Fnc0=0, Fnc1=0)
+// VerifyMerkleTransitions enforces that each MerkleTransition is of the expected type:
+//   - Ballot transitions must be INSERT or UPDATE
+//   - VoteID transitions must be INSERT
+//   - all dummy slots must be NOOP
+func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, isRealVote []frontend.Variable) {
+	for i := range params.VotesPerBatch {
+		isReal := isRealVote[i]
 		isDummy := api.Sub(1, isRealVote[i])
 
-		// assert that dummy votes have NOOP transitions
-		circuit.VotesProofs.Ballot[i].AssertDummyIsNoop(api, isDummy)
-		circuit.VotesProofs.VoteIDs[i].AssertDummyIsNoop(api, isDummy)
+		assertIf(api, isReal, circuit.VotesProofs.Ballot[i].IsInsertOrUpdate(api))
+		assertIf(api, isReal, circuit.VotesProofs.VoteIDs[i].IsInsert(api))
+		assertIf(api, isDummy, circuit.VotesProofs.Ballot[i].IsNoop(api))
+		assertIf(api, isDummy, circuit.VotesProofs.VoteIDs[i].IsNoop(api))
+	}
+}
 
-		// verify transitions
+// VerifyRootTransition verifies that the chain of tree transitions is valid.
+// The order of the transitions is fundamental to achieve the final root hash.
+func (circuit StateTransitionCircuit) VerifyRootTransition(api frontend.API, hFn utils.Hasher) {
+	root := circuit.RootHashBefore
+	for i := range params.VotesPerBatch {
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
 		root = circuit.VotesProofs.VoteIDs[i].Verify(api, hFn, root)
 	}
