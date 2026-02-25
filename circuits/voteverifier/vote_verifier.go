@@ -123,7 +123,7 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	validSign := c.PublicKey.IsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
 	// if the inputs are valid, ensure that thre result of the verification
 	// is 1, otherwise, the result does not matter so force it to be 1
-	api.AssertIsEqual(api.Select(c.IsValid, validSign, 1), 1)
+	circuits.AssertTrueIf(api, c.IsValid, validSign)
 	// derive the address from the public key and check it matches the provided
 	// address
 	derivedAddr, err := address.DeriveAddress(api, c.PublicKey)
@@ -135,10 +135,8 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert address to var", err)
 	}
-	// if the proof is not valid force the derived address to be equal to the
-	// provided address
-	derivedAddr = api.Select(c.IsValid, derivedAddr, addressVar)
-	api.AssertIsEqual(addressVar, derivedAddr)
+	// Only enforce address equality when inputs are marked as valid.
+	circuits.AssertIsEqualIf(api, c.IsValid, derivedAddr, addressVar)
 }
 
 // verifyCircomProof circuit method verifies the ballot proof provided by the
@@ -167,7 +165,7 @@ func (c *VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
 	}
 	// if the inputs are valid, ensure that the result of the verification is 1,
 	// otherwise, the result does not matter so force it to be 1
-	api.AssertIsEqual(api.Select(c.IsValid, validProof, 1), 1)
+	circuits.AssertTrueIf(api, c.IsValid, validProof)
 }
 
 func (c *VerifyVoteCircuit) Define(api frontend.API) error {

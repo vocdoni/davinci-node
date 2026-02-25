@@ -20,6 +20,18 @@ func FrontendError(api frontend.API, msg string, trace error) {
 	api.AssertIsEqual(1, 0)
 }
 
+// AssertIsEqualIf fails if condition is true and i1 != i2.
+// If condition is false, the check is skipped.
+func AssertIsEqualIf(api frontend.API, condition, i1, i2 frontend.Variable) {
+	api.AssertIsEqual(api.Select(condition, i1, i2), i2)
+}
+
+// AssertTrueIf fails if condition is true and mustBeTrue is not (mustBeTrue != 1).
+// If condition is false, the check is skipped.
+func AssertTrueIf(api frontend.API, condition, mustBeTrue frontend.Variable) {
+	AssertIsEqualIf(api, condition, mustBeTrue, 1)
+}
+
 // BigIntArrayToN pads the big.Int array to n elements, if needed, with zeros.
 func BigIntArrayToN(arr []*big.Int, n int) []*big.Int {
 	bigArr := make([]*big.Int, n)
