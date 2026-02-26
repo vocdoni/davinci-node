@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/solidity"
@@ -31,6 +32,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/results"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
+	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
@@ -45,6 +47,7 @@ func main() {
 	var updateConfig bool
 	var configPath string
 	var updateWasm bool
+	var force bool
 	s3Config := NewDefaultS3Config()
 
 	// Define flags
@@ -52,6 +55,7 @@ func main() {
 	flag.BoolVar(&updateConfig, "update-config", false, "update circuit_artifacts.go file with new hashes")
 	flag.StringVar(&configPath, "config-path", "", "path to circuit_artifacts.go file (auto-detected if not specified)")
 	flag.BoolVar(&updateWasm, "update-wasm", false, "compile and update WASM files only")
+	flag.BoolVar(&force, "force", false, "force recompilation even if CCS artifact already exists in destination")
 
 	// S3 configuration flags
 	flag.BoolVar(&s3Config.Enabled, "s3.enabled", false, "enable S3 uploads")
@@ -76,6 +80,7 @@ func main() {
 	// Hash list to store the hashes of the generated artifacts
 	// Using the same names as in config/circuit_artifacts.go
 	hashList := map[string]string{}
+	var hash string
 
 	// Create the destination folder if it doesn't exist
 	if err := os.MkdirAll(destination, 0o755); err != nil {
@@ -94,29 +99,57 @@ func main() {
 	////////////////////////////////////////
 	// Ballot Proof Circom Artifacts
 	////////////////////////////////////////
-	{
-		ballotProofStart := time.Now()
-		log.Infow("copying ballot proof circom artifacts...")
-		hash, err := copyAndHashArtifact(filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof.wasm"), destination, "wasm")
+	ballotProofStart := time.Now()
+	ballotProofWASM := filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof.wasm")
+	ballotProofPK := filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof_pkey.zkey")
+	ballotProofVK := filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof_vkey.json")
+
+	ballotProofWASMHash, err := hashFileSHA256(ballotProofWASM)
+	if err != nil {
+		log.Fatalf("error hashing ballot proof wasm: %v", err)
+	}
+	hashList["BallotProofCircuitHash"] = ballotProofWASMHash
+
+	ballotProofPKHash, err := hashFileSHA256(ballotProofPK)
+	if err != nil {
+		log.Fatalf("error hashing ballot proof proving key: %v", err)
+	}
+	hashList["BallotProofProvingKeyHash"] = ballotProofPKHash
+
+	ballotProofVKHash, err := hashFileSHA256(ballotProofVK)
+	if err != nil {
+		log.Fatalf("error hashing ballot proof verification key: %v", err)
+	}
+	hashList["BallotProofVerificationKeyHash"] = ballotProofVKHash
+
+	ballotProofRecompiled := force ||
+		!artifactExists(destination, ballotProofWASMHash, "wasm") ||
+		!artifactExists(destination, ballotProofPKHash, "zkey") ||
+		!artifactExists(destination, ballotProofVKHash, "json")
+	log.Infow("processing ballot proof circom artifacts...", "recompile", ballotProofRecompiled)
+	if ballotProofRecompiled {
+		hash, err := copyAndHashArtifact(ballotProofWASM, destination, "wasm")
 		if err != nil {
 			log.Fatalf("error copying ballot proof wasm: %v", err)
 		}
 		hashList["BallotProofCircuitHash"] = hash
 
-		hash, err = copyAndHashArtifact(filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof_pkey.zkey"), destination, "zkey")
+		hash, err = copyAndHashArtifact(ballotProofPK, destination, "zkey")
 		if err != nil {
 			log.Fatalf("error copying ballot proof proving key: %v", err)
 		}
 		hashList["BallotProofProvingKeyHash"] = hash
 
-		hash, err = copyAndHashArtifact(filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof_vkey.json"), destination, "json")
+		hash, err = copyAndHashArtifact(ballotProofVK, destination, "json")
 		if err != nil {
 			log.Fatalf("error copying ballot proof verification key: %v", err)
 		}
 		hashList["BallotProofVerificationKeyHash"] = hash
-
-		log.Infow("ballot proof circom artifacts copied", "elapsed", time.Since(ballotProofStart).String())
+	} else {
+		log.Infow("skipping ballot proof artifact copy; artifacts already present")
 	}
+
+	log.Infow("ballot proof circom artifacts processed", "elapsed", time.Since(ballotProofStart).String())
 
 	////////////////////////////////////////
 	// Vote Verifier Circuit Compilation
@@ -137,167 +170,124 @@ func main() {
 	if err != nil {
 		log.Fatalf("error compiling vote verifier circuit: %v", err)
 	}
-
-	// Setup Vote Verifier circuit
-	voteVerifierPk, voteVerifierVk, err := groth16.Setup(voteVerifierCCS)
+	voteVerifierVk, _, err := compileCircuitArtifacts(
+		"VoteVerifier",
+		voteVerifierCCS,
+		params.VoteVerifierCurve,
+		config.VoteVerifierCircuitHash,
+		config.VoteVerifierProvingKeyHash,
+		config.VoteVerifierVerificationKeyHash,
+		destination,
+		force,
+		hashList,
+	)
 	if err != nil {
-		log.Fatalf("error setting up vote verifier circuit: %v", err)
+		log.Fatalf("error processing vote verifier artifacts: %v", err)
 	}
-	log.Infow("vote verifier circuit compiled", "elapsed", time.Since(startTime).String())
-
-	// Write the vote verifier artifacts to disk
-	startTime = time.Now()
-	log.Infow("writing vote verifier artifacts to disk...")
-	hash, err := writeCS(voteVerifierCCS, destination)
-	if err != nil {
-		log.Fatalf("error writing vote verifier constraint system: %v", err)
-	}
-	hashList["VoteVerifierCircuitHash"] = hash
-
-	hash, err = writePK(voteVerifierPk, destination)
-	if err != nil {
-		log.Fatalf("error writing vote verifier proving key: %v", err)
-	}
-	hashList["VoteVerifierProvingKeyHash"] = hash
-
-	hash, err = writeVK(voteVerifierVk, destination)
-	if err != nil {
-		log.Fatalf("error writing vote verifier verifying key: %v", err)
-	}
-	hashList["VoteVerifierVerificationKeyHash"] = hash
-
-	log.Infow("vote verifier artifacts written to disk", "elapsed", time.Since(startTime).String())
 
 	////////////////////////////////////////
-	// Aggregate Circuit Compilation
+	// Aggregator Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling aggregator circuit...")
 	startTime = time.Now()
 	voteVerifierFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierVk)
 	if err != nil {
-		log.Fatalf("failed to fix vote verifier verification key: %v", err)
+		log.Fatalf("failed to fix VoteVerifier verification key: %v", err)
 	}
 	// create final placeholder
-	aggregatePlaceholder := &aggregator.AggregatorCircuit{
+	aggregatorPlaceholder := &aggregator.AggregatorCircuit{
 		Proofs:          [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
 		VerificationKey: voteVerifierFixedVk,
 	}
 	for i := range params.VotesPerBatch {
-		aggregatePlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](voteVerifierCCS)
+		aggregatorPlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](voteVerifierCCS)
 	}
 
-	aggregateCCS, err := frontend.Compile(params.AggregatorCurve.ScalarField(), r1cs.NewBuilder, aggregatePlaceholder)
+	aggregatorCCS, err := frontend.Compile(params.AggregatorCurve.ScalarField(), r1cs.NewBuilder, aggregatorPlaceholder)
 	if err != nil {
 		log.Fatalf("failed to compile aggregator circuit: %v", err)
 	}
-	// Setup Aggregator circuit
-	aggregatePk, aggregateVk, err := groth16.Setup(aggregateCCS)
+	aggregatorVk, _, err := compileCircuitArtifacts(
+		"Aggregator",
+		aggregatorCCS,
+		params.AggregatorCurve,
+		config.AggregatorCircuitHash,
+		config.AggregatorProvingKeyHash,
+		config.AggregatorVerificationKeyHash,
+		destination,
+		force,
+		hashList,
+	)
 	if err != nil {
-		log.Fatalf("error setting up aggregator circuit: %v", err)
+		log.Fatalf("error processing aggregator artifacts: %v", err)
 	}
-	log.Infow("aggregator circuit compiled", "elapsed", time.Since(startTime).String())
-
-	// Write the aggregator artifacts to disk
-	startTime = time.Now()
-	log.Infow("writing aggregator artifacts to disk...")
-	hash, err = writeCS(aggregateCCS, destination)
-	if err != nil {
-		log.Fatalf("error writing aggregator constraint system: %v", err)
-	}
-	hashList["AggregatorCircuitHash"] = hash
-
-	hash, err = writePK(aggregatePk, destination)
-	if err != nil {
-		log.Fatalf("error writing aggregator proving key: %v", err)
-	}
-	hashList["AggregatorProvingKeyHash"] = hash
-
-	hash, err = writeVK(aggregateVk, destination)
-	if err != nil {
-		log.Fatalf("error writing aggregator verifying key: %v", err)
-	}
-	hashList["AggregatorVerificationKeyHash"] = hash
-
-	log.Infow("aggregator artifacts written to disk", "elapsed", time.Since(startTime).String())
 
 	////////////////////////////////////////
 	// Statetransition Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling statetransition circuit...")
 	startTime = time.Now()
-	aggregatorFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregateVk)
+	aggregatorFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorVk)
 	if err != nil {
-		log.Fatalf("failed to fix vote verifier verification key: %v", err)
+		log.Fatalf("failed to fix aggregator verification key: %v", err)
 	}
 	// create final placeholder
 	statetransitionPlaceholder := &statetransition.StateTransitionCircuit{
-		AggregatorProof: stdgroth16.PlaceholderProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](aggregateCCS),
+		AggregatorProof: stdgroth16.PlaceholderProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](aggregatorCCS),
 		AggregatorVK:    aggregatorFixedVk,
 	}
 	statetransitionCCS, err := frontend.Compile(params.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, statetransitionPlaceholder)
 	if err != nil {
 		log.Fatalf("failed to compile statetransition circuit: %v", err)
 	}
-	// Setup statetransition circuit
-	statetransitionPk, statetransitionVk, err := groth16.Setup(statetransitionCCS)
+	statetransitionVk, stateTransitionRecompiled, err := compileCircuitArtifacts(
+		"StateTransition",
+		statetransitionCCS,
+		params.StateTransitionCurve,
+		config.StateTransitionCircuitHash,
+		config.StateTransitionProvingKeyHash,
+		config.StateTransitionVerificationKeyHash,
+		destination,
+		force,
+		hashList,
+	)
 	if err != nil {
-		log.Fatalf("error setting up statetransition circuit: %v", err)
-	}
-	log.Infow("statetransition circuit compiled", "elapsed", time.Since(startTime).String())
-
-	// Write the statetransition artifacts to disk
-	startTime = time.Now()
-	log.Infow("writing statetransition artifacts to disk...")
-	hash, err = writeCS(statetransitionCCS, destination)
-	if err != nil {
-		log.Fatalf("error writing statetransition constraint system: %v", err)
-	}
-	hashList["StateTransitionCircuitHash"] = hash
-
-	hash, err = writePK(statetransitionPk, destination)
-	if err != nil {
-		log.Fatalf("error writing statetransition proving key: %v", err)
-	}
-	hashList["StateTransitionProvingKeyHash"] = hash
-
-	hash, err = writeVK(statetransitionVk, destination)
-	if err != nil {
-		log.Fatalf("error writing statetransition verifying key: %v", err)
-	}
-	hashList["StateTransitionVerificationKeyHash"] = hash
-
-	log.Infow("statetransition artifacts written to disk", "elapsed", time.Since(startTime).String())
-
-	/*
-		Export the state transition solidity verifier
-	*/
-	log.Infow("exporting state transition solidity verifier...")
-	// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
-	statetransitionSolidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
-	if err := statetransitionSolidityVk.Precompute(); err != nil {
-		log.Fatalf("failed to precompute vk: %v", err)
-	}
-	statetransitionVkeySolFile := path.Join(destination, "statetransition_vkey.sol")
-	fd, err := os.Create(statetransitionVkeySolFile)
-	if err != nil {
-		log.Fatalf("failed to create statetransition_vkey.sol: %v", err)
-	}
-	buf := bytes.NewBuffer(nil)
-	if err := statetransitionSolidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
-		log.Fatalf("failed to export vk to Solidity: %v", err)
-	}
-	if _, err := fd.Write(buf.Bytes()); err != nil {
-		log.Fatalf("failed to write statetransition_vkey.sol: %v", err)
-	}
-	if err := fd.Close(); err != nil {
-		log.Warnw("failed to close statetransition_vkey.sol file", "error", err)
+		log.Fatalf("error processing statetransition artifacts: %v", err)
 	}
 
-	// Insert the proving key hash into the vkey.sol file
-	if err := insertProvingKeyHashToVkeySolidity(statetransitionVkeySolFile, hashList["StateTransitionProvingKeyHash"]); err != nil {
-		log.Warnw("failed to insert proving key hash into vkey.sol", "error", err)
+	statetransitionVkeySolFile := ""
+	if stateTransitionRecompiled {
+		/*
+			Export the state transition solidity verifier
+		*/
+		log.Infow("exporting state transition solidity verifier...")
+		// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
+		statetransitionSolidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
+		if err := statetransitionSolidityVk.Precompute(); err != nil {
+			log.Fatalf("failed to precompute vk: %v", err)
+		}
+		statetransitionVkeySolFile = path.Join(destination, "statetransition_vkey.sol")
+		fd, err := os.Create(statetransitionVkeySolFile)
+		if err != nil {
+			log.Fatalf("failed to create statetransition_vkey.sol: %v", err)
+		}
+		buf := bytes.NewBuffer(nil)
+		if err := statetransitionSolidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
+			log.Fatalf("failed to export vk to Solidity: %v", err)
+		}
+		if _, err := fd.Write(buf.Bytes()); err != nil {
+			log.Fatalf("failed to write statetransition_vkey.sol: %v", err)
+		}
+		if err := fd.Close(); err != nil {
+			log.Warnw("failed to close statetransition_vkey.sol file", "error", err)
+		}
+
+		// Insert the proving key hash into the vkey.sol file
+		if err := insertProvingKeyHashToVkeySolidity(statetransitionVkeySolFile, hashList["StateTransitionProvingKeyHash"]); err != nil {
+			log.Warnw("failed to insert proving key hash into vkey.sol", "error", err)
+		}
+		log.Infow("statetransition_vkey.sol file created", "path", fd.Name())
 	}
-	log.Infow("statetransition_vkey.sol file created", "path", fd.Name())
 
 	/*
 		ResultsVerifier Circuit Compilation
@@ -310,66 +300,78 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to compile results verifier circuit: %v", err)
 	}
-	// Setup results verifier circuit
-	resultsverifierPk, resultsverifierVk, err := groth16.Setup(resultsverifierCCS)
+	resultsVerifierCCSHash, err := hashConstraintSystem(resultsverifierCCS)
 	if err != nil {
-		log.Fatalf("error setting up results verifier circuit: %v", err)
+		log.Fatalf("error hashing results verifier circuit: %v", err)
 	}
-	log.Infow("results verifier circuit compiled", "elapsed", time.Since(startTime).String())
+	log.Infow("results verifier circuit prepared", "elapsed", time.Since(startTime).String())
 
-	// Write the results verifier artifacts to disk
-	startTime = time.Now()
-	log.Infow("writing results verifier artifacts to disk...")
-	hash, err = writeCS(resultsverifierCCS, destination)
-	if err != nil {
-		log.Fatalf("error writing results verifier constraint system: %v", err)
-	}
-	hashList["ResultsVerifierCircuitHash"] = hash
+	resultsverifierVkeySolFile := ""
+	if shouldRunSetup(resultsVerifierCCSHash, config.ResultsVerifierCircuitHash, force) {
+		// Setup results verifier circuit
+		resultsverifierPk, resultsverifierVk, err := groth16.Setup(resultsverifierCCS)
+		if err != nil {
+			log.Fatalf("error setting up results verifier circuit: %v", err)
+		}
 
-	hash, err = writePK(resultsverifierPk, destination)
-	if err != nil {
-		log.Fatalf("error writing results verifier proving key: %v", err)
-	}
-	hashList["ResultsVerifierProvingKeyHash"] = hash
+		// Write the results verifier artifacts to disk
+		startTime = time.Now()
+		log.Infow("writing results verifier artifacts to disk...")
+		hash, err = writeCS(resultsverifierCCS, destination)
+		if err != nil {
+			log.Fatalf("error writing results verifier constraint system: %v", err)
+		}
+		hashList["ResultsVerifierCircuitHash"] = hash
 
-	hash, err = writeVK(resultsverifierVk, destination)
-	if err != nil {
-		log.Fatalf("error writing results verifier verifying key: %v", err)
-	}
-	hashList["ResultsVerifierVerificationKeyHash"] = hash
+		hash, err = writePK(resultsverifierPk, destination)
+		if err != nil {
+			log.Fatalf("error writing results verifier proving key: %v", err)
+		}
+		hashList["ResultsVerifierProvingKeyHash"] = hash
 
-	log.Infow("results verifier artifacts written to disk", "elapsed", time.Since(startTime).String())
+		hash, err = writeVK(resultsverifierVk, destination)
+		if err != nil {
+			log.Fatalf("error writing results verifier verifying key: %v", err)
+		}
+		hashList["ResultsVerifierVerificationKeyHash"] = hash
 
-	/*
-		Export the results verifier solidity verifier
-	*/
-	log.Infow("exporting results verifier solidity verifier...")
-	// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
-	resultsverifierSolidityVk := resultsverifierVk.(*groth16_bn254.VerifyingKey)
-	if err := resultsverifierSolidityVk.Precompute(); err != nil {
-		log.Fatalf("failed to precompute vk: %v", err)
-	}
-	resultsverifierVkeySolFile := path.Join(destination, "resultsverifier_vkey.sol")
-	fd, err = os.Create(resultsverifierVkeySolFile)
-	if err != nil {
-		log.Fatalf("failed to create resultsverifier_vkey.sol: %v", err)
-	}
-	buf = bytes.NewBuffer(nil)
-	if err := resultsverifierSolidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
-		log.Fatalf("failed to export vk to Solidity: %v", err)
-	}
-	if _, err := fd.Write(buf.Bytes()); err != nil {
-		log.Fatalf("failed to write resultsverifier_vkey.sol: %v", err)
-	}
-	if err := fd.Close(); err != nil {
-		log.Warnw("failed to close resultsverifier_vkey.sol file", "error", err)
-	}
+		log.Infow("results verifier artifacts written to disk", "elapsed", time.Since(startTime).String())
 
-	// Insert the proving key hash into the vkey.sol file
-	if err := insertProvingKeyHashToVkeySolidity(resultsverifierVkeySolFile, hashList["ResultsVerifierProvingKeyHash"]); err != nil {
-		log.Warnw("failed to insert proving key hash into resultsverifier_vkey.sol", "error", err)
+		/*
+			Export the results verifier solidity verifier
+		*/
+		log.Infow("exporting results verifier solidity verifier...")
+		// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
+		resultsverifierSolidityVk := resultsverifierVk.(*groth16_bn254.VerifyingKey)
+		if err := resultsverifierSolidityVk.Precompute(); err != nil {
+			log.Fatalf("failed to precompute vk: %v", err)
+		}
+		resultsverifierVkeySolFile = path.Join(destination, "resultsverifier_vkey.sol")
+		fd, err := os.Create(resultsverifierVkeySolFile)
+		if err != nil {
+			log.Fatalf("failed to create resultsverifier_vkey.sol: %v", err)
+		}
+		buf := bytes.NewBuffer(nil)
+		if err := resultsverifierSolidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
+			log.Fatalf("failed to export vk to Solidity: %v", err)
+		}
+		if _, err := fd.Write(buf.Bytes()); err != nil {
+			log.Fatalf("failed to write resultsverifier_vkey.sol: %v", err)
+		}
+		if err := fd.Close(); err != nil {
+			log.Warnw("failed to close resultsverifier_vkey.sol file", "error", err)
+		}
+
+		// Insert the proving key hash into the vkey.sol file
+		if err := insertProvingKeyHashToVkeySolidity(resultsverifierVkeySolFile, hashList["ResultsVerifierProvingKeyHash"]); err != nil {
+			log.Warnw("failed to insert proving key hash into resultsverifier_vkey.sol", "error", err)
+		}
+		log.Infow("resultsverifier_vkey.sol file created", "path", fd.Name())
+	} else {
+		hashList["ResultsVerifierCircuitHash"] = config.ResultsVerifierCircuitHash
+		hashList["ResultsVerifierProvingKeyHash"] = config.ResultsVerifierProvingKeyHash
+		hashList["ResultsVerifierVerificationKeyHash"] = config.ResultsVerifierVerificationKeyHash
 	}
-	log.Infow("resultsverifier_vkey.sol file created", "path", fd.Name())
 
 	////////////////////////////////////////
 	// Print hash list and upload files
@@ -430,64 +432,185 @@ func main() {
 		// copy the state transition solidity file to the config directory
 		configDir := filepath.Dir(configPath)
 		statetransitionSolidityFile := path.Join(configDir, "statetransition_vkey.sol")
-		statetransitionSourceFile, err := os.Open(statetransitionVkeySolFile)
-		if err != nil {
-			log.Warnw("failed to open vkey.sol file", "error", err)
-			return
-		}
-		defer func() {
-			if err := statetransitionSourceFile.Close(); err != nil {
-				log.Warnw("failed to close source vkey.sol file", "error", err)
+		if statetransitionVkeySolFile != "" {
+			statetransitionSourceFile, err := os.Open(statetransitionVkeySolFile)
+			if err != nil {
+				log.Warnw("failed to open vkey.sol file", "error", err)
+				return
 			}
-		}()
-		statetransitionDestFile, err := os.Create(statetransitionSolidityFile)
-		if err != nil {
-			log.Warnw("failed to create destination vkey.sol file", "error", err)
-			return
-		}
-		defer func() {
-			if err := statetransitionDestFile.Close(); err != nil {
-				log.Warnw("failed to close destination vkey.sol file", "error", err)
+			defer func() {
+				if err := statetransitionSourceFile.Close(); err != nil {
+					log.Warnw("failed to close source vkey.sol file", "error", err)
+				}
+			}()
+			statetransitionDestFile, err := os.Create(statetransitionSolidityFile)
+			if err != nil {
+				log.Warnw("failed to create destination vkey.sol file", "error", err)
+				return
 			}
-		}()
+			defer func() {
+				if err := statetransitionDestFile.Close(); err != nil {
+					log.Warnw("failed to close destination vkey.sol file", "error", err)
+				}
+			}()
 
-		if _, err := io.Copy(statetransitionDestFile, statetransitionSourceFile); err != nil {
-			log.Warnw("failed to copy vkey.sol file", "error", err)
-			return
+			if _, err := io.Copy(statetransitionDestFile, statetransitionSourceFile); err != nil {
+				log.Warnw("failed to copy vkey.sol file", "error", err)
+				return
+			}
+
+			log.Infow("copied statetransition_vkey.sol file to config directory", "path", statetransitionSolidityFile)
 		}
-
-		log.Infow("copied statetransition_vkey.sol file to config directory", "path", statetransitionSolidityFile)
 
 		// copy the solidity file to the config directory
 		resultsverifierSolidityFile := path.Join(configDir, "resultsverifier_vkey.sol")
-		resultsverifierSourceFile, err := os.Open(resultsverifierVkeySolFile)
-		if err != nil {
-			log.Warnw("failed to open vkey.sol file", "error", err)
-			return
-		}
-		defer func() {
-			if err := resultsverifierSourceFile.Close(); err != nil {
-				log.Warnw("failed to close source vkey.sol file", "error", err)
+		if resultsverifierVkeySolFile != "" {
+			resultsverifierSourceFile, err := os.Open(resultsverifierVkeySolFile)
+			if err != nil {
+				log.Warnw("failed to open vkey.sol file", "error", err)
+				return
 			}
-		}()
-		resultsverifierDestFile, err := os.Create(resultsverifierSolidityFile)
-		if err != nil {
-			log.Warnw("failed to create destination vkey.sol file", "error", err)
-			return
-		}
-		defer func() {
-			if err := resultsverifierDestFile.Close(); err != nil {
-				log.Warnw("failed to close destination vkey.sol file", "error", err)
+			defer func() {
+				if err := resultsverifierSourceFile.Close(); err != nil {
+					log.Warnw("failed to close source vkey.sol file", "error", err)
+				}
+			}()
+			resultsverifierDestFile, err := os.Create(resultsverifierSolidityFile)
+			if err != nil {
+				log.Warnw("failed to create destination vkey.sol file", "error", err)
+				return
 			}
-		}()
+			defer func() {
+				if err := resultsverifierDestFile.Close(); err != nil {
+					log.Warnw("failed to close destination vkey.sol file", "error", err)
+				}
+			}()
 
-		if _, err := io.Copy(resultsverifierDestFile, resultsverifierSourceFile); err != nil {
-			log.Warnw("failed to copy vkey.sol file", "error", err)
-			return
+			if _, err := io.Copy(resultsverifierDestFile, resultsverifierSourceFile); err != nil {
+				log.Warnw("failed to copy vkey.sol file", "error", err)
+				return
+			}
+
+			log.Infow("copied resultsverifier_vkey.sol file to config directory", "path", resultsverifierSolidityFile)
 		}
-
-		log.Infow("copied resultsverifier_vkey.sol file to config directory", "path", resultsverifierSolidityFile)
 	}
+}
+
+func shouldRunSetup(compiledCCSHash, expectedCCSHash string, force bool) bool {
+	if force {
+		return true
+	}
+	return compiledCCSHash != expectedCCSHash
+}
+
+func compileCircuitArtifacts(
+	circuitName string,
+	ccs constraint.ConstraintSystem,
+	curve ecc.ID,
+	expectedCircuitHash string,
+	expectedProvingKeyHash string,
+	expectedVerificationKeyHash string,
+	destination string,
+	force bool,
+	hashList map[string]string,
+) (groth16.VerifyingKey, bool, error) {
+	startTime := time.Now()
+	ccsHash, err := hashConstraintSystem(ccs)
+	if err != nil {
+		return nil, false, fmt.Errorf("hash %s circuit: %w", circuitName, err)
+	}
+	log.Infow(fmt.Sprintf("%s circuit prepared", circuitName), "elapsed", time.Since(startTime).String(),
+		"ccsHash", ccsHash,
+		"expectedCircuitHash", expectedCircuitHash)
+
+	if ccsHash == expectedCircuitHash && !force {
+		hashList[circuitName+"CircuitHash"] = expectedCircuitHash
+		hashList[circuitName+"ProvingKeyHash"] = expectedProvingKeyHash
+		hashList[circuitName+"VerificationKeyHash"] = expectedVerificationKeyHash
+
+		vk, err := loadVerifyingKeyFromHash(destination, expectedVerificationKeyHash, curve)
+		if err != nil {
+			return nil, false, fmt.Errorf("load existing %s vk %s.vk: %w", circuitName, expectedVerificationKeyHash, err)
+		}
+		log.Infow(fmt.Sprintf("%s setup skipped; using existing vk from destination", circuitName), "hash", expectedVerificationKeyHash)
+		return vk, false, nil
+	}
+
+	pk, vk, err := groth16.Setup(ccs)
+	if err != nil {
+		return nil, false, fmt.Errorf("setup %s circuit: %w", circuitName, err)
+	}
+
+	startTime = time.Now()
+	log.Infow(fmt.Sprintf("writing %s artifacts to disk", circuitName))
+	hash, err := writeCS(ccs, destination)
+	if err != nil {
+		return nil, false, fmt.Errorf("write %s constraint system: %w", circuitName, err)
+	}
+	hashList[circuitName+"CircuitHash"] = hash
+
+	hash, err = writePK(pk, destination)
+	if err != nil {
+		return nil, false, fmt.Errorf("write %s proving key: %w", circuitName, err)
+	}
+	hashList[circuitName+"ProvingKeyHash"] = hash
+
+	hash, err = writeVK(vk, destination)
+	if err != nil {
+		return nil, false, fmt.Errorf("write %s verifying key: %w", circuitName, err)
+	}
+	hashList[circuitName+"VerificationKeyHash"] = hash
+	log.Infow(fmt.Sprintf("%s artifacts written to disk", circuitName), "elapsed", time.Since(startTime).String())
+	return vk, true, nil
+}
+
+func artifactExists(destination, hash, ext string) bool {
+	path := filepath.Join(destination, fmt.Sprintf("%s.%s", hash, ext))
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func hashConstraintSystem(cs constraint.ConstraintSystem) (string, error) {
+	hasher := sha256.New()
+	if _, err := cs.WriteTo(hasher); err != nil {
+		return "", fmt.Errorf("write ccs to hasher: %w", err)
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func hashFileSHA256(filePath string) (string, error) {
+	fd, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("open file %s: %w", filePath, err)
+	}
+	defer func() {
+		if err := fd.Close(); err != nil {
+			log.Warnw("failed to close file after hashing", "path", filePath, "error", err)
+		}
+	}()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, fd); err != nil {
+		return "", fmt.Errorf("hash file %s: %w", filePath, err)
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func loadVerifyingKeyFromHash(destination, hash string, curve ecc.ID) (groth16.VerifyingKey, error) {
+	path := filepath.Join(destination, fmt.Sprintf("%s.vk", hash))
+	fd, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open verifying key file %s: %w", path, err)
+	}
+	defer func() {
+		if err := fd.Close(); err != nil {
+			log.Warnw("failed to close verifying key file", "path", path, "error", err)
+		}
+	}()
+	vk := groth16.NewVerifyingKey(curve)
+	if _, err := vk.ReadFrom(fd); err != nil {
+		return nil, fmt.Errorf("read verifying key file %s: %w", path, err)
+	}
+	return vk, nil
 }
 
 // writeCS writes the Constraint System to a file and returns its SHA256 hash
