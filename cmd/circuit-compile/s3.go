@@ -113,34 +113,6 @@ func (u *S3Uploader) UploadFile(ctx context.Context, filePath string) (string, e
 	return objectKey, nil
 }
 
-// UploadDirectory uploads all files in a directory to the configured S3 bucket
-// and returns a list of S3 object keys that were uploaded
-func (u *S3Uploader) UploadDirectory(ctx context.Context, dirPath string) ([]string, error) {
-	// Read the directory
-	files, err := os.ReadDir(dirPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read directory %s: %w", dirPath, err)
-	}
-
-	// Track uploaded object keys
-	uploadedKeys := []string{}
-
-	// Upload each file
-	for _, file := range files {
-		if file.IsDir() {
-			continue // Skip directories
-		}
-		filePath := filepath.Join(dirPath, file.Name())
-		objectKey, err := u.UploadFile(ctx, filePath)
-		if err != nil {
-			return uploadedKeys, err
-		}
-		uploadedKeys = append(uploadedKeys, objectKey)
-	}
-
-	return uploadedKeys, nil
-}
-
 // SetPublicACL sets the ACL of specific objects to public-read
 func (u *S3Uploader) SetPublicACL(ctx context.Context, objectKeys []string) error {
 	if len(objectKeys) == 0 {
