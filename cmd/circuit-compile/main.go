@@ -121,24 +121,26 @@ func main() {
 		log.Fatalf("error compiling vote verifier circuit: %v", err)
 	}
 	logElapsed("vote verifier circuit compiled", startTime)
-	voteVerifierVk, _, err := compileCircuitArtifacts(
+	voteVerifierArtifacts, err := compileCircuitArtifacts(
 		"VoteVerifier",
 		voteVerifierCCS,
 		voteverifier.Artifacts,
 		destination,
 		force,
-		hashList,
 	)
 	if err != nil {
 		log.Fatalf("error processing vote verifier artifacts: %v", err)
 	}
+	hashList["VoteVerifierCircuitHash"] = voteVerifierArtifacts.CircuitHash
+	hashList["VoteVerifierProvingKeyHash"] = voteVerifierArtifacts.ProvingKeyHash
+	hashList["VoteVerifierVerificationKeyHash"] = voteVerifierArtifacts.VerifyingKeyHash
 
 	////////////////////////////////////////
 	// Aggregator Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling aggregator circuit...")
 	startTime = time.Now()
-	voteVerifierFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierVk)
+	voteVerifierFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierArtifacts.VerifyingKey)
 	if err != nil {
 		log.Fatalf("failed to fix VoteVerifier verification key: %v", err)
 	}
@@ -156,24 +158,26 @@ func main() {
 		log.Fatalf("failed to compile aggregator circuit: %v", err)
 	}
 	logElapsed("aggregator circuit compiled", startTime)
-	aggregatorVk, _, err := compileCircuitArtifacts(
+	aggregatorArtifacts, err := compileCircuitArtifacts(
 		"Aggregator",
 		aggregatorCCS,
 		aggregator.Artifacts,
 		destination,
 		force,
-		hashList,
 	)
 	if err != nil {
 		log.Fatalf("error processing aggregator artifacts: %v", err)
 	}
+	hashList["AggregatorCircuitHash"] = aggregatorArtifacts.CircuitHash
+	hashList["AggregatorProvingKeyHash"] = aggregatorArtifacts.ProvingKeyHash
+	hashList["AggregatorVerificationKeyHash"] = aggregatorArtifacts.VerifyingKeyHash
 
 	////////////////////////////////////////
 	// Statetransition Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling statetransition circuit...")
 	startTime = time.Now()
-	aggregatorFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorVk)
+	aggregatorFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorArtifacts.VerifyingKey)
 	if err != nil {
 		log.Fatalf("failed to fix aggregator verification key: %v", err)
 	}
@@ -187,25 +191,26 @@ func main() {
 		log.Fatalf("failed to compile statetransition circuit: %v", err)
 	}
 	logElapsed("statetransition circuit compiled", startTime)
-	statetransitionVk, stateTransitionRecompiled, err := compileCircuitArtifacts(
+	statetransitionArtifacts, err := compileCircuitArtifacts(
 		"StateTransition",
 		statetransitionCCS,
 		statetransition.Artifacts,
 		destination,
 		force,
-		hashList,
 	)
 	if err != nil {
 		log.Fatalf("error processing statetransition artifacts: %v", err)
 	}
+	hashList["StateTransitionCircuitHash"] = statetransitionArtifacts.CircuitHash
+	hashList["StateTransitionProvingKeyHash"] = statetransitionArtifacts.ProvingKeyHash
+	hashList["StateTransitionVerificationKeyHash"] = statetransitionArtifacts.VerifyingKeyHash
 
 	statetransitionVkeySolFile := ""
-	if stateTransitionRecompiled {
+	if statetransitionArtifacts.Recompiled {
 		vkeySolFile, err := exportSolidityVerifierFile(
 			"statetransition",
-			statetransitionVk,
+			statetransitionArtifacts,
 			destination,
-			hashList["StateTransitionProvingKeyHash"],
 		)
 		if err != nil {
 			log.Fatalf("failed to export state transition verifier: %v", err)
@@ -225,25 +230,26 @@ func main() {
 		log.Fatalf("failed to compile results verifier circuit: %v", err)
 	}
 	logElapsed("results verifier circuit compiled", startTime)
-	resultsverifierVk, resultsVerifierRecompiled, err := compileCircuitArtifacts(
+	resultsverifierArtifacts, err := compileCircuitArtifacts(
 		"ResultsVerifier",
 		resultsverifierCCS,
 		results.Artifacts,
 		destination,
 		force,
-		hashList,
 	)
 	if err != nil {
 		log.Fatalf("error processing results verifier artifacts: %v", err)
 	}
+	hashList["ResultsVerifierCircuitHash"] = resultsverifierArtifacts.CircuitHash
+	hashList["ResultsVerifierProvingKeyHash"] = resultsverifierArtifacts.ProvingKeyHash
+	hashList["ResultsVerifierVerificationKeyHash"] = resultsverifierArtifacts.VerifyingKeyHash
 
 	resultsverifierVkeySolFile := ""
-	if resultsVerifierRecompiled {
+	if resultsverifierArtifacts.Recompiled {
 		vkeySolFile, err := exportSolidityVerifierFile(
 			"resultsverifier",
-			resultsverifierVk,
+			resultsverifierArtifacts,
 			destination,
-			hashList["ResultsVerifierProvingKeyHash"],
 		)
 		if err != nil {
 			log.Fatalf("failed to export results verifier: %v", err)
@@ -420,9 +426,12 @@ func copySolidityVerifierFile(sourcePath, destPath string) error {
 	return nil
 }
 
-func exportSolidityVerifierFile(name string, vk groth16.VerifyingKey, destination, provingKeyHash string) (string, error) {
+func exportSolidityVerifierFile(name string, artifacts *CircuitArtifactsResult, destination string) (string, error) {
+	if artifacts == nil {
+		return "", fmt.Errorf("missing artifacts for %s", name)
+	}
 	log.Infow(fmt.Sprintf("exporting %s solidity verifier...", name))
-	solidityVk, ok := vk.(*groth16_bn254.VerifyingKey)
+	solidityVk, ok := artifacts.VerifyingKey.(*groth16_bn254.VerifyingKey)
 	if !ok {
 		return "", fmt.Errorf("unexpected verifying key type for %s", name)
 	}
@@ -451,7 +460,7 @@ func exportSolidityVerifierFile(name string, vk groth16.VerifyingKey, destinatio
 		log.Warnw("failed to close vkey.sol file", "error", err)
 	}
 
-	if err := insertProvingKeyHashToVkeySolidity(vkeySolFile, provingKeyHash); err != nil {
+	if err := insertProvingKeyHashToVkeySolidity(vkeySolFile, artifacts.ProvingKeyHash); err != nil {
 		log.Warnw("failed to insert proving key hash into vkey.sol", "error", err)
 	}
 	log.Infow(fmt.Sprintf("%s vkey.sol file created", name), "path", vkeySolFile)
@@ -462,16 +471,23 @@ func logElapsed(message string, startTime time.Time) {
 	log.Infow(message, "elapsed", time.Since(startTime).String())
 }
 
+type CompileCircuitArtifactsResult struct {
+	VerifyingKey     groth16.VerifyingKey
+	Recompiled       bool
+	CircuitHash      string
+	ProvingKeyHash   string
+	VerifyingKeyHash string
+}
+
 func compileCircuitArtifacts(
 	circuitName string,
 	ccs constraint.ConstraintSystem,
 	artifacts *circuits.CircuitArtifacts,
 	destination string,
 	force bool,
-	hashList map[string]string,
-) (groth16.VerifyingKey, bool, error) {
+) (*CompileCircuitArtifactsResult, error) {
 	if artifacts == nil {
-		return nil, false, fmt.Errorf("missing artifacts for %s", circuitName)
+		return nil, fmt.Errorf("missing artifacts for %s", circuitName)
 	}
 	expectedCircuitHash := hex.EncodeToString(artifacts.CircuitHash())
 	expectedProvingKeyHash := hex.EncodeToString(artifacts.ProvingKeyHash())
@@ -480,54 +496,61 @@ func compileCircuitArtifacts(
 	startTime := time.Now()
 	ccsHash, err := circuits.HashConstraintSystem(ccs)
 	if err != nil {
-		return nil, false, fmt.Errorf("hash %s circuit: %w", circuitName, err)
+		return nil, fmt.Errorf("hash %s circuit: %w", circuitName, err)
 	}
 	log.Infow(fmt.Sprintf("%s circuit prepared", circuitName), "elapsed", time.Since(startTime).String(),
 		"ccsHash", ccsHash,
 		"expectedCircuitHash", expectedCircuitHash)
 
 	if ccsHash == expectedCircuitHash && !force {
-		hashList[circuitName+"CircuitHash"] = expectedCircuitHash
-		hashList[circuitName+"ProvingKeyHash"] = expectedProvingKeyHash
-		hashList[circuitName+"VerificationKeyHash"] = expectedVerificationKeyHash
 		if err := artifacts.DownloadVerifyingKey(context.Background()); err != nil {
-			return nil, false, fmt.Errorf("download %s verifying key: %w", circuitName, err)
+			return nil, fmt.Errorf("download %s verifying key: %w", circuitName, err)
 		}
 
 		vk, err := loadVerifyingKeyFromHash(destination, expectedVerificationKeyHash, artifacts.Curve())
 		if err != nil {
-			return nil, false, fmt.Errorf("load existing %s vk %s: %w", circuitName, expectedVerificationKeyHash, err)
+			return nil, fmt.Errorf("load existing %s vk %s: %w", circuitName, expectedVerificationKeyHash, err)
 		}
 		log.Infow(fmt.Sprintf("%s setup skipped; using existing vk from destination", circuitName), "hash", expectedVerificationKeyHash)
-		return vk, false, nil
+		return &CompileCircuitArtifactsResult{
+			VerifyingKey:     vk,
+			Recompiled:       false,
+			CircuitHash:      expectedCircuitHash,
+			ProvingKeyHash:   expectedProvingKeyHash,
+			VerifyingKeyHash: expectedVerificationKeyHash,
+		}, nil
 	}
 
 	pk, vk, err := groth16.Setup(ccs)
 	if err != nil {
-		return nil, false, fmt.Errorf("setup %s circuit: %w", circuitName, err)
+		return nil, fmt.Errorf("setup %s circuit: %w", circuitName, err)
 	}
 
 	startTime = time.Now()
-	log.Infow(fmt.Sprintf("writing %s artifacts to disk", circuitName))
-	hash, err := writeCS(ccs, destination)
+	log.Infof("writing %s artifacts to disk", circuitName)
+	circuitHash, err := writeCS(ccs, destination)
 	if err != nil {
-		return nil, false, fmt.Errorf("write %s constraint system: %w", circuitName, err)
+		return nil, fmt.Errorf("write %s constraint system: %w", circuitName, err)
 	}
-	hashList[circuitName+"CircuitHash"] = hash
 
-	hash, err = writePK(pk, destination)
+	provingKeyHash, err := writePK(pk, destination)
 	if err != nil {
-		return nil, false, fmt.Errorf("write %s proving key: %w", circuitName, err)
+		return nil, fmt.Errorf("write %s proving key: %w", circuitName, err)
 	}
-	hashList[circuitName+"ProvingKeyHash"] = hash
 
-	hash, err = writeVK(vk, destination)
+	verifyingKeyHash, err := writeVK(vk, destination)
 	if err != nil {
-		return nil, false, fmt.Errorf("write %s verifying key: %w", circuitName, err)
+		return nil, fmt.Errorf("write %s verifying key: %w", circuitName, err)
 	}
-	hashList[circuitName+"VerificationKeyHash"] = hash
+
 	log.Infow(fmt.Sprintf("%s artifacts written to disk", circuitName), "elapsed", time.Since(startTime).String())
-	return vk, true, nil
+	return &CompileCircuitArtifactsResult{
+		VerifyingKey:     vk,
+		Recompiled:       true,
+		CircuitHash:      circuitHash,
+		ProvingKeyHash:   provingKeyHash,
+		VerifyingKeyHash: verifyingKeyHash,
+	}, nil
 }
 
 func loadVerifyingKeyFromHash(destination, hash string, curve ecc.ID) (groth16.VerifyingKey, error) {
