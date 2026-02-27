@@ -100,23 +100,19 @@ func main() {
 	// Ballot Proof Circom Artifacts
 	////////////////////////////////////////
 	ballotProofStart := time.Now()
-	ballotProofWASM := filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof.wasm")
-	ballotProofPK := filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof_pkey.zkey")
-	ballotProofVK := filepath.Join("circuits", "ballotproof", "circom_assets", "ballot_proof_vkey.json")
-
-	ballotProofWASMHash, err := hashFileSHA256(ballotProofWASM)
+	ballotProofWASMHash, err := hashBytesSHA256(ballotproof.CircomCircuitWasm)
 	if err != nil {
 		log.Fatalf("error hashing ballot proof wasm: %v", err)
 	}
 	hashList["BallotProofCircuitHash"] = ballotProofWASMHash
 
-	ballotProofPKHash, err := hashFileSHA256(ballotProofPK)
+	ballotProofPKHash, err := hashBytesSHA256(ballotproof.CircomProvingKey)
 	if err != nil {
 		log.Fatalf("error hashing ballot proof proving key: %v", err)
 	}
 	hashList["BallotProofProvingKeyHash"] = ballotProofPKHash
 
-	ballotProofVKHash, err := hashFileSHA256(ballotProofVK)
+	ballotProofVKHash, err := hashBytesSHA256(ballotproof.CircomVerificationKey)
 	if err != nil {
 		log.Fatalf("error hashing ballot proof verification key: %v", err)
 	}
@@ -128,19 +124,19 @@ func main() {
 		!artifactExists(destination, ballotProofVKHash, "json")
 	log.Infow("processing ballot proof circom artifacts...", "recompile", ballotProofRecompiled)
 	if ballotProofRecompiled {
-		hash, err := copyAndHashArtifact(ballotProofWASM, destination, "wasm")
+		hash, err := copyAndHashArtifactBytes(ballotproof.CircomCircuitWasm, destination, "wasm")
 		if err != nil {
 			log.Fatalf("error copying ballot proof wasm: %v", err)
 		}
 		hashList["BallotProofCircuitHash"] = hash
 
-		hash, err = copyAndHashArtifact(ballotProofPK, destination, "zkey")
+		hash, err = copyAndHashArtifactBytes(ballotproof.CircomProvingKey, destination, "zkey")
 		if err != nil {
 			log.Fatalf("error copying ballot proof proving key: %v", err)
 		}
 		hashList["BallotProofProvingKeyHash"] = hash
 
-		hash, err = copyAndHashArtifact(ballotProofVK, destination, "json")
+		hash, err = copyAndHashArtifactBytes(ballotproof.CircomVerificationKey, destination, "json")
 		if err != nil {
 			log.Fatalf("error copying ballot proof verification key: %v", err)
 		}
@@ -575,19 +571,10 @@ func hashConstraintSystem(cs constraint.ConstraintSystem) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func hashFileSHA256(filePath string) (string, error) {
-	fd, err := os.Open(filePath)
-	if err != nil {
-		return "", fmt.Errorf("open file %s: %w", filePath, err)
-	}
-	defer func() {
-		if err := fd.Close(); err != nil {
-			log.Warnw("failed to close file after hashing", "path", filePath, "error", err)
-		}
-	}()
+func hashBytesSHA256(content []byte) (string, error) {
 	hasher := sha256.New()
-	if _, err := io.Copy(hasher, fd); err != nil {
-		return "", fmt.Errorf("hash file %s: %w", filePath, err)
+	if _, err := hasher.Write(content); err != nil {
+		return "", fmt.Errorf("hash bytes: %w", err)
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
@@ -725,19 +712,9 @@ func executeCommand(command, dir string) error {
 	return nil
 }
 
-func copyAndHashArtifact(srcPath, destDir, ext string) (string, error) {
-	srcFile, err := os.Open(srcPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to open artifact %s: %w", srcPath, err)
-	}
-	defer func() {
-		if err := srcFile.Close(); err != nil {
-			log.Warnw("failed to close artifact file", "error", err)
-		}
-	}()
-
+func copyAndHashArtifactBytes(content []byte, destDir, ext string) (string, error) {
 	return writeToFile(destDir, ext, func(w io.Writer) error {
-		if _, err := io.Copy(w, srcFile); err != nil {
+		if _, err := w.Write(content); err != nil {
 			return fmt.Errorf("failed to copy artifact content: %w", err)
 		}
 		return nil
