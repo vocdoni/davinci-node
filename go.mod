@@ -33,7 +33,7 @@ require (
 	github.com/vocdoni/arbo v0.0.0-20260224125436-30808c99dfb2
 	github.com/vocdoni/census3-bigquery v0.0.0-20260126152143-a64362ea3427
 	github.com/vocdoni/davinci-circom v0.1.0
-	github.com/vocdoni/davinci-contracts v0.0.36-0.20260220075931-af94d8ee8026
+	github.com/vocdoni/davinci-contracts v0.0.36-0.20260223141848-572d869c67d3
 	github.com/vocdoni/davinci-node/spec v0.0.0-20260210223636-e85fc7c89da9
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260115102516-64ce9c3fd55d
 	github.com/vocdoni/lean-imt-go v0.0.0-20260126110424-0b1c7ec41924
