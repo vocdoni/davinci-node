@@ -168,10 +168,7 @@ func main() {
 	voteVerifierVk, _, err := compileCircuitArtifacts(
 		"VoteVerifier",
 		voteVerifierCCS,
-		params.VoteVerifierCurve,
-		config.VoteVerifierCircuitHash,
-		config.VoteVerifierProvingKeyHash,
-		config.VoteVerifierVerificationKeyHash,
+		voteverifier.Artifacts,
 		destination,
 		force,
 		hashList,
@@ -204,10 +201,7 @@ func main() {
 	aggregatorVk, _, err := compileCircuitArtifacts(
 		"Aggregator",
 		aggregatorCCS,
-		params.AggregatorCurve,
-		config.AggregatorCircuitHash,
-		config.AggregatorProvingKeyHash,
-		config.AggregatorVerificationKeyHash,
+		aggregator.Artifacts,
 		destination,
 		force,
 		hashList,
@@ -236,10 +230,7 @@ func main() {
 	statetransitionVk, stateTransitionRecompiled, err := compileCircuitArtifacts(
 		"StateTransition",
 		statetransitionCCS,
-		params.StateTransitionCurve,
-		config.StateTransitionCircuitHash,
-		config.StateTransitionProvingKeyHash,
-		config.StateTransitionVerificationKeyHash,
+		statetransition.Artifacts,
 		destination,
 		force,
 		hashList,
@@ -499,14 +490,18 @@ func shouldRunSetup(compiledCCSHash, expectedCCSHash string, force bool) bool {
 func compileCircuitArtifacts(
 	circuitName string,
 	ccs constraint.ConstraintSystem,
-	curve ecc.ID,
-	expectedCircuitHash string,
-	expectedProvingKeyHash string,
-	expectedVerificationKeyHash string,
+	artifacts *circuits.CircuitArtifacts,
 	destination string,
 	force bool,
 	hashList map[string]string,
 ) (groth16.VerifyingKey, bool, error) {
+	if artifacts == nil {
+		return nil, false, fmt.Errorf("missing artifacts for %s", circuitName)
+	}
+	expectedCircuitHash := hex.EncodeToString(artifacts.CircuitHash())
+	expectedProvingKeyHash := hex.EncodeToString(artifacts.ProvingKeyHash())
+	expectedVerificationKeyHash := hex.EncodeToString(artifacts.VerifyingKeyHash())
+
 	startTime := time.Now()
 	ccsHash, err := hashConstraintSystem(ccs)
 	if err != nil {
@@ -520,8 +515,11 @@ func compileCircuitArtifacts(
 		hashList[circuitName+"CircuitHash"] = expectedCircuitHash
 		hashList[circuitName+"ProvingKeyHash"] = expectedProvingKeyHash
 		hashList[circuitName+"VerificationKeyHash"] = expectedVerificationKeyHash
+		if err := artifacts.DownloadVerifyingKey(context.Background()); err != nil {
+			return nil, false, fmt.Errorf("download %s verifying key: %w", circuitName, err)
+		}
 
-		vk, err := loadVerifyingKeyFromHash(destination, expectedVerificationKeyHash, curve)
+		vk, err := loadVerifyingKeyFromHash(destination, expectedVerificationKeyHash, artifacts.Curve())
 		if err != nil {
 			return nil, false, fmt.Errorf("load existing %s vk %s.vk: %w", circuitName, expectedVerificationKeyHash, err)
 		}
@@ -637,8 +635,10 @@ func writeToFile(to, ext string, writeFunc func(w io.Writer) error) (string, err
 	// Make sure we clean up the temp file if we encounter an error
 	success := false
 	defer func() {
-		if err := tempFile.Close(); err != nil {
-			log.Warnw("failed to close temp file", "error", err)
+		if tempFile != nil {
+			if err := tempFile.Close(); err != nil {
+				log.Warnw("failed to close temp file", "error", err)
+			}
 		}
 		if !success {
 			if err := os.Remove(tempFilename); err != nil {
@@ -663,6 +663,7 @@ func writeToFile(to, ext string, writeFunc func(w io.Writer) error) (string, err
 	if err := tempFile.Close(); err != nil {
 		return "", fmt.Errorf("failed to close temp file: %w", err)
 	}
+	tempFile = nil
 
 	// Rename the temp file to the final filename
 	if err := os.Rename(tempFilename, finalFilename); err != nil {

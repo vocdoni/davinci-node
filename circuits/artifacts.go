@@ -155,6 +155,46 @@ func (ca *CircuitArtifacts) DownloadAll(ctx context.Context) error {
 	return nil
 }
 
+// DownloadVerifyingKey downloads only the verifying key artifact.
+func (ca *CircuitArtifacts) DownloadVerifyingKey(ctx context.Context) error {
+	if ca.verifyingKey == nil {
+		return fmt.Errorf("verifying key not configured")
+	}
+	if err := ca.verifyingKey.Download(ctx); err != nil {
+		return fmt.Errorf("error downloading verifying key: %w", err)
+	}
+	return nil
+}
+
+// Curve returns the elliptic curve identifier associated with this artifact set.
+func (ca *CircuitArtifacts) Curve() ecc.ID {
+	return ca.curve
+}
+
+// CircuitHash returns the circuit-definition hash.
+func (ca *CircuitArtifacts) CircuitHash() []byte {
+	if ca.circuitDefinition == nil {
+		return nil
+	}
+	return ca.circuitDefinition.Hash
+}
+
+// ProvingKeyHash returns the proving-key hash.
+func (ca *CircuitArtifacts) ProvingKeyHash() []byte {
+	if ca.provingKey == nil {
+		return nil
+	}
+	return ca.provingKey.Hash
+}
+
+// VerifyingKeyHash returns the verifying-key hash.
+func (ca *CircuitArtifacts) VerifyingKeyHash() []byte {
+	if ca.verifyingKey == nil {
+		return nil
+	}
+	return ca.verifyingKey.Hash
+}
+
 // CircuitDefinition returns the content of the circuit definition as
 // constraint.ConstraintSystem. If the circuit definition is not loaded, it
 // returns nil.
