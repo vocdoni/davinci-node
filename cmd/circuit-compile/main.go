@@ -97,71 +97,15 @@ func main() {
 	////////////////////////////////////////
 	// Ballot Proof Circom Artifacts
 	////////////////////////////////////////
-	ballotProofStart := time.Now()
-	ballotProofWASMHash, err := circuits.HashBytesSHA256(ballotproof.CircomCircuitWasm)
-	if err != nil {
-		log.Fatalf("error hashing ballot proof wasm: %v", err)
+	if err := processBallotProofArtifacts(destination, force, hashList); err != nil {
+		log.Fatalf("error processing ballot proof artifacts: %v", err)
 	}
-	hashList["BallotProofCircuitHash"] = ballotProofWASMHash
-
-	ballotProofPKHash, err := circuits.HashBytesSHA256(ballotproof.CircomProvingKey)
-	if err != nil {
-		log.Fatalf("error hashing ballot proof proving key: %v", err)
-	}
-	hashList["BallotProofProvingKeyHash"] = ballotProofPKHash
-
-	ballotProofVKHash, err := circuits.HashBytesSHA256(ballotproof.CircomVerificationKey)
-	if err != nil {
-		log.Fatalf("error hashing ballot proof verification key: %v", err)
-	}
-	hashList["BallotProofVerificationKeyHash"] = ballotProofVKHash
-
-	ballotProofRecompiled := force
-	if !ballotProofRecompiled {
-		if _, err := os.Stat(filepath.Join(destination, ballotProofWASMHash)); err != nil {
-			ballotProofRecompiled = true
-		}
-	}
-	if !ballotProofRecompiled {
-		if _, err := os.Stat(filepath.Join(destination, ballotProofPKHash)); err != nil {
-			ballotProofRecompiled = true
-		}
-	}
-	if !ballotProofRecompiled {
-		if _, err := os.Stat(filepath.Join(destination, ballotProofVKHash)); err != nil {
-			ballotProofRecompiled = true
-		}
-	}
-
-	log.Infow("processing ballot proof circom artifacts...", "recompile", ballotProofRecompiled)
-	if ballotProofRecompiled {
-		hash, err := writeHashedBytes(ballotproof.CircomCircuitWasm, destination)
-		if err != nil {
-			log.Fatalf("error copying ballot proof wasm: %v", err)
-		}
-		hashList["BallotProofCircuitHash"] = hash
-
-		hash, err = writeHashedBytes(ballotproof.CircomProvingKey, destination)
-		if err != nil {
-			log.Fatalf("error copying ballot proof proving key: %v", err)
-		}
-		hashList["BallotProofProvingKeyHash"] = hash
-
-		hash, err = writeHashedBytes(ballotproof.CircomVerificationKey, destination)
-		if err != nil {
-			log.Fatalf("error copying ballot proof verification key: %v", err)
-		}
-		hashList["BallotProofVerificationKeyHash"] = hash
-	} else {
-		log.Infow("skipping ballot proof artifact copy; artifacts already present")
-	}
-
-	log.Infow("ballot proof circom artifacts processed", "elapsed", time.Since(ballotProofStart).String())
 
 	////////////////////////////////////////
 	// Vote Verifier Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling vote verifier circuit...")
+	startTime := time.Now()
 	// generate the placeholders for the recursion
 	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
 		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
@@ -176,6 +120,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("error compiling vote verifier circuit: %v", err)
 	}
+	logElapsed("vote verifier circuit compiled", startTime)
 	voteVerifierVk, _, err := compileCircuitArtifacts(
 		"VoteVerifier",
 		voteVerifierCCS,
@@ -192,6 +137,7 @@ func main() {
 	// Aggregator Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling aggregator circuit...")
+	startTime = time.Now()
 	voteVerifierFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierVk)
 	if err != nil {
 		log.Fatalf("failed to fix VoteVerifier verification key: %v", err)
@@ -209,6 +155,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to compile aggregator circuit: %v", err)
 	}
+	logElapsed("aggregator circuit compiled", startTime)
 	aggregatorVk, _, err := compileCircuitArtifacts(
 		"Aggregator",
 		aggregatorCCS,
@@ -225,6 +172,7 @@ func main() {
 	// Statetransition Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling statetransition circuit...")
+	startTime = time.Now()
 	aggregatorFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorVk)
 	if err != nil {
 		log.Fatalf("failed to fix aggregator verification key: %v", err)
@@ -238,6 +186,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to compile statetransition circuit: %v", err)
 	}
+	logElapsed("statetransition circuit compiled", startTime)
 	statetransitionVk, stateTransitionRecompiled, err := compileCircuitArtifacts(
 		"StateTransition",
 		statetransitionCCS,
@@ -252,51 +201,30 @@ func main() {
 
 	statetransitionVkeySolFile := ""
 	if stateTransitionRecompiled {
-		/*
-			Export the state transition solidity verifier
-		*/
-		log.Infow("exporting state transition solidity verifier...")
-		// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
-		statetransitionSolidityVk := statetransitionVk.(*groth16_bn254.VerifyingKey)
-		if err := statetransitionSolidityVk.Precompute(); err != nil {
-			log.Fatalf("failed to precompute vk: %v", err)
-		}
-		statetransitionVkeySolFile = path.Join(destination, "statetransition_vkey.sol")
-		fd, err := os.Create(statetransitionVkeySolFile)
+		vkeySolFile, err := exportSolidityVerifierFile(
+			"statetransition",
+			statetransitionVk,
+			destination,
+			hashList["StateTransitionProvingKeyHash"],
+		)
 		if err != nil {
-			log.Fatalf("failed to create statetransition_vkey.sol: %v", err)
+			log.Fatalf("failed to export state transition verifier: %v", err)
 		}
-		buf := bytes.NewBuffer(nil)
-		if err := statetransitionSolidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
-			log.Fatalf("failed to export vk to Solidity: %v", err)
-		}
-		if _, err := fd.Write(buf.Bytes()); err != nil {
-			log.Fatalf("failed to write statetransition_vkey.sol: %v", err)
-		}
-		if err := fd.Close(); err != nil {
-			log.Warnw("failed to close statetransition_vkey.sol file", "error", err)
-		}
-
-		// Insert the proving key hash into the vkey.sol file
-		if err := insertProvingKeyHashToVkeySolidity(statetransitionVkeySolFile, hashList["StateTransitionProvingKeyHash"]); err != nil {
-			log.Warnw("failed to insert proving key hash into vkey.sol", "error", err)
-		}
-		log.Infow("statetransition_vkey.sol file created", "path", fd.Name())
+		statetransitionVkeySolFile = vkeySolFile
 	}
 
 	/*
 		ResultsVerifier Circuit Compilation
 	*/
-	/*
-		ResultsVerifier Circuit Compilation
-	*/
 	log.Infow("compiling results verifier circuit...")
+	startTime = time.Now()
 	// create final placeholder
 	resultsverifierPlaceholder := &results.ResultsVerifierCircuit{}
 	resultsverifierCCS, err := frontend.Compile(params.ResultsVerifierCurve.ScalarField(), r1cs.NewBuilder, resultsverifierPlaceholder)
 	if err != nil {
 		log.Fatalf("failed to compile results verifier circuit: %v", err)
 	}
+	logElapsed("results verifier circuit compiled", startTime)
 	resultsverifierVk, resultsVerifierRecompiled, err := compileCircuitArtifacts(
 		"ResultsVerifier",
 		resultsverifierCCS,
@@ -311,36 +239,16 @@ func main() {
 
 	resultsverifierVkeySolFile := ""
 	if resultsVerifierRecompiled {
-		/*
-			Export the results verifier solidity verifier
-		*/
-		log.Infow("exporting results verifier solidity verifier...")
-		// Cast vk to bn254 VerifyingKey and force precomputation (not sure if necessary).
-		resultsverifierSolidityVk := resultsverifierVk.(*groth16_bn254.VerifyingKey)
-		if err := resultsverifierSolidityVk.Precompute(); err != nil {
-			log.Fatalf("failed to precompute vk: %v", err)
-		}
-		resultsverifierVkeySolFile = path.Join(destination, "resultsverifier_vkey.sol")
-		fd, err := os.Create(resultsverifierVkeySolFile)
+		vkeySolFile, err := exportSolidityVerifierFile(
+			"resultsverifier",
+			resultsverifierVk,
+			destination,
+			hashList["ResultsVerifierProvingKeyHash"],
+		)
 		if err != nil {
-			log.Fatalf("failed to create resultsverifier_vkey.sol: %v", err)
+			log.Fatalf("failed to export results verifier: %v", err)
 		}
-		buf := bytes.NewBuffer(nil)
-		if err := resultsverifierSolidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
-			log.Fatalf("failed to export vk to Solidity: %v", err)
-		}
-		if _, err := fd.Write(buf.Bytes()); err != nil {
-			log.Fatalf("failed to write resultsverifier_vkey.sol: %v", err)
-		}
-		if err := fd.Close(); err != nil {
-			log.Warnw("failed to close resultsverifier_vkey.sol file", "error", err)
-		}
-
-		// Insert the proving key hash into the vkey.sol file
-		if err := insertProvingKeyHashToVkeySolidity(resultsverifierVkeySolFile, hashList["ResultsVerifierProvingKeyHash"]); err != nil {
-			log.Warnw("failed to insert proving key hash into resultsverifier_vkey.sol", "error", err)
-		}
-		log.Infow("resultsverifier_vkey.sol file created", "path", fd.Name())
+		resultsverifierVkeySolFile = vkeySolFile
 	} else {
 		log.Infow("results verifier setup skipped; circuit unchanged")
 	}
@@ -400,78 +308,158 @@ func main() {
 
 		log.Infow("circuit artifacts config file updated successfully", "path", configPath)
 
-		// copy the state transition solidity file to the config directory
+		// copy the solidity files to the config directory
 		configDir := filepath.Dir(configPath)
 		statetransitionSolidityFile := path.Join(configDir, "statetransition_vkey.sol")
-		if statetransitionVkeySolFile != "" {
-			statetransitionSourceFile, err := os.Open(statetransitionVkeySolFile)
-			if err != nil {
-				log.Warnw("failed to open vkey.sol file", "error", err)
-				return
-			}
-			defer func() {
-				if err := statetransitionSourceFile.Close(); err != nil {
-					log.Warnw("failed to close source vkey.sol file", "error", err)
-				}
-			}()
-			statetransitionDestFile, err := os.Create(statetransitionSolidityFile)
-			if err != nil {
-				log.Warnw("failed to create destination vkey.sol file", "error", err)
-				return
-			}
-			defer func() {
-				if err := statetransitionDestFile.Close(); err != nil {
-					log.Warnw("failed to close destination vkey.sol file", "error", err)
-				}
-			}()
-
-			if _, err := io.Copy(statetransitionDestFile, statetransitionSourceFile); err != nil {
-				log.Warnw("failed to copy vkey.sol file", "error", err)
-				return
-			}
-
-			log.Infow("copied statetransition_vkey.sol file to config directory", "path", statetransitionSolidityFile)
+		if err := copySolidityVerifierFile(statetransitionVkeySolFile, statetransitionSolidityFile); err != nil {
+			log.Warnw("failed to copy statetransition vkey.sol file", "error", err)
+			return
 		}
 
-		// copy the solidity file to the config directory
 		resultsverifierSolidityFile := path.Join(configDir, "resultsverifier_vkey.sol")
-		if resultsverifierVkeySolFile != "" {
-			resultsverifierSourceFile, err := os.Open(resultsverifierVkeySolFile)
-			if err != nil {
-				log.Warnw("failed to open vkey.sol file", "error", err)
-				return
-			}
-			defer func() {
-				if err := resultsverifierSourceFile.Close(); err != nil {
-					log.Warnw("failed to close source vkey.sol file", "error", err)
-				}
-			}()
-			resultsverifierDestFile, err := os.Create(resultsverifierSolidityFile)
-			if err != nil {
-				log.Warnw("failed to create destination vkey.sol file", "error", err)
-				return
-			}
-			defer func() {
-				if err := resultsverifierDestFile.Close(); err != nil {
-					log.Warnw("failed to close destination vkey.sol file", "error", err)
-				}
-			}()
-
-			if _, err := io.Copy(resultsverifierDestFile, resultsverifierSourceFile); err != nil {
-				log.Warnw("failed to copy vkey.sol file", "error", err)
-				return
-			}
-
-			log.Infow("copied resultsverifier_vkey.sol file to config directory", "path", resultsverifierSolidityFile)
+		if err := copySolidityVerifierFile(resultsverifierVkeySolFile, resultsverifierSolidityFile); err != nil {
+			log.Warnw("failed to copy resultsverifier vkey.sol file", "error", err)
+			return
 		}
 	}
 }
 
-func shouldRunSetup(compiledCCSHash, expectedCCSHash string, force bool) bool {
-	if force {
-		return true
+func processBallotProofArtifacts(destination string, force bool, hashList map[string]string) error {
+	startTime := time.Now()
+	ballotProofWASMHash, err := circuits.HashBytesSHA256(ballotproof.CircomCircuitWasm)
+	if err != nil {
+		return fmt.Errorf("hash ballot proof wasm: %w", err)
 	}
-	return compiledCCSHash != expectedCCSHash
+	hashList["BallotProofCircuitHash"] = ballotProofWASMHash
+
+	ballotProofPKHash, err := circuits.HashBytesSHA256(ballotproof.CircomProvingKey)
+	if err != nil {
+		return fmt.Errorf("hash ballot proof proving key: %w", err)
+	}
+	hashList["BallotProofProvingKeyHash"] = ballotProofPKHash
+
+	ballotProofVKHash, err := circuits.HashBytesSHA256(ballotproof.CircomVerificationKey)
+	if err != nil {
+		return fmt.Errorf("hash ballot proof verification key: %w", err)
+	}
+	hashList["BallotProofVerificationKeyHash"] = ballotProofVKHash
+
+	ballotProofRecompiled := force
+	if !ballotProofRecompiled {
+		if _, err := os.Stat(filepath.Join(destination, ballotProofWASMHash)); err != nil {
+			ballotProofRecompiled = true
+		}
+	}
+	if !ballotProofRecompiled {
+		if _, err := os.Stat(filepath.Join(destination, ballotProofPKHash)); err != nil {
+			ballotProofRecompiled = true
+		}
+	}
+	if !ballotProofRecompiled {
+		if _, err := os.Stat(filepath.Join(destination, ballotProofVKHash)); err != nil {
+			ballotProofRecompiled = true
+		}
+	}
+
+	log.Infow("processing ballot proof circom artifacts...", "recompile", ballotProofRecompiled)
+	if ballotProofRecompiled {
+		hash, err := writeHashedBytes(ballotproof.CircomCircuitWasm, destination)
+		if err != nil {
+			return fmt.Errorf("copy ballot proof wasm: %w", err)
+		}
+		hashList["BallotProofCircuitHash"] = hash
+
+		hash, err = writeHashedBytes(ballotproof.CircomProvingKey, destination)
+		if err != nil {
+			return fmt.Errorf("copy ballot proof proving key: %w", err)
+		}
+		hashList["BallotProofProvingKeyHash"] = hash
+
+		hash, err = writeHashedBytes(ballotproof.CircomVerificationKey, destination)
+		if err != nil {
+			return fmt.Errorf("copy ballot proof verification key: %w", err)
+		}
+		hashList["BallotProofVerificationKeyHash"] = hash
+	} else {
+		log.Infow("skipping ballot proof artifact copy; artifacts already present")
+	}
+
+	log.Infow("ballot proof circom artifacts processed", "elapsed", time.Since(startTime).String())
+	return nil
+}
+
+func copySolidityVerifierFile(sourcePath, destPath string) error {
+	if sourcePath == "" {
+		return nil
+	}
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open vkey.sol file: %w", err)
+	}
+	defer func() {
+		if err := sourceFile.Close(); err != nil {
+			log.Warnw("failed to close source vkey.sol file", "error", err)
+		}
+	}()
+
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create destination vkey.sol file: %w", err)
+	}
+	defer func() {
+		if err := destFile.Close(); err != nil {
+			log.Warnw("failed to close destination vkey.sol file", "error", err)
+		}
+	}()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return fmt.Errorf("copy vkey.sol file: %w", err)
+	}
+
+	log.Infow("copied vkey.sol file to config directory", "path", destPath)
+	return nil
+}
+
+func exportSolidityVerifierFile(name string, vk groth16.VerifyingKey, destination, provingKeyHash string) (string, error) {
+	log.Infow(fmt.Sprintf("exporting %s solidity verifier...", name))
+	solidityVk, ok := vk.(*groth16_bn254.VerifyingKey)
+	if !ok {
+		return "", fmt.Errorf("unexpected verifying key type for %s", name)
+	}
+	if err := solidityVk.Precompute(); err != nil {
+		return "", fmt.Errorf("precompute %s vk: %w", name, err)
+	}
+	vkeySolFile := path.Join(destination, fmt.Sprintf("%s_vkey.sol", name))
+	fd, err := os.Create(vkeySolFile)
+	if err != nil {
+		return "", fmt.Errorf("create %s_vkey.sol: %w", name, err)
+	}
+	buf := bytes.NewBuffer(nil)
+	if err := solidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
+		if closeErr := fd.Close(); closeErr != nil {
+			log.Warnw("failed to close vkey.sol file after export error", "error", closeErr)
+		}
+		return "", fmt.Errorf("export %s vk to Solidity: %w", name, err)
+	}
+	if _, err := fd.Write(buf.Bytes()); err != nil {
+		if closeErr := fd.Close(); closeErr != nil {
+			log.Warnw("failed to close vkey.sol file after write error", "error", closeErr)
+		}
+		return "", fmt.Errorf("write %s_vkey.sol: %w", name, err)
+	}
+	if err := fd.Close(); err != nil {
+		log.Warnw("failed to close vkey.sol file", "error", err)
+	}
+
+	if err := insertProvingKeyHashToVkeySolidity(vkeySolFile, provingKeyHash); err != nil {
+		log.Warnw("failed to insert proving key hash into vkey.sol", "error", err)
+	}
+	log.Infow(fmt.Sprintf("%s vkey.sol file created", name), "path", vkeySolFile)
+	return vkeySolFile, nil
+}
+
+func logElapsed(message string, startTime time.Time) {
+	log.Infow(message, "elapsed", time.Since(startTime).String())
 }
 
 func compileCircuitArtifacts(
