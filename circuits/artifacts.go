@@ -253,15 +253,6 @@ func (ca *CircuitArtifacts) VerifyingKey() (groth16.VerifyingKey, error) {
 	return vk, nil
 }
 
-// RawProvingKey returns the content of the proving key as types.HexBytes. If
-// the proving key is not loaded, it returns nil.
-func (ca *CircuitArtifacts) RawProvingKey() types.HexBytes {
-	if ca.provingKey == nil {
-		return nil
-	}
-	return ca.provingKey.Content
-}
-
 // RawVerifyingKey returns the content of the verifying key as types.HexBytes.
 // If the verifying key is not loaded, it returns nil.
 func (ca *CircuitArtifacts) RawVerifyingKey() []byte {
