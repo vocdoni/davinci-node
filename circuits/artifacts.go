@@ -398,7 +398,7 @@ func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) 
 
 	// Handle response codes
 	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusPartialContent {
-		return fmt.Errorf("error downloading file %s: http status: %d", fileUrl, res.StatusCode)
+		return fmt.Errorf("error downloading file %q: http status: %d", fileUrl, res.StatusCode)
 	}
 
 	// Open file in append mode if resuming, otherwise create new file
