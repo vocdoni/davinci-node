@@ -406,8 +406,8 @@ type CircuitCalculateAggregatorWitness struct {
 }
 
 func (circuit CircuitCalculateAggregatorWitness) Define(api frontend.API) error {
-	mask := circuit.VoteMask(api)
-	_, err := circuit.CalculateAggregatorWitness(api, mask)
+	isRealVote := circuit.VoteMask(api)
+	_, err := circuit.CalculateAggregatorWitness(api, isRealVote)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 witness: ", err)
 	}
@@ -430,8 +430,8 @@ type CircuitAggregatorProof struct {
 }
 
 func (circuit CircuitAggregatorProof) Define(api frontend.API) error {
-	mask := circuit.VoteMask(api)
-	circuit.VerifyAggregatorProof(api, mask)
+	isRealVote := circuit.VoteMask(api)
+	circuit.VerifyAggregatorProof(api, isRealVote)
 	return nil
 }
 
@@ -451,8 +451,7 @@ type CircuitBallots struct {
 }
 
 func (circuit CircuitBallots) Define(api frontend.API) error {
-	mask := circuit.VoteMask(api)
-	circuit.VerifyBallots(api, mask)
+	circuit.VerifyBallots(api)
 	return nil
 }
 
@@ -492,8 +491,8 @@ type CircuitMerkleTransitions struct {
 }
 
 func (circuit CircuitMerkleTransitions) Define(api frontend.API) error {
-	mask := circuit.VoteMask(api)
-	circuit.VerifyMerkleTransitions(api, statetransition.HashFn, mask)
+	isRealVote := circuit.VoteMask(api)
+	circuit.VerifyMerkleTransitions(api, isRealVote)
 	return nil
 }
 
@@ -504,6 +503,29 @@ func TestCircuitMerkleTransitionsCompile(t *testing.T) {
 func TestCircuitMerkleTransitionsProve(t *testing.T) {
 	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitMerkleTransitions{
+		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
+	}, witness)
+	if os.Getenv("DEBUG") != "" {
+		debugLog(t, witness)
+	}
+}
+
+type CircuitRootTransition struct {
+	statetransition.StateTransitionCircuit
+}
+
+func (circuit CircuitRootTransition) Define(api frontend.API) error {
+	circuit.VerifyRootTransition(api, statetransition.HashFn)
+	return nil
+}
+
+func TestCircuitRootTransitionCompile(t *testing.T) {
+	testCircuitCompile(t, &CircuitRootTransition{*CircuitPlaceholder()})
+}
+
+func TestCircuitRootTransitionProve(t *testing.T) {
+	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	testCircuitProve(t, &CircuitRootTransition{
 		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
 	}, witness)
 	if os.Getenv("DEBUG") != "" {
@@ -539,8 +561,8 @@ type CircuitReencryptBallots struct {
 }
 
 func (circuit CircuitReencryptBallots) Define(api frontend.API) error {
-	mask := circuit.VoteMask(api)
-	circuit.VerifyReencryptedVotes(api, mask)
+	isRealVote := circuit.VoteMask(api)
+	circuit.VerifyReencryptedVotes(api, isRealVote)
 	return nil
 }
 
@@ -564,9 +586,9 @@ type CircuitCensusProofs struct {
 }
 
 func (circuit CircuitCensusProofs) Define(api frontend.API) error {
-	mask := circuit.VoteMask(api)
-	circuit.VerifyMerkleCensusProofs(api, mask)
-	circuit.VerifyCSPCensusProofs(api, mask)
+	isRealVote := circuit.VoteMask(api)
+	circuit.VerifyMerkleCensusProofs(api, isRealVote)
+	circuit.VerifyCSPCensusProofs(api, isRealVote)
 	return nil
 }
 
@@ -620,7 +642,7 @@ func TestDummySlot(t *testing.T) {
 
 	// Assert that the circuit rejects this witness.
 	// The fix in VerifyMerkleTransitions and VerifyBallots should assert that
-	// for dummy slots (mask=0), the operations must be NOOP.
+	// for dummy slots (isRealVote=0), the operations must be NOOP.
 	assert := test.NewAssert(t)
 	// We expect the prover to FAIL because the constraints are not satisfied.
 	assert.ProverFailed(
