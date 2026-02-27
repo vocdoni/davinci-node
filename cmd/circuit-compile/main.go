@@ -154,7 +154,6 @@ func main() {
 	////////////////////////////////////////
 	// Vote Verifier Circuit Compilation
 	////////////////////////////////////////
-	startTime := time.Now()
 	log.Infow("compiling vote verifier circuit...")
 	// generate the placeholders for the recursion
 	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
@@ -189,7 +188,6 @@ func main() {
 	// Aggregator Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling aggregator circuit...")
-	startTime = time.Now()
 	voteVerifierFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierVk)
 	if err != nil {
 		log.Fatalf("failed to fix VoteVerifier verification key: %v", err)
@@ -226,7 +224,6 @@ func main() {
 	// Statetransition Circuit Compilation
 	////////////////////////////////////////
 	log.Infow("compiling statetransition circuit...")
-	startTime = time.Now()
 	aggregatorFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorVk)
 	if err != nil {
 		log.Fatalf("failed to fix aggregator verification key: %v", err)
@@ -293,7 +290,7 @@ func main() {
 		ResultsVerifier Circuit Compilation
 	*/
 	log.Infow("compiling results verifier circuit...")
-	startTime = time.Now()
+	startTime := time.Now()
 	// create final placeholder
 	resultsverifierPlaceholder := &results.ResultsVerifierCircuit{}
 	resultsverifierCCS, err := frontend.Compile(params.ResultsVerifierCurve.ScalarField(), r1cs.NewBuilder, resultsverifierPlaceholder)
