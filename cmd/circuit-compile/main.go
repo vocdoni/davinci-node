@@ -578,10 +578,22 @@ func hashBytesSHA256(content []byte) (string, error) {
 }
 
 func loadVerifyingKeyFromHash(destination, hash string, curve ecc.ID) (groth16.VerifyingKey, error) {
-	path := filepath.Join(destination, fmt.Sprintf("%s.vk", hash))
-	fd, err := os.Open(path)
+	paths := []string{
+		filepath.Join(destination, fmt.Sprintf("%s.vk", hash)), // circuit-compile output format
+		filepath.Join(destination, hash),                       // circuits.Download format
+	}
+	var fd *os.File
+	var err error
+	path := ""
+	for _, candidate := range paths {
+		fd, err = os.Open(candidate)
+		if err == nil {
+			path = candidate
+			break
+		}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("open verifying key file %s: %w", path, err)
+		return nil, fmt.Errorf("open verifying key file for hash %s in %s: %w", hash, destination, err)
 	}
 	defer func() {
 		if err := fd.Close(); err != nil {
