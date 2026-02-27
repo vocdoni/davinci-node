@@ -7,14 +7,12 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/census"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/spec/params"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	imt "github.com/vocdoni/lean-imt-go/circuit"
@@ -325,7 +323,7 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Votes
 	for i, v := range circuit.Votes {
 		// Address
-		circuit.VotesProofs.Ballot[i].VerifyNewKey(api, CalculateBallotIndex(api, v.Address, types.IndexTODO))
+		circuit.VotesProofs.Ballot[i].VerifyNewKey(api, BallotIndex(api, circuit.CensusProofs.MerkleProofs[i].Index))
 		// Ballot
 		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, v.ReencryptedBallot.SerializeVars()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
@@ -496,14 +494,12 @@ func (c StateTransitionCircuit) VerifyCSPCensusProofs(api frontend.API, mask []f
 	}
 }
 
-// CalculateBallotIndex replicates spec.BallotIndex inside the circuit.
-// It takes the low 16 bits of the address, applies the censusIndex offset,
-// and shifts into the Ballot namespace (starting at params.BallotMin).
+// BallotIndex returns a BallotIndex on the lower half of the 64 bit space,
+// between BallotMin and BallotMax.
 //
-//	BallotIndex = BallotMin + (index * 2^CensusAddressBitLen) + (address mod 2^CensusAddressBitLen)
-func CalculateBallotIndex(api frontend.API, address, censusIndex frontend.Variable) frontend.Variable {
-	censusIndexShifted := api.Mul(censusIndex, 1<<params.CensusAddressBitLen)
-	addressLE := api.ToBinary(address, common.AddressLength*8)
-	addressTruncated := api.FromBinary(addressLE[:params.CensusAddressBitLen]...)
-	return api.Add(params.BallotMin, censusIndexShifted, addressTruncated)
+//	BallotIndex = BallotMin + censusIndex
+func BallotIndex(api frontend.API, censusIndex frontend.Variable) frontend.Variable {
+	ballotIndex := api.Add(params.BallotMin, censusIndex)
+	api.AssertIsLessOrEqual(ballotIndex, params.BallotMax)
+	return ballotIndex
 }

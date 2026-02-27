@@ -157,7 +157,7 @@ func collectAggregationBatchInputs(
 		// If the maxVoters is reached, check if the ballot is an overwrite
 		// and skip if not
 
-		if maxVotersReached && !processState.ContainsBallot(types.CalculateBallotIndex(b.Address, types.IndexTODO)) {
+		if maxVotersReached && !processState.ContainsBallot(types.CalculateBallotIndex(b.CensusProof.Index)) {
 			log.Debugw("skipping ballot due to max voters reached",
 				"address", b.Address.String(),
 				"processID", processID.String())

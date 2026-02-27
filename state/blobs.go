@@ -72,6 +72,9 @@ func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
 		if err := push(v.Address); err != nil { // address
 			return nil, err
 		}
+		if err := push(new(big.Int).SetUint64(v.CensusIndex)); err != nil { // census index
+			return nil, err
+		}
 		for _, p := range v.ReencryptedBallot.BigInts() { // reencrypted ballot coordinates
 			if err := push(p); err != nil {
 				return nil, err
@@ -173,6 +176,10 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 		address := getCell(cellIndex)
 		cellIndex++
 
+		// Extract censusIndex
+		censusIndex := getCell(cellIndex)
+		cellIndex++
+
 		// Extract ballot coordinates
 		ballotCoords := make([]*big.Int, coordsPerBallot)
 		for j := 0; j < coordsPerBallot; j++ {
@@ -194,6 +201,7 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 
 		vote := &Vote{
 			Address:           address,
+			CensusIndex:       censusIndex.Uint64(),
 			VoteID:            voteID,
 			ReencryptedBallot: ballot,
 		}
@@ -218,7 +226,7 @@ func (st *State) ApplyBlobToState(blob *types.Blob) error {
 	// Add votes directly to the state tree without batch processing
 	for _, vote := range blobData.Votes {
 		// Add or update the vote ballot in the tree
-		ballotIndex := types.CalculateBallotIndex(vote.Address, types.IndexTODO)
+		ballotIndex := types.CalculateBallotIndex(vote.CensusIndex)
 		if _, err := st.EncryptedBallot(ballotIndex); err != nil {
 			// Key doesn't exist, add it
 			if err := st.tree.AddBigInt(ballotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {

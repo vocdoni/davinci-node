@@ -437,7 +437,7 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 
 	// Verify individual votes can be retrieved
 	for _, vote := range blobData.Votes {
-		retrievedBallot, err := newState.EncryptedBallot(types.CalculateBallotIndex(vote.Address, types.IndexTODO))
+		retrievedBallot, err := newState.EncryptedBallot(types.CalculateBallotIndex(vote.CensusIndex))
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to retrieve ballot for address %s", vote.Address.String()))
 
 		// Compare ballot coordinates
