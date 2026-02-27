@@ -133,9 +133,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "~/.davinci/artifacts/"
+          mkdir -p "$HOME/.davinci/artifacts/"
           go run ./cmd/circuit-compile \
-            --destination "~/.davinci/artifacts/" \
+            --destination "$HOME/.davinci/artifacts/" \
             --update-config
 
       - name: Run integration tests
