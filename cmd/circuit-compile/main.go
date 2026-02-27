@@ -119,24 +119,24 @@ func main() {
 	hashList["BallotProofVerificationKeyHash"] = ballotProofVKHash
 
 	ballotProofRecompiled := force ||
-		!artifactExists(destination, ballotProofWASMHash, "wasm") ||
-		!artifactExists(destination, ballotProofPKHash, "zkey") ||
-		!artifactExists(destination, ballotProofVKHash, "json")
+		!artifactExists(destination, ballotProofWASMHash) ||
+		!artifactExists(destination, ballotProofPKHash) ||
+		!artifactExists(destination, ballotProofVKHash)
 	log.Infow("processing ballot proof circom artifacts...", "recompile", ballotProofRecompiled)
 	if ballotProofRecompiled {
-		hash, err := copyAndHashArtifactBytes(ballotproof.CircomCircuitWasm, destination, "wasm")
+		hash, err := copyAndHashArtifactBytes(ballotproof.CircomCircuitWasm, destination)
 		if err != nil {
 			log.Fatalf("error copying ballot proof wasm: %v", err)
 		}
 		hashList["BallotProofCircuitHash"] = hash
 
-		hash, err = copyAndHashArtifactBytes(ballotproof.CircomProvingKey, destination, "zkey")
+		hash, err = copyAndHashArtifactBytes(ballotproof.CircomProvingKey, destination)
 		if err != nil {
 			log.Fatalf("error copying ballot proof proving key: %v", err)
 		}
 		hashList["BallotProofProvingKeyHash"] = hash
 
-		hash, err = copyAndHashArtifactBytes(ballotproof.CircomVerificationKey, destination, "json")
+		hash, err = copyAndHashArtifactBytes(ballotproof.CircomVerificationKey, destination)
 		if err != nil {
 			log.Fatalf("error copying ballot proof verification key: %v", err)
 		}
@@ -555,8 +555,8 @@ func compileCircuitArtifacts(
 	return vk, true, nil
 }
 
-func artifactExists(destination, hash, ext string) bool {
-	path := filepath.Join(destination, fmt.Sprintf("%s.%s", hash, ext))
+func artifactExists(destination, hash string) bool {
+	path := filepath.Join(destination, hash)
 	_, err := os.Stat(path)
 	return err == nil
 }
@@ -609,7 +609,7 @@ func loadVerifyingKeyFromHash(destination, hash string, curve ecc.ID) (groth16.V
 
 // writeCS writes the Constraint System to a file and returns its SHA256 hash
 func writeCS(cs constraint.ConstraintSystem, to string) (string, error) {
-	return writeToFile(to, "ccs", func(w io.Writer) error {
+	return writeToFile(to, "", func(w io.Writer) error {
 		_, err := cs.WriteTo(w)
 		return err
 	})
@@ -617,7 +617,7 @@ func writeCS(cs constraint.ConstraintSystem, to string) (string, error) {
 
 // writePK writes the Proving Key to a file and returns its SHA256 hash
 func writePK(pk groth16.ProvingKey, to string) (string, error) {
-	return writeToFile(to, "pk", func(w io.Writer) error {
+	return writeToFile(to, "", func(w io.Writer) error {
 		_, err := pk.WriteTo(w)
 		return err
 	})
@@ -625,7 +625,7 @@ func writePK(pk groth16.ProvingKey, to string) (string, error) {
 
 // writeVK writes the Verifying Key to a file and returns its SHA256 hash
 func writeVK(vk groth16.VerifyingKey, to string) (string, error) {
-	return writeToFile(to, "vk", func(w io.Writer) error {
+	return writeToFile(to, "", func(w io.Writer) error {
 		_, err := vk.WriteTo(w)
 		return err
 	})
@@ -669,7 +669,10 @@ func writeToFile(to, ext string, writeFunc func(w io.Writer) error) (string, err
 
 	// Compute the hash and create the final filename
 	hash := hex.EncodeToString(hashFn.Sum(nil))
-	finalFilename := filepath.Join(to, fmt.Sprintf("%s.%s", hash, ext))
+	finalFilename := filepath.Join(to, hash)
+	if ext != "" {
+		finalFilename = filepath.Join(to, fmt.Sprintf("%s.%s", hash, ext))
+	}
 
 	// Close the temp file before renaming
 	if err := tempFile.Close(); err != nil {
@@ -725,8 +728,8 @@ func executeCommand(command, dir string) error {
 	return nil
 }
 
-func copyAndHashArtifactBytes(content []byte, destDir, ext string) (string, error) {
-	return writeToFile(destDir, ext, func(w io.Writer) error {
+func copyAndHashArtifactBytes(content []byte, destDir string) (string, error) {
+	return writeToFile(destDir, "", func(w io.Writer) error {
 		if _, err := w.Write(content); err != nil {
 			return fmt.Errorf("failed to copy artifact content: %w", err)
 		}
@@ -757,17 +760,12 @@ func copyAndHashWasmFile(srcPath, destDir, baseFileName string) (string, error) 
 	// Get the last 4 hex digits for versioning
 	hashSuffix := hash[len(hash)-4:]
 
-	// Create versioned filename based on baseFileName
-	var versionedName string
-	if filepath.Ext(baseFileName) != "" {
-		// Has extension (e.g., "davinci_crypto.wasm" -> "davinci_crypto_ba1f.wasm")
-		ext := filepath.Ext(baseFileName)
-		nameWithoutExt := baseFileName[:len(baseFileName)-len(ext)]
-		versionedName = fmt.Sprintf("%s_%s%s", nameWithoutExt, hashSuffix, ext)
-	} else {
-		// No extension
-		versionedName = fmt.Sprintf("%s_%s", baseFileName, hashSuffix)
+	// Create versioned filename without extension.
+	nameWithoutExt := baseFileName[:len(baseFileName)-len(filepath.Ext(baseFileName))]
+	if nameWithoutExt == "" {
+		nameWithoutExt = baseFileName
 	}
+	versionedName := fmt.Sprintf("%s_%s", nameWithoutExt, hashSuffix)
 
 	finalFilename := filepath.Join(destDir, versionedName)
 
