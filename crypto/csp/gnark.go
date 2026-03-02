@@ -6,7 +6,6 @@ import (
 	ecc_twedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
 
-	"github.com/iden3/go-iden3-crypto/babyjub"
 	"github.com/vocdoni/davinci-node/circuits"
 	cspeddsa "github.com/vocdoni/davinci-node/crypto/csp/eddsa"
 	"github.com/vocdoni/davinci-node/types"
@@ -100,20 +99,17 @@ func signatureMessage(
 // used in Gnark circuits. It unmarshals the public key and signature from
 // the CensusProof and converts them to gnark circuit types.
 func CensusProofToCSPProof(curveID ecc_twedwards.ID, censusProof *types.CensusProof) (*CSPProof, error) {
-	// Unmarshal public key and convert to gnark circuit eddsa public key
-	pubKey, err := cspeddsa.PublicKeyFromBytes(censusProof.PublicKey)
+	// Decompress public key and convert to babyjub eddsa public key
+	pubKey, err := cspeddsa.DecompressPublicKey(censusProof.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshaling public key: %w", err)
 	}
-	decSignature, err := cspeddsa.HexBytesToDecimalStringBytes(censusProof.Signature)
+	// Decompress signature and convert to babyjub eddsa signature
+	signature, err := cspeddsa.DecompressSignature(censusProof.Signature)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding signature: %w", err)
 	}
-	// Unmarshal signature and convert to gnark circuit eddsa signature
-	signature, err := babyjub.DecompressSig(decSignature)
-	if err != nil {
-		return nil, fmt.Errorf("error decompressing signature: %w", err)
-	}
+	// Convert public key and signature to gnark circuit types
 	return &CSPProof{
 		Signature: eddsa.SignatureFromIden3(signature),
 		PublicKey: eddsa.PublicKeyFromIden3(*pubKey),
