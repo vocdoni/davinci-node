@@ -7,6 +7,7 @@ import (
 	bn254 "github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/iden3/go-iden3-crypto/babyjub"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -15,6 +16,7 @@ import (
 type BabyJubJubEdDSA struct {
 	hashFn  Hash
 	privKey babyjub.PrivateKey
+	indexFn types.CSPIndexFn
 }
 
 // NewBabyJubJubKeyFromSeed creates a new BabyJubJubEdDSA for the bn254 curve
@@ -39,6 +41,7 @@ func NewBabyJubJubKeyFromSeed(hashFn Hash, seed []byte) (*BabyJubJubEdDSA, error
 	return &BabyJubJubEdDSA{
 		hashFn:  hashFn,
 		privKey: babyjub.PrivateKey(rawPrivKey),
+		indexFn: DefaultCSPIndexFn,
 	}, nil
 }
 
@@ -51,7 +54,13 @@ func NewBabyJubJubKey(hashFn Hash) (*BabyJubJubEdDSA, error) {
 	return &BabyJubJubEdDSA{
 		hashFn:  hashFn,
 		privKey: randPrivKey,
+		indexFn: DefaultCSPIndexFn,
 	}, nil
+}
+
+// SetIndexFn sets the index function for the BabyJubJubEdDSA instance.
+func (c *BabyJubJubEdDSA) SetIndexFn(indexFn types.CSPIndexFn) {
+	c.indexFn = indexFn
 }
 
 // CensusOrigin returns the origin of the credential service providers. It
@@ -115,7 +124,7 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 		Root:         censusRoot,
 		Address:      address.Bytes(),
 		Weight:       weight,
-		
+		Index:        c.indexFn(processID, address, weight),
 		ProcessID:    processID,
 		PublicKey:    publicKey.Bytes(),
 		Signature:    signature.Bytes(),
@@ -147,6 +156,10 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 	message, err := c.signatureMessage(proof.ProcessID, proof.Address, proof.Weight)
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
+	}
+	// Verify the index
+	if idx := c.indexFn(proof.ProcessID, common.BytesToAddress(proof.Address), proof.Weight); proof.Index != idx {
+		return fmt.Errorf("index mismatch: expected %d, got %d", idx, proof.Index)
 	}
 	// Decompress the signature
 	signature, err := DecompressSignature(proof.Signature)
@@ -230,4 +243,22 @@ func (c *BabyJubJubEdDSA) sign(
 		return nil, fmt.Errorf("error compressing signature: %w", err)
 	}
 	return compressedSignature, nil
+}
+
+// DefaultCSPIndexFn is the default function to compute the census index for
+// a given process ID, address and weight. It uses the poseidon hash function
+// to compute a deterministic index based on the inputs. It ensures that the
+// result is in the range [params.BallotMin, params.BallotMax].
+func DefaultCSPIndexFn(processID types.ProcessID, address common.Address, weight *types.BigInt) uint64 {
+	bigHash, err := DefaultHashFn.BigIntsSum([]*big.Int{
+		processID.BigInt().MathBigInt(),
+		address.Big(),
+		weight.MathBigInt(),
+	})
+	if err != nil {
+		panic(err)
+	}
+	rangeSize := new(big.Int).SetUint64(params.BallotMax - params.BallotMin + 1)
+	mod := new(big.Int).Mod(bigHash, rangeSize)
+	return mod.Uint64() + params.BallotMin
 }

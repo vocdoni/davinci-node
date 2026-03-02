@@ -145,10 +145,10 @@ type CensusProof struct {
 	Root         HexBytes     `json:"root"`
 	Address      HexBytes     `json:"address"`
 	Weight       *BigInt      `json:"weight,omitempty"`
+	Index        uint64       `json:"index,omitempty"`
 	// Merkletree related fields
 	Siblings HexBytes `json:"siblings,omitempty"`
 	Value    HexBytes `json:"value,omitempty"`
-	Index    uint64   `json:"index,omitempty"`
 	// CSP related fields
 	ProcessID ProcessID `json:"processId,omitempty"`
 	PublicKey HexBytes  `json:"publicKey,omitempty"`
@@ -170,8 +170,8 @@ func (cp *CensusProof) Valid() bool {
 		// By default the census proof is not required to this census origin.
 		return true
 	case cp.CensusOrigin.IsCSP():
-		return cp.Root != nil && cp.Address != nil && cp.ProcessID.IsValid() &&
-			cp.PublicKey != nil && cp.Signature != nil
+		return cp.Root != nil && cp.Address != nil && cp.Index != 0 &&
+			cp.ProcessID.IsValid() && cp.PublicKey != nil && cp.Signature != nil
 	default:
 		return false
 	}
@@ -186,3 +186,8 @@ func (cp *CensusProof) String() string {
 	}
 	return string(data)
 }
+
+// CSPIndexFn is a function that returns the index of a given process ID,
+// address and weight. It is used during the CensusProof generation process to
+// calculate deterministic indexes for CSP proofs.
+type CSPIndexFn func(processID ProcessID, address common.Address, weight *BigInt) uint64

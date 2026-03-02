@@ -45,22 +45,14 @@ func main() {
 	var destination string
 	var updateConfig bool
 	var configPath string
-<<<<<<< HEAD
-	var updateWasm bool
 	var force bool
-=======
->>>>>>> c32a867 (wasm compilation removed)
 	s3Config := NewDefaultS3Config()
 
 	// Define flags
 	flag.StringVar(&destination, "destination", circuits.BaseDir, "destination folder for the artifacts")
 	flag.BoolVar(&updateConfig, "update-config", false, "update circuit_artifacts.go file with new hashes")
 	flag.StringVar(&configPath, "config-path", "", "path to circuit_artifacts.go file (auto-detected if not specified)")
-<<<<<<< HEAD
-	flag.BoolVar(&updateWasm, "update-wasm", false, "compile and update WASM files only")
 	flag.BoolVar(&force, "force", false, "force recompilation of artifacts even if CCS is unchanged")
-=======
->>>>>>> c32a867 (wasm compilation removed)
 
 	// S3 configuration flags
 	flag.BoolVar(&s3Config.Enabled, "s3.enabled", false, "enable S3 uploads")
@@ -675,23 +667,4 @@ func insertProvingKeyHashToVkeySolidity(filePath, hexHash string) error {
 		return fmt.Errorf("writing patched vkey.sol: %w", err)
 	}
 	return nil
-}
-
-func copyAndHashArtifact(srcPath, destDir, ext string) (string, error) {
-	srcFile, err := os.Open(srcPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to open artifact %s: %w", srcPath, err)
-	}
-	defer func() {
-		if err := srcFile.Close(); err != nil {
-			log.Warnw("failed to close artifact file", "error", err)
-		}
-	}()
-
-	return writeToFile(destDir, ext, func(w io.Writer) error {
-		if _, err := io.Copy(w, srcFile); err != nil {
-			return fmt.Errorf("failed to copy artifact content: %w", err)
-		}
-		return nil
-	})
 }

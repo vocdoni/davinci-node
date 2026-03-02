@@ -23,11 +23,11 @@ import (
 )
 
 // CSP defines the interface for a Credential Service Providers (CSP). It
-// provides methods to set a seed, retrieve census origin and root, and
-// generate and verify census proofs. The CSP is responsible for handling
-// cryptographic operations related to census proofs, which are used to
-// verify the integrity and authenticity of census data in an external
-// system.
+// provides methods to set a function to calculate the census index (must be
+// deterministic), retrieve census origin and root, and generate and verify
+// census proofs. The CSP is responsible for handling cryptographic operations
+// related to census proofs, which are used to verify the integrity and
+// authenticity of census data in an external system.
 type CSP interface {
 	SetIndexFn(indexFunc types.CSPIndexFn)
 	CensusOrigin() types.CensusOrigin
