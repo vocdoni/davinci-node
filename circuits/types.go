@@ -17,7 +17,7 @@ import (
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
-	gnark_poseidon "github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
+	gnark_poseidon "github.com/vocdoni/gnark-crypto-primitives/hash/native/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 	"github.com/vocdoni/poseidon377"
 )

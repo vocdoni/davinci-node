@@ -21,7 +21,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/holiman/uint256 v1.3.2
-	github.com/iden3/go-iden3-crypto v0.0.17
+	github.com/iden3/go-iden3-crypto v0.0.18-0.20241128121142-625bf563ffc5
 	github.com/iden3/go-rapidsnark/prover v0.0.12
 	github.com/iden3/go-rapidsnark/witness v0.0.6
 	github.com/pressly/goose/v3 v3.26.0
@@ -35,8 +35,8 @@ require (
 	github.com/vocdoni/davinci-circom v0.1.0
 	github.com/vocdoni/davinci-contracts v0.0.36-0.20260223141848-572d869c67d3
 	github.com/vocdoni/davinci-node/spec v0.0.0-20260210223636-e85fc7c89da9
-	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260115102516-64ce9c3fd55d
-	github.com/vocdoni/lean-imt-go v0.0.0-20260126110424-0b1c7ec41924
+	github.com/vocdoni/gnark-crypto-primitives v0.0.2-0.20260218072319-01482f6ccc38
+	github.com/vocdoni/lean-imt-go v0.0.0-20260216160418-66b3f1c1c40e
 	github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69
 	go.mongodb.org/mongo-driver v1.17.7
 	golang.org/x/mod v0.32.0

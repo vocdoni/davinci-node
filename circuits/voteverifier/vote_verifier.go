@@ -62,7 +62,7 @@ import (
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	address "github.com/vocdoni/gnark-crypto-primitives/emulated/ecdsa"
+	address "github.com/vocdoni/gnark-crypto-primitives/ecc/secp256k1/ecdsa"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
 )
 
