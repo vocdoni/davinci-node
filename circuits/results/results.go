@@ -10,7 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/bn254/poseidon"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/native/bn254/poseidon"
 )
 
 // HashFn is the hash function used in the circuit. It should the equivalent

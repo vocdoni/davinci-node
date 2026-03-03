@@ -17,7 +17,6 @@ func TestExampleCSP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating CSP: %v", err)
 	}
-	t.Log("CSP created successfully:", csp)
 
 	// Generate a census proof for the voter
 	proof, err := csp.GenerateProof(testutil.RandomProcessID(), testutil.RandomAddress(), types.NewInt(testutil.Weight))

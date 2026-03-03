@@ -13,7 +13,7 @@ import (
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/spec/params"
-	"github.com/vocdoni/gnark-crypto-primitives/emulated/poseidon"
+	"github.com/vocdoni/gnark-crypto-primitives/hash/emulated/bn254/poseidon"
 )
 
 type AggregatorCircuit struct {

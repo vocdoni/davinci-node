@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"slices"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
@@ -243,6 +244,7 @@ func (o *State) endBatch() error {
 		if i < len(o.Votes()) {
 			v := o.Votes()[i]
 			ballotIndex := types.CalculateBallotIndex(v.Address, types.IndexTODO)
+			log.Infow("new ballot in the state", "ballotIndex", ballotIndex, "address", common.BigToAddress(v.Address).Hex())
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
 				ballotIndex.StateKey(), v.ReencryptedBallot.BigInts()...)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,

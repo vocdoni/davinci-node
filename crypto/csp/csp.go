@@ -6,7 +6,7 @@
 //
 // The CSP interface defines methods to set a seed, retrieve census origin and
 // root, generate and verify census proofs. The package currently supports the
-// EdDSA BLS12-377 origin for census proofs.
+// EdDSA BN254 origin for census proofs.
 //
 //   - The `New` function creates a new CSP based on the provided origin and
 //     seed.
@@ -17,20 +17,19 @@ package csp
 import (
 	"fmt"
 
-	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/csp/eddsa"
 	"github.com/vocdoni/davinci-node/types"
 )
 
 // CSP defines the interface for a Credential Service Providers (CSP). It
-// provides methods to set a seed, retrieve census origin and root, and
-// generate and verify census proofs. The CSP is responsible for handling
-// cryptographic operations related to census proofs, which are used to
-// verify the integrity and authenticity of census data in an external
-// system.
+// provides methods to set a function to calculate the census index (must be
+// deterministic), retrieve census origin and root, and generate and verify
+// census proofs. The CSP is responsible for handling cryptographic operations
+// related to census proofs, which are used to verify the integrity and
+// authenticity of census data in an external system.
 type CSP interface {
-	SetSeed(seed []byte) error
+	SetIndexFn(indexFunc types.CSPIndexFn)
 	CensusOrigin() types.CensusOrigin
 	CensusRoot() *types.CensusRoot
 	GenerateProof(processID types.ProcessID, address common.Address, weight *types.BigInt) (*types.CensusProof, error)
@@ -43,23 +42,17 @@ type CSP interface {
 // cannot be set.
 func New(origin types.CensusOrigin, seed []byte) (CSP, error) {
 	// Create a new CSP based on the origin
-	var csp CSP
 	switch origin {
 	case types.CensusOriginCSPEdDSABabyJubJubV1:
-		var err error
-		if csp, err = eddsa.CSP(twistededwards.BN254); err != nil {
-			return nil, fmt.Errorf("failed to create EdDSA BN254 CSP: %w", err)
+		// If a seed is provided, use it to initialize the CSP, otherwise use
+		// a random seed
+		if len(seed) > 0 {
+			return eddsa.NewBabyJubJubKeyFromSeed(eddsa.DefaultHashFn, seed)
 		}
+		return eddsa.NewBabyJubJubKey(eddsa.DefaultHashFn)
 	default:
 		return nil, fmt.Errorf("unsupported census origin: %s", origin)
 	}
-	// If a seed is provided, set it for the CSP
-	if len(seed) > 0 {
-		if err := csp.SetSeed(seed); err != nil {
-			return nil, fmt.Errorf("failed to set seed for EdDSA CSP: %w", err)
-		}
-	}
-	return csp, nil
 }
 
 // VerifyCensusProof verifies the given CensusProof using the appropriate CSP.
@@ -70,7 +63,7 @@ func VerifyCensusProof(proof *types.CensusProof) error {
 	switch proof.CensusOrigin {
 	case types.CensusOriginCSPEdDSABabyJubJubV1:
 		var err error
-		csp, err = eddsa.CSP(twistededwards.BN254)
+		csp, err = eddsa.NewBabyJubJubKey(eddsa.DefaultHashFn)
 		if err != nil {
 			return fmt.Errorf("failed to create EdDSA BN254 CSP: %w", err)
 		}

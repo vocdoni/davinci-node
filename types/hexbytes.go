@@ -19,15 +19,20 @@ func (b *HexBytes) Bytes() []byte {
 	return *b
 }
 
+// Hex returns the hexadecimal string representation of the HexBytes.
+func (b HexBytes) Hex() string {
+	return hex.EncodeToString(b)
+}
+
 // String returns the hexadecimal string representation of the HexBytes,
 // prefixed with "0x".
 func (b HexBytes) String() string {
-	return "0x" + hex.EncodeToString(b)
+	return "0x" + b.Hex()
 }
 
 // BigInt converts the HexBytes to a BigInt.
-func (b *HexBytes) BigInt() *BigInt {
-	return new(BigInt).SetBytes(*b)
+func (b HexBytes) BigInt() *BigInt {
+	return new(BigInt).SetBytes(b)
 }
 
 // LeftPad returns a new HexBytes padded with leading zeros to the specified
