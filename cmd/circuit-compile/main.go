@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -200,7 +201,7 @@ func main() {
 	hashList["StateTransitionVerificationKeyHash"] = statetransitionArtifacts.VerifyingKeyHash
 
 	statetransitionVkeySolFile := ""
-	if statetransitionArtifacts.Recompiled {
+	if needsSolidityVerifierUpdate(solidityVerifierPath("statetransition", destination), statetransitionArtifacts.ProvingKeyHash) {
 		vkeySolFile, err := exportSolidityVerifierFile(
 			"statetransition",
 			statetransitionArtifacts,
@@ -239,7 +240,7 @@ func main() {
 	hashList["ResultsVerifierVerificationKeyHash"] = resultsverifierArtifacts.VerifyingKeyHash
 
 	resultsverifierVkeySolFile := ""
-	if resultsverifierArtifacts.Recompiled {
+	if needsSolidityVerifierUpdate(solidityVerifierPath("resultsverifier", destination), resultsverifierArtifacts.ProvingKeyHash) {
 		vkeySolFile, err := exportSolidityVerifierFile(
 			"resultsverifier",
 			resultsverifierArtifacts,
@@ -412,6 +413,18 @@ func copySolidityVerifierFile(sourcePath, destPath string) error {
 	return nil
 }
 
+func needsSolidityVerifierUpdate(solidityPath, provingKeyHash string) bool {
+	content, err := os.ReadFile(solidityPath)
+	if err != nil {
+		return true
+	}
+	return !strings.Contains(string(content), provingKeyHash)
+}
+
+func solidityVerifierPath(name, destination string) string {
+	return path.Join(destination, fmt.Sprintf("%s_vkey.sol", name))
+}
+
 func exportSolidityVerifierFile(name string, artifacts *CompileCircuitArtifactsResult, destination string) (string, error) {
 	if artifacts == nil {
 		return "", fmt.Errorf("missing artifacts for %s", name)
@@ -424,7 +437,7 @@ func exportSolidityVerifierFile(name string, artifacts *CompileCircuitArtifactsR
 	if err := solidityVk.Precompute(); err != nil {
 		return "", fmt.Errorf("precompute %s vk: %w", name, err)
 	}
-	vkeySolFile := path.Join(destination, fmt.Sprintf("%s_vkey.sol", name))
+	vkeySolFile := solidityVerifierPath(name, destination)
 	fd, err := os.Create(vkeySolFile)
 	if err != nil {
 		return "", fmt.Errorf("create %s_vkey.sol: %w", name, err)
