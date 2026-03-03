@@ -62,8 +62,10 @@ func StateTransitionInputsForTest(
 	// Use unified cache system for aggregator data
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
+	aggCCSHash, err := circuitstest.AggregatorCircuitCCSHash()
+	c.Assert(err, qt.IsNil, qt.Commentf("compute aggregator CCS hash"))
 
-	cacheKey := cache.GenerateCacheKey("statetransition-test-aggregator", processID, circuitstest.AggregatorCacheKeyVersion, nValidVoters)
+	cacheKey := cache.GenerateCacheKey(aggCCSHash, processID, "statetransition-test-aggregator", censusOrigin.String(), nValidVoters)
 	cachedData := &circuitstest.AggregatorCacheData{}
 
 	var proof groth16.Proof

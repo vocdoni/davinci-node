@@ -4,7 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 )
 
@@ -24,4 +28,23 @@ func HashBytesSHA256(content []byte) (string, error) {
 		return "", fmt.Errorf("hash bytes: %w", err)
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// LoadVerifyingKeyFromLocalHash loads a verifying key from the local artifacts
+// cache path using its hex hash.
+func LoadVerifyingKeyFromLocalHash(curve ecc.ID, hash string) (groth16.VerifyingKey, error) {
+	path := filepath.Join(BaseDir, hash)
+	fd, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open verifying key file %s: %w", path, err)
+	}
+	defer func() {
+		_ = fd.Close()
+	}()
+
+	vk := groth16.NewVerifyingKey(curve)
+	if _, err := vk.ReadFrom(fd); err != nil {
+		return nil, fmt.Errorf("read verifying key file %s: %w", path, err)
+	}
+	return vk, nil
 }

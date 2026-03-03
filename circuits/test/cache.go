@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
@@ -245,18 +246,19 @@ func NewCircuitCache() (*CircuitCache, error) {
 	return &CircuitCache{BaseDir: cacheDir}, nil
 }
 
-// GenerateCacheKey creates a deterministic cache key based on circuit type and parameters
-func (c *CircuitCache) GenerateCacheKey(circuitType string, processID types.ProcessID, params ...any) string {
-	// Build cache key with circuit type, ProcessID, and additional parameters
-	keyData := fmt.Sprintf("%d-%s-%s-%d-%x", cacheKeyVersion, circuitType, processID.Address().Hex(), processID.Nonce(), processID.Version())
+// GenerateCacheKey creates a deterministic cache key based on circuit hash and parameters.
+func (c *CircuitCache) GenerateCacheKey(circuitHash string, processID types.ProcessID, params ...any) string {
+	// Build cache key with CCS hash, ProcessID, and additional parameters.
+	var keyData strings.Builder
+	fmt.Fprintf(&keyData, "%d-%s-%s", cacheKeyVersion, circuitHash, processID.String())
 
 	// Append additional parameters
 	for _, param := range params {
-		keyData += fmt.Sprintf("-%v", param)
+		fmt.Fprintf(&keyData, "-%v", param)
 	}
 
 	// Hash the key data for consistent length and avoid filesystem issues
-	hash := sha256.Sum256([]byte(keyData))
+	hash := sha256.Sum256([]byte(keyData.String()))
 	return hex.EncodeToString(hash[:])
 }
 

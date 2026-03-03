@@ -37,7 +37,7 @@ func AggregatorInputsForTest(
 	t *testing.T,
 	processID types.ProcessID,
 	censusOrigin types.CensusOrigin,
-	nValidVotes int,
+	nValidVoters int,
 ) (
 	*circuitstest.AggregatorTestResults, *aggregator.AggregatorCircuit, *aggregator.AggregatorCircuit,
 ) {
@@ -48,8 +48,10 @@ func AggregatorInputsForTest(
 	// Use unified cache system for vote verifier data
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
+	vvCCSHash, err := circuitstest.VoteVerifierCircuitCCSHash()
+	c.Assert(err, qt.IsNil, qt.Commentf("compute vote verifier CCS hash"))
 
-	cacheKey := cache.GenerateCacheKey("voteverifier", processID, nValidVotes)
+	cacheKey := cache.GenerateCacheKey(vvCCSHash, processID, "voteverifier", censusOrigin.String(), nValidVoters)
 	cachedData := &circuitstest.VoteVerifierCacheData{}
 
 	var vvPk groth16.ProvingKey
@@ -64,7 +66,7 @@ func AggregatorInputsForTest(
 
 		// generate deterministic users accounts and census for consistent caching
 		vvData := []voteverifiertest.VoterTestData{}
-		for i := range nValidVotes {
+		for i := range nValidVoters {
 			s, err := ballottest.GenDeterministicECDSAaccountForTest(i)
 			c.Assert(err, qt.IsNil, qt.Commentf("generate deterministic ECDSA account %d", i))
 
@@ -137,13 +139,13 @@ func AggregatorInputsForTest(
 
 	// init final assignments stuff
 	finalAssignments := &aggregator.AggregatorCircuit{
-		ValidProofs:  nValidVotes,
+		ValidProofs:  nValidVoters,
 		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 		BallotHashes: proofsInputsHashes,
 		Proofs:       proofs,
 	}
 	// fill assignments with dummy values
-	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballotproof.CircomVerificationKey, nValidVotes, nil)
+	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballotproof.CircomVerificationKey, nValidVoters, nil)
 	c.Assert(err, qt.IsNil, qt.Commentf("fill with dummy values"))
 
 	// fix the vote verifier verification key
@@ -159,7 +161,7 @@ func AggregatorInputsForTest(
 		finalPlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](vvCCS)
 	}
 	votes := []*state.Vote{}
-	for i := range nValidVotes {
+	for i := range nValidVoters {
 		votes = append(votes, &state.Vote{
 			Address: vvInputs.Addresses[i],
 			VoteID:  vvInputs.VoteIDs[i],

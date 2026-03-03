@@ -27,12 +27,15 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	c := qt.New(t)
 
 	processID := testutil.FixedProcessID()
+	nValidVoters := 3
 
 	// Cache for the local compiled circuit artifacts
 	cache, err := circuitstest.NewCircuitCache()
 	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
 	aggCacheData := circuitstest.AggregatorCacheData{}
-	cacheKey := cache.GenerateCacheKey("aggregator", processID, circuitstest.AggregatorCacheKeyVersion, 3)
+	aggCCSHash, err := circuitstest.AggregatorCircuitCCSHash()
+	c.Assert(err, qt.IsNil, qt.Commentf("compute aggregator CCS hash"))
+	cacheKey := cache.GenerateCacheKey(aggCCSHash, processID, "aggregator", nValidVoters)
 
 	// Try to load everything from cache first to avoid regenerating inputs/compile/setup
 	cacheErr := cache.LoadData(cacheKey, &aggCacheData, true)
