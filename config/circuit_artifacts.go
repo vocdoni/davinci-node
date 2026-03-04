@@ -17,17 +17,17 @@ const (
 	BallotProofProvingKeyHash      = "982f1a850bc12325001e0c91d5238ae69b6b7ea20b3d5c1c18319d70a5dd2d65"
 	BallotProofVerificationKeyHash = "1675949c5628cfd347e93cfe5187805d28b5e8cb58591085b58eaa1953371991"
 
-	VoteVerifierCircuitHash         = "2ff6171cb9375f37525d65d1b494c64815f3fc3fe941a5d48b81a21857501bc9"
-	VoteVerifierProvingKeyHash      = "50551373a872d879f4a3f4f44f7623a1808af769f89a2b065c44efdb87ccfd48"
-	VoteVerifierVerificationKeyHash = "dd2f12457371cfa6b66986b1a0ba1f1ed7aa8f6353047b770e913ea3c60ecf29"
+	VoteVerifierCircuitHash         = "fd38d5ba055c8d05f13ae341443d201ac528835c9c1c89be2f9d1590693aa649"
+	VoteVerifierProvingKeyHash      = "3d347d6747183a1e4df8149125eefa5636344d738c27a31f3bb0836342cfb22b"
+	VoteVerifierVerificationKeyHash = "5283e7b3a02b33c7ad71e396790b26d1daadf444dc722f0407db4dd8c061d5f0"
 
-	AggregatorCircuitHash         = "ab2d30824585c3792a0e6a11e737c42f6f69ad415267de2a76ac136fedeacd34"
-	AggregatorProvingKeyHash      = "0d2ac228015fed55e39a282e329284887b4369c6e518dbe647ec63d49cc3252e"
-	AggregatorVerificationKeyHash = "4bdb2f9e44d63d7db6f37cadcbd8202f8f429b6ab47310bec7ed81257b209a41"
+	AggregatorCircuitHash         = "c59ac087ecad909832c7893a1afae99f0f34799e9ce2ebaf87fbab469c56f0a4"
+	AggregatorProvingKeyHash      = "c4be0a20a208426b67cec4c3924be29c01bafadd3ab01450221a620db5c1af49"
+	AggregatorVerificationKeyHash = "bd268629d93e545cd6e896fe0a22191b90ccad16c1d4270476517177553a26c6"
 
-	StateTransitionCircuitHash         = "4952e4b362af0eb2f96b50cfaecd97dd85db72051ea74e846ba92667a85c15c7"
-	StateTransitionProvingKeyHash      = "ce42937d9cb1b95d7251c16080db8d9d0d40e9b94f47d59d9d91cf57d2274233"
-	StateTransitionVerificationKeyHash = "206bb7849c4a5663efe0f8855681eec922ccad394e1e6808e6b5f4ff6160be03"
+	StateTransitionCircuitHash         = "bbedb6cf33c6bc7d7fba2555c8bb3befbee3004a997b6b670595737ca5239c32"
+	StateTransitionProvingKeyHash      = "a79546678c4088c28ddfe047f9dc59ac4ea41c6893cbe946a5190525b8908aaa"
+	StateTransitionVerificationKeyHash = "e844a0ad9be8e51e396569fea9033324751657a7b7b5fc752bb2e8050df0c3c1"
 
 	ResultsVerifierCircuitHash         = "7da3dc581758815ae050b592d4a25189a44c2ec7e3e122559573a4f953a1e412"
 	ResultsVerifierProvingKeyHash      = "b590ba65ecac3aa3c4cc2acdacaa4401c607720beb50c12ea0dd6d23b64e87a0"
