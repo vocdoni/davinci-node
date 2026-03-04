@@ -21,11 +21,6 @@ import (
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/solidity"
 	"github.com/consensys/gnark/constraint"
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/r1cs"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
-	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
-	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	flag "github.com/spf13/pflag"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
@@ -34,8 +29,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec/params"
-	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // Keeps track of files created during program execution
@@ -101,17 +94,7 @@ func main() {
 	////////////////////////////////////////
 	startTime := time.Now()
 	log.Infow("compiling VoteVerifier circuit...")
-	// generate the placeholders for the recursion
-	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
-	if err != nil {
-		log.Fatalf("error generating circom2gnark placeholder: %v", err)
-	}
-	// compile the circuit
-	voteVerifierCCS, err := frontend.Compile(params.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, &voteverifier.VerifyVoteCircuit{
-		CircomVerificationKey: circomPlaceholder.Vk,
-		CircomProof:           circomPlaceholder.Proof,
-	})
+	voteVerifierCCS, err := voteverifier.Compile()
 	if err != nil {
 		log.Fatalf("error compiling VoteVerifier circuit: %v", err)
 	}
@@ -135,20 +118,7 @@ func main() {
 	////////////////////////////////////////
 	log.Infow("compiling Aggregator circuit...")
 	startTime = time.Now()
-	voteVerifierFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierArtifacts.VerifyingKey)
-	if err != nil {
-		log.Fatalf("failed to fix VoteVerifier verification key: %v", err)
-	}
-	// create final placeholder
-	aggregatorPlaceholder := &aggregator.AggregatorCircuit{
-		Proofs:          [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
-		VerificationKey: voteVerifierFixedVk,
-	}
-	for i := range params.VotesPerBatch {
-		aggregatorPlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](voteVerifierCCS)
-	}
-
-	aggregatorCCS, err := frontend.Compile(params.AggregatorCurve.ScalarField(), r1cs.NewBuilder, aggregatorPlaceholder)
+	aggregatorCCS, err := aggregator.Compile(voteVerifierCCS, voteVerifierArtifacts.VerifyingKey)
 	if err != nil {
 		log.Fatalf("failed to compile Aggregator circuit: %v", err)
 	}
@@ -172,16 +142,7 @@ func main() {
 	////////////////////////////////////////
 	log.Infow("compiling StateTransition circuit...")
 	startTime = time.Now()
-	aggregatorFixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorArtifacts.VerifyingKey)
-	if err != nil {
-		log.Fatalf("failed to fix Aggregator verification key: %v", err)
-	}
-	// create final placeholder
-	statetransitionPlaceholder := &statetransition.StateTransitionCircuit{
-		AggregatorProof: stdgroth16.PlaceholderProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](aggregatorCCS),
-		AggregatorVK:    aggregatorFixedVk,
-	}
-	statetransitionCCS, err := frontend.Compile(params.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, statetransitionPlaceholder)
+	statetransitionCCS, err := statetransition.Compile(aggregatorCCS, aggregatorArtifacts.VerifyingKey)
 	if err != nil {
 		log.Fatalf("failed to compile StateTransition circuit: %v", err)
 	}
@@ -218,9 +179,7 @@ func main() {
 	*/
 	log.Infow("compiling ResultsVerifier circuit...")
 	startTime = time.Now()
-	// create final placeholder
-	resultsverifierPlaceholder := &results.ResultsVerifierCircuit{}
-	resultsverifierCCS, err := frontend.Compile(params.ResultsVerifierCurve.ScalarField(), r1cs.NewBuilder, resultsverifierPlaceholder)
+	resultsverifierCCS, err := results.Compile()
 	if err != nil {
 		log.Fatalf("failed to compile ResultsVerifier circuit: %v", err)
 	}
