@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/vocdoni/davinci-node/log"
 )
 
@@ -113,6 +115,27 @@ func (u *S3Uploader) UploadFile(ctx context.Context, filePath string) (string, e
 	return objectKey, nil
 }
 
+// ObjectExists checks whether an object key exists in the configured S3 space.
+func (u *S3Uploader) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	_, err := u.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(u.config.Space),
+		Key:    aws.String(objectKey),
+	})
+	if err == nil {
+		return true, nil
+	}
+
+	var notFound *types.NotFound
+	if errors.As(err, &notFound) {
+		return false, nil
+	}
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotFound" {
+		return false, nil
+	}
+	return false, fmt.Errorf("head object %s: %w", objectKey, err)
+}
+
 // SetPublicACL sets the ACL of specific objects to public-read
 func (u *S3Uploader) SetPublicACL(ctx context.Context, objectKeys []string) error {
 	if len(objectKeys) == 0 {
@@ -183,6 +206,17 @@ func UploadFiles(ctx context.Context, filePaths []string, s3Config *S3Config) er
 		return nil
 	}
 
+	// Deduplicate input paths to avoid re-uploading the same file.
+	seen := make(map[string]struct{}, len(filePaths))
+	dedupedPaths := make([]string, 0, len(filePaths))
+	for _, filePath := range filePaths {
+		if _, ok := seen[filePath]; ok {
+			continue
+		}
+		seen[filePath] = struct{}{}
+		dedupedPaths = append(dedupedPaths, filePath)
+	}
+
 	// Create uploader
 	uploader, err := NewS3Uploader(s3Config)
 	if err != nil {
@@ -193,7 +227,7 @@ func UploadFiles(ctx context.Context, filePaths []string, s3Config *S3Config) er
 	uploadedKeys := []string{}
 
 	// Upload each specified file
-	for _, filePath := range filePaths {
+	for _, filePath := range dedupedPaths {
 		log.Infow("uploading file to S3", "file", filePath)
 		objectKey, err := uploader.UploadFile(ctx, filePath)
 		if err != nil {
@@ -210,4 +244,44 @@ func UploadFiles(ctx context.Context, filePaths []string, s3Config *S3Config) er
 
 	log.Infow("artifacts successfully uploaded to S3", "count", len(uploadedKeys))
 	return nil
+}
+
+// MissingRemoteArtifactFiles returns local artifact files whose remote objects
+// are absent from S3/DO space. Hashes must be hex file names used as object names.
+func MissingRemoteArtifactFiles(ctx context.Context, destination string, hashes map[string]string, s3Config *S3Config) ([]string, error) {
+	if !s3Config.Enabled {
+		return nil, nil
+	}
+	uploader, err := NewS3Uploader(s3Config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create S3 uploader: %w", err)
+	}
+
+	missing := make([]string, 0, len(hashes))
+	seen := make(map[string]struct{}, len(hashes))
+	for _, hash := range hashes {
+		if hash == "" {
+			continue
+		}
+		if _, ok := seen[hash]; ok {
+			continue
+		}
+		seen[hash] = struct{}{}
+
+		objectKey := fmt.Sprintf("%s/%s", s3Config.Bucket, hash)
+		exists, err := uploader.ObjectExists(ctx, objectKey)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			continue
+		}
+
+		localPath := filepath.Join(destination, hash)
+		if _, err := os.Stat(localPath); err != nil {
+			return nil, fmt.Errorf("remote missing but local artifact unavailable %s: %w", localPath, err)
+		}
+		missing = append(missing, localPath)
+	}
+	return missing, nil
 }

@@ -225,6 +225,13 @@ func main() {
 	// Upload the newly created artifacts to S3 if enabled
 	if s3Config.Enabled {
 		ctx := context.Background()
+		missingRemoteFiles, err := MissingRemoteArtifactFiles(ctx, destination, hashList, s3Config)
+		if err != nil {
+			log.Warnw("failed to detect missing remote artifacts", "error", err)
+		} else if len(missingRemoteFiles) > 0 {
+			log.Infow("remote artifacts missing; enqueueing for upload", "count", len(missingRemoteFiles))
+			createdFiles = append(createdFiles, missingRemoteFiles...)
+		}
 		log.Infow("starting S3 upload", "files_count", len(createdFiles))
 		if err := UploadFiles(ctx, createdFiles, s3Config); err != nil {
 			log.Warnw("failed to upload artifacts to S3", "error", err)
