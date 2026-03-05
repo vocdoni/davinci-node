@@ -1,17 +1,21 @@
 package censusdb
 
 import (
+	"bytes"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/google/uuid"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
+	leancensus "github.com/vocdoni/lean-imt-go/census"
 )
 
 // newDatabase returns a new in-memory test database.
@@ -269,6 +273,38 @@ func TestLoadByRootLeadingZerosAcrossInstances(t *testing.T) {
 			_ = ref2.tree.Close()
 		}
 	}()
+}
+
+func TestImportJSONLUsesIsolatedTreePrefix(t *testing.T) {
+	internalDB := newDatabase(t)
+	censusDB := NewCensusDB(internalDB)
+
+	// Simulate stale/corrupted legacy tree keys in the shared DB keyspace.
+	wtx := internalDB.WriteTx()
+	err := wtx.Set([]byte("meta:census_size"), []byte("2"))
+	qt.Assert(t, err, qt.IsNil)
+	err = wtx.Set([]byte("idx:rev:0"), []byte(common.HexToAddress("0x1").Hex()))
+	qt.Assert(t, err, qt.IsNil)
+	err = wtx.Commit()
+	qt.Assert(t, err, qt.IsNil)
+
+	// Build a valid JSONL census dump to import.
+	sourceTree, err := leancensus.NewCensusIMT(nil, censusHasher)
+	qt.Assert(t, err, qt.IsNil)
+	err = sourceTree.Add(common.HexToAddress("0x100"), big.NewInt(10))
+	qt.Assert(t, err, qt.IsNil)
+	err = sourceTree.Add(common.HexToAddress("0x200"), big.NewInt(20))
+	qt.Assert(t, err, qt.IsNil)
+	root, ok := sourceTree.Root()
+	qt.Assert(t, ok, qt.IsTrue)
+	reader := sourceTree.Dump()
+
+	ref, err := censusDB.Import(types.HexBytes(root.Bytes()), reader)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, ref, qt.IsNotNil)
+
+	gotRoot := ref.Root()
+	qt.Assert(t, bytes.Equal(gotRoot, root.Bytes()), qt.IsTrue)
 }
 
 func TestLoadAfterDelete(t *testing.T) {
