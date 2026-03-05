@@ -113,7 +113,7 @@ func CensusProofToCSPProof(curveID ecc_twedwards.ID, censusProof *types.CensusPr
 	// Convert public key and signature to gnark circuit types
 	return &CSPProof{
 		Signature:  eddsa.SignatureFromIden3(signature),
-		PublicKey:  eddsa.PublicKeyFromIden3(*pubKey),
+		PublicKey:  eddsa.PublicKeyFromIden3(pubKey),
 		VoterIndex: censusProof.VoterIndex,
 	}, nil
 }
