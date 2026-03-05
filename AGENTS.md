@@ -57,7 +57,7 @@
 - Prioritize accuracy over politeness and don’t oversell capabilities.
 
 ## PR expectations
-- Title format: `[<component>] <brief description>` when applicable; otherwise, use a concise but descriptive title.
+- Title format: `<type>(<component>): <brief description>` (Conventional Commits), for example `fix(censusdb): isolate JSONL import tree keyspace`.
 - Document exported API/config changes with GoDoc comments and provide Example functions when they clarify usage.
 - List structured logging fields, error wrapping, nil guards, and any control-flow simplifications in the PR body.
 - Mention the exact commands needed to reproduce heavy CI steps so reviewers can rerun them verbatim.
