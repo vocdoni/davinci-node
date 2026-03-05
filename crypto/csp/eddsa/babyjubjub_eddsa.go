@@ -158,10 +158,6 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
-	// Verify the index
-	if idx := c.indexFn(proof.ProcessID, common.BytesToAddress(proof.Address), proof.Weight); proof.VoterIndex != idx {
-		return fmt.Errorf("index mismatch: expected %d, got %d", idx, proof.VoterIndex)
-	}
 	// Decompress the signature
 	signature, err := DecompressSignature(proof.Signature)
 	if err != nil {

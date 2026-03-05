@@ -182,7 +182,6 @@ func importJSONDump(
 			return 0, fmt.Errorf("failed to read %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 		// Import JSON array dump into census DB
-
 		if ref, err = censusDB.ImportAll(dump); err != nil {
 			return 0, fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
