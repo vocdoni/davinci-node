@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
 	"github.com/vocdoni/davinci-node/db"
+	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	leanimt "github.com/vocdoni/lean-imt-go"
 	"github.com/vocdoni/lean-imt-go/census"
 )
@@ -29,6 +30,7 @@ const (
 	censusDBWorkingOnQueries = "cw_" // Prefix for working/temporary censuses during query execution
 	censusDBRootPrefix       = "cr_" // Prefix for final censuses identified by their root
 	censusDBAddrPrefix       = "ca_" // Prefix for final censuses identified by their Ethereum address
+	censusDBTreePrefix       = "ct_" // Prefix for tree data stored in the shared DB backend
 
 	// CensusKeyMaxLen is the maximum length for census keys (20 bytes for Ethereum addresses)
 	CensusKeyMaxLen = 20
@@ -720,6 +722,12 @@ func addressDBPrefix(address common.Address) []byte {
 	return append([]byte(censusDBAddrPrefix), address.Bytes()...)
 }
 
+// censusTreeDBPrefix generates the database key prefix for a census tree
+// identified by its UUID.
+func censusTreeDBPrefix(censusID uuid.UUID) []byte {
+	return append([]byte(censusDBTreePrefix), censusID[:]...)
+}
+
 // packSiblings packs a slice of big.Int siblings into a byte array.
 // Each sibling is encoded as 32 bytes in big-endian format.
 func packSiblings(siblings []*big.Int) []byte {
@@ -757,7 +765,8 @@ func unpackSiblings(packed []byte) []*big.Int {
 func (c *CensusDB) Import(root types.HexBytes, reader io.Reader) (*CensusRef, error) {
 	// Create a new census tree by its root
 	censusID := rootToCensusID(root.Bytes())
-	tree, err := census.NewCensusIMT(c.db, censusHasher)
+	treeDB := prefixeddb.NewPrefixedDatabase(c.db, censusTreeDBPrefix(censusID))
+	tree, err := census.NewCensusIMT(treeDB, censusHasher)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create census tree: %w", err)
 	}
