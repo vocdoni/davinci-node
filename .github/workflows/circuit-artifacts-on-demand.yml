@@ -67,7 +67,7 @@ jobs:
         uses: codacy/git-version@2.7.1
 
       - name: Store circuit artifacts config
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: davinci-gnark-circuits-config@${{ steps.git-version.outputs.version }}
           path: |
