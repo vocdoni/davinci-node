@@ -809,6 +809,8 @@ github.com/vocdoni/davinci-circom v0.1.0 h1:bx3JlqaUOQ2dStGo9lySA2Eu1ZsIWrJ3BBTy
 github.com/vocdoni/davinci-circom v0.1.0/go.mod h1:7CdVIumC1seueKlazgQDPNhCwnZhu9gRDlSiBKEM4Sc=
 github.com/vocdoni/davinci-contracts v0.0.38 h1:ir1XZYb2rIDQGI58tFigsBj6Fq0lzt+yHoTIzdEz1j8=
 github.com/vocdoni/davinci-contracts v0.0.38/go.mod h1:RgIZ/8KfR5GfS54l59Tbmm33krj8+HL19ZJRpWcVB4g=
+github.com/vocdoni/davinci-node/spec v0.0.0-20260305171343-71046b3716f3 h1:BNTffnI5JevL7E2uUWlb/JuT/pwepWSetqdkeGWIU6U=
+github.com/vocdoni/davinci-node/spec v0.0.0-20260305171343-71046b3716f3/go.mod h1:ofv03F4/zRUYw4lFgVs0ZNYJWEru/F7c2JurGNJYVLQ=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2 h1:Dui53H0iY9kE5KO7TN9BqTBN1AMJ7QOLiaOCHwNyFD0=
 github.com/vocdoni/gnark-crypto-primitives v0.0.2/go.mod h1:kmd5T6ucuWbT9rFC4ACxXztHBq8WEt1uaYoTm8ziLyU=
 github.com/vocdoni/lean-imt-go v0.0.2 h1:wk3aqH4L6VkhGDHrXAu8/sW0Y6WJT9bvJyX2uC9nfK4=

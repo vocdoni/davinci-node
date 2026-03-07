@@ -33,7 +33,7 @@ require (
 	github.com/vocdoni/census3-bigquery v0.0.2
 	github.com/vocdoni/davinci-circom v0.1.0
 	github.com/vocdoni/davinci-contracts v0.0.38
-	github.com/vocdoni/davinci-node/spec v0.0.0
+	github.com/vocdoni/davinci-node/spec v0.0.0-20260305171343-71046b3716f3
 	github.com/vocdoni/gnark-crypto-primitives v0.0.2
 	github.com/vocdoni/lean-imt-go v0.0.2
 	github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69
