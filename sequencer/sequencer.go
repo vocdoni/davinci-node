@@ -35,7 +35,7 @@ var (
 // It processes ballots and creates batches of proofs for efficient verification.
 type Sequencer struct {
 	*internalCircuits                   // Internal circuit artifacts for proof generation and verification
-	*finalizer                          // Finalizer for handling process finalization
+	finalizer          *finalizer       // Finalizer for handling process finalization
 	stg                *storage.Storage // Storage instance for accessing ballots and other data
 	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
 	ctx                context.Context
@@ -167,6 +167,9 @@ func (s *Sequencer) Start(ctx context.Context) error {
 func (s *Sequencer) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
+		if s.finalizer != nil {
+			s.finalizer.Close()
+		}
 		log.Infow("sequencer stopped")
 	}
 	return nil
@@ -266,4 +269,10 @@ func (s *Sequencer) ActiveProcessIDs() []types.ProcessID {
 // This is particularly useful for tests that need to debug circuit execution.
 func (s *Sequencer) SetProver(p types.ProverFunc) {
 	s.prover = p
+}
+
+// WaitUntilResults waits until the process is finalized. Returns the result of the process.
+// It ensures proper timeout handling and provides detailed logging for troubleshooting.
+func (s *Sequencer) WaitUntilResults(ctx context.Context, processID types.ProcessID) ([]*types.BigInt, error) {
+	return s.finalizer.WaitUntilResults(ctx, processID)
 }

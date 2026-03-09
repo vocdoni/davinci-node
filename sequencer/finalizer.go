@@ -69,7 +69,9 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 		for {
 			select {
 			case processID := <-f.OndemandCh:
+				f.wg.Add(1)
 				go func(processID types.ProcessID) {
+					defer f.wg.Done()
 					// Check if process is marked as invalid (thread-safe)
 					if _, isInvalid := f.invalidProcesses.Load(processID); !isInvalid {
 						if err := f.finalize(processID); err != nil {
