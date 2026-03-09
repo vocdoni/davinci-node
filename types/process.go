@@ -227,20 +227,6 @@ func (k EncryptionKey) BigInts() []*big.Int {
 	return []*big.Int{k.X.MathBigInt(), k.Y.MathBigInt()}
 }
 
-type OrganizationInfo struct {
-	ID          common.Address `json:"id,omitempty"      cbor:"0,keyasint,omitempty"`
-	Name        string         `json:"name"              cbor:"1,keyasint,omitempty"`
-	MetadataURI string         `json:"metadataURI"       cbor:"2,keyasint,omitempty"`
-}
-
-func (o *OrganizationInfo) String() string {
-	data, err := json.Marshal(o)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
 // ProcessEncryptionKeysResponse represents the response for a request for encryption keys for a process
 type ProcessEncryptionKeysResponse struct {
 	EncryptionPubKey [2]*BigInt `json:"encryptionPubKey,omitempty"`

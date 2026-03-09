@@ -253,12 +253,6 @@ func (s *Sequencer) ExistsProcessID(processID types.ProcessID) bool {
 	return s.processIDs.Exists(processID)
 }
 
-// SetBatchTimeWindow sets the maximum time window to wait for a batch to be processed.
-// If this time elapses, the batch will be processed even if not full.
-func (s *Sequencer) SetBatchTimeWindow(window time.Duration) {
-	s.batchTimeWindow = window
-}
-
 // ActiveProcessIDs returns a list of process IDs that are currently being tracked
 // by the sequencer.
 func (s *Sequencer) ActiveProcessIDs() []types.ProcessID {

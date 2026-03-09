@@ -272,12 +272,6 @@ func (c *CircuitCache) LoadData(cacheKey string, data CacheableData, requireProv
 	return data.ReadFromCache(c.BaseDir, cacheKey, requireProvingKey)
 }
 
-// Exists checks if cached data exists for the given key
-func (c *CircuitCache) Exists(cacheKey string) bool {
-	cf := CacheFiles{BaseDir: c.BaseDir, CacheKey: cacheKey}
-	return cf.Exists(".proof", ".vk", ".ccs", ".inputs.cbor")
-}
-
 // AggregatorCacheData holds cached aggregator circuit data
 type AggregatorCacheData struct {
 	Proof            groth16.Proof
@@ -467,26 +461,6 @@ func (d *VoteVerifierCacheData) ReadFromCache(cacheDir, cacheKey string, require
 		return wrapCacheError("read", "inputs", cf.Path(".inputs.cbor"), err)
 	}
 	return nil
-}
-
-// DeterministicGenerator provides deterministic value generation based on ProcessID
-type DeterministicGenerator struct {
-	ProcessID types.ProcessID
-}
-
-// NewDeterministicGenerator creates a new deterministic generator
-func NewDeterministicGenerator(processID types.ProcessID) *DeterministicGenerator {
-	return &DeterministicGenerator{ProcessID: processID}
-}
-
-// Seed creates a deterministic seed based on ProcessID and index
-func (dg *DeterministicGenerator) Seed(index int) int64 {
-	return GenerateDeterministicSeed(dg.ProcessID, index)
-}
-
-// BigInt creates a deterministic big.Int value based on ProcessID and parameters
-func (dg *DeterministicGenerator) BigInt(nValidVoters int) *big.Int {
-	return GenerateDeterministicK(dg.ProcessID, nValidVoters)
 }
 
 // GenerateDeterministicSeed creates a deterministic seed based on ProcessID and index

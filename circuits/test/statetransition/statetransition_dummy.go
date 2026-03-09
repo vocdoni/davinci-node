@@ -49,12 +49,6 @@ func (c *DummyAggCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-// DummyAggPlaceholder function returns the placeholder of a dummy aggregator circuit for
-// the constraint.ConstraintSystem provided.
-func DummyAggPlaceholder(mainDummyAggCircuit constraint.ConstraintSystem) *DummyAggCircuit {
-	return &DummyAggCircuit{nbConstraints: mainDummyAggCircuit.GetNbConstraints()}
-}
-
 // DummyAggPlaceholderWithConstraints returns the placeholder of a dummy aggregator circuit
 // with the desired number of constraints.
 func DummyAggPlaceholderWithConstraints(nbConstraints int) *DummyAggCircuit {

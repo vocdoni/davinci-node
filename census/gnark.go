@@ -1,7 +1,6 @@
 package census
 
 import (
-	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -28,10 +27,4 @@ func IsMerkleTreeCensusOrigin(api frontend.API, origin frontend.Variable) fronte
 //   - CensusOriginCSPEdDSABN254V1
 func IsCSPCensusOrigin(api frontend.API, origin frontend.Variable) frontend.Variable {
 	return api.IsZero(api.Sub(origin, uint8(types.CensusOriginCSPEdDSABabyJubJubV1)))
-}
-
-// CSPCensusOriginCurveID returns the twistededwards.ID corresponding to the
-// curve used by the CSP census origin.
-func CSPCensusOriginCurveID() twistededwards.ID {
-	return types.CensusOriginCSPEdDSABabyJubJubV1.CurveID()
 }

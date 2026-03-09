@@ -61,16 +61,9 @@ func (p *ProcessIDMap) Remove(processID types.ProcessID) bool {
 	return true
 }
 
-// Exists checks if a process/ ID is in the map.
+// Exists checks if a process ID is in the map.
 func (p *ProcessIDMap) Exists(processID types.ProcessID) bool {
-	if !processID.IsValid() {
-		return false
-	}
-
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	_, exists := p.data[processID]
+	_, exists := p.Get(processID)
 	return exists
 }
 

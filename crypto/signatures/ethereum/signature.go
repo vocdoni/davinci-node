@@ -45,16 +45,6 @@ func BytesToSignature(signature []byte) (*ECDSASignature, error) {
 	return sig, nil
 }
 
-// HexToSignature function decodes the provided hex string to a bytes and the
-// decodes the bytes to an ECDSASignature using the BytesToSignature function.
-func HexToSignature(hexSignature string) (*ECDSASignature, error) {
-	bSignature, err := types.HexStringToHexBytes(hexSignature)
-	if err != nil {
-		return nil, err
-	}
-	return BytesToSignature(bSignature)
-}
-
 // Valid method checks if the ECDSASignature is valid. A signature is valid if
 // both R and S values are not nil.
 func (sig *ECDSASignature) Valid() bool {

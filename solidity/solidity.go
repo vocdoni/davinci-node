@@ -4,45 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"os"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
-	"github.com/consensys/gnark/backend/witness"
-	"github.com/consensys/gnark/frontend"
 )
-
-// ExportWitnessToSolidityInputs exports the public witness to a JSON file for Solidity.
-func ExportWitnessToSolidityInputs(w witness.Witness, circuitAssignments frontend.Circuit, field *big.Int, jsonOutputFilePath string) error {
-	schema, err := frontend.NewSchema(field, circuitAssignments)
-	if err != nil {
-		return fmt.Errorf("failed to create schema: %w", err)
-	}
-	publicWitness, err := w.Public()
-	if err != nil {
-		return fmt.Errorf("failed to extract public witness: %w", err)
-	}
-	jsonWitness, err := publicWitness.ToJSON(schema)
-	if err != nil {
-		return fmt.Errorf("failed to convert public witness to JSON: %w", err)
-	}
-	pubWitnessJSONfd, err := os.Create(jsonOutputFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer func() {
-		if err := pubWitnessJSONfd.Close(); err != nil {
-			fmt.Printf("failed to close file: %v\n", err)
-		}
-	}()
-	_, err = pubWitnessJSONfd.Write(jsonWitness)
-	if err != nil {
-		return fmt.Errorf("failed to write public witness: %w", err)
-	}
-	return nil
-}
 
 // SolidityProof represents a Groth16 proof for Solidity (without commitments).
 type SolidityProof struct {
