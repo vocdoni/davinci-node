@@ -87,18 +87,6 @@ func EncodeWorkerAuthToken(signature *ethereum.ECDSASignature, timestamp time.Ti
 	return types.HexBytes(token), nil
 }
 
-// EncodeWorkerAuthTokenFromStringTime function is a wrapper to EncodeWorkerAuthToken
-// that accepts a string representation of the timestamp. It parses the string to a
-// time.Time value and calls the main function. If the string cannot be parsed, an
-// error is returned.
-func EncodeWorkerAuthTokenFromStringTime(signature *ethereum.ECDSASignature, strTimestamp string) (types.HexBytes, error) {
-	timestamp, err := time.Parse(timestampFormat, strTimestamp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse worker token timestamp: %w", err)
-	}
-	return EncodeWorkerAuthToken(signature, timestamp)
-}
-
 // VerifyWorkerToken function verifies a worker authentication token against the
 // worker's address and the sequencer's address. It decodes the token to get the
 // signature and timestamp, then calculates the expected signature message with

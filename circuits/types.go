@@ -15,7 +15,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc"
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 	"github.com/vocdoni/davinci-node/spec/params"
-	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
 	gnark_poseidon "github.com/vocdoni/gnark-crypto-primitives/hash/native/bn254/poseidon"
 	"github.com/vocdoni/gnark-crypto-primitives/utils"
@@ -121,34 +120,9 @@ func (k EncryptionKey[T]) AsVar() EncryptionKey[frontend.Variable] {
 	}
 }
 
-// DeserializeEncryptionKey reconstructs a EncryptionKey from a slice of bytes.
-// The input must be of len 2*32 bytes (otherwise it returns an error),
-// representing 2 big.Ints as little-endian.
-func DeserializeEncryptionKey(data []byte) (EncryptionKey[*big.Int], error) {
-	// Validate the input length
-	expectedSize := 2 * crypto.SignatureCircuitVariableLen
-	if len(data) != expectedSize {
-		return EncryptionKey[*big.Int]{}, fmt.Errorf("invalid input length for EncryptionKey: got %d bytes, expected %d bytes", len(data), expectedSize)
-	}
-	// Helper function to extract *big.Int from a serialized slice
-	readBigInt := func(offset int) *big.Int {
-		return arbo.BytesToBigInt(data[offset : offset+crypto.SignatureCircuitVariableLen])
-	}
-	return EncryptionKey[*big.Int]{
-		PubKey: [2]*big.Int{
-			readBigInt(0 * crypto.SignatureCircuitVariableLen),
-			readBigInt(1 * crypto.SignatureCircuitVariableLen),
-		},
-	}, nil
-}
-
 func EncryptionKeyFromECCPoint(p ecc.Point) EncryptionKey[*big.Int] {
 	ekX, ekY := p.Point()
 	return EncryptionKey[*big.Int]{PubKey: [2]*big.Int{ekX, ekY}}
-}
-
-func EncryptionKeyToCircuit(k types.EncryptionKey) EncryptionKey[*big.Int] {
-	return EncryptionKey[*big.Int]{PubKey: [2]*big.Int{k.X.MathBigInt(), k.Y.MathBigInt()}}
 }
 
 // Process is a struct that contains the common inputs for a process.

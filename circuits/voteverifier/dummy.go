@@ -1,14 +1,11 @@
 package voteverifier
 
 import (
-	"github.com/consensys/gnark/backend/witness"
-	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
-	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -93,17 +90,4 @@ func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircui
 		},
 		CircomProof: recursiveProof.Proof,
 	}, nil
-}
-
-// DummyWitness function returns a dummy witness for the VerifyVoteCircuit
-// with dummy values. It needs the desired BallotProof circuit verification key
-// and the curve of the points used for the ballots to generate the witness.
-// This function can be used to generate dummy proofs to fill a chunk of votes
-// that does not reach the required number of votes to be valid.
-func DummyWitness(ballotProofVKey []byte, curve ecc.Point) (witness.Witness, error) {
-	assignment, err := DummyAssignment(ballotProofVKey, curve)
-	if err != nil {
-		return nil, err
-	}
-	return frontend.NewWitness(assignment, params.VoteVerifierCurve.ScalarField())
 }

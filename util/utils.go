@@ -21,25 +21,9 @@ func RandomBytes(n int) []byte {
 	return b
 }
 
-// Random32 generates a random 32-byte array.
-func Random32() [32]byte {
-	var bytes [32]byte
-	copy(bytes[:], RandomBytes(32))
-	return bytes
-}
-
 // RandomHex generates a random hex string of length n.
 func RandomHex(n int) string {
 	return fmt.Sprintf("%x", RandomBytes(n))
-}
-
-// RandomBigInt generates a random big integer between min and max.
-func RandomBigInt(min, max *big.Int) *big.Int {
-	num, err := rand.Int(rand.Reader, new(big.Int).Sub(max, min))
-	if err != nil {
-		panic(err)
-	}
-	return new(big.Int).Add(num, min)
 }
 
 // RandomInt generates a random integer between min and max.

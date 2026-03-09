@@ -11,12 +11,8 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 )
 
-func PointFromRTEtoTE(p ecc.Point) ecc.Point {
+func pointFromRTEtoTE(p ecc.Point) ecc.Point {
 	return p.New().SetPoint(format.FromRTEtoTE(p.Point()))
-}
-
-func PointFromTEtoRTE(p ecc.Point) ecc.Point {
-	return p.New().SetPoint(format.FromTEtoRTE(p.Point()))
 }
 
 // Helper function to generate a non-base point
@@ -39,7 +35,7 @@ func TestSetGenerator(t *testing.T) {
 
 	bjjPoint.SetGenerator()
 	iden3Point.SetGenerator()
-	c.Assert(PointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
+	c.Assert(pointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
 }
 
 func TestOrder(t *testing.T) {
@@ -58,7 +54,7 @@ func TestSetZero(t *testing.T) {
 	bjjPoint.SetZero()
 	iden3Point.SetZero()
 
-	c.Assert(PointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
+	c.Assert(pointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
 }
 
 func TestScalarBaseMult(t *testing.T) {
@@ -70,7 +66,7 @@ func TestScalarBaseMult(t *testing.T) {
 	bjjPoint.ScalarBaseMult(scalar)
 	iden3Point.ScalarBaseMult(scalar)
 
-	c.Assert(PointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
+	c.Assert(pointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
 }
 
 func TestScalarMult(t *testing.T) {
@@ -82,7 +78,7 @@ func TestScalarMult(t *testing.T) {
 	bjjPoint.ScalarMult(bjjPoint, scalar)
 	iden3Point.ScalarMult(iden3Point, scalar)
 
-	c.Assert(PointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
+	c.Assert(pointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
 }
 
 func TestAdd(t *testing.T) {
@@ -106,7 +102,7 @@ func TestAdd(t *testing.T) {
 	bjjPointA.Add(bjjPointA, bjjPointB)
 	iden3PointA.Add(iden3PointA, iden3PointB)
 
-	c.Assert(PointFromRTEtoTE(bjjPointA).String(), qt.Equals, iden3PointA.String())
+	c.Assert(pointFromRTEtoTE(bjjPointA).String(), qt.Equals, iden3PointA.String())
 }
 
 func TestNeg(t *testing.T) {
@@ -117,7 +113,7 @@ func TestNeg(t *testing.T) {
 	bjjPoint.Neg(bjjPoint)
 	iden3Point.Neg(iden3Point)
 
-	c.Assert(PointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
+	c.Assert(pointFromRTEtoTE(bjjPoint).String(), qt.Equals, iden3Point.String())
 }
 
 func TestDouble(t *testing.T) {
@@ -132,7 +128,7 @@ func TestDouble(t *testing.T) {
 	bjjPointDbl.Add(bjjPoint, bjjPoint)
 	iden3PointDbl.Add(iden3Point, iden3Point)
 
-	c.Assert(PointFromRTEtoTE(bjjPointDbl).String(), qt.Equals, iden3PointDbl.String())
+	c.Assert(pointFromRTEtoTE(bjjPointDbl).String(), qt.Equals, iden3PointDbl.String())
 }
 
 func TestEqual(t *testing.T) {

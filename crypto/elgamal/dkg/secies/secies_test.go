@@ -212,3 +212,14 @@ func TestPublicKeyMarshaling(t *testing.T) {
 	c.Assert(publicKey.Unmarshal(publicKeyBytes), qt.IsNil)
 	c.Assert(publicKey.Equal(se.publicKey), qt.IsTrue)
 }
+
+func TestGetPrivateKey(t *testing.T) {
+	c := qt.New(t)
+	curvePoint := curves.New(bjj.CurveType)
+
+	se, err := New(nil, curvePoint, nil)
+	c.Assert(err, qt.IsNil)
+
+	c.Assert(se.GetPrivateKey(), qt.Not(qt.IsNil))
+	c.Assert(se.GetPrivateKey().Cmp(se.privateKey), qt.Equals, 0)
+}

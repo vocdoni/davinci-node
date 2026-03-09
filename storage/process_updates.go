@@ -1,10 +1,6 @@
 package storage
 
-import (
-	"time"
-
-	"github.com/vocdoni/davinci-node/types"
-)
+import "github.com/vocdoni/davinci-node/types"
 
 // Common update functions for use with UpdateProcess
 
@@ -68,15 +64,6 @@ func ProcessUpdateCallbackSetCensusRoot(censusRoot types.HexBytes, censusURI str
 	return func(p *types.Process) error {
 		p.Census.CensusRoot = censusRoot
 		p.Census.CensusURI = censusURI
-		return nil
-	}
-}
-
-// ProcessUpdateCallbackLastTransitionDate returns a function that updates the
-// last state transition date
-func ProcessUpdateCallbackLastTransitionDate() func(*types.Process) error {
-	return func(p *types.Process) error {
-		p.SequencerStats.LastStateTransitionDate = time.Now()
 		return nil
 	}
 }

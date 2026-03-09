@@ -16,7 +16,6 @@ package rpc
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math/big"
@@ -35,8 +34,6 @@ const (
 	// DefaultMaxWeb3ClientRetries is the default number of retries to connectEth to
 	// a web3 provider.
 	DefaultMaxWeb3ClientRetries = 5
-	// shortNameSourceUri is the URI to get the chain metadata from an external
-	shortNameSourceUri = "https://chainid.network/chains_mini.json"
 	// checkWeb3EndpointsTimeout is the timeout to check the web3 endpoints.
 	checkWeb3EndpointsTimeout = time.Second * 10
 	// foundTxErrMessage is the error message when a transaction is found but it
@@ -86,25 +83,6 @@ func (d debuggableTransport) RoundTrip(req *http.Request) (*http.Response, error
 type Web3Pool struct {
 	endpoints map[uint64]*Web3Iterator
 	metadata  []*Web3Endpoint
-}
-
-// NewWeb3Pool method returns a new *Web3Pool instance, initialized
-// with the endpoints list available in https://chainid.network.
-// It returns an error if the metadata cannot be retrieved or decoded.
-func NewAutomaticWeb3Pool() (*Web3Pool, error) {
-	// get chains information from external source
-	res, err := http.Get(shortNameSourceUri)
-	if err != nil {
-		return nil, fmt.Errorf("error getting chains information from external source: %v", err)
-	}
-	chainsData := []*Web3Endpoint{}
-	if err := json.NewDecoder(res.Body).Decode(&chainsData); err != nil {
-		return nil, fmt.Errorf("error decoding chains information from external source: %v", err)
-	}
-	return &Web3Pool{
-		endpoints: make(map[uint64]*Web3Iterator),
-		metadata:  chainsData,
-	}, nil
 }
 
 // NewWeb3Pool method returns a new *Web3Pool instance.

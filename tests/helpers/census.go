@@ -31,14 +31,6 @@ func CurrentCensusOrigin() types.CensusOrigin {
 	}
 }
 
-func WrongCensusOrigin() types.CensusOrigin {
-	if IsCSPCensus() {
-		return types.CensusOriginMerkleTreeOffchainStaticV1
-	} else {
-		return types.CensusOriginCSPEdDSABabyJubJubV1
-	}
-}
-
 func NewCensusWithRandomVoters(ctx context.Context, origin types.CensusOrigin, nVoters int) ([]byte, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
