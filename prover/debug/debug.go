@@ -33,6 +33,75 @@ import (
 //
 // Returns a ProverFunc that will execute test.IsSolved and then groth16.Prove
 func NewDebugProver(t *testing.T) types.ProverFunc {
+	if err := voteverifier.Artifacts.LoadAll(); err != nil {
+		t.Fatal(err)
+	}
+	if err := aggregator.Artifacts.LoadAll(); err != nil {
+		t.Fatal(err)
+	}
+
+	loadVoteVerifierVK := func() groth16.VerifyingKey {
+		vk, err := voteverifier.Artifacts.VerifyingKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return vk
+	}
+
+	loadAggregatorArtifacts := func() (constraint.ConstraintSystem, groth16.VerifyingKey) {
+		ccs, err := aggregator.Artifacts.CircuitDefinition()
+		if err != nil {
+			t.Fatal(err)
+		}
+		vk, err := aggregator.Artifacts.VerifyingKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ccs, vk
+	}
+
+	voteVerifierVK := loadVoteVerifierVK()
+	aggregatorCCS, aggregatorVK := loadAggregatorArtifacts()
+
+	newVoteVerifierPlaceholder := func() frontend.Circuit {
+		circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
+			ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &voteverifier.VerifyVoteCircuit{
+			CircomProof:           circomPlaceholder.Proof,
+			CircomVerificationKey: circomPlaceholder.Vk,
+		}
+	}
+
+	newAggregatorPlaceholder := func() frontend.Circuit {
+		fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierVK)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		placeholder := &aggregator.AggregatorCircuit{
+			Proofs:          [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
+			VerificationKey: fixedVk,
+		}
+		for i := range params.VotesPerBatch {
+			placeholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](aggregatorCCS)
+		}
+		return placeholder
+	}
+
+	newStateTransitionPlaceholder := func() frontend.Circuit {
+		fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorVK)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		placeholder := teststatetransition.CircuitPlaceholder()
+		placeholder.AggregatorVK = fixedVk
+		return placeholder
+	}
+
 	return func(
 		curve ecc.ID,
 		ccs constraint.ConstraintSystem,
@@ -45,50 +114,13 @@ func NewDebugProver(t *testing.T) types.ProverFunc {
 		switch assignment.(type) {
 		case *voteverifier.VerifyVoteCircuit:
 			t.Logf("running debug prover for voteverifier")
-			circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-				ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
-			if err != nil {
-				t.Fatal(err)
-			}
-			placeholder = &voteverifier.VerifyVoteCircuit{
-				CircomProof:           circomPlaceholder.Proof,
-				CircomVerificationKey: circomPlaceholder.Vk,
-			}
+			placeholder = newVoteVerifierPlaceholder()
 		case *aggregator.AggregatorCircuit:
 			t.Logf("running debug prover for aggregator")
-			vvk, err := voteverifier.Artifacts.VerifyingKey()
-			if err != nil {
-				t.Fatal(err)
-			}
-			fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](vvk)
-			if err != nil {
-				t.Fatal(err)
-			}
-			p := &aggregator.AggregatorCircuit{
-				Proofs:          [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{},
-				VerificationKey: fixedVk,
-			}
-			ccs, err := aggregator.Artifacts.CircuitDefinition()
-			if err != nil {
-				t.Fatal(err)
-			}
-			for i := range params.VotesPerBatch {
-				p.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](ccs)
-			}
-			placeholder = p
+			placeholder = newAggregatorPlaceholder()
 		case *statetransition.StateTransitionCircuit:
 			t.Logf("running debug prover for statetransition")
-			agVk, err := aggregator.Artifacts.VerifyingKey()
-			if err != nil {
-				t.Fatal(err)
-			}
-			p := teststatetransition.CircuitPlaceholder()
-			fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](agVk)
-			if err != nil {
-				t.Fatal(err)
-			}
-			p.AggregatorVK = fixedVk
-			placeholder = p
+			placeholder = newStateTransitionPlaceholder()
 		default:
 			t.Fatalf("unsupported circuit type: %T", assignment)
 
