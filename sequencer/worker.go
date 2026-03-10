@@ -94,10 +94,10 @@ func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, w
 	}
 
 	s.internalCircuits = new(internalCircuits)
-	s.bVkCircom = ballotproof.CircomVerificationKey
+	s.ballotProofVK = ballotproof.CircomVerificationKey
 
-	log.Debugw("reading ccs and pk cicuit artifact", "circuit", "voteVerifier")
-	s.vvCcs, s.vvPk, err = loadCircuitArtifacts(voteverifier.Artifacts)
+	log.Debugw("reading circuit artifacts", "circuit", "voteverifier")
+	s.voteVerifier, err = loadCircuitArtifacts(voteverifier.Artifacts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
 	}

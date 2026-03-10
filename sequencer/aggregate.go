@@ -512,10 +512,6 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		if vb.InputsHash == nil {
 			return fmt.Errorf("missing inputs hash")
 		}
-		if s.vvVk == nil {
-			return fmt.Errorf("vote verifier verifying key is not loaded")
-		}
-
 		inputsHashValue := emulated.ValueOf[sw_bn254.ScalarField](vb.InputsHash)
 		pubAssignment := &voteverifier.VerifyVoteCircuit{
 			IsValid:    1,
@@ -525,14 +521,14 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		if err != nil {
 			return fmt.Errorf("build public witness: %w", err)
 		}
-		if err := groth16.Verify(vb.Proof, s.vvVk, pubWitness, verifyOpts); err != nil {
+		if err := groth16.Verify(vb.Proof, s.voteVerifier.vk, pubWitness, verifyOpts); err != nil {
 			pubAssignmentIsValid0 := &voteverifier.VerifyVoteCircuit{
 				IsValid:    0,
 				BallotHash: inputsHashValue,
 			}
 			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 			if errIsValid0 == nil {
-				if err2 := groth16.Verify(vb.Proof, s.vvVk, pubWitnessIsValid0, verifyOpts); err2 == nil {
+				if err2 := groth16.Verify(vb.Proof, s.voteVerifier.vk, pubWitnessIsValid0, verifyOpts); err2 == nil {
 					return fmt.Errorf("proof verifies only with IsValid=0")
 				}
 			}
@@ -583,7 +579,13 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	// Fill any remaining slots with dummy proofs if needed
 	if len(batchInputs.AggBallots) < params.VotesPerBatch {
 		log.Debugw("filling with dummy proofs", "count", params.VotesPerBatch-len(batchInputs.AggBallots))
-		if err := assignment.FillWithDummy(s.vvCcs, s.vvPk, s.bVkCircom, len(batchInputs.AggBallots), s.prover); err != nil {
+		if err := assignment.FillWithDummy(
+			s.voteVerifier.ccs,
+			s.voteVerifier.pk,
+			s.ballotProofVK,
+			len(batchInputs.AggBallots),
+			s.prover,
+		); err != nil {
 			if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
 				log.Warnw("failed to release ballot reservations after dummy fill failure",
 					"error", err.Error(),
@@ -604,7 +606,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		params.AggregatorCurve.ScalarField(),
 	)
 	// Generate the proof for the aggregator circuit
-	proof, err := s.prover(params.AggregatorCurve, s.aggCcs, s.aggPk, assignment, opts)
+	proof, err := s.prover(params.AggregatorCurve, s.aggregator.ccs, s.aggregator.pk, assignment, opts)
 	if err != nil {
 		// Log detailed debug information about the failure
 		// Remove block once we have sufficient confidence in the aggregator proving
@@ -649,6 +651,15 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 			)
 		}
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)
+	}
+	if err := s.verifyAggregatorProof(proof, assignment); err != nil {
+		if errRelease := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); errRelease != nil {
+			log.Warnw("failed to release ballot reservations after aggregation verification failure",
+				"error", errRelease.Error(),
+				"processID", processID.String(),
+			)
+		}
+		return fmt.Errorf("aggregation verification failed for process %s: %w", processID.String(), err)
 	}
 
 	log.Infow("aggregate proof generated",

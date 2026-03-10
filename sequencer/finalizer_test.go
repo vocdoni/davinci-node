@@ -26,7 +26,7 @@ func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
 	ca := new(internalCircuits)
 	err := results.Artifacts.DownloadAll(t.Context())
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("failed to download results verifier artifacts: %v", err))
-	ca.rvCcs, ca.rvPk, err = loadCircuitArtifacts(results.Artifacts)
+	ca.resultsVerifier, err = loadCircuitArtifacts(results.Artifacts)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("failed to load results verifier artifacts: %v", err))
 	return ca
 }

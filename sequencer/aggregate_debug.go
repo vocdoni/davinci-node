@@ -34,9 +34,9 @@ func (s *Sequencer) debugAggregationFailure(
 		"error", proveErr.Error(),
 		"validProofs", len(batchInputs.VerifiedBallots),
 		"inputsHash", batchInputsHash.String(),
-		"voteVerifierNbPublicWitness", s.vvVk.NbPublicWitness(),
-		"voteVerifierNbConstraints", s.vvCcs.GetNbConstraints(),
-		"aggregatorNbConstraints", s.aggCcs.GetNbConstraints(),
+		"voteVerifierNbPublicWitness", s.voteVerifier.vk.NbPublicWitness(),
+		"voteVerifierNbConstraints", s.voteVerifier.ccs.GetNbConstraints(),
+		"aggregatorNbConstraints", s.aggregator.ccs.GetNbConstraints(),
 	)
 
 	if pubW, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField(), frontend.PublicOnly()); err != nil {
@@ -107,7 +107,7 @@ func (s *Sequencer) debugAggregationFailure(
 			continue
 		}
 
-		if err := groth16.Verify(vb.Proof, s.vvVk, pubWitness, opts); err != nil {
+		if err := groth16.Verify(vb.Proof, s.voteVerifier.vk, pubWitness, opts); err != nil {
 
 			pubAssignmentIsValid0 := &voteverifier.VerifyVoteCircuit{
 				IsValid:    0,
@@ -115,7 +115,7 @@ func (s *Sequencer) debugAggregationFailure(
 			}
 			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
 			if errIsValid0 == nil {
-				if err2 := groth16.Verify(vb.Proof, s.vvVk, pubWitnessIsValid0, opts); err2 == nil {
+				if err2 := groth16.Verify(vb.Proof, s.voteVerifier.vk, pubWitnessIsValid0, opts); err2 == nil {
 					log.Warnw("vote verifier proof verifies only with IsValid=0; aggregator treating it as real will fail",
 						"processID", processID.String(),
 						"index", i,

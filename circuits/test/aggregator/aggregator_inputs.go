@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/consensys/gnark/backend"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/spec/params"
 
@@ -119,10 +120,23 @@ func AggregatorInputsForTest(
 	proofs := [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
 	proofsInputsHashes := [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
 	for i := range vvWitness {
-		// generate the proof (automatically uses GPU if enabled)
-		proof, err := prover.ProveWithWitness(params.VoteVerifierCurve, vvCCS, vvPk, vvWitness[i],
-			stdgroth16.GetNativeProverOptions(params.AggregatorCurve.ScalarField(),
-				params.VoteVerifierCurve.ScalarField()))
+		proverOpts := stdgroth16.GetNativeProverOptions(
+			params.AggregatorCurve.ScalarField(),
+			params.VoteVerifierCurve.ScalarField(),
+		)
+		verifierOpts := stdgroth16.GetNativeVerifierOptions(
+			params.AggregatorCurve.ScalarField(),
+			params.VoteVerifierCurve.ScalarField(),
+		)
+		proof, err := circuitstest.ProveAndVerifyWithWitness(
+			params.VoteVerifierCurve,
+			vvCCS,
+			vvPk,
+			vvVk,
+			vvWitness[i],
+			[]backend.ProverOption{proverOpts},
+			[]backend.VerifierOption{verifierOpts},
+		)
 		c.Assert(err, qt.IsNil, qt.Commentf("proving voteverifier circuit %d", i))
 
 		// convert the proof to the circuit proof type

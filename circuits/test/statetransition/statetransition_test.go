@@ -32,6 +32,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
+	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/prover"
 	davinci_solidity "github.com/vocdoni/davinci-node/solidity"
@@ -128,16 +129,26 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	// prove
 	var proof groth16.Proof
 	now = time.Now()
-	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
-	proof, err = prover.ProveWithWitness(params.StateTransitionCurve, ccs, pk, w, opts)
+	proof, err = circuitstest.ProveAndVerifyWithWitness(
+		params.StateTransitionCurve,
+		ccs,
+		pk,
+		vk,
+		w,
+		[]backend.ProverOption{solidity.WithProverTargetSolidityVerifier(backend.GROTH16)},
+		[]backend.VerifierOption{solidity.WithVerifierTargetSolidityVerifier(backend.GROTH16)},
+	)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove with witness"))
-	c.Logf("proving took %s", time.Since(now).String())
+	c.Logf("proving and immediate verification took %s", time.Since(now).String())
 
 	// verify the last proof with gnark
 	now = time.Now()
-	publicWitness, err := w.Public()
-	c.Assert(err, qt.IsNil, qt.Commentf("get public witness"))
-	err = groth16.Verify(proof, vk, publicWitness, solidity.WithVerifierTargetSolidityVerifier(backend.GROTH16))
+	err = circuitstest.VerifyProofWithWitness(
+		proof,
+		vk,
+		w,
+		solidity.WithVerifierTargetSolidityVerifier(backend.GROTH16),
+	)
 	c.Assert(err, qt.IsNil, qt.Commentf("verify proof"))
 	c.Logf("✓ gnark verification took %s", time.Since(now).String())
 
