@@ -225,18 +225,18 @@ func (s *Sequencer) processStateTransitionBatch(
 	innerProof groth16.Proof,
 ) (groth16.Proof, *blobs.BlobEvalData, *big.Int, error) {
 	startTime := time.Now()
-	// generate the state transition assignments from the batch and the blob data
-	assignments, blobData, err := s.stateBatchToWitness(processState, votes, censusRoot, censusProofs, kSeed, innerProof)
+	// Generate the state transition assignment from the batch and the blob data.
+	assignment, blobData, err := s.stateBatchToAssignment(processState, votes, censusRoot, censusProofs, kSeed, innerProof)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to generate assignments: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to generate assignment: %w", err)
 	}
-	log.Debugw("state transition assignments ready for proof generation",
+	log.Debugw("state transition assignment ready for proof generation",
 		"took", time.Since(startTime).String(),
 		"processID", processState.ProcessID(),
-		"votersCount", assignments.VotersCount,
-		"overwrittenVotesCount", assignments.OverwrittenVotesCount,
-		"rootHashBefore", assignments.RootHashBefore,
-		"rootHashAfter", assignments.RootHashAfter,
+		"votersCount", assignment.VotersCount,
+		"overwrittenVotesCount", assignment.OverwrittenVotesCount,
+		"rootHashBefore", assignment.RootHashBefore,
+		"rootHashAfter", assignment.RootHashAfter,
 		"censusRoot", censusRoot.String(),
 	)
 
@@ -244,12 +244,12 @@ func (s *Sequencer) processStateTransitionBatch(
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 
 	// Generate the proof
-	proof, err := s.prover(params.StateTransitionCurve, s.stCcs, s.stPk, assignments, opts)
+	proof, err := s.prover(params.StateTransitionCurve, s.stCcs, s.stPk, assignment, opts)
 	if err != nil {
-		s.logStateTransitionDebugInfo(processState, votes, censusRoot, assignments, err)
+		s.logStateTransitionDebugInfo(processState, votes, censusRoot, assignment, err)
 		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
-	return proof, blobData, assignments.RootHashAfter.(*big.Int), nil
+	return proof, blobData, assignment.RootHashAfter.(*big.Int), nil
 }
 
 // logStateTransitionDebugInfo logs detailed information about a failed state transition
@@ -258,17 +258,17 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 	processState *state.State,
 	votes []*state.Vote,
 	censusRoot *types.BigInt,
-	assignments *statetransition.StateTransitionCircuit,
+	assignment *statetransition.StateTransitionCircuit,
 	err error,
 ) {
 	log.Errorw(err, "STATE TRANSITION CONSTRAINT ERROR - DEBUG INFO")
-	if assignments != nil {
+	if assignment != nil {
 		log.Infow("constraint error details",
 			"processID", processState.ProcessID().String(),
-			"rootHashBefore", assignments.RootHashBefore,
-			"rootHashAfter", assignments.RootHashAfter,
-			"votersCount", assignments.VotersCount,
-			"overwrittenVotesCount", assignments.OverwrittenVotesCount,
+			"rootHashBefore", assignment.RootHashBefore,
+			"rootHashAfter", assignment.RootHashAfter,
+			"votersCount", assignment.VotersCount,
+			"overwrittenVotesCount", assignment.OverwrittenVotesCount,
 			"censusRoot", censusRoot.String(),
 			"#votes", len(votes),
 		)
@@ -276,7 +276,7 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 		// Log assignment info (basic info only)
 		log.Infow("assignment details available for debugging")
 	} else {
-		log.Warnw("assignments is nil, skipping detailed constraint error logging")
+		log.Warnw("assignment is nil, skipping detailed constraint error logging")
 	}
 
 	// Log vote details
@@ -329,7 +329,7 @@ func (s *Sequencer) reencryptVotes(processID types.ProcessID, votes []*storage.A
 	return reencryptedVotes, new(types.BigInt).SetBigInt(kSeed), nil
 }
 
-func (s *Sequencer) stateBatchToWitness(
+func (s *Sequencer) stateBatchToAssignment(
 	processState *state.State,
 	votes []*state.Vote,
 	censusRoot *types.BigInt,
@@ -342,26 +342,26 @@ func (s *Sequencer) stateBatchToWitness(
 		return nil, nil, fmt.Errorf("failed to add votes batch to state: %w", err)
 	}
 
-	// generate the state transition vote witness
-	proofWitness, _, err := statetransition.GenerateWitness(processState, censusRoot, censusProofs, kSeed)
+	// Generate the state transition assignment.
+	proofAssignment, _, err := statetransition.GenerateAssignment(processState, censusRoot, censusProofs, kSeed)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate witness: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate assignment: %w", err)
 	}
-	proofWitness.AggregatorProof, err = stdgroth16.ValueOfProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](innerProof)
+	proofAssignment.AggregatorProof, err = stdgroth16.ValueOfProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](innerProof)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to transform recursive proof: %w", err)
 	}
 
-	// generate the KZG commitment to the blob witness
+	// Generate the KZG commitment for the blob-related assignment data.
 	blobData, err := processState.BuildKZGCommitment()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build KZG commitment: %w", err)
 	}
-	proofWitness.BlobCommitmentLimbs = blobData.ForGnark.CommitmentLimbs
-	proofWitness.BlobProofLimbs = blobData.ForGnark.ProofLimbs
-	proofWitness.BlobEvaluationResultY = blobData.ForGnark.Y
+	proofAssignment.BlobCommitmentLimbs = blobData.ForGnark.CommitmentLimbs
+	proofAssignment.BlobProofLimbs = blobData.ForGnark.ProofLimbs
+	proofAssignment.BlobEvaluationResultY = blobData.ForGnark.Y
 
-	return proofWitness, blobData, nil
+	return proofAssignment, blobData, nil
 }
 
 func (s *Sequencer) processCensusProofs(

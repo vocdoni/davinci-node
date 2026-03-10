@@ -89,8 +89,8 @@ func TestResultsVerifierCircuit(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 	}
 
-	// Generete the witness for the circuit
-	witness, err := GenerateWitness(
+	// Generate the assignment for the circuit
+	assignment, err := GenerateAssignment(
 		st,
 		resultsAccumulator,
 		addAccumulator,
@@ -102,13 +102,12 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	)
 	c.Assert(err, qt.IsNil)
 
-	// Log the time to generate the witness
 	c.Logf("inputs generation took %s", time.Since(now).String())
 
 	// Start the proving process
 	now = time.Now()
 	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(&ResultsVerifierCircuit{}, witness,
+	assert.SolvingSucceeded(&ResultsVerifierCircuit{}, assignment,
 		test.WithCurves(params.ResultsVerifierCurve), test.WithBackends(backend.GROTH16))
 	c.Logf("proving took %s", time.Since(now).String())
 }

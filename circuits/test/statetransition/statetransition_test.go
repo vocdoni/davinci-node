@@ -60,14 +60,14 @@ func testCircuitCompile(t *testing.T, c frontend.Circuit) {
 	}
 }
 
-func testCircuitProve(t *testing.T, circuit, witness frontend.Circuit) {
+func testCircuitProve(t *testing.T, circuit, assignment frontend.Circuit) {
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
 		t.Skip("skipping circuit tests...")
 	}
 	assert := test.NewAssert(t)
 	assert.ProverSucceeded(
 		circuit,
-		witness,
+		assignment,
 		test.WithCurves(params.StateTransitionCurve),
 		test.WithBackends(backend.GROTH16))
 }
@@ -81,13 +81,13 @@ func TestStateTransitionCircuit(t *testing.T) {
 	c := qt.New(t)
 	// inputs generation
 	now := time.Now()
-	_, placeholder, assignments := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	_, placeholder, assignment := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 	// proving
 	now = time.Now()
 
 	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(placeholder, assignments,
+	assert.SolvingSucceeded(placeholder, assignment,
 		test.WithCurves(params.StateTransitionCurve), test.WithBackends(backend.GROTH16))
 	c.Logf("proving took %s", time.Since(now).String())
 }
@@ -104,7 +104,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	now := time.Now()
 
 	// Use centralized testing ProcessID for consistent caching
-	testResults, placeholder, assignments := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	testResults, placeholder, assignment := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation took %s", time.Since(now).String())
 
 	// compile circuit
@@ -121,7 +121,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 
 	// create witness
 	now = time.Now()
-	w, err := frontend.NewWitness(assignments, params.StateTransitionCurve.ScalarField())
+	w, err := frontend.NewWitness(assignment, params.StateTransitionCurve.ScalarField())
 	c.Assert(err, qt.IsNil, qt.Commentf("create witness"))
 	c.Logf("witness creation took %s", time.Since(now).String())
 
@@ -419,10 +419,10 @@ func TestCircuitCalculateAggregatorWitnessCompile(t *testing.T) {
 }
 
 func TestCircuitCalculateAggregatorWitnessProve(t *testing.T) {
-	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitCalculateAggregatorWitness{
-		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-	}, witness)
+		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+	}, assignment)
 }
 
 type CircuitAggregatorProof struct {
@@ -440,10 +440,10 @@ func TestCircuitAggregatorProofCompile(t *testing.T) {
 }
 
 func TestCircuitAggregatorProofProve(t *testing.T) {
-	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitAggregatorProof{
-		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-	}, witness)
+		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+	}, assignment)
 }
 
 type CircuitBallots struct {
@@ -460,10 +460,10 @@ func TestCircuitBallotsCompile(t *testing.T) {
 }
 
 func TestCircuitBallotsProve(t *testing.T) {
-	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitBallots{
-		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-	}, witness)
+		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+	}, assignment)
 }
 
 type CircuitMerkleProofs struct {
@@ -480,10 +480,10 @@ func TestCircuitMerkleProofsCompile(t *testing.T) {
 }
 
 func TestCircuitMerkleProofsProve(t *testing.T) {
-	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitMerkleProofs{
-		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-	}, witness)
+		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+	}, assignment)
 }
 
 type CircuitMerkleTransitions struct {
@@ -501,12 +501,12 @@ func TestCircuitMerkleTransitionsCompile(t *testing.T) {
 }
 
 func TestCircuitMerkleTransitionsProve(t *testing.T) {
-	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitMerkleTransitions{
-		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-	}, witness)
+		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+	}, assignment)
 	if os.Getenv("DEBUG") != "" {
-		debugLog(t, witness)
+		debugLog(t, assignment)
 	}
 }
 
@@ -524,12 +524,12 @@ func TestCircuitRootTransitionCompile(t *testing.T) {
 }
 
 func TestCircuitRootTransitionProve(t *testing.T) {
-	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitRootTransition{
-		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-	}, witness)
+		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+	}, assignment)
 	if os.Getenv("DEBUG") != "" {
-		debugLog(t, witness)
+		debugLog(t, assignment)
 	}
 }
 
@@ -547,12 +547,12 @@ func TestCircuitLeafHashesCompile(t *testing.T) {
 }
 
 func TestCircuitLeafHashesProve(t *testing.T) {
-	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitLeafHashes{
-		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-	}, witness)
+		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+	}, assignment)
 	if os.Getenv("DEBUG") != "" {
-		debugLog(t, witness)
+		debugLog(t, assignment)
 	}
 }
 
@@ -575,10 +575,10 @@ func TestCircuitReencryptBallotsCompile(t *testing.T) {
 func TestCircuitReencryptBallotsProve(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitReencryptBallots{
-		*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-	}, witness)
+		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+	}, assignment)
 }
 
 type CircuitCensusProofs struct {
@@ -602,19 +602,19 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	t.Run("MerkleTree", func(t *testing.T) {
-		witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+		assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 
 		testCircuitProve(t, &CircuitCensusProofs{
-			*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-		}, witness)
+			*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+		}, assignment)
 	})
 
 	t.Run("CSPEdDSABN254", func(t *testing.T) {
-		witness := NewTransitionWithOverwrittenVotes(t, types.CensusOriginCSPEdDSABabyJubJubV1)
+		assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginCSPEdDSABabyJubJubV1)
 
 		testCircuitProve(t, &CircuitCensusProofs{
-			*CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-		}, witness)
+			*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+		}, assignment)
 	})
 }
 
@@ -630,36 +630,36 @@ func TestDummySlot(t *testing.T) {
 
 	// Create a transition with 2 votes (index 0 and 1)
 	// We will try to "hide" the second vote (index 1) by claiming VotersCount is 1.
-	witness := NewTransitionWithVotes(t, s,
+	assignment := NewTransitionWithVotes(t, s,
 		statetest.NewVoteForTest(publicKey, 1, 10), // valid vote 1
 		statetest.NewVoteForTest(publicKey, 2, 20), // valid vote 2
 	)
 
-	// Hack the witness: reduce VotersCount from 2 to 1.
+	// Hack the assignment: reduce VotersCount from 2 to 1.
 	// This makes the vote at index 1 a "dummy" vote according to the circuit logic.
 	// However, the MerkleProof for index 1 is still a valid Insert/Update.
-	witness.VotersCount = 1
+	assignment.VotersCount = 1
 
-	// Assert that the circuit rejects this witness.
+	// Assert that the circuit rejects this assignment.
 	// The fix in VerifyMerkleTransitions and VerifyBallots should assert that
 	// for dummy slots (isRealVote=0), the operations must be NOOP.
 	assert := test.NewAssert(t)
 	// We expect the prover to FAIL because the constraints are not satisfied.
 	assert.ProverFailed(
-		CircuitPlaceholderWithProof(&witness.AggregatorProof, &witness.AggregatorVK),
-		witness,
+		CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
+		assignment,
 		test.WithCurves(params.StateTransitionCurve),
 		test.WithBackends(backend.GROTH16),
 	)
 }
 
-func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
-	t.Log("public: RootHashBefore", util.PrettyHex(witness.RootHashBefore))
-	t.Log("public: RootHashAfter", util.PrettyHex(witness.RootHashAfter))
-	t.Log("public: VotersCount", util.PrettyHex(witness.VotersCount))
-	t.Log("public: OverwrittenVotesCount", util.PrettyHex(witness.OverwrittenVotesCount))
+func debugLog(t *testing.T, assignment *statetransition.StateTransitionCircuit) {
+	t.Log("public: RootHashBefore", util.PrettyHex(assignment.RootHashBefore))
+	t.Log("public: RootHashAfter", util.PrettyHex(assignment.RootHashAfter))
+	t.Log("public: VotersCount", util.PrettyHex(assignment.VotersCount))
+	t.Log("public: OverwrittenVotesCount", util.PrettyHex(assignment.OverwrittenVotesCount))
 	for name, mts := range map[string][params.VotesPerBatch]merkleproof.MerkleTransition{
-		"Ballot": witness.VotesProofs.Ballot,
+		"Ballot": assignment.VotesProofs.Ballot,
 	} {
 		for _, mt := range mts {
 			t.Log(name, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",
@@ -669,8 +669,8 @@ func debugLog(t *testing.T, witness *statetransition.StateTransitionCircuit) {
 	}
 
 	for name, mt := range map[string]merkleproof.MerkleTransition{
-		"ResultsAdd": witness.ResultsProofs.ResultsAdd,
-		"ResultsSub": witness.ResultsProofs.ResultsSub,
+		"ResultsAdd": assignment.ResultsProofs.ResultsAdd,
+		"ResultsSub": assignment.ResultsProofs.ResultsSub,
 	} {
 		t.Log(name, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",
 			"value", util.PrettyHex(mt.OldLeafHash), "->", util.PrettyHex(mt.NewLeafHash),

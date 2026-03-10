@@ -31,7 +31,7 @@ import (
 )
 
 // AggregatorInputsForTest returns the AggregatorTestResults, the placeholder
-// and the assignments of a AggregatorCircuit for the processID provided
+// and the assignment of an AggregatorCircuit for the processID provided
 // generating nValidVotes. Uses quicktest assertions instead of returning errors.
 func AggregatorInputsForTest(
 	t *testing.T,
@@ -137,15 +137,15 @@ func AggregatorInputsForTest(
 	inputsHash, err := aggInputs.InputsHash()
 	c.Assert(err, qt.IsNil, qt.Commentf("calculate inputs hash"))
 
-	// init final assignments stuff
-	finalAssignments := &aggregator.AggregatorCircuit{
+	// Build the final aggregator assignment.
+	assignment := &aggregator.AggregatorCircuit{
 		ValidProofs:  nValidVoters,
 		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 		BallotHashes: proofsInputsHashes,
 		Proofs:       proofs,
 	}
-	// fill assignments with dummy values
-	err = finalAssignments.FillWithDummy(vvCCS, vvPk, ballotproof.CircomVerificationKey, nValidVoters, nil)
+	// Fill the remaining slots with dummy values.
+	err = assignment.FillWithDummy(vvCCS, vvPk, ballotproof.CircomVerificationKey, nValidVoters, nil)
 	c.Assert(err, qt.IsNil, qt.Commentf("fill with dummy values"))
 
 	// fix the vote verifier verification key
@@ -179,5 +179,5 @@ func AggregatorInputsForTest(
 			CensusOrigin:  new(big.Int).SetInt64(int64(censusOrigin)),
 		},
 		Votes: votes,
-	}, finalPlaceholder, finalAssignments
+	}, finalPlaceholder, assignment
 }

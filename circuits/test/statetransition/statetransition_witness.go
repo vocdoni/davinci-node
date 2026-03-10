@@ -63,7 +63,7 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 		t.Fatal(err)
 	}
 
-	witness, _, err := statetransition.GenerateWitness(
+	assignment, _, err := statetransition.GenerateAssignment(
 		s,
 		new(types.BigInt).SetBigInt(censusRoot),
 		censusProofs,
@@ -104,12 +104,12 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	witness.AggregatorProof = *proof
-	witness.AggregatorVK = *vk
-	return witness
+	assignment.AggregatorProof = *proof
+	assignment.AggregatorVK = *vk
+	return assignment
 }
 
-// NewTransitionWithOverwrittenVotes returns a witness that includes an overwritten vote
+// NewTransitionWithOverwrittenVotes returns an assignment that includes an overwritten vote.
 func NewTransitionWithOverwrittenVotes(t *testing.T, origin types.CensusOrigin) *statetransition.StateTransitionCircuit {
 	// First initialize a state with a transition of 2 new votes,
 	s := statetest.NewRandomState(t, origin)

@@ -52,7 +52,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 		}
 
 		start := time.Now()
-		_, placeholder, assignments := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+		_, placeholder, assignment := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 		t.Logf("inputs generation took %s", time.Since(start))
 
 		t.Logf("compiling aggregator circuit...")
@@ -67,7 +67,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 		aggCacheData.VerifyingKey = vk
 
 		t.Logf("creating witness for aggregator circuit...")
-		w, err := frontend.NewWitness(assignments, params.AggregatorCurve.ScalarField())
+		w, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField())
 		c.Assert(err, qt.IsNil, qt.Commentf("witness creation"))
 		aggCacheData.Witness = w
 

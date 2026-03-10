@@ -59,7 +59,7 @@ func TestReencryptedBallotCircuit(t *testing.T) {
 	reencryptedBallot, _, err := ballot.Reencrypt(encryptionKey, reencryptionK)
 	c.Assert(err, qt.IsNil)
 
-	witness := &ReencryptedBallotCircuit{
+	assignment := &ReencryptedBallotCircuit{
 		Originals:         originals,
 		EncryptionKey:     circuits.EncryptionKeyFromECCPoint(encryptionKey).AsVar(),
 		DecryptionKey:     privkey.Scalar().BigInt(),
@@ -69,7 +69,7 @@ func TestReencryptedBallotCircuit(t *testing.T) {
 	}
 	// generate proof
 	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(&ReencryptedBallotCircuit{}, witness,
+	assert.SolvingSucceeded(&ReencryptedBallotCircuit{}, assignment,
 		test.WithCurves(ecc.BN254),
 		test.WithBackends(backend.GROTH16))
 }

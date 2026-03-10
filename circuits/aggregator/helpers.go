@@ -17,17 +17,17 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// FillWithDummy function fills the assignments provided with a dummy proofs
+// FillWithDummy fills the aggregator assignment with dummy proofs
 // and witnesses compiled for the main constraint.ConstraintSystem provided and
 // the proving key. It generates dummy proofs using the inner verification key
 // provided. It starts to fill from the index provided. Returns an error if
 // something fails.
 // If proverFn is nil, it uses the DefaultProver implementation.
-func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.ConstraintSystem,
+func (assignment *AggregatorCircuit) FillWithDummy(mainCCS constraint.ConstraintSystem,
 	mainPk groth16.ProvingKey, innerVk []byte, fromIdx int, proverFn types.ProverFunc,
 ) error {
 	// get dummy proof witness
-	assignment, err := voteverifier.DummyAssignment(innerVk, new(bjj.BJJ).New())
+	dummyAssignment, err := voteverifier.DummyAssignment(innerVk, new(bjj.BJJ).New())
 	if err != nil {
 		return fmt.Errorf("dummy assignment error: %w", err)
 	}
@@ -42,7 +42,7 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 			params.VoteVerifierCurve,
 			mainCCS,
 			mainPk,
-			assignment,
+			dummyAssignment,
 			stdgroth16.GetNativeProverOptions(params.AggregatorCurve.ScalarField(),
 				params.VoteVerifierCurve.ScalarField()),
 		)
@@ -52,7 +52,7 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 			params.VoteVerifierCurve,
 			mainCCS,
 			mainPk,
-			assignment,
+			dummyAssignment,
 			stdgroth16.GetNativeProverOptions(params.AggregatorCurve.ScalarField(),
 				params.VoteVerifierCurve.ScalarField()),
 		)
@@ -65,12 +65,12 @@ func (assignments *AggregatorCircuit) FillWithDummy(mainCCS constraint.Constrain
 	if err != nil {
 		return fmt.Errorf("dummy proof value error: %w", err)
 	}
-	// fill placeholders and assignments dummy values
-	for i := fromIdx; i < len(assignments.Proofs); i++ {
-		assignments.BallotHashes[i] = emulated.Element[sw_bn254.ScalarField]{
+	// Fill the assignment with dummy values from the first unused slot onward.
+	for i := fromIdx; i < len(assignment.Proofs); i++ {
+		assignment.BallotHashes[i] = emulated.Element[sw_bn254.ScalarField]{
 			Limbs: []frontend.Variable{1, 0, 0, 0},
 		}
-		assignments.Proofs[i] = recursiveDummyProof
+		assignment.Proofs[i] = recursiveDummyProof
 	}
 	return nil
 }

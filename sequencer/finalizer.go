@@ -343,8 +343,8 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	}
 	log.Debugw("decrypted sub accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
 
-	// Generate the witness for the circuit
-	resultsVerifierWitness, err := results.GenerateWitness(
+	// Build the circuit assignment.
+	resultsVerifierAssignment, err := results.GenerateAssignment(
 		st,
 		resultsAccumulator,
 		addAccumulator,
@@ -355,14 +355,14 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		subDecryptionProofs,
 	)
 	if err != nil {
-		return fmt.Errorf("could not generate witness for process %s: %w", processID.String(), err)
+		return fmt.Errorf("could not generate assignment for process %s: %w", processID.String(), err)
 	}
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 	proof, err := f.prover(
 		params.ResultsVerifierCurve,
 		f.circuits.rvCcs,
 		f.circuits.rvPk,
-		resultsVerifierWitness,
+		resultsVerifierAssignment,
 		opts,
 	)
 	if err != nil {
