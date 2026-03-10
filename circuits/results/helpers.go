@@ -12,7 +12,8 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-func GenerateWitness(
+// GenerateAssignment builds the circuit assignment for the results verifier.
+func GenerateAssignment(
 	o *state.State,
 	results [params.FieldsPerBallot]*big.Int,
 	addAccumulators [params.FieldsPerBallot]*big.Int,
@@ -23,50 +24,50 @@ func GenerateWitness(
 	decryptionSubProofs [params.FieldsPerBallot]*elgamal.DecryptionProof,
 ) (*ResultsVerifierCircuit, error) {
 	var err error
-	witness := &ResultsVerifierCircuit{}
+	assignment := &ResultsVerifierCircuit{}
 
 	// State root hash
-	witness.StateRoot, err = o.RootAsBigInt()
+	assignment.StateRoot, err = o.RootAsBigInt()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get state root hash: %w", err)
 	}
 
 	// Encrypted and decrypted results
 	for i := range params.FieldsPerBallot {
-		witness.AddAccumulatorsEncrypted[i] = *addAccumulatorsEncrypted[i].ToGnark()
-		witness.SubAccumulatorsEncrypted[i] = *subAccumulatorsEncrypted[i].ToGnark()
-		witness.Results[i] = results[i]
-		witness.AddAccumulators[i] = addAccumulators[i]
-		witness.SubAccumulators[i] = subAccumulators[i]
+		assignment.AddAccumulatorsEncrypted[i] = *addAccumulatorsEncrypted[i].ToGnark()
+		assignment.SubAccumulatorsEncrypted[i] = *subAccumulatorsEncrypted[i].ToGnark()
+		assignment.Results[i] = results[i]
+		assignment.AddAccumulators[i] = addAccumulators[i]
+		assignment.SubAccumulators[i] = subAccumulators[i]
 	}
 
 	// Results accumulators proofs
-	witness.AddAccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResultsAdd)
+	assignment.AddAccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResultsAdd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform results add arbo proof to merkle proof: %w", err)
 	}
-	witness.SubAccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResultsSub)
+	assignment.SubAccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResultsSub)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform results sub arbo proof to merkle proof: %w", err)
 	}
 
 	// Decryption add and sub proofs
 	for i := range params.FieldsPerBallot {
-		witness.DecryptionAddProofs[i] = decryptionAddProofs[i].ToGnark()
-		witness.DecryptionSubProofs[i] = decryptionSubProofs[i].ToGnark()
+		assignment.DecryptionAddProofs[i] = decryptionAddProofs[i].ToGnark()
+		assignment.DecryptionSubProofs[i] = decryptionSubProofs[i].ToGnark()
 	}
 
 	// EncryptionKey proof and public key
-	witness.EncryptionKeyMerkleProof, err = merkleProofFromKey(o, state.KeyEncryptionKey)
+	assignment.EncryptionKeyMerkleProof, err = merkleProofFromKey(o, state.KeyEncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform encryption key arbo proof to merkle proof: %w", err)
 	}
-	witness.EncryptionPublicKey.PubKey = [2]frontend.Variable{
+	assignment.EncryptionPublicKey.PubKey = [2]frontend.Variable{
 		o.Process().EncryptionKey.PubKey[0],
 		o.Process().EncryptionKey.PubKey[1],
 	}
 
-	return witness, nil
+	return assignment, nil
 }
 
 func merkleProofFromKey(o *state.State, key types.StateKey) (merkleproof.MerkleProof, error) {

@@ -47,7 +47,7 @@ type StateTransitionTestResults struct {
 }
 
 // StateTransitionInputsForTest returns the StateTransitionTestResults, the placeholder
-// and the assignments of a StateTransitionCircuit for the processID provided
+// and the assignment of a StateTransitionCircuit for the processID provided
 // generating nValidVoters. Uses quicktest assertions instead of returning errors.
 func StateTransitionInputsForTest(
 	t *testing.T,
@@ -79,11 +79,11 @@ func StateTransitionInputsForTest(
 		c.Logf("Cache miss for key %s (error: %v), generating aggregator circuit data", cacheKey, err)
 
 		// generate aggregator circuit and inputs
-		var agPlaceholder, aggWitness *aggregator.AggregatorCircuit
-		aggInputs, agPlaceholder, aggWitness = aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
+		var agPlaceholder, aggAssignment *aggregator.AggregatorCircuit
+		aggInputs, agPlaceholder, aggAssignment = aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
 
 		// parse the witness to the circuit
-		fullWitness, err = frontend.NewWitness(aggWitness, params.AggregatorCurve.ScalarField())
+		fullWitness, err = frontend.NewWitness(aggAssignment, params.AggregatorCurve.ScalarField())
 		c.Assert(err, qt.IsNil, qt.Commentf("aggregator witness"))
 
 		// compile aggregator circuit
@@ -159,7 +159,7 @@ func StateTransitionInputsForTest(
 
 	// get the encryption key from the aggregator inputs
 	encryptionKey := state.Curve.New().SetPoint(aggInputs.Process.EncryptionKey.PubKey[0], aggInputs.Process.EncryptionKey.PubKey[1])
-	// init final assignments stuff
+	// Build the final state transition assignment.
 	s := statetest.NewStateForTest(t, processID, testutil.BallotModePacked(), censusOrigin, types.EncryptionKeyFromPoint(encryptionKey))
 
 	// iterate over the votes, reencrypting each time the zero ballot with the
@@ -180,15 +180,15 @@ func StateTransitionInputsForTest(
 	err = s.AddVotesBatch(aggInputs.Votes)
 	c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
 
-	witness, publicInputs, err := statetransition.GenerateWitness(
+	assignment, publicInputs, err := statetransition.GenerateAssignment(
 		s,
 		new(types.BigInt).SetBigInt(censusRoot),
 		censusProofs,
 		new(types.BigInt).SetBigInt(reencryptionK),
 	)
-	c.Assert(err, qt.IsNil, qt.Commentf("generate witness"))
+	c.Assert(err, qt.IsNil, qt.Commentf("generate assignment"))
 
-	witness.AggregatorProof = proofInBW6761
+	assignment.AggregatorProof = proofInBW6761
 
 	// create final placeholder
 	circuitPlaceholder := CircuitPlaceholder()
@@ -201,7 +201,7 @@ func StateTransitionInputsForTest(
 		Process:      aggInputs.Process,
 		Votes:        aggInputs.Votes,
 		PublicInputs: publicInputs,
-	}, circuitPlaceholder, witness
+	}, circuitPlaceholder, assignment
 }
 
 // CensusProofsForCircuitTest generates the census proofs required for the

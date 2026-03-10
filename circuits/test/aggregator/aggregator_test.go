@@ -23,12 +23,12 @@ func TestAggregatorCircuit(t *testing.T) {
 	c := qt.New(t)
 	// inputs generation
 	now := time.Now()
-	_, placeholder, assignments := AggregatorInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	_, placeholder, assignment := AggregatorInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	c.Logf("inputs generation tooks %s", time.Since(now).String())
 	// proving
 	now = time.Now()
 	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(placeholder, assignments,
+	assert.SolvingSucceeded(placeholder, assignment,
 		test.WithCurves(params.AggregatorCurve), test.WithBackends(backend.GROTH16),
 		test.WithProverOpts(stdgroth16.GetNativeProverOptions(
 			params.StateTransitionCurve.ScalarField(),
