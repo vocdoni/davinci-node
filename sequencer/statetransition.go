@@ -284,7 +284,7 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 		log.Infow("vote details",
 			"index", i,
 			"voteID", v.VoteID.String(),
-			"address", fmt.Sprintf("%x", v.Address.Bytes()),
+			"address", types.HexBytes(v.Address.Bytes()),
 			"ballotIndex", v.BallotIndex.String(),
 			"weight", v.Weight.String(),
 		)
