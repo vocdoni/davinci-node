@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/consensys/gnark/backend/groth16"
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
-	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
@@ -184,28 +182,18 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		params.VoteVerifierCurve.ScalarField(),
 	)
 	log.Debugw("generating vote verification proof...", "processID", b.ProcessID.String(), "voteID", b.VoteID.String())
-	proof, err := s.prover(params.VoteVerifierCurve, s.vvCcs, s.vvPk, &assignment, opts)
+	proof, err := s.prover(params.VoteVerifierCurve, s.voteVerifier.ccs, s.voteVerifier.pk, &assignment, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
 
-	if s.vvVk == nil {
-		return nil, fmt.Errorf("vote verifier verifying key is not loaded")
-	}
 	pubAssignment := &voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
 		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](b.BallotInputsHash),
 	}
-	pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create public witness: %w", err)
-	}
-	verifyOpts := stdgroth16.GetNativeVerifierOptions(
-		params.AggregatorCurve.ScalarField(),
-		params.VoteVerifierCurve.ScalarField(),
-	)
-	if err := groth16.Verify(proof, s.vvVk, pubWitness, verifyOpts); err != nil {
-		return nil, fmt.Errorf("failed to verify generated proof: %w", err)
+	if err := s.verifyVoteVerifierProof(proof, pubAssignment); err != nil {
+		return nil, fmt.Errorf("vote verifier proof failed (processID=%s, voteID=%s): %w",
+			b.ProcessID.String(), b.VoteID.String(), err)
 	}
 
 	log.Infow("vote verification proof generated",

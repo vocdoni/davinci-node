@@ -244,10 +244,19 @@ func (s *Sequencer) processStateTransitionBatch(
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 
 	// Generate the proof
-	proof, err := s.prover(params.StateTransitionCurve, s.stCcs, s.stPk, assignment, opts)
+	proof, err := s.prover(params.StateTransitionCurve, s.stateTransition.ccs, s.stateTransition.pk, assignment, opts)
 	if err != nil {
 		s.logStateTransitionDebugInfo(processState, votes, censusRoot, assignment, err)
 		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
+	}
+	if err := s.verifyStateTransitionProof(proof, assignment); err != nil {
+		return nil, nil, nil, fmt.Errorf(
+			"failed to verify state transition proof (processID=%s, voters=%d, overwrittenVotes=%d): %w",
+			processState.ProcessID().String(),
+			assignment.VotersCount,
+			assignment.OverwrittenVotesCount,
+			err,
+		)
 	}
 	return proof, blobData, assignment.RootHashAfter.(*big.Int), nil
 }

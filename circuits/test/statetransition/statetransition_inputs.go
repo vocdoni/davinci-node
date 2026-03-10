@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/consensys/gnark/backend"
 	groth16bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/csp"
@@ -94,10 +95,23 @@ func StateTransitionInputsForTest(
 		c.Assert(err, qt.IsNil, qt.Commentf("aggregator setup"))
 		agVk = vk
 
-		// generate the proof (automatically uses GPU if enabled)
-		proof, err = prover.ProveWithWitness(params.AggregatorCurve, agCCS, agPk, fullWitness,
-			stdgroth16.GetNativeProverOptions(params.StateTransitionCurve.ScalarField(),
-				params.AggregatorCurve.ScalarField()))
+		proverOpts := stdgroth16.GetNativeProverOptions(
+			params.StateTransitionCurve.ScalarField(),
+			params.AggregatorCurve.ScalarField(),
+		)
+		verifierOpts := stdgroth16.GetNativeVerifierOptions(
+			params.StateTransitionCurve.ScalarField(),
+			params.AggregatorCurve.ScalarField(),
+		)
+		proof, err = circuitstest.ProveAndVerifyWithWitness(
+			params.AggregatorCurve,
+			agCCS,
+			agPk,
+			agVk,
+			fullWitness,
+			[]backend.ProverOption{proverOpts},
+			[]backend.VerifierOption{verifierOpts},
+		)
 		c.Assert(err, qt.IsNil, qt.Commentf("proving aggregator circuit"))
 
 		// Save proof, verification key, CCS, and witness to cache for future use
@@ -145,13 +159,15 @@ func StateTransitionInputsForTest(
 	proofInBW6761, err := stdgroth16.ValueOfProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](proof)
 	c.Assert(err, qt.IsNil, qt.Commentf("convert aggregator proof"))
 
-	// convert the public inputs to the circuit public inputs type
-	publicWitness, err := fullWitness.Public()
-	c.Assert(err, qt.IsNil, qt.Commentf("convert aggregator public inputs"))
-
-	err = groth16.Verify(proof, agVk, publicWitness, stdgroth16.GetNativeVerifierOptions(
-		params.StateTransitionCurve.ScalarField(),
-		params.AggregatorCurve.ScalarField()))
+	err = circuitstest.VerifyProofWithWitness(
+		proof,
+		agVk,
+		fullWitness,
+		stdgroth16.GetNativeVerifierOptions(
+			params.StateTransitionCurve.ScalarField(),
+			params.AggregatorCurve.ScalarField(),
+		),
+	)
 	c.Assert(err, qt.IsNil, qt.Commentf("aggregator verify"))
 
 	// reencrypt the votes with deterministic K for consistent caching

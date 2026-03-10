@@ -361,14 +361,18 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
 	proof, err := f.prover(
 		params.ResultsVerifierCurve,
-		f.circuits.rvCcs,
-		f.circuits.rvPk,
+		f.circuits.resultsVerifier.ccs,
+		f.circuits.resultsVerifier.pk,
 		resultsVerifierAssignment,
 		opts,
 	)
 	if err != nil {
 		setProcessInvalid()
 		return fmt.Errorf("could not generate proof for process %s: %w", processID.String(), err)
+	}
+	if err := f.circuits.verifyResultsProof(proof, resultsVerifierAssignment); err != nil {
+		setProcessInvalid()
+		return fmt.Errorf("could not verify generated proof for process %s: %w", processID.String(), err)
 	}
 
 	stateRootBI, err := st.RootAsBigInt()

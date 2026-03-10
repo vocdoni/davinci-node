@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
@@ -82,26 +83,34 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	var proof groth16.Proof
 	t.Logf("proving and verifying aggregator circuit...")
 	start := time.Now()
-	opts := stdgroth16.GetNativeProverOptions(
-		params.StateTransitionCurve.ScalarField(),
-		params.AggregatorCurve.ScalarField(),
-	)
-	proof, err = prover.ProveWithWitness(
+	proof, err = circuitstest.ProveAndVerifyWithWitness(
 		params.AggregatorCurve,
 		aggCacheData.ConstraintSystem,
 		aggCacheData.ProvingKey,
+		aggCacheData.VerifyingKey,
 		aggCacheData.Witness,
-		opts,
+		[]backend.ProverOption{stdgroth16.GetNativeProverOptions(
+			params.StateTransitionCurve.ScalarField(),
+			params.AggregatorCurve.ScalarField(),
+		)},
+		[]backend.VerifierOption{stdgroth16.GetNativeVerifierOptions(
+			params.StateTransitionCurve.ScalarField(),
+			params.AggregatorCurve.ScalarField(),
+		)},
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove aggregator circuit"))
-	t.Logf("proving took %s", time.Since(start))
+	t.Logf("proving and immediate verification took %s", time.Since(start))
 
 	start = time.Now()
-	pub, err := aggCacheData.Witness.Public()
-	c.Assert(err, qt.IsNil, qt.Commentf("public witness"))
-	err = groth16.Verify(proof, aggCacheData.VerifyingKey, pub, stdgroth16.GetNativeVerifierOptions(
-		params.StateTransitionCurve.ScalarField(),
-		params.AggregatorCurve.ScalarField()))
-	c.Assert(err, qt.IsNil, qt.Commentf("verify proof"))
-	t.Logf("verification took %s", time.Since(start))
+	err = circuitstest.VerifyProofWithWitness(
+		proof,
+		aggCacheData.VerifyingKey,
+		aggCacheData.Witness,
+		stdgroth16.GetNativeVerifierOptions(
+			params.StateTransitionCurve.ScalarField(),
+			params.AggregatorCurve.ScalarField(),
+		),
+	)
+	c.Assert(err, qt.IsNil, qt.Commentf("verify cached/public proof"))
+	t.Logf("explicit verification took %s", time.Since(start))
 }

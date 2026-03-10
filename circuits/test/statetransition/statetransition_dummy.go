@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
@@ -14,6 +15,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/spec/params"
 )
@@ -123,16 +125,21 @@ func Prove(placeholder, assignment frontend.Circuit, outer *big.Int, field *big.
 	curve := params.AggregatorCurve
 
 	// Generate proof (automatically uses GPU if enabled)
-	proof, err := prover.ProveWithWitness(curve, ccs, pk, fullWitness, stdgroth16.GetNativeProverOptions(outer, field))
+	proof, err := circuitstest.ProveAndVerifyWithWitness(
+		curve,
+		ccs,
+		pk,
+		vk,
+		fullWitness,
+		[]backend.ProverOption{stdgroth16.GetNativeProverOptions(outer, field)},
+		[]backend.VerifierOption{stdgroth16.GetNativeVerifierOptions(outer, field)},
+	)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("proof error: %w", err)
 	}
 	publicWitness, err := fullWitness.Public()
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("pub witness error: %w", err)
-	}
-	if err = groth16.Verify(proof, vk, publicWitness, stdgroth16.GetNativeVerifierOptions(outer, field)); err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("verify error: %w", err)
 	}
 	return ccs, publicWitness, proof, vk, nil
 }
