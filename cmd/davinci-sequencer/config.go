@@ -16,7 +16,6 @@ import (
 const (
 	defaultNetwork                    = "sepolia"
 	defaultCAPI                       = "https://ethereum-sepolia-beacon-api.publicnode.com"
-	defaultRPC                        = "https://ethereum-sepolia-rpc.publicnode.com"
 	defaultAPIHost                    = "0.0.0.0"
 	defaultAPIPort                    = 9090
 	defaultBatchTime                  = 300 * time.Second

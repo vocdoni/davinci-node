@@ -109,8 +109,9 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 
 	// Calculate the ballot index
 	ballotIndex := types.CalculateBallotIndex(proof.AddressIndex)
+
 	// Open the state for the process
-	s, err := state.New(a.storage.StateDB(), processID)
+	s, err := state.LoadOnRoot(a.storage.StateDB(), *process.ID, process.StateRoot.MathBigInt())
 	if err != nil {
 		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
 		return
@@ -120,12 +121,6 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 			log.Warnw("could not close state", "processID", processID.String(), "error", err.Error())
 		}
 	}()
-
-	// Set the state root at the latest in the storage
-	if err := s.SetRootAsBigInt(process.StateRoot.MathBigInt()); err != nil {
-		ErrGenericInternalServerError.Withf("could not set state root: %v", err).Write(w)
-		return
-	}
 
 	// Get the ballot by its index
 	ballot, err := s.EncryptedBallot(ballotIndex)
