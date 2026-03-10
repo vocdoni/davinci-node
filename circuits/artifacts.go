@@ -45,46 +45,32 @@ func init() {
 	}
 }
 
-// Artifact is a struct that holds the remote URL, the hash of the content and
-// the content itself. It provides a method to load the content from the local
-// cache or download it from the remote URL provided. It also checks the hash
-// of the content to ensure its integrity.
+// Artifact describes a cached/downloadable circuit artifact by hash and source URL.
 type Artifact struct {
 	Name      string
 	RemoteURL string
 	Hash      []byte
-	Content   []byte
 }
 
-// Load method checks if the artifact content is already loaded, if not, it will
-// try to load it from the local storage. It also checks the hash of the content
-// to ensure its integrity. It returns an error if the artifact is already
-// loaded but the hash is not set or it does not match with the content.
-func (k *Artifact) Load() error {
-	// if the artifact has content, it is already loaded and it will return
-	if len(k.Content) != 0 {
-		return nil
+// Load reads the artifact content from the local cache using its configured hash.
+func (k *Artifact) Load() ([]byte, error) {
+	if k == nil {
+		return nil, fmt.Errorf("artifact not loaded")
 	}
-	// if the artifact has no content, it must have its hash set to check the
-	// content when it is loaded
 	if len(k.Hash) == 0 {
-		return fmt.Errorf("key hash not provided")
+		return nil, fmt.Errorf("artifact hash not provided")
 	}
-	// check if the content is already stored locally by hash and load it
 	content, err := load(k.Hash)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// return an error if the content is nil
 	if content == nil {
-		return fmt.Errorf("no content found")
+		return nil, fmt.Errorf("no content found")
 	}
-	// set the content of the artifact
-	k.Content = content
-	return nil
+	return content, nil
 }
 
-// Download method downloads the content of the artifact from the remote URL,
+// Download downloads the content of the artifact from the remote URL,
 // checks the hash of the content and stores it locally. It returns an error if
 // the remote URL is not provided or the content cannot be downloaded, or if the
 // hash of the content does not match. If the content is already loaded, it will
@@ -107,6 +93,77 @@ type CircuitArtifacts struct {
 	circuitDefinition *Artifact
 	provingKey        *Artifact
 	verifyingKey      *Artifact
+	ccs               constraint.ConstraintSystem
+	pk                groth16.ProvingKey
+	vk                groth16.VerifyingKey
+}
+
+func (ca *CircuitArtifacts) artifactContent(artifact *Artifact, label string) ([]byte, error) {
+	if artifact == nil {
+		return nil, fmt.Errorf("%s not loaded", label)
+	}
+	content, err := artifact.Load()
+	if err != nil {
+		return nil, fmt.Errorf("error loading %s: %w", label, err)
+	}
+	return content, nil
+}
+
+func (ca *CircuitArtifacts) newConstraintSystem() constraint.ConstraintSystem {
+	if types.UseGPUProver {
+		return gpugroth16.NewCS(ca.curve)
+	}
+	return groth16.NewCS(ca.curve)
+}
+
+func (ca *CircuitArtifacts) newProvingKey() groth16.ProvingKey {
+	if types.UseGPUProver {
+		return gpugroth16.NewProvingKey(ca.curve)
+	}
+	return groth16.NewProvingKey(ca.curve)
+}
+
+func (ca *CircuitArtifacts) newVerifyingKey() groth16.VerifyingKey {
+	if types.UseGPUProver {
+		return gpugroth16.NewVerifyingKey(ca.curve)
+	}
+	return groth16.NewVerifyingKey(ca.curve)
+}
+
+func (ca *CircuitArtifacts) decodeCircuitDefinition() (constraint.ConstraintSystem, error) {
+	content, err := ca.artifactContent(ca.circuitDefinition, "circuit definition")
+	if err != nil {
+		return nil, err
+	}
+	ccs := ca.newConstraintSystem()
+	if _, err := ccs.ReadFrom(bytes.NewReader(content)); err != nil {
+		return nil, fmt.Errorf("error decoding circuit definition: %w", err)
+	}
+	return ccs, nil
+}
+
+func (ca *CircuitArtifacts) decodeProvingKey() (groth16.ProvingKey, error) {
+	content, err := ca.artifactContent(ca.provingKey, "proving key")
+	if err != nil {
+		return nil, err
+	}
+	pk := ca.newProvingKey()
+	if _, err := pk.UnsafeReadFrom(bytes.NewReader(content)); err != nil {
+		return nil, fmt.Errorf("error decoding proving key: %w", err)
+	}
+	return pk, nil
+}
+
+func (ca *CircuitArtifacts) decodeVerifyingKey() (groth16.VerifyingKey, error) {
+	content, err := ca.artifactContent(ca.verifyingKey, "verifying key")
+	if err != nil {
+		return nil, err
+	}
+	vk := ca.newVerifyingKey()
+	if _, err := vk.UnsafeReadFrom(bytes.NewReader(content)); err != nil {
+		return nil, fmt.Errorf("error decoding verifying key: %w", err)
+	}
+	return vk, nil
 }
 
 // NewCircuitArtifacts creates a new CircuitArtifacts struct with the circuit
@@ -120,22 +177,28 @@ func NewCircuitArtifacts(curve ecc.ID, circuit, provingKey, verifyingKey *Artifa
 	}
 }
 
-// LoadAll method loads the circuit artifacts into memory.
+// LoadAll loads the circuit artifacts into memory.
 func (ca *CircuitArtifacts) LoadAll() error {
 	if ca.circuitDefinition != nil {
-		if err := ca.circuitDefinition.Load(); err != nil {
-			return fmt.Errorf("error loading circuit definition: %w", err)
+		ccs, err := ca.decodeCircuitDefinition()
+		if err != nil {
+			return err
 		}
+		ca.ccs = ccs
 	}
 	if ca.provingKey != nil {
-		if err := ca.provingKey.Load(); err != nil {
-			return fmt.Errorf("error loading proving key: %w", err)
+		pk, err := ca.decodeProvingKey()
+		if err != nil {
+			return err
 		}
+		ca.pk = pk
 	}
 	if ca.verifyingKey != nil {
-		if err := ca.verifyingKey.Load(); err != nil {
-			return fmt.Errorf("error loading verifying key: %w", err)
+		vk, err := ca.decodeVerifyingKey()
+		if err != nil {
+			return err
 		}
+		ca.vk = vk
 	}
 	return nil
 }
@@ -143,14 +206,20 @@ func (ca *CircuitArtifacts) LoadAll() error {
 // DownloadAll method downloads the circuit artifacts with the provided context.
 // It returns an error if any of the artifacts cannot be downloaded.
 func (ca *CircuitArtifacts) DownloadAll(ctx context.Context) error {
-	if err := ca.circuitDefinition.Download(ctx); err != nil {
-		return fmt.Errorf("error downloading circuit definition: %w", err)
+	if ca.circuitDefinition != nil {
+		if err := ca.circuitDefinition.Download(ctx); err != nil {
+			return fmt.Errorf("error downloading circuit definition: %w", err)
+		}
 	}
-	if err := ca.provingKey.Download(ctx); err != nil {
-		return fmt.Errorf("error downloading proving key: %w", err)
+	if ca.provingKey != nil {
+		if err := ca.provingKey.Download(ctx); err != nil {
+			return fmt.Errorf("error downloading proving key: %w", err)
+		}
 	}
-	if err := ca.verifyingKey.Download(ctx); err != nil {
-		return fmt.Errorf("error downloading verifying key: %w", err)
+	if ca.verifyingKey != nil {
+		if err := ca.verifyingKey.Download(ctx); err != nil {
+			return fmt.Errorf("error downloading verifying key: %w", err)
+		}
 	}
 	return nil
 }
@@ -196,70 +265,51 @@ func (ca *CircuitArtifacts) VerifyingKeyHash() []byte {
 }
 
 // CircuitDefinition returns the content of the circuit definition as
-// constraint.ConstraintSystem. If the circuit definition is not loaded, it
-// returns nil.
+// constraint.ConstraintSystem. It returns an error if the circuit definition is
+// not loaded.
 func (ca *CircuitArtifacts) CircuitDefinition() (constraint.ConstraintSystem, error) {
-	if ca.circuitDefinition == nil {
+	if ca.ccs == nil {
 		return nil, fmt.Errorf("circuit definition not loaded")
 	}
-	var ccs constraint.ConstraintSystem
-	if types.UseGPUProver {
-		ccs = gpugroth16.NewCS(ca.curve)
-	} else {
-		ccs = groth16.NewCS(ca.curve)
-	}
-	_, err := ccs.ReadFrom(bytes.NewReader(ca.circuitDefinition.Content))
-	if err != nil {
-		return nil, fmt.Errorf("error reading circuit definition: %w", err)
-	}
-	return ccs, nil
+	return ca.ccs, nil
 }
 
 // ProvingKey returns the content of the proving key as groth16.ProvingKey. If
 // the proving key is not loaded or cannot be read, it returns an error.
 func (ca *CircuitArtifacts) ProvingKey() (groth16.ProvingKey, error) {
-	if ca.provingKey == nil {
+	if ca.pk == nil {
 		return nil, fmt.Errorf("proving key not loaded")
 	}
-	var pk groth16.ProvingKey
-	if types.UseGPUProver {
-		pk = gpugroth16.NewProvingKey(ca.curve)
-	} else {
-		pk = groth16.NewProvingKey(ca.curve)
-	}
-	_, err := pk.UnsafeReadFrom(bytes.NewReader(ca.provingKey.Content))
-	if err != nil {
-		return nil, fmt.Errorf("error reading proving key: %w", err)
-	}
-	return pk, nil
+	return ca.pk, nil
 }
 
 // VerifyingKey returns the content of the verifying key as groth16.VerifyingKey.
-// If the proving key is not loaded or cannot be read, it returns an error.
+// It returns an error if the verifying key is not loaded.
 func (ca *CircuitArtifacts) VerifyingKey() (groth16.VerifyingKey, error) {
-	if ca.verifyingKey == nil {
+	if ca.vk == nil {
 		return nil, fmt.Errorf("verifying key not loaded")
 	}
-	var vk groth16.VerifyingKey
-	if types.UseGPUProver {
-		vk = gpugroth16.NewVerifyingKey(ca.curve)
-	} else {
-		vk = groth16.NewVerifyingKey(ca.curve)
-	}
-	_, err := vk.UnsafeReadFrom(bytes.NewReader(ca.verifyingKey.Content))
-	if err != nil {
-		return nil, fmt.Errorf("error reading verifying key: %w", err)
-	}
-	return vk, nil
+	return ca.vk, nil
 }
 
 // RawVerifyingKey returns the content of the verifying key as types.HexBytes.
-// If the verifying key is not loaded, it returns nil.
-func (ca *CircuitArtifacts) RawVerifyingKey() []byte {
-	if ca.verifyingKey == nil {
-		return nil
+// It returns an error if the verifying key is not available or cannot be serialized.
+func (ca *CircuitArtifacts) RawVerifyingKey() ([]byte, error) {
+	if ca.vk != nil {
+		var raw bytes.Buffer
+		if _, err := ca.vk.WriteTo(&raw); err != nil {
+			return nil, fmt.Errorf("write verifying key: %w", err)
+		}
+		return raw.Bytes(), nil
 	}
-	return ca.verifyingKey.Content
+	if ca.verifyingKey == nil {
+		return nil, fmt.Errorf("verifying key not loaded")
+	}
+	content, err := ca.verifyingKey.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load verifying key: %w", err)
+	}
+	return content, nil
 }
 
 func load(hash []byte) ([]byte, error) {

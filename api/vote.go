@@ -311,17 +311,16 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidBallotInputsHash.Withf("ballot inputs hash mismatch").Write(w)
 		return
 	}
-	// load the verification key for the ballot proof circuit, used by the user
-	// to generate a proof of a valid ballot
-	if err := ballotproof.Artifacts.LoadAll(); err != nil {
-		ErrGenericInternalServerError.Withf("could not load artifacts: %v", err).Write(w)
+	rawBallotProofVK, err := ballotproof.Artifacts.RawVerifyingKey()
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not load ballot proof verification key: %v", err).Write(w)
 		return
 	}
 	// convert the circom proof to gnark proof and verify it
 	ballotProofAddress := vote.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
 	ballotProofVoteID := vote.VoteID.BigInt() // ToFF unneeded since VoteID is a uint64
 	proof, err := circomgnark.VerifyAndConvertToRecursion(
-		ballotproof.Artifacts.RawVerifyingKey(),
+		rawBallotProofVK,
 		vote.BallotProof,
 		[]string{
 			ballotProofAddress.String(),
