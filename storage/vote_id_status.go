@@ -198,7 +198,7 @@ func (s *Storage) setVoteIDStatus(processID types.ProcessID, voteID types.VoteID
 		if err == nil {
 			// DONE is a final status - cannot be changed
 			if currentStatus == VoteIDStatusDone {
-				log.Debugw("attempted to change settled vote status",
+				log.Debugw("attempted to change done vote status",
 					"processID", processID.String(),
 					"voteID", fmt.Sprintf("%x", voteID),
 					"currentStatus", VoteIDStatusName(currentStatus),

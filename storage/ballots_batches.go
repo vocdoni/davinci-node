@@ -445,7 +445,7 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, processID types.Process
 				s.releaseVoteID(ballot.VoteID)
 			}
 
-			// Mark all vote IDs in the batch as done (using unsafe version to avoid deadlock)
+			// Mark all vote IDs in the batch as done
 			if err := s.markVoteIDsDone(processID, voteIDs); err != nil {
 				log.Warnw("failed to mark vote IDs as done",
 					"error", err.Error(),

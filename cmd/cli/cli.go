@@ -308,7 +308,7 @@ func (s *CLIServices) ProcessEncKey(pid types.ProcessID) (*types.EncryptionKey, 
 	// Get the encryption keys from the sequencer
 	processEndpoint := api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String())
 	log.Debugw("getting encryption keys",
-		"pid", pid.String(),
+		"processID", pid.String(),
 		"endpoint", processEndpoint)
 	processResponse, status, err := s.cli.Request(http.MethodGet, nil, nil, processEndpoint)
 	if err != nil {

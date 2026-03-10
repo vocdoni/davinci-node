@@ -223,7 +223,7 @@ func main() {
 		}
 		for _, v := range votes {
 			// Check if the participant has already voted
-			if err := waitForAddressHasAlreadyVote(testCtx, cli, v.ProcessID, v.Address); err != nil {
+			if err := waitForAddressHasAlreadyVoted(testCtx, cli, v.ProcessID, v.Address); err != nil {
 				log.Errorw(err, "failed to ensure that the vote is in the state")
 			}
 		}
@@ -394,7 +394,7 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 			return fmt.Errorf("failed to send vote: %w", err)
 		}
 		log.Infow("vote sent",
-			"pid", vote.ProcessID.String(),
+			"processID", vote.ProcessID.String(),
 			"address", vote.Address.Hex(),
 			"voteID", voteID.String(),
 			"currentVote", i+1,
@@ -629,7 +629,7 @@ func hasAlreadyVoted(cli *client.HTTPclient, pid types.ProcessID, address common
 	return voteByAddressResponse != nil, nil
 }
 
-func waitForAddressHasAlreadyVote(ctx context.Context, cli *client.HTTPclient, pid types.ProcessID, address types.HexBytes) error {
+func waitForAddressHasAlreadyVoted(ctx context.Context, cli *client.HTTPclient, pid types.ProcessID, address types.HexBytes) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	for {
