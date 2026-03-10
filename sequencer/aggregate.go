@@ -156,24 +156,23 @@ func collectAggregationBatchInputs(
 
 		// If the maxVoters is reached, check if the ballot is an overwrite
 		// and skip if not
-
 		if maxVotersReached && !processState.ContainsBallot(types.CalculateBallotIndex(b.CensusProof.VoterIndex)) {
 			log.Debugw("skipping ballot due to max voters reached",
-				"address", b.Address.String(),
+				"address", types.HexBytes(b.Address.Bytes()),
 				"processID", processID.String())
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
 				log.Warnw("failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
-					"address", b.Address.String(),
+					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
 					log.Warnw("failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
-						"address", b.Address.String(),
+						"address", types.HexBytes(b.Address.Bytes()),
 					)
 				}
 			}
@@ -184,21 +183,21 @@ func collectAggregationBatchInputs(
 			log.Warnw("skipping verified ballot with missing vote verifier proof",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
-				"address", b.Address.String(),
+				"address", types.HexBytes(b.Address.Bytes()),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
 				log.Warnw("failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
-					"address", b.Address.String(),
+					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
 					log.Warnw("failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
-						"address", b.Address.String(),
+						"address", types.HexBytes(b.Address.Bytes()),
 					)
 				}
 			}
@@ -208,21 +207,21 @@ func collectAggregationBatchInputs(
 			log.Warnw("skipping verified ballot with missing vote verifier inputs hash",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
-				"address", b.Address.String(),
+				"address", types.HexBytes(b.Address.Bytes()),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
 				log.Warnw("failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
-					"address", b.Address.String(),
+					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
 					log.Warnw("failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
-						"address", b.Address.String(),
+						"address", types.HexBytes(b.Address.Bytes()),
 					)
 				}
 			}
@@ -233,21 +232,21 @@ func collectAggregationBatchInputs(
 			log.Warnw("skipping verified ballot with malformed vote verifier proof (subgroup check failed)",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
-				"address", b.Address.String(),
+				"address", types.HexBytes(b.Address.Bytes()),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
 				log.Warnw("failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
-					"address", b.Address.String(),
+					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
 					log.Warnw("failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
-						"address", b.Address.String(),
+						"address", types.HexBytes(b.Address.Bytes()),
 					)
 				}
 			}
@@ -259,7 +258,7 @@ func collectAggregationBatchInputs(
 				log.Warnw("skipping verified ballot with invalid vote verifier proof",
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
-					"address", b.Address.String(),
+					"address", types.HexBytes(b.Address.Bytes()),
 					"error", err.Error(),
 				)
 				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
@@ -267,14 +266,14 @@ func collectAggregationBatchInputs(
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
-						"address", b.Address.String(),
+						"address", types.HexBytes(b.Address.Bytes()),
 					)
 					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
 						log.Warnw("failed to release ballot reservation after failure marking",
 							"error", err.Error(),
 							"processID", processID.String(),
 							"voteID", b.VoteID.String(),
-							"address", b.Address.String(),
+							"address", types.HexBytes(b.Address.Bytes()),
 						)
 					}
 				}
@@ -298,7 +297,7 @@ func collectAggregationBatchInputs(
 			log.Warnw("failed to transform proof for recursion; marking ballot as failed",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
-				"address", b.Address.String(),
+				"address", types.HexBytes(b.Address.Bytes()),
 				"error", err.Error(),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
@@ -306,14 +305,14 @@ func collectAggregationBatchInputs(
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
-					"address", b.Address.String(),
+					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
 					log.Warnw("failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
-						"address", b.Address.String(),
+						"address", types.HexBytes(b.Address.Bytes()),
 					)
 				}
 			}

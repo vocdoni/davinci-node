@@ -8,6 +8,7 @@ import (
 
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -17,9 +18,10 @@ const (
 	VoteIDStatusVerified
 	VoteIDStatusAggregated
 	VoteIDStatusProcessed
-	VoteIDStatusSettled
+	VoteIDStatusDone
 	VoteIDStatusError
 	VoteIDStatusTimeout
+	VoteIDStatusSettled
 )
 
 // voteIDStatusNames maps status codes to human-readable names
@@ -28,9 +30,10 @@ var voteIDStatusNames = map[int]string{
 	VoteIDStatusVerified:   "verified",
 	VoteIDStatusAggregated: "aggregated",
 	VoteIDStatusProcessed:  "processed",
-	VoteIDStatusSettled:    "settled",
+	VoteIDStatusDone:       "done",
 	VoteIDStatusError:      "error",
 	VoteIDStatusTimeout:    "timeout",
+	VoteIDStatusSettled:    "settled",
 }
 
 // VoteIDStatus returns the status of a vote ID for a given processID and voteID.
@@ -38,12 +41,12 @@ var voteIDStatusNames = map[int]string{
 func (s *Storage) VoteIDStatus(processID types.ProcessID, voteID types.VoteID) (int, error) {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	return s.voteIDStatusUnsafe(processID, voteID)
+	return s.voteIDStatus(processID, voteID)
 }
 
-// voteIDStatusUnsafe returns the status of a vote ID without acquiring locks.
-// This method assumes the caller already holds the globalLock.
-func (s *Storage) voteIDStatusUnsafe(processID types.ProcessID, voteID types.VoteID) (int, error) {
+// voteIDStatus returns the status of a vote ID without acquiring locks. This
+// method assumes the caller already holds the globalLock.
+func (s *Storage) voteIDStatus(processID types.ProcessID, voteID types.VoteID) (int, error) {
 	// Create the composite key: processID/voteID
 	key := createVoteIDStatusKey(processID, voteID)
 
@@ -60,6 +63,28 @@ func (s *Storage) voteIDStatusUnsafe(processID types.ProcessID, voteID types.Vot
 		return 0, fmt.Errorf("invalid vote ID status format: %w", err)
 	}
 
+	// If the vote has reached done status in the sequencer, it could be
+	// already settled, but only if it is in the current state
+	if status == VoteIDStatusDone {
+		// Get the current process state root
+		process, err := s.process(processID)
+		if err != nil {
+			return 0, err
+		}
+
+		// Load the state of the process
+		pState, err := state.LoadOnRoot(s.stateDB, processID, process.StateRoot.MathBigInt())
+		if err != nil {
+			return status, nil
+		}
+
+		// If the vote ID is in the state, it is settled
+		if pState.ContainsVoteID(voteID) {
+			return VoteIDStatusSettled, nil
+		}
+	}
+
+	// Return the status
 	return status, nil
 }
 
@@ -71,24 +96,25 @@ func VoteIDStatusName(status int) string {
 	return "unknown_status_" + strconv.Itoa(status)
 }
 
-// MarkVoteIDsSettled marks a list of vote IDs as settled for a given processID.
-// This function is called after a state transition batch is confirmed on the blockchain.
-func (s *Storage) MarkVoteIDsSettled(processID types.ProcessID, voteIDs []types.VoteID) error {
+// MarkVoteIDsDone marks a list of vote IDs as settled for a given processID.
+// This function is called after a state transition batch is confirmed on the
+// blockchain.
+func (s *Storage) MarkVoteIDsDone(processID types.ProcessID, voteIDs []types.VoteID) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	return s.markVoteIDsSettled(processID, voteIDs)
+	return s.markVoteIDsDone(processID, voteIDs)
 }
 
-// markVoteIDsSettledUnsafe marks a list of vote IDs as settled without acquiring locks.
+// markVoteIDsDone marks a list of vote IDs as settled without acquiring locks.
 // This method assumes the caller already holds the globalLock.
-func (s *Storage) markVoteIDsSettled(processID types.ProcessID, voteIDs []types.VoteID) error {
+func (s *Storage) markVoteIDsDone(processID types.ProcessID, voteIDs []types.VoteID) error {
 	// Use a transaction for better atomicity
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), voteIDStatusPrefix)
 	defer wTx.Discard()
 
 	for _, voteID := range voteIDs {
 		key := createVoteIDStatusKey(processID, voteID)
-		status := intToBytes(VoteIDStatusSettled)
+		status := intToBytes(VoteIDStatusDone)
 
 		if err := wTx.Set(key, status); err != nil {
 			return fmt.Errorf("failed to mark vote ID settled: %w", err)
@@ -132,8 +158,8 @@ func (s *Storage) markProcessVoteIDsTimeout(processID types.ProcessID) (int, err
 			return true
 		}
 
-		// Only mark as timeout if not already settled
-		if currentStatus != VoteIDStatusSettled {
+		// Only mark as timeout if not already done
+		if currentStatus != VoteIDStatusDone {
 			timeoutStatus := intToBytes(VoteIDStatusTimeout)
 			if err := wTx.Set(fullKey, timeoutStatus); err != nil {
 				log.Warnw("failed to mark vote ID as timeout",
@@ -157,7 +183,7 @@ func (s *Storage) markProcessVoteIDsTimeout(processID types.ProcessID) (int, err
 
 // setVoteIDStatus is an internal helper to set the status of a vote ID.
 // It enforces status transition rules to prevent invalid state changes:
-// - SETTLED status is final and cannot be changed
+// - DONE status is final and cannot be changed
 // - Status transitions must follow the valid progression
 func (s *Storage) setVoteIDStatus(processID types.ProcessID, voteID types.VoteID, status int) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), voteIDStatusPrefix)
@@ -170,9 +196,9 @@ func (s *Storage) setVoteIDStatus(processID types.ProcessID, voteID types.VoteID
 	if err == nil && currentStatusBytes != nil {
 		currentStatus, err := bytesToInt(currentStatusBytes)
 		if err == nil {
-			// SETTLED is a final status - cannot be changed
-			if currentStatus == VoteIDStatusSettled {
-				log.Debugw("attempted to change settled vote status",
+			// DONE is a final status - cannot be changed
+			if currentStatus == VoteIDStatusDone {
+				log.Debugw("attempted to change done vote status",
 					"processID", processID.String(),
 					"voteID", fmt.Sprintf("%x", voteID),
 					"currentStatus", VoteIDStatusName(currentStatus),
@@ -203,21 +229,21 @@ func (s *Storage) setVoteIDStatus(processID types.ProcessID, voteID types.VoteID
 
 // isValidStatusTransition checks if a status transition is valid.
 // Valid transitions follow this flow:
-// PENDING → VERIFIED → AGGREGATED → PROCESSED → SETTLED
-// Any status can transition to ERROR or TIMEOUT (except SETTLED)
+// PENDING → VERIFIED → AGGREGATED → PROCESSED → DONE
+// Any status can transition to ERROR or TIMEOUT (except DONE)
 func isValidStatusTransition(from, to int) bool {
-	// SETTLED is final - no transitions allowed
-	if from == VoteIDStatusSettled {
+	// DONE is final - no transitions allowed
+	if from == VoteIDStatusDone {
 		return false
 	}
 
-	// ERROR and TIMEOUT are terminal states (except from SETTLED)
+	// ERROR and TIMEOUT are terminal states (except from DONE)
 	if to == VoteIDStatusError || to == VoteIDStatusTimeout {
 		return true
 	}
 
-	// SETTLED can only be reached from PROCESSED
-	if to == VoteIDStatusSettled {
+	// DONE can only be reached from PROCESSED
+	if to == VoteIDStatusDone {
 		return from == VoteIDStatusProcessed
 	}
 
@@ -226,7 +252,7 @@ func isValidStatusTransition(from, to int) bool {
 		VoteIDStatusPending:    {VoteIDStatusVerified},
 		VoteIDStatusVerified:   {VoteIDStatusAggregated},
 		VoteIDStatusAggregated: {VoteIDStatusProcessed},
-		VoteIDStatusProcessed:  {VoteIDStatusSettled, VoteIDStatusAggregated}, // Allow rollback to aggregated
+		VoteIDStatusProcessed:  {VoteIDStatusDone, VoteIDStatusAggregated}, // Allow rollback to aggregated
 	}
 
 	allowedNext, exists := validTransitions[from]
@@ -234,13 +260,7 @@ func isValidStatusTransition(from, to int) bool {
 		return false
 	}
 
-	for _, allowed := range allowedNext {
-		if to == allowed {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(allowedNext, to)
 }
 
 // Helper function to create a composite key for vote ID status

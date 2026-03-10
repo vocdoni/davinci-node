@@ -113,7 +113,7 @@ func main() {
 			log.Errorw(err, "failed to create process")
 			return
 		}
-		log.Infow("process created", "pid", pid.String())
+		log.Infow("process created", "processID", pid.String())
 	case "vote":
 		processID, err := types.HexStringToProcessID(*pid)
 		if err != nil {
@@ -148,6 +148,6 @@ func main() {
 			log.Errorw(err, "failed to stop process")
 			return
 		}
-		log.Infow("process stopped", "pid", processID.String())
+		log.Infow("process stopped", "processID", processID.String())
 	}
 }

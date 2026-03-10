@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	flag "github.com/spf13/pflag"
 	"github.com/vocdoni/arbo/memdb"
@@ -19,6 +20,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/config"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
@@ -37,7 +39,7 @@ import (
 )
 
 const (
-	defaultNetwork     = "sepolia"
+	defaultNetwork     = "sep"
 	defaultCAPI        = "https://ethereum-sepolia-beacon-api.publicnode.com"
 	localSequencerHost = "0.0.0.0"
 	localSequencerPort = 8080
@@ -67,9 +69,10 @@ func main() {
 		voteSleepTime                    = flag.Duration("voteSleepTime", 10*time.Second, "time to sleep between votes")
 		web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
 		parallel                         = flag.Bool("parallel", false, "cast votes to different sequencers at the same time")
+		debugLevel                       = flag.String("debug", "debug", "debug level")
 	)
 	flag.Parse()
-	log.Init("debug", "stdout", nil)
+	log.Init(*debugLevel, "stdout", nil)
 
 	// Create a context with the test timeout
 	testCtx, cancel := context.WithTimeout(context.Background(), *testTimeout)
@@ -217,6 +220,12 @@ func main() {
 		if err := waitUntilSmartContractCounts(testCtx, contracts, processID, *votersCount, 0); err != nil {
 			log.Errorw(err, "failed to wait for votes to be registered in smart contract")
 			return
+		}
+		for _, v := range votes {
+			// Check if the participant has already voted
+			if err := waitForAddressHasAlreadyVoted(testCtx, cli, v.ProcessID, v.Address); err != nil {
+				log.Errorw(err, "failed to ensure that the vote is in the state")
+			}
 		}
 
 	}
@@ -385,10 +394,11 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 			return fmt.Errorf("failed to send vote: %w", err)
 		}
 		log.Infow("vote sent",
+			"processID", vote.ProcessID.String(),
+			"address", vote.Address.Hex(),
 			"voteID", voteID.String(),
 			"currentVote", i+1,
 			"totalVotes", len(votes))
-
 		// Wait the sleepTime before sending the next vote
 		time.Sleep(sleepTime)
 	}
@@ -598,6 +608,41 @@ func sendVote(cli *client.HTTPclient, vote api.Vote) (types.VoteID, error) {
 		return 0, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
+}
+
+func hasAlreadyVoted(cli *client.HTTPclient, pid types.ProcessID, address common.Address) (bool, error) {
+	// get participant from the sequencer
+	voteByAddressProcessEndpoint := api.EndpointWithParam(api.VoteByAddressEndpoint, api.ProcessURLParam, pid.String())
+	voteByAddressEndpoint := api.EndpointWithParam(voteByAddressProcessEndpoint, api.AddressURLParam, address.Hex())
+	voteByAddressBody, statusCode, err := cli.Request("GET", nil, nil, voteByAddressEndpoint)
+	if err != nil {
+		return false, fmt.Errorf("failed to request participant: %w", err)
+	}
+	if statusCode != 200 {
+		return false, fmt.Errorf("unexpected status code: %d: %s", statusCode, string(voteByAddressBody))
+	}
+	var voteByAddressResponse *elgamal.Ballot
+	err = json.NewDecoder(bytes.NewReader(voteByAddressBody)).Decode(&voteByAddressResponse)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode already voted response: %w", err)
+	}
+	return voteByAddressResponse != nil, nil
+}
+
+func waitForAddressHasAlreadyVoted(ctx context.Context, cli *client.HTTPclient, pid types.ProcessID, address types.HexBytes) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if ok, err := hasAlreadyVoted(cli, pid, common.BytesToAddress(address)); err != nil || !ok {
+				continue
+			}
+			return nil
+		}
+	}
 }
 
 func waitUntilSmartContractCounts(

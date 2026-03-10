@@ -130,7 +130,6 @@ func TestOffChainMerkleTreeStaticCensus(t *testing.T) {
 	})
 
 	c.Run("ensure that every address has voted", func(c *qt.C) {
-		c.Skip()
 		t.Logf("Checking for %d address to have a vote in the state", len(signers))
 		if err := helpers.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
 			for _, signer := range signers {

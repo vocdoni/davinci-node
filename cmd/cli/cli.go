@@ -16,6 +16,7 @@ import (
 	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec"
@@ -307,7 +308,7 @@ func (s *CLIServices) ProcessEncKey(pid types.ProcessID) (*types.EncryptionKey, 
 	// Get the encryption keys from the sequencer
 	processEndpoint := api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, pid.String())
 	log.Debugw("getting encryption keys",
-		"pid", pid.String(),
+		"processID", pid.String(),
 		"endpoint", processEndpoint)
 	processResponse, status, err := s.cli.Request(http.MethodGet, nil, nil, processEndpoint)
 	if err != nil {
@@ -458,4 +459,23 @@ func (s *CLIServices) SubmitVote(vote api.Vote) (types.VoteID, error) {
 		return 0, fmt.Errorf("failed to cast vote (status code %d): %s", status, body)
 	}
 	return vote.VoteID, nil
+}
+
+func (s *CLIServices) HasAddressAlreadyVoted(pid types.ProcessID, address common.Address) (bool, error) {
+	// get participant from the sequencer
+	voteByAddressProcessEndpoint := api.EndpointWithParam(api.VoteByAddressEndpoint, api.ProcessURLParam, pid.String())
+	voteByAddressEndpoint := api.EndpointWithParam(voteByAddressProcessEndpoint, api.AddressURLParam, address.Hex())
+	voteByAddressBody, statusCode, err := s.cli.Request("GET", nil, nil, voteByAddressEndpoint)
+	if err != nil {
+		return false, fmt.Errorf("failed to request participant: %w", err)
+	}
+	if statusCode != 200 {
+		return false, fmt.Errorf("unexpected status code: %d: %s", statusCode, string(voteByAddressBody))
+	}
+	var voteByAddressResponse *elgamal.Ballot
+	err = json.NewDecoder(bytes.NewReader(voteByAddressBody)).Decode(&voteByAddressResponse)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode already voted response: %w", err)
+	}
+	return voteByAddressResponse != nil, nil
 }

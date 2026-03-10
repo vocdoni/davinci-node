@@ -17,6 +17,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 // startBallotProcessor starts a background goroutine that continuously processes ballots.
@@ -88,7 +89,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 		}
 
 		log.Infow("processing ballot",
-			"address", ballot.Address.String(),
+			"address", types.HexBytes(ballot.Address.Bytes()),
 			"voteID", ballot.VoteID.String(),
 			"processID", ballot.ProcessID.String(),
 		)
@@ -109,7 +110,7 @@ func (s *Sequencer) processAvailableBallots() bool {
 		if err := s.stg.MarkBallotVerified(key, verifiedBallot); err != nil {
 			log.Warnw("failed to mark ballot as processed",
 				"error", err.Error(),
-				"address", ballot.Address.String(),
+				"address", types.HexBytes(ballot.Address.Bytes()),
 				"processID", ballot.ProcessID.String(),
 			)
 			continue
@@ -174,7 +175,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	log.Debugw("vote verifier inputs ready",
 		"processID", b.ProcessID.String(),
 		"voteID", b.VoteID.String(),
-		"address", b.Address.String(),
+		"address", types.HexBytes(b.Address.Bytes()),
 		"inputsHash", b.BallotInputsHash.String(),
 	)
 
@@ -211,7 +212,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 	log.Infow("vote verification proof generated",
 		"processID", b.ProcessID.String(),
 		"voteID", b.VoteID.String(),
-		"address", b.Address.String(),
+		"address", types.HexBytes(b.Address.Bytes()),
 		"took", time.Since(startTime).String(),
 	)
 
