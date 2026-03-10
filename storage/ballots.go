@@ -516,7 +516,7 @@ func (s *Storage) MarkVerifiedBallotsFailed(keys ...[]byte) error {
 		}
 
 		// Check current vote ID status to avoid double-processing
-		currentStatus, err := s.voteIDStatusUnsafe(ballot.ProcessID, ballot.VoteID)
+		currentStatus, err := s.voteIDStatus(ballot.ProcessID, ballot.VoteID)
 		if err != nil {
 			log.Warnw("could not get vote ID status during failure marking",
 				"processID", ballot.ProcessID.String(),

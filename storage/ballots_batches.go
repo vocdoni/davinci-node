@@ -118,7 +118,7 @@ func (s *Storage) MarkAggregatorBatchFailed(key []byte) error {
 	// Mark all vote IDs in the batch as error and count how many were actually aggregated
 	for _, ballot := range agg.Ballots {
 		// Check current vote ID status to avoid double-processing
-		currentStatus, err := s.voteIDStatusUnsafe(agg.ProcessID, ballot.VoteID)
+		currentStatus, err := s.voteIDStatus(agg.ProcessID, ballot.VoteID)
 		if err != nil {
 			log.Warnw("could not get vote ID status during batch failure",
 				"processID", agg.ProcessID.String(),
@@ -445,15 +445,15 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, processID types.Process
 				s.releaseVoteID(ballot.VoteID)
 			}
 
-			// Mark all vote IDs in the batch as settled (using unsafe version to avoid deadlock)
-			if err := s.markVoteIDsSettled(processID, voteIDs); err != nil {
-				log.Warnw("failed to mark vote IDs as settled",
+			// Mark all vote IDs in the batch as done (using unsafe version to avoid deadlock)
+			if err := s.markVoteIDsDone(processID, voteIDs); err != nil {
+				log.Warnw("failed to mark vote IDs as done",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteIDCount", len(voteIDs),
 				)
 			} else {
-				log.Debugw("marked vote IDs as settled",
+				log.Debugw("marked vote IDs as done",
 					"processID", processID.String(),
 					"voteIDCount", len(voteIDs),
 				)

@@ -196,7 +196,7 @@ func TestMaxVoters(t *testing.T) {
 	c.Run("wait for settled extra votes", func(c *qt.C) {
 		if err := helpers.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
 			// Check that votes are settled (state transitions confirmed on blockchain)
-			if allSettled, failed, err := helpers.EnsureVotesStatus(services.HTTPClient, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
+			if allSettled, failed, err := helpers.EnsureVotesStatus(services.HTTPClient, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusDone)); !allSettled {
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
 				if len(failed) > 0 {
 					hexFailed := types.SliceOf(failed, func(v types.VoteID) string { return v.String() })

@@ -13,14 +13,14 @@ import (
 
 // cleanupEndedProcess removes all ballots, batches, state transitions and their
 // reservations for a given processID. This method is called when a process is
-// ended to free storage space. All votes that were not yet settled are marked
+// ended to free storage space. All votes that were not yet done are marked
 // as timeout before removal to preserve vote status for voter queries.
 //
 // The cleanup process handles:
 // 1. Pending ballots (requires full iteration since they're keyed by voteID only)
 // 2. Verified ballots (efficient iteration using processID prefix)
 // 3. Aggregator batches (with vote ID status checking)
-// 4. State transitions (preserving already settled votes)
+// 4. State transitions (preserving already done votes)
 // 5. Verified results
 // 6. Vote ID statuses (marked as timeout, not deleted)
 //
@@ -52,7 +52,7 @@ func (s *Storage) cleanupEndedProcess(processID types.ProcessID) error {
 		errs = append(errs, fmt.Errorf("state transitions: %w", err))
 	}
 
-	// Mark unsettled vote IDs as timeout (preserve vote status records for voters)
+	// Mark undone vote IDs as timeout (preserve vote status records for voters)
 	if count, err := s.markProcessVoteIDsTimeout(processID); err != nil {
 		errs = append(errs, fmt.Errorf("vote ID timeout marking: %w", err))
 	} else {
@@ -134,7 +134,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 		processBallots[ballot.ProcessID].keys = append(processBallots[ballot.ProcessID].keys, keyCopy)
 
 		// Check current status to determine if we should count it for stats
-		currentStatus, err := s.voteIDStatusUnsafe(ballot.ProcessID, ballot.VoteID)
+		currentStatus, err := s.voteIDStatus(ballot.ProcessID, ballot.VoteID)
 		if err != nil {
 			log.Warnw("could not get vote ID status during verified ballot cleanup",
 				"processID", ballot.ProcessID.String(),
@@ -151,8 +151,8 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 				"currentStatus", VoteIDStatusName(currentStatus))
 		}
 
-		// Mark vote ID as error only if not already settled
-		if currentStatus != VoteIDStatusSettled {
+		// Mark vote ID as error only if not already done
+		if currentStatus != VoteIDStatusDone {
 			if err := s.setVoteIDStatus(ballot.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 				log.Warnw("failed to set vote ID status to error",
 					"processID", ballot.ProcessID.String(),
@@ -252,7 +252,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 		// Process each ballot in the batch
 		for _, ballot := range batch.Ballots {
 			// Check current status to determine if we should count it for stats
-			currentStatus, err := s.voteIDStatusUnsafe(batch.ProcessID, ballot.VoteID)
+			currentStatus, err := s.voteIDStatus(batch.ProcessID, ballot.VoteID)
 			if err != nil {
 				log.Warnw("could not get vote ID status during batch cleanup",
 					"processID", batch.ProcessID.String(),
@@ -269,8 +269,8 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 					"currentStatus", VoteIDStatusName(currentStatus))
 			}
 
-			// Mark vote ID as error only if not already settled
-			if currentStatus != VoteIDStatusSettled {
+			// Mark vote ID as error only if not already done
+			if currentStatus != VoteIDStatusDone {
 				if err := s.setVoteIDStatus(batch.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 					log.Warnw("failed to set vote ID status to error",
 						"processID", batch.ProcessID.String(),
@@ -366,7 +366,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 		// Check if this batch should be counted (check first ballot status)
 		batchIsValid := false
 		if len(stb.Ballots) > 0 {
-			currentStatus, err := s.voteIDStatusUnsafe(stb.ProcessID, stb.Ballots[0].VoteID)
+			currentStatus, err := s.voteIDStatus(stb.ProcessID, stb.Ballots[0].VoteID)
 			if err != nil {
 				log.Warnw("could not get vote ID status during state transition cleanup",
 					"processID", stb.ProcessID.String(),
@@ -390,8 +390,8 @@ func (s *Storage) cleanAllStateTransitions() error {
 
 		// Process each ballot in the batch
 		for _, ballot := range stb.Ballots {
-			// Check current status - only mark as error if not PROCESSED or SETTLED
-			currentStatus, err := s.voteIDStatusUnsafe(stb.ProcessID, ballot.VoteID)
+			// Check current status - only mark as error if not PROCESSED or DONE
+			currentStatus, err := s.voteIDStatus(stb.ProcessID, ballot.VoteID)
 			if err != nil {
 				log.Warnw("could not get vote ID status during state transition cleanup",
 					"processID", stb.ProcessID.String(),
@@ -399,10 +399,10 @@ func (s *Storage) cleanAllStateTransitions() error {
 					"error", err.Error())
 			}
 
-			// Only mark as error if not in PROCESSED or SETTLED status
+			// Only mark as error if not in PROCESSED or DONE status
 			// PROCESSED votes are valid and just waiting for settlement
-			// SETTLED votes have already been finalized
-			if currentStatus != VoteIDStatusProcessed && currentStatus != VoteIDStatusSettled {
+			// DONE votes have already been finalized
+			if currentStatus != VoteIDStatusProcessed && currentStatus != VoteIDStatusDone {
 				if err := s.setVoteIDStatus(stb.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 					log.Warnw("failed to set vote ID status to error",
 						"processID", stb.ProcessID.String(),

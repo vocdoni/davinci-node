@@ -168,11 +168,11 @@ func TestBallotQueue_MarkStateTransitionBatchDone(t *testing.T) {
 	_, _, err = stg.NextStateTransitionBatch(pid)
 	c.Assert(errors.Is(err, ErrNoMoreElements), qt.IsTrue)
 
-	// voteIDs should now be settled
+	// voteIDs should now be done
 	for _, id := range ids {
 		status, err := stg.VoteIDStatus(pid, id)
 		c.Assert(err, qt.IsNil)
-		c.Assert(status, qt.Equals, VoteIDStatusSettled)
+		c.Assert(status, qt.Equals, VoteIDStatusDone)
 	}
 }
 
@@ -284,6 +284,8 @@ func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 
 	// Test process ID
 	processID := testutil.RandomProcessID()
+	process := testutil.RandomProcess(processID)
+	c.Assert(stg.NewProcess(process), qt.IsNil)
 
 	// Create test ballots
 	ballots := []*AggregatorBallot{
@@ -364,8 +366,8 @@ func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 	for _, ballot := range ballots {
 		status, err := stg.VoteIDStatus(processID, ballot.VoteID)
 		c.Assert(err, qt.IsNil)
-		// After MarkStateTransitionBatchDone, vote IDs should be settled
-		c.Assert(status, qt.Equals, VoteIDStatusSettled, qt.Commentf("vote ID should be settled after MarkStateTransitionBatchDone"))
+		// After MarkStateTransitionBatchDone, vote IDs should be done
+		c.Assert(status, qt.Equals, VoteIDStatusDone, qt.Commentf("vote ID should be done after MarkStateTransitionBatchDone"))
 	}
 
 	// Verify no more batches are available
