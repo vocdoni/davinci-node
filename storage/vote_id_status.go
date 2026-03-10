@@ -19,9 +19,9 @@ const (
 	VoteIDStatusAggregated
 	VoteIDStatusProcessed
 	VoteIDStatusDone
-	VoteIDStatusSettled
 	VoteIDStatusError
 	VoteIDStatusTimeout
+	VoteIDStatusSettled
 )
 
 // voteIDStatusNames maps status codes to human-readable names
@@ -31,9 +31,9 @@ var voteIDStatusNames = map[int]string{
 	VoteIDStatusAggregated: "aggregated",
 	VoteIDStatusProcessed:  "processed",
 	VoteIDStatusDone:       "done",
-	VoteIDStatusSettled:    "settled",
 	VoteIDStatusError:      "error",
 	VoteIDStatusTimeout:    "timeout",
+	VoteIDStatusSettled:    "settled",
 }
 
 // VoteIDStatus returns the status of a vote ID for a given processID and voteID.
@@ -73,13 +73,13 @@ func (s *Storage) voteIDStatus(processID types.ProcessID, voteID types.VoteID) (
 		}
 
 		// Load the state of the process
-		state, err := state.LoadOnRoot(s.stateDB, processID, process.StateRoot.MathBigInt())
+		pState, err := state.LoadOnRoot(s.stateDB, processID, process.StateRoot.MathBigInt())
 		if err != nil {
 			return status, nil
 		}
 
 		// If the vote ID is in the state, it is settled
-		if state.ContainsVoteID(voteID) {
+		if pState.ContainsVoteID(voteID) {
 			return VoteIDStatusSettled, nil
 		}
 	}
@@ -229,15 +229,15 @@ func (s *Storage) setVoteIDStatus(processID types.ProcessID, voteID types.VoteID
 
 // isValidStatusTransition checks if a status transition is valid.
 // Valid transitions follow this flow:
-// PENDING → VERIFIED → AGGREGATED → PROCESSED → SETTLED
-// Any status can transition to ERROR or TIMEOUT (except SETTLED)
+// PENDING → VERIFIED → AGGREGATED → PROCESSED → DONE
+// Any status can transition to ERROR or TIMEOUT (except DONE)
 func isValidStatusTransition(from, to int) bool {
 	// DONE is final - no transitions allowed
 	if from == VoteIDStatusDone {
 		return false
 	}
 
-	// ERROR and TIMEOUT are terminal states (except from SETTLED)
+	// ERROR and TIMEOUT are terminal states (except from DONE)
 	if to == VoteIDStatusError || to == VoteIDStatusTimeout {
 		return true
 	}

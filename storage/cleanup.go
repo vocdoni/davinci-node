@@ -151,8 +151,8 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 				"currentStatus", VoteIDStatusName(currentStatus))
 		}
 
-		// Mark vote ID as error only if not already done
-		if currentStatus != VoteIDStatusDone {
+		// Mark vote ID as error only if not already settled
+		if currentStatus != VoteIDStatusSettled {
 			if err := s.setVoteIDStatus(ballot.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 				log.Warnw("failed to set vote ID status to error",
 					"processID", ballot.ProcessID.String(),
@@ -399,10 +399,12 @@ func (s *Storage) cleanAllStateTransitions() error {
 					"error", err.Error())
 			}
 
-			// Only mark as error if not in PROCESSED or DONE status
+			// Only mark as error if not in PROCESSED, DONE or SETTLED status
 			// PROCESSED votes are valid and just waiting for settlement
 			// DONE votes have already been finalized
-			if currentStatus != VoteIDStatusProcessed && currentStatus != VoteIDStatusDone {
+			if currentStatus != VoteIDStatusProcessed &&
+				currentStatus != VoteIDStatusDone &&
+				currentStatus != VoteIDStatusSettled {
 				if err := s.setVoteIDStatus(stb.ProcessID, ballot.VoteID, VoteIDStatusError); err != nil {
 					log.Warnw("failed to set vote ID status to error",
 						"processID", stb.ProcessID.String(),
