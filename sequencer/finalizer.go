@@ -355,6 +355,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		subDecryptionProofs,
 	)
 	if err != nil {
+		setProcessInvalid()
 		return fmt.Errorf("could not generate assignment for process %s: %w", processID.String(), err)
 	}
 	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
@@ -366,11 +367,13 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		opts,
 	)
 	if err != nil {
+		setProcessInvalid()
 		return fmt.Errorf("could not generate proof for process %s: %w", processID.String(), err)
 	}
 
 	stateRootBI, err := st.RootAsBigInt()
 	if err != nil {
+		setProcessInvalid()
 		return fmt.Errorf("could not get state root for process %s: %w", processID.String(), err)
 	}
 
@@ -383,6 +386,7 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 			Results:   resultsAccumulator,
 		},
 	}); err != nil {
+		setProcessInvalid()
 		return fmt.Errorf("could not store results for process %s: %w", processID.String(), err)
 	}
 
