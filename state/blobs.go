@@ -24,15 +24,22 @@ type BlobData struct {
 	ResultsSub []*big.Int
 }
 
-// BuildKZGCommitment collects the raw batch-data, packs it into one blob and
-// produces (blob, commitment, proof, z, y, versionedHash).
+// BlobEvalData returns the cached blob evaluation data for the current batch.
 //
 // blob layout:
 //  1. ResultsAdd (params.FieldsPerBallot * 4 coordinates)
 //  2. ResultsSub (params.FieldsPerBallot * 4 coordinates)
 //  3. Votes sequentially until voteID = 0x0 (sentinel):
 //     Each vote: voteID + address + reencryptedBallot coordinates
-func (st *State) BuildKZGCommitment() (*blobs.BlobEvalData, error) {
+func (st *State) BlobEvalData() (*blobs.BlobEvalData, error) {
+	if st.blobEvalData == nil {
+		return nil, fmt.Errorf("blob eval data not available")
+	}
+
+	return st.blobEvalData, nil
+}
+
+func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 	var cells [BlobTxFieldElementsPerBlob][BlobTxBytesPerFieldElement]byte
 	cell := 0
 	push := func(bi *big.Int) error {

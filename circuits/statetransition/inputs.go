@@ -118,9 +118,9 @@ func GenerateAssignment(
 	}
 
 	// Blob evaluation data
-	blobData, err := o.BuildKZGCommitment()
+	blobData, err := o.BlobEvalData()
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not build KZG commitment: %w", err)
+		return nil, nil, fmt.Errorf("could not get blob eval data: %w", err)
 	}
 
 	// Assign commitment and proof limbs to the circuit assignment.
