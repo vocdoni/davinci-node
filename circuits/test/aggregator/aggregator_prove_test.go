@@ -8,12 +8,10 @@ import (
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/r1cs"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	"github.com/vocdoni/davinci-node/internal/testutil"
-	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -30,65 +28,26 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	processID := testutil.FixedProcessID()
 	nValidVoters := 3
 
-	// Cache for the local compiled circuit artifacts
-	cache, err := circuitstest.NewCircuitCache()
-	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
-	aggCacheData := circuitstest.AggregatorCacheData{}
-	aggCCSHash, err := circuitstest.AggregatorCircuitCCSHash()
-	c.Assert(err, qt.IsNil, qt.Commentf("compute aggregator CCS hash"))
-	cacheKey := cache.GenerateCacheKey(aggCCSHash, processID, "aggregator", nValidVoters)
+	start := time.Now()
+	_, _, assignment := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, nValidVoters)
+	t.Logf("inputs generation took %s", time.Since(start))
 
-	// Try to load everything from cache first to avoid regenerating inputs/compile/setup
-	cacheErr := cache.LoadData(cacheKey, &aggCacheData, true)
-	cacheReady := cacheErr == nil &&
-		aggCacheData.ConstraintSystem != nil &&
-		aggCacheData.VerifyingKey != nil &&
-		aggCacheData.Witness != nil
+	aggCCS, aggPK, aggVK, err := circuitstest.LoadAggregatorRuntimeArtifacts()
+	c.Assert(err, qt.IsNil, qt.Commentf("load aggregator runtime artifacts"))
 
-	if !cacheReady {
-		if cacheErr != nil {
-			t.Logf("no cache for aggregator circuit (load err: %v), will compile and setup", cacheErr)
-		} else {
-			t.Logf("aggregator cache incomplete, will compile and setup")
-		}
-
-		start := time.Now()
-		_, placeholder, assignment := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, 3)
-		t.Logf("inputs generation took %s", time.Since(start))
-
-		t.Logf("compiling aggregator circuit...")
-		ccs, err := frontend.Compile(params.AggregatorCurve.ScalarField(), r1cs.NewBuilder, placeholder)
-		c.Assert(err, qt.IsNil, qt.Commentf("compile aggregator circuit"))
-		aggCacheData.ConstraintSystem = ccs
-
-		t.Logf("setting up aggregator circuit...")
-		pk, vk, err := prover.Setup(ccs)
-		c.Assert(err, qt.IsNil, qt.Commentf("setup aggregator"))
-		aggCacheData.ProvingKey = pk
-		aggCacheData.VerifyingKey = vk
-
-		t.Logf("creating witness for aggregator circuit...")
-		w, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField())
-		c.Assert(err, qt.IsNil, qt.Commentf("witness creation"))
-		aggCacheData.Witness = w
-
-		// Save to cache
-		err = cache.SaveData(cacheKey, &aggCacheData)
-		c.Assert(err, qt.IsNil, qt.Commentf("save aggregator cache"))
-	} else {
-		t.Logf("using cached aggregator circuit data for key %s", cacheKey)
-	}
+	fullWitness, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField())
+	c.Assert(err, qt.IsNil, qt.Commentf("witness creation"))
 
 	// Prove and verify
 	var proof groth16.Proof
 	t.Logf("proving and verifying aggregator circuit...")
-	start := time.Now()
+	start = time.Now()
 	proof, err = circuitstest.ProveAndVerifyWithWitness(
 		params.AggregatorCurve,
-		aggCacheData.ConstraintSystem,
-		aggCacheData.ProvingKey,
-		aggCacheData.VerifyingKey,
-		aggCacheData.Witness,
+		aggCCS,
+		aggPK,
+		aggVK,
+		fullWitness,
 		[]backend.ProverOption{stdgroth16.GetNativeProverOptions(
 			params.StateTransitionCurve.ScalarField(),
 			params.AggregatorCurve.ScalarField(),
@@ -104,13 +63,13 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	start = time.Now()
 	err = circuitstest.VerifyProofWithWitness(
 		proof,
-		aggCacheData.VerifyingKey,
-		aggCacheData.Witness,
+		aggVK,
+		fullWitness,
 		stdgroth16.GetNativeVerifierOptions(
 			params.StateTransitionCurve.ScalarField(),
 			params.AggregatorCurve.ScalarField(),
 		),
 	)
-	c.Assert(err, qt.IsNil, qt.Commentf("verify cached/public proof"))
+	c.Assert(err, qt.IsNil, qt.Commentf("verify public proof"))
 	t.Logf("explicit verification took %s", time.Since(start))
 }

@@ -7,14 +7,10 @@ import (
 	"time"
 
 	"github.com/consensys/gnark/backend"
-	"github.com/vocdoni/davinci-node/prover"
+	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/davinci-node/spec/params"
 
-	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"
-	"github.com/consensys/gnark/constraint"
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -26,7 +22,6 @@ import (
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	voteverifiertest "github.com/vocdoni/davinci-node/circuits/test/voteverifier"
-	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -46,74 +41,26 @@ func AggregatorInputsForTest(
 
 	now := time.Now()
 	log.Println("aggregator inputs generation starts")
-	// Use unified cache system for vote verifier data
-	cache, err := circuitstest.NewCircuitCache()
-	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
-	vvCCSHash, err := circuitstest.VoteVerifierCircuitCCSHash()
-	c.Assert(err, qt.IsNil, qt.Commentf("compute vote verifier CCS hash"))
+	vvCCS, vvPk, vvVk, err := circuitstest.LoadVoteVerifierRuntimeArtifacts()
+	c.Assert(err, qt.IsNil, qt.Commentf("load vote verifier runtime artifacts"))
 
-	cacheKey := cache.GenerateCacheKey(vvCCSHash, processID, "voteverifier", censusOrigin.String(), nValidVoters)
-	cachedData := &circuitstest.VoteVerifierCacheData{}
+	vvData := []voteverifiertest.VoterTestData{}
+	for i := range nValidVoters {
+		s, err := ballottest.GenDeterministicECDSAaccountForTest(i)
+		c.Assert(err, qt.IsNil, qt.Commentf("generate deterministic ECDSA account %d", i))
 
-	var vvPk groth16.ProvingKey
-	var vvVk groth16.VerifyingKey
-	var vvCCS constraint.ConstraintSystem
-	var vvInputs circuitstest.VoteVerifierTestResults
-	var vvWitness []witness.Witness
-
-	if err := cache.LoadData(cacheKey, cachedData, true); err != nil {
-		// Cache miss - compile and setup vote verifier circuit
-		c.Logf("Cache miss for key %s, generating vote verifier circuit data", cacheKey)
-
-		// generate deterministic users accounts and census for consistent caching
-		vvData := []voteverifiertest.VoterTestData{}
-		for i := range nValidVoters {
-			s, err := ballottest.GenDeterministicECDSAaccountForTest(i)
-			c.Assert(err, qt.IsNil, qt.Commentf("generate deterministic ECDSA account %d", i))
-
-			vvData = append(vvData, voteverifiertest.VoterTestData{
-				PrivKey: s,
-				PubKey:  s.PublicKey,
-				Address: s.Address(),
-			})
-		}
-		// generate vote verifier circuit and inputs with deterministic ProcessID
-		var vvPlaceholder voteverifier.VerifyVoteCircuit
-		var vvAssignments []voteverifier.VerifyVoteCircuit
-		vvInputs, vvPlaceholder, vvAssignments = voteverifiertest.VoteVerifierInputsForTest(t, vvData, processID, censusOrigin)
-
-		vvCCS, err = frontend.Compile(params.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, &vvPlaceholder)
-		c.Assert(err, qt.IsNil, qt.Commentf("compile vote verifier circuit"))
-
-		pk, vk, err := prover.Setup(vvCCS)
-		c.Assert(err, qt.IsNil, qt.Commentf("setup vote verifier circuit"))
-		vvPk = pk
-		vvVk = vk
-
-		// generate witnesses for each voter
-		for i := range vvAssignments {
-			// parse the witness to the circuit
-			fullWitness, err := frontend.NewWitness(&vvAssignments[i], params.VoteVerifierCurve.ScalarField())
-			c.Assert(err, qt.IsNil, qt.Commentf("generate witness for vote verifier circuit %d", i))
-			vvWitness = append(vvWitness, fullWitness)
-		}
-
-		// Save to cache for future use including CCS
-		cachedData.ProvingKey = vvPk
-		cachedData.VerifyingKey = vvVk
-		cachedData.ConstraintSystem = vvCCS
-		cachedData.Inputs = vvInputs
-		cachedData.Witness = vvWitness
-		err = cache.SaveData(cacheKey, cachedData)
-		c.Assert(err, qt.IsNil, qt.Commentf("saving vote verifier data to cache"))
-	} else {
-		// Cache hit - use cached data
-		c.Logf("Cache hit for key %s, using cached vote verifier circuit data", cacheKey)
-		vvPk = cachedData.ProvingKey
-		vvVk = cachedData.VerifyingKey
-		vvCCS = cachedData.ConstraintSystem
-		vvWitness = cachedData.Witness
-		vvInputs = cachedData.Inputs
+		vvData = append(vvData, voteverifiertest.VoterTestData{
+			PrivKey: s,
+			PubKey:  s.PublicKey,
+			Address: s.Address(),
+		})
+	}
+	vvInputs, _, vvAssignments := voteverifiertest.VoteVerifierInputsForTest(t, vvData, processID, censusOrigin)
+	vvWitness := make([]witness.Witness, 0, len(vvAssignments))
+	for i := range vvAssignments {
+		fullWitness, err := frontend.NewWitness(&vvAssignments[i], params.VoteVerifierCurve.ScalarField())
+		c.Assert(err, qt.IsNil, qt.Commentf("generate witness for vote verifier circuit %d", i))
+		vvWitness = append(vvWitness, fullWitness)
 	}
 
 	// generate voters proofs

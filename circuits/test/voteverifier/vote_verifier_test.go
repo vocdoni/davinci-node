@@ -28,10 +28,10 @@ func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
-	// generate deterministic voter account for consistent caching
+	// Generate a deterministic voter account for reproducible test data.
 	s, err := ballottest.GenDeterministicECDSAaccountForTest(0)
 	c.Assert(err, qt.IsNil)
-	// Use centralized testing ProcessID for consistent caching
+	// Use a fixed ProcessID for reproducible test data.
 	_, placeholder, assignments := VoteVerifierInputsForTest(t, []VoterTestData{
 		{
 			PrivKey: s,
@@ -52,10 +52,10 @@ func TestVerifyCSPVoteCircuit(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
-	// generate deterministic voter account for consistent caching
+	// Generate a deterministic voter account for reproducible test data.
 	s, err := ballottest.GenDeterministicECDSAaccountForTest(0)
 	c.Assert(err, qt.IsNil)
-	// Use centralized testing ProcessID for consistent caching
+	// Use a fixed ProcessID for reproducible test data.
 	_, placeholder, assignments := VoteVerifierInputsForTest(t, []VoterTestData{
 		{
 			PrivKey: s,
@@ -94,12 +94,12 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	c := qt.New(t)
 	data := []VoterTestData{}
 	for i := range 10 {
-		// generate deterministic voter account for consistent caching
+		// Generate a deterministic voter account for reproducible test data.
 		s, err := ballottest.GenDeterministicECDSAaccountForTest(i)
 		c.Assert(err, qt.IsNil)
 		data = append(data, VoterTestData{s, s.PublicKey, s.Address()})
 	}
-	// Use centralized testing ProcessID for consistent caching
+	// Use a fixed ProcessID for reproducible test data.
 	_, placeholder, assignments := VoteVerifierInputsForTest(t, data, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1)
 	assert := test.NewAssert(t)
 	now := time.Now()

@@ -11,6 +11,28 @@ import (
 	"github.com/vocdoni/davinci-node/spec/params"
 )
 
+type addCircuit struct {
+	A frontend.Variable
+	B frontend.Variable
+	C frontend.Variable `gnark:",public"`
+}
+
+func (c *addCircuit) Define(api frontend.API) error {
+	api.AssertIsEqual(api.Add(c.A, c.B), c.C)
+	return nil
+}
+
+type mulCircuit struct {
+	A frontend.Variable
+	B frontend.Variable
+	C frontend.Variable `gnark:",public"`
+}
+
+func (c *mulCircuit) Define(api frontend.API) error {
+	api.AssertIsEqual(api.Mul(c.A, c.B), c.C)
+	return nil
+}
+
 func TestProveAndVerifyWithWitness(t *testing.T) {
 	c := qt.New(t)
 

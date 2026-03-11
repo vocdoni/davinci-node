@@ -12,13 +12,11 @@ import (
 	groth16bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/csp"
-	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/spec/params"
 
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
@@ -60,79 +58,42 @@ func StateTransitionInputsForTest(
 ) {
 	c := qt.New(t)
 
-	// Use unified cache system for aggregator data
-	cache, err := circuitstest.NewCircuitCache()
-	c.Assert(err, qt.IsNil, qt.Commentf("create circuit cache"))
-	aggCCSHash, err := circuitstest.AggregatorCircuitCCSHash()
-	c.Assert(err, qt.IsNil, qt.Commentf("compute aggregator CCS hash"))
-
-	cacheKey := cache.GenerateCacheKey(aggCCSHash, processID, "statetransition-test-aggregator-v2", censusOrigin.String(), nValidVoters)
-	cachedData := &circuitstest.AggregatorCacheData{}
-
+	var err error
 	var proof groth16.Proof
 	var agVk groth16.VerifyingKey
 	var fullWitness witness.Witness
 	var aggInputs *circuitstest.AggregatorTestResults
+	var aggAssignment *aggregator.AggregatorCircuit
+	aggInputs, _, aggAssignment = aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
 
-	// Try to use cached aggregation proof and vk if available, otherwise generate from scratch
-	if err := cache.LoadData(cacheKey, cachedData, false); err != nil {
-		// Cache miss - generate everything from scratch
-		c.Logf("Cache miss for key %s (error: %v), generating aggregator circuit data", cacheKey, err)
+	fullWitness, err = frontend.NewWitness(aggAssignment, params.AggregatorCurve.ScalarField())
+	c.Assert(err, qt.IsNil, qt.Commentf("aggregator witness"))
 
-		// generate aggregator circuit and inputs
-		var agPlaceholder, aggAssignment *aggregator.AggregatorCircuit
-		aggInputs, agPlaceholder, aggAssignment = aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
+	agCCS, agPK, agVK, err := circuitstest.LoadAggregatorRuntimeArtifacts()
+	c.Assert(err, qt.IsNil, qt.Commentf("load aggregator runtime artifacts"))
+	agVk = agVK
 
-		// parse the witness to the circuit
-		fullWitness, err = frontend.NewWitness(aggAssignment, params.AggregatorCurve.ScalarField())
-		c.Assert(err, qt.IsNil, qt.Commentf("aggregator witness"))
-
-		// compile aggregator circuit
-		agCCS, err := frontend.Compile(params.AggregatorCurve.ScalarField(), r1cs.NewBuilder, agPlaceholder)
-		c.Assert(err, qt.IsNil, qt.Commentf("aggregator compile"))
-
-		agPk, vk, err := prover.Setup(agCCS)
-		c.Assert(err, qt.IsNil, qt.Commentf("aggregator setup"))
-		agVk = vk
-
-		proverOpts := stdgroth16.GetNativeProverOptions(
-			params.StateTransitionCurve.ScalarField(),
-			params.AggregatorCurve.ScalarField(),
-		)
-		verifierOpts := stdgroth16.GetNativeVerifierOptions(
-			params.StateTransitionCurve.ScalarField(),
-			params.AggregatorCurve.ScalarField(),
-		)
-		proof, err = circuitstest.ProveAndVerifyWithWitness(
-			params.AggregatorCurve,
-			agCCS,
-			agPk,
-			agVk,
-			fullWitness,
-			[]backend.ProverOption{proverOpts},
-			[]backend.VerifierOption{verifierOpts},
-		)
-		c.Assert(err, qt.IsNil, qt.Commentf("proving aggregator circuit"))
-
-		// Save proof, verification key, CCS, and witness to cache for future use
-		cachedData.Proof = proof
-		cachedData.VerifyingKey = agVk
-		cachedData.ConstraintSystem = agCCS
-		cachedData.Witness = fullWitness
-		cachedData.Inputs = *aggInputs
-		err = cache.SaveData(cacheKey, cachedData)
-		c.Assert(err, qt.IsNil, qt.Commentf("saving aggregator data to cache"))
-	} else {
-		// Cache hit - use cached data
-		c.Logf("Cache hit for key %s, using cached aggregator circuit data", cacheKey)
-		proof = cachedData.Proof
-		agVk = cachedData.VerifyingKey
-		fullWitness = cachedData.Witness
-		aggInputs = &cachedData.Inputs
-	}
+	proverOpts := stdgroth16.GetNativeProverOptions(
+		params.StateTransitionCurve.ScalarField(),
+		params.AggregatorCurve.ScalarField(),
+	)
+	verifierOpts := stdgroth16.GetNativeVerifierOptions(
+		params.StateTransitionCurve.ScalarField(),
+		params.AggregatorCurve.ScalarField(),
+	)
+	proof, err = circuitstest.ProveAndVerifyWithWitness(
+		params.AggregatorCurve,
+		agCCS,
+		agPK,
+		agVK,
+		fullWitness,
+		[]backend.ProverOption{proverOpts},
+		[]backend.VerifierOption{verifierOpts},
+	)
+	c.Assert(err, qt.IsNil, qt.Commentf("proving aggregator circuit"))
 
 	if proof == nil {
-		c.Logf("aggregator proof is nil for cache key %s", cacheKey)
+		c.Logf("aggregator proof is nil")
 	} else if proofBW, ok := proof.(*groth16bw6761.Proof); ok {
 		c.Logf(
 			"aggregator proof curve=%s ar{onCurve=%t inSubGroup=%t infinity=%t} krs{onCurve=%t inSubGroup=%t infinity=%t} bs{onCurve=%t inSubGroup=%t infinity=%t}",
@@ -170,8 +131,8 @@ func StateTransitionInputsForTest(
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("aggregator verify"))
 
-	// reencrypt the votes with deterministic K for consistent caching
-	reencryptionK := circuitstest.GenerateDeterministicK(processID, nValidVoters)
+	// Reencrypt the votes with deterministic K for reproducible test data.
+	reencryptionK := testutil.DeterministicK(processID, nValidVoters)
 
 	// get the encryption key from the aggregator inputs
 	encryptionKey := state.Curve.New().SetPoint(aggInputs.Process.EncryptionKey.PubKey[0], aggInputs.Process.EncryptionKey.PubKey[1])

@@ -25,7 +25,7 @@ import (
 )
 
 // GenDeterministicECDSAaccountForTest generates a deterministic ECDSA account
-// based on the provided index for consistent testing and caching.
+// based on the provided index for reproducible testing.
 func GenDeterministicECDSAaccountForTest(index int) (*ethereum.Signer, error) {
 	// Create a deterministic seed based on the index
 	seed := make([]byte, 32)
@@ -49,7 +49,7 @@ func SignECDSAForTest(privKey *ethereum.Signer, voteID types.VoteID) (*ethereum.
 }
 
 // GenDeterministicEncryptionKeyForTest generates a deterministic encryption key
-// based on the provided seed for consistent testing and caching.
+// based on the provided seed for reproducible testing.
 func GenDeterministicEncryptionKeyForTest(seed int64) ecc.Point {
 	// Create deterministic seed bytes
 	seedBytes := make([]byte, 32)
@@ -93,7 +93,7 @@ func GenBallotFieldsForTest(n, max, min int, unique bool) [params.FieldsPerBallo
 }
 
 // GenDeterministicKForTest generates a deterministic k value for encryption
-// based on the provided seed for consistent testing and caching.
+// based on the provided seed for reproducible testing.
 func GenDeterministicKForTest(seed int64) (*big.Int, error) {
 	// Create a deterministic k value based on the seed
 	// Ensure it's within a valid range for elliptic curve operations
@@ -156,7 +156,7 @@ type BallotProofResult struct {
 }
 
 // BallotProofForTestDeterministic function returns the information after proving a valid
-// ballot using deterministic generation for consistent testing and caching.
+// ballot using deterministic generation for reproducible testing.
 func BallotProofForTestDeterministic(address []byte, processID types.ProcessID, encryptionKey ecc.Point, seed int64) (*BallotProofResult, error) {
 	now := time.Now()
 	// generate deterministic fields

@@ -22,6 +22,7 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -97,6 +98,9 @@ type CircuitArtifacts struct {
 	pk                groth16.ProvingKey
 	vk                groth16.VerifyingKey
 }
+
+// CompileFunc compiles the current circuit source into a constraint system.
+type CompileFunc func() (constraint.ConstraintSystem, error)
 
 func (ca *CircuitArtifacts) artifactContent(artifact *Artifact, label string) ([]byte, error) {
 	if artifact == nil {
@@ -201,6 +205,25 @@ func (ca *CircuitArtifacts) LoadAll() error {
 		ca.vk = vk
 	}
 	return nil
+}
+
+// Setup generates proving and verifying keys for the provided constraint system
+// and stores the resulting runtime artifacts in memory.
+func (ca *CircuitArtifacts) Setup(ccs constraint.ConstraintSystem) (groth16.ProvingKey, groth16.VerifyingKey, error) {
+	if ccs == nil {
+		return nil, nil, fmt.Errorf("constraint system not provided")
+	}
+
+	pk, vk, err := prover.Setup(ccs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ca.ccs = ccs
+	ca.pk = pk
+	ca.vk = vk
+
+	return pk, vk, nil
 }
 
 // DownloadAll method downloads the circuit artifacts with the provided context.
