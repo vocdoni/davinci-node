@@ -352,14 +352,10 @@ func (s *Sequencer) stateBatchToAssignment(
 		return nil, nil, fmt.Errorf("failed to transform recursive proof: %w", err)
 	}
 
-	// Generate the KZG commitment for the blob-related assignment data.
-	blobData, err := processState.BuildKZGCommitment()
+	blobData, err := processState.BlobEvalData()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to build KZG commitment: %w", err)
+		return nil, nil, fmt.Errorf("failed to get blob eval data: %w", err)
 	}
-	proofAssignment.BlobCommitmentLimbs = blobData.ForGnark.CommitmentLimbs
-	proofAssignment.BlobProofLimbs = blobData.ForGnark.ProofLimbs
-	proofAssignment.BlobEvaluationResultY = blobData.ForGnark.Y
 
 	return proofAssignment, blobData, nil
 }

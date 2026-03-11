@@ -7,6 +7,7 @@ import (
 
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/crypto/blobs"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
@@ -56,6 +57,7 @@ type State struct {
 	rootHashBefore *big.Int
 	processProofs  ProcessProofs
 	votesProofs    VotesProofs
+	blobEvalData   *blobs.BlobEvalData
 }
 
 // ProcessProofs stores the Merkle proofs for the process, including the ID
@@ -202,6 +204,7 @@ func (o *State) startBatch() error {
 	o.votersCount = 0
 	o.overwrittenVotesCount = 0
 	o.votes = []*Vote{}
+	o.blobEvalData = nil
 	return nil
 }
 
@@ -280,6 +283,11 @@ func (o *State) endBatch() error {
 		KeyResultsSub, o.newResultsSub.BigInts()...)
 	if err != nil {
 		return fmt.Errorf("resultsSub: %w", err)
+	}
+
+	o.blobEvalData, err = o.computeBlobEvalData()
+	if err != nil {
+		return fmt.Errorf("blob eval data: %w", err)
 	}
 
 	// Commit the transaction

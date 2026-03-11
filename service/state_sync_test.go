@@ -158,7 +158,7 @@ func TestStateSync(t *testing.T) {
 	newStateRoot, err := originalState.RootAsBigInt()
 	c.Assert(err, qt.IsNil)
 
-	blobData, err := originalState.BuildKZGCommitment()
+	blobData, err := originalState.BlobEvalData()
 	c.Assert(err, qt.IsNil)
 
 	txHash := contracts.SendBlobTx(blobData.Blob[:])
