@@ -33,10 +33,10 @@ import (
 //
 // Returns a ProverFunc that will execute test.IsSolved and then groth16.Prove
 func NewDebugProver(t *testing.T) types.ProverFunc {
-	if err := voteverifier.Artifacts.LoadAll(); err != nil {
+	if err := voteverifier.Artifacts.LoadAllFromCache(); err != nil {
 		t.Fatal(err)
 	}
-	if err := aggregator.Artifacts.LoadAll(); err != nil {
+	if err := aggregator.Artifacts.LoadAllFromCache(); err != nil {
 		t.Fatal(err)
 	}
 

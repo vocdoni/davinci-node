@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +37,7 @@ func (c *artifactTestCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-func TestCircuitArtifactsLoadAllCachesDecodedArtifacts(t *testing.T) {
+func TestCircuitArtifactsLoadAllFromCacheCachesDecodedArtifacts(t *testing.T) {
 	c := qt.New(t)
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &artifactTestCircuit{})
@@ -77,7 +79,7 @@ func TestCircuitArtifactsLoadAllCachesDecodedArtifacts(t *testing.T) {
 		writeArtifact(vkBuf.Bytes()),
 	)
 
-	err = ca.LoadAll()
+	err = ca.LoadAllFromCache()
 	c.Assert(err, qt.IsNil)
 
 	firstCCS, err := ca.CircuitDefinition()
@@ -103,7 +105,55 @@ func TestCircuitArtifactsLoadAllCachesDecodedArtifacts(t *testing.T) {
 	c.Assert(rawVK, qt.DeepEquals, vkBuf.Bytes())
 }
 
-func TestCircuitArtifactsRawVerifyingKeyWithoutLoadAll(t *testing.T) {
+func TestCircuitArtifactsEnsureVerifyingKeyDownloadsAndDecodes(t *testing.T) {
+	c := qt.New(t)
+
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &artifactTestCircuit{})
+	c.Assert(err, qt.IsNil)
+
+	_, vk, err := groth16.Setup(ccs)
+	c.Assert(err, qt.IsNil)
+
+	var vkBuf bytes.Buffer
+	_, err = vk.WriteTo(&vkBuf)
+	c.Assert(err, qt.IsNil)
+
+	oldBaseDir := BaseDir
+	BaseDir = t.TempDir()
+	t.Cleanup(func() {
+		BaseDir = oldBaseDir
+	})
+
+	hash := sha256.Sum256(vkBuf.Bytes())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(vkBuf.Bytes())
+	}))
+	t.Cleanup(server.Close)
+
+	ca := NewCircuitArtifacts(
+		"test",
+		ecc.BN254,
+		nil,
+		nil,
+		&Artifact{
+			RemoteURL: server.URL,
+			Hash:      hash[:],
+		},
+	)
+
+	err = ca.EnsureVerifyingKey(t.Context())
+	c.Assert(err, qt.IsNil)
+
+	gotVK, err := ca.VerifyingKey()
+	c.Assert(err, qt.IsNil)
+	c.Assert(gotVK, qt.Not(qt.IsNil))
+
+	gotRawVK, err := ca.RawVerifyingKey()
+	c.Assert(err, qt.IsNil)
+	c.Assert(gotRawVK, qt.DeepEquals, vkBuf.Bytes())
+}
+
+func TestCircuitArtifactsRawVerifyingKeyWithoutDecodedVK(t *testing.T) {
 	c := qt.New(t)
 
 	rawVK := []byte(`{"protocol":"groth16","curve":"bn128"}`)

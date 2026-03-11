@@ -190,9 +190,8 @@ func (ca *CircuitArtifacts) Name() string {
 	return ca.name
 }
 
-// LoadAll loads the circuit artifacts into memory.
-func (ca *CircuitArtifacts) LoadAll() error {
-	log.Debugw("reading circuit artifacts", "circuit", ca.Name())
+// LoadAllFromCache loads the circuit artifacts from the local cache into memory.
+func (ca *CircuitArtifacts) LoadAllFromCache() error {
 	startTime := time.Now()
 	if ca.circuitDefinition != nil {
 		stepStart := time.Now()
@@ -265,6 +264,17 @@ func (ca *CircuitArtifacts) DownloadAll(ctx context.Context) error {
 	return nil
 }
 
+// EnsureAll downloads any missing artifacts and decodes them into memory.
+func (ca *CircuitArtifacts) EnsureAll(ctx context.Context) error {
+	if err := ca.DownloadAll(ctx); err != nil {
+		return err
+	}
+	if err := ca.LoadAllFromCache(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // DownloadVerifyingKey downloads only the verifying key artifact.
 func (ca *CircuitArtifacts) DownloadVerifyingKey(ctx context.Context) error {
 	if ca.verifyingKey == nil {
@@ -272,6 +282,27 @@ func (ca *CircuitArtifacts) DownloadVerifyingKey(ctx context.Context) error {
 	}
 	if err := ca.verifyingKey.Download(ctx); err != nil {
 		return fmt.Errorf("error downloading verifying key: %w", err)
+	}
+	return nil
+}
+
+// LoadVerifyingKeyFromCache loads and decodes the verifying key from the local cache.
+func (ca *CircuitArtifacts) LoadVerifyingKeyFromCache() error {
+	vk, err := ca.decodeVerifyingKey()
+	if err != nil {
+		return err
+	}
+	ca.vk = vk
+	return nil
+}
+
+// EnsureVerifyingKey downloads any missing verifying key artifact and decodes it into memory.
+func (ca *CircuitArtifacts) EnsureVerifyingKey(ctx context.Context) error {
+	if err := ca.DownloadVerifyingKey(ctx); err != nil {
+		return err
+	}
+	if err := ca.LoadVerifyingKeyFromCache(); err != nil {
+		return err
 	}
 	return nil
 }

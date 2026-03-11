@@ -48,7 +48,7 @@ func loadOrSetupArtifacts(
 	}
 	matches := currentHash == hex.EncodeToString(artifacts.CircuitHash())
 	if matches {
-		if err := artifacts.LoadAll(); err == nil {
+		if err := artifacts.LoadAllFromCache(); err == nil {
 			loadedCCS, err := artifacts.CircuitDefinition()
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("load %s circuit definition: %w", name, err)

@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/consensys/gnark/backend/groth16"
@@ -75,7 +76,7 @@ func (s *Sequencer) loadInternalCircuitArtifacts() error {
 // provided and returns the decoded runtime artifacts. If any of the files fail
 // to load or decode, it returns an error.
 func loadCircuitArtifacts(a *circuits.CircuitArtifacts) (nativeCircuitArtifacts, error) {
-	if err := a.LoadAll(); err != nil {
+	if err := a.EnsureAll(context.Background()); err != nil {
 		return nativeCircuitArtifacts{}, fmt.Errorf("failed to load circuit artifacts: %w", err)
 	}
 	ccs, err := a.CircuitDefinition()

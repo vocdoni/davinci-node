@@ -16,7 +16,7 @@ import (
 // return an error.
 func (a *VerifyVoteCircuit) VerifyProof(proof groth16.Proof) error {
 	// load circuit artifacts content
-	if err := Artifacts.LoadAll(); err != nil {
+	if err := Artifacts.LoadAllFromCache(); err != nil {
 		return fmt.Errorf("failed to load vote verifier artifacts: %w", err)
 	}
 	// load verifying key
