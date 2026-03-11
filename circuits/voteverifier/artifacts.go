@@ -10,19 +10,17 @@ import (
 // Artifacts contains the circuit artifacts for the vote verifier circuit,
 // which includes the proving and verification keys.
 var Artifacts = circuits.NewCircuitArtifacts(
+	"voteverifier",
 	params.VoteVerifierCurve,
 	&circuits.Artifact{
-		Name:      "vote-verifier ccs",
 		RemoteURL: config.VoteVerifierCircuitURL,
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.VoteVerifierCircuitHash),
 	},
 	&circuits.Artifact{
-		Name:      "vote-verifier proving key",
 		RemoteURL: config.VoteVerifierProvingKeyURL,
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.VoteVerifierProvingKeyHash),
 	},
 	&circuits.Artifact{
-		Name:      "vote-verifier verification key",
 		RemoteURL: config.VoteVerifierVerificationKeyURL,
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.VoteVerifierVerificationKeyHash),
 	},

@@ -1,8 +1,6 @@
 package voteverifiertest
 
 import (
-	"fmt"
-	"log"
 	"os"
 	"testing"
 	"time"
@@ -20,12 +18,12 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
 	// Generate a deterministic voter account for reproducible test data.
@@ -41,15 +39,14 @@ func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 	}, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1)
 	// generate proof
 	assert := test.NewAssert(t)
-	now := time.Now()
+	startTime := time.Now()
 	assert.SolvingSucceeded(&placeholder, &assignments[0],
 		test.WithCurves(ecc.BLS12_377),
 		test.WithBackends(backend.GROTH16))
-	fmt.Println("proving tooks", time.Since(now))
+	log.DebugTime("vote verifier proving", startTime)
 }
 
 func TestVerifyCSPVoteCircuit(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
 	// Generate a deterministic voter account for reproducible test data.
@@ -65,11 +62,11 @@ func TestVerifyCSPVoteCircuit(t *testing.T) {
 	}, testutil.FixedProcessID(), types.CensusOriginCSPEdDSABabyJubJubV1)
 	// generate proof
 	assert := test.NewAssert(t)
-	now := time.Now()
+	startTime := time.Now()
 	assert.SolvingSucceeded(&placeholder, &assignments[0],
 		test.WithCurves(ecc.BLS12_377),
 		test.WithBackends(backend.GROTH16))
-	fmt.Println("proving tooks", time.Since(now))
+	log.DebugTime("vote verifier proving", startTime)
 }
 
 func TestVerifyNoValidVoteCircuit(t *testing.T) {
@@ -80,13 +77,12 @@ func TestVerifyNoValidVoteCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	// generate proof
 	assert := test.NewAssert(t)
-	now := time.Now()
+	startTime := time.Now()
 	assert.SolvingSucceeded(placeholder, assignment, test.WithCurves(ecc.BLS12_377), test.WithBackends(backend.GROTH16))
-	fmt.Println("proving tooks", time.Since(now))
+	log.DebugTime("vote verifier proving", startTime)
 }
 
 func TestVerifyMultipleVotesCircuit(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
 		t.Skip("skipping circuit tests...")
@@ -102,20 +98,19 @@ func TestVerifyMultipleVotesCircuit(t *testing.T) {
 	// Use a fixed ProcessID for reproducible test data.
 	_, placeholder, assignments := VoteVerifierInputsForTest(t, data, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1)
 	assert := test.NewAssert(t)
-	now := time.Now()
+	startTime := time.Now()
 	for _, assignment := range assignments {
 		assert.SolvingSucceeded(&placeholder, &assignment,
 			test.WithCurves(ecc.BLS12_377),
 			test.WithBackends(backend.GROTH16))
 	}
-	fmt.Println("proving tooks", time.Since(now))
+	log.DebugTime("vote verifier batch proving", startTime)
 }
 
 func TestCompileAndPrintConstraints(t *testing.T) {
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
 		t.Skip("skipping circuit tests...")
 	}
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
 	// generate vote verifier circuit and inputs with deterministic ProcessID
@@ -124,5 +119,5 @@ func TestCompileAndPrintConstraints(t *testing.T) {
 
 	vvCCS, err := frontend.Compile(params.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, vvPlaceholder)
 	c.Assert(err, qt.IsNil, qt.Commentf("compile vote verifier circuit"))
-	fmt.Printf("vote verifier constraints: %d\n", vvCCS.GetNbConstraints())
+	log.Infow("vote verifier constraints", "constraints", vvCCS.GetNbConstraints())
 }

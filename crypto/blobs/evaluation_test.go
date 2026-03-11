@@ -2,7 +2,6 @@ package blobs
 
 import (
 	"crypto/sha256"
-	"fmt"
 	"math/big"
 	"os"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/crypto/hash/poseidon"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -73,7 +73,7 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 	testCounts := []int{10, 100}
 
 	for _, count := range testCounts {
-		fmt.Printf("\n=== Testing with %d elements ===\n", count)
+		log.Infow("testing blob evaluation circuit", "elements", count)
 
 		// Create blob with 'count' elements
 		blob := new(types.Blob)
@@ -168,7 +168,7 @@ func TestBlobEvaluationCircuitFullProving(t *testing.T) {
 	var circuit blobEvalCircuitBN254
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	c.Assert(err, qt.IsNil)
-	fmt.Printf("Circuit compiled with %d constraints\n", ccs.GetNbConstraints())
+	log.Infow("circuit compiled", "constraints", ccs.GetNbConstraints())
 
 	// Run trusted setup
 	pk, vk, err := groth16.Setup(ccs)

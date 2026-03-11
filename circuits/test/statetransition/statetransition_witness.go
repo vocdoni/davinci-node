@@ -55,7 +55,7 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 		t.Fatal(err)
 	}
 
-	censusRoot, censusProofs, err := CensusProofsForCircuitTest(votes, censusOrigin, processID)
+	censusRoot, censusProofs, err := CensusProofsForCircuitTest(t, votes, censusOrigin, processID)
 	if err != nil {
 		t.Fatal(err)
 	}

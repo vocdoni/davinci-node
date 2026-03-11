@@ -96,17 +96,15 @@ func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, w
 	s.internalCircuits = new(internalCircuits)
 	s.ballotProofVK = ballotproof.CircomVerificationKey
 
-	log.Debugw("reading circuit artifacts", "circuit", "voteverifier")
 	s.voteVerifier, err = loadCircuitArtifacts(voteverifier.Artifacts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
 	}
 
-	log.Debugw("worker sequencer initialized",
+	log.DebugTime("worker sequencer initialized", startTime,
 		"sequencerURL", sequencerURL,
 		"workerAddress", workerAddr,
 		"workerName", workerName,
-		"took", time.Since(startTime).String(),
 	)
 
 	return s, nil

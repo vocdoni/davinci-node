@@ -137,12 +137,10 @@ func loggingMiddlewareWithConfig(config LoggingConfig) func(http.Handler) http.H
 			next.ServeHTTP(wrapped, r)
 
 			// Log response
-			duration := time.Since(start)
-			log.Debugw("api response",
+			log.DebugTime("api response", start,
 				"method", r.Method,
 				"url", r.URL.String(),
 				"status", wrapped.statusCode,
-				"took", duration.String(),
 			)
 		})
 	}

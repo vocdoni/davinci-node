@@ -597,7 +597,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	}
 
 	// Prepare the circuit assignment
-	log.Debugw("inputs ready for aggregation", "took", time.Since(startTime).String())
+	log.DebugTime("inputs ready for aggregation", startTime)
 	startTime = time.Now()
 
 	// Prepare the options for the prover
@@ -662,8 +662,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		return fmt.Errorf("aggregation verification failed for process %s: %w", processID.String(), err)
 	}
 
-	log.Infow("aggregate proof generated",
-		"took", time.Since(startTime).String(),
+	log.InfoTime("aggregate proof generated", startTime,
 		"processID", processID.String(),
 		"ballots", len(batchInputs.AggBallots))
 

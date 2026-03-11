@@ -62,18 +62,19 @@ func TestCircuitArtifactsLoadAllCachesDecodedArtifacts(t *testing.T) {
 		BaseDir = oldBaseDir
 	})
 
-	writeArtifact := func(name string, content []byte) *Artifact {
+	writeArtifact := func(content []byte) *Artifact {
 		hash := sha256.Sum256(content)
 		err := os.WriteFile(filepath.Join(BaseDir, hex.EncodeToString(hash[:])), content, 0o644)
 		c.Assert(err, qt.IsNil)
-		return &Artifact{Name: name, Hash: hash[:]}
+		return &Artifact{Hash: hash[:]}
 	}
 
 	ca := NewCircuitArtifacts(
+		"test",
 		ecc.BN254,
-		writeArtifact("circuit", ccsBuf.Bytes()),
-		writeArtifact("pk", pkBuf.Bytes()),
-		writeArtifact("vk", vkBuf.Bytes()),
+		writeArtifact(ccsBuf.Bytes()),
+		writeArtifact(pkBuf.Bytes()),
+		writeArtifact(vkBuf.Bytes()),
 	)
 
 	err = ca.LoadAll()
@@ -118,10 +119,11 @@ func TestCircuitArtifactsRawVerifyingKeyWithoutLoadAll(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	ca := NewCircuitArtifacts(
+		"test",
 		ecc.BN254,
 		nil,
 		nil,
-		&Artifact{Name: "vk", Hash: hash[:]},
+		&Artifact{Hash: hash[:]},
 	)
 
 	gotRawVK, err := ca.RawVerifyingKey()

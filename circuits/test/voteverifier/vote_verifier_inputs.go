@@ -2,7 +2,6 @@ package voteverifiertest
 
 import (
 	"crypto/ecdsa"
-	"log"
 	"math/big"
 	"testing"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -48,8 +48,8 @@ func VoteVerifierInputsForTest(
 ) {
 	c := qt.New(t)
 
-	now := time.Now()
-	log.Println("voteVerifier inputs generation start")
+	startTime := time.Now()
+	log.Infow("vote verifier inputs generation starts")
 	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
 		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
 	c.Assert(err, qt.IsNil, qt.Commentf("circom placeholder"))
@@ -64,7 +64,7 @@ func VoteVerifierInputsForTest(
 	var finalProcessID *big.Int
 	for i, voter := range votersData {
 		// Use deterministic ballot proof generation for reproducible test data.
-		ballotProof, err := ballottest.BallotProofForTestDeterministic(voter.Address.Bytes(), processID, ek, testutil.DeterministicSeed(processID, i+100))
+		ballotProof, err := ballottest.DeterministicBallotProof(voter.Address.Bytes(), processID, ek, testutil.DeterministicSeed(processID, i+100))
 		c.Assert(err, qt.IsNil, qt.Commentf("ballotproof inputs for voter %d", i))
 
 		if finalProcessID == nil {
@@ -101,7 +101,7 @@ func VoteVerifierInputsForTest(
 			CircomProof: recursiveProof.Proof,
 		})
 	}
-	log.Printf("voteVerifier inputs generation ends, it tooks %s\n", time.Since(now))
+	log.DebugTime("vote verifier inputs generation", startTime)
 	return circuitstest.VoteVerifierTestResults{
 			InputsHashes:     inputsHashes,
 			EncryptionPubKey: encryptionKey,

@@ -2,7 +2,6 @@ package statetransitiontest
 
 import (
 	"fmt"
-	"log"
 	"math/big"
 	"os"
 	"testing"
@@ -149,6 +148,7 @@ func StateTransitionInputsForTest(
 
 	// add census data to witness
 	censusRoot, censusProofs, err := CensusProofsForCircuitTest(
+		t,
 		aggInputs.Votes,
 		censusOrigin,
 		processID,
@@ -188,11 +188,13 @@ func StateTransitionInputsForTest(
 // It supports both Merkle tree and CSP-based by initializing a CSP instance
 // or generating a Merkle tree census as needed.
 func CensusProofsForCircuitTest(
+	t *testing.T,
 	votes []*state.Vote,
 	origin types.CensusOrigin,
 	pid types.ProcessID,
 ) (*big.Int, statetransition.CensusProofs, error) {
-	log.Printf("generating testing census with '%s' origin", origin.String())
+	t.Helper()
+	t.Logf("generating testing census with '%s' origin", origin.String())
 	var root *big.Int
 	merkleProofs := [params.VotesPerBatch]imtcircuit.MerkleProof{}
 	cspProofs := [params.VotesPerBatch]csp.CSPProof{}
@@ -205,7 +207,7 @@ func CensusProofsForCircuitTest(
 		}
 		defer func() {
 			if err := census.Close(); err != nil {
-				log.Printf("Warning: failed to close census IMT: %v", err)
+				t.Logf("warning: failed to close census IMT: %v", err)
 			}
 		}()
 		var ok bool

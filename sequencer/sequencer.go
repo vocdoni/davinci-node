@@ -74,10 +74,6 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	// Store the start time
 	startTime := time.Now()
 
-	log.Debugw("sequencer initialized",
-		"batchTimeWindow", batchTimeWindow.String(),
-		"took", time.Since(startTime).String(),
-	)
 	// Create a new Sequencer instance
 	s := &Sequencer{
 		stg:             stg,
@@ -96,6 +92,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		getStateRootFn = contracts.StateRoot
 	}
 	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, s.prover, getStateRootFn)
+	log.InfoTime("sequencer initialized", startTime, "batchTimeWindow", batchTimeWindow.String())
 	return s, nil
 }
 

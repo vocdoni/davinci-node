@@ -1,7 +1,6 @@
 package aggregatortest
 
 import (
-	"log"
 	"math/big"
 	"testing"
 	"time"
@@ -22,6 +21,7 @@ import (
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	voteverifiertest "github.com/vocdoni/davinci-node/circuits/test/voteverifier"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -39,8 +39,8 @@ func AggregatorInputsForTest(
 ) {
 	c := qt.New(t)
 
-	now := time.Now()
-	log.Println("aggregator inputs generation starts")
+	startTime := time.Now()
+	log.Infow("aggregator inputs generation starts")
 	vvCCS, vvPk, vvVk, err := circuitstest.LoadVoteVerifierRuntimeArtifacts()
 	c.Assert(err, qt.IsNil, qt.Commentf("load vote verifier runtime artifacts"))
 
@@ -131,7 +131,7 @@ func AggregatorInputsForTest(
 			Ballot:      vvInputs.Ballots[i].FromTEtoRTE(),
 		})
 	}
-	log.Printf("aggregator inputs generation ends, it tooks %s", time.Since(now))
+	log.DebugTime("aggregator inputs generation", startTime)
 	return &circuitstest.AggregatorTestResults{
 		InputsHash: inputsHash,
 		Process: circuits.Process[*big.Int]{
