@@ -11,7 +11,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/results"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
-	"github.com/vocdoni/davinci-node/log"
 )
 
 type nativeCircuitArtifacts struct {
@@ -49,25 +48,21 @@ func (s *Sequencer) loadInternalCircuitArtifacts() error {
 
 	s.ballotProofVK = ballotproof.CircomVerificationKey
 
-	log.Debugw("reading circuit artifacts", "circuit", "voteverifier")
 	s.voteVerifier, err = loadCircuitArtifacts(voteverifier.Artifacts)
 	if err != nil {
 		return fmt.Errorf("failed to load voteverifier artifacts: %w", err)
 	}
 
-	log.Debugw("reading circuit artifacts", "circuit", "aggregator")
 	s.aggregator, err = loadCircuitArtifacts(aggregator.Artifacts)
 	if err != nil {
 		return fmt.Errorf("failed to load aggregator artifacts: %w", err)
 	}
 
-	log.Debugw("reading circuit artifacts", "circuit", "statetransition")
 	s.stateTransition, err = loadCircuitArtifacts(statetransition.Artifacts)
 	if err != nil {
 		return fmt.Errorf("failed to load statetransition artifacts: %w", err)
 	}
 
-	log.Debugw("reading circuit artifacts", "circuit", "resultsverifier")
 	s.resultsVerifier, err = loadCircuitArtifacts(results.Artifacts)
 	if err != nil {
 		return fmt.Errorf("failed to load resultsverifier artifacts: %w", err)
@@ -80,21 +75,17 @@ func (s *Sequencer) loadInternalCircuitArtifacts() error {
 // provided and returns the decoded runtime artifacts. If any of the files fail
 // to load or decode, it returns an error.
 func loadCircuitArtifacts(a *circuits.CircuitArtifacts) (nativeCircuitArtifacts, error) {
-	// Load the circuit artifacts
 	if err := a.LoadAll(); err != nil {
 		return nativeCircuitArtifacts{}, fmt.Errorf("failed to load circuit artifacts: %w", err)
 	}
-	// Decode the circuit definition
 	ccs, err := a.CircuitDefinition()
 	if err != nil {
 		return nativeCircuitArtifacts{}, fmt.Errorf("failed to read circuit definition: %w", err)
 	}
-	// Decode the proving key
 	pk, err := a.ProvingKey()
 	if err != nil {
 		return nativeCircuitArtifacts{}, fmt.Errorf("failed to read proving key: %w", err)
 	}
-	// Decode the verifying key
 	vk, err := a.VerifyingKey()
 	if err != nil {
 		return nativeCircuitArtifacts{}, fmt.Errorf("failed to read verifying key: %w", err)

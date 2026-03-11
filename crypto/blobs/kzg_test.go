@@ -12,6 +12,7 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
+	"github.com/vocdoni/davinci-node/log"
 )
 
 const falseStr = "false"
@@ -29,7 +30,7 @@ func TestKZGVerifyBasic(t *testing.T) {
 	assert.SolvingSucceeded(&kzgVerifyCircuit{}, &witness,
 		test.WithCurves(ecc.BN254), test.WithBackends(backend.GROTH16))
 
-	fmt.Println("Basic KZG verification test passed")
+	log.Infow("basic KZG verification test passed")
 }
 
 // TestKZGVerifyMultipleCases tests KZG verification with different valid test cases.
@@ -54,7 +55,7 @@ func TestKZGVerifyMultipleCases(t *testing.T) {
 			assert.SolvingSucceeded(&kzgVerifyCircuit{}, &witness,
 				test.WithCurves(ecc.BN254), test.WithBackends(backend.GROTH16))
 
-			fmt.Printf("Test case %s passed\n", tc.name)
+			log.Infow("KZG verification test case passed", "case", tc.name)
 		})
 	}
 }
@@ -76,7 +77,7 @@ func TestKZGVerifyProgressive(t *testing.T) {
 			assert.SolvingSucceeded(&kzgVerifyCircuit{}, &witness,
 				test.WithCurves(ecc.BN254), test.WithBackends(backend.GROTH16))
 
-			fmt.Printf("Progressive test with seed %d passed\n", seed)
+			log.Infow("KZG progressive test passed", "seed", seed)
 		})
 	}
 }
@@ -106,7 +107,7 @@ func TestKZGVerifyInvalid(t *testing.T) {
 		t.Fatal("Expected circuit to reject invalid proof, but it was accepted")
 	}
 
-	fmt.Println("Invalid proof correctly rejected")
+	log.Infow("invalid proof correctly rejected")
 }
 
 // TestKZGVerifyFullProving performs full circuit compilation and proving.
@@ -123,48 +124,48 @@ func TestKZGVerifyFullProving(t *testing.T) {
 	var circuit kzgVerifyCircuit
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	c.Assert(err, qt.IsNil)
-	fmt.Printf("Circuit compiled with %d constraints\n", ccs.GetNbConstraints())
+	log.Infow("circuit compiled", "constraints", ccs.GetNbConstraints())
 
-	fmt.Println("Running trusted setup...")
+	log.Infow("running trusted setup")
 	pk, vk, err := groth16.Setup(ccs)
 	c.Assert(err, qt.IsNil)
-	fmt.Println("Trusted setup completed")
+	log.Infow("trusted setup completed")
 
 	fullWitness, err := frontend.NewWitness(&witness, ecc.BN254.ScalarField())
 	c.Assert(err, qt.IsNil)
 
-	fmt.Println("Generating proof...")
+	log.Infow("generating proof")
 	proof, err := groth16.Prove(ccs, pk, fullWitness)
 	c.Assert(err, qt.IsNil)
-	fmt.Println("Proof generated")
+	log.Infow("proof generated")
 
 	publicWitness := testData.ToPublicWitness()
 	publicW, err := frontend.NewWitness(&publicWitness, ecc.BN254.ScalarField(), frontend.PublicOnly())
 	c.Assert(err, qt.IsNil)
 
-	fmt.Println("Verifying proof...")
+	log.Infow("verifying proof")
 	err = groth16.Verify(proof, vk, publicW)
 	c.Assert(err, qt.IsNil)
-	fmt.Println("Proof verified successfully")
+	log.Infow("proof verified successfully")
 }
 
 // TestKZGVerifyConstraintCount compiles the circuit and reports constraint count.
 func TestKZGVerifyConstraintCount(t *testing.T) {
 	c := qt.New(t)
 
-	fmt.Println("\n=== KZG Verify Circuit Constraint Analysis ===")
+	log.Infow("KZG verify circuit constraint analysis")
 
 	var circuit kzgVerifyCircuit
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	c.Assert(err, qt.IsNil)
 
 	constraintCount := ccs.GetNbConstraints()
-	fmt.Printf("\nKZG Verify Circuit Statistics:\n")
-	fmt.Printf("  Total Constraints: %d\n", constraintCount)
-	fmt.Printf("  Curve: BN254\n")
-	fmt.Printf("  Backend: Groth16\n")
-	fmt.Printf("  Public Inputs: 5 (3 commitment limbs + Z + Y)\n")
-	fmt.Printf("  Private Inputs: 3 (3 proof limbs)\n\n")
+	log.Infof("KZG Verify Circuit Statistics:")
+	log.Infof("  Total Constraints: %d", constraintCount)
+	log.Infof("  Curve: BN254")
+	log.Infof("  Backend: Groth16")
+	log.Infof("  Public Inputs: 5 (3 commitment limbs + Z + Y)")
+	log.Infof("  Private Inputs: 3 (3 proof limbs)")
 }
 
 // BenchmarkKZGVerifyCircuit benchmarks the circuit solving performance.

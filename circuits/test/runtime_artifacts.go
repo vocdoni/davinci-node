@@ -19,7 +19,7 @@ func LoadVoteVerifierRuntimeArtifacts() (constraint.ConstraintSystem, groth16.Pr
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("compile voteverifier circuit: %w", err)
 	}
-	return loadOrSetupArtifacts("voteverifier", ccs, voteverifier.Artifacts)
+	return loadOrSetupArtifacts(ccs, voteverifier.Artifacts)
 }
 
 // LoadAggregatorRuntimeArtifacts returns aggregator artifacts from the configured
@@ -34,14 +34,14 @@ func LoadAggregatorRuntimeArtifacts() (constraint.ConstraintSystem, groth16.Prov
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("compile aggregator circuit: %w", err)
 	}
-	return loadOrSetupArtifacts("aggregator", ccs, aggregator.Artifacts)
+	return loadOrSetupArtifacts(ccs, aggregator.Artifacts)
 }
 
 func loadOrSetupArtifacts(
-	name string,
 	ccs constraint.ConstraintSystem,
 	artifacts *circuits.CircuitArtifacts,
 ) (constraint.ConstraintSystem, groth16.ProvingKey, groth16.VerifyingKey, error) {
+	name := artifacts.Name()
 	currentHash, err := circuits.HashConstraintSystem(ccs)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("check %s circuit hash: %w", name, err)
@@ -63,7 +63,8 @@ func loadOrSetupArtifacts(
 			}
 			return loadedCCS, loadedPK, loadedVK, nil
 		} else {
-			log.Warnw("configured circuit artifacts unavailable; running setup in memory", "circuit", name, "error", err)
+			log.Warnw("configured circuit artifacts unavailable; running setup in memory",
+				"circuit", name, "error", err)
 		}
 	} else {
 		log.Warnw("configured circuit artifacts are stale; running setup in memory",

@@ -1,7 +1,6 @@
 package csp
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -17,6 +16,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -69,9 +69,9 @@ func TestCSPProofCircuit(t *testing.T) {
 		test.WithBackends(backend.GROTH16))
 
 	p := profile.Start()
-	now := time.Now()
+	startTime := time.Now()
 	_, _ = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &cspProofCircuit{})
-	fmt.Println("elapsed", time.Since(now))
+	log.DebugTime("csp circuit compile", startTime)
 	p.Stop()
-	fmt.Println("constrains", p.NbConstraints())
+	log.Infow("constraints", "constraints", p.NbConstraints())
 }

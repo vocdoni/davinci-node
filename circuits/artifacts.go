@@ -48,7 +48,6 @@ func init() {
 
 // Artifact describes a cached/downloadable circuit artifact by hash and source URL.
 type Artifact struct {
-	Name      string
 	RemoteURL string
 	Hash      []byte
 }
@@ -90,6 +89,7 @@ func (k *Artifact) Download(ctx context.Context) error {
 // (definition, proving and verification key). It provides a method to load the
 // keys from the local cache or download them from the remote URLs provided.
 type CircuitArtifacts struct {
+	name              string
 	curve             ecc.ID
 	circuitDefinition *Artifact
 	provingKey        *Artifact
@@ -172,8 +172,9 @@ func (ca *CircuitArtifacts) decodeVerifyingKey() (groth16.VerifyingKey, error) {
 
 // NewCircuitArtifacts creates a new CircuitArtifacts struct with the circuit
 // artifacts provided. It returns the struct with the artifacts set.
-func NewCircuitArtifacts(curve ecc.ID, circuit, provingKey, verifyingKey *Artifact) *CircuitArtifacts {
+func NewCircuitArtifacts(name string, curve ecc.ID, circuit, provingKey, verifyingKey *Artifact) *CircuitArtifacts {
 	return &CircuitArtifacts{
+		name:              name,
 		curve:             curve,
 		circuitDefinition: circuit,
 		provingKey:        provingKey,
@@ -181,29 +182,46 @@ func NewCircuitArtifacts(curve ecc.ID, circuit, provingKey, verifyingKey *Artifa
 	}
 }
 
+// Name returns the logical circuit name associated with these artifacts.
+func (ca *CircuitArtifacts) Name() string {
+	if ca == nil {
+		return ""
+	}
+	return ca.name
+}
+
 // LoadAll loads the circuit artifacts into memory.
 func (ca *CircuitArtifacts) LoadAll() error {
+	log.Debugw("reading circuit artifacts", "circuit", ca.Name())
+	startTime := time.Now()
 	if ca.circuitDefinition != nil {
+		stepStart := time.Now()
 		ccs, err := ca.decodeCircuitDefinition()
 		if err != nil {
 			return err
 		}
 		ca.ccs = ccs
+		log.DebugTime("circuit definition loaded", stepStart, "circuit", ca.name)
 	}
 	if ca.provingKey != nil {
+		stepStart := time.Now()
 		pk, err := ca.decodeProvingKey()
 		if err != nil {
 			return err
 		}
 		ca.pk = pk
+		log.DebugTime("proving key loaded", stepStart, "circuit", ca.name)
 	}
 	if ca.verifyingKey != nil {
+		stepStart := time.Now()
 		vk, err := ca.decodeVerifyingKey()
 		if err != nil {
 			return err
 		}
 		ca.vk = vk
+		log.DebugTime("verifying key loaded", stepStart, "circuit", ca.name)
 	}
+	log.DebugTime("circuit artifacts ready", startTime, "circuit", ca.name)
 	return nil
 }
 

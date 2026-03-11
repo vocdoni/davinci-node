@@ -266,6 +266,30 @@ func Monitor(msg string, args map[string]any) {
 	logger.Info().CallerSkipFrame(100).Fields(args).Msg(msg)
 }
 
+// DebugTime logs a debug message with a normalized `took` field.
+func DebugTime(msg string, start time.Time, keyvalues ...any) {
+	logger := getLogger()
+	if logger.GetLevel() > zerolog.DebugLevel {
+		return
+	}
+	fields := make([]any, 0, len(keyvalues)+2)
+	fields = append(fields, keyvalues...)
+	fields = append(fields, "took", fmt.Sprintf("%.3fs", time.Since(start).Seconds()))
+	logger.Debug().Fields(fields).Msg(msg)
+}
+
+// InfoTime logs an info message with a normalized `took` field.
+func InfoTime(msg string, start time.Time, keyvalues ...any) {
+	logger := getLogger()
+	if logger.GetLevel() > zerolog.InfoLevel {
+		return
+	}
+	fields := make([]any, 0, len(keyvalues)+2)
+	fields = append(fields, keyvalues...)
+	fields = append(fields, "took", fmt.Sprintf("%.3fs", time.Since(start).Seconds()))
+	logger.Info().Fields(fields).Msg(msg)
+}
+
 // Warn sends a warn level log message
 func Warn(args ...any) {
 	logger := getLogger()

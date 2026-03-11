@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/big"
 	"os"
 	"os/exec"
@@ -34,6 +33,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
 	davinci_solidity "github.com/vocdoni/davinci-node/solidity"
 	"github.com/vocdoni/davinci-node/spec/params"
@@ -74,27 +74,24 @@ func testCircuitProve(t *testing.T, circuit, assignment frontend.Circuit) {
 }
 
 func TestStateTransitionCircuit(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
 		t.Skip("skipping circuit tests...")
 	}
-	c := qt.New(t)
 	// inputs generation
-	now := time.Now()
+	startTime := time.Now()
 	_, placeholder, assignment := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
-	c.Logf("inputs generation took %s", time.Since(now).String())
+	log.DebugTime("state transition inputs generation", startTime)
 	// proving
-	now = time.Now()
+	startTime = time.Now()
 
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(placeholder, assignment,
 		test.WithCurves(params.StateTransitionCurve), test.WithBackends(backend.GROTH16))
-	c.Logf("proving took %s", time.Since(now).String())
+	log.DebugTime("state transition proving", startTime)
 }
 
 func TestStateTransitionFullProvingCircuit(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
 		t.Skip("skipping circuit tests...")
@@ -102,33 +99,28 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	c := qt.New(t)
 	// inputs generation
 	totalStart := time.Now()
-	now := time.Now()
+	startTime := time.Now()
 
 	// Use a fixed ProcessID for reproducible test data.
 	testResults, placeholder, assignment := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
-	c.Logf("inputs generation took %s", time.Since(now).String())
+	log.DebugTime("state transition inputs generation", startTime)
 
 	// compile circuit
-	now = time.Now()
+	startTime = time.Now()
 	ccs, err := frontend.Compile(params.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, placeholder)
 	c.Assert(err, qt.IsNil, qt.Commentf("compile circuit"))
-	c.Logf("compiled circuit with %d constraints, took %s", ccs.GetNbConstraints(), time.Since(now).String())
+	c.Logf("compiled circuit with %d constraints, took %s", ccs.GetNbConstraints(), time.Since(startTime).String())
 
 	// setup proving and verifying keys
-	now = time.Now()
 	pk, vk, err := prover.Setup(ccs)
 	c.Assert(err, qt.IsNil, qt.Commentf("setup"))
-	c.Logf("setup took %s", time.Since(now).String())
 
 	// create witness
-	now = time.Now()
 	w, err := frontend.NewWitness(assignment, params.StateTransitionCurve.ScalarField())
 	c.Assert(err, qt.IsNil, qt.Commentf("create witness"))
-	c.Logf("witness creation took %s", time.Since(now).String())
 
 	// prove
 	var proof groth16.Proof
-	now = time.Now()
 	proof, err = circuitstest.ProveAndVerifyWithWitness(
 		params.StateTransitionCurve,
 		ccs,
@@ -139,10 +131,8 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 		[]backend.VerifierOption{solidity.WithVerifierTargetSolidityVerifier(backend.GROTH16)},
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove with witness"))
-	c.Logf("proving and immediate verification took %s", time.Since(now).String())
 
 	// verify the last proof with gnark
-	now = time.Now()
 	err = circuitstest.VerifyProofWithWitness(
 		proof,
 		vk,
@@ -150,7 +140,6 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 		solidity.WithVerifierTargetSolidityVerifier(backend.GROTH16),
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("verify proof"))
-	c.Logf("✓ gnark verification took %s", time.Since(now).String())
 
 	// Export artifacts to temporary directory
 	dir, err := os.MkdirTemp("", "davinci_solidity_*")
@@ -159,7 +148,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 		if !t.Failed() {
 			// Clean up if test passes
 			if err := os.RemoveAll(dir); err != nil {
-				log.Printf("warning: failed to remove temp dir %s: %v", dir, err)
+				t.Logf("warning: failed to remove temp dir %s: %v", dir, err)
 			}
 		}
 	}()
@@ -172,7 +161,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	err = vk.ExportSolidity(vkFile)
 	c.Assert(err, qt.IsNil, qt.Commentf("export vk to solidity"))
 	if err := vkFile.Close(); err != nil {
-		log.Printf("warning: failed to close vk.sol file: %v", err)
+		t.Logf("warning: failed to close vk.sol file: %v", err)
 	}
 
 	// Convert proof to Solidity format
@@ -341,7 +330,7 @@ func verifySolidityProof(c *qt.C, buildDir string, proof *davinci_solidity.Groth
 	sim := simulated.NewBackend(alloc, simulated.WithBlockGasLimit(10_000_000))
 	defer func() {
 		if err := sim.Close(); err != nil {
-			log.Printf("warning: failed to close simulated backend: %v", err)
+			c.Logf("warning: failed to close simulated backend: %v", err)
 		}
 	}()
 
@@ -584,8 +573,6 @@ func TestCircuitReencryptBallotsCompile(t *testing.T) {
 }
 
 func TestCircuitReencryptBallotsProve(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
 	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 	testCircuitProve(t, &CircuitReencryptBallots{
 		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
@@ -610,8 +597,6 @@ func TestCircuitCensusProofsCompile(t *testing.T) {
 }
 
 func TestCircuitCensusProofsProve(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
 	t.Run("MerkleTree", func(t *testing.T) {
 		assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
 

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/big"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -155,10 +155,10 @@ type BallotProofResult struct {
 	VoteID     types.VoteID
 }
 
-// BallotProofForTestDeterministic function returns the information after proving a valid
+// DeterministicBallotProof function returns the information after proving a valid
 // ballot using deterministic generation for reproducible testing.
-func BallotProofForTestDeterministic(address []byte, processID types.ProcessID, encryptionKey ecc.Point, seed int64) (*BallotProofResult, error) {
-	now := time.Now()
+func DeterministicBallotProof(address []byte, processID types.ProcessID, encryptionKey ecc.Point, seed int64) (*BallotProofResult, error) {
+	startTime := time.Now()
 	// generate deterministic fields
 	fields := testutil.GenDeterministicBallotFields(seed)
 	// generate deterministic voter k
@@ -189,7 +189,7 @@ func BallotProofForTestDeterministic(address []byte, processID types.ProcessID, 
 	if err != nil {
 		return nil, fmt.Errorf("create circom proof: %w", err)
 	}
-	log.Printf("ballot proof generation ends, it tooks %s", time.Since(now))
+	log.DebugTime("ballot proof generation", startTime)
 	return &BallotProofResult{
 		ProcessID:  proofInputs.CircomInputs.ProcessID.MathBigInt(),
 		Address:    proofInputs.CircomInputs.Address.MathBigInt(),

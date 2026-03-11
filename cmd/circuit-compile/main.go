@@ -92,13 +92,10 @@ func main() {
 	////////////////////////////////////////
 	// Vote Verifier Circuit Compilation
 	////////////////////////////////////////
-	startTime := time.Now()
-	log.Infow("compiling VoteVerifier circuit...")
 	voteVerifierCCS, err := voteverifier.Compile()
 	if err != nil {
 		log.Fatalf("error compiling VoteVerifier circuit: %v", err)
 	}
-	logElapsed("VoteVerifier circuit compiled", startTime)
 	voteVerifierArtifacts, err := compileCircuitArtifacts(
 		"VoteVerifier",
 		voteVerifierCCS,
@@ -116,13 +113,10 @@ func main() {
 	////////////////////////////////////////
 	// Aggregator Circuit Compilation
 	////////////////////////////////////////
-	log.Infow("compiling Aggregator circuit...")
-	startTime = time.Now()
 	aggregatorCCS, err := aggregator.Compile(voteVerifierCCS, voteVerifierArtifacts.VerifyingKey)
 	if err != nil {
 		log.Fatalf("failed to compile Aggregator circuit: %v", err)
 	}
-	logElapsed("Aggregator circuit compiled", startTime)
 	aggregatorArtifacts, err := compileCircuitArtifacts(
 		"Aggregator",
 		aggregatorCCS,
@@ -140,13 +134,10 @@ func main() {
 	////////////////////////////////////////
 	// Statetransition Circuit Compilation
 	////////////////////////////////////////
-	log.Infow("compiling StateTransition circuit...")
-	startTime = time.Now()
 	statetransitionCCS, err := statetransition.Compile(aggregatorCCS, aggregatorArtifacts.VerifyingKey)
 	if err != nil {
 		log.Fatalf("failed to compile StateTransition circuit: %v", err)
 	}
-	logElapsed("StateTransition circuit compiled", startTime)
 	statetransitionArtifacts, err := compileCircuitArtifacts(
 		"StateTransition",
 		statetransitionCCS,
@@ -177,13 +168,10 @@ func main() {
 	/*
 		ResultsVerifier Circuit Compilation
 	*/
-	log.Infow("compiling ResultsVerifier circuit...")
-	startTime = time.Now()
 	resultsverifierCCS, err := results.Compile()
 	if err != nil {
 		log.Fatalf("failed to compile ResultsVerifier circuit: %v", err)
 	}
-	logElapsed("ResultsVerifier circuit compiled", startTime)
 	resultsverifierArtifacts, err := compileCircuitArtifacts(
 		"ResultsVerifier",
 		resultsverifierCCS,
@@ -339,7 +327,7 @@ func processBallotProofArtifacts(destination string, force bool) (*BallotProofAr
 		log.Infow("skipping BallotProof artifact copy; artifacts already up-to-date")
 	}
 
-	log.Infow("BallotProof circom artifacts processed", "elapsed", time.Since(startTime).String())
+	log.DebugTime("BallotProof circom artifacts processed", startTime)
 	return &BallotProofArtifactsResult{
 		CircuitHash:      ballotProofWASMHash,
 		ProvingKeyHash:   ballotProofPKHash,
@@ -395,7 +383,7 @@ func exportSolidityVerifierFile(name string, artifacts *CompileCircuitArtifactsR
 	if artifacts == nil {
 		return "", fmt.Errorf("missing artifacts for %s", name)
 	}
-	log.Infow(fmt.Sprintf("exporting %s solidity verifier...", name))
+	log.Infow("exporting solidity verifier", "circuit", name)
 	solidityVk, ok := artifacts.VerifyingKey.(*groth16_bn254.VerifyingKey)
 	if !ok {
 		return "", fmt.Errorf("unexpected verifying key type for %s", name)
@@ -406,7 +394,7 @@ func exportSolidityVerifierFile(name string, artifacts *CompileCircuitArtifactsR
 	vkeySolFile := solidityVerifierPath(name, destination)
 	fd, err := os.Create(vkeySolFile)
 	if err != nil {
-		return "", fmt.Errorf("create %s_vkey.sol: %w", name, err)
+		return "", fmt.Errorf("create %s: %w", vkeySolFile, err)
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := solidityVk.ExportSolidity(buf, solidity.WithPragmaVersion("^0.8.28")); err != nil {
@@ -419,7 +407,7 @@ func exportSolidityVerifierFile(name string, artifacts *CompileCircuitArtifactsR
 		if closeErr := fd.Close(); closeErr != nil {
 			log.Warnw("failed to close vkey.sol file after write error", "error", closeErr)
 		}
-		return "", fmt.Errorf("write %s_vkey.sol: %w", name, err)
+		return "", fmt.Errorf("write %s: %w", vkeySolFile, err)
 	}
 	if err := fd.Close(); err != nil {
 		log.Warnw("failed to close vkey.sol file", "error", err)
@@ -428,12 +416,8 @@ func exportSolidityVerifierFile(name string, artifacts *CompileCircuitArtifactsR
 	if err := insertProvingKeyHashToVkeySolidity(vkeySolFile, artifacts.ProvingKeyHash); err != nil {
 		log.Warnw("failed to insert proving key hash into vkey.sol", "error", err)
 	}
-	log.Infow(fmt.Sprintf("%s vkey.sol file created", name), "path", vkeySolFile)
+	log.Infow("vkey.sol file created", "circuit", name, "path", vkeySolFile)
 	return vkeySolFile, nil
-}
-
-func logElapsed(message string, startTime time.Time) {
-	log.Infow(message, "elapsed", time.Since(startTime).String())
 }
 
 type CompileCircuitArtifactsResult struct {
@@ -463,7 +447,8 @@ func compileCircuitArtifacts(
 	if err != nil {
 		return nil, fmt.Errorf("hash %s circuit: %w", circuitName, err)
 	}
-	log.Infow(fmt.Sprintf("%s circuit prepared", circuitName), "elapsed", time.Since(startTime).String(),
+	log.DebugTime("circuit definition hashed", startTime,
+		"circuit", circuitName,
 		"newCircuitHash", newCircuitHash,
 		"oldCircuitHash", expectedCircuitHash)
 
@@ -476,7 +461,8 @@ func compileCircuitArtifacts(
 		if err != nil {
 			return nil, fmt.Errorf("load existing %s vk %s: %w", circuitName, expectedVerificationKeyHash, err)
 		}
-		log.Infow(fmt.Sprintf("%s setup skipped; using existing vk from destination", circuitName), "VerifyingKeyHash", expectedVerificationKeyHash)
+		log.Infow("setup skipped; using existing vk from destination",
+			"circuit", circuitName, "VerifyingKeyHash", expectedVerificationKeyHash)
 		return &CompileCircuitArtifactsResult{
 			VerifyingKey:     vk,
 			Recompiled:       false,
@@ -508,7 +494,7 @@ func compileCircuitArtifacts(
 		return nil, fmt.Errorf("write %s verifying key: %w", circuitName, err)
 	}
 
-	log.Infow(fmt.Sprintf("%s artifacts written to disk", circuitName), "elapsed", time.Since(startTime).String())
+	log.DebugTime("artifacts written to disk", startTime, "circuit", circuitName)
 	return &CompileCircuitArtifactsResult{
 		VerifyingKey:     vk,
 		Recompiled:       true,

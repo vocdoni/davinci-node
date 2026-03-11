@@ -3,7 +3,6 @@ package aggregatortest
 import (
 	"os"
 	"testing"
-	"time"
 
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
@@ -12,6 +11,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -28,9 +28,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	processID := testutil.FixedProcessID()
 	nValidVoters := 3
 
-	start := time.Now()
 	_, _, assignment := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, nValidVoters)
-	t.Logf("inputs generation took %s", time.Since(start))
 
 	aggCCS, aggPK, aggVK, err := circuitstest.LoadAggregatorRuntimeArtifacts()
 	c.Assert(err, qt.IsNil, qt.Commentf("load aggregator runtime artifacts"))
@@ -40,8 +38,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 
 	// Prove and verify
 	var proof groth16.Proof
-	t.Logf("proving and verifying aggregator circuit...")
-	start = time.Now()
+	log.Infow("proving and verifying aggregator circuit")
 	proof, err = circuitstest.ProveAndVerifyWithWitness(
 		params.AggregatorCurve,
 		aggCCS,
@@ -58,9 +55,7 @@ func TestAggregatorCircuitProve(t *testing.T) {
 		)},
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove aggregator circuit"))
-	t.Logf("proving and immediate verification took %s", time.Since(start))
 
-	start = time.Now()
 	err = circuitstest.VerifyProofWithWitness(
 		proof,
 		aggVK,
@@ -71,5 +66,4 @@ func TestAggregatorCircuitProve(t *testing.T) {
 		),
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("verify public proof"))
-	t.Logf("explicit verification took %s", time.Since(start))
 }

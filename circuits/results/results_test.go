@@ -1,7 +1,6 @@
 package results
 
 import (
-	"log"
 	"math/big"
 	"os"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
@@ -27,11 +27,10 @@ const nVotes = 10
 
 func TestResultsVerifierCircuit(t *testing.T) {
 	c := qt.New(t)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 
 	// Start the test
-	now := time.Now()
+	startTime := time.Now()
 
 	// Random inputs for the state (processID and censusRoot)
 	processID := testutil.RandomProcessID()
@@ -102,12 +101,12 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	)
 	c.Assert(err, qt.IsNil)
 
-	c.Logf("inputs generation took %s", time.Since(now).String())
+	log.DebugTime("results inputs generation", startTime)
 
 	// Start the proving process
-	now = time.Now()
+	startTime = time.Now()
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&ResultsVerifierCircuit{}, assignment,
 		test.WithCurves(params.ResultsVerifierCurve), test.WithBackends(backend.GROTH16))
-	c.Logf("proving took %s", time.Since(now).String())
+	log.DebugTime("results proving", startTime)
 }

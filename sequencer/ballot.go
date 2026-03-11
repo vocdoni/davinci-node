@@ -197,11 +197,10 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 			b.ProcessID.String(), b.VoteID.String(), err)
 	}
 
-	log.Infow("vote verification proof generated",
+	log.InfoTime("vote verification proof generated", startTime,
 		"processID", b.ProcessID.String(),
 		"voteID", b.VoteID.String(),
 		"address", types.HexBytes(b.Address.Bytes()),
-		"took", time.Since(startTime).String(),
 	)
 
 	proofBLS, ok := proof.(*groth16_bls12377.Proof)

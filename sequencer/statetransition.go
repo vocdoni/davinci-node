@@ -162,8 +162,7 @@ func (s *Sequencer) processPendingTransitions() {
 		// Get blob sidecar and hash
 		blobSidecar := blobData.TxSidecar()
 
-		log.Infow("state transition proof generated",
-			"took", time.Since(startTime).String(),
+		log.InfoTime("state transition proof generated", startTime,
 			"processID", processID.String(),
 			"rootHashBefore", rootHashBefore.String(),
 			"rootHashAfter", rootHashAfter.String(),
@@ -230,8 +229,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to generate assignment: %w", err)
 	}
-	log.Debugw("state transition assignment ready for proof generation",
-		"took", time.Since(startTime).String(),
+	log.DebugTime("state transition assignment ready for proof generation", startTime,
 		"processID", processState.ProcessID(),
 		"votersCount", assignment.VotersCount,
 		"overwrittenVotesCount", assignment.OverwrittenVotesCount,
