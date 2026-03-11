@@ -39,8 +39,7 @@ func DeterministicProcessID(n uint64) types.ProcessID {
 	)
 }
 
-// FixedProcessID should be used by all circuit tests to ensure consistent caching
-// and proof reuse between tests.
+// FixedProcessID should be used by circuit tests that need reproducible process data.
 func FixedProcessID() types.ProcessID {
 	return DeterministicProcessID(1)
 }
@@ -76,6 +75,42 @@ func DeterministicAddress(n uint64) common.Address {
 	prefix := []byte("deterministic-address:")
 	h := crypto.Keccak256(append(prefix, b[:]...))
 	return common.BytesToAddress(h[12:])
+}
+
+// DeterministicSeed returns a deterministic seed based on a ProcessID and index.
+func DeterministicSeed(processID types.ProcessID, index int) int64 {
+	var buf [types.ProcessIDLen + 8]byte
+	copy(buf[0:types.ProcessIDLen], processID[:])
+	binary.BigEndian.PutUint64(buf[types.ProcessIDLen:], uint64(index))
+
+	sum := crypto.Keccak256(buf[:])
+	seed := int64(binary.BigEndian.Uint64(sum[:8]))
+	if seed == 0 {
+		seed = 1
+	}
+	if seed < 0 {
+		seed = -seed
+		if seed == 0 {
+			seed = 1
+		}
+	}
+	return seed
+}
+
+// DeterministicK returns a deterministic big.Int value based on a ProcessID and voter count.
+func DeterministicK(processID types.ProcessID, nValidVoters int) *big.Int {
+	seed := DeterministicSeed(processID, nValidVoters)
+
+	k := big.NewInt(seed)
+	maxK := big.NewInt(1)
+	maxK.Lsh(maxK, 128)
+	k.Mod(k, maxK)
+
+	if k.Sign() == 0 {
+		k = big.NewInt(1)
+	}
+
+	return k
 }
 
 func RandomAddress() common.Address {
@@ -162,8 +197,8 @@ func BallotMode() spec.BallotMode {
 	return spectestutil.FixedBallotMode()
 }
 
-// GenDeterministicBallotFields generates a list of n deterministic fields
-// based on the provided seed for consistent testing and caching.
+// GenDeterministicBallotFields generates a list of deterministic fields
+// based on the provided seed for reproducible testing.
 func GenDeterministicBallotFields(seed int64) [params.FieldsPerBallot]*types.BigInt {
 	bm := spectestutil.FixedBallotMode()
 	fields := [params.FieldsPerBallot]*types.BigInt{}

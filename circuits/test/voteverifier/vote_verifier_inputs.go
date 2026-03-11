@@ -54,8 +54,8 @@ func VoteVerifierInputsForTest(
 		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
 	c.Assert(err, qt.IsNil, qt.Commentf("circom placeholder"))
 
-	// Use deterministic encryption key for consistent caching
-	ek := ballottest.GenDeterministicEncryptionKeyForTest(circuitstest.GenerateDeterministicSeed(processID, 0))
+	// Use a deterministic encryption key for reproducible test data.
+	ek := ballottest.GenDeterministicEncryptionKeyForTest(testutil.DeterministicSeed(processID, 0))
 	encryptionKey := circuits.EncryptionKeyFromECCPoint(ek)
 	// circuits assignments, voters data and proofs
 	var assignments []voteverifier.VerifyVoteCircuit
@@ -63,8 +63,8 @@ func VoteVerifierInputsForTest(
 	ballots := []elgamal.Ballot{}
 	var finalProcessID *big.Int
 	for i, voter := range votersData {
-		// Use deterministic ballot proof generation for consistent caching
-		ballotProof, err := ballottest.BallotProofForTestDeterministic(voter.Address.Bytes(), processID, ek, circuitstest.GenerateDeterministicSeed(processID, i+100))
+		// Use deterministic ballot proof generation for reproducible test data.
+		ballotProof, err := ballottest.BallotProofForTestDeterministic(voter.Address.Bytes(), processID, ek, testutil.DeterministicSeed(processID, i+100))
 		c.Assert(err, qt.IsNil, qt.Commentf("ballotproof inputs for voter %d", i))
 
 		if finalProcessID == nil {
