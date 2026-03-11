@@ -8,12 +8,10 @@ import (
 	groth16_bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
-	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	gnarkecdsa "github.com/consensys/gnark/std/signature/ecdsa"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -177,24 +175,10 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		"inputsHash", b.BallotInputsHash.String(),
 	)
 
-	// Prepare the options for the prover
-	opts := stdgroth16.GetNativeProverOptions(
-		params.AggregatorCurve.ScalarField(),
-		params.VoteVerifierCurve.ScalarField(),
-	)
 	log.Debugw("generating vote verification proof...", "processID", b.ProcessID.String(), "voteID", b.VoteID.String())
-	proof, err := s.prover(params.VoteVerifierCurve, s.voteVerifier.ccs, s.voteVerifier.pk, &assignment, opts)
+	proof, err := s.voteVerifier.ProveAndVerify(&assignment)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
-	}
-
-	pubAssignment := &voteverifier.VerifyVoteCircuit{
-		IsValid:    1,
-		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](b.BallotInputsHash),
-	}
-	if err := s.verifyVoteVerifierProof(proof, pubAssignment); err != nil {
-		return nil, fmt.Errorf("vote verifier proof failed (processID=%s, voteID=%s): %w",
-			b.ProcessID.String(), b.VoteID.String(), err)
 	}
 
 	log.InfoTime("vote verification proof generated", startTime,

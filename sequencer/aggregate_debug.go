@@ -5,12 +5,10 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
-	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
@@ -34,9 +32,9 @@ func (s *Sequencer) debugAggregationFailure(
 		"error", proveErr.Error(),
 		"validProofs", len(batchInputs.VerifiedBallots),
 		"inputsHash", batchInputsHash.String(),
-		"voteVerifierNbPublicWitness", s.voteVerifier.vk.NbPublicWitness(),
-		"voteVerifierNbConstraints", s.voteVerifier.ccs.GetNbConstraints(),
-		"aggregatorNbConstraints", s.aggregator.ccs.GetNbConstraints(),
+		"voteVerifierNbPublicWitness", s.voteVerifier.VerifyingKey().NbPublicWitness(),
+		"voteVerifierNbConstraints", s.voteVerifier.ConstraintSystem().GetNbConstraints(),
+		"aggregatorNbConstraints", s.aggregator.ConstraintSystem().GetNbConstraints(),
 	)
 
 	if pubW, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField(), frontend.PublicOnly()); err != nil {
@@ -55,11 +53,6 @@ func (s *Sequencer) debugAggregationFailure(
 		"count", len(proofInputsHashStrings),
 		"prefix", hashPrefix,
 		"suffix", hashSuffix,
-	)
-
-	opts := stdgroth16.GetNativeVerifierOptions(
-		params.AggregatorCurve.ScalarField(),
-		params.VoteVerifierCurve.ScalarField(),
 	)
 
 	for i, vb := range batchInputs.VerifiedBallots {
@@ -89,54 +82,29 @@ func (s *Sequencer) debugAggregationFailure(
 			continue
 		}
 
-		inputsHashValue := emulated.ValueOf[sw_bn254.ScalarField](vb.InputsHash)
 		pubAssignment := &voteverifier.VerifyVoteCircuit{
 			IsValid:    1,
-			BallotHash: inputsHashValue,
+			BallotHash: emulated.ValueOf[sw_bn254.ScalarField](vb.InputsHash),
 		}
-		pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
-		if err != nil {
-			log.Warnw("failed to build vote verifier public witness",
-				"processID", processID.String(),
-				"index", i,
-				"voteID", vb.VoteID.String(),
-				"address", vb.Address.String(),
-				"inputsHash", vb.InputsHash.String(),
-				"error", err.Error(),
-			)
-			continue
-		}
-
-		if err := groth16.Verify(vb.Proof, s.voteVerifier.vk, pubWitness, opts); err != nil {
-
-			pubAssignmentIsValid0 := &voteverifier.VerifyVoteCircuit{
-				IsValid:    0,
-				BallotHash: inputsHashValue,
-			}
-			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
-			if errIsValid0 == nil {
-				if err2 := groth16.Verify(vb.Proof, s.voteVerifier.vk, pubWitnessIsValid0, opts); err2 == nil {
-					log.Warnw("vote verifier proof verifies only with IsValid=0; aggregator treating it as real will fail",
-						"processID", processID.String(),
-						"index", i,
-						"voteID", vb.VoteID.String(),
-						"address", vb.Address.String(),
-						"inputsHash", vb.InputsHash.String(),
-						"publicWitnessIsValid0", witnessVectorStrings(pubWitnessIsValid0),
-					)
-					continue
-				}
-			}
-
+		if err := s.voteVerifier.Verify(vb.Proof, pubAssignment); err != nil {
 			log.Warnw("vote verifier proof does not verify (native)",
 				"processID", processID.String(),
 				"index", i,
 				"voteID", vb.VoteID.String(),
 				"address", vb.Address.String(),
 				"inputsHash", vb.InputsHash.String(),
-				"publicWitness", witnessVectorStrings(pubWitness),
 				"error", err.Error(),
 			)
+			pubAssignment.IsValid = 0
+			if err := s.voteVerifier.Verify(vb.Proof, pubAssignment); err != nil {
+				log.Warnw("vote verifier proof verifies only with IsValid=0; aggregator treating it as real will fail",
+					"processID", processID.String(),
+					"index", i,
+					"voteID", vb.VoteID.String(),
+					"address", vb.Address.String(),
+					"inputsHash", vb.InputsHash.String(),
+				)
+			}
 			continue
 		}
 
@@ -146,7 +114,6 @@ func (s *Sequencer) debugAggregationFailure(
 			"voteID", vb.VoteID.String(),
 			"address", vb.Address.String(),
 			"inputsHash", vb.InputsHash.String(),
-			"publicWitness", witnessVectorStrings(pubWitness),
 		)
 	}
 }

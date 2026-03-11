@@ -453,14 +453,11 @@ func compileCircuitArtifacts(
 		"oldCircuitHash", expectedCircuitHash)
 
 	if newCircuitHash == expectedCircuitHash && !force {
-		if err := artifacts.EnsureVerifyingKey(context.Background()); err != nil {
-			return nil, fmt.Errorf("ensure %s verifying key: %w", circuitName, err)
+		vk, err := artifacts.LoadOrDownloadVerifyingKey(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("ensure %s verifying key %s: %w", circuitName, expectedVerificationKeyHash, err)
 		}
 
-		vk, err := artifacts.VerifyingKey()
-		if err != nil {
-			return nil, fmt.Errorf("read existing %s vk %s: %w", circuitName, expectedVerificationKeyHash, err)
-		}
 		log.Infow("setup skipped; using existing vk from destination",
 			"circuit", circuitName, "VerifyingKeyHash", expectedVerificationKeyHash)
 		return &CompileCircuitArtifactsResult{

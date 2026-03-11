@@ -13,10 +13,10 @@ import (
 	"github.com/consensys/gnark/frontend"
 )
 
-// DefaultProver is the default prover implementation.
+// Prove is the default prover implementation.
 // It uses the GPU prover if UseGPUProver is true, otherwise it uses the CPU prover.
 // If GPU proving fails, it falls back to CPU proving.
-func DefaultProver(
+func Prove(
 	curve ecc.ID,
 	ccs constraint.ConstraintSystem,
 	pk groth16.ProvingKey,

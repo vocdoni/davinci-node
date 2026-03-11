@@ -1,6 +1,9 @@
 package statetransition
 
 import (
+	"github.com/consensys/gnark/backend"
+	"github.com/consensys/gnark/backend/solidity"
+
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/spec/params"
@@ -25,3 +28,7 @@ var Artifacts = circuits.NewCircuitArtifacts(
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.StateTransitionVerificationKeyHash),
 	},
 )
+
+var ProverOptions = []backend.ProverOption{solidity.WithProverTargetSolidityVerifier(backend.GROTH16)}
+
+var VerifierOptions = []backend.VerifierOption{solidity.WithVerifierTargetSolidityVerifier(backend.GROTH16)}
