@@ -293,6 +293,7 @@ func (circuit StateTransitionCircuit) VerifyIsValidCensusOrigin(api frontend.API
 // VerifyMerkleTransitions enforces that each MerkleTransition is of the expected type:
 //   - Ballot transitions must be INSERT or UPDATE
 //   - VoteID transitions must be INSERT
+//   - ResultsAdd and ResultsSub transitions must be UPDATE
 //   - all dummy slots must be NOOP
 func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, isRealVote []frontend.Variable) {
 	for i := range params.VotesPerBatch {
@@ -304,6 +305,8 @@ func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, 
 		circuits.AssertTrueIf(api, isDummy, circuit.VotesProofs.Ballot[i].IsNoop(api))
 		circuits.AssertTrueIf(api, isDummy, circuit.VotesProofs.VoteIDs[i].IsNoop(api))
 	}
+	api.AssertIsEqual(circuit.ResultsProofs.ResultsAdd.IsUpdate(api), 1)
+	api.AssertIsEqual(circuit.ResultsProofs.ResultsSub.IsUpdate(api), 1)
 }
 
 // VerifyRootTransition verifies that the chain of tree transitions is valid.

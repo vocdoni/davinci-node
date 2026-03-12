@@ -108,3 +108,32 @@ func TestDummySlot(t *testing.T) {
 		test.WithBackends(backend.GROTH16),
 	)
 }
+
+func TestResultsTransitionsMustBeUpdate(t *testing.T) {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
+		t.Skip("skipping circuit tests...")
+	}
+
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment.ResultsProofs.ResultsAdd.Fnc0 = 0
+	assignment.ResultsProofs.ResultsAdd.Fnc1 = 0
+
+	assert := test.NewAssert(t)
+	assert.CheckCircuit(
+		&CircuitMerkleTransitions{},
+		test.WithInvalidAssignment(assignment),
+		test.WithCurves(params.StateTransitionCurve),
+		test.WithBackends(backend.GROTH16),
+	)
+
+	assignment = NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment.ResultsProofs.ResultsSub.Fnc0 = 0
+	assignment.ResultsProofs.ResultsSub.Fnc1 = 0
+
+	assert.CheckCircuit(
+		&CircuitMerkleTransitions{},
+		test.WithInvalidAssignment(assignment),
+		test.WithCurves(params.StateTransitionCurve),
+		test.WithBackends(backend.GROTH16),
+	)
+}
