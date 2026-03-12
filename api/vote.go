@@ -49,8 +49,8 @@ func (a *API) voteStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// DONE status is an internal status and should be not exposed, instead
-	// we use the PROCESSED status
+	// DONE is an internal status and should not be exposed, return PROCESSED
+	// instead
 	if status == storage.VoteIDStatusDone {
 		status = storage.VoteIDStatusProcessed
 	}
