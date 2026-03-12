@@ -22,6 +22,12 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+func setBlobCell(raw []byte, cellIndex int, value *big.Int) {
+	start := cellIndex * state.BlobTxBytesPerFieldElement
+	end := start + state.BlobTxBytesPerFieldElement
+	value.FillBytes(raw[start:end])
+}
+
 func TestBlobDataStructures(t *testing.T) {
 	c := qt.New(t)
 
@@ -80,25 +86,24 @@ func TestBlobDataStructures(t *testing.T) {
 		for _, p := range state.NewResultsSub().BigInts() {
 			push(p)
 		}
+		push(big.NewInt(int64(len(state.Votes()))))
 
 		// Pack votes
 		for _, v := range state.Votes() {
-			push(v.VoteID.BigInt())                // voteID
-			push(v.Address)                        // address
-			for _, p := range v.Ballot.BigInts() { // ballot coords
+			push(v.VoteID.BigInt())                           // voteID
+			push(v.Address)                                   // address
+			push(v.BallotIndex.BigInt())                      // ballot index
+			for _, p := range v.ReencryptedBallot.BigInts() { // ballot coords
 				push(p)
 			}
 		}
 
-		// Add sentinel
-		push(big.NewInt(0))
-
 		// Verify we used the expected number of cells
 		coordsPerBallot := params.FieldsPerBallot * 4
-		resultsCells := 2 * coordsPerBallot     // resultsAdd + resultsSub
-		cellsPerVote := 1 + 1 + coordsPerBallot // voteID + address + ballot
-		sentinelCells := 1
-		expectedCells := resultsCells + len(votes)*cellsPerVote + sentinelCells
+		resultsCells := 2 * coordsPerBallot // resultsAdd + resultsSub
+		countCells := 1
+		cellsPerVote := 1 + 1 + 1 + coordsPerBallot // voteID + address + ballotIndex + ballot
+		expectedCells := resultsCells + countCells + len(votes)*cellsPerVote
 		c.Assert(cell, qt.Equals, expectedCells, qt.Commentf("Expected %d cells, used %d", expectedCells, cell))
 
 		// Test that we can reconstruct the data using optimized parsing
@@ -124,27 +129,27 @@ func TestBlobDataStructures(t *testing.T) {
 			reconstructedCoord := getCell()
 			c.Assert(originalCoord.Cmp(reconstructedCoord), qt.Equals, 0, qt.Commentf("ResultsSub coordinate %d mismatch", i))
 		}
+		votersCount := getCell()
+		c.Assert(votersCount.Cmp(big.NewInt(int64(len(votes)))), qt.Equals, 0, qt.Commentf("VotersCount mismatch"))
 
 		// Verify votes can be reconstructed
 		for i, originalVote := range state.Votes() {
 			voteID := getCell()
 			address := getCell()
+			ballotIndex := getCell()
 
-			// Verify vote ID and address
+			// Verify vote ID, address and ballot index
 			c.Assert(originalVote.VoteID.BigInt().Cmp(voteID), qt.Equals, 0, qt.Commentf("Vote %d ID mismatch", i))
 			c.Assert(originalVote.Address.Cmp(address), qt.Equals, 0, qt.Commentf("Vote %d address mismatch", i))
+			c.Assert(originalVote.BallotIndex.BigInt().Cmp(ballotIndex), qt.Equals, 0, qt.Commentf("Vote %d ballotIndex mismatch", i))
 
 			// Verify ballot coordinates
-			originalCoords := originalVote.Ballot.BigInts()
+			originalCoords := originalVote.ReencryptedBallot.BigInts()
 			for j, originalCoord := range originalCoords {
 				reconstructedCoord := getCell()
 				c.Assert(originalCoord.Cmp(reconstructedCoord), qt.Equals, 0, qt.Commentf("Vote %d ballot coordinate %d mismatch", i, j))
 			}
 		}
-
-		// Verify sentinel
-		sentinel := getCell()
-		c.Assert(sentinel.Cmp(big.NewInt(0)), qt.Equals, 0, qt.Commentf("Expected sentinel (0), got %s", sentinel.String()))
 	})
 }
 
@@ -342,6 +347,31 @@ func TestBlobStateTransition(t *testing.T) {
 	})
 }
 
+func TestParseBlobDataRejectsTooManyVotes(t *testing.T) {
+	c := qt.New(t)
+
+	raw := make([]byte, types.BlobLength)
+	coordsPerBallot := params.FieldsPerBallot * 4
+	votersCountCell := 2 * coordsPerBallot
+	setBlobCell(raw, votersCountCell, big.NewInt(int64(params.VotesPerBatch+1)))
+
+	_, err := state.ParseBlobData(raw)
+	c.Assert(err, qt.ErrorMatches, "too many votes in blob")
+}
+
+func TestParseBlobDataRejectsInvalidVotersCountEncoding(t *testing.T) {
+	c := qt.New(t)
+
+	raw := make([]byte, types.BlobLength)
+	coordsPerBallot := params.FieldsPerBallot * 4
+	votersCountCell := 2 * coordsPerBallot
+	invalidCount := new(big.Int).Lsh(big.NewInt(1), 70)
+	setBlobCell(raw, votersCountCell, invalidCount)
+
+	_, err := state.ParseBlobData(raw)
+	c.Assert(err, qt.ErrorMatches, "invalid voters count in blob")
+}
+
 func verifyBlobStructureBasic(t *testing.T, blob *types.Blob, votes []*state.Vote) {
 	c := qt.New(t)
 	// Parse blob data
@@ -349,6 +379,7 @@ func verifyBlobStructureBasic(t *testing.T, blob *types.Blob, votes []*state.Vot
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to parse blob data"))
 
 	// Verify number of votes
+	c.Assert(blobData.VotersCount, qt.Equals, uint64(len(votes)), qt.Commentf("Expected votersCount %d, got %d", len(votes), blobData.VotersCount))
 	c.Assert(len(blobData.Votes), qt.Equals, len(votes), qt.Commentf("Expected %d votes, got %d", len(votes), len(blobData.Votes)))
 
 	// Verify vote data

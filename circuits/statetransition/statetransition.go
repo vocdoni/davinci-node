@@ -391,9 +391,8 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	// Build blob and verify evaluation
 	//
 	// The blob is built as follows:
-	// - First, we add the new results (addition and subtraction) - always present
-	// - Then, we add the votes sequentially (no padding)
-	// - Finally, we add a sentinel (voteID = 0x0) to mark end of votes
+	// - First, we add the new results (addition and subtraction) and VotersCount
+	// - Finally, we add exactly VotersCount votes sequentially
 	// Each ballot coordinate is represented as a field element (32 bytes).
 	// Each field element is represented as a big-endian byte array.
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement).
@@ -406,21 +405,16 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 			blobIndex++
 		}
 	}
-	// Always include results (no sentinel applies to them)
+	// Always include results.
 	appendBallotMasked(circuit.Results.NewResultsAdd, 1)
 	appendBallotMasked(circuit.Results.NewResultsSub, 1)
-	// Votes section with sentinel handling.
-	// keep==1 means "we haven't seen sentinel yet". Once we see voteID==0,
-	// keep becomes 0 and stays 0, zeroing out everything afterwards.
-	keep := frontend.Variable(1)
+	blob[blobIndex] = circuit.VotersCount
+	blobIndex++
+	isRealVote := circuit.VoteMask(api)
 	for i := range params.VotesPerBatch {
-		voteID := circuit.Votes[i].VoteID
-		isZero := api.IsZero(voteID)  // 1 if voteID==0 else 0
-		notZero := api.Sub(1, isZero) // 1 if voteID!=0 else 0
-		// Only write this vote if keep==1 AND voteID!=0
-		writeMask := api.Mul(keep, notZero)
+		writeMask := isRealVote[i]
 		// VoteID, Address and BallotIndex
-		blob[blobIndex] = api.Mul(writeMask, voteID)
+		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].VoteID)
 		blobIndex++
 		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].Address)
 		blobIndex++
@@ -428,8 +422,6 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 		blobIndex++
 		// Reencrypted ballot (masked)
 		appendBallotMasked(circuit.Votes[i].ReencryptedBallot, writeMask)
-		// Update keep for next iterations: once we saw 0, keep→0 forever
-		keep = api.Mul(keep, notZero)
 	}
 	// Fill the rest of the blob with zeros
 	for i := blobIndex; i < len(blob); i++ {
