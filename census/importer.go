@@ -18,7 +18,7 @@ import (
 //     expectedRoot.
 type ImporterPlugin interface {
 	ValidURI(targetURI string) bool
-	ImportCensus(ctx context.Context, db *censusdb.CensusDB, census *types.Census, from int) (int, error)
+	ImportCensus(ctx context.Context, db *censusdb.CensusDB, census *types.Census) error
 }
 
 // CensusImporter is responsible for importing censuses from various origins.
@@ -44,12 +44,12 @@ func NewCensusImporter(stg *storage.Storage, plugins ...ImporterPlugin) *CensusI
 // censuses do not require downloading, as the census data is managed by the
 // CSP itself. Other census origins are not supported. It returns an error if
 // the download or import fails.
-func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census, processedElements int) (int, error) {
+func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census) error {
 	if census == nil {
-		return 0, fmt.Errorf("census is nil")
+		return fmt.Errorf("census is nil")
 	}
 	if !census.CensusOrigin.Valid() {
-		return 0, fmt.Errorf("invalid census origin: %s", census.CensusOrigin.String())
+		return fmt.Errorf("invalid census origin: %s", census.CensusOrigin.String())
 	}
 	switch {
 	case census.CensusOrigin.IsMerkleTree():
@@ -57,7 +57,7 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census,
 		if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
 			log.Infow("census root already exists, skipping import",
 				"root", census.CensusRoot.String())
-			return processedElements, nil
+			return nil
 		}
 		// Find the appropriate plugin for the given URI.
 		for _, plugin := range d.plugins {
@@ -66,16 +66,15 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census,
 					ctx,
 					d.storage.CensusDB(),
 					census,
-					processedElements,
 				)
 			}
 		}
-		return 0, fmt.Errorf("no importer plugin found for census URI: %s", census.CensusURI)
+		return fmt.Errorf("no importer plugin found for census URI: %s", census.CensusURI)
 	case census.CensusOrigin.IsCSP():
 		// CSP-based census importers do not require downloading, as the
 		// census data is managed by the CSP itself.
-		return 0, nil
+		return nil
 	default:
-		return 0, fmt.Errorf("unsupported census origin: %s", census.CensusOrigin.String())
+		return fmt.Errorf("unsupported census origin: %s", census.CensusOrigin.String())
 	}
 }

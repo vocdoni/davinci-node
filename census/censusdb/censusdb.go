@@ -895,7 +895,7 @@ func importEventsToRef(ref *CensusRef, expectedRoot types.HexBytes, events []cen
 	if err := ref.ApplyEvents(events); err != nil {
 		return fmt.Errorf("failed to apply census events: %w", err)
 	}
-	if finalRoot := ref.Root(); !finalRoot.Equal(expectedRoot) {
+	if finalRoot := ref.Root(); !types.NormalizedCensusRoot(finalRoot).Equal(types.NormalizedCensusRoot(expectedRoot)) {
 		return fmt.Errorf("final root mismatch after applying events: expected %s, got %s",
 			expectedRoot.String(),
 			finalRoot.String())

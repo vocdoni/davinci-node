@@ -314,10 +314,8 @@ func (c *Contracts) SetProcessCensus(processID types.ProcessID, census types.Cen
 	}
 	autOpts.Context = ctx
 
-	var newCensusRoot [32]byte
-	copy(newCensusRoot[:], census.CensusRoot)
 	tx, err := c.processes.SetProcessCensus(autOpts, processID, npbindings.DAVINCITypesCensus{
-		CensusRoot:      newCensusRoot,
+		CensusRoot:      bytes32FromCensusRoot(census.CensusRoot),
 		CensusURI:       census.CensusURI,
 		CensusOrigin:    uint8(census.CensusOrigin),
 		ContractAddress: census.ContractAddress,

@@ -62,12 +62,11 @@ func (jsonImporter) ImportCensus(
 	ctx context.Context,
 	censusDB *censusdb.CensusDB,
 	census *types.Census,
-	_ int,
-) (int, error) {
+) error {
 	// Download the census merkle tree dump
 	res, err := requestRawDump(ctx, census.CensusURI)
 	if err != nil {
-		return 0, fmt.Errorf("failed to download JSON dump from %s: %w", census.CensusURI, err)
+		return fmt.Errorf("failed to download JSON dump from %s: %w", census.CensusURI, err)
 	}
 	// Ensure the response body is closed
 	defer func() {
@@ -81,13 +80,12 @@ func (jsonImporter) ImportCensus(
 	// Create a reader that detects the JSON format
 	jsonReader, jsonFormat, err := jsonReader(res)
 	if err != nil {
-		return 0, fmt.Errorf("failed to download census merkle tree from %s: %w", census.CensusURI, err)
+		return fmt.Errorf("failed to download census merkle tree from %s: %w", census.CensusURI, err)
 	}
-	size, err := importJSONDump(censusDB, jsonFormat, census.CensusRoot, jsonReader)
-	if err != nil {
-		return 0, fmt.Errorf("failed to import census merkle tree from %s: %w", census.CensusURI, err)
+	if err := importJSONDump(censusDB, jsonFormat, census.CensusRoot, jsonReader); err != nil {
+		return fmt.Errorf("failed to import census merkle tree from %s: %w", census.CensusURI, err)
 	}
-	return size, nil
+	return nil
 }
 
 // requestRawDump performs an HTTP GET request to download the census raw dump
@@ -165,33 +163,33 @@ func importJSONDump(
 	format JSONFormat,
 	expectedRoot types.HexBytes,
 	dataReader io.Reader,
-) (int, error) {
+) error {
 	// Import the census merkle tree dump into the census DB
 	var err error
 	var ref *censusdb.CensusRef
 	switch format {
 	case JSONL:
 		// Import JSONL directly into census DB by expected root
-		if ref, err = censusDB.Import(expectedRoot, dataReader); err != nil {
-			return 0, fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
+		if _, err = censusDB.Import(expectedRoot, dataReader); err != nil {
+			return fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 	case JSONArray:
 		// Read entire JSON array dump
 		dump, err := io.ReadAll(dataReader)
 		if err != nil {
-			return 0, fmt.Errorf("failed to read %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
+			return fmt.Errorf("failed to read %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 		// Import JSON array dump into census DB
 
 		if ref, err = censusDB.ImportAll(dump); err != nil {
-			return 0, fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
+			return fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 		// Verify the imported census root matches the expected root
-		if !bytes.Equal(ref.Root(), expectedRoot) {
-			return 0, fmt.Errorf("imported census root mismatch: expected %s, got %x", expectedRoot.String(), ref.Root())
+		if !types.NormalizedCensusRoot(ref.Root()).Equal(types.NormalizedCensusRoot(expectedRoot)) {
+			return fmt.Errorf("imported census root mismatch: expected %s, got %x", expectedRoot.String(), ref.Root())
 		}
 	default:
-		return 0, fmt.Errorf("unknown JSON format: %s", format.String())
+		return fmt.Errorf("unknown JSON format: %s", format.String())
 	}
-	return ref.Size(), nil
+	return nil
 }

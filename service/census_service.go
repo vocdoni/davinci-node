@@ -239,7 +239,7 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census in
 	var importErr error
 	for attempt := 0; attempt < cd.config.Attempts; attempt++ {
 		initialProcessedElements := census.ProcessedElements
-		census.ProcessedElements, importErr = cd.importer.ImportCensus(ctx, census.Census, census.ProcessedElements)
+		importErr = cd.importer.ImportCensus(ctx, census.Census)
 		cd.updateInternalStatus(census, importErr)
 		if importErr == nil {
 			if newElements := census.ProcessedElements - initialProcessedElements; newElements > 0 {

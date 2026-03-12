@@ -98,7 +98,7 @@ func testContractsForReceipt(c *qt.C, txHash common.Hash, receiptStatus uint64) 
 
 func testRPCServer(txHash common.Hash, receiptStatus uint64) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var req testRPCRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

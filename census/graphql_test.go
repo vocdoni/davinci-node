@@ -29,7 +29,7 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	c.Run("success", func(c *qt.C) {
-		_, err = gi.ImportCensus(
+		err = gi.ImportCensus(
 			c.Context(),
 			censusDB,
 			&types.Census{
@@ -37,7 +37,6 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 				CensusURI:       censusURI,
 				CensusRoot:      test.DefaultExpectedRoot,
 			},
-			0,
 		)
 		c.Assert(err, qt.IsNil)
 	})
@@ -70,7 +69,7 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 		fullRoot := testGraphQLRoot(c, fullEvents)
 
 		testServer.SetEvents(initialEvents)
-		processedElements, err := gi.ImportCensus(
+		err := gi.ImportCensus(
 			c.Context(),
 			censusDB,
 			&types.Census{
@@ -78,13 +77,11 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 				CensusURI:       censusURI,
 				CensusRoot:      initialRoot,
 			},
-			0,
 		)
 		c.Assert(err, qt.IsNil)
-		c.Assert(processedElements, qt.Equals, len(initialEvents))
 
 		testServer.SetEvents(fullEvents)
-		processedElements, err = gi.ImportCensus(
+		err = gi.ImportCensus(
 			c.Context(),
 			censusDB,
 			&types.Census{
@@ -92,15 +89,13 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 				CensusURI:       censusURI,
 				CensusRoot:      fullRoot,
 			},
-			processedElements,
 		)
 		c.Assert(err, qt.IsNil)
-		c.Assert(processedElements, qt.Equals, len(fullEvents))
 
 		ref, err := censusDB.LoadByAddress(contractAddress)
 		c.Assert(err, qt.IsNil)
-		c.Assert(ref.Root(), qt.DeepEquals, fullRoot)
 		c.Assert(ref.Size(), qt.Equals, 3)
+		c.Assert(ref.Root(), qt.DeepEquals, fullRoot)
 	})
 }
 

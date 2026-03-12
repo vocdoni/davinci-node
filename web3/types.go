@@ -142,7 +142,7 @@ func process2ContractProcess(p *types.Process) npbindings.DAVINCITypesProcess {
 
 	// Set census stuff
 	prp.Census.CensusOrigin = uint8(p.Census.CensusOrigin)
-	copy(prp.Census.CensusRoot[:], p.Census.CensusRoot)
+	prp.Census.CensusRoot = bytes32FromCensusRoot(p.Census.CensusRoot)
 	prp.Census.CensusURI = p.Census.CensusURI
 	// Only set the contract address if the census origin is
 	// MerkleTreeOffchainDynamicV1, as it's the only one that uses it.

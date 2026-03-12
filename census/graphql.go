@@ -136,45 +136,35 @@ func (d *graphqlImporter) ImportCensus(
 	ctx context.Context,
 	censusDB *censusdb.CensusDB,
 	census *types.Census,
-	processedElements int,
-) (int, error) {
+) error {
 	// Parse the GraphQL endpoint from the target URI
 	endpoint, err := endpointFromURI(census.CensusURI, d.insecure)
 	if err != nil {
-		return 0, fmt.Errorf("invalid GraphQL URI: %w", err)
+		return fmt.Errorf("invalid GraphQL URI: %w", err)
 	}
-	censusExists := censusDB.ExistsByAddress(census.ContractAddress)
 
-	// Query only the unprocessed tail first. A non-empty result is the trigger
-	// to rebuild the census from the full ordered event list.
-	newEvents, err := queryEvents(ctx, endpoint, processedElements, d.pageSize, d.queryTimeout, d.insecure)
+	events, err := queryEvents(ctx, endpoint, d.pageSize, d.queryTimeout, d.insecure)
 	if err != nil {
-		return 0, fmt.Errorf("failed to query GraphQL events from %s: %w", census.CensusURI, err)
-	}
-	// Do not return error if no events are found
-	if len(newEvents) == 0 {
-		return processedElements, nil
+		return fmt.Errorf("failed to query GraphQL events from %s: %w", census.CensusURI, err)
 	}
 
-	allEvents := newEvents
-	if processedElements > 0 {
-		allEvents, err = queryEvents(ctx, endpoint, 0, d.pageSize, d.queryTimeout, d.insecure)
-		if err != nil {
-			return 0, fmt.Errorf("failed to query full GraphQL event list from %s: %w", census.CensusURI, err)
+	if len(events) == 0 {
+		return nil
+	}
+
+	// Try to get the current census to get the current census root
+	if censusRef, _ := censusDB.LoadByAddress(census.ContractAddress); censusRef != nil {
+		if !censusRef.Root().Equal(census.CensusRoot) {
+			if _, err := censusDB.ReimportEventsByAddress(census.ContractAddress, census.CensusRoot, events); err != nil {
+				return fmt.Errorf("failed to rebuild census from events: %w", err)
+			}
+		}
+	} else {
+		if _, err := censusDB.ImportEventsByAddress(census.ContractAddress, census.CensusRoot, events); err != nil {
+			return fmt.Errorf("failed to import census from events: %w", err)
 		}
 	}
-
-	if !censusExists {
-		if _, err := censusDB.ImportEventsByAddress(census.ContractAddress, census.CensusRoot, allEvents); err != nil {
-			return 0, fmt.Errorf("failed to import census from events: %w", err)
-		}
-		return len(allEvents), nil
-	}
-
-	if _, err := censusDB.ReimportEventsByAddress(census.ContractAddress, census.CensusRoot, allEvents); err != nil {
-		return 0, fmt.Errorf("failed to rebuild census from events: %w", err)
-	}
-	return len(allEvents), nil
+	return nil
 }
 
 // endpointFromURI converts a GraphQL URI (starting with "graphql://") to an
@@ -215,13 +205,12 @@ func queryPageBody(first, skip int) (io.Reader, error) {
 func queryEvents(
 	ctx context.Context,
 	url string,
-	from int,
 	pageSize int,
 	timeout time.Duration,
 	insecure bool,
 ) ([]census.CensusEvent, error) {
 	// Setup pagination variables
-	skip := from
+	skip := 0
 	first := pageSize
 	// Create the result slice and http client to be reused
 	var results []census.CensusEvent
