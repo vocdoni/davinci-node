@@ -32,8 +32,9 @@ func TestBuildKZGCommitmentOverflow(t *testing.T) {
 
 	coordsPerBallot := params.FieldsPerBallot * 4
 	resultsCells := 2 * coordsPerBallot
-	cellsPerVote := 1 + 1 + coordsPerBallot
-	maxVotes := (BlobTxFieldElementsPerBlob - resultsCells - 1) / cellsPerVote
+	countCells := 1
+	cellsPerVote := 1 + 1 + 1 + coordsPerBallot
+	maxVotes := (BlobTxFieldElementsPerBlob - resultsCells - countCells) / cellsPerVote
 	votes := make([]*Vote, 0, maxVotes+1)
 	for i := 0; i < maxVotes+1; i++ {
 		votes = append(votes, &Vote{

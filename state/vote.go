@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	// VoteIDKeyValue is a constant key used to store vote IDs in the state
-	VoteIDKeyValue = big.NewInt(0)
+	// voteIDLeafValue is the value that VoteID leaves must have in the state merkle tree.
+	voteIDLeafValue = big.NewInt(params.VoteIDLeafValue)
 
 	// ErrNotFound is returned when a key is not found in the state
 	ErrKeyNotFound = fmt.Errorf("not found")

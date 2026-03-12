@@ -67,7 +67,7 @@ type Results struct {
 }
 
 // ProcessProofs struct contains the Merkle proofs for the process for the ID
-// CensusRoot, BallotMode and EncryptionKey.
+// CensusOrigin, BallotMode and EncryptionKey.
 type ProcessProofs struct {
 	ID            merkleproof.MerkleProof
 	CensusOrigin  merkleproof.MerkleProof
@@ -114,13 +114,15 @@ func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	// recursive proof
 	circuit.VerifyAggregatorProof(api, isRealVote)
 	// current state
-	circuit.VerifyMerkleProofs(api, HashFn)
+	circuit.VerifyProcessProofKeys(api)
+	circuit.VerifyProcessProofs(api, HashFn)
 	// state transition
 	circuit.VerifyMerkleTransitions(api, isRealVote)
 	circuit.VerifyRootTransition(api, HashFn)
 	// leaf hashes
 	circuit.VerifyLeafHashes(api, HashFn)
 	// censuses
+	circuit.VerifyIsValidCensusOrigin(api)
 	circuit.VerifyMerkleCensusProofs(api, isRealVote)
 	circuit.VerifyCSPCensusProofs(api, isRealVote)
 	// votes reencryption and ballots
@@ -262,20 +264,36 @@ func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API, i
 	}
 }
 
-// VerifyMerkleProofs verifies that the ProcessID, CensusRoot, BallotMode
+// VerifyProcessProofKeys asserts that the process proofs are bound to the
+// canonical state keys for each process parameter.
+func (circuit StateTransitionCircuit) VerifyProcessProofKeys(api frontend.API) {
+	api.AssertIsEqual(circuit.ProcessProofs.ID.Key, params.StateKeyProcessID)
+	api.AssertIsEqual(circuit.ProcessProofs.CensusOrigin.Key, params.StateKeyCensusOrigin)
+	api.AssertIsEqual(circuit.ProcessProofs.BallotMode.Key, params.StateKeyBallotMode)
+	api.AssertIsEqual(circuit.ProcessProofs.EncryptionKey.Key, params.StateKeyEncryptionKey)
+}
+
+// VerifyProcessProofs verifies that the ProcessID, CensusOrigin, BallotMode
 // and EncryptionKey belong to the RootHashBefore. It uses the MerkleProof
 // structure to verify the proofs. The proofs are verified using the Verify
 // function of the MerkleProof structure.
-func (circuit StateTransitionCircuit) VerifyMerkleProofs(api frontend.API, hFn utils.Hasher) {
+func (circuit StateTransitionCircuit) VerifyProcessProofs(api frontend.API, hFn utils.Hasher) {
 	circuit.ProcessProofs.ID.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.CensusOrigin.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.BallotMode.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.EncryptionKey.Verify(api, hFn, circuit.RootHashBefore)
 }
 
+// VerifyIsValidCensusOrigin asserts that the census origin is one of the
+// variants currently supported by the circuit.
+func (circuit StateTransitionCircuit) VerifyIsValidCensusOrigin(api frontend.API) {
+	api.AssertIsEqual(census.IsValidCensusOrigin(api, circuit.Process.CensusOrigin), 1)
+}
+
 // VerifyMerkleTransitions enforces that each MerkleTransition is of the expected type:
 //   - Ballot transitions must be INSERT or UPDATE
 //   - VoteID transitions must be INSERT
+//   - ResultsAdd and ResultsSub transitions must be UPDATE
 //   - all dummy slots must be NOOP
 func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, isRealVote []frontend.Variable) {
 	for i := range params.VotesPerBatch {
@@ -287,6 +305,8 @@ func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, 
 		circuits.AssertTrueIf(api, isDummy, circuit.VotesProofs.Ballot[i].IsNoop(api))
 		circuits.AssertTrueIf(api, isDummy, circuit.VotesProofs.VoteIDs[i].IsNoop(api))
 	}
+	api.AssertIsEqual(circuit.ResultsProofs.ResultsAdd.IsUpdate(api), 1)
+	api.AssertIsEqual(circuit.ResultsProofs.ResultsSub.IsUpdate(api), 1)
 }
 
 // VerifyRootTransition verifies that the chain of tree transitions is valid.
@@ -339,6 +359,12 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
 			return
 		}
+		// VoteID
+		circuit.VotesProofs.VoteIDs[i].VerifyNewKey(api, v.VoteID)
+		if err := circuit.VotesProofs.VoteIDs[i].VerifyNewLeafHash(api, hFn, params.VoteIDLeafValue); err != nil {
+			circuits.FrontendError(api, "failed to verify voteID vote proof leaf hash: ", err)
+			return
+		}
 	}
 	// Results
 	if err := circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsAdd.SerializeVars()...); err != nil {
@@ -365,9 +391,8 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	// Build blob and verify evaluation
 	//
 	// The blob is built as follows:
-	// - First, we add the new results (addition and subtraction) - always present
-	// - Then, we add the votes sequentially (no padding)
-	// - Finally, we add a sentinel (voteID = 0x0) to mark end of votes
+	// - First, we add the new results (addition and subtraction) and VotersCount
+	// - Finally, we add exactly VotersCount votes sequentially
 	// Each ballot coordinate is represented as a field element (32 bytes).
 	// Each field element is represented as a big-endian byte array.
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement).
@@ -380,21 +405,16 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 			blobIndex++
 		}
 	}
-	// Always include results (no sentinel applies to them)
+	// Always include results.
 	appendBallotMasked(circuit.Results.NewResultsAdd, 1)
 	appendBallotMasked(circuit.Results.NewResultsSub, 1)
-	// Votes section with sentinel handling.
-	// keep==1 means "we haven't seen sentinel yet". Once we see voteID==0,
-	// keep becomes 0 and stays 0, zeroing out everything afterwards.
-	keep := frontend.Variable(1)
+	blob[blobIndex] = circuit.VotersCount
+	blobIndex++
+	isRealVote := circuit.VoteMask(api)
 	for i := range params.VotesPerBatch {
-		voteID := circuit.Votes[i].VoteID
-		isZero := api.IsZero(voteID)  // 1 if voteID==0 else 0
-		notZero := api.Sub(1, isZero) // 1 if voteID!=0 else 0
-		// Only write this vote if keep==1 AND voteID!=0
-		writeMask := api.Mul(keep, notZero)
+		writeMask := isRealVote[i]
 		// VoteID, Address and BallotIndex
-		blob[blobIndex] = api.Mul(writeMask, voteID)
+		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].VoteID)
 		blobIndex++
 		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].Address)
 		blobIndex++
@@ -402,8 +422,6 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 		blobIndex++
 		// Reencrypted ballot (masked)
 		appendBallotMasked(circuit.Votes[i].ReencryptedBallot, writeMask)
-		// Update keep for next iterations: once we saw 0, keep→0 forever
-		keep = api.Mul(keep, notZero)
 	}
 	// Fill the rest of the blob with zeros
 	for i := blobIndex; i < len(blob); i++ {

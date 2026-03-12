@@ -19,9 +19,10 @@ const (
 
 // BlobData represents the structured data extracted from a blob
 type BlobData struct {
-	Votes      []*Vote
-	ResultsAdd []*big.Int
-	ResultsSub []*big.Int
+	VotersCount uint64
+	Votes       []*Vote
+	ResultsAdd  []*big.Int
+	ResultsSub  []*big.Int
 }
 
 // BlobEvalData returns the cached blob evaluation data for the current batch.
@@ -29,8 +30,9 @@ type BlobData struct {
 // blob layout:
 //  1. ResultsAdd (params.FieldsPerBallot * 4 coordinates)
 //  2. ResultsSub (params.FieldsPerBallot * 4 coordinates)
-//  3. Votes sequentially until voteID = 0x0 (sentinel):
-//     Each vote: voteID + address + reencryptedBallot coordinates
+//  3. VotersCount
+//  4. Votes sequentially for exactly VotersCount entries:
+//     Each vote: voteID + address + ballotIndex + reencryptedBallot coordinates
 func (st *State) BlobEvalData() (*blobs.BlobEvalData, error) {
 	if st.blobEvalData == nil {
 		return nil, fmt.Errorf("blob eval data not available")
@@ -70,8 +72,11 @@ func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 			return nil, err
 		}
 	}
+	if err := push(big.NewInt(int64(st.VotersCount()))); err != nil {
+		return nil, err
+	}
 
-	// Then add votes sequentially (no padding)
+	// Then add exactly VotersCount votes sequentially (no padding)
 	for _, v := range st.Votes() {
 		if err := push(v.VoteID.BigInt()); err != nil { // voteId hash
 			return nil, err
@@ -87,12 +92,6 @@ func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 				return nil, err
 			}
 		}
-	}
-
-	// Add sentinel (voteID = 0x0) to mark end of votes
-	// remaining cells are zero-initialised already
-	if err := push(big.NewInt(0)); err != nil {
-		return nil, err
 	}
 
 	// Convert 2D cell array to flat blob format
@@ -134,9 +133,10 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 	coordsPerBallot := params.FieldsPerBallot * 4 // each field has 4 coordinates (C1.X, C1.Y, C2.X, C2.Y)
 
 	data := &BlobData{
-		Votes:      make([]*Vote, 0),
-		ResultsAdd: make([]*big.Int, coordsPerBallot),
-		ResultsSub: make([]*big.Int, coordsPerBallot),
+		VotersCount: 0,
+		Votes:       make([]*Vote, 0),
+		ResultsAdd:  make([]*big.Int, coordsPerBallot),
+		ResultsSub:  make([]*big.Int, coordsPerBallot),
 	}
 
 	// extract big.Int from blob cell
@@ -163,21 +163,26 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 		data.ResultsSub[i] = getCell(cellIndex)
 		cellIndex++
 	}
+	votersCountCell := getCell(cellIndex)
+	cellIndex++
+	if !votersCountCell.IsUint64() {
+		return nil, fmt.Errorf("invalid voters count in blob")
+	}
+	votersCount := votersCountCell.Uint64()
+	if votersCount > params.VotesPerBatch {
+		return nil, fmt.Errorf("too many votes in blob")
+	}
+	data.VotersCount = votersCount
 
-	// Extract votes until we find voteID = 0x0 (sentinel)
-	for {
-		voteIDcell := getCell(cellIndex)
-		cellIndex++
-
-		// Check for sentinel (voteID = 0x0)
-		if voteIDcell.Cmp(big.NewInt(0)) == 0 {
-			break
-		}
-
-		// Check if we have enough cells for a complete vote
-		if cellIndex+1+coordsPerBallot > BlobTxFieldElementsPerBlob {
+	// Extract exactly VotersCount votes.
+	for range data.VotersCount {
+		// Check if we have enough cells for a complete vote:
+		// voteID + address + ballotIndex + ballot coordinates.
+		if cellIndex+3+coordsPerBallot > BlobTxFieldElementsPerBlob {
 			return nil, fmt.Errorf("incomplete vote data in blob")
 		}
+		voteIDcell := getCell(cellIndex)
+		cellIndex++
 
 		// Extract address
 		address := getCell(cellIndex)
@@ -219,11 +224,6 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 			ReencryptedBallot: ballot,
 		}
 		data.Votes = append(data.Votes, vote)
-
-		// Safety check to prevent infinite loop
-		if len(data.Votes) > params.VotesPerBatch {
-			return nil, fmt.Errorf("too many votes in blob")
-		}
 	}
 
 	return data, nil
@@ -251,17 +251,12 @@ func (st *State) ApplyBlobToState(blob *types.Blob) error {
 			}
 		}
 
-		// Add or update the vote ID in the tree
-		if !st.ContainsVoteID(vote.VoteID) {
-			// Key doesn't exist, add it
-			if err := st.tree.AddBigInt(vote.VoteID.BigInt(), VoteIDKeyValue); err != nil {
-				return fmt.Errorf("failed to add vote ID %d to tree: %w", vote.VoteID, err)
-			}
-		} else {
-			// Key exists, update it
-			if err := st.tree.UpdateBigInt(vote.VoteID.BigInt(), VoteIDKeyValue); err != nil {
-				return fmt.Errorf("failed to update vote ID %d in tree: %w", vote.VoteID, err)
-			}
+		// Add the vote ID in the tree
+		if _, _, err := st.tree.GetBigInt(vote.VoteID.BigInt()); err == nil {
+			return fmt.Errorf("failed to add vote ID %d to tree: already exists", vote.VoteID)
+		}
+		if err := st.tree.AddBigInt(vote.VoteID.BigInt(), voteIDLeafValue); err != nil {
+			return fmt.Errorf("failed to add vote ID %d to tree: %w", vote.VoteID, err)
 		}
 	}
 
