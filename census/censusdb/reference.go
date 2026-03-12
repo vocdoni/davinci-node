@@ -79,7 +79,7 @@ func (cr *CensusRef) Insert(key, value types.HexBytes) error {
 }
 
 // InsertBatch safely inserts a batch of key/value pairs into the Merkle tree.
-func (cr *CensusRef) InsertBatch(keys, values []types.HexBytes) ([]interface{}, error) {
+func (cr *CensusRef) InsertBatch(keys, values []types.HexBytes) ([]any, error) {
 	cr.treeMu.Lock()
 	defer cr.treeMu.Unlock()
 

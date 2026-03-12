@@ -42,7 +42,7 @@ func TestProcessStatsConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func(routineID int) {
 			defer wg.Done()
-			for j := 0; j < ballotsPerGoroutine; j++ {
+			for j := range ballotsPerGoroutine {
 				// Create a unique ballot
 				ballot := &Ballot{
 					ProcessID: processID,
@@ -222,7 +222,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			for j := 0; j < ballotsPerWorker; j++ {
+			for j := range ballotsPerWorker {
 				ballot := &Ballot{
 					ProcessID: processID,
 					Address:   big.NewInt(int64(workerID*10000 + j)),
@@ -255,9 +255,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 	}
 
 	// Aggregator goroutine that periodically aggregates ballots
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for range 5 { // Try to aggregate 5 times
 			time.Sleep(10 * time.Millisecond) // Small delay
 
@@ -293,7 +291,7 @@ func TestProcessStatsRaceCondition(t *testing.T) {
 				}
 			}
 		}
-	}()
+	})
 
 	// Wait for all operations to complete
 	wg.Wait()
@@ -923,7 +921,7 @@ func TestTotalStatsConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func(routineID int) {
 			defer wg.Done()
-			for j := 0; j < updatesPerGoroutine; j++ {
+			for j := range updatesPerGoroutine {
 				// Pick a random process
 				processIdx := (routineID + j) % numProcesses
 				processID := processes[processIdx]

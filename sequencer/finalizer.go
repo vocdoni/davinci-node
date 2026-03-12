@@ -63,9 +63,7 @@ func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuit
 func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 	f.ctx, f.cancel = context.WithCancel(ctx)
 
-	f.wg.Add(1)
-	go func() {
-		defer f.wg.Done()
+	f.wg.Go(func() {
 		for {
 			select {
 			case processID := <-f.OndemandCh:
@@ -83,12 +81,10 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 				return
 			}
 		}
-	}()
+	})
 
 	if monitorInterval > 0 {
-		f.wg.Add(1)
-		go func() {
-			defer f.wg.Done()
+		f.wg.Go(func() {
 			ticker := time.NewTicker(monitorInterval)
 			defer ticker.Stop()
 			for {
@@ -99,7 +95,7 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	log.Infow("finalizer started successfully")

@@ -71,8 +71,7 @@ func TestJobsManagerStartStop(t *testing.T) {
 	c := qt.New(t)
 
 	jm := NewJobsManager(storageForTest(t), 1*time.Minute, nil, 50*time.Millisecond)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Test start
 	jm.Start(ctx)

@@ -58,7 +58,7 @@ func TestCollectAggregationBatchInputs_SkipsDontCreateHoles(t *testing.T) {
 	ballots := make([]*storage.VerifiedBallot, 0, params.VotesPerBatch+1)
 	keys := make([][]byte, 0, params.VotesPerBatch+1)
 
-	for i := 0; i < params.VotesPerBatch+1; i++ {
+	for i := range params.VotesPerBatch + 1 {
 		voteID := types.VoteID(i + 1)
 		ballots = append(ballots, &storage.VerifiedBallot{
 			VoteID:     voteID,

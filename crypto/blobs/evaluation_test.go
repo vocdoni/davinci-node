@@ -244,7 +244,7 @@ func TestBlobEvalDataTransform(t *testing.T) {
 
 	// Verify blob cells were transformed (spot check a few cells)
 	// Full validation happens in the circuit test below
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		c.Assert(blobData.ForGnark.Blob[i], qt.Not(qt.IsNil),
 			qt.Commentf("ForGnark.Blob[%d] should be set", i))
 	}

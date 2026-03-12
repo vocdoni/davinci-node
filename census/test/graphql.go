@@ -279,10 +279,7 @@ func paginate(events []TestWeightChangeEvent, first, skip int) []weightChangeEve
 	}
 
 	start := skip
-	end := len(events)
-	if start+first < end {
-		end = start + first
-	}
+	end := min(start+first, len(events))
 
 	out := make([]weightChangeEventOut, 0, end-start)
 	for _, e := range events[start:end] {

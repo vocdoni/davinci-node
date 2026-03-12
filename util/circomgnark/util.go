@@ -55,15 +55,15 @@ func stringToG1(h []string) (*curve.G1Affine, error) {
 	}
 	h = h[:2]
 	hexa := len(h[0]) > 1 && strings.HasPrefix(h[0], "0x")
-	in := ""
+	var in strings.Builder
 
 	var b []byte
 	var err error
 	if hexa {
 		for i := range h {
-			in += strings.TrimPrefix(h[i], "0x")
+			in.WriteString(strings.TrimPrefix(h[i], "0x"))
 		}
-		b, err = hex.DecodeString(in)
+		b, err = hex.DecodeString(in.String())
 		if err != nil {
 			return nil, err
 		}
@@ -108,16 +108,16 @@ func stringToG2(h [][]string) (*curve.G2Affine, error) {
 	}
 	h = h[:2]
 	hexa := len(h[0][0]) > 1 && strings.HasPrefix(h[0][0], "0x")
-	in := ""
+	var in strings.Builder
 	var b []byte
 	var err error
 	if hexa {
 		for i := 0; i < len(h); i++ {
 			for j := 0; j < len(h[i]); j++ {
-				in += strings.TrimPrefix(h[i][j], "0x")
+				in.WriteString(strings.TrimPrefix(h[i][j], "0x"))
 			}
 		}
-		b, err = hex.DecodeString(in)
+		b, err = hex.DecodeString(in.String())
 		if err != nil {
 			return nil, err
 		}

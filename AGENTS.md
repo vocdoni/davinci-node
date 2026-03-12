@@ -9,7 +9,7 @@
 - Keep packages focused per responsibility, design modular interfaces, and configure behavior through environment variables instead of hard-coded constants.
 
 ## Style & Go idioms
-1. Always run `gofmt` before submitting changes; let the formatter handle indentation and alignment.
+1. Always write modern Go (according to version pinned in `go.mod`) and run `go mod tidy`, `go fmt ./...`, `go fix ./...`, `go vet ./...`, and `golangci-lint run` before committing.
 2. Use structured logging (`log.Debugw`, `log.Errorw`, `log.Infow`) with contextual fields (IDs, durations, counts); prefer these over `fmt.Printf`.
 3. Create errors via `fmt.Errorf` (not `errors.New`) so `%w` wrapping is always possible. Wrap every caller with context (`fmt.Errorf("fetch user: %w", err)`) and include the operation name.
 4. Use `bytes.Equal` or direct array comparisons for slices, and avoid conversions (e.g., `common.BytesToAddress`) unless you truly need the struct.
@@ -38,7 +38,6 @@
 5. Track TODOs (especially those touching telemetry, docs, or proto exports) and open follow-up issues when they remain.
 
 ## Tooling & maintenance
-- Run `go vet`, `golangci-lint`, and `go mod tidy` when adjusting imports or tooling.
 - Use short declarations (`:=`) for new variables and keep the scope tight to prevent accidental reuse.
 
 ## HTTP & client-facing behavior

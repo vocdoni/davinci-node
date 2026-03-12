@@ -20,12 +20,10 @@ func TestFinalizerCloseWaitsForInFlightFinalization(t *testing.T) {
 		ctx:        ctx,
 		cancel:     cancel,
 	}
-	f.wg.Add(1)
-	go func() {
-		defer f.wg.Done()
+	f.wg.Go(func() {
 		close(started)
 		<-release
-	}()
+	})
 	<-started
 
 	done := make(chan struct{})
@@ -61,12 +59,10 @@ func TestSequencerStopWaitsForFinalizerClose(t *testing.T) {
 		ctx:        ctx,
 		cancel:     cancel,
 	}
-	f.wg.Add(1)
-	go func() {
-		defer f.wg.Done()
+	f.wg.Go(func() {
 		close(started)
 		<-release
-	}()
+	})
 
 	s := &Sequencer{
 		finalizer: f,

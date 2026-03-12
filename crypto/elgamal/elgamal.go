@@ -119,7 +119,7 @@ func BabyStepGiantStepECC(beta, alpha ecc.Point, max uint64) (*big.Int, error) {
 	baby.SetZero()
 	table := make(map[string]uint64, mU64+1)
 
-	for j := uint64(0); j < mU64; j++ { // j in [0,m‑1]
+	for j := range mU64 { // j in [0,m‑1]
 		table[pointKey(baby)] = j
 		baby.Add(baby, alpha) // (j+1)·G
 	}

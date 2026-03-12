@@ -189,7 +189,7 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 
 		// Extract ballot coordinates
 		ballotCoords := make([]*big.Int, coordsPerBallot)
-		for j := 0; j < coordsPerBallot; j++ {
+		for j := range coordsPerBallot {
 			ballotCoords[j] = getCell(cellIndex)
 			cellIndex++
 		}

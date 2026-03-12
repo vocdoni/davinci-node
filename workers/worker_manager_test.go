@@ -251,8 +251,7 @@ func TestWorkerManagerStartStop(t *testing.T) {
 	c := qt.New(t)
 
 	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Test start
 	wm.Start(ctx)
@@ -514,8 +513,7 @@ func TestWorkerManagerConcurrency(t *testing.T) {
 	c := qt.New(t)
 
 	wm := NewWorkerManager(storageForTest(t), DefaultWorkerBanRules)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	wm.Start(ctx)
 	defer wm.Stop()
@@ -544,11 +542,9 @@ func TestWorkerManagerConcurrency(t *testing.T) {
 
 	// Concurrent banned workers checks
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			wm.BannedWorkers()
-		}()
+		})
 	}
 
 	wg.Wait()

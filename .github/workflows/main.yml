@@ -53,6 +53,16 @@ jobs:
             exit 1
           fi
 
+      - name: Run go fix
+        run: |
+          go fix ./...
+          if [[ $(git status --porcelain) ]]; then
+            git diff
+            echo
+            echo "go fix made these changes, please run 'go fix ./...' and include those changes in a commit"
+            exit 1
+          fi
+
       - name: Run go vet
         run: go vet ./...
 
