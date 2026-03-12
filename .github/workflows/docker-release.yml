@@ -38,7 +38,7 @@ jobs:
           echo "GIT_HASH_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           echo "DATE_IN_SECS=$(date +%s)" >> $GITHUB_OUTPUT
       - name: Build and Push image to Docker Hub and ghcr.io
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
             # platforms: linux/amd64
