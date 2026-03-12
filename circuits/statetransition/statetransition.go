@@ -67,7 +67,7 @@ type Results struct {
 }
 
 // ProcessProofs struct contains the Merkle proofs for the process for the ID
-// CensusRoot, BallotMode and EncryptionKey.
+// CensusOrigin, BallotMode and EncryptionKey.
 type ProcessProofs struct {
 	ID            merkleproof.MerkleProof
 	CensusOrigin  merkleproof.MerkleProof
@@ -114,13 +114,15 @@ func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	// recursive proof
 	circuit.VerifyAggregatorProof(api, isRealVote)
 	// current state
-	circuit.VerifyMerkleProofs(api, HashFn)
+	circuit.VerifyProcessProofKeys(api)
+	circuit.VerifyProcessProofs(api, HashFn)
 	// state transition
 	circuit.VerifyMerkleTransitions(api, isRealVote)
 	circuit.VerifyRootTransition(api, HashFn)
 	// leaf hashes
 	circuit.VerifyLeafHashes(api, HashFn)
 	// censuses
+	circuit.VerifyIsValidCensusOrigin(api)
 	circuit.VerifyMerkleCensusProofs(api, isRealVote)
 	circuit.VerifyCSPCensusProofs(api, isRealVote)
 	// votes reencryption and ballots
@@ -262,15 +264,30 @@ func (circuit StateTransitionCircuit) VerifyReencryptedVotes(api frontend.API, i
 	}
 }
 
-// VerifyMerkleProofs verifies that the ProcessID, CensusRoot, BallotMode
+// VerifyProcessProofKeys asserts that the process proofs are bound to the
+// canonical state keys for each process parameter.
+func (circuit StateTransitionCircuit) VerifyProcessProofKeys(api frontend.API) {
+	api.AssertIsEqual(circuit.ProcessProofs.ID.Key, params.StateKeyProcessID)
+	api.AssertIsEqual(circuit.ProcessProofs.CensusOrigin.Key, params.StateKeyCensusOrigin)
+	api.AssertIsEqual(circuit.ProcessProofs.BallotMode.Key, params.StateKeyBallotMode)
+	api.AssertIsEqual(circuit.ProcessProofs.EncryptionKey.Key, params.StateKeyEncryptionKey)
+}
+
+// VerifyProcessProofs verifies that the ProcessID, CensusOrigin, BallotMode
 // and EncryptionKey belong to the RootHashBefore. It uses the MerkleProof
 // structure to verify the proofs. The proofs are verified using the Verify
 // function of the MerkleProof structure.
-func (circuit StateTransitionCircuit) VerifyMerkleProofs(api frontend.API, hFn utils.Hasher) {
+func (circuit StateTransitionCircuit) VerifyProcessProofs(api frontend.API, hFn utils.Hasher) {
 	circuit.ProcessProofs.ID.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.CensusOrigin.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.BallotMode.Verify(api, hFn, circuit.RootHashBefore)
 	circuit.ProcessProofs.EncryptionKey.Verify(api, hFn, circuit.RootHashBefore)
+}
+
+// VerifyIsValidCensusOrigin asserts that the census origin is one of the
+// variants currently supported by the circuit.
+func (circuit StateTransitionCircuit) VerifyIsValidCensusOrigin(api frontend.API) {
+	api.AssertIsEqual(census.IsValidCensusOrigin(api, circuit.Process.CensusOrigin), 1)
 }
 
 // VerifyMerkleTransitions enforces that each MerkleTransition is of the expected type:

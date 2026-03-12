@@ -28,3 +28,12 @@ func IsMerkleTreeCensusOrigin(api frontend.API, origin frontend.Variable) fronte
 func IsCSPCensusOrigin(api frontend.API, origin frontend.Variable) frontend.Variable {
 	return api.IsZero(api.Sub(origin, uint8(types.CensusOriginCSPEdDSABabyJubJubV1)))
 }
+
+// IsValidCensusOrigin returns a frontend.Variable that is 1 if the provided
+// origin corresponds to any supported census origin, 0 otherwise.
+func IsValidCensusOrigin(api frontend.API, origin frontend.Variable) frontend.Variable {
+	return api.Or(
+		IsMerkleTreeCensusOrigin(api, origin),
+		IsCSPCensusOrigin(api, origin),
+	)
+}
