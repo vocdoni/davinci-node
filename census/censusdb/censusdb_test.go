@@ -343,7 +343,7 @@ func TestCensusDBConcurrentLoad(t *testing.T) {
 	errs := make(chan error, numGoroutines)
 	refs := make(chan *CensusRef, numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			r, err := censusDB.Load(censusID)
@@ -383,7 +383,7 @@ func TestCensusDBConcurrentNew(t *testing.T) {
 	var successCount int32
 	var failureCount int32
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			ref, err := censusDB.New(censusID)
@@ -415,7 +415,7 @@ func TestConcurrentExists(t *testing.T) {
 	// Concurrently check Exists before the census is created.
 	wg.Add(numGoroutines)
 	existsBefore := make(chan bool, numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			existsBefore <- censusDB.Exists(censusID)
@@ -434,7 +434,7 @@ func TestConcurrentExists(t *testing.T) {
 	// Concurrently check Exists after creation.
 	wg.Add(numGoroutines)
 	existsAfter := make(chan bool, numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			existsAfter <- censusDB.Exists(censusID)
@@ -455,7 +455,7 @@ func TestMultipleCensuses(t *testing.T) {
 
 	// Concurrently create several censuses.
 	wg.Add(numCensuses)
-	for i := 0; i < numCensuses; i++ {
+	for i := range numCensuses {
 		censusIDs[i] = uuid.New()
 		go func(id uuid.UUID) {
 			defer wg.Done()
@@ -468,7 +468,7 @@ func TestMultipleCensuses(t *testing.T) {
 
 	// Concurrently load each census.
 	wg.Add(numCensuses)
-	for i := 0; i < numCensuses; i++ {
+	for i := range numCensuses {
 		go func(id uuid.UUID) {
 			defer wg.Done()
 			ref, err := censusDB.Load(id)
@@ -561,7 +561,7 @@ func TestPurgeWorkingCensusesBasic(t *testing.T) {
 
 	// Create a few working censuses
 	var censusIDs []uuid.UUID
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		censusID := uuid.New()
 		censusIDs = append(censusIDs, censusID)
 		_, err := censusDB.New(censusID)

@@ -213,7 +213,7 @@ func hexStrToBytes(hexStr string) ([]byte, error) {
 	}
 
 	result := make([]byte, len(cleaned)/2)
-	for i := 0; i < len(result); i++ {
+	for i := range result {
 		high := hexCharToNibble(cleaned[i*2])
 		low := hexCharToNibble(cleaned[i*2+1])
 		result[i] = (high << 4) | low

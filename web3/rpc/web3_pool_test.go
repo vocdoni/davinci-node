@@ -201,9 +201,9 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Run multiple goroutines accessing the iterator concurrently
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				_, _ = iter.Next()
 				time.Sleep(time.Microsecond)
 			}
@@ -213,7 +213,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Also disable endpoints concurrently
 	go func() {
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			iter.Disable("http://endpoint1.example.com")
 			time.Sleep(time.Millisecond)
 		}
@@ -221,7 +221,7 @@ func TestConcurrentAccess(t *testing.T) {
 	}()
 
 	// Wait for all goroutines
-	for i := 0; i < 11; i++ {
+	for range 11 {
 		<-done
 	}
 

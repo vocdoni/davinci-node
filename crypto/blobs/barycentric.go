@@ -79,7 +79,7 @@ func EvaluateBarycentricNative(blob *types.Blob, z *big.Int, debug bool) (*big.I
 
 		// Show first few differences
 		fmt.Printf("First 5 differences (z - omega[i]): ")
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			diff := new(big.Int).Sub(z, omega[i])
 			diff.Mod(diff, mod)
 			fmt.Printf("%s ", diff.Text(16))
@@ -88,7 +88,7 @@ func EvaluateBarycentricNative(blob *types.Blob, z *big.Int, debug bool) (*big.I
 
 		// Show isZero flags
 		fmt.Printf("First 5 isZero flags: ")
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			isZero := omega[i].Cmp(z) == 0
 			fmt.Printf("%t ", isZero)
 		}
@@ -115,7 +115,7 @@ func EvaluateBarycentricNative(blob *types.Blob, z *big.Int, debug bool) (*big.I
 		fmt.Println("=== BLOCK 2: INDIVIDUAL INVERSIONS ===")
 	}
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		// Extract blob data value at position i
 		d := modBig(blobCell(blob, i))
 		if d.Sign() == 0 {

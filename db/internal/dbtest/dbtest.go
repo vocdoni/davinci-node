@@ -119,19 +119,15 @@ func TestConcurrentWriteTx(t *testing.T, database db.Database) {
 	var m sync.Mutex
 	// A
 	var errA error
-	wgInc.Add(1)
-	go func() {
+	wgInc.Go(func() {
 		errA = inc(t, &m, database)
-		wgInc.Done()
-	}()
+	})
 
 	// B
 	var errB error
-	wgInc.Add(1)
-	go func() {
+	wgInc.Go(func() {
 		errB = inc(t, &m, database)
-		wgInc.Done()
-	}()
+	})
 
 	wgInc.Wait()
 	val, err := database.Get(key)

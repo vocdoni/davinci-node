@@ -31,7 +31,6 @@ func TestHexBytes(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc
 			c.Run(tc.name, func(c *qt.C) {
 				c.Assert((&tc.in).String(), qt.Equals, tc.want)
 			})
@@ -50,7 +49,6 @@ func TestHexBytes(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc
 			c.Run(tc.name, func(c *qt.C) {
 				c.Assert((&tc.in).BigInt().String(), qt.Equals, tc.want)
 			})
@@ -91,7 +89,6 @@ func TestHexBytes(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc
 			c.Run(tc.name, func(c *qt.C) {
 				out := tc.in.LeftPad(tc.n)
 				c.Assert(out, qt.DeepEquals, tc.want)
@@ -150,7 +147,6 @@ func TestHexBytes(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc
 			c.Run(tc.name, func(c *qt.C) {
 				out := tc.in.LeftTrim()
 				c.Assert(out, qt.DeepEquals, tc.want)
@@ -179,7 +175,6 @@ func TestHexBytes(t *testing.T) {
 			}
 
 			for _, tc := range testCases {
-				tc := tc
 				c.Run(tc.name, func(c *qt.C) {
 					b, err := tc.in.MarshalJSON()
 					c.Assert(err, qt.IsNil)
@@ -205,7 +200,6 @@ func TestHexBytes(t *testing.T) {
 			}
 
 			for _, tc := range testCases {
-				tc := tc
 				c.Run(tc.name, func(c *qt.C) {
 					var hb HexBytes
 					c.Assert(json.Unmarshal([]byte(tc.in), &hb), qt.IsNil)
@@ -230,7 +224,6 @@ func TestHexBytes(t *testing.T) {
 			}
 
 			for _, tc := range testCases {
-				tc := tc
 				c.Run(tc.name, func(c *qt.C) {
 					var hb HexBytes
 					c.Assert(json.Unmarshal([]byte(tc.in), &hb), qt.ErrorMatches, tc.re)
@@ -264,7 +257,6 @@ func TestHexBytes(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc
 			c.Run(tc.name, func(c *qt.C) {
 				got, err := HexStringToHexBytes(tc.in)
 				c.Assert(err, qt.IsNil)

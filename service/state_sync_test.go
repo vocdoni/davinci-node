@@ -275,7 +275,7 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 		// Create ballot with test values (vary based on offset and index)
 		ballot := elgamal.NewBallot(state.Curve)
 		messages := [params.FieldsPerBallot]*big.Int{}
-		for j := 0; j < params.FieldsPerBallot; j++ {
+		for j := range params.FieldsPerBallot {
 			// Make ballot values unique based on offset, vote index, and field index
 			messages[j] = big.NewInt(int64((offset+1)*100 + i*10 + j + 1))
 		}

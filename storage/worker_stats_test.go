@@ -163,7 +163,7 @@ func TestWorkerStatsConcurrency(t *testing.T) {
 	for range numGoroutines {
 		go func() {
 			defer func() { done <- struct{}{} }()
-			for j := 0; j < incrementsPerGoroutine; j++ {
+			for j := range incrementsPerGoroutine {
 				if j%2 == 0 {
 					_ = storage.IncreaseWorkerJobCount(address, 1)
 				} else {

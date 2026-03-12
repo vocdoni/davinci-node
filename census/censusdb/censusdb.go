@@ -751,7 +751,7 @@ func unpackSiblings(packed []byte) []*big.Int {
 	}
 	numSiblings := len(packed) / 32
 	siblings := make([]*big.Int, numSiblings)
-	for i := 0; i < numSiblings; i++ {
+	for i := range numSiblings {
 		siblings[i] = new(big.Int).SetBytes(packed[i*32 : (i+1)*32])
 	}
 	return siblings

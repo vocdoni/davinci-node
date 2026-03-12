@@ -33,7 +33,7 @@ func main() {
 	fmt.Println("package blobs")
 	fmt.Println()
 	fmt.Println("var omegaHex = [4096]string{")
-	for i := 0; i < n; i++ {
+	for i := range n {
 		idx := bitReverse(i, logN)
 		fmt.Printf("\t\"0x%s\",\n", domain[idx].Text(16))
 	}
@@ -45,7 +45,7 @@ func main() {
 
 func bitReverse(x, bits int) int {
 	var r int
-	for i := 0; i < bits; i++ {
+	for i := range bits {
 		if x&(1<<i) != 0 {
 			r |= 1 << (bits - 1 - i)
 		}
