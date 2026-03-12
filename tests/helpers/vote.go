@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
@@ -173,6 +174,9 @@ func HasAddressAlreadyVoted(cli *client.HTTPclient, pid types.ProcessID, address
 	voteByAddressBody, statusCode, err := cli.Request("GET", nil, nil, voteByAddressEndpoint)
 	if err != nil {
 		return false, fmt.Errorf("failed to request participant: %w", err)
+	}
+	if statusCode == http.StatusNotFound {
+		return false, nil
 	}
 	if statusCode != 200 {
 		return false, fmt.Errorf("unexpected status code: %d: %s", statusCode, string(voteByAddressBody))

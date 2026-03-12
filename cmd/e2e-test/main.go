@@ -167,18 +167,17 @@ func main() {
 	// Wait for the sequencer to be ready, make ping request until it responds
 	pingCtx, cancel := context.WithTimeout(testCtx, 2*time.Minute)
 	defer cancel()
-	for isConnected := false; !isConnected; {
+	for {
+		_, status, err := cli.Request(http.MethodGet, nil, nil, api.PingEndpoint)
+		if err == nil && status == http.StatusOK {
+			break
+		}
+		log.Warnw("failed to ping sequencer", "status", status, "error", err)
+
 		select {
 		case <-pingCtx.Done():
 			log.Fatal("ping timeout")
-		default:
-			_, status, err := cli.Request(http.MethodGet, nil, nil, api.PingEndpoint)
-			if err == nil && status == http.StatusOK {
-				isConnected = true
-				break
-			}
-			log.Warnw("failed to ping sequencer", "status", status, "error", err)
-			time.Sleep(10 * time.Second)
+		case <-time.After(10 * time.Second):
 		}
 	}
 	log.Info("connected to sequencer")
@@ -367,20 +366,19 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 	// Wait for the sequencer to be ready, make ping request until it responds
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	for isConnected := false; !isConnected; {
+	for {
+		_, status, err := cli.Request(http.MethodGet, nil, nil, api.PingEndpoint)
+		if err == nil && status == http.StatusOK {
+			break
+		}
+		log.Warnw("failed to ping sequencer", "status", status, "error", err)
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-pingCtx.Done():
 			return fmt.Errorf("ping timeout: %w", pingCtx.Err())
-		default:
-			_, status, err := cli.Request(http.MethodGet, nil, nil, api.PingEndpoint)
-			if err == nil && status == http.StatusOK {
-				isConnected = true
-				break
-			}
-			log.Warnw("failed to ping sequencer", "status", status, "error", err)
-			time.Sleep(10 * time.Second)
+		case <-time.After(10 * time.Second):
 		}
 	}
 	log.Infow("connected to sequencer", "endpoint", seqEndpoint)
@@ -399,8 +397,11 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 			"voteID", voteID.String(),
 			"currentVote", i+1,
 			"totalVotes", len(votes))
-		// Wait the sleepTime before sending the next vote
-		time.Sleep(sleepTime)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleepTime):
+		}
 	}
 	return nil
 }
@@ -483,19 +484,21 @@ func createProcess(
 	// Wait for the process to be registered in the sequencer
 	processCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	for processReady := false; !processReady; {
-		select {
-		case <-time.After(time.Second * 5):
-			pBytes, status, err := cli.Request(http.MethodGet, nil, nil, api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, processID.String()))
-			if err == nil && status == http.StatusOK {
-				proc := &api.ProcessResponse{}
-				if err := json.Unmarshal(pBytes, proc); err != nil {
-					return types.ProcessID{}, nil, fmt.Errorf("failed to unmarshal process response: %v", err)
-				}
-				processReady = proc.IsAcceptingVotes
+	for {
+		pBytes, status, err := cli.Request(http.MethodGet, nil, nil, api.EndpointWithParam(api.ProcessEndpoint, api.ProcessURLParam, processID.String()))
+		if err == nil && status == http.StatusOK {
+			proc := &api.ProcessResponse{}
+			if err := json.Unmarshal(pBytes, proc); err != nil {
+				return types.ProcessID{}, nil, fmt.Errorf("failed to unmarshal process response: %v", err)
 			}
+			if proc.IsAcceptingVotes {
+				break
+			}
+		}
+		select {
 		case <-processCtx.Done():
 			return types.ProcessID{}, nil, fmt.Errorf("process creation timeout: %v", processCtx.Err())
+		case <-time.After(time.Second * 5):
 		}
 	}
 	time.Sleep(5 * time.Second) // wait a bit more to ensure everything is set up
@@ -618,6 +621,9 @@ func hasAlreadyVoted(cli *client.HTTPclient, pid types.ProcessID, address common
 	if err != nil {
 		return false, fmt.Errorf("failed to request participant: %w", err)
 	}
+	if statusCode == http.StatusNotFound {
+		return false, nil
+	}
 	if statusCode != 200 {
 		return false, fmt.Errorf("unexpected status code: %d: %s", statusCode, string(voteByAddressBody))
 	}
@@ -632,15 +638,20 @@ func hasAlreadyVoted(cli *client.HTTPclient, pid types.ProcessID, address common
 func waitForAddressHasAlreadyVoted(ctx context.Context, cli *client.HTTPclient, pid types.ProcessID, address types.HexBytes) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-			if ok, err := hasAlreadyVoted(cli, pid, common.BytesToAddress(address)); err != nil || !ok {
-				continue
+		case <-ticker.C:
+			ok, err := hasAlreadyVoted(cli, pid, common.BytesToAddress(address))
+			if err != nil {
+				return err
 			}
-			return nil
+			if ok {
+				return nil
+			}
 		}
 	}
 }
