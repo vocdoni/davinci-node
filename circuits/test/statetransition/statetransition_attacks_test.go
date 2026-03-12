@@ -137,3 +137,20 @@ func TestResultsTransitionsMustBeUpdate(t *testing.T) {
 		test.WithBackends(backend.GROTH16),
 	)
 }
+
+func TestVoteIDTransitionMustMatchWitnessVoteID(t *testing.T) {
+	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
+		t.Skip("skipping circuit tests...")
+	}
+
+	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
+	assignment.Votes[0].VoteID = assignment.Votes[1].VoteID
+
+	assert := test.NewAssert(t)
+	assert.CheckCircuit(
+		&CircuitLeafHashes{},
+		test.WithInvalidAssignment(assignment),
+		test.WithCurves(params.StateTransitionCurve),
+		test.WithBackends(backend.GROTH16),
+	)
+}

@@ -359,6 +359,12 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
 			return
 		}
+		// VoteID
+		circuit.VotesProofs.VoteIDs[i].VerifyNewKey(api, v.VoteID)
+		if err := circuit.VotesProofs.VoteIDs[i].VerifyNewLeafHash(api, hFn, params.VoteIDLeafValue); err != nil {
+			circuits.FrontendError(api, "failed to verify voteID vote proof leaf hash: ", err)
+			return
+		}
 	}
 	// Results
 	if err := circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsAdd.SerializeVars()...); err != nil {

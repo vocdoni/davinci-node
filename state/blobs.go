@@ -251,17 +251,12 @@ func (st *State) ApplyBlobToState(blob *types.Blob) error {
 			}
 		}
 
-		// Add or update the vote ID in the tree
-		if !st.ContainsVoteID(vote.VoteID) {
-			// Key doesn't exist, add it
-			if err := st.tree.AddBigInt(vote.VoteID.BigInt(), VoteIDKeyValue); err != nil {
-				return fmt.Errorf("failed to add vote ID %d to tree: %w", vote.VoteID, err)
-			}
-		} else {
-			// Key exists, update it
-			if err := st.tree.UpdateBigInt(vote.VoteID.BigInt(), VoteIDKeyValue); err != nil {
-				return fmt.Errorf("failed to update vote ID %d in tree: %w", vote.VoteID, err)
-			}
+		// Add the vote ID in the tree
+		if _, _, err := st.tree.GetBigInt(vote.VoteID.BigInt()); err == nil {
+			return fmt.Errorf("failed to add vote ID %d to tree: already exists", vote.VoteID)
+		}
+		if err := st.tree.AddBigInt(vote.VoteID.BigInt(), voteIDLeafValue); err != nil {
+			return fmt.Errorf("failed to add vote ID %d to tree: %w", vote.VoteID, err)
 		}
 	}
 
