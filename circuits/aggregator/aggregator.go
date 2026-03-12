@@ -55,6 +55,8 @@ func (c *AggregatorCircuit) calculateWitnesses(api frontend.API) []groth16.Witne
 		isEnd := api.IsZero(api.Sub(c.ValidProofs, i+1))
 		isReal = api.Mul(isReal, api.Sub(1, isEnd))
 
+		api.AssertIsEqual(isReal, isReal) // dummy circuit change
+
 		// create the witness for the proof
 		witness := groth16.Witness[sw_bls12377.ScalarField]{
 			Public: []emulated.Element[sw_bls12377.ScalarField]{

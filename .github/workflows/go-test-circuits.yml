@@ -34,7 +34,12 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
       - name: Run circuit tests
         env:
           RUN_CIRCUIT_TESTS: true
-        run: go test -v ./circuits/... -timeout=1h -vet=off
+        run: |
+          go test -v ./circuits/... \
+            -failfast \
+            -vet=off \
+            -timeout=1h

@@ -100,8 +100,9 @@ jobs:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cat deadcode.out | reviewdog -f=golint -name=deadcode -reporter=github-pr-review -filter-mode=diff_context
 
-  job_go_test:
-    runs-on: [self-hosted]
+  job_go_test_unit:
+    name: Test Unit
+    runs-on: ubuntu-latest
     env:
       LOG_PANIC_ON_INVALIDCHARS: true
       LOG_LEVEL: debug
@@ -114,45 +115,102 @@ jobs:
 
       - run: mkdir -p "$PWD/gocoverage-unit/"
 
-      - name: Run Go test -race
-        # disabled, it makes the crypto too slow to pass any test.
-        id: go-test-race
-        if: github.event_name == 'push' && github.ref_name == 'ci/go-test-race'
+      - name: Run unit tests
         env:
-          GORACE: atexit_sleep_ms=10
           RUN_CIRCUIT_TESTS: false
+          RUN_INTEGRATION_TESTS: false
         run: |
-          go test ./... \
-            -race \
-            -timeout=1h \
+          go test -v ./... \
+            -failfast \
             -vet=off \
             -cover \
             -coverpkg=./... \
             -covermode=atomic \
             -args -test.gocoverdir="$PWD/gocoverage-unit/"
 
-      - name: Run unit tests
-        if: steps.go-test-race.outcome == 'skipped'
-        env:
-          RUN_CIRCUIT_TESTS: false
-          RUN_INTEGRATION_TESTS: false
-        run: go test -v ./... -timeout=1h -vet=off -failfast
+      - name: Store code coverage artifact (unit)
+        uses: actions/upload-artifact@v7
+        with:
+          name: gocoverage-unit
+          path: gocoverage-unit/
+
+  job_go_test_integration:
+    name: Test Integration
+    runs-on: [self-hosted]
+    env:
+      LOG_PANIC_ON_INVALIDCHARS: true
+      LOG_LEVEL: debug
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
 
       - name: Compile circuit artifacts
-        if: github.event.pull_request.draft != true
         run: go run ./cmd/circuit-compile --update-config
 
       - name: Run git diff
-        if: github.event.pull_request.draft != true
+        id: circuit_artifacts_diff
         run: |
           git --no-pager diff --color=always --stat
           git --no-pager diff --color=always
+          if ! git diff --quiet --exit-code; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run integration tests
-        if: github.event.pull_request.draft != true
         env:
           RUN_INTEGRATION_TESTS: true
-        run: go test -v ./tests/ -timeout=1h -vet=off -failfast
+        run: |
+          set -o pipefail
+          go test -v ./tests/... \
+            -failfast \
+            -vet=off \
+            -timeout=1h \
+            | tee integration-test.log
+
+      - name: Generate TestInputs.t.sol
+        if: steps.circuit_artifacts_diff.outputs.has_changes == 'true'
+        run: ./scripts/generate_test_inputs.sh integration-test.log TestInputs.t.sol
+
+      - name: Store TestInputs.t.sol
+        uses: actions/upload-artifact@v7
+        if: steps.circuit_artifacts_diff.outputs.has_changes == 'true'
+        with:
+          name: TestInputs.t.sol
+          path: TestInputs.t.sol
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        if: steps.circuit_artifacts_diff.outputs.has_changes == 'true'
+        with:
+          script: |
+            const name = TestInputs.t.sol
+            const runId = context.runId || process.env.GITHUB_RUN_ID || 'UNKNOWN_RUN_ID';
+            const body =
+              `Circuits changed so TestInputs.t.sol was regenerated, download it:\n\n` +
+              `\`\`\`bash\n` +
+              `gh run download -R ${context.repo.owner}/${context.repo.repo} ${runId} -n ${name}\n` +
+              `\`\`\`\n`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
+
+
+  job_go_test:
+    if: always()
+    needs: [job_go_test_unit, job_go_test_integration]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          [ "${{ needs.job_go_test_unit.result }}" != "failure" ] &&
+          [ "${{ needs.job_go_test_unit.result }}" != "cancelled" ] &&
+          [ "${{ needs.job_go_test_integration.result }}" != "failure" ] &&
+          [ "${{ needs.job_go_test_integration.result }}" != "cancelled" ]
 
   call-docker-release:
     name: Docker
