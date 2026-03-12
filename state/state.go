@@ -248,7 +248,7 @@ func (o *State) endBatch() error {
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
 				v.BallotIndex.StateKey(), v.ReencryptedBallot.BigInts()...)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
-				v.VoteID.StateKey(), VoteIDKeyValue)
+				v.VoteID.StateKey(), voteIDLeafValue)
 		} else {
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromNoop(o)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromNoop(o)
