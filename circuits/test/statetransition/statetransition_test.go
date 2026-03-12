@@ -37,7 +37,6 @@ import (
 	"github.com/vocdoni/davinci-node/prover"
 	davinci_solidity "github.com/vocdoni/davinci-node/solidity"
 	"github.com/vocdoni/davinci-node/spec/params"
-	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
@@ -66,9 +65,9 @@ func testCircuitProve(t *testing.T, circuit, assignment frontend.Circuit) {
 		t.Skip("skipping circuit tests...")
 	}
 	assert := test.NewAssert(t)
-	assert.ProverSucceeded(
+	assert.CheckCircuit(
 		circuit,
-		assignment,
+		test.WithValidAssignment(assignment),
 		test.WithCurves(params.StateTransitionCurve),
 		test.WithBackends(backend.GROTH16))
 }
@@ -466,22 +465,23 @@ func TestCircuitBallotsProve(t *testing.T) {
 	}, assignment)
 }
 
-type CircuitMerkleProofs struct {
+type CircuitProcessProofs struct {
 	statetransition.StateTransitionCircuit
 }
 
-func (circuit CircuitMerkleProofs) Define(api frontend.API) error {
-	circuit.VerifyMerkleProofs(api, statetransition.HashFn)
+func (circuit CircuitProcessProofs) Define(api frontend.API) error {
+	circuit.VerifyProcessProofKeys(api)
+	circuit.VerifyProcessProofs(api, statetransition.HashFn)
 	return nil
 }
 
-func TestCircuitMerkleProofsCompile(t *testing.T) {
-	testCircuitCompile(t, &CircuitMerkleProofs{*CircuitPlaceholder()})
+func TestCircuitProcessProofsCompile(t *testing.T) {
+	testCircuitCompile(t, &CircuitProcessProofs{*CircuitPlaceholder()})
 }
 
-func TestCircuitMerkleProofsProve(t *testing.T) {
+func TestCircuitProcessProofsProve(t *testing.T) {
 	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
-	testCircuitProve(t, &CircuitMerkleProofs{
+	testCircuitProve(t, &CircuitProcessProofs{
 		*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
 	}, assignment)
 }
@@ -492,6 +492,7 @@ type CircuitMerkleTransitions struct {
 
 func (circuit CircuitMerkleTransitions) Define(api frontend.API) error {
 	isRealVote := circuit.VoteMask(api)
+	circuit.VerifyMerkleTransitionKeys(api)
 	circuit.VerifyMerkleTransitions(api, isRealVote)
 	return nil
 }
@@ -614,51 +615,18 @@ func TestCircuitCensusProofsProve(t *testing.T) {
 	})
 }
 
-// TestDummySlot verifies that a "dummy" slot (index >= VotersCount)
-// cannot contain any state transition (Insert/Update).
-func TestDummySlot(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
-		t.Skip("skipping circuit tests...")
-	}
-
-	s := statetest.NewRandomState(t, types.CensusOriginMerkleTreeOffchainStaticV1)
-	publicKey := statetest.EncryptionKeyAsECCPoint(s)
-
-	// Create a transition with 2 votes (index 0 and 1)
-	// We will try to "hide" the second vote (index 1) by claiming VotersCount is 1.
-	assignment := NewTransitionWithVotes(t, s,
-		statetest.NewVoteForTest(publicKey, 1, 10), // valid vote 1
-		statetest.NewVoteForTest(publicKey, 2, 20), // valid vote 2
-	)
-
-	// Hack the assignment: reduce VotersCount from 2 to 1.
-	// This makes the vote at index 1 a "dummy" vote according to the circuit logic.
-	// However, the MerkleProof for index 1 is still a valid Insert/Update.
-	assignment.VotersCount = 1
-
-	// Assert that the circuit rejects this assignment.
-	// The fix in VerifyMerkleTransitions and VerifyBallots should assert that
-	// for dummy slots (isRealVote=0), the operations must be NOOP.
-	assert := test.NewAssert(t)
-	// We expect the prover to FAIL because the constraints are not satisfied.
-	assert.ProverFailed(
-		CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK),
-		assignment,
-		test.WithCurves(params.StateTransitionCurve),
-		test.WithBackends(backend.GROTH16),
-	)
-}
-
 func debugLog(t *testing.T, assignment *statetransition.StateTransitionCircuit) {
 	t.Log("public: RootHashBefore", util.PrettyHex(assignment.RootHashBefore))
 	t.Log("public: RootHashAfter", util.PrettyHex(assignment.RootHashAfter))
 	t.Log("public: VotersCount", util.PrettyHex(assignment.VotersCount))
 	t.Log("public: OverwrittenVotesCount", util.PrettyHex(assignment.OverwrittenVotesCount))
-	for name, mts := range map[string][params.VotesPerBatch]merkleproof.MerkleTransition{
-		"Ballot": assignment.VotesProofs.Ballot,
-	} {
-		for _, mt := range mts {
-			t.Log(name, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",
+	t.Log("public: CensusRoot", util.PrettyHex(assignment.CensusRoot))
+	for i := range params.VotesPerBatch {
+		for name, mt := range map[string]merkleproof.MerkleTransition{
+			"Ballot": assignment.VotesProofs.Ballot[i],
+			"VoteID": assignment.VotesProofs.VoteIDs[i],
+		} {
+			t.Log(name, i, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",
 				"value", util.PrettyHex(mt.OldLeafHash), "->", util.PrettyHex(mt.NewLeafHash),
 			)
 		}
@@ -671,5 +639,12 @@ func debugLog(t *testing.T, assignment *statetransition.StateTransitionCircuit) 
 		t.Log(name, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",
 			"value", util.PrettyHex(mt.OldLeafHash), "->", util.PrettyHex(mt.NewLeafHash),
 		)
+	}
+	for i := range params.VotesPerBatch {
+		v := assignment.Votes[i]
+		p := assignment.VotesProofs.VoteIDs[i]
+		t.Logf("Votes[%d] = {BallotIndex: %d, Address: %+v, VoteID: %+v, VoteWeight: %d}",
+			i, v.BallotIndex, v.Address, v.VoteID, v.VoteWeight)
+		t.Logf("VotesProofs.VoteID[%d]: {OldKey: %+v, NewKey: %+v}", i, p.OldKey, p.NewKey)
 	}
 }

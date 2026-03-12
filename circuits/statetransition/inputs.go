@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
+	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -83,7 +84,7 @@ func GenerateAssignment(
 		return nil, nil, fmt.Errorf("could not get EncryptionKey proof: %w", err)
 	}
 	// add Ballots and VoteIDs proofs
-	for i := range assignment.VotesProofs.Ballot {
+	for i := range params.VotesPerBatch {
 		// ballots
 		assignment.VotesProofs.Ballot[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Ballot[i])
 		if err != nil {
