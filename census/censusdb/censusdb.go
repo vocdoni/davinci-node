@@ -823,16 +823,8 @@ func (c *CensusDB) ImportEvents(root types.HexBytes, events []census.CensusEvent
 		return nil, fmt.Errorf("failed to create census tree: %w", err)
 	}
 
-	// Import the events into the tree
-	if err := ref.ApplyEvents(events); err != nil {
-		return nil, fmt.Errorf("failed to apply census events: %w", err)
-	}
-
-	// Check that the final root matches the expected root
-	if finalRoot := ref.Root(); !finalRoot.Equal(root) {
-		return nil, fmt.Errorf("final root mismatch after applying events: expected %s, got %s",
-			root.String(),
-			finalRoot.String())
+	if err := importEventsToRef(ref, root, events); err != nil {
+		return nil, err
 	}
 	return ref, nil
 }
@@ -852,16 +844,61 @@ func (c *CensusDB) ImportEventsByAddress(
 		return nil, fmt.Errorf("failed to create census tree: %w", err)
 	}
 
-	// Import the events into the tree
-	if err := ref.ApplyEvents(events); err != nil {
-		return nil, fmt.Errorf("failed to apply census events: %w", err)
+	if err := importEventsToRef(ref, expectedRoot, events); err != nil {
+		return nil, err
+	}
+	return ref, nil
+}
+
+// ReimportEventsByAddress rebuilds an existing address-based census from the full
+// ordered list of events and publishes the rebuilt tree in place.
+func (c *CensusDB) ReimportEventsByAddress(
+	address common.Address,
+	expectedRoot types.HexBytes,
+	events []census.CensusEvent,
+) (*CensusRef, error) {
+	destinationRef, err := c.LoadByAddress(address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load census tree by address: %w", err)
 	}
 
-	// Check that the final root matches the expected root
+	workingRef, err := c.New(uuid.New())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create working census tree: %w", err)
+	}
+
+	cleanupWorkingRef := true
+	defer func() {
+		if !cleanupWorkingRef {
+			return
+		}
+		if cleanupErr := c.CleanupWorkingCensus(workingRef.ID); cleanupErr != nil {
+			log.Warnw("failed to cleanup working census after rebuild",
+				"censusId", workingRef.ID.String(),
+				"address", address.Hex(),
+				"err", cleanupErr.Error())
+		}
+	}()
+
+	if err := importEventsToRef(workingRef, expectedRoot, events); err != nil {
+		return nil, err
+	}
+	if err := c.PublishCensus(workingRef.ID, destinationRef); err != nil {
+		return nil, fmt.Errorf("failed to publish rebuilt census: %w", err)
+	}
+
+	cleanupWorkingRef = false
+	return destinationRef, nil
+}
+
+func importEventsToRef(ref *CensusRef, expectedRoot types.HexBytes, events []census.CensusEvent) error {
+	if err := ref.ApplyEvents(events); err != nil {
+		return fmt.Errorf("failed to apply census events: %w", err)
+	}
 	if finalRoot := ref.Root(); !finalRoot.Equal(expectedRoot) {
-		return nil, fmt.Errorf("final root mismatch after applying events: expected %s, got %s",
+		return fmt.Errorf("final root mismatch after applying events: expected %s, got %s",
 			expectedRoot.String(),
 			finalRoot.String())
 	}
-	return ref, nil
+	return nil
 }
