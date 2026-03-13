@@ -50,8 +50,7 @@ func VoteVerifierInputsForTest(
 
 	startTime := time.Now()
 	log.Infow("vote verifier inputs generation starts")
-	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
+	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(ballotproof.CircomVerificationKey, ballotproof.NumberOfPublicInputs)
 	c.Assert(err, qt.IsNil, qt.Commentf("circom placeholder"))
 
 	// Use a deterministic encryption key for reproducible test data.

@@ -3,7 +3,6 @@ package prover
 import (
 	"time"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	gpugroth16 "github.com/consensys/gnark/backend/accelerated/icicle/groth16"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
@@ -27,14 +26,4 @@ func Setup(ccs constraint.ConstraintSystem) (pk groth16.ProvingKey, vk groth16.V
 		return gpugroth16.Setup(ccs)
 	}
 	return groth16.Setup(ccs)
-}
-
-// NewProvingKey instantiates an empty proving key compatible with the selected
-// backend. When GPU proving is enabled this returns an ICICLE proving key so
-// that serialized keys can be read directly into GPU-ready structures.
-func NewProvingKey(curve ecc.ID) groth16.ProvingKey {
-	if types.UseGPUProver {
-		return gpugroth16.NewProvingKey(curve)
-	}
-	return groth16.NewProvingKey(curve)
 }

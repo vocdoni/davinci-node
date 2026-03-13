@@ -10,7 +10,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
@@ -40,9 +39,8 @@ type Sequencer struct {
 	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
 	ctx                context.Context
 	cancel             context.CancelFunc
-	processIDs         *ProcessIDMap    // Maps process IDs to their last update time
-	workInProgressLock sync.RWMutex     // Lock to block new work while processing a batch or a state transition
-	prover             types.ProverFunc // Function for generating zero-knowledge proofs
+	processIDs         *ProcessIDMap // Maps process IDs to their last update time
+	workInProgressLock sync.RWMutex  // Lock to block new work while processing a batch or a state transition
 	// batchTimeWindow is the maximum time window to wait for a batch to be processed.
 	// If this time elapses, the batch will be processed even if not full.
 	batchTimeWindow time.Duration
@@ -80,7 +78,6 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 		contracts:       contracts,
 		batchTimeWindow: batchTimeWindow,
 		processIDs:      NewProcessIDMap(),
-		prover:          prover.DefaultProver,
 	}
 	// Load the internal circuits
 	if err := s.loadInternalCircuitArtifacts(); err != nil {
@@ -91,7 +88,7 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 	if contracts != nil {
 		getStateRootFn = contracts.StateRoot
 	}
-	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, s.prover, getStateRootFn)
+	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, getStateRootFn)
 	log.InfoTime("sequencer initialized", startTime, "batchTimeWindow", batchTimeWindow.String())
 	return s, nil
 }
@@ -259,7 +256,7 @@ func (s *Sequencer) ActiveProcessIDs() []types.ProcessID {
 // SetProver sets a custom prover function for the Sequencer.
 // This is particularly useful for tests that need to debug circuit execution.
 func (s *Sequencer) SetProver(p types.ProverFunc) {
-	s.prover = p
+	// s.prover = p
 }
 
 // WaitUntilResults waits until the process is finalized. Returns the result of the process.

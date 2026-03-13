@@ -2,6 +2,7 @@ package sequencer
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,10 +13,8 @@ import (
 	"time"
 
 	"github.com/vocdoni/davinci-node/api"
-	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/workers"
@@ -85,7 +84,6 @@ func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, w
 		contracts:       nil,               // Workers don't need web3 contracts
 		batchTimeWindow: 0,                 // Workers don't use batch processing
 		processIDs:      NewProcessIDMap(), // Still needed for ExistsProcessID check
-		prover:          prover.DefaultProver,
 		sequencerURL:    sequencerURL,
 		sequencerUUID:   sequencerUUID,
 		workerAddress:   wAddr,
@@ -94,9 +92,8 @@ func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, w
 	}
 
 	s.internalCircuits = new(internalCircuits)
-	s.ballotProofVK = ballotproof.CircomVerificationKey
 
-	s.voteVerifier, err = loadCircuitArtifacts(voteverifier.Artifacts)
+	s.voteVerifier, err = voteverifier.Artifacts.LoadOrDownload(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
 	}

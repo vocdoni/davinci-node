@@ -14,7 +14,6 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/test"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
@@ -33,39 +32,18 @@ import (
 //
 // Returns a ProverFunc that will execute test.IsSolved and then groth16.Prove
 func NewDebugProver(t *testing.T) types.ProverFunc {
-	if err := voteverifier.Artifacts.LoadAll(); err != nil {
+	voteverifierRuntime, err := voteverifier.Artifacts.LoadOrDownload(t.Context())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := aggregator.Artifacts.LoadAll(); err != nil {
+
+	aggregatorRuntime, err := aggregator.Artifacts.LoadOrDownload(t.Context())
+	if err != nil {
 		t.Fatal(err)
 	}
-
-	loadVoteVerifierVK := func() groth16.VerifyingKey {
-		vk, err := voteverifier.Artifacts.VerifyingKey()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return vk
-	}
-
-	loadAggregatorArtifacts := func() (constraint.ConstraintSystem, groth16.VerifyingKey) {
-		ccs, err := aggregator.Artifacts.CircuitDefinition()
-		if err != nil {
-			t.Fatal(err)
-		}
-		vk, err := aggregator.Artifacts.VerifyingKey()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return ccs, vk
-	}
-
-	voteVerifierVK := loadVoteVerifierVK()
-	aggregatorCCS, aggregatorVK := loadAggregatorArtifacts()
 
 	newVoteVerifierPlaceholder := func() frontend.Circuit {
-		circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-			ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
+		circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(ballotproof.CircomVerificationKey, ballotproof.NumberOfPublicInputs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +54,7 @@ func NewDebugProver(t *testing.T) types.ProverFunc {
 	}
 
 	newAggregatorPlaceholder := func() frontend.Circuit {
-		fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteVerifierVK)
+		fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteverifierRuntime.VerifyingKey())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,13 +64,13 @@ func NewDebugProver(t *testing.T) types.ProverFunc {
 			VerificationKey: fixedVk,
 		}
 		for i := range params.VotesPerBatch {
-			placeholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](aggregatorCCS)
+			placeholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](aggregatorRuntime.ConstraintSystem())
 		}
 		return placeholder
 	}
 
 	newStateTransitionPlaceholder := func() frontend.Circuit {
-		fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorVK)
+		fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorRuntime.VerifyingKey())
 		if err != nil {
 			t.Fatal(err)
 		}

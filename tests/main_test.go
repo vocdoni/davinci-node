@@ -25,13 +25,13 @@ func TestMain(m *testing.M) {
 	}
 
 	log.Init(log.LogLevelDebug, "stdout", nil)
-	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
-		log.Fatalf("failed to download artifacts: %v", err)
-	}
-
 	tempDir := os.TempDir() + "/davinci-node-test-" + time.Now().Format("20060102150405")
 
 	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := service.DownloadArtifacts(ctx, ""); err != nil {
+		log.Fatalf("failed to download artifacts: %v", err)
+	}
 
 	var err error
 	var cleanup func()

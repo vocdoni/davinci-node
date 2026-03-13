@@ -4,8 +4,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/signature/ecdsa"
-	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto/ecc"
+	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -50,8 +49,8 @@ const (
 // to generate inner circuit placeholders. This function can be used to generate
 // dummy proofs to fill a chunk of votes that does not reach the required number
 // of votes to be valid.
-func DummyPlaceholder(ballotProofVKey []byte) (*VerifyVoteCircuit, error) {
-	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(ballotProofVKey, circuits.BallotProofNPubInputs)
+func DummyPlaceholder() (*VerifyVoteCircuit, error) {
+	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(ballotproof.CircomVerificationKey, ballotproof.NumberOfPublicInputs)
 	if err != nil {
 		return nil, err
 	}
@@ -62,12 +61,11 @@ func DummyPlaceholder(ballotProofVKey []byte) (*VerifyVoteCircuit, error) {
 }
 
 // DummyAssignment function returns a dummy assignment for the VerifyVoteCircuit
-// with dummy values. It needs the desired BallotProof circuit verification key
-// and the curve of the points used for the ballots to generate the assignment.
+// with dummy values.
 // This function can be used to generate dummy proofs to fill a chunk of votes
 // that does not reach the required number of votes to be valid.
-func DummyAssignment(ballotProofVKey []byte, curve ecc.Point) (*VerifyVoteCircuit, error) {
-	recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballotProofVKey, dummyBallotProof, dummyBallotPubInputs)
+func DummyAssignment() (*VerifyVoteCircuit, error) {
+	recursiveProof, err := circomgnark.Circom2GnarkProofForRecursion(ballotproof.CircomVerificationKey, dummyBallotProof, dummyBallotPubInputs)
 	if err != nil {
 		return nil, err
 	}

@@ -4,12 +4,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/consensys/gnark/backend"
-	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
-	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
-	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
+	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
@@ -30,40 +27,14 @@ func TestAggregatorCircuitProve(t *testing.T) {
 
 	_, _, assignment := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, nValidVoters)
 
-	aggCCS, aggPK, aggVK, err := circuitstest.LoadAggregatorRuntimeArtifacts()
+	aggregatorRuntime, err := aggregator.Artifacts.LoadOrDownload(t.Context())
 	c.Assert(err, qt.IsNil, qt.Commentf("load aggregator runtime artifacts"))
 
 	fullWitness, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField())
 	c.Assert(err, qt.IsNil, qt.Commentf("witness creation"))
 
 	// Prove and verify
-	var proof groth16.Proof
 	log.Infow("proving and verifying aggregator circuit")
-	proof, err = circuitstest.ProveAndVerifyWithWitness(
-		params.AggregatorCurve,
-		aggCCS,
-		aggPK,
-		aggVK,
-		fullWitness,
-		[]backend.ProverOption{stdgroth16.GetNativeProverOptions(
-			params.StateTransitionCurve.ScalarField(),
-			params.AggregatorCurve.ScalarField(),
-		)},
-		[]backend.VerifierOption{stdgroth16.GetNativeVerifierOptions(
-			params.StateTransitionCurve.ScalarField(),
-			params.AggregatorCurve.ScalarField(),
-		)},
-	)
+	_, err = aggregatorRuntime.ProveAndVerifyWithWitness(fullWitness)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove aggregator circuit"))
-
-	err = circuitstest.VerifyProofWithWitness(
-		proof,
-		aggVK,
-		fullWitness,
-		stdgroth16.GetNativeVerifierOptions(
-			params.StateTransitionCurve.ScalarField(),
-			params.AggregatorCurve.ScalarField(),
-		),
-	)
-	c.Assert(err, qt.IsNil, qt.Commentf("verify public proof"))
 }

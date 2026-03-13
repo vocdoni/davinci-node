@@ -15,6 +15,10 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+// NumberOfPublicInputs is the number of public inputs for the ballot proof
+// circom circuit.
+const NumberOfPublicInputs = 3
+
 // BallotProofInputs struct contains the required inputs to compose the
 // data to generate the witness for a ballot proof using the circom circuit.
 type BallotProofInputs struct {

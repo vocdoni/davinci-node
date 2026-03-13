@@ -8,9 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/consensys/gnark/backend"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
-	"github.com/consensys/gnark/backend/solidity"
 	"github.com/vocdoni/davinci-node/circuits/results"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/db"
@@ -40,17 +38,13 @@ type finalizer struct {
 }
 
 // New creates a new Finalizer instance.
-func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, proverFn types.ProverFunc, getStateRootFn func(types.ProcessID) (*types.BigInt, error)) *finalizer {
-	// Default prover function if none is provided
-	if proverFn == nil {
-		proverFn = prover.DefaultProver
-	}
+func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, getStateRootFn func(types.ProcessID) (*types.BigInt, error)) *finalizer {
 	// We'll create the context in Start() now to avoid premature cancellation
 	return &finalizer{
 		stg:          stg,
 		stateDB:      stateDB,
 		circuits:     ca,
-		prover:       proverFn,
+		prover:       prover.Prove,
 		OndemandCh:   make(chan types.ProcessID, 10), // Use buffered channel to prevent blocking
 		getStateRoot: getStateRootFn,
 	}
@@ -354,21 +348,10 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		setProcessInvalid()
 		return fmt.Errorf("could not generate assignment for process %s: %w", processID.String(), err)
 	}
-	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
-	proof, err := f.prover(
-		params.ResultsVerifierCurve,
-		f.circuits.resultsVerifier.ccs,
-		f.circuits.resultsVerifier.pk,
-		resultsVerifierAssignment,
-		opts,
-	)
+	proof, err := f.circuits.resultsVerifier.ProveAndVerify(resultsVerifierAssignment)
 	if err != nil {
 		setProcessInvalid()
 		return fmt.Errorf("could not generate proof for process %s: %w", processID.String(), err)
-	}
-	if err := f.circuits.verifyResultsProof(proof, resultsVerifierAssignment); err != nil {
-		setProcessInvalid()
-		return fmt.Errorf("could not verify generated proof for process %s: %w", processID.String(), err)
 	}
 
 	stateRootBI, err := st.RootAsBigInt()
