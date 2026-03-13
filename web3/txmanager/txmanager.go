@@ -304,11 +304,9 @@ func (tm *TxManager) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(err
 				return fmt.Errorf("tx manager stopped")
 			case <-ticker.C:
 				// Check if the transaction is mined
-				status, err := tm.CheckTxStatusByID(id)
-				if err != nil {
+				if successful, err := tm.CheckTxStatusByID(id); err != nil {
 					return fmt.Errorf("failed to check transaction status by id: %w", err)
-				}
-				if status {
+				} else if successful {
 					return nil
 				}
 			}
