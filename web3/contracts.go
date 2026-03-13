@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -16,6 +17,7 @@ import (
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	gethapitypes "github.com/ethereum/go-ethereum/signer/core/apitypes"
 
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
@@ -300,19 +302,23 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 }
 
 // CheckTxStatus checks the status of a transaction given its hash.
-// Returns true if the transaction was successful, false otherwise.
+// Returns true if the transaction is confirmed and successful, false if it is
+// still pending, or an error if the receipt query fails or the transaction was
+// reverted on-chain.
 func (c *Contracts) CheckTxStatus(txHash common.Hash) (bool, error) {
-	ethcli, err := c.cli.EthClient()
-	if err != nil {
-		return false, fmt.Errorf("failed to get eth client: %w", err)
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-	receipt, err := ethcli.TransactionReceipt(ctx, txHash)
+	receipt, err := c.cli.TransactionReceipt(ctx, txHash)
 	if err != nil {
+		if errors.Is(err, ethereum.NotFound) {
+			return false, nil
+		}
 		return false, fmt.Errorf("failed to get transaction receipt: %w", err)
 	}
-	return receipt.Status == 1, nil
+	if receipt.Status != gethtypes.ReceiptStatusSuccessful {
+		return false, fmt.Errorf("transaction %s reverted with status %d", txHash.Hex(), receipt.Status)
+	}
+	return true, nil
 }
 
 // WaitTxByHash waits for a transaction to be mined given its hash. If the
@@ -344,7 +350,11 @@ func (c *Contracts) waitTx(txHash common.Hash, timeOut time.Duration) error {
 			return fmt.Errorf("timeout waiting for tx %s", txHash.Hex())
 		case <-ticker.C:
 			// Check if the transaction is mined
-			if status, _ := c.CheckTxStatus(txHash); status {
+			status, err := c.CheckTxStatus(txHash)
+			if err != nil {
+				return fmt.Errorf("failed to check transaction status: %w", err)
+			}
+			if status {
 				return nil
 			}
 		}

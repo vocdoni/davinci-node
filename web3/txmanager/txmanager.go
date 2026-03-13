@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -195,16 +196,24 @@ func (tm *TxManager) BuildDynamicFeeTx(
 	}, nil, nil)
 }
 
-// CheckTxStatusByHash checks the status of a transaction given its ID. Returns
-// true if the transaction was successful, false otherwise.
+// CheckTxStatusByHash checks the status of a transaction given its tx hash.
+// Returns true if the transaction was confirmed and successful, false if it
+// is still pending, or an error if the receipt query fails or the transaction
+// was reverted on-chain.
 func (tm *TxManager) CheckTxStatusByHash(hash common.Hash) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), tm.config.SimpleTxTimeout)
 	defer cancel()
 	receipt, err := tm.txReceipt(ctx, hash)
 	if err != nil {
-		return false, fmt.Errorf("failed to get transaction receipt: %w", err)
+		if errors.Is(err, ethereum.NotFound) {
+			return false, nil
+		}
+		return false, err
 	}
-	return receipt.Status == 1, nil
+	if receipt.Status != gethtypes.ReceiptStatusSuccessful {
+		return false, fmt.Errorf("transaction %s reverted with status %d", hash.Hex(), receipt.Status)
+	}
+	return true, nil
 }
 
 // CheckTxStatusByID checks the status of a transaction given its ID. Returns
@@ -252,7 +261,11 @@ func (tm *TxManager) WaitTxByHash(hash common.Hash, timeOut time.Duration, cb ..
 				return fmt.Errorf("tx manager stopped")
 			case <-ticker.C:
 				// Check if the transaction is mined
-				if status, _ := tm.CheckTxStatusByHash(hash); status {
+				status, err := tm.CheckTxStatusByHash(hash)
+				if err != nil {
+					return fmt.Errorf("failed to check transaction status by hash: %w", err)
+				}
+				if status {
 					return nil
 				}
 			}
@@ -291,7 +304,9 @@ func (tm *TxManager) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(err
 				return fmt.Errorf("tx manager stopped")
 			case <-ticker.C:
 				// Check if the transaction is mined
-				if status, _ := tm.CheckTxStatusByID(id); status {
+				if successful, err := tm.CheckTxStatusByID(id); err != nil {
+					return fmt.Errorf("failed to check transaction status by id: %w", err)
+				} else if successful {
 					return nil
 				}
 			}
