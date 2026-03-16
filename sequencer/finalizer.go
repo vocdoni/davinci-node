@@ -56,10 +56,11 @@ func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuit
 	}
 }
 
-// Start starts the finalizer. It will listen for processes to finalize on the OndemandCh channel.
-// It will also periodically check for processes to finalize based on their start date and duration.
-// The monitorInterval is the interval at which to check for processes to finalize.
-// If monitorInterval is 0, it will not check for processes to finalize.
+// Start starts the finalizer. It will listen for processes to finalize on the
+// OndemandCh channel. It will also periodically check for processes to finalize
+// based on their start date and duration. The monitorInterval is the interval
+// at which to check for processes to finalize. If monitorInterval is 0, it will
+// not check for processes to finalize.
 func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 	f.ctx, f.cancel = context.WithCancel(ctx)
 
@@ -101,8 +102,9 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 	log.Infow("finalizer started successfully")
 }
 
-// Close gracefully shuts down the finalizer and waits for all goroutines to exit.
-// This method should be called before closing the database to avoid panics.
+// Close gracefully shuts down the finalizer and waits for all goroutines to
+// exit. This method should be called before closing the database to avoid
+// panics.
 func (f *finalizer) Close() {
 	// Use a mutex to ensure thread safety if we were to add one
 	if f.cancel == nil {
@@ -179,14 +181,16 @@ func (f *finalizer) finalizeEnded() {
 			continue
 		}
 
-		// Also check if verified results already exist in storage
-		// This prevents re-generation when results were generated but failed to upload
+		// Also check if verified results already exist in storage. This
+		// prevents re-generation when results were generated but failed to
+		// upload.
 		if f.stg.HasVerifiedResults(processID) {
 			continue
 		}
 
-		// Check if the state root exists in the state DB. If not, mark as invalid and skip
-		// This prevents trying to finalize processes that were never properly processed.
+		// Check if the state root exists in the state DB. If not, mark as
+		// invalid and skip. This prevents trying to finalize processes that
+		// were never properly processed.
 		if err := state.RootExists(f.stateDB, processID, process.StateRoot.MathBigInt()); err != nil {
 			f.invalidProcesses.Store(processID, struct{}{})
 			continue
@@ -196,9 +200,9 @@ func (f *finalizer) finalizeEnded() {
 	}
 }
 
-// finalize finalizes a process by decrypting the accumulators and storing the result.
-// It retrieves the process from storage, decrypts the accumulators using the encryption keys,
-// and stores the result back to storage.
+// finalize finalizes a process by decrypting the accumulators and storing the
+// result. It retrieves the process from storage, decrypts the accumulators
+// using the encryption keys, and stores the result back to storage.
 func (f *finalizer) finalize(processID types.ProcessID) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
@@ -393,8 +397,9 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	return nil
 }
 
-// setProcessResults sets the results of a finalized process.
-// It updates the process in storage with the results and pushes the verified results.
+// setProcessResults sets the results of a finalized process. It pushes the
+// verified results. The pushed results will be stored when they were finally
+// published onchain.
 func (f *finalizer) setProcessResults(processID types.ProcessID, res *storage.VerifiedResults) error {
 	if res == nil {
 		return fmt.Errorf("cannot finalize process %s with nil results", processID.String())
@@ -421,8 +426,9 @@ func (f *finalizer) setProcessResults(processID types.ProcessID, res *storage.Ve
 	return nil
 }
 
-// WaitUntilResults waits until the process is finalized. Returns the result of the process.
-// It ensures proper timeout handling and provides detailed logging for troubleshooting.
+// WaitUntilResults waits until the process is finalized. Returns the result of
+// the process. It ensures proper timeout handling and provides detailed logging
+// for troubleshooting.
 func (f *finalizer) WaitUntilResults(ctx context.Context, processID types.ProcessID) ([]*types.BigInt, error) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
