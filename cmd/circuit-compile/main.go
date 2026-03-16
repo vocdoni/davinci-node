@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/solidity"
@@ -29,6 +28,7 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/prover"
 )
 
 // Keeps track of files created during program execution
@@ -453,14 +453,11 @@ func compileCircuitArtifacts(
 		"oldCircuitHash", expectedCircuitHash)
 
 	if newCircuitHash == expectedCircuitHash && !force {
-		if err := artifacts.DownloadVerifyingKey(context.Background()); err != nil {
-			return nil, fmt.Errorf("download %s verifying key: %w", circuitName, err)
+		vk, err := artifacts.LoadOrDownloadVerifyingKey(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("ensure %s verifying key %s: %w", circuitName, expectedVerificationKeyHash, err)
 		}
 
-		vk, err := loadVerifyingKeyFromHash(destination, expectedVerificationKeyHash, artifacts.Curve())
-		if err != nil {
-			return nil, fmt.Errorf("load existing %s vk %s: %w", circuitName, expectedVerificationKeyHash, err)
-		}
 		log.Infow("setup skipped; using existing vk from destination",
 			"circuit", circuitName, "VerifyingKeyHash", expectedVerificationKeyHash)
 		return &CompileCircuitArtifactsResult{
@@ -472,7 +469,7 @@ func compileCircuitArtifacts(
 		}, nil
 	}
 
-	pk, vk, err := groth16.Setup(ccs)
+	pk, vk, err := prover.Setup(ccs)
 	if err != nil {
 		return nil, fmt.Errorf("setup %s circuit: %w", circuitName, err)
 	}
@@ -502,24 +499,6 @@ func compileCircuitArtifacts(
 		ProvingKeyHash:   provingKeyHash,
 		VerifyingKeyHash: verifyingKeyHash,
 	}, nil
-}
-
-func loadVerifyingKeyFromHash(destination, hash string, curve ecc.ID) (groth16.VerifyingKey, error) {
-	path := filepath.Join(destination, hash)
-	fd, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open verifying key file for hash %s in %s: %w", hash, destination, err)
-	}
-	defer func() {
-		if err := fd.Close(); err != nil {
-			log.Warnw("failed to close verifying key file", "path", path, "error", err)
-		}
-	}()
-	vk := groth16.NewVerifyingKey(curve)
-	if _, err := vk.ReadFrom(fd); err != nil {
-		return nil, fmt.Errorf("read verifying key file %s: %w", path, err)
-	}
-	return vk, nil
 }
 
 // writeCS writes the Constraint System to a file and returns its SHA256 hash

@@ -13,10 +13,8 @@ import (
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
 	"github.com/rs/zerolog"
-	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
-	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
@@ -71,9 +69,9 @@ func TestVerifyCSPVoteCircuit(t *testing.T) {
 
 func TestVerifyNoValidVoteCircuit(t *testing.T) {
 	c := qt.New(t)
-	placeholder, err := voteverifier.DummyPlaceholder(ballotproof.CircomVerificationKey)
+	placeholder, err := voteverifier.DummyPlaceholder()
 	c.Assert(err, qt.IsNil)
-	assignment, err := voteverifier.DummyAssignment(ballotproof.CircomVerificationKey, new(bjj.BJJ).New())
+	assignment, err := voteverifier.DummyAssignment()
 	c.Assert(err, qt.IsNil)
 	// generate proof
 	assert := test.NewAssert(t)
@@ -114,7 +112,7 @@ func TestCompileAndPrintConstraints(t *testing.T) {
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 	c := qt.New(t)
 	// generate vote verifier circuit and inputs with deterministic ProcessID
-	vvPlaceholder, err := voteverifier.DummyPlaceholder(ballotproof.CircomVerificationKey)
+	vvPlaceholder, err := voteverifier.DummyPlaceholder()
 	c.Assert(err, qt.IsNil, qt.Commentf("create vote verifier placeholder"))
 
 	vvCCS, err := frontend.Compile(params.VoteVerifierCurve.ScalarField(), r1cs.NewBuilder, vvPlaceholder)

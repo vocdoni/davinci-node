@@ -10,6 +10,7 @@ import (
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/prover/debug"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/storage"
@@ -44,7 +45,7 @@ func TestMaxVoters(t *testing.T) {
 	)
 
 	if helpers.IsDebugTest() {
-		services.Sequencer.SetProver(debug.NewDebugProver(t))
+		prover.SetProver(debug.NewDebugProver(t))
 	}
 
 	c.Run("create process", func(c *qt.C) {

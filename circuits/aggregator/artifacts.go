@@ -1,6 +1,9 @@
 package aggregator
 
 import (
+	"github.com/consensys/gnark/backend"
+	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/spec/params"
@@ -12,6 +15,12 @@ import (
 var Artifacts = circuits.NewCircuitArtifacts(
 	"aggregator",
 	params.AggregatorCurve,
+	[]backend.ProverOption{
+		stdgroth16.GetNativeProverOptions(params.StateTransitionCurve.ScalarField(), params.AggregatorCurve.ScalarField()),
+	},
+	[]backend.VerifierOption{
+		stdgroth16.GetNativeVerifierOptions(params.StateTransitionCurve.ScalarField(), params.AggregatorCurve.ScalarField()),
+	},
 	&circuits.Artifact{
 		RemoteURL: config.AggregatorCircuitURL,
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.AggregatorCircuitHash),

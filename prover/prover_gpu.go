@@ -17,17 +17,11 @@ import (
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
-	"github.com/vocdoni/davinci-node/types"
 )
 
 // callGPUProver is a helper function that calls the GPU prover with proper curve-specific type assertions.
 // The icicle GPU library requires concrete curve-specific types, not generic interfaces.
-func callGPUProver(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	w witness.Witness,
-	icicleOpts []icicle.Option,
+func callGPUProver(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, w witness.Witness, icicleOpts []icicle.Option,
 ) (groth16.Proof, error) {
 	// Type assert the proving key to the concrete curve-specific type
 	switch curve {
@@ -66,17 +60,17 @@ func callGPUProver(
 	}
 }
 
-// DefaultProver is the default prover implementation.
-// It uses the GPU prover if UseGPUProver is true, otherwise it uses the CPU prover.
-// If GPU proving fails, it falls back to CPU proving.
-func DefaultProver(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	assignment frontend.Circuit,
-	opts ...backend.ProverOption,
+// Prove runs the groth16.Prove algorithm.
+// When built with GPU support (icicle), this will use the GPU prover if UseGPUProver is true.
+// otherwise it uses the CPU prover. If GPU proving fails, it falls back to CPU proving.
+func Prove(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, assignment frontend.Circuit, opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	if types.UseGPUProver {
+	return prover(curve, ccs, pk, assignment, opts...)
+}
+
+func defaultProver(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, assignment frontend.Circuit, opts ...backend.ProverOption,
+) (groth16.Proof, error) {
+	if UseGPUProver {
 		proof, err := GPUProver(curve, ccs, pk, assignment, opts...)
 		if err != nil {
 			// GPU proving failed, fall back to CPU
@@ -90,12 +84,7 @@ func DefaultProver(
 
 // CPUProver is the standard implementation that simply calls groth16.Prove directly.
 // This is used in production environments.
-func CPUProver(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	assignment frontend.Circuit,
-	opts ...backend.ProverOption,
+func CPUProver(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, assignment frontend.Circuit, opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
 	w, err := frontend.NewWitness(assignment, curve.ScalarField())
 	if err != nil {
@@ -107,12 +96,7 @@ func CPUProver(
 }
 
 // GPUProver is an implementation that uses GPU acceleration for proving.
-func GPUProver(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	assignment frontend.Circuit,
-	opts ...backend.ProverOption,
+func GPUProver(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, assignment frontend.Circuit, opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
 	w, err := frontend.NewWitness(assignment, curve.ScalarField())
 	if err != nil {
@@ -124,14 +108,9 @@ func GPUProver(
 // ProveWithWitness generates a proof from an already-created witness.
 // It automatically uses GPU acceleration if UseGPUProver is true.
 // If GPU proving fails, it falls back to CPU proving.
-func ProveWithWitness(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	w witness.Witness,
-	opts ...backend.ProverOption,
+func ProveWithWitness(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, w witness.Witness, opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
-	if types.UseGPUProver {
+	if UseGPUProver {
 		proof, err := GPUProverWithWitness(curve, ccs, pk, w, opts...)
 		if err != nil {
 			// GPU proving failed, fall back to CPU
@@ -144,12 +123,7 @@ func ProveWithWitness(
 }
 
 // CPUProverWithWitness proves using CPU with an already-created witness.
-func CPUProverWithWitness(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	w witness.Witness,
-	opts ...backend.ProverOption,
+func CPUProverWithWitness(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, w witness.Witness, opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
 	// Extract the standard proving key from ICICLE wrapper if needed
 	cpuPk := cpuReadyProvingKey(pk)
@@ -157,23 +131,13 @@ func CPUProverWithWitness(
 }
 
 // GPUProverWithWitness proves using GPU with an already-created witness.
-func GPUProverWithWitness(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	w witness.Witness,
-	opts ...backend.ProverOption,
+func GPUProverWithWitness(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, w witness.Witness, opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
 	return gpuProve(curve, ccs, pk, w, opts...)
 }
 
 // gpuProve performs GPU-based proving with icicle acceleration.
-func gpuProve(
-	curve ecc.ID,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	w witness.Witness,
-	opts ...backend.ProverOption,
+func gpuProve(curve ecc.ID, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, w witness.Witness, opts ...backend.ProverOption,
 ) (groth16.Proof, error) {
 	// Convert backend.ProverOption to icicle.Option
 	var icicleOpts []icicle.Option

@@ -5,10 +5,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
-	"github.com/consensys/gnark/backend/solidity"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/ethereum/go-ethereum/common"
@@ -238,23 +236,11 @@ func (s *Sequencer) processStateTransitionBatch(
 		"censusRoot", censusRoot.String(),
 	)
 
-	// Prepare the options for the prover - use solidity verifier target
-	opts := solidity.WithProverTargetSolidityVerifier(backend.GROTH16)
-
 	// Generate the proof
-	proof, err := s.prover(params.StateTransitionCurve, s.stateTransition.ccs, s.stateTransition.pk, assignment, opts)
+	proof, err := s.stateTransition.ProveAndVerify(assignment)
 	if err != nil {
 		s.logStateTransitionDebugInfo(processState, votes, censusRoot, assignment, err)
 		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
-	}
-	if err := s.verifyStateTransitionProof(proof, assignment); err != nil {
-		return nil, nil, nil, fmt.Errorf(
-			"failed to verify state transition proof (processID=%s, voters=%d, overwrittenVotes=%d): %w",
-			processState.ProcessID().String(),
-			assignment.VotersCount,
-			assignment.OverwrittenVotesCount,
-			err,
-		)
 	}
 	return proof, blobData, assignment.RootHashAfter.(*big.Int), nil
 }

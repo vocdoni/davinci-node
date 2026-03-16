@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/davinci-node/spec/params"
 
@@ -17,10 +16,10 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
-	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	ballottest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
 	voteverifiertest "github.com/vocdoni/davinci-node/circuits/test/voteverifier"
+	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/types"
@@ -41,7 +40,8 @@ func AggregatorInputsForTest(
 
 	startTime := time.Now()
 	log.Infow("aggregator inputs generation starts")
-	vvCCS, vvPk, vvVk, err := circuitstest.LoadVoteVerifierRuntimeArtifacts()
+
+	voteverifierRuntime, err := voteverifier.Artifacts.LoadOrDownload(t.Context())
 	c.Assert(err, qt.IsNil, qt.Commentf("load vote verifier runtime artifacts"))
 
 	vvData := []voteverifiertest.VoterTestData{}
@@ -67,23 +67,7 @@ func AggregatorInputsForTest(
 	proofs := [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
 	proofsInputsHashes := [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
 	for i := range vvWitness {
-		proverOpts := stdgroth16.GetNativeProverOptions(
-			params.AggregatorCurve.ScalarField(),
-			params.VoteVerifierCurve.ScalarField(),
-		)
-		verifierOpts := stdgroth16.GetNativeVerifierOptions(
-			params.AggregatorCurve.ScalarField(),
-			params.VoteVerifierCurve.ScalarField(),
-		)
-		proof, err := circuitstest.ProveAndVerifyWithWitness(
-			params.VoteVerifierCurve,
-			vvCCS,
-			vvPk,
-			vvVk,
-			vvWitness[i],
-			[]backend.ProverOption{proverOpts},
-			[]backend.VerifierOption{verifierOpts},
-		)
+		proof, err := voteverifierRuntime.ProveAndVerifyWithWitness(vvWitness[i])
 		c.Assert(err, qt.IsNil, qt.Commentf("proving voteverifier circuit %d", i))
 
 		// convert the proof to the circuit proof type
@@ -105,12 +89,19 @@ func AggregatorInputsForTest(
 		BallotHashes: proofsInputsHashes,
 		Proofs:       proofs,
 	}
+
 	// Fill the remaining slots with dummy values.
-	err = assignment.FillWithDummy(vvCCS, vvPk, ballotproof.CircomVerificationKey, nValidVoters, nil)
+	dummyAssignment, err := voteverifier.DummyAssignment()
+	c.Assert(err, qt.IsNil, qt.Commentf("dummy assignment"))
+
+	dummyProof, err := voteverifierRuntime.ProveAndVerify(dummyAssignment)
+	c.Assert(err, qt.IsNil, qt.Commentf("dummy proof"))
+
+	err = assignment.FillWithDummy(nValidVoters, dummyProof)
 	c.Assert(err, qt.IsNil, qt.Commentf("fill with dummy values"))
 
 	// fix the vote verifier verification key
-	fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](vvVk)
+	fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](voteverifierRuntime.VerifyingKey())
 	c.Assert(err, qt.IsNil, qt.Commentf("fix vote verifier verification key"))
 
 	// create final placeholder
@@ -119,7 +110,7 @@ func AggregatorInputsForTest(
 		VerificationKey: fixedVk,
 	}
 	for i := range params.VotesPerBatch {
-		finalPlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](vvCCS)
+		finalPlaceholder.Proofs[i] = stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](voteverifierRuntime.ConstraintSystem())
 	}
 	votes := []*state.Vote{}
 	for i := range nValidVoters {

@@ -5,10 +5,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/format"
 )
 
-// BallotProofNPubInputs is the number of public inputs for the ballot proof
-// circom circuit.
-const BallotProofNPubInputs = 3
-
 // BallotHash returns the inputs hashed for BallotHash in this order:
 //
 //	Process.ID

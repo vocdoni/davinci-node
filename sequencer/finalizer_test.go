@@ -24,9 +24,8 @@ import (
 func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
 	t.Helper()
 	ca := new(internalCircuits)
-	err := results.Artifacts.DownloadAll(t.Context())
-	qt.Assert(t, err, qt.IsNil, qt.Commentf("failed to download results verifier artifacts: %v", err))
-	ca.resultsVerifier, err = loadCircuitArtifacts(results.Artifacts)
+	var err error
+	ca.resultsVerifier, err = results.Artifacts.LoadOrDownload(t.Context())
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("failed to load results verifier artifacts: %v", err))
 	return ca
 }
@@ -41,7 +40,7 @@ func TestFinalize(t *testing.T) {
 	defer cleanup()
 
 	// Create a finalizer
-	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil, nil)
+	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil)
 	f.Start(t.Context(), 0)
 
 	// Test finalize

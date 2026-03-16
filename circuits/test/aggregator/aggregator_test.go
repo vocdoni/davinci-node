@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/consensys/gnark/backend"
-	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/test"
+	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
@@ -27,8 +27,7 @@ func TestAggregatorCircuit(t *testing.T) {
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(placeholder, assignment,
 		test.WithCurves(params.AggregatorCurve), test.WithBackends(backend.GROTH16),
-		test.WithProverOpts(stdgroth16.GetNativeProverOptions(
-			params.StateTransitionCurve.ScalarField(),
-			params.AggregatorCurve.ScalarField())))
+		test.WithProverOpts(aggregator.Artifacts.ProverOptions()...),
+		test.WithVerifierOpts(aggregator.Artifacts.VerifierOptions()...))
 	log.DebugTime("aggregator proving", startTime)
 }

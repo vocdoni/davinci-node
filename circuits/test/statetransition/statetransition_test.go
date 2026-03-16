@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/consensys/gnark/backend"
-	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/backend/solidity"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
@@ -31,10 +29,8 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/prover"
 	davinci_solidity "github.com/vocdoni/davinci-node/solidity"
 	"github.com/vocdoni/davinci-node/spec/params"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
@@ -102,44 +98,19 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	startTime := time.Now()
 
 	// Use a fixed ProcessID for reproducible test data.
-	testResults, placeholder, assignment := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	testResults, _, assignment := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	log.DebugTime("state transition inputs generation", startTime)
 
-	// compile circuit
-	startTime = time.Now()
-	ccs, err := frontend.Compile(params.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, placeholder)
-	c.Assert(err, qt.IsNil, qt.Commentf("compile circuit"))
-	c.Logf("compiled circuit with %d constraints, took %s", ccs.GetNbConstraints(), time.Since(startTime).String())
-
-	// setup proving and verifying keys
-	pk, vk, err := prover.Setup(ccs)
-	c.Assert(err, qt.IsNil, qt.Commentf("setup"))
+	statetransitionRuntime, err := statetransition.Artifacts.LoadOrDownload(t.Context())
+	c.Assert(err, qt.IsNil, qt.Commentf("load artifacts"))
 
 	// create witness
-	w, err := frontend.NewWitness(assignment, params.StateTransitionCurve.ScalarField())
+	fullWitness, err := frontend.NewWitness(assignment, params.StateTransitionCurve.ScalarField())
 	c.Assert(err, qt.IsNil, qt.Commentf("create witness"))
 
 	// prove
-	var proof groth16.Proof
-	proof, err = circuitstest.ProveAndVerifyWithWitness(
-		params.StateTransitionCurve,
-		ccs,
-		pk,
-		vk,
-		w,
-		[]backend.ProverOption{solidity.WithProverTargetSolidityVerifier(backend.GROTH16)},
-		[]backend.VerifierOption{solidity.WithVerifierTargetSolidityVerifier(backend.GROTH16)},
-	)
+	proof, err := statetransitionRuntime.ProveAndVerifyWithWitness(fullWitness)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove with witness"))
-
-	// verify the last proof with gnark
-	err = circuitstest.VerifyProofWithWitness(
-		proof,
-		vk,
-		w,
-		solidity.WithVerifierTargetSolidityVerifier(backend.GROTH16),
-	)
-	c.Assert(err, qt.IsNil, qt.Commentf("verify proof"))
 
 	// Export artifacts to temporary directory
 	dir, err := os.MkdirTemp("", "davinci_solidity_*")
@@ -158,7 +129,7 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	// Export verification key to Solidity
 	vkFile, err := os.OpenFile(filepath.Join(dir, "vk.sol"), os.O_CREATE|os.O_WRONLY, 0o644)
 	c.Assert(err, qt.IsNil, qt.Commentf("create vk.sol file"))
-	err = vk.ExportSolidity(vkFile)
+	err = statetransitionRuntime.VerifyingKey().ExportSolidity(vkFile)
 	c.Assert(err, qt.IsNil, qt.Commentf("export vk to solidity"))
 	if err := vkFile.Close(); err != nil {
 		t.Logf("warning: failed to close vk.sol file: %v", err)

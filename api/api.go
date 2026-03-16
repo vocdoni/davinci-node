@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
+	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
@@ -50,13 +51,14 @@ type API struct {
 	web3Config        config.DavinciWeb3Config
 	processIDsVersion [4]byte // Current process ID version
 	// Workers API stuff
-	sequencerSigner            *ethereum.Signer        // Signer for workers authentication
-	sequencerUUID              *uuid.UUID              // UUID to keep the workers endpoints hidden
-	workersAuthtokenExpiration time.Duration           // Expiration time for worker authentication tokens
-	workersJobTimeout          time.Duration           // The time that the sequencer waits for a worker job
-	workersBanRules            *workers.WorkerBanRules // Rules for banning workers based on job failures
-	jobsManager                *workers.JobsManager    // Manages worker jobs and timeouts
-	parentCtx                  context.Context         // Context to stop the API server
+	sequencerSigner            *ethereum.Signer         // Signer for workers authentication
+	sequencerUUID              *uuid.UUID               // UUID to keep the workers endpoints hidden
+	voteVerifier               *circuits.CircuitRuntime // VoteVerifier circuit
+	workersAuthtokenExpiration time.Duration            // Expiration time for worker authentication tokens
+	workersJobTimeout          time.Duration            // The time that the sequencer waits for a worker job
+	workersBanRules            *workers.WorkerBanRules  // Rules for banning workers based on job failures
+	jobsManager                *workers.JobsManager     // Manages worker jobs and timeouts
+	parentCtx                  context.Context          // Context to stop the API server
 }
 
 // New creates a new API instance with the given configuration.

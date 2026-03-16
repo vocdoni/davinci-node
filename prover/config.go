@@ -1,4 +1,4 @@
-package types
+package prover
 
 import (
 	"os"
@@ -25,6 +25,9 @@ func init() {
 	log.Infow("GPU prover usage", "enabled", UseGPUProver)
 }
 
+// prover defaults to defaultProver but can be replaced using SetProver()
+var prover ProverFunc = defaultProver
+
 // ProverFunc defines a function type that matches the signature needed for zkSNARK proving.
 // The function is generic enough to handle all circuit types.
 // This type is used for dependency injection, particularly in the Sequencer.
@@ -45,3 +48,9 @@ type ProverWithWitnessFunc func(
 	w witness.Witness,
 	opts ...backend.ProverOption,
 ) (groth16.Proof, error)
+
+// SetProver sets a custom prover function.
+// This is particularly useful for tests that need to debug circuit execution.
+func SetProver(p ProverFunc) {
+	prover = p
+}
