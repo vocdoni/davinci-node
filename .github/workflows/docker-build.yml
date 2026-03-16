@@ -1,0 +1,58 @@
+name: Docker
+
+on:
+  workflow_call:
+    inputs:
+      image-tag:
+        required: true
+        type: string
+      push:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  docker:
+    name: ${{ inputs.push && 'Build and Publish' || 'Build' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Log in to Docker Hub
+        if: ${{ inputs.push }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Log in to GHCR
+        if: ${{ inputs.push }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Prepare vars
+        id: vars
+        shell: bash
+        run: |
+          echo "IMAGE_TAG_CLEAN=$(echo '${{ inputs.image-tag }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+          echo "GIT_HASH_SHORT=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "DATE_IN_SECS=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name:  ${{ inputs.push && 'Build and Publish' || 'Build' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: ${{ inputs.push }}
+          tags: |
+            vocdoni/davinci-node:${{ steps.vars.outputs.IMAGE_TAG_CLEAN }}
+            ghcr.io/vocdoni/davinci-node:${{ steps.vars.outputs.IMAGE_TAG_CLEAN }}
