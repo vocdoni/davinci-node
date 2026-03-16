@@ -7,7 +7,6 @@ import (
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
-	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/spec/params"
@@ -19,8 +18,7 @@ import (
 func Compile() (constraint.ConstraintSystem, error) {
 	startTime := time.Now()
 	log.Infow("compiling circuit definition", "circuit", Artifacts.Name())
-	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(
-		ballotproof.CircomVerificationKey, circuits.BallotProofNPubInputs)
+	circomPlaceholder, err := circomgnark.Circom2GnarkPlaceholder(ballotproof.CircomVerificationKey, ballotproof.NumberOfPublicInputs)
 	if err != nil {
 		return nil, fmt.Errorf("generate circom2gnark placeholder: %w", err)
 	}

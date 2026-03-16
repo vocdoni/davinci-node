@@ -105,7 +105,11 @@ func runWorkerMode(cfg *Config) {
 	defer storage.Close()
 
 	// Download circuit artifacts
-	if err := service.DownloadWorkerArtifacts(artifactsTimeout, path.Join(cfg.Datadir, "artifacts")); err != nil {
+	artifactsDir := path.Join(cfg.Datadir, "artifacts")
+	artifactsCtx, cancel := context.WithTimeout(context.Background(), artifactsTimeout)
+	defer cancel()
+	log.Infow("preparing zkSNARK circuit worker artifacts", "timeout", artifactsTimeout, "artifactsDir", artifactsDir)
+	if err := service.DownloadWorkerArtifacts(artifactsCtx, artifactsDir); err != nil {
 		log.Fatalf("failed to download artifacts: %v", err)
 	}
 
@@ -148,7 +152,11 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	services := &Services{}
 
 	// Download circuit artifacts
-	if err := service.DownloadArtifacts(artifactsTimeout, path.Join(cfg.Datadir, "artifacts")); err != nil {
+	artifactsDir := path.Join(cfg.Datadir, "artifacts")
+	artifactsCtx, cancel := context.WithTimeout(context.Background(), artifactsTimeout)
+	defer cancel()
+	log.Infow("preparing zkSNARK circuit full sequencer artifacts", "timeout", artifactsTimeout, "artifactsDir", artifactsDir)
+	if err := service.DownloadArtifacts(artifactsCtx, artifactsDir); err != nil {
 		return nil, fmt.Errorf("failed to download artifacts: %w", err)
 	}
 

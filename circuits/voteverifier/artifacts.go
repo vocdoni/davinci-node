@@ -1,6 +1,9 @@
 package voteverifier
 
 import (
+	"github.com/consensys/gnark/backend"
+	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/spec/params"
@@ -12,6 +15,12 @@ import (
 var Artifacts = circuits.NewCircuitArtifacts(
 	"voteverifier",
 	params.VoteVerifierCurve,
+	[]backend.ProverOption{
+		stdgroth16.GetNativeProverOptions(params.AggregatorCurve.ScalarField(), params.VoteVerifierCurve.ScalarField()),
+	},
+	[]backend.VerifierOption{
+		stdgroth16.GetNativeVerifierOptions(params.AggregatorCurve.ScalarField(), params.VoteVerifierCurve.ScalarField()),
+	},
 	&circuits.Artifact{
 		RemoteURL: config.VoteVerifierCircuitURL,
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.VoteVerifierCircuitHash),

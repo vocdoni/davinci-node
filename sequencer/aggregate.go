@@ -7,7 +7,6 @@ import (
 
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
-	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -498,10 +497,6 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		return stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](p)
 	}
 
-	verifyOpts := stdgroth16.GetNativeVerifierOptions(
-		params.AggregatorCurve.ScalarField(),
-		params.VoteVerifierCurve.ScalarField(),
-	)
 	verifyVoteVerifierProof := func(vb *storage.VerifiedBallot) error {
 		if vb == nil {
 			return fmt.Errorf("verified ballot is nil")
@@ -517,24 +512,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 			IsValid:    1,
 			BallotHash: inputsHashValue,
 		}
-		pubWitness, err := frontend.NewWitness(pubAssignment, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
-		if err != nil {
-			return fmt.Errorf("build public witness: %w", err)
-		}
-		if err := groth16.Verify(vb.Proof, s.voteVerifier.vk, pubWitness, verifyOpts); err != nil {
-			pubAssignmentIsValid0 := &voteverifier.VerifyVoteCircuit{
-				IsValid:    0,
-				BallotHash: inputsHashValue,
-			}
-			pubWitnessIsValid0, errIsValid0 := frontend.NewWitness(pubAssignmentIsValid0, params.VoteVerifierCurve.ScalarField(), frontend.PublicOnly())
-			if errIsValid0 == nil {
-				if err2 := groth16.Verify(vb.Proof, s.voteVerifier.vk, pubWitnessIsValid0, verifyOpts); err2 == nil {
-					return fmt.Errorf("proof verifies only with IsValid=0")
-				}
-			}
-			return fmt.Errorf("verify proof: %w", err)
-		}
-		return nil
+		return s.voteVerifier.Verify(vb.Proof, pubAssignment)
 	}
 
 	batchInputs, err := collectAggregationBatchInputs(
@@ -579,13 +557,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	// Fill any remaining slots with dummy proofs if needed
 	if len(batchInputs.AggBallots) < params.VotesPerBatch {
 		log.Debugw("filling with dummy proofs", "count", params.VotesPerBatch-len(batchInputs.AggBallots))
-		if err := assignment.FillWithDummy(
-			s.voteVerifier.ccs,
-			s.voteVerifier.pk,
-			s.ballotProofVK,
-			len(batchInputs.AggBallots),
-			s.prover,
-		); err != nil {
+		if err := assignment.FillWithDummy(len(batchInputs.AggBallots), s.voteVerifierDummyProof); err != nil {
 			if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
 				log.Warnw("failed to release ballot reservations after dummy fill failure",
 					"error", err.Error(),
@@ -600,13 +572,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	log.DebugTime("inputs ready for aggregation", startTime)
 	startTime = time.Now()
 
-	// Prepare the options for the prover
-	opts := stdgroth16.GetNativeProverOptions(
-		params.StateTransitionCurve.ScalarField(),
-		params.AggregatorCurve.ScalarField(),
-	)
 	// Generate the proof for the aggregator circuit
-	proof, err := s.prover(params.AggregatorCurve, s.aggregator.ccs, s.aggregator.pk, assignment, opts)
+	proof, err := s.aggregator.ProveAndVerify(assignment)
 	if err != nil {
 		// Log detailed debug information about the failure
 		// Remove block once we have sufficient confidence in the aggregator proving
@@ -651,15 +618,6 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 			)
 		}
 		return fmt.Errorf("failed to generate aggregate proof: %w", err)
-	}
-	if err := s.verifyAggregatorProof(proof, assignment); err != nil {
-		if errRelease := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); errRelease != nil {
-			log.Warnw("failed to release ballot reservations after aggregation verification failure",
-				"error", errRelease.Error(),
-				"processID", processID.String(),
-			)
-		}
-		return fmt.Errorf("aggregation verification failed for process %s: %w", processID.String(), err)
 	}
 
 	log.InfoTime("aggregate proof generated", startTime,

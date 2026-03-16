@@ -18,6 +18,8 @@ var (
 	defaultBallotMode = testutil.BallotMode()
 )
 
+const artifactsTimeout = 20 * time.Minute
+
 func TestMain(m *testing.M) {
 	if os.Getenv("RUN_INTEGRATION_TESTS") == "" || os.Getenv("RUN_INTEGRATION_TESTS") == "false" {
 		log.Info("skipping integration tests...")
@@ -25,13 +27,17 @@ func TestMain(m *testing.M) {
 	}
 
 	log.Init(log.LogLevelDebug, "stdout", nil)
-	if err := service.DownloadArtifacts(30*time.Minute, ""); err != nil {
-		log.Fatalf("failed to download artifacts: %v", err)
-	}
-
 	tempDir := os.TempDir() + "/davinci-node-test-" + time.Now().Format("20060102150405")
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	downloadCtx, downloadCancel := context.WithTimeout(ctx, artifactsTimeout)
+	defer downloadCancel()
+
+	if err := service.DownloadArtifacts(downloadCtx, ""); err != nil {
+		log.Fatalf("failed to download artifacts: %v", err)
+	}
 
 	var err error
 	var cleanup func()
@@ -56,12 +62,12 @@ func TestMain(m *testing.M) {
 
 	select {
 	case <-cleanupDone:
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Fatalf("failed to remove temp dir (%s): %v", tempDir, err)
+		}
 	case <-time.After(30 * time.Second):
 		log.Warn("cleanup timed out, forcing exit")
 	}
 
-	if err := os.RemoveAll(tempDir); err != nil {
-		log.Fatalf("failed to remove temp dir (%s): %v", tempDir, err)
-	}
 	os.Exit(code)
 }

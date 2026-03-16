@@ -42,6 +42,12 @@ func (a *API) startWorkersAPI(conf APIConfig) error {
 		// Start workers monitor
 		a.startWorkersMonitor()
 
+		// load circuit artifacts content
+		a.voteVerifier, err = voteverifier.Artifacts.LoadOrDownload(a.parentCtx)
+		if err != nil {
+			return fmt.Errorf("failed to load vote verifier artifacts: %w", err)
+		}
+
 		// Add worker endpoints
 		log.Infow("register handler", "endpoint", WorkerTokenDataEndpoint, "method", "GET")
 		a.router.Get(WorkerTokenDataEndpoint, a.workersTokenData)
@@ -311,17 +317,17 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prepare the circuit to verify the proof, with the public inputs
-	circuit := &voteverifier.VerifyVoteCircuit{
+	// Prepare the assignment to verify the proof, with the public inputs
+	assignment := &voteverifier.VerifyVoteCircuit{
 		IsValid:    1,
 		BallotHash: emulated.ValueOf[sw_bn254.ScalarField](ballot.BallotInputsHash),
 	}
 
 	// Verify the worker proof
-	if err := circuit.VerifyProof(workerVerifiedBallot.Proof); err != nil {
+	if err := a.voteVerifier.Verify(workerVerifiedBallot.Proof, assignment); err != nil {
 		ErrGenericInternalServerError.WithErr(
 			fmt.Errorf("failed to verify worker proof, ballotHash: %v, proof: %v, err: %s",
-				circuit.BallotHash, workerVerifiedBallot.Proof, err.Error())).Write(w)
+				assignment.BallotHash, workerVerifiedBallot.Proof, err.Error())).Write(w)
 		return
 	}
 

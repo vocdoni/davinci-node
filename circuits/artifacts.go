@@ -8,22 +8,23 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/backend"
 	gpugroth16 "github.com/consensys/gnark/backend/accelerated/icicle/groth16"
 	"github.com/consensys/gnark/backend/groth16"
+	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
+	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
-	"github.com/vocdoni/davinci-node/types"
 )
 
 // BaseDir is the path where the artifact cache is expected to be found. If the
@@ -31,6 +32,11 @@ import (
 // set to a different path if needed from other packages. Defaults to the
 // env var DAVINCI_ARTIFACTS_DIR or the user home directory.
 var BaseDir string
+
+var (
+	ErrArtifactNotFound     = errors.New("artifact not found in cache")
+	ErrArtifactHashMismatch = errors.New("artifact hash mismatch")
+)
 
 func init() {
 	if BaseDir == "" {
@@ -52,233 +58,365 @@ type Artifact struct {
 	Hash      []byte
 }
 
-// Load reads the artifact content from the local cache using its configured hash.
-func (k *Artifact) Load() ([]byte, error) {
+func (k *Artifact) cachePath() (string, error) {
 	if k == nil {
-		return nil, fmt.Errorf("artifact not loaded")
+		return "", fmt.Errorf("artifact not configured")
+	}
+	if len(k.Hash) == 0 {
+		return "", fmt.Errorf("artifact hash not provided")
+	}
+	return filepath.Join(BaseDir, hex.EncodeToString(k.Hash)), nil
+}
+
+// loadOrDownload returns the content of an artifact, loading it from cache or downloading it if not present.
+// It re-downloads only on cache miss or cached artifact hash mismatch.
+func (k *Artifact) loadOrDownload(ctx context.Context) ([]byte, error) {
+	if k == nil {
+		return nil, fmt.Errorf("artifact not configured")
 	}
 	if len(k.Hash) == 0 {
 		return nil, fmt.Errorf("artifact hash not provided")
 	}
-	content, err := load(k.Hash)
+
+	content, err := k.loadFromCache()
+	switch {
+	case err == nil:
+		return content, nil
+	case errors.Is(err, ErrArtifactNotFound) || errors.Is(err, ErrArtifactHashMismatch):
+		if err := k.downloadToCache(ctx); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, err
+	}
+
+	return k.readFromCache()
+}
+
+// loadFromCache reads artifact from cache and verifies hash matches.
+func (k *Artifact) loadFromCache() ([]byte, error) {
+	content, err := k.readFromCache()
 	if err != nil {
 		return nil, err
 	}
-	if content == nil {
-		return nil, fmt.Errorf("no content found")
+	return content, k.checkHash(content)
+}
+
+func (k *Artifact) readFromCache() ([]byte, error) {
+	path, err := k.cachePath()
+	if err != nil {
+		return nil, err
 	}
+	startTime := time.Now()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrArtifactNotFound
+		}
+		return nil, fmt.Errorf("error reading file %s: %w", path, err)
+	}
+	log.DebugTime("artifact read from cache", startTime, "path", path)
 	return content, nil
 }
 
-// Download downloads the content of the artifact from the remote URL,
-// checks the hash of the content and stores it locally. It returns an error if
-// the remote URL is not provided or the content cannot be downloaded, or if the
-// hash of the content does not match. If the content is already loaded, it will
-// return.
-func (k *Artifact) Download(ctx context.Context) error {
-	// if the remote url is not provided, the artifact cannot be loaded so
-	// it will return an error
-	if k.RemoteURL == "" {
-		return fmt.Errorf("key not loaded and remote url not provided")
+func (k *Artifact) checkHash(content []byte) error {
+	startTime := time.Now()
+	sum := sha256.Sum256(content)
+	if !bytes.Equal(sum[:], k.Hash) {
+		log.Warnw("hash mismatch for cached artifact", "expected", hex.EncodeToString(k.Hash), "got", hex.EncodeToString(sum[:]))
+		return fmt.Errorf("%w: expected %x, got %x", ErrArtifactHashMismatch, k.Hash, sum[:])
 	}
-	// download the content of the artifact from the remote URL
-	return downloadAndStore(ctx, k.Hash, k.RemoteURL)
+	log.DebugTime("artifact hash verified", startTime, "hash", hex.EncodeToString(k.Hash))
+
+	return nil
 }
+
+func (k *Artifact) checkFileHash() error {
+	path, err := k.cachePath()
+	if err != nil {
+		return err
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrArtifactNotFound
+		}
+		return fmt.Errorf("open cached artifact %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	startTime := time.Now()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return fmt.Errorf("hash cached artifact %s: %w", path, err)
+	}
+	sum := hasher.Sum(nil)
+	if !bytes.Equal(sum, k.Hash) {
+		log.Warnw("hash mismatch for cached artifact",
+			"path", path, "expected", hex.EncodeToString(k.Hash), "got", hex.EncodeToString(sum),
+		)
+		return fmt.Errorf("%w: expected %x, got %x", ErrArtifactHashMismatch, k.Hash, sum)
+	}
+	log.DebugTime("artifact hash verified", startTime, "hash", hex.EncodeToString(k.Hash))
+
+	return nil
+}
+
+func (k *Artifact) ensureDownloaded(ctx context.Context) error {
+	err := k.checkFileHash()
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrArtifactNotFound) || errors.Is(err, ErrArtifactHashMismatch):
+		return k.downloadToCache(ctx)
+	default:
+		return err
+	}
+}
+
+func (k *Artifact) downloadToCache(ctx context.Context) error {
+	path, err := k.cachePath()
+	if err != nil {
+		return err
+	}
+	if k.RemoteURL == "" {
+		return fmt.Errorf("artifact remote url not provided for hash %s", hex.EncodeToString(k.Hash))
+	}
+
+	log.Debugw("downloading artifact", "url", k.RemoteURL, "hash", hex.EncodeToString(k.Hash))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, k.RemoteURL, nil)
+	if err != nil {
+		return fmt.Errorf("create file request: %w", err)
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("http request failed: %w", err)
+	}
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			log.Errorw(err, "error closing body")
+		}
+	}()
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected http status %s for %s", res.Status, k.RemoteURL)
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("failed to create base directory for caching %s: %w", dir, err)
+	}
+
+	tmpFile, err := os.CreateTemp(dir, hex.EncodeToString(k.Hash)+".tmp.*")
+	if err != nil {
+		return fmt.Errorf("create temp artifact file: %w", err)
+	}
+
+	tmpPath := tmpFile.Name()
+	defer func() {
+		if tmpFile != nil {
+			if err := tmpFile.Close(); err != nil {
+				log.Errorw(err, fmt.Sprintf("error closing temp artifact file %q", tmpFile.Name()))
+			}
+		}
+		if tmpPath != "" {
+			if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+				log.Errorw(err, fmt.Sprintf("error removing temp artifact file %q", tmpPath))
+			}
+		}
+	}()
+
+	hasher := sha256.New()
+
+	size, err := io.Copy(io.MultiWriter(tmpFile, hasher), res.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read downloaded content: %w", err)
+	}
+
+	computedHash := hasher.Sum(nil)
+	if !bytes.Equal(computedHash, k.Hash) {
+		return fmt.Errorf("hash mismatch for downloaded artifact: expected %s, got %s",
+			hex.EncodeToString(k.Hash),
+			hex.EncodeToString(computedHash),
+		)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("close temp cache file %s: %w", tmpPath, err)
+	}
+	tmpFile = nil
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("install cached artifact %s: %w", path, err)
+	}
+	tmpPath = ""
+	log.Debugw("artifact downloaded and cached", "path", path, "size_bytes", size)
+	return nil
+}
+
+type circuitParams struct {
+	name         string
+	curve        ecc.ID
+	proverOpts   []backend.ProverOption
+	verifierOpts []backend.VerifierOption
+}
+
+// Name returns the logical name associated with this circuit.
+func (c circuitParams) Name() string { return c.name }
+
+// Curve returns the elliptic curve identifier associated with this circuit.
+func (c circuitParams) Curve() ecc.ID { return c.curve }
+
+// ProverOptions returns the prover options associated with this circuit.
+func (c circuitParams) ProverOptions() []backend.ProverOption { return c.proverOpts }
+
+// VerifierOptions returns the verifier options associated with this circuit.
+func (c circuitParams) VerifierOptions() []backend.VerifierOption { return c.verifierOpts }
 
 // CircuitArtifacts is a struct that holds the artifacts of a zkSNARK circuit
 // (definition, proving and verification key). It provides a method to load the
 // keys from the local cache or download them from the remote URLs provided.
 type CircuitArtifacts struct {
-	name              string
-	curve             ecc.ID
+	circuitParams
 	circuitDefinition *Artifact
 	provingKey        *Artifact
 	verifyingKey      *Artifact
-	ccs               constraint.ConstraintSystem
-	pk                groth16.ProvingKey
-	vk                groth16.VerifyingKey
-}
-
-// CompileFunc compiles the current circuit source into a constraint system.
-type CompileFunc func() (constraint.ConstraintSystem, error)
-
-func (ca *CircuitArtifacts) artifactContent(artifact *Artifact, label string) ([]byte, error) {
-	if artifact == nil {
-		return nil, fmt.Errorf("%s not loaded", label)
-	}
-	content, err := artifact.Load()
-	if err != nil {
-		return nil, fmt.Errorf("error loading %s: %w", label, err)
-	}
-	return content, nil
-}
-
-func (ca *CircuitArtifacts) newConstraintSystem() constraint.ConstraintSystem {
-	if types.UseGPUProver {
-		return gpugroth16.NewCS(ca.curve)
-	}
-	return groth16.NewCS(ca.curve)
-}
-
-func (ca *CircuitArtifacts) newProvingKey() groth16.ProvingKey {
-	if types.UseGPUProver {
-		return gpugroth16.NewProvingKey(ca.curve)
-	}
-	return groth16.NewProvingKey(ca.curve)
-}
-
-func (ca *CircuitArtifacts) newVerifyingKey() groth16.VerifyingKey {
-	if types.UseGPUProver {
-		return gpugroth16.NewVerifyingKey(ca.curve)
-	}
-	return groth16.NewVerifyingKey(ca.curve)
-}
-
-func (ca *CircuitArtifacts) decodeCircuitDefinition() (constraint.ConstraintSystem, error) {
-	content, err := ca.artifactContent(ca.circuitDefinition, "circuit definition")
-	if err != nil {
-		return nil, err
-	}
-	ccs := ca.newConstraintSystem()
-	if _, err := ccs.ReadFrom(bytes.NewReader(content)); err != nil {
-		return nil, fmt.Errorf("error decoding circuit definition: %w", err)
-	}
-	return ccs, nil
-}
-
-func (ca *CircuitArtifacts) decodeProvingKey() (groth16.ProvingKey, error) {
-	content, err := ca.artifactContent(ca.provingKey, "proving key")
-	if err != nil {
-		return nil, err
-	}
-	pk := ca.newProvingKey()
-	if _, err := pk.UnsafeReadFrom(bytes.NewReader(content)); err != nil {
-		return nil, fmt.Errorf("error decoding proving key: %w", err)
-	}
-	return pk, nil
-}
-
-func (ca *CircuitArtifacts) decodeVerifyingKey() (groth16.VerifyingKey, error) {
-	content, err := ca.artifactContent(ca.verifyingKey, "verifying key")
-	if err != nil {
-		return nil, err
-	}
-	vk := ca.newVerifyingKey()
-	if _, err := vk.UnsafeReadFrom(bytes.NewReader(content)); err != nil {
-		return nil, fmt.Errorf("error decoding verifying key: %w", err)
-	}
-	return vk, nil
 }
 
 // NewCircuitArtifacts creates a new CircuitArtifacts struct with the circuit
 // artifacts provided. It returns the struct with the artifacts set.
-func NewCircuitArtifacts(name string, curve ecc.ID, circuit, provingKey, verifyingKey *Artifact) *CircuitArtifacts {
+func NewCircuitArtifacts(name string, curve ecc.ID, proverOpts []backend.ProverOption, verifierOpts []backend.VerifierOption,
+	circuit, provingKey, verifyingKey *Artifact,
+) *CircuitArtifacts {
 	return &CircuitArtifacts{
-		name:              name,
-		curve:             curve,
+		circuitParams: circuitParams{
+			name:         name,
+			curve:        curve,
+			proverOpts:   proverOpts,
+			verifierOpts: verifierOpts,
+		},
 		circuitDefinition: circuit,
 		provingKey:        provingKey,
 		verifyingKey:      verifyingKey,
 	}
 }
 
-// Name returns the logical circuit name associated with these artifacts.
-func (ca *CircuitArtifacts) Name() string {
-	if ca == nil {
-		return ""
+// Download ensures all artifacts are available, downloading them if necessary.
+func (ca *CircuitArtifacts) Download(ctx context.Context) error {
+	log.Debugw("ensuring circuit artifacts are downloaded", "circuit", ca.Name())
+	if ca.circuitDefinition != nil {
+		if err := ca.circuitDefinition.ensureDownloaded(ctx); err != nil {
+			return fmt.Errorf("download circuit definition: %w", err)
+		}
 	}
-	return ca.name
+	if ca.provingKey != nil {
+		if err := ca.provingKey.ensureDownloaded(ctx); err != nil {
+			return fmt.Errorf("download proving key: %w", err)
+		}
+	}
+	if ca.verifyingKey != nil {
+		if err := ca.verifyingKey.ensureDownloaded(ctx); err != nil {
+			return fmt.Errorf("download verifying key: %w", err)
+		}
+	}
+	return nil
 }
 
-// LoadAll loads the circuit artifacts into memory.
-func (ca *CircuitArtifacts) LoadAll() error {
-	log.Debugw("reading circuit artifacts", "circuit", ca.Name())
+// LoadOrDownload ensures all artifacts are available, downloading them if necessary,
+// and returns a ready-to-use CircuitRuntime.
+func (ca *CircuitArtifacts) LoadOrDownload(ctx context.Context) (cr *CircuitRuntime, err error) {
+	log.Debugw("loading circuit artifacts", "circuit", ca.Name())
 	startTime := time.Now()
-	if ca.circuitDefinition != nil {
-		stepStart := time.Now()
-		ccs, err := ca.decodeCircuitDefinition()
-		if err != nil {
-			return err
+	defer func() {
+		if err == nil {
+			log.DebugTime("circuit runtime ready", startTime, "circuit", cr.Name())
 		}
-		ca.ccs = ccs
-		log.DebugTime("circuit definition loaded", stepStart, "circuit", ca.name)
-	}
-	if ca.provingKey != nil {
-		stepStart := time.Now()
-		pk, err := ca.decodeProvingKey()
-		if err != nil {
-			return err
-		}
-		ca.pk = pk
-		log.DebugTime("proving key loaded", stepStart, "circuit", ca.name)
-	}
-	if ca.verifyingKey != nil {
-		stepStart := time.Now()
-		vk, err := ca.decodeVerifyingKey()
-		if err != nil {
-			return err
-		}
-		ca.vk = vk
-		log.DebugTime("verifying key loaded", stepStart, "circuit", ca.name)
-	}
-	log.DebugTime("circuit artifacts ready", startTime, "circuit", ca.name)
-	return nil
-}
+	}()
 
-// Setup generates proving and verifying keys for the provided constraint system
-// and stores the resulting runtime artifacts in memory.
-func (ca *CircuitArtifacts) Setup(ccs constraint.ConstraintSystem) (groth16.ProvingKey, groth16.VerifyingKey, error) {
-	if ccs == nil {
-		return nil, nil, fmt.Errorf("constraint system not provided")
-	}
-
-	pk, vk, err := prover.Setup(ccs)
+	ccs, err := ca.LoadOrDownloadCircuitDefinition(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("load circuit definition: %w", err)
 	}
-
-	ca.ccs = ccs
-	ca.pk = pk
-	ca.vk = vk
-
-	return pk, vk, nil
+	pk, err := ca.LoadOrDownloadProvingKey(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load proving key: %w", err)
+	}
+	vk, err := ca.LoadOrDownloadVerifyingKey(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load verifying key: %w", err)
+	}
+	return NewCircuitRuntime(ca.name, ca.curve, ca.proverOpts, ca.verifierOpts, ccs, pk, vk), nil
 }
 
-// DownloadAll method downloads the circuit artifacts with the provided context.
-// It returns an error if any of the artifacts cannot be downloaded.
-func (ca *CircuitArtifacts) DownloadAll(ctx context.Context) error {
-	if ca.circuitDefinition != nil {
-		if err := ca.circuitDefinition.Download(ctx); err != nil {
-			return fmt.Errorf("error downloading circuit definition: %w", err)
-		}
+// LoadOrDownloadCircuitDefinition downloads any missing circuit definition artifact and decodes it into memory.
+func (ca *CircuitArtifacts) LoadOrDownloadCircuitDefinition(ctx context.Context) (constraint.ConstraintSystem, error) {
+	if ca.circuitDefinition == nil {
+		return nil, fmt.Errorf("circuit definition not configured")
 	}
-	if ca.provingKey != nil {
-		if err := ca.provingKey.Download(ctx); err != nil {
-			return fmt.Errorf("error downloading proving key: %w", err)
-		}
+	start := time.Now()
+	content, err := ca.circuitDefinition.loadOrDownload(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load circuit definition: %w", err)
 	}
-	if ca.verifyingKey != nil {
-		if err := ca.verifyingKey.Download(ctx); err != nil {
-			return fmt.Errorf("error downloading verifying key: %w", err)
-		}
+	ccs := newConstraintSystem(ca.curve)
+	if _, err := ccs.ReadFrom(bytes.NewReader(content)); err != nil {
+		return nil, fmt.Errorf("decode circuit definition: %w", err)
 	}
-	return nil
+	log.DebugTime("circuit definition ready", start, "circuit", ca.name)
+	return ccs, nil
 }
 
-// DownloadVerifyingKey downloads only the verifying key artifact.
-func (ca *CircuitArtifacts) DownloadVerifyingKey(ctx context.Context) error {
+// LoadOrDownloadVerifyingKey downloads any missing verifying key artifact and decodes it into memory.
+func (ca *CircuitArtifacts) LoadOrDownloadVerifyingKey(ctx context.Context) (groth16.VerifyingKey, error) {
 	if ca.verifyingKey == nil {
-		return fmt.Errorf("verifying key not configured")
+		return nil, fmt.Errorf("verifying key not configured")
 	}
-	if err := ca.verifyingKey.Download(ctx); err != nil {
-		return fmt.Errorf("error downloading verifying key: %w", err)
+	start := time.Now()
+	content, err := ca.verifyingKey.loadOrDownload(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load verifying key: %w", err)
 	}
-	return nil
+	vk := newVerifyingKey(ca.curve)
+	if _, err := vk.UnsafeReadFrom(bytes.NewReader(content)); err != nil {
+		return nil, fmt.Errorf("decode verifying key: %w", err)
+	}
+	log.DebugTime("verifying key ready", start, "circuit", ca.name)
+	return vk, nil
 }
 
-// Curve returns the elliptic curve identifier associated with this artifact set.
-func (ca *CircuitArtifacts) Curve() ecc.ID {
-	return ca.curve
+// LoadOrDownloadProvingKey downloads any missing proving key artifact and decodes it into memory.
+func (ca *CircuitArtifacts) LoadOrDownloadProvingKey(ctx context.Context) (groth16.ProvingKey, error) {
+	if ca.provingKey == nil {
+		return nil, fmt.Errorf("proving key not configured")
+	}
+	start := time.Now()
+	content, err := ca.provingKey.loadOrDownload(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load proving key: %w", err)
+	}
+	pk := newProvingKey(ca.curve)
+	if _, err := pk.UnsafeReadFrom(bytes.NewReader(content)); err != nil {
+		return nil, fmt.Errorf("decode proving key: %w", err)
+	}
+	log.DebugTime("proving key ready", start, "circuit", ca.name)
+	return pk, nil
+}
+
+// RawVerifyingKey returns the content of the verifying key as types.HexBytes.
+// It returns an error if the verifying key is not locally available or cannot be serialized.
+func (ca *CircuitArtifacts) RawVerifyingKey() ([]byte, error) {
+	if ca.verifyingKey == nil {
+		return nil, fmt.Errorf("verifying key not configured")
+	}
+	// Cannot guarantee context is available here, so we load from cache only.
+	// The caller should have called LoadOrDownloadVerifyingKey previously if remote fetching was desired.
+	content, err := ca.verifyingKey.loadFromCache()
+	if err != nil {
+		return nil, fmt.Errorf("load verifying key: %w", err)
+	}
+	return content, nil
 }
 
 // CircuitHash returns the circuit-definition hash.
@@ -305,280 +443,141 @@ func (ca *CircuitArtifacts) VerifyingKeyHash() []byte {
 	return ca.verifyingKey.Hash
 }
 
-// CircuitDefinition returns the content of the circuit definition as
-// constraint.ConstraintSystem. It returns an error if the circuit definition is
-// not loaded.
-func (ca *CircuitArtifacts) CircuitDefinition() (constraint.ConstraintSystem, error) {
-	if ca.ccs == nil {
-		return nil, fmt.Errorf("circuit definition not loaded")
-	}
-	return ca.ccs, nil
+// CircuitRuntime is a fully initialized runtime view of a circuit's decoded artifacts.
+// Once constructed, its getters are infallible.
+type CircuitRuntime struct {
+	circuitParams
+	ccs constraint.ConstraintSystem
+	pk  groth16.ProvingKey
+	vk  groth16.VerifyingKey
 }
 
-// ProvingKey returns the content of the proving key as groth16.ProvingKey. If
-// the proving key is not loaded or cannot be read, it returns an error.
-func (ca *CircuitArtifacts) ProvingKey() (groth16.ProvingKey, error) {
-	if ca.pk == nil {
-		return nil, fmt.Errorf("proving key not loaded")
+// NewCircuitRuntime constructs a runtime from already-decoded artifacts.
+func NewCircuitRuntime(name string, curve ecc.ID, proverOpts []backend.ProverOption, verifierOpts []backend.VerifierOption,
+	ccs constraint.ConstraintSystem, pk groth16.ProvingKey, vk groth16.VerifyingKey,
+) *CircuitRuntime {
+	return &CircuitRuntime{
+		circuitParams: circuitParams{
+			name:         name,
+			curve:        curve,
+			proverOpts:   proverOpts,
+			verifierOpts: verifierOpts,
+		},
+		ccs: ccs,
+		pk:  pk,
+		vk:  vk,
 	}
-	return ca.pk, nil
 }
 
-// VerifyingKey returns the content of the verifying key as groth16.VerifyingKey.
-// It returns an error if the verifying key is not loaded.
-func (ca *CircuitArtifacts) VerifyingKey() (groth16.VerifyingKey, error) {
-	if ca.vk == nil {
-		return nil, fmt.Errorf("verifying key not loaded")
-	}
-	return ca.vk, nil
-}
-
-// RawVerifyingKey returns the content of the verifying key as types.HexBytes.
-// It returns an error if the verifying key is not available or cannot be serialized.
-func (ca *CircuitArtifacts) RawVerifyingKey() ([]byte, error) {
-	if ca.vk != nil {
-		var raw bytes.Buffer
-		if _, err := ca.vk.WriteTo(&raw); err != nil {
-			return nil, fmt.Errorf("write verifying key: %w", err)
-		}
-		return raw.Bytes(), nil
-	}
-	if ca.verifyingKey == nil {
-		return nil, fmt.Errorf("verifying key not loaded")
-	}
-	content, err := ca.verifyingKey.Load()
+// ProveAndVerify generates a proof from the assignment and verifies it immediately.
+func (cr *CircuitRuntime) ProveAndVerify(assignment frontend.Circuit) (groth16.Proof, error) {
+	proof, err := cr.Prove(assignment)
 	if err != nil {
-		return nil, fmt.Errorf("load verifying key: %w", err)
+		return nil, err
 	}
-	return content, nil
+	if err := cr.Verify(proof, assignment); err != nil {
+		return nil, err
+	}
+	return proof, nil
 }
 
-func load(hash []byte) ([]byte, error) {
-	// check if BaseDir exists and create it if it does not
-	if _, err := os.Stat(BaseDir); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(BaseDir, os.ModePerm); err != nil {
-				return nil, fmt.Errorf("error creating the base directory: %w", err)
-			}
-		} else {
-			return nil, fmt.Errorf("error checking the base directory: %w", err)
-		}
-	}
-	// append the name to the base directory and check if the file exists
-	path := filepath.Join(BaseDir, hex.EncodeToString(hash))
-	if _, err := os.Stat(path); err != nil {
-		// if the file does not exists return nil content and nil error, but if
-		// the error is not a not exists error, return the error
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error checking file %s: %w", path, err)
-	}
-	// if it exists, read the content of the file and return it
-	content, err := os.ReadFile(path)
+// ProveAndVerifyWithWitness generates a proof from a full witness and verifies it immediately.
+func (cr *CircuitRuntime) ProveAndVerifyWithWitness(fullWitness witness.Witness) (groth16.Proof, error) {
+	proof, err := cr.ProveWithWitness(fullWitness)
 	if err != nil {
-		if err == os.ErrNotExist {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error reading file %s: %w", path, err)
+		return nil, err
 	}
-
-	// check if the hash of the content matches the expected hash
-	hasher := sha256.New()
-	hasher.Write(content)
-	fileHash := hasher.Sum(nil)
-	if !bytes.Equal(fileHash, hash) {
-		return nil, fmt.Errorf("hash mismatch for file %s: expected %x, got %x", path, hash, fileHash)
-	}
-
-	return content, nil
-}
-
-// progressReader wraps an io.Reader and keeps track of the total bytes read.
-type progressReader struct {
-	reader        io.Reader
-	total         int64 // updated atomically
-	contentLength int64
-}
-
-func (pr *progressReader) Read(p []byte) (int, error) {
-	n, err := pr.reader.Read(p)
-	atomic.AddInt64(&pr.total, int64(n))
-	return n, err
-}
-
-// downloadAndStore downloads a file from a URL and stores it in the local cache.
-func downloadAndStore(ctx context.Context, expectedHash []byte, fileUrl string) error {
-	if _, err := url.Parse(fileUrl); err != nil {
-		return fmt.Errorf("error parsing the file URL provided: %w", err)
-	}
-
-	// Create a SHA256 hasher for integrity check
-	hasher := sha256.New()
-
-	// Create BaseDir if it doesn't exist.
-	if err := os.MkdirAll(BaseDir, 0o755); err != nil {
-		log.Errorf("failed to create base directory for storing circuit artifacts %s: %v", BaseDir, err)
-	}
-
-	// Destination file paths
-	path := filepath.Join(BaseDir, hex.EncodeToString(expectedHash))
-
-	// If file exists, read it and write to the hasher, then jump to the hash check
-	if _, err := os.Stat(path); err == nil {
-		existingFile, err := os.Open(path)
-		if err == nil {
-			if _, err := io.Copy(hasher, existingFile); err != nil {
-				if err := existingFile.Close(); err != nil {
-					return fmt.Errorf("error closing existing file: %w", err)
-				}
-				return fmt.Errorf("error hashing existing file: %w", err)
-			}
-			if err := existingFile.Close(); err != nil {
-				return fmt.Errorf("error closing existing file: %w", err)
-			}
-			computedHash := hasher.Sum(nil)
-			if !bytes.Equal(computedHash, expectedHash) {
-				log.Warnf("hash mismatch: expected %x, got %x", expectedHash, computedHash)
-			} else {
-				log.Debugw("artifact found", "hash", hex.EncodeToString(expectedHash), "path", filepath.Dir(path))
-				return nil
-			}
-		}
-	}
-
-	partialPath := path + ".partial"
-	parentDir := filepath.Dir(path)
-	if _, err := os.Stat(parentDir); err != nil {
-		return fmt.Errorf("destination path parent folder does not exist")
-	}
-
-	// Check if a partial download exists
-	var startByte int64 = 0
-	if info, err := os.Stat(partialPath); err == nil {
-		startByte = info.Size()
-	}
-
-	// Create the HTTP request with a Range header for resuming
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileUrl, nil)
+	publicWitness, err := fullWitness.Public()
 	if err != nil {
-		return fmt.Errorf("error creating the file request: %w", err)
+		return nil, err
 	}
-	if startByte > 0 {
-		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", startByte))
+	if err := cr.VerifyWithWitness(proof, publicWitness); err != nil {
+		return nil, err
 	}
+	return proof, nil
+}
 
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("error performing the request: %w", err)
-	}
+// Prove generates a proof from the assignment.
+func (cr *CircuitRuntime) Prove(assignment frontend.Circuit) (proof groth16.Proof, err error) {
+	startTime := time.Now()
 	defer func() {
-		if err := res.Body.Close(); err != nil {
-			log.Warnw("error closing response body", "error", err)
-		}
-	}()
-
-	// Handle response codes
-	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusPartialContent {
-		return fmt.Errorf("error downloading file %q: http status: %d", fileUrl, res.StatusCode)
-	}
-
-	// Open file in append mode if resuming, otherwise create new file
-	var fileMode int
-	if startByte > 0 && res.StatusCode == http.StatusPartialContent {
-		fileMode = os.O_APPEND | os.O_WRONLY
-	} else {
-		fileMode = os.O_CREATE | os.O_WRONLY | os.O_TRUNC
-	}
-
-	fd, err := os.OpenFile(partialPath, fileMode, 0o644)
-	if err != nil {
-		return fmt.Errorf("error opening artifact file: %w", err)
-	}
-	defer func() {
-		if err := fd.Close(); err != nil {
-			log.Warnw("error closing file", "error", err)
-		}
-	}()
-
-	if startByte > 0 {
-		// Hash existing content to continue validation
-		existingFile, err := os.Open(partialPath)
 		if err == nil {
-			if _, err := io.Copy(hasher, existingFile); err != nil {
-				if err := existingFile.Close(); err != nil {
-					return fmt.Errorf("error closing existing file: %w", err)
-				}
-				return fmt.Errorf("error hashing existing file: %w", err)
-			}
-			if err := existingFile.Close(); err != nil {
-				return fmt.Errorf("error closing existing file: %w", err)
-			}
+			log.DebugTime("proof generated", startTime, "circuit", cr.Name())
 		}
-	}
-
-	// Wrap the response body with a progress tracker
-	pr := &progressReader{
-		reader:        res.Body,
-		contentLength: res.ContentLength + startByte,
-	}
-
-	mw := io.MultiWriter(fd, hasher)
-
-	// Copy data in a goroutine
-	done := make(chan error, 1)
-	go func() {
-		_, err := io.Copy(mw, pr)
-		done <- err
 	}()
 
-	// Log progress every 10 seconds
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	u, err := url.Parse(fileUrl)
+	return prover.Prove(cr.curve, cr.ccs, cr.pk, assignment, cr.proverOpts...)
+}
+
+// ProveWithWitness generates a proof from a full witness.
+func (cr *CircuitRuntime) ProveWithWitness(fullWitness witness.Witness) (proof groth16.Proof, err error) {
+	startTime := time.Now()
+	defer func() {
+		if err == nil {
+			log.DebugTime("proof generated", startTime, "circuit", cr.Name())
+		}
+	}()
+
+	return prover.ProveWithWitness(cr.curve, cr.ccs, cr.pk, fullWitness, cr.proverOpts...)
+}
+
+// Verify builds a public witness from the public assignment and verifies the proof.
+func (cr *CircuitRuntime) Verify(proof groth16.Proof, publicAssignment frontend.Circuit) (err error) {
+	startTime := time.Now()
+	defer func() {
+		if err == nil {
+			log.DebugTime("proof verified", startTime, "circuit", cr.Name())
+		}
+	}()
+
+	publicWitness, err := frontend.NewWitness(publicAssignment, cr.curve.ScalarField(), frontend.PublicOnly())
 	if err != nil {
-		return fmt.Errorf("error parsing URL: %w", err)
+		return fmt.Errorf("create public witness: %w", err)
 	}
-	for {
-		select {
-		case err := <-done:
-			if err != nil {
-				return fmt.Errorf("error copying data to file: %w", err)
-			}
-			goto finished
-		case <-ticker.C:
-			total := atomic.LoadInt64(&pr.total)
-			downloadedMiB := float64(total) / (1024 * 1024)
-			var percentage float64
-			if pr.contentLength > 0 {
-				percentage = (float64(total) / float64(pr.contentLength)) * 100
-			}
-			log.Debugw("downloading...", "host", u.Host, "path", u.Path,
-				"dir", parentDir,
-				"downloaded", fmt.Sprintf("%.2fMiB", downloadedMiB),
-				"progress", fmt.Sprintf("%.2f%%", percentage))
+	return cr.VerifyWithWitness(proof, publicWitness)
+}
+
+// VerifyWithWitness verifies the proof using the public witness.
+func (cr *CircuitRuntime) VerifyWithWitness(proof groth16.Proof, publicWitness witness.Witness) (err error) {
+	startTime := time.Now()
+	defer func() {
+		if err == nil {
+			log.DebugTime("proof verified", startTime, "circuit", cr.Name())
 		}
-	}
+	}()
 
-finished:
-	computedHash := hasher.Sum(nil)
-	if !bytes.Equal(computedHash, expectedHash) {
-		_ = os.Remove(partialPath) // Delete invalid file
-		return fmt.Errorf("hash mismatch: expected %x, got %x", expectedHash, computedHash)
-	}
+	return groth16.Verify(proof, cr.vk, publicWitness, cr.verifierOpts...)
+}
 
-	// Rename .partial file to final destination
-	if _, err := os.Stat(partialPath); err == nil {
-		if err := os.Rename(partialPath, path); err != nil {
-			return fmt.Errorf("error renaming file: %w", err)
-		}
-	}
-	log.Debugw("downloaded artifact",
-		"path", path,
-		"hash", hex.EncodeToString(expectedHash),
-		"progress", "100%",
-		"size", fmt.Sprintf("%.2fMiB", float64(pr.contentLength)/(1024*1024)),
-	)
+// ConstraintSystem returns the decoded constraint system.
+func (cr *CircuitRuntime) ConstraintSystem() constraint.ConstraintSystem { return cr.ccs }
 
-	return nil
+// ProvingKey returns the decoded proving key.
+func (cr *CircuitRuntime) ProvingKey() groth16.ProvingKey { return cr.pk }
+
+// VerifyingKey returns the decoded verifying key.
+func (cr *CircuitRuntime) VerifyingKey() groth16.VerifyingKey { return cr.vk }
+
+func newConstraintSystem(curve ecc.ID) constraint.ConstraintSystem {
+	if prover.UseGPUProver {
+		return gpugroth16.NewCS(curve)
+	}
+	return groth16.NewCS(curve)
+}
+
+// newProvingKey instantiates an empty proving key compatible with the selected
+// backend. When GPU proving is enabled this returns an ICICLE proving key so
+// that serialized keys can be read directly into GPU-ready structures.
+func newProvingKey(curve ecc.ID) groth16.ProvingKey {
+	if prover.UseGPUProver {
+		return gpugroth16.NewProvingKey(curve)
+	}
+	return groth16.NewProvingKey(curve)
+}
+
+func newVerifyingKey(curve ecc.ID) groth16.VerifyingKey {
+	if prover.UseGPUProver {
+		return gpugroth16.NewVerifyingKey(curve)
+	}
+	return groth16.NewVerifyingKey(curve)
 }

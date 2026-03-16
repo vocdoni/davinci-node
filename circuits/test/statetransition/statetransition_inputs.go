@@ -7,14 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/consensys/gnark/backend"
-	groth16bw6761 "github.com/consensys/gnark/backend/groth16/bw6-761"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/spec/params"
 
-	"github.com/consensys/gnark/backend/groth16"
-	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
@@ -22,7 +18,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	circuitstest "github.com/vocdoni/davinci-node/circuits/test"
 	aggregatortest "github.com/vocdoni/davinci-node/circuits/test/aggregator"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/state"
@@ -57,78 +52,20 @@ func StateTransitionInputsForTest(
 ) {
 	c := qt.New(t)
 
-	var err error
-	var proof groth16.Proof
-	var agVk groth16.VerifyingKey
-	var fullWitness witness.Witness
-	var aggInputs *circuitstest.AggregatorTestResults
-	var aggAssignment *aggregator.AggregatorCircuit
-	aggInputs, _, aggAssignment = aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
+	aggInputs, _, aggAssignment := aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
 
-	fullWitness, err = frontend.NewWitness(aggAssignment, params.AggregatorCurve.ScalarField())
+	fullWitness, err := frontend.NewWitness(aggAssignment, params.AggregatorCurve.ScalarField())
 	c.Assert(err, qt.IsNil, qt.Commentf("aggregator witness"))
 
-	agCCS, agPK, agVK, err := circuitstest.LoadAggregatorRuntimeArtifacts()
+	aggregatorRuntime, err := aggregator.Artifacts.LoadOrDownload(t.Context())
 	c.Assert(err, qt.IsNil, qt.Commentf("load aggregator runtime artifacts"))
-	agVk = agVK
 
-	proverOpts := stdgroth16.GetNativeProverOptions(
-		params.StateTransitionCurve.ScalarField(),
-		params.AggregatorCurve.ScalarField(),
-	)
-	verifierOpts := stdgroth16.GetNativeVerifierOptions(
-		params.StateTransitionCurve.ScalarField(),
-		params.AggregatorCurve.ScalarField(),
-	)
-	proof, err = circuitstest.ProveAndVerifyWithWitness(
-		params.AggregatorCurve,
-		agCCS,
-		agPK,
-		agVK,
-		fullWitness,
-		[]backend.ProverOption{proverOpts},
-		[]backend.VerifierOption{verifierOpts},
-	)
+	proof, err := aggregatorRuntime.ProveAndVerifyWithWitness(fullWitness)
 	c.Assert(err, qt.IsNil, qt.Commentf("proving aggregator circuit"))
-
-	if proof == nil {
-		c.Logf("aggregator proof is nil")
-	} else if proofBW, ok := proof.(*groth16bw6761.Proof); ok {
-		c.Logf(
-			"aggregator proof curve=%s ar{onCurve=%t inSubGroup=%t infinity=%t} krs{onCurve=%t inSubGroup=%t infinity=%t} bs{onCurve=%t inSubGroup=%t infinity=%t}",
-			proofBW.CurveID().String(),
-			proofBW.Ar.IsOnCurve(),
-			proofBW.Ar.IsInSubGroup(),
-			proofBW.Ar.IsInfinity(),
-			proofBW.Krs.IsOnCurve(),
-			proofBW.Krs.IsInSubGroup(),
-			proofBW.Krs.IsInfinity(),
-			proofBW.Bs.IsOnCurve(),
-			proofBW.Bs.IsInSubGroup(),
-			proofBW.Bs.IsInfinity(),
-		)
-	} else {
-		c.Logf("aggregator proof type mismatch: %T", proof)
-	}
-
-	if agVk != nil {
-		c.Logf("aggregator vk curve=%s", agVk.CurveID().String())
-	}
 
 	// convert the proof to the circuit proof type
 	proofInBW6761, err := stdgroth16.ValueOfProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](proof)
 	c.Assert(err, qt.IsNil, qt.Commentf("convert aggregator proof"))
-
-	err = circuitstest.VerifyProofWithWitness(
-		proof,
-		agVk,
-		fullWitness,
-		stdgroth16.GetNativeVerifierOptions(
-			params.StateTransitionCurve.ScalarField(),
-			params.AggregatorCurve.ScalarField(),
-		),
-	)
-	c.Assert(err, qt.IsNil, qt.Commentf("aggregator verify"))
 
 	// Reencrypt the votes with deterministic K for reproducible test data.
 	reencryptionK := testutil.DeterministicK(processID, nValidVoters)
@@ -170,7 +107,7 @@ func StateTransitionInputsForTest(
 	// create final placeholder
 	circuitPlaceholder := CircuitPlaceholder()
 	// fix the vote verifier verification key
-	fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](agVk)
+	fixedVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](aggregatorRuntime.VerifyingKey())
 	c.Assert(err, qt.IsNil, qt.Commentf("aggregator vk"))
 
 	circuitPlaceholder.AggregatorVK = fixedVk

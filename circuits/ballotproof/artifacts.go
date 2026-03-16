@@ -13,6 +13,8 @@ import (
 var Artifacts = circuits.NewCircuitArtifacts(
 	"ballotproof",
 	params.BallotProofCurve,
+	nil,
+	nil,
 	&circuits.Artifact{
 		RemoteURL: config.BallotProofCircuitURL,
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.BallotProofCircuitHash),
