@@ -154,15 +154,16 @@ jobs:
           RUN_INTEGRATION_TESTS: true
         run: go test -v ./tests/ -timeout=1h -vet=off -failfast
 
-  call-docker-release:
+  call-docker-build:
     name: Docker
     needs: [job_go_checks, job_go_test]
     permissions:
       contents: read
       packages: write
-    # docker releases are triggered only on push to the selected branches at the beginning of this file
-    if: github.event_name == 'push'
-    uses: vocdoni/davinci-node/.github/workflows/docker-release.yml@main
+    if: github.event.pull_request.draft != true
+    uses: ./.github/workflows/docker-build.yml
     secrets: inherit
     with:
-      image-tag: ${{ github.ref_name }}
+      image-tag: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+      # docker releases are triggered only on push to the selected branches at the beginning of this file
+      push: ${{ github.event_name == 'push' }}
