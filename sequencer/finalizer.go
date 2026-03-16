@@ -409,11 +409,6 @@ func (f *finalizer) setProcessResults(processID types.ProcessID, res *storage.Ve
 		results = append(results, (*types.BigInt)(r))
 	}
 
-	// Update the process atomically to avoid race conditions
-	if err := f.stg.UpdateProcess(processID, storage.ProcessUpdateCallbackFinalization(results)); err != nil {
-		return fmt.Errorf("could not update process %s with results: %w", processID.String(), err)
-	}
-
 	// Push the verified results to storage
 	if err := f.stg.PushVerifiedResults(res); err != nil {
 		return fmt.Errorf("could not store verified results for process %s: %w", processID.String(), err)

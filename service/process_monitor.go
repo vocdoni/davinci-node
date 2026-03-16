@@ -298,6 +298,21 @@ func (pm *ProcessMonitor) monitorProcesses(
 						"error", err.Error())
 				}
 				if update.NewStatus == types.ProcessStatusResults {
+					// Get the results from the contract
+					process, err := pm.contracts.Process(update.ProcessID)
+					if err != nil {
+						log.Warnw("failed process from contract",
+							"processID", update.ProcessID.String(),
+							"error", err.Error())
+						return
+					}
+					// Update the results in the storage
+					if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackFinalization(process.Result)); err != nil {
+						log.Warnw("failed to update process results",
+							"processID", update.ProcessID.String(),
+							"error", err.Error())
+						return
+					}
 					if err := pm.storage.CleanProcessStaleVotes(update.ProcessID); err != nil {
 						log.Warnw("failed to clean stale votes after process finalization",
 							"processID", update.ProcessID.String(), "error", err.Error())
