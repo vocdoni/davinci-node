@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/metadata"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -95,7 +96,7 @@ func (a *API) setMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store the metadata in the storage
-	hash, err := a.storage.SetMetadata(&metadata)
+	hash, err := a.metadata.Set(r.Context(), &metadata)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not store process metadata: %v", err).Write(w)
 		return
@@ -110,16 +111,16 @@ func (a *API) setMetadata(w http.ResponseWriter, r *http.Request) {
 // GET /metadata/{metadataHash}
 func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 	// Decode the metadata hash from the URL
-	hashBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, MetadataHashParam)))
+	key, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, MetadataHashParam)))
 	if err != nil {
 		ErrMalformedParam.Write(w)
 		return
 	}
 
 	// Retrieve the metadata from the storage
-	metadata, err := a.storage.Metadata(hashBytes)
+	data, err := a.metadata.Get(r.Context(), key)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, metadata.ErrNotFound) {
 			ErrResourceNotFound.Write(w)
 			return
 		}
@@ -127,7 +128,7 @@ func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpWriteJSON(w, metadata)
+	httpWriteJSON(w, data)
 }
 
 // processParticipant retrieves information about a participant in a voting
