@@ -18,6 +18,7 @@ import (
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/metadata"
 	stg "github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/workers"
@@ -47,6 +48,7 @@ type APIConfig struct {
 type API struct {
 	router            *chi.Mux
 	storage           *stg.Storage
+	metadata          *metadata.MetadataStorage
 	network           string
 	web3Config        config.DavinciWeb3Config
 	processIDsVersion [4]byte // Current process ID version
@@ -74,6 +76,7 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	// Initialize the API
 	a := &API{
 		storage:                    conf.Storage,
+		metadata:                   metadata.New(conf.Storage),
 		network:                    conf.Network,
 		web3Config:                 conf.Web3Config,
 		workersJobTimeout:          conf.WorkerJobTimeout,
