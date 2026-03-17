@@ -290,16 +290,10 @@ func (pm *ProcessMonitor) monitorProcesses(
 					"processID", update.ProcessID.String(),
 					"old", update.OldStatus.String(),
 					"new", update.NewStatus.String())
-				if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
-					update.NewStatus,
-				)); err != nil {
-					log.Warnw("failed to update process status",
-						"processID", update.ProcessID.String(),
-						"error", err.Error())
-					continue
-				}
 				if update.NewStatus == types.ProcessStatusResults {
-					// Get the results from the contract
+					// For finalization, first fetch and store results, then
+					// mark status as Results. Get the results from the
+					// contract.
 					process, err := pm.contracts.Process(update.ProcessID)
 					if err != nil {
 						log.Warnw("failed to fetch process from contract",
@@ -307,16 +301,43 @@ func (pm *ProcessMonitor) monitorProcesses(
 							"error", err.Error())
 						continue
 					}
-					// Update the results in the storage
+					// Ensure that results are actually present before updating
+					// storage.
+					if len(process.Result) == 0 {
+						log.Warnw("process results not yet available; skipping finalization update",
+							"processID", update.ProcessID.String())
+						continue
+					}
 					if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackFinalization(process.Result)); err != nil {
 						log.Warnw("failed to update process results",
 							"processID", update.ProcessID.String(),
 							"error", err.Error())
 						continue
 					}
+					// Only after results are stored, update the status to new
+					// status (results).
+					if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
+						update.NewStatus,
+					)); err != nil {
+						log.Warnw("failed to update process status",
+							"processID", update.ProcessID.String(),
+							"error", err.Error())
+						continue
+					}
+					// Clean up any stale votes
 					if err := pm.storage.CleanProcessStaleVotes(update.ProcessID); err != nil {
 						log.Warnw("failed to clean stale votes after process finalization",
 							"processID", update.ProcessID.String(), "error", err.Error())
+					}
+				} else {
+					// Just update the status if is not results
+					if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
+						update.NewStatus,
+					)); err != nil {
+						log.Warnw("failed to update process status",
+							"processID", update.ProcessID.String(),
+							"error", err.Error())
+						continue
 					}
 				}
 			case update.StateRootChange != nil:

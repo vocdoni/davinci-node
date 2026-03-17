@@ -397,9 +397,11 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	return nil
 }
 
-// setProcessResults sets the results of a finalized process. It pushes the
-// verified results. The pushed results will be stored when they were finally
-// published onchain.
+// setProcessResults enqueues the verified results for a finalized process. It
+// does NOT update the Process record in storage directly; instead, it pushes
+// the verified results to the storage queue. The process record (including
+// Process.Result) is updated elsewhere, once the results are finally published
+// onchain by the process monitor.
 func (f *finalizer) setProcessResults(processID types.ProcessID, res *storage.VerifiedResults) error {
 	if res == nil {
 		return fmt.Errorf("cannot finalize process %s with nil results", processID.String())
