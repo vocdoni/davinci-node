@@ -314,16 +314,6 @@ func (pm *ProcessMonitor) monitorProcesses(
 							"error", err.Error())
 						continue
 					}
-					// Only after results are stored, update the status to new
-					// status (results).
-					if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
-						update.NewStatus,
-					)); err != nil {
-						log.Warnw("failed to update process status",
-							"processID", update.ProcessID.String(),
-							"error", err.Error())
-						continue
-					}
 					// Clean up any stale votes
 					if err := pm.storage.CleanProcessStaleVotes(update.ProcessID); err != nil {
 						log.Warnw("failed to clean stale votes after process finalization",
