@@ -141,14 +141,8 @@ func (cd *CensusDownloader) Start(ctx context.Context) error {
 				// Add census to pending list
 				cd.addPendingCensus(icensus.Census)
 				// Process census download
-				if err := cd.processCensusDownload(runCtx, icensus); err != nil && cd.config.Cooldown > 0 {
-					timer := time.NewTimer(cd.config.Cooldown)
-					select {
-					case <-runCtx.Done():
-						timer.Stop()
-						return
-					case <-timer.C:
-					}
+				if err := cd.processCensusDownload(runCtx, icensus); err != nil {
+					log.Warnw("census download failed", "census", icensus.Census, "err", err)
 				}
 			}
 		}
@@ -240,7 +234,7 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 				}
 				// Return the last error if the downloader has reached the
 				// maximum number of attempts.
-				if status.LastErr != nil && status.Attempts >= cd.config.Attempts {
+				if status.LastErr != nil && status.Attempts >= cd.attempts() {
 					callback(status.LastErr)
 					return
 				}
@@ -256,13 +250,22 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 	}()
 }
 
+// attempts returns the effective number of attempts to use for downloads.
+// It normalizes non-positive configuration values to at least 1 attempt.
+func (cd *CensusDownloader) attempts() int {
+	if cd.config.Attempts <= 0 {
+		return 1
+	}
+	return cd.config.Attempts
+}
+
 // processCensusDownload attempts to download and import the given census. It
 // retries the download and import process up to the configured number of
 // attempts. After each attempt, it updates the status of the census in the
 // internal tracking map.
 func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census internalCensus) error {
 	var importErr error
-	for attempt := 0; attempt < cd.config.Attempts; attempt++ {
+	for attempt := 0; attempt < cd.attempts(); attempt++ {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("census download canceled: %w", err)
 		}
@@ -291,7 +294,7 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census in
 
 	log.Warnw("census import failed",
 		"error", importErr,
-		"attempts", cd.config.Attempts,
+		"attempts", cd.attempts(),
 		"root", census.CensusRoot.String(),
 		"uri", census.CensusURI,
 		"origin", census.CensusOrigin.String())
@@ -309,19 +312,26 @@ func (cd *CensusDownloader) downloaderContext() (context.Context, error) {
 	return cd.ctx, nil
 }
 
-// waitTimeout returns the timeout duration for the downloader. It increases
-// the timeout based on the number of attempts and cooldown. Each attempt will
-// have more time to complete than the previous one.
+// waitTimeout returns the total time budget that the downloader will wait
+// for a census to be imported, based on the configured number of attempts,
+// per-attempt timeout and cooldown between attempts.
+//
+// The returned duration is:
+//
+//	1s (to cover the 1s OnCensusDownloaded polling tick) +
+//	Attempts * AttemptTimeout +
+//	(Attempts - 1) * Cooldown   (when Attempts > 1).
+//
+// Note that the per-attempt timeout does not increase between attempts; each
+// attempt uses the same AttemptTimeout value.
 func (cd *CensusDownloader) waitTimeout() time.Duration {
 	timeout := time.Second
-	if cd.config.Attempts <= 0 {
-		return timeout
-	}
+	attempts := cd.attempts()
 	if cd.config.AttemptTimeout > 0 {
-		timeout += time.Duration(cd.config.Attempts) * cd.config.AttemptTimeout
+		timeout += time.Duration(attempts) * cd.config.AttemptTimeout
 	}
-	if cd.config.Cooldown > 0 && cd.config.Attempts > 1 {
-		timeout += time.Duration(cd.config.Attempts-1) * cd.config.Cooldown
+	if cd.config.Cooldown > 0 && attempts > 1 {
+		timeout += time.Duration(attempts-1) * cd.config.Cooldown
 	}
 	return timeout
 }
