@@ -248,7 +248,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 						return
 					}
 					// After census is downloaded and imported, store the new process
-					downloadCtx, downloadCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
 					pm.censusDownloader.OnCensusDownloaded(process.Census, downloadCtx, func(err error) {
 						defer downloadCtxCancel()
 						// If no error, just proceed to store the process.
@@ -395,7 +395,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					}
 					// wait for census to be downloaded and imported, then update
 					// process census info
-					downloadCtx, downloadCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
 					pm.censusDownloader.OnCensusDownloaded(censusInfo, downloadCtx, func(err error) {
 						defer downloadCtxCancel()
 						if err != nil {
