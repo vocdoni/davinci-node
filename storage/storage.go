@@ -160,6 +160,10 @@ func New(db db.Database) *Storage {
 	return s
 }
 
+func (s *Storage) DB() db.Database {
+	return s.db
+}
+
 // recover cleans up any stale reservations and ensures that no items are
 // blocked. After a crash, any reservations left behind must be cleared so that
 // the corresponding ballots or aggregated batches are available for processing

@@ -110,14 +110,14 @@ func (a *API) setMetadata(w http.ResponseWriter, r *http.Request) {
 // GET /metadata/{metadataHash}
 func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 	// Decode the metadata hash from the URL
-	hashBytes, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, MetadataHashParam)))
+	key, err := hex.DecodeString(util.TrimHex(chi.URLParam(r, MetadataHashParam)))
 	if err != nil {
 		ErrMalformedParam.Write(w)
 		return
 	}
 
 	// Retrieve the metadata from the storage
-	metadata, err := a.metadata.Get(hashBytes)
+	metadata, err := a.metadata.Get(key)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			ErrResourceNotFound.Write(w)

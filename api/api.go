@@ -73,10 +73,15 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 		return nil, fmt.Errorf("missing storage instance")
 	}
 
+	metadataStg := metadata.New(func(data any) (types.HexBytes, error) {
+		key, _, err := metadata.CID(data)
+		return key, err
+	}, metadata.NewLocalMetadata(conf.Storage.DB()))
+
 	// Initialize the API
 	a := &API{
 		storage:                    conf.Storage,
-		metadata:                   metadata.New(conf.Storage),
+		metadata:                   metadataStg,
 		network:                    conf.Network,
 		web3Config:                 conf.Web3Config,
 		workersJobTimeout:          conf.WorkerJobTimeout,

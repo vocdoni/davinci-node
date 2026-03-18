@@ -263,7 +263,13 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		StateTransitionZKVerifier:    contracts[npbindings.StateTransitionVerifierGroth16Contract],
 	}
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
-	services.API = service.NewAPI(services.Storage, cfg.API.Host, cfg.API.Port, cfg.Web3.Network, web3Conf, cfg.Log.DisableAPI)
+	services.API = service.NewAPI(
+		services.Storage,
+		cfg.API.Host,
+		cfg.API.Port,
+		cfg.Web3.Network,
+		web3Conf,
+		cfg.Log.DisableAPI)
 
 	// Configure worker API if enabled
 	if cfg.API.SequencerWorkersSeed != "" {
