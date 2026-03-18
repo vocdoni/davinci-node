@@ -8,7 +8,6 @@ The storage uses a key-value database with prefixed namespaces to organize diffe
 ## Process Management
 - p/  : processID → Process metadata (status, times, ballot mode, census info)
 - ek/ : processID → Encryption keys (public and private keys for ballot encryption)
-- md/ : metadataHash → Process metadata content (questions, choices, descriptions)
 
 ## Ballot Processing Pipeline
 

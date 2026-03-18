@@ -9,6 +9,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"path"
+	"strings"
 
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -37,7 +39,7 @@ type PinataMetadataProviderConfig struct {
 // Valid checks if the PinataMetadataProviderConfig is valid. It returns true
 // if the hostname URL, JWT and gateway URL and token are not empty.
 func (c *PinataMetadataProviderConfig) Valid() bool {
-	return c.HostnameJWT != "" && c.GatewayURL != "" && c.GatewayToken != ""
+	return c.HostnameURL != "" && c.HostnameJWT != "" && c.GatewayURL != "" && c.GatewayToken != ""
 }
 
 // PinataMetadataProvider is a provider for metadata stored in Pinata.
@@ -105,7 +107,7 @@ func (p *PinataMetadataProvider) SetMetadata(ctx context.Context, key types.HexB
 		return fmt.Errorf("read response: %w", err)
 	}
 	// Ensure the status is ok
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("pinata upload failed: status=%s body=%s", resp.Status, string(raw))
 	}
 	// Decode the response
@@ -124,23 +126,12 @@ func (p *PinataMetadataProvider) SetMetadata(ctx context.Context, key types.HexB
 // Metadata returns the metadata stored in Pinata for the given key. It returns
 // an error if the request fails.
 func (p *PinataMetadataProvider) Metadata(ctx context.Context, key types.HexBytes) (*types.Metadata, error) {
-	// Convert the key to a CID
-	c, err := HexBytesToCID(key)
+	gatewayURL, err := p.gatewayURLFromKey(key)
 	if err != nil {
-		return nil, fmt.Errorf("invalid cid bytes: %w", err)
+		return nil, err
 	}
-	// Compose the gateway URL with the CID
-	u := url.URL{
-		Scheme: "https",
-		Host:   p.GatewayURL,
-		Path:   "/ipfs/" + c.String(),
-	}
-	// Add the gateway token to the URL
-	q := u.Query()
-	q.Set("pinataGatewayToken", p.GatewayToken)
-	u.RawQuery = q.Encode()
 	// Create the request to the gateway
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gatewayURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -156,7 +147,10 @@ func (p *PinataMetadataProvider) Metadata(ctx context.Context, key types.HexByte
 		return nil, fmt.Errorf("read gateway response: %w", err)
 	}
 	// Ensure the status is ok
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, ErrNotFound
+		}
 		return nil, fmt.Errorf("gateway fetch failed: status=%s body=%s", resp.Status, string(data))
 	}
 	// Decode the response to types.Metadata
@@ -166,4 +160,49 @@ func (p *PinataMetadataProvider) Metadata(ctx context.Context, key types.HexByte
 	}
 	// Return the metadata
 	return &metadata, nil
+}
+
+// gatewayURLFromKey method return the Pinata Gateway URL for a given metadata
+// key. It support the following formats:
+//   - https://gateway.pinata.cloud/ipfs
+//   - https://gateway.pinata.cloud
+//   - gateway.pinata.cloud
+//
+// It returns an error if the URL is invalid.
+func (p *PinataMetadataProvider) gatewayURLFromKey(key types.HexBytes) (string, error) {
+	// Convert the key to a CID
+	c, err := HexBytesToCID(key)
+	if err != nil {
+		return "", fmt.Errorf("invalid cid bytes: %w", err)
+	}
+	// Parse GatewayURL to support both full base URLs
+	// (e.g. https://gateway.pinata.cloud/ipfs) and legacy hostname-only
+	// values (e.g. gateway.pinata.cloud).
+	parsed, err := url.Parse(p.GatewayURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid gateway URL %q: %w", p.GatewayURL, err)
+	}
+	var u url.URL
+	if parsed.Scheme != "" && parsed.Host != "" {
+		// Full base URL: preserve scheme/host/path and append the CID.
+		u = *parsed
+		basePath := strings.TrimRight(parsed.Path, "/")
+		// If the base path doesn't already end with "ipfs", add it before appending the CID.
+		if !strings.HasSuffix(basePath, "ipfs") {
+			basePath = path.Join(basePath, "ipfs")
+		}
+		u.Path = path.Join(basePath, c.String())
+	} else {
+		// Hostname-only configuration: preserve existing behavior.
+		u = url.URL{
+			Scheme: "https",
+			Host:   p.GatewayURL,
+			Path:   "/ipfs/" + c.String(),
+		}
+	}
+	// Add the gateway token to the URL
+	q := u.Query()
+	q.Set("pinataGatewayToken", p.GatewayToken)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }

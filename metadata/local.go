@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -49,7 +50,7 @@ func (lm *LocalMetadata) SetMetadata(_ context.Context, key types.HexBytes, meta
 	}
 	lm.globalLock.Lock()
 	defer lm.globalLock.Unlock()
-	return lm.setArtifact(metadataPrefix, key, metadata)
+	return lm.setValue(metadataPrefix, key, metadata)
 }
 
 // Metadata returns the metadata stored in the local database for the given
@@ -58,31 +59,36 @@ func (lm *LocalMetadata) Metadata(_ context.Context, key types.HexBytes) (*types
 	if key == nil {
 		return nil, fmt.Errorf("no key provider")
 	}
-	// Try to get the metadata from the cache
-	val, ok := lm.cache.Get(string(metadataPrefix) + key.Hex())
-	if ok {
-		if metadata, ok := val.(*types.Metadata); ok {
-			return metadata, nil
+	// Try to get the metadata from the cache, if the cache is available
+	if lm.cache != nil {
+		val, ok := lm.cache.Get(string(metadataPrefix) + key.Hex())
+		if ok {
+			if metadata, ok := val.(*types.Metadata); ok {
+				return metadata, nil
+			}
 		}
 	}
 	lm.globalLock.Lock()
 	defer lm.globalLock.Unlock()
 	// Retrieve the metadata from the storage
 	metadata := &types.Metadata{}
-	if err := lm.getArtifact(metadataPrefix, key, metadata); err != nil {
-		return nil, err
+	// Store the metadata in the cache for future use, if the cache is available
+	if lm.cache != nil {
+		if err := lm.getValue(metadataPrefix, key, metadata); err != nil {
+			return nil, err
+		}
 	}
 	// Store the metadata in the cache for future use
 	lm.cache.Add(string(metadataPrefix)+key.Hex(), metadata)
 	return metadata, nil
 }
 
-// setArtifact stores the given artifact in the local database. It returns an
+// setValue stores the given artifact in the local database. It returns an
 // error if the request fails.
-func (lm *LocalMetadata) setArtifact(prefix, key types.HexBytes, artifact any) error {
-	data, err := json.Marshal(artifact)
+func (lm *LocalMetadata) setValue(prefix, key types.HexBytes, v any) error {
+	data, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("error decoding metadata: %w", err)
+		return fmt.Errorf("error encoding value: %w", err)
 	}
 
 	// instance a write transaction with the prefix provided
@@ -97,19 +103,20 @@ func (lm *LocalMetadata) setArtifact(prefix, key types.HexBytes, artifact any) e
 	return wTx.Commit()
 }
 
-// getArtifact returns the artifact stored in the local database for the given
+// getValue returns the artifact stored in the local database for the given
 // key. It returns an error if the request fails.
-func (lm *LocalMetadata) getArtifact(prefix, key types.HexBytes, out any) error {
+func (lm *LocalMetadata) getValue(prefix, key types.HexBytes, v any) error {
 	var data []byte
 	var err error
-	db := prefixeddb.NewPrefixedDatabase(lm.db, prefix)
+	pdb := prefixeddb.NewPrefixedDatabase(lm.db, prefix)
 	if key != nil {
-		data, err = db.Get(key)
-		if err != nil {
+		data, err = pdb.Get(key)
+		if errors.Is(err, db.ErrKeyNotFound) {
 			return ErrNotFound
 		}
+		return err
 	} else {
-		if err := db.Iterate(nil, func(_, value []byte) bool {
+		if err := pdb.Iterate(nil, func(_, value []byte) bool {
 			data = value
 			return false
 		}); err != nil {
@@ -120,7 +127,7 @@ func (lm *LocalMetadata) getArtifact(prefix, key types.HexBytes, out any) error 
 		}
 	}
 
-	if err := json.Unmarshal(data, out); err != nil {
+	if err := json.Unmarshal(data, v); err != nil {
 		return fmt.Errorf("could not decode artifact: %w", err)
 	}
 

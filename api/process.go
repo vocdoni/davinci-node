@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/metadata"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -117,9 +118,9 @@ func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the metadata from the storage
-	metadata, err := a.metadata.Get(r.Context(), key)
+	data, err := a.metadata.Get(r.Context(), key)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, metadata.ErrNotFound) {
 			ErrResourceNotFound.Write(w)
 			return
 		}
@@ -127,7 +128,7 @@ func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpWriteJSON(w, metadata)
+	httpWriteJSON(w, data)
 }
 
 // processParticipant retrieves information about a participant in a voting

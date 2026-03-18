@@ -16,7 +16,6 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	mh "github.com/multiformats/go-multihash"
-
 	"github.com/vocdoni/davinci-node/types"
 )
 

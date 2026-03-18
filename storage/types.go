@@ -302,12 +302,3 @@ type StatsPendingBallots struct {
 	TotalPendingBallots int       `json:"totalPendingBallots" cbor:"0,keyasint,omitempty"`
 	LastUpdateDate      time.Time `json:"lastUpdateDate" cbor:"1,keyasint,omitempty"`
 }
-
-// MetadataHash returns the hash of the metadata.
-func MetadataHash(metadata *types.Metadata) []byte {
-	data, err := json.Marshal(metadata)
-	if err != nil {
-		panic(err)
-	}
-	return ethereum.HashRaw(data)
-}
