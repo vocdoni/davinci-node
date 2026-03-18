@@ -97,19 +97,15 @@ func TestStateTransitionFullProvingCircuit(t *testing.T) {
 	startTime := time.Now()
 
 	// Use a fixed ProcessID for reproducible test data.
-	testResults, _, assignment := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	testResults, placeholder, assignment := StateTransitionInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
 	log.DebugTime("state transition inputs generation", startTime)
 
-	statetransitionRuntime, err := statetransition.Artifacts.LoadOrDownload(t.Context())
-	c.Assert(err, qt.IsNil, qt.Commentf("load artifacts"))
-
-	// create witness
-	fullWitness, err := frontend.NewWitness(assignment, params.StateTransitionCurve.ScalarField())
-	c.Assert(err, qt.IsNil, qt.Commentf("create witness"))
+	statetransitionRuntime, err := statetransition.Artifacts.LoadOrSetupForCircuit(t.Context(), placeholder)
+	c.Assert(err, qt.IsNil, qt.Commentf("resolve artifacts"))
 
 	// prove
-	proof, err := statetransitionRuntime.ProveAndVerifyWithWitness(fullWitness)
-	c.Assert(err, qt.IsNil, qt.Commentf("prove with witness"))
+	proof, err := statetransitionRuntime.ProveAndVerify(assignment)
+	c.Assert(err, qt.IsNil, qt.Commentf("prove and verify"))
 
 	// Export artifacts to temporary directory
 	dir, err := os.MkdirTemp("", "davinci_solidity_*")
