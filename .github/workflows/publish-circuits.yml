@@ -1,4 +1,4 @@
-name: Compile Circuits
+name: Publish Circuits
 
 on:
   pull_request:
@@ -64,10 +64,10 @@ jobs:
 
       - name: Describe Git Version
         id: git-version
-        uses: codacy/git-version@2.8.6
+        uses: codacy/git-version@2.7.1
 
       - name: Store circuit artifacts config
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: davinci-gnark-circuits-config@${{ steps.git-version.outputs.version }}
           path: |
