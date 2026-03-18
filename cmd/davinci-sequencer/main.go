@@ -15,6 +15,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/metadata"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/storage"
@@ -269,6 +270,12 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		cfg.API.Port,
 		cfg.Web3.Network,
 		web3Conf,
+		metadata.PinataMetadataProviderConfig{
+			HostnameURL:  cfg.Metadata.PinataHostnameURL,
+			HostnameJWT:  cfg.Metadata.PinataHostnameJWT,
+			GatewayURL:   cfg.Metadata.PinataGatewayURL,
+			GatewayToken: cfg.Metadata.PinataGatewayToken,
+		},
 		cfg.Log.DisableAPI)
 
 	// Configure worker API if enabled

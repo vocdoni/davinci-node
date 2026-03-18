@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -33,7 +34,7 @@ func NewLocalMetadata(db db.Database) *LocalMetadata {
 	return lm
 }
 
-func (lm *LocalMetadata) SetMetadata(key types.HexBytes, metadata *types.Metadata) error {
+func (lm *LocalMetadata) SetMetadata(_ context.Context, key types.HexBytes, metadata *types.Metadata) error {
 	if metadata == nil {
 		return fmt.Errorf("nil metadata")
 	}
@@ -44,7 +45,7 @@ func (lm *LocalMetadata) SetMetadata(key types.HexBytes, metadata *types.Metadat
 	return lm.setArtifact(metadataPrefix, key, metadata)
 }
 
-func (lm *LocalMetadata) Metadata(key types.HexBytes) (*types.Metadata, error) {
+func (lm *LocalMetadata) Metadata(_ context.Context, key types.HexBytes) (*types.Metadata, error) {
 	if key == nil {
 		return nil, fmt.Errorf("no key provider")
 	}

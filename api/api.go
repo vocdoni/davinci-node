@@ -42,6 +42,8 @@ type APIConfig struct {
 	WorkersAuthtokenExpiration time.Duration           // Expiration time for worker authentication tokens
 	WorkerJobTimeout           time.Duration           // Worker job timeout
 	WorkerBanRules             *workers.WorkerBanRules // Custom ban rules for workers
+	// Metadata configuration
+	PinataConfig metadata.PinataMetadataProviderConfig // Pinata configuration
 }
 
 // API type represents the API HTTP server with JWT authentication capabilities.
@@ -73,15 +75,25 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 		return nil, fmt.Errorf("missing storage instance")
 	}
 
-	metadataStg := metadata.New(func(data any) (types.HexBytes, error) {
+	// Initialize metadata
+	keyMetadataProvider := func(data any) (types.HexBytes, error) {
 		key, _, err := metadata.CID(data)
 		return key, err
-	}, metadata.NewLocalMetadata(conf.Storage.DB()))
+	}
+	// By default, use the local metadata provider
+	metadataProviders := []metadata.MetadataProvider{
+		metadata.NewLocalMetadata(conf.Storage.DB()),
+	}
+	// If Pinata configuration is provided, add the Pinata provider
+	if conf.PinataConfig.Valid() {
+		log.Debugw("valid pinata config provided", "gatewayURL", conf.PinataConfig.GatewayURL, "hostnameURL", conf.PinataConfig.HostnameURL)
+		metadataProviders = append(metadataProviders, metadata.NewPinataMetadataProvider(conf.PinataConfig))
+	}
 
 	// Initialize the API
 	a := &API{
 		storage:                    conf.Storage,
-		metadata:                   metadataStg,
+		metadata:                   metadata.New(keyMetadataProvider, metadataProviders...),
 		network:                    conf.Network,
 		web3Config:                 conf.Web3Config,
 		workersJobTimeout:          conf.WorkerJobTimeout,

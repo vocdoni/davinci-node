@@ -95,7 +95,7 @@ func (a *API) setMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store the metadata in the storage
-	hash, err := a.metadata.Set(&metadata)
+	hash, err := a.metadata.Set(r.Context(), &metadata)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not store process metadata: %v", err).Write(w)
 		return
@@ -117,7 +117,7 @@ func (a *API) fetchMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the metadata from the storage
-	metadata, err := a.metadata.Get(key)
+	metadata, err := a.metadata.Get(r.Context(), key)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			ErrResourceNotFound.Write(w)

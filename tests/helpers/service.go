@@ -20,6 +20,7 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/metadata"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/storage"
@@ -177,7 +178,7 @@ func setupAPI(
 	banRules *workers.WorkerBanRules,
 	web3Conf config.DavinciWeb3Config,
 ) (*service.APIService, error) {
-	api := service.NewAPI(db, "127.0.0.1", DefaultAPIPort, "test", web3Conf, false)
+	api := service.NewAPI(db, "127.0.0.1", DefaultAPIPort, "test", web3Conf, metadata.PinataMetadataProviderConfig{}, false)
 	api.SetWorkerConfig(workerSeed, workerTokenExpiration, workerTimeout, banRules)
 	if err := api.Start(ctx); err != nil {
 		return nil, err
