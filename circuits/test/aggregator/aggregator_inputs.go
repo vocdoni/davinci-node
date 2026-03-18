@@ -5,10 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/consensys/gnark/frontend"
 	"github.com/vocdoni/davinci-node/spec/params"
 
-	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -41,9 +39,6 @@ func AggregatorInputsForTest(
 	startTime := time.Now()
 	log.Infow("aggregator inputs generation starts")
 
-	voteverifierRuntime, err := voteverifier.Artifacts.LoadOrDownload(t.Context())
-	c.Assert(err, qt.IsNil, qt.Commentf("load vote verifier runtime artifacts"))
-
 	vvData := []voteverifiertest.VoterTestData{}
 	for i := range nValidVoters {
 		s, err := ballottest.GenDeterministicECDSAaccountForTest(i)
@@ -55,19 +50,15 @@ func AggregatorInputsForTest(
 			Address: s.Address(),
 		})
 	}
-	vvInputs, _, vvAssignments := voteverifiertest.VoteVerifierInputsForTest(t, vvData, processID, censusOrigin)
-	vvWitness := make([]witness.Witness, 0, len(vvAssignments))
-	for i := range vvAssignments {
-		fullWitness, err := frontend.NewWitness(&vvAssignments[i], params.VoteVerifierCurve.ScalarField())
-		c.Assert(err, qt.IsNil, qt.Commentf("generate witness for vote verifier circuit %d", i))
-		vvWitness = append(vvWitness, fullWitness)
-	}
+	vvInputs, vvPlaceholder, vvAssignments := voteverifiertest.VoteVerifierInputsForTest(t, vvData, processID, censusOrigin)
+	voteverifierRuntime, err := voteverifier.Artifacts.LoadOrSetupForCircuit(t.Context(), &vvPlaceholder)
+	c.Assert(err, qt.IsNil, qt.Commentf("resolve vote verifier runtime artifacts"))
 
 	// generate voters proofs
 	proofs := [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
 	proofsInputsHashes := [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]{}
-	for i := range vvWitness {
-		proof, err := voteverifierRuntime.ProveAndVerifyWithWitness(vvWitness[i])
+	for i := range vvAssignments {
+		proof, err := voteverifierRuntime.ProveAndVerify(&vvAssignments[i])
 		c.Assert(err, qt.IsNil, qt.Commentf("proving voteverifier circuit %d", i))
 
 		// convert the proof to the circuit proof type

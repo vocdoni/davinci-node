@@ -4,12 +4,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/consensys/gnark/frontend"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -25,16 +23,12 @@ func TestAggregatorCircuitProve(t *testing.T) {
 	processID := testutil.FixedProcessID()
 	nValidVoters := 3
 
-	_, _, assignment := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, nValidVoters)
-
-	aggregatorRuntime, err := aggregator.Artifacts.LoadOrDownload(t.Context())
-	c.Assert(err, qt.IsNil, qt.Commentf("load aggregator runtime artifacts"))
-
-	fullWitness, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField())
-	c.Assert(err, qt.IsNil, qt.Commentf("witness creation"))
+	_, placeholder, assignment := AggregatorInputsForTest(t, processID, types.CensusOriginMerkleTreeOffchainStaticV1, nValidVoters)
+	aggregatorRuntime, err := aggregator.Artifacts.LoadOrSetupForCircuit(t.Context(), placeholder)
+	c.Assert(err, qt.IsNil, qt.Commentf("resolve aggregator runtime artifacts"))
 
 	// Prove and verify
 	log.Infow("proving and verifying aggregator circuit")
-	_, err = aggregatorRuntime.ProveAndVerifyWithWitness(fullWitness)
+	_, err = aggregatorRuntime.ProveAndVerify(assignment)
 	c.Assert(err, qt.IsNil, qt.Commentf("prove aggregator circuit"))
 }

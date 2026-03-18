@@ -28,7 +28,6 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/prover"
 )
 
 // Keeps track of files created during program execution
@@ -76,6 +75,7 @@ func main() {
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		log.Fatalf("error creating destination folder: %v", err)
 	}
+	circuits.BaseDir = destination
 	log.Infow("destination folder", "path", destination)
 
 	////////////////////////////////////////
@@ -97,7 +97,6 @@ func main() {
 		log.Fatalf("error compiling VoteVerifier circuit: %v", err)
 	}
 	voteVerifierArtifacts, err := compileCircuitArtifacts(
-		"VoteVerifier",
 		voteVerifierCCS,
 		voteverifier.Artifacts,
 		destination,
@@ -118,7 +117,6 @@ func main() {
 		log.Fatalf("failed to compile Aggregator circuit: %v", err)
 	}
 	aggregatorArtifacts, err := compileCircuitArtifacts(
-		"Aggregator",
 		aggregatorCCS,
 		aggregator.Artifacts,
 		destination,
@@ -139,7 +137,6 @@ func main() {
 		log.Fatalf("failed to compile StateTransition circuit: %v", err)
 	}
 	statetransitionArtifacts, err := compileCircuitArtifacts(
-		"StateTransition",
 		statetransitionCCS,
 		statetransition.Artifacts,
 		destination,
@@ -173,7 +170,6 @@ func main() {
 		log.Fatalf("failed to compile ResultsVerifier circuit: %v", err)
 	}
 	resultsverifierArtifacts, err := compileCircuitArtifacts(
-		"ResultsVerifier",
 		resultsverifierCCS,
 		results.Artifacts,
 		destination,
@@ -285,19 +281,27 @@ type BallotProofArtifactsResult struct {
 	VerifyingKeyHash string
 }
 
+func hashBytesSHA256(content []byte) (string, error) {
+	hasher := sha256.New()
+	if _, err := hasher.Write(content); err != nil {
+		return "", fmt.Errorf("hash bytes: %w", err)
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
 func processBallotProofArtifacts(destination string, force bool) (*BallotProofArtifactsResult, error) {
 	startTime := time.Now()
-	ballotProofWASMHash, err := circuits.HashBytesSHA256(ballotproof.CircomCircuitWasm)
+	ballotProofWASMHash, err := hashBytesSHA256(ballotproof.CircomCircuitWasm)
 	if err != nil {
 		return nil, fmt.Errorf("hash BallotProof wasm: %w", err)
 	}
 
-	ballotProofPKHash, err := circuits.HashBytesSHA256(ballotproof.CircomProvingKey)
+	ballotProofPKHash, err := hashBytesSHA256(ballotproof.CircomProvingKey)
 	if err != nil {
 		return nil, fmt.Errorf("hash BallotProof proving key: %w", err)
 	}
 
-	ballotProofVKHash, err := circuits.HashBytesSHA256(ballotproof.CircomVerificationKey)
+	ballotProofVKHash, err := hashBytesSHA256(ballotproof.CircomVerificationKey)
 	if err != nil {
 		return nil, fmt.Errorf("hash BallotProof verification key: %w", err)
 	}
@@ -429,71 +433,61 @@ type CompileCircuitArtifactsResult struct {
 }
 
 func compileCircuitArtifacts(
-	circuitName string,
 	ccs constraint.ConstraintSystem,
 	artifacts *circuits.CircuitArtifacts,
 	destination string,
 	force bool,
 ) (*CompileCircuitArtifactsResult, error) {
 	if artifacts == nil {
-		return nil, fmt.Errorf("missing artifacts for %s", circuitName)
+		return nil, fmt.Errorf("missing circuit artifacts")
 	}
-	expectedCircuitHash := hex.EncodeToString(artifacts.CircuitHash())
-	expectedProvingKeyHash := hex.EncodeToString(artifacts.ProvingKeyHash())
-	expectedVerificationKeyHash := hex.EncodeToString(artifacts.VerifyingKeyHash())
+
+	if !force {
+		matches, err := artifacts.Matches(ccs)
+		if err != nil {
+			return nil, fmt.Errorf("match %s circuit: %w", artifacts.Name(), err)
+		}
+		if matches {
+			vk, err := artifacts.LoadOrDownloadVerifyingKey(context.Background())
+			if err != nil {
+				return nil, fmt.Errorf("load %s verifying key: %w", artifacts.Name(), err)
+			}
+			log.Infow("setup skipped; using existing vk from destination", "circuit", artifacts.Name())
+			return &CompileCircuitArtifactsResult{
+				VerifyingKey:     vk,
+				Recompiled:       false,
+				CircuitHash:      hex.EncodeToString(artifacts.CircuitHash()),
+				ProvingKeyHash:   hex.EncodeToString(artifacts.ProvingKeyHash()),
+				VerifyingKeyHash: hex.EncodeToString(artifacts.VerifyingKeyHash()),
+			}, nil
+		}
+	}
+
+	runtime, err := artifacts.Setup(ccs)
+	if err != nil {
+		return nil, fmt.Errorf("setup %s runtime: %w", artifacts.Name(), err)
+	}
 
 	startTime := time.Now()
-	newCircuitHash, err := circuits.HashConstraintSystem(ccs)
+	log.Infof("writing %s artifacts to disk", artifacts.Name())
+	circuitHash, err := writeCS(runtime.ConstraintSystem(), destination)
 	if err != nil {
-		return nil, fmt.Errorf("hash %s circuit: %w", circuitName, err)
-	}
-	log.DebugTime("circuit definition hashed", startTime,
-		"circuit", circuitName,
-		"newCircuitHash", newCircuitHash,
-		"oldCircuitHash", expectedCircuitHash)
-
-	if newCircuitHash == expectedCircuitHash && !force {
-		vk, err := artifacts.LoadOrDownloadVerifyingKey(context.Background())
-		if err != nil {
-			return nil, fmt.Errorf("ensure %s verifying key %s: %w", circuitName, expectedVerificationKeyHash, err)
-		}
-
-		log.Infow("setup skipped; using existing vk from destination",
-			"circuit", circuitName, "VerifyingKeyHash", expectedVerificationKeyHash)
-		return &CompileCircuitArtifactsResult{
-			VerifyingKey:     vk,
-			Recompiled:       false,
-			CircuitHash:      expectedCircuitHash,
-			ProvingKeyHash:   expectedProvingKeyHash,
-			VerifyingKeyHash: expectedVerificationKeyHash,
-		}, nil
+		return nil, fmt.Errorf("write %s constraint system: %w", artifacts.Name(), err)
 	}
 
-	pk, vk, err := prover.Setup(ccs)
+	provingKeyHash, err := writePK(runtime.ProvingKey(), destination)
 	if err != nil {
-		return nil, fmt.Errorf("setup %s circuit: %w", circuitName, err)
+		return nil, fmt.Errorf("write %s proving key: %w", artifacts.Name(), err)
 	}
 
-	startTime = time.Now()
-	log.Infof("writing %s artifacts to disk", circuitName)
-	circuitHash, err := writeCS(ccs, destination)
+	verifyingKeyHash, err := writeVK(runtime.VerifyingKey(), destination)
 	if err != nil {
-		return nil, fmt.Errorf("write %s constraint system: %w", circuitName, err)
+		return nil, fmt.Errorf("write %s verifying key: %w", artifacts.Name(), err)
 	}
 
-	provingKeyHash, err := writePK(pk, destination)
-	if err != nil {
-		return nil, fmt.Errorf("write %s proving key: %w", circuitName, err)
-	}
-
-	verifyingKeyHash, err := writeVK(vk, destination)
-	if err != nil {
-		return nil, fmt.Errorf("write %s verifying key: %w", circuitName, err)
-	}
-
-	log.DebugTime("artifacts written to disk", startTime, "circuit", circuitName)
+	log.DebugTime("artifacts written to disk", startTime, "circuit", artifacts.Name())
 	return &CompileCircuitArtifactsResult{
-		VerifyingKey:     vk,
+		VerifyingKey:     runtime.VerifyingKey(),
 		Recompiled:       true,
 		CircuitHash:      circuitHash,
 		ProvingKeyHash:   provingKeyHash,

@@ -23,6 +23,7 @@ import (
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
 )
@@ -441,6 +442,75 @@ func (ca *CircuitArtifacts) VerifyingKeyHash() []byte {
 		return nil
 	}
 	return ca.verifyingKey.Hash
+}
+
+// Matches reports whether the provided compiled circuit definition matches the
+// configured circuit artifact hash.
+func (ca *CircuitArtifacts) Matches(ccs constraint.ConstraintSystem) (bool, error) {
+	if ccs == nil {
+		return false, fmt.Errorf("constraint system not provided")
+	}
+	expectedHash := ca.CircuitHash()
+	if len(expectedHash) == 0 {
+		return false, fmt.Errorf("circuit hash not configured for circuit %s", ca.Name())
+	}
+
+	startTime := time.Now()
+	hasher := sha256.New()
+	if _, err := ccs.WriteTo(hasher); err != nil {
+		return false, fmt.Errorf("write ccs to hasher: %w", err)
+	}
+	currentHash := hasher.Sum(nil)
+	log.DebugTime("circuit definition hashed", startTime,
+		"circuit", ca.Name(),
+		"newCircuitHash", hex.EncodeToString(currentHash),
+		"oldCircuitHash", hex.EncodeToString(expectedHash),
+	)
+	return bytes.Equal(currentHash, expectedHash), nil
+}
+
+// Setup generates fresh proving and verifying keys for the provided compiled
+// circuit definition and returns a runtime built from them.
+func (ca *CircuitArtifacts) Setup(ccs constraint.ConstraintSystem) (*CircuitRuntime, error) {
+	if ccs == nil {
+		return nil, fmt.Errorf("constraint system not provided")
+	}
+
+	log.Infow("setting up proving and verifying keys for compiled circuit", "circuit", ca.Name())
+	pk, vk, err := prover.Setup(ccs)
+	if err != nil {
+		return nil, fmt.Errorf("setup circuit %s: %w", ca.Name(), err)
+	}
+	return NewCircuitRuntime(ca.name, ca.curve, ca.proverOpts, ca.verifierOpts, ccs, pk, vk), nil
+}
+
+// LoadOrSetupForCircuit compiles the provided circuit and returns a runtime
+// consistent with it. It reuses configured artifacts when the compiled circuit
+// hash matches, and otherwise sets up fresh proving and verifying keys.
+func (ca *CircuitArtifacts) LoadOrSetupForCircuit(ctx context.Context, circuit frontend.Circuit) (*CircuitRuntime, error) {
+	if ca == nil {
+		return nil, fmt.Errorf("circuit artifacts not provided")
+	}
+	ccs, err := frontend.Compile(ca.Curve().ScalarField(), r1cs.NewBuilder, circuit)
+	if err != nil {
+		return nil, fmt.Errorf("compile circuit: %w", err)
+	}
+	matches, err := ca.Matches(ccs)
+	if err != nil {
+		return nil, fmt.Errorf("match artifacts: %w", err)
+	}
+	if matches {
+		runtime, err := ca.LoadOrDownload(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("load artifacts: %w", err)
+		}
+		return runtime, nil
+	}
+	runtime, err := ca.Setup(ccs)
+	if err != nil {
+		return nil, fmt.Errorf("setup artifacts: %w", err)
+	}
+	return runtime, nil
 }
 
 // CircuitRuntime is a fully initialized runtime view of a circuit's decoded artifacts.

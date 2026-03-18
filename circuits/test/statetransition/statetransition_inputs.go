@@ -11,7 +11,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/spec/params"
 
-	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
 	qt "github.com/frankban/quicktest"
@@ -52,15 +51,12 @@ func StateTransitionInputsForTest(
 ) {
 	c := qt.New(t)
 
-	aggInputs, _, aggAssignment := aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
+	aggInputs, aggPlaceholder, aggAssignment := aggregatortest.AggregatorInputsForTest(t, processID, censusOrigin, nValidVoters)
 
-	fullWitness, err := frontend.NewWitness(aggAssignment, params.AggregatorCurve.ScalarField())
-	c.Assert(err, qt.IsNil, qt.Commentf("aggregator witness"))
+	aggregatorRuntime, err := aggregator.Artifacts.LoadOrSetupForCircuit(t.Context(), aggPlaceholder)
+	c.Assert(err, qt.IsNil, qt.Commentf("resolve aggregator runtime artifacts"))
 
-	aggregatorRuntime, err := aggregator.Artifacts.LoadOrDownload(t.Context())
-	c.Assert(err, qt.IsNil, qt.Commentf("load aggregator runtime artifacts"))
-
-	proof, err := aggregatorRuntime.ProveAndVerifyWithWitness(fullWitness)
+	proof, err := aggregatorRuntime.ProveAndVerify(aggAssignment)
 	c.Assert(err, qt.IsNil, qt.Commentf("proving aggregator circuit"))
 
 	// convert the proof to the circuit proof type
