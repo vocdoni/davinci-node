@@ -6,6 +6,10 @@ fi
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
+PROVING_KEY_DIR="${REPO_ROOT}/config"
+
 usage() {
     cat <<'EOF' >&2
 Usage: scripts/generate_test_inputs.sh [ci.log] [output.sol]
@@ -340,11 +344,30 @@ format_array_inline() {
     echo "$out"
 }
 
+extract_proving_key_hash() {
+    local file_path=$1
+    local hash
+    hash=$(sed -n 's/.*PROVING_KEY_HASH = \(0x[0-9a-fA-F]\+\);/\1/p' "$file_path" | head -n1)
+    if [[ -z "$hash" ]]; then
+        echo "error: failed to extract PROVING_KEY_HASH from $file_path" >&2
+        exit 1
+    fi
+    echo "$hash"
+}
+
+statetransition_proving_key_hash=$(extract_proving_key_hash "${PROVING_KEY_DIR}/statetransition_vkey.sol")
+results_proving_key_hash=$(extract_proving_key_hash "${PROVING_KEY_DIR}/resultsverifier_vkey.sol")
+
 cat >"$OUTPUT_PATH" <<EOF
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity ^0.8.28;
 
 abstract contract TestInputs {
+    // These fixtures were generated with the following proving keys.
+    // If they don't match the verifiers, tests will fail and this file must be regenerated.
+    bytes32 public constant STATETRANSITION_PROVING_KEY_HASH = $statetransition_proving_key_hash;
+    bytes32 public constant RESULTS_PROVING_KEY_HASH = $results_proving_key_hash;
+
     address public constant ORGANIZATION_ADDRESS = $organization_address;
 
     uint256 public constant ROOT_HASH_BEFORE =
