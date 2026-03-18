@@ -13,17 +13,24 @@ import (
 )
 
 var (
+	// metadataPrefix is the prefix used to store the metadata in the database
 	metadataPrefix = []byte("md/")
-
+	// ErrNotFound is returned when the metadata is not found
 	ErrNotFound = fmt.Errorf("metadata not found")
 )
 
+// LocalMetadata is a local implementation of the MetadataStorage interface
+// that stores the metadata in an local database. It also provides a cache for
+// the artifacts.
 type LocalMetadata struct {
 	db         db.Database
 	cache      *lru.Cache[string, any] // Cache for artifacts
 	globalLock sync.Mutex
 }
 
+// NewLocalMetadata creates a new LocalMetadata instance with the given
+// database instance. It also creates a cache for the artifacts if possible
+// and returns it.
 func NewLocalMetadata(db db.Database) *LocalMetadata {
 	lm := &LocalMetadata{
 		db: db,
@@ -34,17 +41,19 @@ func NewLocalMetadata(db db.Database) *LocalMetadata {
 	return lm
 }
 
+// SetMetadata stores the given metadata in the local database and returns an
+// error if the request fails.
 func (lm *LocalMetadata) SetMetadata(_ context.Context, key types.HexBytes, metadata *types.Metadata) error {
 	if metadata == nil {
 		return fmt.Errorf("nil metadata")
 	}
-
 	lm.globalLock.Lock()
 	defer lm.globalLock.Unlock()
-
 	return lm.setArtifact(metadataPrefix, key, metadata)
 }
 
+// Metadata returns the metadata stored in the local database for the given
+// key. It returns an error if the request fails.
 func (lm *LocalMetadata) Metadata(_ context.Context, key types.HexBytes) (*types.Metadata, error) {
 	if key == nil {
 		return nil, fmt.Errorf("no key provider")
@@ -56,21 +65,20 @@ func (lm *LocalMetadata) Metadata(_ context.Context, key types.HexBytes) (*types
 			return metadata, nil
 		}
 	}
-
 	lm.globalLock.Lock()
 	defer lm.globalLock.Unlock()
-
 	// Retrieve the metadata from the storage
 	metadata := &types.Metadata{}
 	if err := lm.getArtifact(metadataPrefix, key, metadata); err != nil {
 		return nil, err
 	}
-
 	// Store the metadata in the cache for future use
 	lm.cache.Add(string(metadataPrefix)+key.Hex(), metadata)
 	return metadata, nil
 }
 
+// setArtifact stores the given artifact in the local database. It returns an
+// error if the request fails.
 func (lm *LocalMetadata) setArtifact(prefix, key types.HexBytes, artifact any) error {
 	data, err := json.Marshal(artifact)
 	if err != nil {
@@ -89,6 +97,8 @@ func (lm *LocalMetadata) setArtifact(prefix, key types.HexBytes, artifact any) e
 	return wTx.Commit()
 }
 
+// getArtifact returns the artifact stored in the local database for the given
+// key. It returns an error if the request fails.
 func (lm *LocalMetadata) getArtifact(prefix, key types.HexBytes, out any) error {
 	var data []byte
 	var err error

@@ -96,7 +96,6 @@ var (
 	encryptionKeyPrefix         = []byte("ek/")
 	processPrefix               = []byte("p/")
 	statsPrefix                 = []byte("s/")
-	metadataPrefix              = []byte("md/")
 	censusDBprefix              = []byte("cs_")
 	stateDBprefix               = []byte("st_")
 	pendingTxPrefix             = []byte("ptx/")
