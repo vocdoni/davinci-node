@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -106,4 +108,51 @@ func TestProcessMonitor(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(proc, qt.Not(qt.IsNil))
 	c.Assert(proc.MetadataURI, qt.Equals, "https://example.com/metadata")
+}
+
+func TestProcessMonitorDoesNotCreateProcessWhenInitialCensusDownloadFails(t *testing.T) {
+	c := qt.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+
+	censusDownloader := NewCensusDownloader(nil, store, CensusDownloaderConfig{
+		CleanUpInterval:      time.Minute,
+		OnchainCheckInterval: time.Minute,
+		Cooldown:             10 * time.Millisecond,
+		Expiration:           time.Minute,
+		Attempts:             5,
+		AttemptTimeout:       time.Second,
+		ConcurrentDownloads:  1,
+	})
+	c.Assert(censusDownloader.Start(ctx), qt.IsNil)
+	c.Cleanup(censusDownloader.Stop)
+
+	monitor := NewProcessMonitor(contracts, store, censusDownloader, nil, 10*time.Millisecond)
+	c.Assert(monitor.Start(ctx), qt.IsNil)
+	c.Cleanup(monitor.Stop)
+
+	notFoundServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	c.Cleanup(notFoundServer.Close)
+
+	process := testutil.RandomProcess(testutil.RandomProcessID())
+	process.OrganizationID = contracts.AccountAddress()
+	process.Census.CensusOrigin = types.CensusOriginMerkleTreeOffchainStaticV1
+	process.Census.CensusURI = notFoundServer.URL
+	process.Census.CensusRoot = types.HexBytes{0x04}
+
+	processID, _, err := contracts.CreateProcess(process)
+	c.Assert(err, qt.IsNil)
+
+	time.Sleep(250 * time.Millisecond)
+
+	_, err = store.Process(processID)
+	c.Assert(err, qt.Equals, storage.ErrNotFound)
 }

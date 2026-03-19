@@ -136,6 +136,15 @@ type Census struct {
 	ContractAddress common.Address `json:"contractAddress,omitempty" cbor:"4,keyasint,omitempty"`
 }
 
+// Clone returns a copy of the Census.
+func (c *Census) Clone() *Census {
+	if c == nil {
+		return nil
+	}
+	newCensus := *c
+	return &newCensus
+}
+
 // CensusProof is the struct to represent a proof of inclusion in the census
 // merkle tree. For example, it will be provided by the user to verify that he
 // or she can vote in the process.

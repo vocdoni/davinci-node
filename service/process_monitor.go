@@ -237,40 +237,38 @@ func (pm *ProcessMonitor) monitorProcesses(
 			// directly.
 			if process.Status == types.ProcessStatusReady && process.Census != nil {
 				go func(process *types.Process) {
+					// Keep one census copy for the async downloader queue and a
+					// separate one for process state updates so the monitor does
+					// not race with worker goroutines over the same struct.
+					queuedCensus := process.Census.Clone()
+					processCensus := process.Census.Clone()
+
 					// Download and import the process census if needed
-					var err error
-					process.Census.CensusRoot, err = pm.censusDownloader.DownloadCensus(process.Census)
+					resolvedRoot, err := pm.censusDownloader.DownloadCensus(queuedCensus)
 					if err != nil {
 						log.Warnw("failed to start census download for new process",
 							"processID", process.ID.String(),
-							"censusRoot", process.Census.CensusRoot.String(),
+							"censusRoot", processCensus.CensusRoot.String(),
 							"error", err.Error())
 						return
 					}
+					processCensus.CensusRoot = resolvedRoot
 					// After census is downloaded and imported, store the new process
-					downloadCtx, downloadCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
-					pm.censusDownloader.OnCensusDownloaded(process.Census, downloadCtx, func(err error) {
+					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
+					pm.censusDownloader.OnCensusDownloaded(processCensus, downloadCtx, func(err error) {
 						defer downloadCtxCancel()
 						// If no error, just proceed to store the process.
 						if err == nil {
+							process.Census = processCensus
 							processSetup(process)
 							return
 						}
-						// If download failed, check if census already exists in
-						// storage (could be imported by another process), and if
-						// so, discard the error and proceed to store the process.
-						if _, loadErr := pm.storage.LoadCensus(process.Census); loadErr == nil {
-							log.Debugw("census already exists for new process, skipping download",
-								"processID", process.ID.String(),
-								"censusRoot", process.Census.CensusRoot.String())
-							processSetup(process)
-							return
-						}
-						// If census doesn't exist and download failed, log
-						// warning and skip process setup
+						// If the initial census download fails, skip process
+						// setup entirely. A process must not be created without
+						// a successful initial census import.
 						log.Warnw("failed to download census for new process",
 							"processID", process.ID.String(),
-							"censusRoot", process.Census.CensusRoot.String(),
+							"censusRoot", processCensus.CensusRoot.String(),
 							"error", err.Error())
 					})
 				}(process)
@@ -395,7 +393,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					}
 					// wait for census to be downloaded and imported, then update
 					// process census info
-					downloadCtx, downloadCtxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
 					pm.censusDownloader.OnCensusDownloaded(censusInfo, downloadCtx, func(err error) {
 						defer downloadCtxCancel()
 						if err != nil {
