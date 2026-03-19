@@ -8,7 +8,6 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
-	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestProcess(t *testing.T) {
@@ -29,35 +28,6 @@ func TestProcess(t *testing.T) {
 	metadata, err := st.Process(processID)
 	c.Assert(err, qt.Equals, ErrNotFound)
 	c.Assert(metadata, qt.IsNil)
-
-	// Test 2: Set and get data
-	testMetadata := &types.Metadata{
-		Title:       map[string]string{"default": "Test Election"},
-		Description: map[string]string{"default": "Test Description"},
-		Media: types.MediaMetadata{
-			Header: "header.jpg",
-			Logo:   "logo.jpg",
-		},
-		Meta: types.GenericMetadata{
-			"testKey": 12,
-		},
-		Questions: []types.Question{
-			{
-				Title:       map[string]string{"default": "Question 1"},
-				Description: map[string]string{"default": "Description 1"},
-				Choices: []types.Choice{
-					{
-						Title: map[string]string{"default": "Choice 1"},
-						Value: 0,
-					},
-					{
-						Title: map[string]string{"default": "Choice 2"},
-						Value: 1,
-					},
-				},
-			},
-		},
-	}
 
 	testProcess := testutil.RandomProcess(processID)
 
@@ -87,15 +57,4 @@ func TestProcess(t *testing.T) {
 	processes, err = st.ListProcesses()
 	c.Assert(err, qt.IsNil)
 	c.Assert(len(processes), qt.Equals, 2)
-
-	// Test 5: MetadataHash function
-	hash1 := MetadataHash(testMetadata)
-	c.Assert(hash1, qt.Not(qt.IsNil))
-	c.Assert(len(hash1), qt.Equals, 32) // Ethereum hash length is 32 bytes
-
-	// Modify metadata and verify hash changes
-	testMetadata.Title["default"] = "Modified Title"
-	hash2 := MetadataHash(testMetadata)
-	c.Assert(hash2, qt.Not(qt.IsNil))
-	c.Assert(hash2, qt.Not(qt.DeepEquals), hash1)
 }

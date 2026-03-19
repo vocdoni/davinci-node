@@ -8,6 +8,7 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/config"
+	"github.com/vocdoni/davinci-node/metadata"
 	"github.com/vocdoni/davinci-node/storage"
 )
 
@@ -20,7 +21,7 @@ func TestAPIService(t *testing.T) {
 	defer store.Close()
 
 	// Create API service with a random available port
-	apiService := NewAPI(store, "127.0.0.1", 0, "test", config.TestConfig, false) // Port 0 lets the OS choose an available port
+	apiService := NewAPI(store, "127.0.0.1", 0, "test", config.TestConfig, metadata.PinataMetadataProviderConfig{}, false) // Port 0 lets the OS choose an available port
 
 	// Start service in background
 	ctx := context.Background()
