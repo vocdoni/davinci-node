@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std"
@@ -205,17 +206,17 @@ func hexStrToBlob(hexStr string) (*types.Blob, error) {
 // hexStrToBytes converts a hex string to bytes
 func hexStrToBytes(hexStr string) ([]byte, error) {
 	// Remove any whitespace/newlines
-	cleaned := ""
+	var cleaned strings.Builder
 	for _, c := range hexStr {
 		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
-			cleaned += string(c)
+			cleaned.WriteString(string(c))
 		}
 	}
 
-	result := make([]byte, len(cleaned)/2)
+	result := make([]byte, len(cleaned.String())/2)
 	for i := range result {
-		high := hexCharToNibble(cleaned[i*2])
-		low := hexCharToNibble(cleaned[i*2+1])
+		high := hexCharToNibble(cleaned.String()[i*2])
+		low := hexCharToNibble(cleaned.String()[i*2+1])
 		result[i] = (high << 4) | low
 	}
 	return result, nil
