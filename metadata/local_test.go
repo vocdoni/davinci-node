@@ -268,7 +268,7 @@ func TestLocalMetadatasetValueMarshalError(t *testing.T) {
 	lm := NewLocalMetadata(metadb.NewTest(t))
 	err := lm.setValue(metadataPrefix, types.HexBytes("key"), map[string]any{"bad": func() {}})
 	c.Assert(err, qt.Not(qt.IsNil))
-	c.Assert(err.Error(), qt.Contains, "error decoding metadata")
+	c.Assert(err.Error(), qt.Contains, "error encoding value")
 }
 
 func TestLocalMetadatasetValueSetError(t *testing.T) {

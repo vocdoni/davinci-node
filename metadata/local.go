@@ -72,14 +72,13 @@ func (lm *LocalMetadata) Metadata(_ context.Context, key types.HexBytes) (*types
 	defer lm.globalLock.Unlock()
 	// Retrieve the metadata from the storage
 	metadata := &types.Metadata{}
-	// Store the metadata in the cache for future use, if the cache is available
-	if lm.cache != nil {
-		if err := lm.getValue(metadataPrefix, key, metadata); err != nil {
-			return nil, err
-		}
+	if err := lm.getValue(metadataPrefix, key, metadata); err != nil {
+		return nil, err
 	}
 	// Store the metadata in the cache for future use
-	lm.cache.Add(string(metadataPrefix)+key.Hex(), metadata)
+	if lm.cache != nil {
+		lm.cache.Add(string(metadataPrefix)+key.Hex(), metadata)
+	}
 	return metadata, nil
 }
 
@@ -114,7 +113,9 @@ func (lm *LocalMetadata) getValue(prefix, key types.HexBytes, v any) error {
 		if errors.Is(err, db.ErrKeyNotFound) {
 			return ErrNotFound
 		}
-		return err
+		if err != nil {
+			return err
+		}
 	} else {
 		if err := pdb.Iterate(nil, func(_, value []byte) bool {
 			data = value

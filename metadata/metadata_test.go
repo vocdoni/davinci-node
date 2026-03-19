@@ -86,7 +86,26 @@ func TestMetadataStorageGet(t *testing.T) {
 		}
 		second := &fakeMetadataProvider{
 			metadataFn: func(context.Context, types.HexBytes) (*types.Metadata, error) {
-				return nil, fmt.Errorf("boom")
+				return nil, ErrNotFound
+			},
+		}
+
+		storage := New(func(any) (types.HexBytes, error) { return key, nil }, first, second)
+		got, err := storage.Get(context.Background(), key)
+		c.Assert(got, qt.IsNil)
+		c.Assert(err, qt.ErrorIs, ErrNotFound)
+	})
+
+	c.Run("aggregates non not-found provider errors", func(c *qt.C) {
+		first := &fakeMetadataProvider{
+			metadataFn: func(context.Context, types.HexBytes) (*types.Metadata, error) {
+				return nil, ErrNotFound
+			},
+		}
+		boom := fmt.Errorf("boom")
+		second := &fakeMetadataProvider{
+			metadataFn: func(context.Context, types.HexBytes) (*types.Metadata, error) {
+				return nil, boom
 			},
 		}
 
@@ -94,7 +113,17 @@ func TestMetadataStorageGet(t *testing.T) {
 		got, err := storage.Get(context.Background(), key)
 		c.Assert(got, qt.IsNil)
 		c.Assert(err, qt.Not(qt.IsNil))
-		c.Assert(err.Error(), qt.Contains, "metadata not found")
+		c.Assert(err.Error(), qt.Contains, "failed to get metadata from providers")
+		c.Assert(err, qt.ErrorIs, boom)
+	})
+
+	c.Run("requires key provider", func(c *qt.C) {
+		storage := New(nil, &fakeMetadataProvider{})
+
+		got, err := storage.Get(context.Background(), key)
+		c.Assert(got, qt.IsNil)
+		c.Assert(err, qt.Not(qt.IsNil))
+		c.Assert(err.Error(), qt.Contains, "metadata key provider is not configured")
 	})
 }
 
@@ -106,7 +135,14 @@ func TestMetadataStorageSet(t *testing.T) {
 
 	c.Run("returns key provider error", func(c *qt.C) {
 		expectedErr := fmt.Errorf("key failed")
-		storage := New(func(any) (types.HexBytes, error) { return nil, expectedErr })
+		storage := New(
+			func(any) (types.HexBytes, error) { return nil, expectedErr },
+			&fakeMetadataProvider{
+				metadataFn: func(context.Context, types.HexBytes) (*types.Metadata, error) {
+					return nil, ErrNotFound
+				},
+			},
+		)
 
 		gotKey, err := storage.Set(context.Background(), metadata)
 		c.Assert(gotKey, qt.IsNil)
@@ -162,11 +198,21 @@ func TestMetadataStorageSet(t *testing.T) {
 		c.Assert(err, qt.ErrorIs, errB)
 	})
 
-	c.Run("returns key when there are no providers", func(c *qt.C) {
+	c.Run("returns error when there are no providers", func(c *qt.C) {
 		storage := New(func(any) (types.HexBytes, error) { return key, nil })
 
 		gotKey, err := storage.Set(context.Background(), metadata)
-		c.Assert(err, qt.IsNil)
-		c.Assert(gotKey, qt.DeepEquals, key)
+		c.Assert(gotKey, qt.IsNil)
+		c.Assert(err, qt.Not(qt.IsNil))
+		c.Assert(err.Error(), qt.Contains, "no metadata providers are configured")
+	})
+
+	c.Run("requires key provider", func(c *qt.C) {
+		storage := New(nil, &fakeMetadataProvider{})
+
+		gotKey, err := storage.Set(context.Background(), metadata)
+		c.Assert(gotKey, qt.IsNil)
+		c.Assert(err, qt.Not(qt.IsNil))
+		c.Assert(err.Error(), qt.Contains, "metadata key provider is not configured")
 	})
 }
