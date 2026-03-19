@@ -45,12 +45,16 @@ func (c *PinataMetadataProviderConfig) Valid() bool {
 // PinataMetadataProvider is a provider for metadata stored in Pinata.
 type PinataMetadataProvider struct {
 	PinataMetadataProviderConfig
+	httpClient *http.Client
 }
 
 // NewPinataMetadataProvider creates a new PinataMetadataProvider instance with
 // the given configuration.
 func NewPinataMetadataProvider(config PinataMetadataProviderConfig) *PinataMetadataProvider {
-	return &PinataMetadataProvider{PinataMetadataProviderConfig: config}
+	return &PinataMetadataProvider{
+		PinataMetadataProviderConfig: config,
+		httpClient:                   &http.Client{},
+	}
 }
 
 // SetMetadata stores the given metadata in Pinata. It returns an error if the
@@ -83,12 +87,7 @@ func (p *PinataMetadataProvider) SetMetadata(ctx context.Context, key types.HexB
 		return fmt.Errorf("close multipart writer: %w", err)
 	}
 	// Create the request with the body
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		p.HostnameURL,
-		&body,
-	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.HostnameURL, &body)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -96,7 +95,7 @@ func (p *PinataMetadataProvider) SetMetadata(ctx context.Context, key types.HexB
 	req.Header.Set("Authorization", "Bearer "+p.HostnameJWT)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("upload request failed: %w", err)
 	}
@@ -136,7 +135,7 @@ func (p *PinataMetadataProvider) Metadata(ctx context.Context, key types.HexByte
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("gateway request failed: %w", err)
 	}
