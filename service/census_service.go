@@ -144,7 +144,7 @@ func (cd *CensusDownloader) Start(ctx context.Context) error {
 		}
 	})
 
-	for workerID := 0; workerID < cd.concurrentDownloads(); workerID++ {
+	for range cd.concurrentDownloads() {
 		cd.workers.Go(func() {
 			for {
 				select {
@@ -240,19 +240,20 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 
 			status, exists := cd.DownloadCensusStatus(census)
 			if exists {
-				if status.Terminal && status.LastErr != nil {
+				switch {
+				case status.Terminal && status.LastErr != nil:
+					// Return the last error if the downloader has reached a
+					// terminal error.
 					callback(status.LastErr)
 					return
-				}
-				// Return the last error if the downloader has reached the
-				// maximum number of attempts.
-				if status.LastErr != nil && status.Attempts >= cd.attempts() {
+				case status.LastErr != nil && status.Attempts >= cd.attempts():
+					// Return the last error if the downloader has reached the
+					// maximum number of attempts.
 					callback(status.LastErr)
 					return
-				}
-				// If the census download is complete, clean up the pending
-				// status and call the callback with nil error.
-				if status.Complete {
+				case status.Complete:
+					// If the census download is complete, clean up the pending
+					// status and call the callback with nil error.
 					cd.CleanUp(status.census)
 					callback(nil)
 					return
@@ -293,7 +294,7 @@ func (cd *CensusDownloader) concurrentDownloads() int {
 // internal tracking map.
 func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census internalCensus) error {
 	var importErr error
-	for attempt := 0; attempt < cd.attempts(); attempt++ {
+	for attempt := range cd.attempts() {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("census download canceled: %w", err)
 		}
@@ -409,8 +410,7 @@ func (cd *CensusDownloader) addOnchainCensus(icensus internalCensus) (types.HexB
 }
 
 // updateInternalStatus updates the status of a pending census download
-// attempt. It returns true if the census was found and updated, false
-// otherwise.
+// attempt.
 func (cd *CensusDownloader) updateInternalStatus(icensus internalCensus, err error) {
 	// Update also on-chain census map if applicable
 	if icensus.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
