@@ -54,8 +54,9 @@ func TestPinataMetadataProviderConfigValid(t *testing.T) {
 		valid  bool
 	}{
 		{
-			name: "valid without hostname url",
+			name: "valid with all fields",
 			config: PinataMetadataProviderConfig{
+				HostnameURL:  "https://pinata.example/upload",
 				HostnameJWT:  "jwt",
 				GatewayURL:   "gateway.example",
 				GatewayToken: "token",
@@ -83,6 +84,15 @@ func TestPinataMetadataProviderConfigValid(t *testing.T) {
 			config: PinataMetadataProviderConfig{
 				HostnameJWT: "jwt",
 				GatewayURL:  "gateway.example",
+			},
+			valid: false,
+		},
+		{
+			name: "missing hostname url",
+			config: PinataMetadataProviderConfig{
+				HostnameJWT:  "jwt",
+				GatewayURL:   "gateway.example",
+				GatewayToken: "token",
 			},
 			valid: false,
 		},
