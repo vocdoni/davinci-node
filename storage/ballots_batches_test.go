@@ -155,6 +155,10 @@ func TestBallotQueue_MarkStateTransitionBatchDone(t *testing.T) {
 		},
 	}
 	c.Assert(stg.PushStateTransitionBatch(stb), qt.IsNil)
+	c.Assert(stg.MarkAggregatorBatchPending(&AggregatorBallotBatch{
+		ProcessID: pid,
+		Ballots:   stb.Ballots,
+	}), qt.IsNil)
 
 	// fetch to create reservation and get key
 	_, key, err := stg.NextStateTransitionBatch(pid)
@@ -174,6 +178,9 @@ func TestBallotQueue_MarkStateTransitionBatchDone(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 		c.Assert(status, qt.Equals, VoteIDStatusDone)
 	}
+
+	_, err = stg.PendingAggregatorBatch(pid)
+	c.Assert(err, qt.Equals, ErrNotFound)
 }
 
 func TestMarkAggregatorBatchPendingAllowsOnlyOneBatchPerProcess(t *testing.T) {

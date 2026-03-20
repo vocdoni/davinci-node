@@ -449,6 +449,10 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, processID types.Process
 		return err
 	}
 
+	if err := s.releasePendingAggregatorBatch(processID); err != nil && !errors.Is(err, db.ErrKeyNotFound) {
+		return fmt.Errorf("delete pending aggregator batch: %w", err)
+	}
+
 	// Update process stats
 	if err := s.updateProcessStats(processID, []ProcessStatsUpdate{
 		{TypeStats: types.TypeStatsSettledStateTransitions, Delta: 1},
