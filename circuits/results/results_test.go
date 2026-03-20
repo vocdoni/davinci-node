@@ -103,10 +103,18 @@ func TestResultsVerifierCircuit(t *testing.T) {
 
 	log.DebugTime("results inputs generation", startTime)
 
+	assert := test.NewAssert(t)
+	invalid := *assignment
+	invalid.DecryptionAddProofs[0].A1.Y = big.NewInt(0)
+
 	// Start the proving process
 	startTime = time.Now()
-	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(&ResultsVerifierCircuit{}, assignment,
-		test.WithCurves(params.ResultsVerifierCurve), test.WithBackends(backend.GROTH16))
+	assert.CheckCircuit(
+		&ResultsVerifierCircuit{},
+		test.WithValidAssignment(assignment),
+		test.WithInvalidAssignment(&invalid),
+		test.WithCurves(params.ResultsVerifierCurve),
+		test.WithBackends(backend.GROTH16),
+	)
 	log.DebugTime("results proving", startTime)
 }

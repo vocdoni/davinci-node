@@ -126,6 +126,15 @@ func EncryptionKeyFromECCPoint(p ecc.Point) EncryptionKey[*big.Int] {
 	return EncryptionKey[*big.Int]{PubKey: [2]*big.Int{ekX, ekY}}
 }
 
+// AssertEncryptionKeyIsOnBJJCurve constrains the encryption public key to lie
+// on the BabyJubJub curve.
+func AssertEncryptionKeyIsOnBJJCurve(api frontend.API, k EncryptionKey[frontend.Variable]) {
+	AssertValidBJJPoint(api, tweds.Point{
+		X: k.PubKey[0],
+		Y: k.PubKey[1],
+	})
+}
+
 // Process is a struct that contains the common inputs for a process.
 // Is a generic struct that can be used with any type of circuit input.
 type Process[T any] struct {
@@ -220,6 +229,15 @@ func NewBallot() *Ballot {
 	return z
 }
 
+// AssertIsOnBJJCurve constrains every ciphertext point in the ballot to lie on
+// the BabyJubJub curve.
+func (z Ballot) AssertIsOnBJJCurve(api frontend.API) {
+	for i := range z {
+		AssertValidBJJPoint(api, z[i].C1)
+		AssertValidBJJPoint(api, z[i].C2)
+	}
+}
+
 // Encrypt encrypts the ballot using the provided encryption key and messages.
 // It uses the Poseidon hasher to generate a new k for each ciphertext starting
 // from the provided k.
@@ -234,6 +252,7 @@ func (z *Ballot) Encrypt(
 		X: encKey.PubKey[0],
 		Y: encKey.PubKey[1],
 	}
+	AssertEncryptionKeyIsOnBJJCurve(api, encKey)
 	for i := range z {
 		// hash the last k to get a new one for the next ciphertext
 		k = NextK(api, k)
@@ -262,6 +281,7 @@ func (z *Ballot) Reencrypt(api frontend.API, encKey EncryptionKey[frontend.Varia
 // private key and the original values. It uses the elgamal.Ciphertext's
 // AssertDecrypt method for each ciphertext in the ballot.
 func (z *Ballot) AssertDecrypt(api frontend.API, privKey frontend.Variable, originals [params.FieldsPerBallot]frontend.Variable) {
+	z.AssertIsOnBJJCurve(api)
 	for i := range z {
 		if err := z[i].AssertDecrypt(api, privKey, originals[i]); err != nil {
 			FrontendError(api, "failed to assert decrypt", err)
@@ -276,6 +296,7 @@ func (b *Ballot) EncryptedZero(api frontend.API, encKey EncryptionKey[frontend.V
 		X: encKey.PubKey[0],
 		Y: encKey.PubKey[1],
 	}
+	AssertEncryptionKeyIsOnBJJCurve(api, encKey)
 	for i := range b {
 		b[i] = elgamal.EncryptedZero(api, pubKey, k)
 	}

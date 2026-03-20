@@ -102,11 +102,16 @@ func (c *ResultsVerifierCircuit) VerifyMerkleProofs(api frontend.API) {
 }
 
 func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
-	pubKey := twistededwards.Point{
-		X: c.EncryptionPublicKey.PubKey[0],
-		Y: c.EncryptionPublicKey.PubKey[1],
-	}
+	circuits.AssertEncryptionKeyIsOnBJJCurve(api, c.EncryptionPublicKey)
+	pubKey := twistededwards.Point{X: c.EncryptionPublicKey.PubKey[0], Y: c.EncryptionPublicKey.PubKey[1]}
+	c.AddAccumulatorsEncrypted.AssertIsOnBJJCurve(api)
+	c.SubAccumulatorsEncrypted.AssertIsOnBJJCurve(api)
 	for i := range params.FieldsPerBallot {
+		circuits.AssertValidBJJPoint(api, c.DecryptionAddProofs[i].A1)
+		circuits.AssertValidBJJPoint(api, c.DecryptionAddProofs[i].A2)
+		circuits.AssertValidBJJPoint(api, c.DecryptionSubProofs[i].A1)
+		circuits.AssertValidBJJPoint(api, c.DecryptionSubProofs[i].A2)
+
 		// Prove the decryption add proofs
 		err := c.DecryptionAddProofs[i].Verify(api, HashFn, pubKey, c.AddAccumulatorsEncrypted[i], c.AddAccumulators[i])
 		if err != nil {
