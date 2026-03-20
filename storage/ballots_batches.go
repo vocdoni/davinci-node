@@ -248,14 +248,14 @@ func (s *Storage) MarkAggregatorBatchPending(batch *AggregatorBallotBatch) error
 		return fmt.Errorf("encode batch: %w", err)
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
-	key := hashKey(val)
+	key := batch.ProcessID.Bytes()
 	// Check if already exists
-	if _, err := wTx.Get(append(batch.ProcessID.Bytes(), key...)); err == nil {
+	if _, err := wTx.Get(key); err == nil {
 		wTx.Discard()
 		return ErrKeyAlreadyExists
 	}
 
-	if err := wTx.Set(append(batch.ProcessID.Bytes(), key...), val); err != nil {
+	if err := wTx.Set(key, val); err != nil {
 		wTx.Discard()
 		return err
 	}
@@ -276,15 +276,12 @@ func (s *Storage) PendingAggregatorBatch(processID types.ProcessID) (*Aggregator
 // holds the globalLock.
 func (s *Storage) pendingAggregatorBatch(processID types.ProcessID) (*AggregatorBallotBatch, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, pendingAggregBatchPrefix)
-	var chosenVal []byte
-	if err := pr.Iterate(processID.Bytes(), func(_, v []byte) bool {
-		chosenVal = bytes.Clone(v)
-		return false
-	}); err != nil {
-		return nil, fmt.Errorf("iterate pending agg batches: %w", err)
-	}
-	if chosenVal == nil {
-		return nil, ErrNotFound
+	chosenVal, err := pr.Get(processID.Bytes())
+	if err != nil {
+		if errors.Is(err, db.ErrKeyNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get pending agg batch: %w", err)
 	}
 
 	var batch AggregatorBallotBatch
@@ -299,18 +296,7 @@ func (s *Storage) pendingAggregatorBatch(processID types.ProcessID) (*Aggregator
 // unsuccessfully processed and it needs to be retried again.
 func (s *Storage) releasePendingAggregatorBatch(processID types.ProcessID) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
-	var chosenKey []byte
-	if err := wTx.Iterate(processID.Bytes(), func(k, _ []byte) bool {
-		chosenKey = slices.Clone(k)
-		return false
-	}); err != nil {
-		return fmt.Errorf("iterate pending agg batches: %w", err)
-	}
-	if chosenKey == nil {
-		return ErrNotFound
-	}
-	finalKey := append(processID.Bytes(), chosenKey...)
-	if err := wTx.Delete(finalKey); err != nil {
+	if err := wTx.Delete(processID.Bytes()); err != nil {
 		return fmt.Errorf("delete pending agg batch: %w", err)
 	}
 	return wTx.Commit()

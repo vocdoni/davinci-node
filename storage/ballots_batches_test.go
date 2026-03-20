@@ -176,6 +176,40 @@ func TestBallotQueue_MarkStateTransitionBatchDone(t *testing.T) {
 	}
 }
 
+func TestMarkAggregatorBatchPendingAllowsOnlyOneBatchPerProcess(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	pid := testutil.RandomProcessID()
+	ensureProcess(t, stg, pid)
+
+	first := &AggregatorBallotBatch{
+		ProcessID: pid,
+		Ballots: []*AggregatorBallot{
+			mkAggBallot(testutil.RandomVoteID()),
+		},
+	}
+	second := &AggregatorBallotBatch{
+		ProcessID: pid,
+		Ballots: []*AggregatorBallot{
+			mkAggBallot(testutil.RandomVoteID()),
+			mkAggBallot(testutil.RandomVoteID()),
+		},
+	}
+
+	err := stg.MarkAggregatorBatchPending(first)
+	c.Assert(err, qt.IsNil)
+
+	err = stg.MarkAggregatorBatchPending(second)
+	c.Assert(err, qt.Equals, ErrKeyAlreadyExists)
+
+	pending, err := stg.PendingAggregatorBatch(pid)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(pending.Ballots), qt.Equals, len(first.Ballots))
+	c.Assert(pending.Ballots[0].VoteID, qt.Equals, first.Ballots[0].VoteID)
+}
+
 // TestMarkStateTransitionOutdated tests the MarkStateTransitionOutdated functionality
 func TestMarkStateTransitionOutdated(t *testing.T) {
 	c := qt.New(t)
