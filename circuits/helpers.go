@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"math/big"
 
+	ecc_tweds "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
+	tweds "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -53,4 +55,14 @@ func BigIntArrayToNInternal(arr []*big.Int, n int) []*types.BigInt {
 		}
 	}
 	return bigArr
+}
+
+// AssertValidBJJPoint constrains a BabyJubJub point to be on-curve.
+func AssertValidBJJPoint(api frontend.API, point tweds.Point) {
+	curve, err := tweds.NewEdCurve(api, ecc_tweds.BN254)
+	if err != nil {
+		FrontendError(api, "failed to initialize babyjubjub curve", err)
+		return
+	}
+	curve.AssertIsOnCurve(point)
 }

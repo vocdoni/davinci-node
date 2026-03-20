@@ -155,6 +155,10 @@ func TestBallotQueue_MarkStateTransitionBatchDone(t *testing.T) {
 		},
 	}
 	c.Assert(stg.PushStateTransitionBatch(stb), qt.IsNil)
+	c.Assert(stg.MarkAggregatorBatchPending(&AggregatorBallotBatch{
+		ProcessID: pid,
+		Ballots:   stb.Ballots,
+	}), qt.IsNil)
 
 	// fetch to create reservation and get key
 	_, key, err := stg.NextStateTransitionBatch(pid)
@@ -174,6 +178,43 @@ func TestBallotQueue_MarkStateTransitionBatchDone(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 		c.Assert(status, qt.Equals, VoteIDStatusDone)
 	}
+
+	_, err = stg.PendingAggregatorBatch(pid)
+	c.Assert(err, qt.Equals, ErrNotFound)
+}
+
+func TestMarkAggregatorBatchPendingAllowsOnlyOneBatchPerProcess(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	pid := testutil.RandomProcessID()
+	ensureProcess(t, stg, pid)
+
+	first := &AggregatorBallotBatch{
+		ProcessID: pid,
+		Ballots: []*AggregatorBallot{
+			mkAggBallot(testutil.RandomVoteID()),
+		},
+	}
+	second := &AggregatorBallotBatch{
+		ProcessID: pid,
+		Ballots: []*AggregatorBallot{
+			mkAggBallot(testutil.RandomVoteID()),
+			mkAggBallot(testutil.RandomVoteID()),
+		},
+	}
+
+	err := stg.MarkAggregatorBatchPending(first)
+	c.Assert(err, qt.IsNil)
+
+	err = stg.MarkAggregatorBatchPending(second)
+	c.Assert(err, qt.Equals, ErrKeyAlreadyExists)
+
+	pending, err := stg.PendingAggregatorBatch(pid)
+	c.Assert(err, qt.IsNil)
+	c.Assert(len(pending.Ballots), qt.Equals, len(first.Ballots))
+	c.Assert(pending.Ballots[0].VoteID, qt.Equals, first.Ballots[0].VoteID)
 }
 
 // TestMarkStateTransitionOutdated tests the MarkStateTransitionOutdated functionality
@@ -397,7 +438,7 @@ func TestMarkStateTransitionOutdatedWithCorruptedData(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Create a reservation for the corrupted key
-	err = stg.setReservation(stateTransitionReservPrefix, corruptedKey)
+	err = stg.setReservation(reservationPrefix(stateTransitionPrefix), corruptedKey)
 	c.Assert(err, qt.IsNil)
 
 	// Try to mark the corrupted batch as outdated - should handle gracefully
@@ -410,6 +451,6 @@ func TestMarkStateTransitionOutdatedWithCorruptedData(t *testing.T) {
 	c.Assert(err, qt.Equals, ErrNotFound, qt.Commentf("corrupted batch should be removed"))
 
 	// Verify reservation is cleaned up
-	isReserved := stg.isReserved(stateTransitionReservPrefix, corruptedKey)
+	isReserved := stg.isReserved(reservationPrefix(stateTransitionPrefix), corruptedKey)
 	c.Assert(isReserved, qt.IsFalse, qt.Commentf("reservation should be removed"))
 }

@@ -111,13 +111,6 @@ func (s *Sequencer) processTransitionOnChain() {
 			"processID", processID.String(),
 			"rootHashBefore", batch.Inputs.RootHashBefore.String(),
 			"rootHashAfter", batch.Inputs.RootHashAfter.String())
-		// mark the batch as done
-		if err := s.stg.MarkStateTransitionBatchDone(batchID, processID); err != nil {
-			log.Errorw(err, "failed to mark state transition batch as done")
-			return true // Continue to next process ID
-		}
-		// update the last update time by re-adding the process ID
-		s.processIDs.Add(processID) // This will update the timestamp
 
 		return true // Continue to next process ID
 	})
@@ -219,6 +212,15 @@ func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batch
 			}
 			return
 		}
+
+		if err := s.stg.MarkStateTransitionBatchDone(batchID, processID); err != nil {
+			log.Warnw("failed to mark state transition batch as done after mining confirmation",
+				"error", err,
+				"processID", processID.String())
+			return
+		}
+
+		s.processIDs.Add(processID)
 		log.Infow("state transition pushed to contract", "processID", processID.String())
 	}
 }

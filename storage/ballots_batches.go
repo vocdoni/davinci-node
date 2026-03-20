@@ -83,7 +83,7 @@ func (s *Storage) RemoveAggregatorBatchesByProcess(processID types.ProcessID) er
 	}
 	// iterate over all keys to remove the reservation and the batch
 	for _, k := range batchesToRemove {
-		if err := s.deleteArtifact(aggregBatchReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+		if err := s.deleteArtifact(reservationPrefix(aggregBatchPrefix), k); err != nil && !errors.Is(err, ErrNotFound) {
 			return fmt.Errorf("delete batch reservation: %w", err)
 		}
 		if err := s.deleteArtifact(aggregBatchPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
@@ -162,7 +162,7 @@ func (s *Storage) MarkAggregatorBatchFailed(key []byte) error {
 	}
 
 	// Remove the reservation
-	if err := s.deleteArtifact(aggregBatchReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(aggregBatchPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 	// Remove the batch from the aggregator queue
@@ -186,7 +186,7 @@ func (s *Storage) NextAggregatorBatch(processID types.ProcessID) (*AggregatorBal
 		if len(k) < len(pidBytes) || !bytes.Equal(k[:len(pidBytes)], pidBytes) {
 			k = append(pidBytes, k...)
 		}
-		if s.isReserved(aggregBatchReservPrefix, k) {
+		if s.isReserved(reservationPrefix(aggregBatchPrefix), k) {
 			return true
 		}
 
@@ -226,7 +226,7 @@ func (s *Storage) NextAggregatorBatch(processID types.ProcessID) (*AggregatorBal
 		return nil, nil, fmt.Errorf("decode agg batch: %w", err)
 	}
 
-	if err := s.setReservation(aggregBatchReservPrefix, chosenKey); err != nil {
+	if err := s.setReservation(reservationPrefix(aggregBatchPrefix), chosenKey); err != nil {
 		return nil, nil, ErrNoMoreElements
 	}
 
@@ -248,14 +248,14 @@ func (s *Storage) MarkAggregatorBatchPending(batch *AggregatorBallotBatch) error
 		return fmt.Errorf("encode batch: %w", err)
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
-	key := hashKey(val)
+	key := batch.ProcessID.Bytes()
 	// Check if already exists
-	if _, err := wTx.Get(append(batch.ProcessID.Bytes(), key...)); err == nil {
+	if _, err := wTx.Get(key); err == nil {
 		wTx.Discard()
 		return ErrKeyAlreadyExists
 	}
 
-	if err := wTx.Set(append(batch.ProcessID.Bytes(), key...), val); err != nil {
+	if err := wTx.Set(key, val); err != nil {
 		wTx.Discard()
 		return err
 	}
@@ -276,14 +276,8 @@ func (s *Storage) PendingAggregatorBatch(processID types.ProcessID) (*Aggregator
 // holds the globalLock.
 func (s *Storage) pendingAggregatorBatch(processID types.ProcessID) (*AggregatorBallotBatch, error) {
 	pr := prefixeddb.NewPrefixedReader(s.db, pendingAggregBatchPrefix)
-	var chosenVal []byte
-	if err := pr.Iterate(processID.Bytes(), func(_, v []byte) bool {
-		chosenVal = bytes.Clone(v)
-		return false
-	}); err != nil {
-		return nil, fmt.Errorf("iterate pending agg batches: %w", err)
-	}
-	if chosenVal == nil {
+	chosenVal, err := pr.Get(processID.Bytes())
+	if err != nil {
 		return nil, ErrNotFound
 	}
 
@@ -299,18 +293,7 @@ func (s *Storage) pendingAggregatorBatch(processID types.ProcessID) (*Aggregator
 // unsuccessfully processed and it needs to be retried again.
 func (s *Storage) releasePendingAggregatorBatch(processID types.ProcessID) error {
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), pendingAggregBatchPrefix)
-	var chosenKey []byte
-	if err := wTx.Iterate(processID.Bytes(), func(k, _ []byte) bool {
-		chosenKey = slices.Clone(k)
-		return false
-	}); err != nil {
-		return fmt.Errorf("iterate pending agg batches: %w", err)
-	}
-	if chosenKey == nil {
-		return ErrNotFound
-	}
-	finalKey := append(processID.Bytes(), chosenKey...)
-	if err := wTx.Delete(finalKey); err != nil {
+	if err := wTx.Delete(processID.Bytes()); err != nil {
 		return fmt.Errorf("delete pending agg batch: %w", err)
 	}
 	return wTx.Commit()
@@ -321,7 +304,7 @@ func (s *Storage) releasePendingAggregatorBatch(processID types.ProcessID) error
 func (s *Storage) MarkAggregatorBatchDone(k []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
-	if err := s.deleteArtifact(aggregBatchReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(aggregBatchPrefix), k); err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
 	if err := s.deleteArtifact(aggregBatchPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
@@ -388,7 +371,7 @@ func (s *Storage) NextStateTransitionBatch(processID types.ProcessID) (*StateTra
 			k = append(pidBytes, k...)
 		}
 		// check if reserved
-		if s.isReserved(stateTransitionReservPrefix, k) {
+		if s.isReserved(reservationPrefix(stateTransitionPrefix), k) {
 			return true
 		}
 		// store the first non-reserved state transition batch
@@ -408,7 +391,7 @@ func (s *Storage) NextStateTransitionBatch(processID types.ProcessID) (*StateTra
 		return nil, nil, fmt.Errorf("decode state transition batch: %w", err)
 	}
 	// set reservation
-	if err := s.setReservation(stateTransitionReservPrefix, chosenKey); err != nil {
+	if err := s.setReservation(reservationPrefix(stateTransitionPrefix), chosenKey); err != nil {
 		return nil, nil, ErrNoMoreElements
 	}
 	// return the state transition batch, the key and nil error
@@ -464,6 +447,10 @@ func (s *Storage) MarkStateTransitionBatchDone(k []byte, processID types.Process
 	// Remove the reservation and the batch itself
 	if err := s.removeStateTransitionBatch(k); err != nil {
 		return err
+	}
+
+	if err := s.releasePendingAggregatorBatch(processID); err != nil && !errors.Is(err, db.ErrKeyNotFound) {
+		return fmt.Errorf("delete pending aggregator batch: %w", err)
 	}
 
 	// Update process stats
@@ -526,7 +513,7 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 		if errors.Is(err, db.ErrKeyNotFound) {
 			log.Warnw("state transition batch not found during outdated marking", "key", fmt.Sprintf("%x", key))
 			// Still try to clean up reservation
-			if err := s.deleteArtifact(stateTransitionReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+			if err := s.deleteArtifact(reservationPrefix(stateTransitionPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 				return fmt.Errorf("delete state transition reservation: %w", err)
 			}
 			return nil
@@ -555,7 +542,7 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 	}
 
 	// Remove the reservation
-	if err := s.deleteArtifact(stateTransitionReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(stateTransitionPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition reservation: %w", err)
 	}
 
@@ -716,7 +703,7 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 
 // releaseAggregatorBatchReservation removes the reservation for an aggregated ballot batch.
 func (s *Storage) releaseAggregatorBatchReservation(k []byte) error {
-	if err := s.deleteArtifact(aggregBatchReservPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(aggregBatchPrefix), k); err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
 	return nil
@@ -727,7 +714,7 @@ func (s *Storage) releaseAggregatorBatchReservation(k []byte) error {
 // the caller already holds the globalLock.
 func (s *Storage) removeStateTransitionBatch(key []byte) error {
 	// remove reservation
-	if err := s.deleteArtifact(stateTransitionReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(stateTransitionPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition reservation: %w", err)
 	}
 	// remove from state transition queue

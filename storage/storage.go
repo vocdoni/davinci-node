@@ -15,20 +15,20 @@ The storage uses a key-value database with prefixed namespaces to organize diffe
 The ballot processing follows these stages:
 
 1. Pending Ballots
-  - b/  : voteID → Ballot (incoming ballots waiting to be verified)
-  - br/ : voteID → reservation timestamp (prevents concurrent processing)
+  - b/   : voteID → Ballot (incoming ballots waiting to be verified)
+  - r/b/ : voteID → reservation timestamp (prevents concurrent processing)
 
 2. Verified Ballots
-  - vb/ : processID + voteID → VerifiedBallot (ballots that passed verification)
-  - vbr/: processID + voteID → reservation timestamp
+  - vb/   : processID + voteID → VerifiedBallot (ballots that passed verification)
+  - r/vb/ : processID + voteID → reservation timestamp
 
 3. Aggregated Batches
-  - ag/ : processID + hash → AggregatorBallotBatch (groups of verified ballots)
-  - agr/: processID + hash → reservation timestamp
+  - ag/   : processID + hash → AggregatorBallotBatch (groups of verified ballots)
+  - r/ag/ : processID + hash → reservation timestamp
 
 4. State Transitions
-  - st/ : processID + hash → StateTransitionBatch (state changes ready for chain)
-  - str/: processID + hash → reservation timestamp
+  - st/   : processID + hash → StateTransitionBatch (state changes ready for chain)
+  - r/st/ : processID + hash → reservation timestamp
 
 5. Verified Results
   - vr/ : processID → VerifiedResults (final tally results with proof)
@@ -82,24 +82,21 @@ var (
 	ErrAddressProcessing   = errors.New("address is already processing a vote")
 
 	// Prefixes
-	ballotPrefix                = []byte("b/")
-	ballotReservationPrefix     = []byte("br/")
-	voteIDStatusPrefix          = []byte("vs/")
-	verifiedBallotPrefix        = []byte("vb/")
-	verifiedBallotReservPrefix  = []byte("vbr/")
-	aggregBatchPrefix           = []byte("ag/")
-	aggregBatchReservPrefix     = []byte("agr/")
-	pendingAggregBatchPrefix    = []byte("pag/")
-	stateTransitionPrefix       = []byte("st/")
-	stateTransitionReservPrefix = []byte("str/")
-	verifiedResultPrefix        = []byte("vr/")
-	encryptionKeyPrefix         = []byte("ek/")
-	processPrefix               = []byte("p/")
-	statsPrefix                 = []byte("s/")
-	metadataPrefix              = []byte("md/")
-	censusDBprefix              = []byte("cs_")
-	stateDBprefix               = []byte("st_")
-	pendingTxPrefix             = []byte("ptx/")
+	reservationPrefixRoot    = []byte("r/")
+	ballotPrefix             = []byte("b/")
+	voteIDStatusPrefix       = []byte("vs/")
+	verifiedBallotPrefix     = []byte("vb/")
+	aggregBatchPrefix        = []byte("ag/")
+	pendingAggregBatchPrefix = []byte("pag/")
+	stateTransitionPrefix    = []byte("st/")
+	verifiedResultPrefix     = []byte("vr/")
+	encryptionKeyPrefix      = []byte("ek/")
+	processPrefix            = []byte("p/")
+	statsPrefix              = []byte("s/")
+	metadataPrefix           = []byte("md/")
+	censusDBprefix           = []byte("cs_")
+	stateDBprefix            = []byte("st_")
+	pendingTxPrefix          = []byte("ptx/")
 
 	maxKeySize = 12
 )
@@ -107,6 +104,22 @@ var (
 // reservationRecord stores metadata about a reservation
 type reservationRecord struct {
 	Timestamp int64
+}
+
+func reservationPrefix(prefix []byte) []byte {
+	reservedPrefix := make([]byte, 0, len(reservationPrefixRoot)+len(prefix))
+	reservedPrefix = append(reservedPrefix, reservationPrefixRoot...)
+	reservedPrefix = append(reservedPrefix, prefix...)
+	return reservedPrefix
+}
+
+func reservationPrefixes() [][]byte {
+	return [][]byte{
+		reservationPrefix(ballotPrefix),
+		reservationPrefix(verifiedBallotPrefix),
+		reservationPrefix(aggregBatchPrefix),
+		reservationPrefix(stateTransitionPrefix),
+	}
 }
 
 // addressInfo stores the mapping from voteID to address for lock management
@@ -173,14 +186,7 @@ func (s *Storage) recover() error {
 	}
 
 	// Clear all reservations
-	prefixes := [][]byte{
-		ballotReservationPrefix,
-		verifiedBallotReservPrefix,
-		aggregBatchReservPrefix,
-		stateTransitionReservPrefix,
-	}
-
-	for _, prefix := range prefixes {
+	for _, prefix := range reservationPrefixes() {
 		if err := s.cleanAllReservations(prefix); err != nil {
 			if strings.Contains(err.Error(), "pebble: closed") {
 				return fmt.Errorf("database closed")
@@ -218,24 +224,10 @@ func (s *Storage) releaseStaleReservations(maxAge time.Duration) error {
 
 	now := time.Now().Unix()
 
-	// Release stale ballot reservations
-	if err := s.releaseStaleInPrefix(ballotReservationPrefix, now, maxAge); err != nil {
-		return err
-	}
-
-	// Release stale verified ballot reservations
-	if err := s.releaseStaleInPrefix(verifiedBallotReservPrefix, now, maxAge); err != nil {
-		return err
-	}
-
-	// Release stale aggregated batch reservations
-	if err := s.releaseStaleInPrefix(aggregBatchReservPrefix, now, maxAge); err != nil {
-		return err
-	}
-
-	// Release stale state transition reservations
-	if err := s.releaseStaleInPrefix(stateTransitionReservPrefix, now, maxAge); err != nil {
-		return err
+	for _, prefix := range reservationPrefixes() {
+		if err := s.releaseStaleInPrefix(prefix, now, maxAge); err != nil {
+			return err
+		}
 	}
 
 	return nil

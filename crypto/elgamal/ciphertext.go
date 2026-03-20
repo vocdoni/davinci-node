@@ -42,6 +42,9 @@ func NewCiphertext(curve ecc.Point) *Ciphertext {
 // IsZero checks if the Ciphertext is zero, meaning both C1 and C2 are the zero
 // point of the curve.
 func (z *Ciphertext) IsZero(curve ecc.Point) bool {
+	if z == nil || z.C1 == nil || z.C2 == nil {
+		return false
+	}
 	zero := curve.New()
 	return z.C1.Equal(zero) && z.C2.Equal(zero)
 }

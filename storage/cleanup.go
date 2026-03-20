@@ -180,7 +180,7 @@ func (s *Storage) cleanAllVerifiedBallots() error {
 	for processID, cleanup := range processBallots {
 		for _, key := range cleanup.keys {
 			// Delete reservation if exists
-			if err := s.deleteArtifact(verifiedBallotReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+			if err := s.deleteArtifact(reservationPrefix(verifiedBallotPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 				log.Warnw("failed to delete verified ballot reservation",
 					"key", hex.EncodeToString(key),
 					"error", err)
@@ -293,7 +293,7 @@ func (s *Storage) cleanAllAggregatedBatches() error {
 	for processID, cleanup := range processBatches {
 		for _, key := range cleanup.keys {
 			// Delete reservation if exists
-			if err := s.deleteArtifact(aggregBatchReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+			if err := s.deleteArtifact(reservationPrefix(aggregBatchPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 				log.Warnw("failed to delete aggregated batch reservation",
 					"key", hex.EncodeToString(key),
 					"error", err)
@@ -427,7 +427,7 @@ func (s *Storage) cleanAllStateTransitions() error {
 	for processID, cleanup := range processTransitions {
 		for _, key := range cleanup.keys {
 			// Delete reservation if exists
-			if err := s.deleteArtifact(stateTransitionReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+			if err := s.deleteArtifact(reservationPrefix(stateTransitionPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 				log.Warnw("failed to delete state transition reservation",
 					"key", hex.EncodeToString(key),
 					"error", err)
@@ -487,7 +487,7 @@ func (s *Storage) cleanPendingBallotsForProcess(processID types.ProcessID) error
 	// Delete ballots, their reservations, and release locks
 	for _, ballot := range ballotsToDelete {
 		// Delete reservation if exists
-		if err := s.deleteArtifact(ballotReservationPrefix, ballot.VoteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
+		if err := s.deleteArtifact(reservationPrefix(ballotPrefix), ballot.VoteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 			log.Warnw("failed to delete pending ballot reservation", "voteID", ballot.VoteID.String(), "error", err)
 		}
 
@@ -548,7 +548,7 @@ func (s *Storage) cleanVerifiedBallotsForProcess(processID types.ProcessID) erro
 	// Delete ballots, their reservations, and release locks
 	for _, item := range ballotsToDelete {
 		// Delete reservation if exists
-		if err := s.deleteArtifact(verifiedBallotReservPrefix, item.key); err != nil && !errors.Is(err, ErrNotFound) {
+		if err := s.deleteArtifact(reservationPrefix(verifiedBallotPrefix), item.key); err != nil && !errors.Is(err, ErrNotFound) {
 			log.Warnw("failed to delete verified ballot reservation", "key", hex.EncodeToString(item.key), "error", err)
 		}
 
@@ -594,7 +594,7 @@ func (s *Storage) cleanAggregatorBatchesForProcess(processID types.ProcessID) er
 	// Delete batches and their reservations
 	for _, key := range keysToDelete {
 		// Delete reservation if exists
-		if err := s.deleteArtifact(aggregBatchReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		if err := s.deleteArtifact(reservationPrefix(aggregBatchPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 			log.Warnw("failed to delete aggregator batch reservation", "key", hex.EncodeToString(key), "error", err)
 		}
 
@@ -632,7 +632,7 @@ func (s *Storage) cleanStateTransitionsForProcess(processID types.ProcessID) err
 	// Delete state transitions and their reservations
 	for _, key := range keysToDelete {
 		// Delete reservation if exists
-		if err := s.deleteArtifact(stateTransitionReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		if err := s.deleteArtifact(reservationPrefix(stateTransitionPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 			log.Warnw("failed to delete state transition reservation", "key", hex.EncodeToString(key), "error", err)
 		}
 
