@@ -45,17 +45,17 @@ func TestReleaseStaleReservations(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Set reservations directly in the database
-	err = st.setTestReservation(ballotReservationPrefix, testKey1, freshData)
+	err = st.setTestReservation(reservationPrefix(ballotPrefix), testKey1, freshData)
 	c.Assert(err, qt.IsNil)
-	err = st.setTestReservation(ballotReservationPrefix, testKey2, oldData)
+	err = st.setTestReservation(reservationPrefix(ballotPrefix), testKey2, oldData)
 	c.Assert(err, qt.IsNil)
-	err = st.setTestReservation(verifiedBallotReservPrefix, testKey3, veryOldData)
+	err = st.setTestReservation(reservationPrefix(verifiedBallotPrefix), testKey3, veryOldData)
 	c.Assert(err, qt.IsNil)
 
 	// Verify all reservations exist
-	c.Assert(st.isReserved(ballotReservationPrefix, testKey1), qt.IsTrue)
-	c.Assert(st.isReserved(ballotReservationPrefix, testKey2), qt.IsTrue)
-	c.Assert(st.isReserved(verifiedBallotReservPrefix, testKey3), qt.IsTrue)
+	c.Assert(st.isReserved(reservationPrefix(ballotPrefix), testKey1), qt.IsTrue)
+	c.Assert(st.isReserved(reservationPrefix(ballotPrefix), testKey2), qt.IsTrue)
+	c.Assert(st.isReserved(reservationPrefix(verifiedBallotPrefix), testKey3), qt.IsTrue)
 
 	// Test 2: Release stale reservations (older than 10 minutes)
 	err = st.releaseStaleReservations(10 * time.Minute)
@@ -63,11 +63,11 @@ func TestReleaseStaleReservations(t *testing.T) {
 
 	// Test 3: Verify results
 	// Fresh reservation should still exist
-	c.Assert(st.isReserved(ballotReservationPrefix, testKey1), qt.IsTrue)
+	c.Assert(st.isReserved(reservationPrefix(ballotPrefix), testKey1), qt.IsTrue)
 
 	// Old reservations should be gone
-	c.Assert(st.isReserved(ballotReservationPrefix, testKey2), qt.IsFalse)
-	c.Assert(st.isReserved(verifiedBallotReservPrefix, testKey3), qt.IsFalse)
+	c.Assert(st.isReserved(reservationPrefix(ballotPrefix), testKey2), qt.IsFalse)
+	c.Assert(st.isReserved(reservationPrefix(verifiedBallotPrefix), testKey3), qt.IsFalse)
 }
 
 func TestReleaseStaleReservationsAllPrefixes(t *testing.T) {
@@ -89,10 +89,10 @@ func TestReleaseStaleReservationsAllPrefixes(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	prefixes := [][]byte{
-		ballotReservationPrefix,
-		verifiedBallotReservPrefix,
-		aggregBatchReservPrefix,
-		stateTransitionReservPrefix,
+		reservationPrefix(ballotPrefix),
+		reservationPrefix(verifiedBallotPrefix),
+		reservationPrefix(aggregBatchPrefix),
+		reservationPrefix(stateTransitionPrefix),
 	}
 
 	// Set old reservations in all prefixes
@@ -127,16 +127,16 @@ func TestReleaseStaleReservationsInvalidData(t *testing.T) {
 	testKey := []byte("invalidkey")
 	invalidData := []byte("invalid reservation data")
 
-	err = st.setTestReservation(ballotReservationPrefix, testKey, invalidData)
+	err = st.setTestReservation(reservationPrefix(ballotPrefix), testKey, invalidData)
 	c.Assert(err, qt.IsNil)
-	c.Assert(st.isReserved(ballotReservationPrefix, testKey), qt.IsTrue)
+	c.Assert(st.isReserved(reservationPrefix(ballotPrefix), testKey), qt.IsTrue)
 
 	// Release stale reservations
 	err = st.releaseStaleReservations(10 * time.Minute)
 	c.Assert(err, qt.IsNil)
 
 	// Invalid reservation should be removed
-	c.Assert(st.isReserved(ballotReservationPrefix, testKey), qt.IsFalse)
+	c.Assert(st.isReserved(reservationPrefix(ballotPrefix), testKey), qt.IsFalse)
 }
 
 func TestRecoverClearsAllReservations(t *testing.T) {
@@ -158,10 +158,10 @@ func TestRecoverClearsAllReservations(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	prefixes := [][]byte{
-		ballotReservationPrefix,
-		verifiedBallotReservPrefix,
-		aggregBatchReservPrefix,
-		stateTransitionReservPrefix,
+		reservationPrefix(ballotPrefix),
+		reservationPrefix(verifiedBallotPrefix),
+		reservationPrefix(aggregBatchPrefix),
+		reservationPrefix(stateTransitionPrefix),
 	}
 
 	// Set reservations in all prefixes

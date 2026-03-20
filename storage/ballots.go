@@ -211,7 +211,7 @@ func (s *Storage) CountPendingBallots() int {
 	count := 0
 	if err := rd.Iterate(nil, func(k, _ []byte) bool {
 		// Skip if already reserved
-		if s.isReserved(ballotReservationPrefix, k) {
+		if s.isReserved(reservationPrefix(ballotPrefix), k) {
 			return true
 		}
 		count++
@@ -228,7 +228,7 @@ func (s *Storage) ReleasePendingBallotReservation(voteID types.VoteID) error {
 	defer s.globalLock.Unlock()
 
 	// Remove reservation
-	if err := s.deleteArtifact(ballotReservationPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(ballotPrefix), voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
@@ -243,7 +243,7 @@ func (s *Storage) MarkBallotVerified(voteID types.VoteID, vb *VerifiedBallot) er
 	defer s.globalLock.Unlock()
 
 	// Remove reservation
-	if err := s.deleteArtifact(ballotReservationPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(ballotPrefix), voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete reservation: %w", err)
 	}
 
@@ -312,7 +312,7 @@ func (s *Storage) PullVerifiedBallots(processID types.ProcessID, numFields int) 
 		}
 
 		// Skip if already reserved
-		if s.isReserved(verifiedBallotReservPrefix, k) {
+		if s.isReserved(reservationPrefix(verifiedBallotPrefix), k) {
 			return true
 		}
 
@@ -340,7 +340,7 @@ func (s *Storage) PullVerifiedBallots(processID types.ProcessID, numFields int) 
 
 	// Create reservations for all the keys we're returning
 	for i, k := range keys {
-		if err := s.setReservation(verifiedBallotReservPrefix, k); err != nil {
+		if err := s.setReservation(reservationPrefix(verifiedBallotPrefix), k); err != nil {
 			log.Warnw("failed to set reservation for verified ballot", "key", hex.EncodeToString(k), "error", err.Error())
 			// Remove this key and its corresponding ballot from the results
 			// since we couldn't reserve it
@@ -367,7 +367,7 @@ func (s *Storage) ReleaseVerifiedBallotReservations(keys [][]byte) error {
 	defer s.globalLock.Unlock()
 	// Remove reservation
 	for _, key := range keys {
-		if err := s.deleteArtifact(verifiedBallotReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+		if err := s.deleteArtifact(reservationPrefix(verifiedBallotPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 			return fmt.Errorf("delete reservation: %w", err)
 		}
 	}
@@ -388,7 +388,7 @@ func (s *Storage) CountVerifiedBallots(processID types.ProcessID) int {
 			k = append(pidBytes, k...)
 		}
 		// Skip if already reserved
-		if s.isReserved(verifiedBallotReservPrefix, k) {
+		if s.isReserved(reservationPrefix(verifiedBallotPrefix), k) {
 			return true
 		}
 		count++
@@ -581,7 +581,7 @@ func (s *Storage) nextPendingBallot() (*Ballot, types.VoteID, error) {
 	var chosenKey, chosenVal []byte
 	if err := pr.Iterate(nil, func(k, v []byte) bool {
 		// check if reserved
-		if s.isReserved(ballotReservationPrefix, k) {
+		if s.isReserved(reservationPrefix(ballotPrefix), k) {
 			return true
 		}
 		// Make a copy of the key to avoid potential issues with slice reuse
@@ -610,7 +610,7 @@ func (s *Storage) nextPendingBallot() (*Ballot, types.VoteID, error) {
 	}
 
 	// set reservation
-	if err := s.setReservation(ballotReservationPrefix, b.VoteID.Bytes()); err != nil {
+	if err := s.setReservation(reservationPrefix(ballotPrefix), b.VoteID.Bytes()); err != nil {
 		return nil, 0, ErrNoMoreElements
 	}
 
@@ -621,7 +621,7 @@ func (s *Storage) nextPendingBallot() (*Ballot, types.VoteID, error) {
 // It assumes the caller already holds the globalLock.
 func (s *Storage) removePendingBallot(processID types.ProcessID, voteID types.VoteID) error {
 	// remove reservation
-	if err := s.deleteArtifact(ballotReservationPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(ballotPrefix), voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("error deleting reservation: %w", err)
 	}
 	// remove from pending queue
@@ -646,7 +646,7 @@ func (s *Storage) removePendingBallot(processID types.ProcessID, voteID types.Vo
 // holds the globalLock.
 func (s *Storage) removeVerifiedBallot(key []byte) error {
 	// remove reservation
-	if err := s.deleteArtifact(verifiedBallotReservPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := s.deleteArtifact(reservationPrefix(verifiedBallotPrefix), key); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete verified ballot reservation: %w", err)
 	}
 	// remove from verified queue
