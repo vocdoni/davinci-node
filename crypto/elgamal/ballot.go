@@ -39,7 +39,7 @@ func NewBallot(curve ecc.Point) *Ballot {
 // Ciphertexts are valid (not nil) and the CurveType is supported.
 func (z *Ballot) Valid() bool {
 	for _, c := range z.Ciphertexts {
-		if c == nil {
+		if c == nil || c.C1 == nil || c.C2 == nil {
 			return false
 		}
 	}
@@ -93,6 +93,9 @@ func (z *Ballot) Encrypt(message [params.FieldsPerBallot]*big.Int, publicKey ecc
 // if the re-encryption fails. The re-encryption is done by adding the
 // encrypted zero ballot to the original ballot.
 func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, error) {
+	if !z.Valid() {
+		return nil, nil, fmt.Errorf("invalid ballot")
+	}
 	reencryptionK, err := poseidon.MultiPoseidon(k)
 	if err != nil {
 		return nil, nil, err
