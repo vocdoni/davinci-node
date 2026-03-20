@@ -15,20 +15,20 @@ The storage uses a key-value database with prefixed namespaces to organize diffe
 The ballot processing follows these stages:
 
 1. Pending Ballots
-  - b/  : voteID → Ballot (incoming ballots waiting to be verified)
-  - br/ : voteID → reservation timestamp (prevents concurrent processing)
+  - b/   : voteID → Ballot (incoming ballots waiting to be verified)
+  - r/b/ : voteID → reservation timestamp (prevents concurrent processing)
 
 2. Verified Ballots
-  - vb/ : processID + voteID → VerifiedBallot (ballots that passed verification)
-  - vbr/: processID + voteID → reservation timestamp
+  - vb/   : processID + voteID → VerifiedBallot (ballots that passed verification)
+  - r/vb/ : processID + voteID → reservation timestamp
 
 3. Aggregated Batches
-  - ag/ : processID + hash → AggregatorBallotBatch (groups of verified ballots)
-  - agr/: processID + hash → reservation timestamp
+  - ag/   : processID + hash → AggregatorBallotBatch (groups of verified ballots)
+  - r/ag/ : processID + hash → reservation timestamp
 
 4. State Transitions
-  - st/ : processID + hash → StateTransitionBatch (state changes ready for chain)
-  - str/: processID + hash → reservation timestamp
+  - st/   : processID + hash → StateTransitionBatch (state changes ready for chain)
+  - r/st/ : processID + hash → reservation timestamp
 
 5. Verified Results
   - vr/ : processID → VerifiedResults (final tally results with proof)
@@ -82,24 +82,21 @@ var (
 	ErrAddressProcessing   = errors.New("address is already processing a vote")
 
 	// Prefixes
-	ballotPrefix                = []byte("b/")
-	ballotReservationPrefix     = []byte("br/")
-	voteIDStatusPrefix          = []byte("vs/")
-	verifiedBallotPrefix        = []byte("vb/")
-	verifiedBallotReservPrefix  = []byte("vbr/")
-	aggregBatchPrefix           = []byte("ag/")
-	aggregBatchReservPrefix     = []byte("agr/")
-	pendingAggregBatchPrefix    = []byte("pag/")
-	stateTransitionPrefix       = []byte("st/")
-	stateTransitionReservPrefix = []byte("str/")
-	verifiedResultPrefix        = []byte("vr/")
-	encryptionKeyPrefix         = []byte("ek/")
-	processPrefix               = []byte("p/")
-	statsPrefix                 = []byte("s/")
-	metadataPrefix              = []byte("md/")
-	censusDBprefix              = []byte("cs_")
-	stateDBprefix               = []byte("st_")
-	pendingTxPrefix             = []byte("ptx/")
+	reservationPrefixRoot    = []byte("r/")
+	ballotPrefix             = []byte("b/")
+	voteIDStatusPrefix       = []byte("vs/")
+	verifiedBallotPrefix     = []byte("vb/")
+	aggregBatchPrefix        = []byte("ag/")
+	pendingAggregBatchPrefix = []byte("pag/")
+	stateTransitionPrefix    = []byte("st/")
+	verifiedResultPrefix     = []byte("vr/")
+	encryptionKeyPrefix      = []byte("ek/")
+	processPrefix            = []byte("p/")
+	statsPrefix              = []byte("s/")
+	metadataPrefix           = []byte("md/")
+	censusDBprefix           = []byte("cs_")
+	stateDBprefix            = []byte("st_")
+	pendingTxPrefix          = []byte("ptx/")
 
 	maxKeySize = 12
 )
@@ -107,6 +104,15 @@ var (
 // reservationRecord stores metadata about a reservation
 type reservationRecord struct {
 	Timestamp int64
+}
+
+func reservationBasePrefixes() [][]byte {
+	return [][]byte{
+		ballotPrefix,
+		verifiedBallotPrefix,
+		aggregBatchPrefix,
+		stateTransitionPrefix,
+	}
 }
 
 // addressInfo stores the mapping from voteID to address for lock management
@@ -173,14 +179,7 @@ func (s *Storage) recover() error {
 	}
 
 	// Clear all reservations
-	prefixes := [][]byte{
-		ballotReservationPrefix,
-		verifiedBallotReservPrefix,
-		aggregBatchReservPrefix,
-		stateTransitionReservPrefix,
-	}
-
-	for _, prefix := range prefixes {
+	for _, prefix := range reservationBasePrefixes() {
 		if err := s.cleanAllReservations(prefix); err != nil {
 			if strings.Contains(err.Error(), "pebble: closed") {
 				return fmt.Errorf("database closed")
@@ -218,31 +217,17 @@ func (s *Storage) releaseStaleReservations(maxAge time.Duration) error {
 
 	now := time.Now().Unix()
 
-	// Release stale ballot reservations
-	if err := s.releaseStaleInPrefix(ballotReservationPrefix, now, maxAge); err != nil {
-		return err
-	}
-
-	// Release stale verified ballot reservations
-	if err := s.releaseStaleInPrefix(verifiedBallotReservPrefix, now, maxAge); err != nil {
-		return err
-	}
-
-	// Release stale aggregated batch reservations
-	if err := s.releaseStaleInPrefix(aggregBatchReservPrefix, now, maxAge); err != nil {
-		return err
-	}
-
-	// Release stale state transition reservations
-	if err := s.releaseStaleInPrefix(stateTransitionReservPrefix, now, maxAge); err != nil {
-		return err
+	for _, prefix := range reservationBasePrefixes() {
+		if err := s.releaseStaleInPrefix(prefix, now, maxAge); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
 func (s *Storage) releaseStaleInPrefix(prefix []byte, now int64, maxAge time.Duration) error {
-	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
+	wTx := s.reservationDB(prefix).WriteTx()
 	defer wTx.Discard()
 	var staleKeys [][]byte
 	if err := wTx.Iterate(nil, func(k, v []byte) bool {
@@ -286,7 +271,7 @@ func (s *Storage) setReservation(prefix, key []byte) error {
 	if err != nil {
 		return err
 	}
-	wTx := prefixeddb.NewPrefixedDatabase(s.db, prefix).WriteTx()
+	wTx := s.reservationDB(prefix).WriteTx()
 	defer wTx.Discard()
 	if _, err := wTx.Get(key); err == nil {
 		return ErrKeyAlreadyExists
@@ -298,8 +283,31 @@ func (s *Storage) setReservation(prefix, key []byte) error {
 }
 
 func (s *Storage) isReserved(prefix, key []byte) bool {
-	_, err := prefixeddb.NewPrefixedReader(s.db, prefix).Get(key)
+	_, err := s.reservationReader(prefix).Get(key)
 	return err == nil
+}
+
+func (s *Storage) deleteReservation(prefix, key []byte) error {
+	wTx := s.reservationDB(prefix).WriteTx()
+	defer wTx.Discard()
+	if err := wTx.Delete(key); err != nil {
+		return err
+	}
+	return wTx.Commit()
+}
+
+func (s *Storage) reservationDB(prefix []byte) db.Database {
+	return prefixeddb.NewPrefixedDatabase(
+		prefixeddb.NewPrefixedDatabase(s.db, reservationPrefixRoot),
+		prefix,
+	)
+}
+
+func (s *Storage) reservationReader(prefix []byte) db.Reader {
+	return prefixeddb.NewPrefixedReader(
+		prefixeddb.NewPrefixedReader(s.db, reservationPrefixRoot),
+		prefix,
+	)
 }
 
 func (s *Storage) deleteArtifact(prefix, key []byte) error {

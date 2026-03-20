@@ -151,7 +151,7 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(len(keys1), qt.Equals, 1, qt.Commentf("should return exactly 1 key"))
 
 	// Verify reservation was created
-	c.Assert(st.isReserved(verifiedBallotReservPrefix, keys1[0]), qt.IsTrue, qt.Commentf("ballot should be reserved"))
+	c.Assert(st.isReserved(verifiedBallotPrefix, keys1[0]), qt.IsTrue, qt.Commentf("ballot should be reserved"))
 
 	// Mark first ballot as done
 	c.Assert(st.MarkVerifiedBallotsDone(keys1[0]), qt.IsNil)
@@ -163,7 +163,7 @@ func TestBallotQueue(t *testing.T) {
 	c.Assert(len(keys3), qt.Equals, 1, qt.Commentf("should return exactly 1 key"))
 
 	// Verify the second ballot is now reserved
-	c.Assert(st.isReserved(verifiedBallotReservPrefix, keys3[0]), qt.IsTrue, qt.Commentf("second ballot should be reserved"))
+	c.Assert(st.isReserved(verifiedBallotPrefix, keys3[0]), qt.IsTrue, qt.Commentf("second ballot should be reserved"))
 
 	// Test numFields = 0 should return no ballots
 	vbs0, keys0, err := st.PullVerifiedBallots(processID, 0)

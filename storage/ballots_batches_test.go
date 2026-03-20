@@ -438,7 +438,7 @@ func TestMarkStateTransitionOutdatedWithCorruptedData(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Create a reservation for the corrupted key
-	err = stg.setReservation(stateTransitionReservPrefix, corruptedKey)
+	err = stg.setReservation(stateTransitionPrefix, corruptedKey)
 	c.Assert(err, qt.IsNil)
 
 	// Try to mark the corrupted batch as outdated - should handle gracefully
@@ -451,6 +451,6 @@ func TestMarkStateTransitionOutdatedWithCorruptedData(t *testing.T) {
 	c.Assert(err, qt.Equals, ErrNotFound, qt.Commentf("corrupted batch should be removed"))
 
 	// Verify reservation is cleaned up
-	isReserved := stg.isReserved(stateTransitionReservPrefix, corruptedKey)
+	isReserved := stg.isReserved(stateTransitionPrefix, corruptedKey)
 	c.Assert(isReserved, qt.IsFalse, qt.Commentf("reservation should be removed"))
 }
