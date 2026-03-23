@@ -62,7 +62,7 @@ func NewPinataMetadataProvider(config PinataMetadataProviderConfig) *PinataMetad
 // provided.
 func (p *PinataMetadataProvider) SetMetadata(ctx context.Context, key types.HexBytes, metadata *types.Metadata) error {
 	// Encode the metadata
-	_, data, err := CID(metadata)
+	data, err := json.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("encode metadata: %w", err)
 	}

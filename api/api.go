@@ -75,11 +75,6 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 		return nil, fmt.Errorf("missing storage instance")
 	}
 
-	// Initialize metadata
-	keyMetadataProvider := func(data any) (types.HexBytes, error) {
-		key, _, err := metadata.CID(data)
-		return key, err
-	}
 	// By default, use the local metadata provider
 	metadataProviders := []metadata.MetadataProvider{
 		metadata.NewLocalMetadata(conf.Storage.DB()),
@@ -93,7 +88,7 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	// Initialize the API
 	a := &API{
 		storage:                    conf.Storage,
-		metadata:                   metadata.New(keyMetadataProvider, metadataProviders...),
+		metadata:                   metadata.New(metadata.CID, metadataProviders...),
 		network:                    conf.Network,
 		web3Config:                 conf.Web3Config,
 		workersJobTimeout:          conf.WorkerJobTimeout,

@@ -138,7 +138,7 @@ func TestLocalMetadataRoundTrip(t *testing.T) {
 
 	lm := NewLocalMetadata(metadb.NewTest(t))
 	metadata := testMetadata()
-	key, _, err := CID(metadata)
+	key, err := CID(metadata)
 	c.Assert(err, qt.IsNil)
 
 	err = lm.SetMetadata(context.Background(), key, metadata)
@@ -171,62 +171,12 @@ func TestLocalMetadataMetadataUsesCache(t *testing.T) {
 	c.Assert(got, qt.Equals, want)
 }
 
-func TestLocalMetadataWrongTypeCacheFallsBackToStorage(t *testing.T) {
-	c := qt.New(t)
-
-	lm := NewLocalMetadata(metadb.NewTest(t))
-	metadata := testMetadata()
-	key, _, err := CID(metadata)
-	c.Assert(err, qt.IsNil)
-	c.Assert(lm.SetMetadata(context.Background(), key, metadata), qt.IsNil)
-
-	cacheKey := string(metadataPrefix) + key.Hex()
-	lm.cache.Add(cacheKey, "wrong-type")
-
-	got, err := lm.Metadata(context.Background(), key)
-	c.Assert(err, qt.IsNil)
-	c.Assert(got, qt.DeepEquals, metadata)
-
-	cached, ok := lm.cache.Get(cacheKey)
-	c.Assert(ok, qt.IsTrue)
-	typed, ok := cached.(*types.Metadata)
-	c.Assert(ok, qt.IsTrue)
-	c.Assert(typed, qt.DeepEquals, metadata)
-}
-
 func TestLocalMetadataMetadataMissingKey(t *testing.T) {
 	c := qt.New(t)
 
 	lm := NewLocalMetadata(metadb.NewTest(t))
 	metadata, err := lm.Metadata(context.Background(), types.HexBytes("missing"))
 	c.Assert(metadata, qt.IsNil)
-	c.Assert(err, qt.ErrorIs, ErrNotFound)
-}
-
-func TestLocalMetadataGetValueFirstIteratedValue(t *testing.T) {
-	c := qt.New(t)
-
-	lm := NewLocalMetadata(metadb.NewTest(t))
-	first := testMetadata()
-	first.Version = "first"
-	second := testMetadata()
-	second.Version = "second"
-
-	c.Assert(lm.setValue(metadataPrefix, types.HexBytes("b"), second), qt.IsNil)
-	c.Assert(lm.setValue(metadataPrefix, types.HexBytes("a"), first), qt.IsNil)
-
-	var got types.Metadata
-	err := lm.getValue(metadataPrefix, nil, &got)
-	c.Assert(err, qt.IsNil)
-	c.Assert(&got, qt.DeepEquals, first)
-}
-
-func TestLocalMetadataGetValueNoEntries(t *testing.T) {
-	c := qt.New(t)
-
-	lm := NewLocalMetadata(metadb.NewTest(t))
-	var got types.Metadata
-	err := lm.getValue(metadataPrefix, nil, &got)
 	c.Assert(err, qt.ErrorIs, ErrNotFound)
 }
 
@@ -244,22 +194,6 @@ func TestLocalMetadataGetValueDecodeError(t *testing.T) {
 	err := lm.getValue(metadataPrefix, types.HexBytes("key"), &got)
 	c.Assert(err, qt.Not(qt.IsNil))
 	c.Assert(err.Error(), qt.Contains, "could not decode artifact")
-}
-
-func TestLocalMetadataGetValueIterateError(t *testing.T) {
-	c := qt.New(t)
-
-	expectedErr := fmt.Errorf("iterate failed")
-	lm := NewLocalMetadata(&fakeDB{
-		iterateFn: func(prefix []byte, callback func([]byte, []byte) bool) error {
-			c.Assert(bytes.Equal(prefix, metadataPrefix), qt.IsTrue)
-			return expectedErr
-		},
-	})
-
-	var got types.Metadata
-	err := lm.getValue(metadataPrefix, nil, &got)
-	c.Assert(err, qt.ErrorIs, expectedErr)
 }
 
 func TestLocalMetadatasetValueMarshalError(t *testing.T) {

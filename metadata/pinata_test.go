@@ -109,7 +109,9 @@ func TestPinataMetadataProviderSetMetadata(t *testing.T) {
 	c := qt.New(t)
 
 	metadata := testMetadata()
-	key, expectedJSON, err := CID(metadata)
+	key, err := CID(metadata)
+	c.Assert(err, qt.IsNil)
+	expectedJSON, err := json.Marshal(metadata)
 	c.Assert(err, qt.IsNil)
 
 	c.Run("success", func(c *qt.C) {
@@ -246,7 +248,7 @@ func TestPinataMetadataProviderSetMetadata(t *testing.T) {
 
 	c.Run("cid mismatch", func(c *qt.C) {
 		provider := newTestPinataProvider()
-		otherKey, _, err := CID(&types.Metadata{Version: "different"})
+		otherKey, err := CID(&types.Metadata{Version: "different"})
 		c.Assert(err, qt.IsNil)
 		respBody := fmt.Sprintf(`{"data":{"cid":"%s"}}`, mustCIDString(c, otherKey))
 		provider.httpClient = newTestHTTPClient(func(*http.Request) (*http.Response, error) {
@@ -267,7 +269,7 @@ func TestPinataMetadataProviderMetadata(t *testing.T) {
 	c := qt.New(t)
 
 	metadata := testMetadata()
-	key, _, err := CID(metadata)
+	key, err := CID(metadata)
 	c.Assert(err, qt.IsNil)
 	cidString := mustCIDString(c, key)
 

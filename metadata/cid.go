@@ -43,10 +43,10 @@ func CIDStringToHexBytes(s string) types.HexBytes {
 // CID calculates the IPFS Cid hash (v1) from a bytes buffer, using parameters:
 //   - Codec: DagProtobuf
 //   - MhType: SHA2_256
-func CID(v any) (types.HexBytes, []byte, error) {
+func CID(v any) (types.HexBytes, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
-		return nil, nil, fmt.Errorf("marshal json: %w", err)
+		return nil, fmt.Errorf("marshal json: %w", err)
 	}
 
 	bstore := blockstore.NewBlockstore(
@@ -58,7 +58,7 @@ func CID(v any) (types.HexBytes, []byte, error) {
 
 	chnk, err := chunk.FromString(bytes.NewReader(data), chunkerTypeSize)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create chunker: %w", err)
+		return nil, fmt.Errorf("create chunker: %w", err)
 	}
 
 	params := ihelper.DagBuilderParams{
@@ -74,13 +74,13 @@ func CID(v any) (types.HexBytes, []byte, error) {
 
 	dbh, err := params.New(chnk)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create dag builder: %w", err)
+		return nil, fmt.Errorf("create dag builder: %w", err)
 	}
 
 	nd, err := balanced.Layout(dbh)
 	if err != nil {
-		return nil, nil, fmt.Errorf("build balanced layout: %w", err)
+		return nil, fmt.Errorf("build balanced layout: %w", err)
 	}
 
-	return CIDToHexBytes(nd.Cid()), data, nil
+	return CIDToHexBytes(nd.Cid()), nil
 }
