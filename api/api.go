@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -27,7 +28,10 @@ import (
 const (
 	maxRequestBodyLog = 512      // Maximum length of request body to log
 	webappdir         = "webapp" // Directory where the web application files are located
+	appRouteRoot      = "/app"
 )
+
+var webappFileServer = http.StripPrefix(appRouteRoot+"/", http.FileServer(http.FS(os.DirFS(webappdir))))
 
 // APIConfig type represents the configuration for the API HTTP server.
 // It includes the host, port and optionally an existing storage instance.
@@ -205,14 +209,46 @@ func (a *API) initRouter() {
 
 // staticHandler serves static files from the webapp directory.
 func staticHandler(w http.ResponseWriter, r *http.Request) {
-	var filePath string
-	if r.URL.Path == "/app" || r.URL.Path == "/app/" {
-		filePath = path.Join(webappdir, "index.html")
-	} else {
-		filePath = path.Join(webappdir, strings.TrimPrefix(path.Clean(r.URL.Path), "/app"))
+	appRoutePrefix := appRouteRoot + "/"
+
+	if r.URL.Path == appRouteRoot || r.URL.Path == appRoutePrefix {
+		http.ServeFile(w, r, path.Join(webappdir, "index.html"))
+		return
 	}
-	// Serve the file using http.ServeFile
-	http.ServeFile(w, r, filePath)
+	if !strings.HasPrefix(r.URL.Path, appRoutePrefix) {
+		http.NotFound(w, r)
+		return
+	}
+	requestPath := strings.TrimPrefix(r.URL.Path, appRoutePrefix)
+	staticPath := path.Clean(requestPath)
+	if staticPath == "." {
+		if r.URL.Path != appRoutePrefix {
+			redirectURL := *r.URL
+			redirectURL.Path = appRoutePrefix
+			redirectURL.RawPath = ""
+			http.Redirect(w, r, redirectURL.String(), http.StatusMovedPermanently)
+			return
+		}
+		http.ServeFile(w, r, path.Join(webappdir, "index.html"))
+		return
+	}
+	if staticPath == ".." || strings.HasPrefix(staticPath, "../") {
+		http.NotFound(w, r)
+		return
+	}
+	canonicalPath := appRoutePrefix + staticPath
+	if strings.HasSuffix(requestPath, "/") {
+		canonicalPath += "/"
+	}
+	if r.URL.Path != canonicalPath {
+		redirectURL := *r.URL
+		redirectURL.Path = canonicalPath
+		redirectURL.RawPath = ""
+		http.Redirect(w, r, redirectURL.String(), http.StatusMovedPermanently)
+		return
+	}
+
+	webappFileServer.ServeHTTP(w, r)
 }
 
 // ProcessIDVersion returns the expected ProcessID version for the current
