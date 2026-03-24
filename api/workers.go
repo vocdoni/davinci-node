@@ -340,8 +340,19 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	verifiedBallot := storage.VerifiedBallot{
+		VoteID:          ballot.VoteID,
+		ProcessID:       ballot.ProcessID,
+		VoterWeight:     ballot.VoterWeight,
+		EncryptedBallot: ballot.EncryptedBallot,
+		Address:         ballot.Address,
+		InputsHash:      ballot.BallotInputsHash,
+		Proof:           workerVerifiedBallot.Proof,
+		CensusProof:     ballot.CensusProof,
+	}
+
 	// Mark ballot as done
-	if err := a.storage.MarkBallotVerified(workerVerifiedBallot.VoteID, &workerVerifiedBallot); err != nil {
+	if err := a.storage.MarkBallotVerified(ballot.VoteID, &verifiedBallot); err != nil {
 		log.Warnw("failed to mark ballot as done",
 			"error", err.Error(),
 			"voteID", ballot.VoteID.String())
@@ -369,7 +380,7 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	// Prepare response
 	response := WorkerJobResponse{
-		VoteID:       workerVerifiedBallot.VoteID,
+		VoteID:       ballot.VoteID,
 		Address:      job.Address,
 		SuccessCount: stats.SuccessCount,
 		FailedCount:  stats.FailedCount,
