@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"math/big"
 	"net/http"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
 )
+
+const maxMetadataBodyBytes = 1 << 20 // 1MiB
 
 // processEncryptionKeys creates a new encryption key
 // POST /processes/keys
@@ -83,10 +86,23 @@ func (a *API) processList(w http.ResponseWriter, r *http.Request) {
 // setMetadata sets the metadata for a voting process
 // POST /metadata
 func (a *API) setMetadata(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxMetadataBodyBytes)
+	defer func() { _ = r.Body.Close() }()
+
 	// Decode the metadata from the request body
 	var metadata types.Metadata
-	if err := json.NewDecoder(r.Body).Decode(&metadata); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&metadata); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			ErrRequestBodyTooLarge.Withf("metadata payload exceeds %d bytes", maxMetadataBodyBytes).Write(w)
+			return
+		}
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		ErrMalformedBody.With("request body must contain a single JSON object").Write(w)
 		return
 	}
 
