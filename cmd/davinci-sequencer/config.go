@@ -41,6 +41,7 @@ type Config struct {
 	Batch        BatchConfig
 	Log          LogConfig
 	Worker       WorkerConfig
+	Metadata     MetadataConfig
 	Datadir      string
 	ForceCleanup bool `mapstructure:"forceCleanup"` // Force cleanup of all pending items at startup
 }
@@ -86,6 +87,14 @@ type WorkerConfig struct {
 	SequencerURL string        `mapstructure:"sequencerURL"` // URL seed for master worker endpoint
 }
 
+// MetadataConfig holds metadata configuration
+type MetadataConfig struct {
+	PinataHostnameURL  string `mapstructure:"pinataHostnameURL"`  // Pinata hostname URL
+	PinataHostnameJWT  string `mapstructure:"pinataHostnameJWT"`  // Pinata hostname JWT
+	PinataGatewayURL   string `mapstructure:"pinataGatewayURL"`   // Pinata gateway URL
+	PinataGatewayToken string `mapstructure:"pinataGatewayToken"` // Pinata gateway token
+}
+
 // loadConfig loads configuration from flags, environment variables, and defaults
 func loadConfig() (*Config, error) {
 	cfg := &Config{}
@@ -124,6 +133,11 @@ func loadConfig() (*Config, error) {
 	flag.Duration("api.workersBanTimeout", defaultWorkersBanTimeout, "timeout for worker ban in seconds")
 	flag.Duration("api.workersAuthtokenExpiration", defaultWorkersAuthtokenExpiration, "timeout for worker authentication token expiration")
 	flag.Int("api.workersFailuresToGetBanned", defaultWorkerBanFailures, "number of failed jobs to get banned")
+	// metadata config
+	flag.String("metadata.pinataHostnameURL", "https://uploads.pinata.cloud/v3/files", "pinata hostname URL")
+	flag.String("metadata.pinataHostnameJWT", "", "pinata hostname JWT")
+	flag.String("metadata.pinataGatewayURL", "https://gateway.pinata.cloud/ipfs", "pinata gateway URL")
+	flag.String("metadata.pinataGatewayToken", "", "pinata gateway token")
 
 	// Configure usage information
 	flag.Usage = func() {

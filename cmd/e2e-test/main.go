@@ -24,6 +24,7 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/metadata"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/spec"
@@ -331,7 +332,7 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 		ResultsZKVerifier:            c[npbindings.ResultsVerifierGroth16Contract],
 		StateTransitionZKVerifier:    c[npbindings.StateTransitionVerifierGroth16Contract],
 	}
-	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, network, web3Conf, false)
+	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, network, web3Conf, metadata.PinataMetadataProviderConfig{}, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}

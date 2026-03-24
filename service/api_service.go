@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/api"
 	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/log"
+	"github.com/vocdoni/davinci-node/metadata"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/workers"
 )
@@ -23,6 +24,7 @@ type APIService struct {
 	port                       int
 	network                    string
 	web3Config                 config.DavinciWeb3Config
+	pinataConfig               metadata.PinataMetadataProviderConfig
 	sequencerWorkersSeed       string
 	workersAuthtokenExpiration time.Duration
 	workersJobTimeout          time.Duration
@@ -30,17 +32,26 @@ type APIService struct {
 }
 
 // NewAPI creates a new APIService instance.
-func NewAPI(storage *storage.Storage, host string, port int, network string, web3Config config.DavinciWeb3Config, disableLogging bool) *APIService {
+func NewAPI(
+	storage *storage.Storage,
+	host string,
+	port int,
+	network string,
+	web3Config config.DavinciWeb3Config,
+	pinataConfig metadata.PinataMetadataProviderConfig,
+	disableLogging bool,
+) *APIService {
 	if disableLogging {
 		api.DisabledLogging = disableLogging
 		log.Debugw("API logging is disabled")
 	}
 	return &APIService{
-		storage:    storage,
-		host:       host,
-		port:       port,
-		network:    network,
-		web3Config: web3Config,
+		storage:      storage,
+		host:         host,
+		port:         port,
+		network:      network,
+		web3Config:   web3Config,
+		pinataConfig: pinataConfig,
 	}
 }
 
@@ -79,6 +90,7 @@ func (as *APIService) Start(ctx context.Context) error {
 		WorkersAuthtokenExpiration: as.workersAuthtokenExpiration,
 		WorkerJobTimeout:           as.workersJobTimeout,
 		WorkerBanRules:             as.workersBanRules,
+		PinataConfig:               as.pinataConfig,
 	})
 	if err != nil {
 		as.cancel = nil
