@@ -21,14 +21,15 @@ func TestGenerateVerifyProof(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	t.Run("invalid inputs", func(t *testing.T) {
-		_, err = csp.GenerateProof(types.ProcessID{}, userAddress, userWeight)
-		c.Assert(err, qt.IsNotNil)
-
-		_, err = csp.GenerateProof(processID, common.Address{}, userWeight)
-		c.Assert(err, qt.IsNotNil)
-
-		_, err = csp.GenerateProof(processID, userAddress, nil)
-		c.Assert(err, qt.IsNotNil)
+		c.Assert(func() {
+			_, _ = csp.GenerateProof(types.ProcessID{}, userAddress, userWeight)
+		}, qt.PanicMatches, "invalid process ID")
+		c.Assert(func() {
+			_, _ = csp.GenerateProof(processID, common.Address{}, userWeight)
+		}, qt.PanicMatches, "invalid address")
+		c.Assert(func() {
+			_, _ = csp.GenerateProof(processID, userAddress, nil)
+		}, qt.PanicMatches, "invalid weight")
 	})
 
 	t.Run("valid proof generation and verification", func(t *testing.T) {

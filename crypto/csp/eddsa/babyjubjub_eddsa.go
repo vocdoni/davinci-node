@@ -105,7 +105,7 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 	weight *types.BigInt,
 ) (*types.CensusProof, error) {
 	voterIndex := c.indexFn(processID, address, weight)
-	// Sign the process ID, the address and the weight
+	// Sign the voterIndex, the process ID, the address and the weight
 	signature, err := c.sign(voterIndex, processID, address, weight)
 	if err != nil {
 		return nil, err
@@ -249,8 +249,18 @@ func (c *BabyJubJubEdDSA) sign(
 // DefaultCSPIndexFn is the default function to compute the VoterIndex for
 // a given process ID, address and weight. It uses the poseidon hash function
 // to compute a deterministic index based on the inputs. It ensures that the
-// result is in the VoterIndex range [0, params.VoterIndexMax].
+// result is in the VoterIndex range [0, params.VoterIndexMax).
 func DefaultCSPIndexFn(processID types.ProcessID, address common.Address, weight *types.BigInt) uint64 {
+	if !processID.IsValid() {
+		panic("invalid process ID")
+	}
+	if address == (common.Address{}) {
+		panic("invalid address")
+	}
+	if weight == nil || weight.LessThanOrEqual(new(types.BigInt).SetInt(0)) ||
+		!weight.IsInField(bn254.ID.ScalarField()) {
+		panic("invalid weight")
+	}
 	bigHash, err := DefaultHashFn.BigIntsSum([]*big.Int{
 		processID.BigInt().MathBigInt(),
 		address.Big(),
