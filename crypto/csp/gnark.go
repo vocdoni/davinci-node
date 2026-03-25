@@ -45,7 +45,7 @@ func (proof *CSPProof) IsValid(
 		return 0
 	}
 	// Recompute the message hash with the process ID and address
-	msg, err := signatureMessage(hashFn, processID, address, weight)
+	msg, err := signatureMessage(hashFn, proof.VoterIndex, processID, address, weight)
 	if err != nil {
 		circuits.FrontendError(api, "failed to compose signature message", err)
 		return 0
@@ -87,7 +87,7 @@ func (proof *CSPProof) isPubKeyValid(
 // weight, using the hash function provided.
 func signatureMessage(
 	hashFn hash.Hash[frontend.Variable],
-	processID, address, weight frontend.Variable,
+	voterIndex, processID, address, weight frontend.Variable,
 ) (frontend.Variable, error) {
 	hashFn.Write(processID, address, weight)
 	if !hashFn.WriteSucceeded() {

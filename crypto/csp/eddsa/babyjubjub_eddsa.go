@@ -104,8 +104,9 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 	address common.Address,
 	weight *types.BigInt,
 ) (*types.CensusProof, error) {
+	voterIndex := c.indexFn(processID, address, weight)
 	// Sign the process ID, the address and the weight
-	signature, err := c.sign(processID, address, weight)
+	signature, err := c.sign(voterIndex, processID, address, weight)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +120,6 @@ func (c *BabyJubJubEdDSA) GenerateProof(
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling public key: %w", err)
 	}
-	voterIndex := c.indexFn(processID, address, weight)
 	return &types.CensusProof{
 		CensusOrigin: c.CensusOrigin(),
 		Root:         censusRoot,
@@ -154,7 +154,7 @@ func (c *BabyJubJubEdDSA) VerifyProof(proof *types.CensusProof) error {
 		return fmt.Errorf("error getting public key from census proof: %w", err)
 	}
 	// Recompute the signature message
-	message, err := c.signatureMessage(proof.ProcessID, proof.Address, proof.Weight)
+	message, err := c.signatureMessage(proof.VoterIndex, proof.ProcessID, proof.Address, proof.Weight)
 	if err != nil {
 		return fmt.Errorf("error composing signature message: %w", err)
 	}
@@ -188,8 +188,10 @@ func (c *BabyJubJubEdDSA) root() (types.HexBytes, error) {
 }
 
 // signatureMessage method creates a message suitable for signing using the
-// current hash function to hash the process ID, the address and the weight.
+// current hash function to hash the voterIndex, process ID, the address and
+// the weight.
 func (c *BabyJubJubEdDSA) signatureMessage(
+	voterIndex uint64,
 	processID types.ProcessID,
 	address types.HexBytes,
 	weight *types.BigInt,
@@ -211,6 +213,7 @@ func (c *BabyJubJubEdDSA) signatureMessage(
 	// using the poseidon hash function. Ensure that the process ID and address
 	// are converted to field elements for the curve.
 	message, err := c.hashFn.BigIntsSum([]*big.Int{
+		new(big.Int).SetUint64(voterIndex),
 		processID.BigInt().MathBigInt(),
 		address.BigInt().MathBigInt(),
 		weight.MathBigInt(),
@@ -224,11 +227,12 @@ func (c *BabyJubJubEdDSA) signatureMessage(
 // sign method signs a message with the current EdDSA private key. It returns
 // the compressed signature of the message.
 func (c *BabyJubJubEdDSA) sign(
+	voterIndex uint64,
 	processID types.ProcessID,
 	address common.Address,
 	weight *types.BigInt,
 ) (CompressedBytes, error) {
-	message, err := c.signatureMessage(processID, address.Bytes(), weight)
+	message, err := c.signatureMessage(voterIndex, processID, address.Bytes(), weight)
 	if err != nil {
 		return nil, fmt.Errorf("error composing signature message: %w", err)
 	}
