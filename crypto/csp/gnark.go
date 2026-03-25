@@ -26,8 +26,9 @@ type CSPProof struct {
 
 // IsValid method checks if the signature is valid or not using the gnark API.
 // It initializes the poseidon hash function, checks if the public key is valid,
-// recomputes the message hash with the process ID and address, and finally
-// checks if the signature is valid using the eddsa verifier with poseidon hash.
+// recomputes the message hash with the voter index, the process ID, the address
+// and the weight, and finally checks if the signature is valid using the eddsa
+// verifier with poseidon hash.
 func (proof *CSPProof) IsValid(
 	api frontend.API,
 	censusRoot, processID, address, weight frontend.Variable,
@@ -44,8 +45,9 @@ func (proof *CSPProof) IsValid(
 		circuits.FrontendError(api, "failed to verify census root", err)
 		return 0
 	}
-	// Recompute the message hash with the process ID and address
-	msg, err := signatureMessage(hashFn, processID, address, weight)
+	// Recompute the message hash with the voter index, the process ID, the
+	// address and the weight
+	msg, err := signatureMessage(hashFn, proof.VoterIndex, processID, address, weight)
 	if err != nil {
 		circuits.FrontendError(api, "failed to compose signature message", err)
 		return 0
@@ -83,13 +85,13 @@ func (proof *CSPProof) isPubKeyValid(
 }
 
 // signatureMessage composes the message to be signed by the CSP. The message
-// is the hash of the concatenation of the process ID, the address and the
-// weight, using the hash function provided.
+// is the hash of the concatenation of the voter index, the process ID, the
+// address and the weight, using the hash function provided.
 func signatureMessage(
 	hashFn hash.Hash[frontend.Variable],
-	processID, address, weight frontend.Variable,
+	voterIndex, processID, address, weight frontend.Variable,
 ) (frontend.Variable, error) {
-	hashFn.Write(processID, address, weight)
+	hashFn.Write(voterIndex, processID, address, weight)
 	if !hashFn.WriteSucceeded() {
 		return 0, fmt.Errorf("error writing hash inputs")
 	}
