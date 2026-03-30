@@ -7,11 +7,14 @@ import (
 	"time"
 
 	"github.com/consensys/gnark/backend"
+	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/logger"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
 	"github.com/rs/zerolog"
 	"github.com/vocdoni/arbo/memdb"
+	"github.com/vocdoni/davinci-node/circuits"
+	"github.com/vocdoni/davinci-node/circuits/merkleproof"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
@@ -24,6 +27,31 @@ import (
 )
 
 const nVotes = 10
+
+type encryptionKeyBindingCircuit struct {
+	StateRoot                  frontend.Variable `gnark:",public"`
+	AddAccumulatorsEncrypted   circuits.Ballot
+	SubAccumulatorsEncrypted   circuits.Ballot
+	AddAccumulatorsMerkleProof merkleproof.MerkleProof
+	SubAccumulatorsMerkleProof merkleproof.MerkleProof
+	EncryptionKeyMerkleProof   merkleproof.MerkleProof
+	EncryptionPublicKey        circuits.EncryptionKey[frontend.Variable]
+}
+
+func (c *encryptionKeyBindingCircuit) Define(api frontend.API) error {
+	rc := ResultsVerifierCircuit{
+		StateRoot:                  c.StateRoot,
+		AddAccumulatorsEncrypted:   c.AddAccumulatorsEncrypted,
+		SubAccumulatorsEncrypted:   c.SubAccumulatorsEncrypted,
+		AddAccumulatorsMerkleProof: c.AddAccumulatorsMerkleProof,
+		SubAccumulatorsMerkleProof: c.SubAccumulatorsMerkleProof,
+		EncryptionKeyMerkleProof:   c.EncryptionKeyMerkleProof,
+		EncryptionPublicKey:        c.EncryptionPublicKey,
+	}
+	rc.VerifyMerkleProofs(api)
+	rc.VerifyMerkleProofLeaves(api)
+	return nil
+}
 
 func TestResultsVerifierCircuit(t *testing.T) {
 	c := qt.New(t)
@@ -117,4 +145,97 @@ func TestResultsVerifierCircuit(t *testing.T) {
 		test.WithBackends(backend.GROTH16),
 	)
 	log.DebugTime("results proving", startTime)
+}
+
+func TestResultsVerifierCircuitBindsEncryptionKeyToMerkleLeaf(t *testing.T) {
+	c := qt.New(t)
+
+	processID := testutil.RandomProcessID()
+	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
+	ballotMode := testutil.BallotMode()
+	packedBallotMode, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
+
+	pubKey, privKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
+	c.Assert(err, qt.IsNil)
+
+	st, err := state.New(memdb.New(), processID)
+	c.Assert(err, qt.IsNil)
+	err = st.Initialize(censusOrigin.BigInt().MathBigInt(), packedBallotMode, types.EncryptionKeyFromPoint(pubKey))
+	c.Assert(err, qt.IsNil)
+
+	err = st.AddVotesBatch(statetest.NewVotesForTest(pubKey, nVotes, 100))
+	c.Assert(err, qt.IsNil)
+
+	encryptedAddAccumulator, addOk := st.ResultsAdd()
+	c.Assert(addOk, qt.IsTrue)
+	encryptedSubAccumulator, subOk := st.ResultsSub()
+	c.Assert(subOk, qt.IsTrue)
+
+	maxValue := ballotMode.MaxValue * 1000
+	addAccumulator := [params.FieldsPerBallot]*big.Int{}
+	addCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	addDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
+	for i, ct := range encryptedAddAccumulator.Ciphertexts {
+		addCiphertexts[i] = *ct
+		_, result, err := elgamal.Decrypt(pubKey, privKey, ct.C1, ct.C2, maxValue)
+		c.Assert(err, qt.IsNil)
+		addAccumulator[i] = result
+		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
+		c.Assert(err, qt.IsNil)
+	}
+
+	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
+	subAccumulator := [params.FieldsPerBallot]*big.Int{}
+	subCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	subDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
+	for i, ct := range encryptedSubAccumulator.Ciphertexts {
+		subCiphertexts[i] = *ct
+		_, result, err := elgamal.Decrypt(pubKey, privKey, ct.C1, ct.C2, maxValue)
+		c.Assert(err, qt.IsNil)
+		subAccumulator[i] = result
+		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
+		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
+		c.Assert(err, qt.IsNil)
+	}
+
+	assignment, err := GenerateAssignment(
+		st,
+		resultsAccumulator,
+		addAccumulator,
+		subAccumulator,
+		addCiphertexts,
+		subCiphertexts,
+		addDecryptionProofs,
+		subDecryptionProofs,
+	)
+	c.Assert(err, qt.IsNil)
+
+	valid := &encryptionKeyBindingCircuit{
+		StateRoot:                  assignment.StateRoot,
+		AddAccumulatorsEncrypted:   assignment.AddAccumulatorsEncrypted,
+		SubAccumulatorsEncrypted:   assignment.SubAccumulatorsEncrypted,
+		AddAccumulatorsMerkleProof: assignment.AddAccumulatorsMerkleProof,
+		SubAccumulatorsMerkleProof: assignment.SubAccumulatorsMerkleProof,
+		EncryptionKeyMerkleProof:   assignment.EncryptionKeyMerkleProof,
+		EncryptionPublicKey:        assignment.EncryptionPublicKey,
+	}
+
+	otherPubKey, _, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
+	c.Assert(err, qt.IsNil)
+	otherX, otherY := otherPubKey.Point()
+	invalid := *valid
+	invalid.EncryptionPublicKey.PubKey = [2]frontend.Variable{
+		otherX,
+		otherY,
+	}
+
+	assert := test.NewAssert(t)
+	assert.CheckCircuit(
+		&encryptionKeyBindingCircuit{},
+		test.WithValidAssignment(valid),
+		test.WithInvalidAssignment(&invalid),
+		test.WithCurves(params.ResultsVerifierCurve),
+		test.WithBackends(backend.GROTH16),
+	)
 }

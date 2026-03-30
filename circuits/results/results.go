@@ -34,10 +34,10 @@ type ResultsVerifierCircuit struct {
 
 func (c *ResultsVerifierCircuit) Define(api frontend.API) error {
 	c.forceCommitment(api)
-	// Verify that the accumulators values matches with the proofs values
-	c.VerifyAccumulatorsHashes(api)
 	// Verify results add, results sub, and encryption key proofs
 	c.VerifyMerkleProofs(api)
+	// Verify that the Merkle proof leaf hashes match the witness values
+	c.VerifyMerkleProofLeaves(api)
 	// Verify decryption proofs for add and sub ciphertexts
 	c.VerifyDecryptionProofs(api)
 	// Verify that the results provided match with the substraction of the
@@ -60,38 +60,6 @@ func (c *ResultsVerifierCircuit) forceCommitment(api frontend.API) {
 	api.AssertIsDifferent(res, 0)
 }
 
-func (c *ResultsVerifierCircuit) VerifyAccumulatorsHashes(api frontend.API) {
-	// Compute the value of the add ciphertexts in the merkle tree
-	addMerkletreeValue, err := HashFn(api, c.AddAccumulatorsEncrypted.SerializeVars()...)
-	if err != nil {
-		circuits.FrontendError(api, "failed to hash add ciphertexts", err)
-		return
-	}
-	// Compute the hash of the leaf in the merkle tree
-	addLeafHash, err := HashFn(api, state.KeyResultsAdd.ToGnark(), addMerkletreeValue, 1)
-	if err != nil {
-		circuits.FrontendError(api, "failed to hash add leaf", err)
-		return
-	}
-	// Check that the computed leaf hash matches the one in the proof
-	api.AssertIsEqual(addLeafHash, c.AddAccumulatorsMerkleProof.LeafHash)
-
-	// Compute the value of the sub ciphertexts in the merkle tree
-	subMerkletreeValue, err := HashFn(api, c.SubAccumulatorsEncrypted.SerializeVars()...)
-	if err != nil {
-		circuits.FrontendError(api, "failed to hash sub ciphertexts", err)
-		return
-	}
-	// Compute the hash of the leaf in the merkle tree
-	subLeafHash, err := HashFn(api, state.KeyResultsSub.ToGnark(), subMerkletreeValue, 1)
-	if err != nil {
-		circuits.FrontendError(api, "failed to hash sub leaf", err)
-		return
-	}
-	// Check that the computed leaf hash matches the one in the proof
-	api.AssertIsEqual(subLeafHash, c.SubAccumulatorsMerkleProof.LeafHash)
-}
-
 func (c *ResultsVerifierCircuit) VerifyMerkleProofs(api frontend.API) {
 	// Verify the results add proof
 	c.AddAccumulatorsMerkleProof.Verify(api, HashFn, c.StateRoot)
@@ -99,6 +67,25 @@ func (c *ResultsVerifierCircuit) VerifyMerkleProofs(api frontend.API) {
 	c.SubAccumulatorsMerkleProof.Verify(api, HashFn, c.StateRoot)
 	// Verify the encryption key proof
 	c.EncryptionKeyMerkleProof.Verify(api, HashFn, c.StateRoot)
+}
+
+func (c *ResultsVerifierCircuit) VerifyMerkleProofLeaves(api frontend.API) {
+	api.AssertIsEqual(c.AddAccumulatorsMerkleProof.Key, state.KeyResultsAdd.ToGnark())
+	api.AssertIsEqual(c.SubAccumulatorsMerkleProof.Key, state.KeyResultsSub.ToGnark())
+	api.AssertIsEqual(c.EncryptionKeyMerkleProof.Key, state.KeyEncryptionKey.ToGnark())
+
+	if err := c.EncryptionKeyMerkleProof.VerifyLeafHash(api, HashFn, c.EncryptionPublicKey.Serialize()...); err != nil {
+		circuits.FrontendError(api, "failed to verify encryption key proof leaf hash", err)
+		return
+	}
+	if err := c.AddAccumulatorsMerkleProof.VerifyLeafHash(api, HashFn, c.AddAccumulatorsEncrypted.SerializeVars()...); err != nil {
+		circuits.FrontendError(api, "failed to verify add accumulators proof leaf hash", err)
+		return
+	}
+	if err := c.SubAccumulatorsMerkleProof.VerifyLeafHash(api, HashFn, c.SubAccumulatorsEncrypted.SerializeVars()...); err != nil {
+		circuits.FrontendError(api, "failed to verify sub accumulators proof leaf hash", err)
+		return
+	}
 }
 
 func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
