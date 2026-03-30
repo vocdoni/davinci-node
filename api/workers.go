@@ -367,6 +367,17 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		CensusProof:     ballot.CensusProof,
 	}
 
+	verifiedBallot := storage.VerifiedBallot{
+		VoteID:          ballot.VoteID,
+		ProcessID:       ballot.ProcessID,
+		VoterWeight:     ballot.VoterWeight,
+		EncryptedBallot: ballot.EncryptedBallot,
+		Address:         ballot.Address,
+		InputsHash:      ballot.BallotInputsHash,
+		Proof:           workerVerifiedBallot.Proof,
+		CensusProof:     ballot.CensusProof,
+	}
+
 	// Mark ballot as done
 	if err := a.storage.MarkBallotVerified(ballot.VoteID, &verifiedBallot); err != nil {
 		log.Warnw("failed to mark ballot as done",
