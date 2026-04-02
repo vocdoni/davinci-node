@@ -423,6 +423,10 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	blobIndex++
 	isRealVote := circuit.VoteMask(api)
 	for i := range params.VotesPerBatch {
+		voteID := api.Select(isRealVote[i], circuit.Votes[i].VoteID, params.VoteIDMin)
+		api.AssertIsLessOrEqual(params.VoteIDMin, voteID)
+		api.AssertIsLessOrEqual(voteID, params.VoteIDMax)
+
 		writeMask := isRealVote[i]
 		// VoteID, Address and BallotIndex
 		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].VoteID)
