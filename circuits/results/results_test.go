@@ -53,6 +53,22 @@ func (c *encryptionKeyBindingCircuit) Define(api frontend.API) error {
 	return nil
 }
 
+type resultsSubtractionCircuit struct {
+	Results         [params.FieldsPerBallot]frontend.Variable `gnark:",public"`
+	AddAccumulators [params.FieldsPerBallot]frontend.Variable
+	SubAccumulators [params.FieldsPerBallot]frontend.Variable
+}
+
+func (c *resultsSubtractionCircuit) Define(api frontend.API) error {
+	rc := ResultsVerifierCircuit{
+		Results:         c.Results,
+		AddAccumulators: c.AddAccumulators,
+		SubAccumulators: c.SubAccumulators,
+	}
+	rc.VerifyResults(api)
+	return nil
+}
+
 func TestResultsVerifierCircuit(t *testing.T) {
 	c := qt.New(t)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
@@ -235,6 +251,38 @@ func TestResultsVerifierCircuitBindsEncryptionKeyToMerkleLeaf(t *testing.T) {
 		&encryptionKeyBindingCircuit{},
 		test.WithValidAssignment(valid),
 		test.WithInvalidAssignment(&invalid),
+		test.WithCurves(params.ResultsVerifierCurve),
+		test.WithBackends(backend.GROTH16),
+	)
+}
+
+func TestResultsVerifierCircuitRejectsWrappedSubtraction(t *testing.T) {
+	assert := test.NewAssert(t)
+
+	valid := &resultsSubtractionCircuit{}
+	validWitness := &resultsSubtractionCircuit{}
+	for i := range params.FieldsPerBallot {
+		validWitness.AddAccumulators[i] = big.NewInt(0)
+		validWitness.SubAccumulators[i] = big.NewInt(0)
+		validWitness.Results[i] = big.NewInt(0)
+	}
+	validWitness.AddAccumulators[0] = big.NewInt(2)
+	validWitness.SubAccumulators[0] = big.NewInt(1)
+	validWitness.Results[0] = big.NewInt(1)
+
+	invalidWitness := &resultsSubtractionCircuit{}
+	for i := range params.FieldsPerBallot {
+		invalidWitness.AddAccumulators[i] = big.NewInt(0)
+		invalidWitness.SubAccumulators[i] = big.NewInt(0)
+		invalidWitness.Results[i] = big.NewInt(0)
+	}
+	invalidWitness.AddAccumulators[0] = big.NewInt(0)
+	invalidWitness.SubAccumulators[0] = big.NewInt(1)
+	invalidWitness.Results[0] = new(big.Int).Sub(params.ResultsVerifierCurve.ScalarField(), big.NewInt(1))
+
+	assert.CheckCircuit(valid,
+		test.WithValidAssignment(validWitness),
+		test.WithInvalidAssignment(invalidWitness),
 		test.WithCurves(params.ResultsVerifierCurve),
 		test.WithBackends(backend.GROTH16),
 	)
