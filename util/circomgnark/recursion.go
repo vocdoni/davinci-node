@@ -43,11 +43,6 @@ func (circomProof *CircomProof) ToGnarkRecursion(circomVk *CircomVerificationKey
 	recursionProof.Bs.P.Y.A1.Initialize(ecc.BN254.BaseField())
 	recursionProof.Krs.X.Initialize(ecc.BN254.BaseField())
 	recursionProof.Krs.Y.Initialize(ecc.BN254.BaseField())
-	// Convert the verification key to recursion verification key
-	gnarkVk, err := circomVk.ToGnark()
-	if err != nil {
-		return nil, err
-	}
 	// Transform the public inputs to emulated elements for the recursion circuit
 	publicInputElementsEmulated := make([]emulated.Element[sw_bn254.ScalarField], len(publicInputs))
 	for i, input := range publicInputs {
@@ -63,6 +58,10 @@ func (circomProof *CircomProof) ToGnarkRecursion(circomVk *CircomVerificationKey
 		},
 	}
 	if !fixedVk {
+		gnarkVk, err := circomVk.ToGnark()
+		if err != nil {
+			return nil, err
+		}
 		// Create the recursion types
 		recursionVk, err := recursion.ValueOfVerifyingKey[sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl](gnarkVk)
 		if err != nil {
