@@ -1092,8 +1092,8 @@ github.com/vocdoni/davinci-node/spec v0.0.0-20260305103337-7a52760babbc h1:cATTd
 github.com/vocdoni/davinci-node/spec v0.0.0-20260305103337-7a52760babbc/go.mod h1:ofv03F4/zRUYw4lFgVs0ZNYJWEru/F7c2JurGNJYVLQ=
 github.com/vocdoni/gnark-crypto-primitives v0.0.5 h1:9vfknPw4OZGAg1TeQ6Ih2GbM/UkGtYRuOww25Ek9Qak=
 github.com/vocdoni/gnark-crypto-primitives v0.0.5/go.mod h1:kmd5T6ucuWbT9rFC4ACxXztHBq8WEt1uaYoTm8ziLyU=
-github.com/vocdoni/lean-imt-go v0.0.2 h1:wk3aqH4L6VkhGDHrXAu8/sW0Y6WJT9bvJyX2uC9nfK4=
-github.com/vocdoni/lean-imt-go v0.0.2/go.mod h1:kzutM982wYEgEpuiw23mghA1o9UMXyK8Uauu0L0k2OA=
+github.com/vocdoni/lean-imt-go v0.0.4-rc1 h1:rmV6IIQ74HmnXqJkw/cdRdvBd7X4tQQzcjdfihf6fcA=
+github.com/vocdoni/lean-imt-go v0.0.4-rc1/go.mod h1:kzutM982wYEgEpuiw23mghA1o9UMXyK8Uauu0L0k2OA=
 github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69 h1:7EEC/z+kkStPQmDHI8O5r7W/QbXxs2Cu2s0D17AQfUs=
 github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69/go.mod h1:ijYD7K9FeUALuNLRVLkMl5aa3sHg69eN3z3SMQPB/TU=
 github.com/warpfork/go-testmark v0.12.1 h1:rMgCpJfwy1sJ50x0M0NgyphxYYPMOODIJHhsXyEHU0s=
