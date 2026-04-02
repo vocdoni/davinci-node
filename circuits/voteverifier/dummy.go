@@ -1,10 +1,13 @@
 package voteverifier
 
 import (
+	"math/big"
+
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -44,6 +47,24 @@ const (
 ]`
 )
 
+var (
+	// Keep this tuple internally consistent: address, public key, and signature
+	// belong to VoteID=1 and are used only to build the canonical dummy witness.
+	dummyAddress    = mustBigIntHex("ad58a7233b993fd9588dfbdd614fe84ebb2dff0e")
+	dummyPublicKeyX = mustBigIntHex("e1786f8f6da8e998329c266d1b01cae8552cfcc1d2037bf9bb647ff357d49bc9")
+	dummyPublicKeyY = mustBigIntHex("a17b6c8959b29dfd7f8222ff65425bd6f081001e20083576c6b61e684ba4ac9b")
+	dummySignatureR = mustBigIntHex("038eedd337064465cc3ce29fc5d240d1346e659e2fe040b36a7da8b4f91e98d9")
+	dummySignatureS = mustBigIntHex("0c920de03fd767d3e945d3192b17febbcf4c230482b8f83292ddc25c565473ae")
+)
+
+func mustBigIntHex(s string) *big.Int {
+	v, ok := new(big.Int).SetString(s, 16)
+	if !ok {
+		panic("invalid big.Int hex constant")
+	}
+	return v
+}
+
 // DummyPlaceholder function returns a placeholder for the VerifyVoteCircuit
 // with dummy values. This function can be used to generate
 // dummy proofs to fill a chunk of votes that does not reach the required number
@@ -70,20 +91,18 @@ func DummyAssignment() (*VerifyVoteCircuit, error) {
 	}
 	// dummy values
 	dummyEmulatedBN254 := emulated.ValueOf[sw_bn254.ScalarField](1)
-	dummyEmulatedSecp256k1Fp := emulated.ValueOf[emulated.Secp256k1Fp](1)
-	dummyEmulatedSecp256k1Fr := emulated.ValueOf[emulated.Secp256k1Fr](1)
 	return &VerifyVoteCircuit{
 		IsValid:    0,
 		BallotHash: dummyEmulatedBN254,
-		Address:    dummyEmulatedBN254,
-		VoteID:     1,
+		Address:    emulated.ValueOf[sw_bn254.ScalarField](dummyAddress),
+		VoteID:     types.VoteID(1).BigInt(),
 		PublicKey: ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
-			X: dummyEmulatedSecp256k1Fp,
-			Y: dummyEmulatedSecp256k1Fp,
+			X: emulated.ValueOf[emulated.Secp256k1Fp](dummyPublicKeyX),
+			Y: emulated.ValueOf[emulated.Secp256k1Fp](dummyPublicKeyY),
 		},
 		Signature: ecdsa.Signature[emulated.Secp256k1Fr]{
-			R: dummyEmulatedSecp256k1Fr,
-			S: dummyEmulatedSecp256k1Fr,
+			R: emulated.ValueOf[emulated.Secp256k1Fr](dummySignatureR),
+			S: emulated.ValueOf[emulated.Secp256k1Fr](dummySignatureS),
 		},
 		CircomProof: recursiveProof.Proof,
 	}, nil
