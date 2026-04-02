@@ -23,6 +23,21 @@ func (s *Signer) Address() common.Address {
 	return ethcrypto.PubkeyToAddress(s.PublicKey)
 }
 
+// PublicKeyCoordinates returns the secp256k1 public key coordinates as big.Ints.
+func (s *Signer) PublicKeyCoordinates() (*big.Int, *big.Int, error) {
+	pubBytes := ethcrypto.FromECDSAPub(&s.PublicKey)
+	if len(pubBytes) != 65 || pubBytes[0] != 0x04 {
+		return nil, nil, fmt.Errorf("unexpected uncompressed public key encoding")
+	}
+
+	var pubKey gecdsa.PublicKey
+	if _, err := pubKey.SetBytes(pubBytes[1:]); err != nil {
+		return nil, nil, fmt.Errorf("parse public key: %w", err)
+	}
+
+	return pubKey.A.X.BigInt(new(big.Int)), pubKey.A.Y.BigInt(new(big.Int)), nil
+}
+
 // HexPrivateKey returns the hex-encoded representation of the ECDSA private
 // key.
 func (s *Signer) HexPrivateKey() types.HexBytes {

@@ -5,6 +5,9 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
+	"github.com/vocdoni/davinci-node/crypto"
+	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
@@ -70,20 +73,31 @@ func DummyAssignment() (*VerifyVoteCircuit, error) {
 	}
 	// dummy values
 	dummyEmulatedBN254 := emulated.ValueOf[sw_bn254.ScalarField](1)
-	dummyEmulatedSecp256k1Fp := emulated.ValueOf[emulated.Secp256k1Fp](1)
-	dummyEmulatedSecp256k1Fr := emulated.ValueOf[emulated.Secp256k1Fr](1)
+	dummyVoteID := types.VoteID(1)
+	dummySigner, err := ethereum.NewSignerFromSeed([]byte("voteverifier-dummy-assignment"))
+	if err != nil {
+		return nil, err
+	}
+	dummySignature, err := dummySigner.Sign(crypto.PadToSign(dummyVoteID.Bytes()))
+	if err != nil {
+		return nil, err
+	}
+	pubKeyX, pubKeyY, err := dummySigner.PublicKeyCoordinates()
+	if err != nil {
+		return nil, err
+	}
 	return &VerifyVoteCircuit{
 		IsValid:    0,
 		BallotHash: dummyEmulatedBN254,
 		Address:    dummyEmulatedBN254,
-		VoteID:     1,
+		VoteID:     dummyVoteID.BigInt(),
 		PublicKey: ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]{
-			X: dummyEmulatedSecp256k1Fp,
-			Y: dummyEmulatedSecp256k1Fp,
+			X: emulated.ValueOf[emulated.Secp256k1Fp](pubKeyX),
+			Y: emulated.ValueOf[emulated.Secp256k1Fp](pubKeyY),
 		},
 		Signature: ecdsa.Signature[emulated.Secp256k1Fr]{
-			R: dummyEmulatedSecp256k1Fr,
-			S: dummyEmulatedSecp256k1Fr,
+			R: emulated.ValueOf[emulated.Secp256k1Fr](dummySignature.R),
+			S: emulated.ValueOf[emulated.Secp256k1Fr](dummySignature.S),
 		},
 		CircomProof: recursiveProof.Proof,
 	}, nil
