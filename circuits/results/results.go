@@ -112,6 +112,7 @@ func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
 func (c *ResultsVerifierCircuit) VerifyResults(api frontend.API) {
 	// Verify that the results add minus results sub equals results
 	for i := range params.FieldsPerBallot {
+		api.AssertIsLessOrEqual(c.SubAccumulators[i], c.AddAccumulators[i])
 		api.AssertIsEqual(
 			api.Sub(c.AddAccumulators[i], c.SubAccumulators[i]),
 			c.Results[i],
