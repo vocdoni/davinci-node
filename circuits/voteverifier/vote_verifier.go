@@ -91,6 +91,7 @@ type VerifyVoteCircuit struct {
 // public key and voteID provided, and that the derived address matches the
 // provided address.
 func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
+	assertValidSecp256k1PublicKey(api, c.PublicKey)
 	// we need to prefix the message with the Ethereum signing prefix and the
 	// length of the message before hashing it, so we need to convert the
 	// ethereum prefix to bytes and append the length of the message
@@ -137,6 +138,21 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	}
 	// Only enforce address equality when inputs are marked as valid.
 	circuits.AssertIsEqualIf(api, c.IsValid, derivedAddr, addressVar)
+}
+
+func assertValidSecp256k1PublicKey(api frontend.API, pubKey ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]) {
+	curve, err := sw_emulated.New[emulated.Secp256k1Fp, emulated.Secp256k1Fr](api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp]())
+	if err != nil {
+		circuits.FrontendError(api, "failed to initialize secp256k1 curve", err)
+	}
+	baseApi, err := emulated.NewField[emulated.Secp256k1Fp](api)
+	if err != nil {
+		circuits.FrontendError(api, "failed to initialize secp256k1 field", err)
+	}
+	pkPoint := sw_emulated.AffinePoint[emulated.Secp256k1Fp]{X: pubKey.X, Y: pubKey.Y}
+	curve.AssertIsOnCurve(&pkPoint)
+	isInfinity := api.And(baseApi.IsZero(&pubKey.X), baseApi.IsZero(&pubKey.Y))
+	api.AssertIsEqual(isInfinity, 0)
 }
 
 // verifyCircomProof circuit method verifies the ballot proof provided by the
