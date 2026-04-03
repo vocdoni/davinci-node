@@ -100,9 +100,6 @@ func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, 
 	if err != nil {
 		return nil, nil, err
 	}
-	if z.IsZero() {
-		return z, reencryptionK, nil
-	}
 	// Use the same curve type as the original ballot to avoid type mismatches
 	// between different BJJ implementations (bjj_gnark vs bjj_iden3).
 	// Convert the public key coordinates to the ballot's curve type.
