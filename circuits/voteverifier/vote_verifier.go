@@ -60,6 +60,7 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/std/signature/ecdsa"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	address "github.com/vocdoni/gnark-crypto-primitives/ecc/secp256k1/ecdsa"
@@ -136,6 +137,9 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert address to var", err)
 	}
+	// api.ToBinary fails if value is bigger than n bits,
+	// effectively range-constraining address.
+	api.ToBinary(addressVar, common.AddressLength*8)
 	// Only enforce address equality when inputs are marked as valid.
 	circuits.AssertIsEqualIf(api, c.IsValid, derivedAddr, addressVar)
 }
