@@ -151,12 +151,33 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	invalid := *assignment
 	invalid.DecryptionAddProofs[0].A1.Y = big.NewInt(0)
 
-	// Start the proving process
+	// subgroup order used by the ElGamal scalar arithmetic
+	q := new(big.Int).Set(curves.New(bjj.CurveType).Order())
+
+	shiftedAssignment := func(slot int) *ResultsVerifierCircuit {
+		honestAdd := new(big.Int).Set(addAccumulator[slot])
+		honestSub := new(big.Int).Set(subAccumulator[slot])
+		honestRes := new(big.Int).Sub(honestAdd, honestSub)
+
+		// Malicious witness: same ciphertext and same proof, but plaintext shifted by q.
+		shifted := *assignment
+		shifted.AddAccumulators[slot] = new(big.Int).Add(honestAdd, q)
+		shifted.Results[slot] = new(big.Int).Add(honestRes, q)
+
+		c.Assert(shifted.Results[slot].(*big.Int).Cmp(assignment.Results[slot].(*big.Int)), qt.Not(qt.Equals), 0)
+
+		// Human-readable explanation of the bug
+		c.Logf("[BUG DEMO] slot=%d\n  honest result:  %s\n  shifted result: %s (= honest + subgroup order)",
+			slot, honestRes.String(), shifted.Results[slot].(*big.Int).String())
+		return &shifted
+	}
 	startTime = time.Now()
 	assert.CheckCircuit(
 		&ResultsVerifierCircuit{},
 		test.WithValidAssignment(assignment),
 		test.WithInvalidAssignment(&invalid),
+		test.WithInvalidAssignment(shiftedAssignment(0)),
+		test.WithInvalidAssignment(shiftedAssignment(1)),
 		test.WithCurves(params.ResultsVerifierCurve),
 		test.WithBackends(backend.GROTH16),
 	)
