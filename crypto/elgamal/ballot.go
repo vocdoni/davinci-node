@@ -119,10 +119,16 @@ func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, 
 // zero point using the provided encryption key and k.
 func (z *Ballot) EncryptedZero(publicKey ecc.Point, k *big.Int) (*Ballot, error) {
 	encZero := NewBallot(publicKey)
+	lastK := new(big.Int).Set(k)
 	for i := range encZero.Ciphertexts {
-		c1, c2 := EncryptedZero(publicKey, k)
+		c1, c2 := EncryptedZero(publicKey, lastK)
 		encZero.Ciphertexts[i].C1 = c1
 		encZero.Ciphertexts[i].C2 = c2
+		var err error
+		lastK, err = poseidon.MultiPoseidon(lastK)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return encZero, nil
 }

@@ -276,8 +276,10 @@ func (b *Ballot) EncryptedZero(api frontend.API, encKey EncryptionKey[frontend.V
 		X: encKey.PubKey[0],
 		Y: encKey.PubKey[1],
 	}
+	lastK := k
 	for i := range b {
-		b[i] = elgamal.EncryptedZero(api, pubKey, k)
+		b[i] = elgamal.EncryptedZero(api, pubKey, lastK)
+		lastK = NextK(api, lastK)
 	}
 	return b
 }
