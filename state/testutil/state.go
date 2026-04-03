@@ -48,7 +48,7 @@ func NewRandomState(t *testing.T, origin types.CensusOrigin) *state.State {
 func NewVoteForTest(publicKey ecc.Point, voterIndex uint64, value int) *state.Vote {
 	fields := [params.FieldsPerBallot]*big.Int{}
 	for i := range fields {
-		fields[i] = big.NewInt(int64(value + i))
+		fields[i] = big.NewInt(int64(value * i))
 	}
 	ballot, err := elgamal.NewBallot(publicKey).Encrypt(fields, publicKey, nil)
 	if err != nil {
