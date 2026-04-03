@@ -58,3 +58,20 @@ func TestBallotReencryptUsesDistinctOffsetsPerField(t *testing.T) {
 
 	c.Assert(reencryptedDiffC2.Equal(originalDiffC2), qt.IsFalse, qt.Commentf("C2 field differences should change after reencryption"))
 }
+
+func TestZeroBallotReencryptChangesBallot(t *testing.T) {
+	c := qt.New(t)
+
+	_, encKey := testutil.RandomEncryptionKeys()
+	publicKey := new(bjj.BJJ).SetPoint(encKey.X.MathBigInt(), encKey.Y.MathBigInt())
+
+	zeroBallot := NewBallot(publicKey)
+	c.Assert(zeroBallot.IsZero(), qt.IsTrue)
+
+	reencryptionSeed, err := specutil.RandomK()
+	c.Assert(err, qt.IsNil)
+
+	reencryptedBallot, _, err := zeroBallot.Reencrypt(publicKey, reencryptionSeed)
+	c.Assert(err, qt.IsNil)
+	c.Assert(reencryptedBallot.IsZero(), qt.IsFalse, qt.Commentf("reencryption should add encrypted zero even for zero ballots"))
+}
