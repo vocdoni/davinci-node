@@ -213,10 +213,16 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
+	if len(vote.Address) != common.AddressLength {
+		ErrMalformedBody.Withf("address must be %d bytes", common.AddressLength).Write(w)
+		return
+	}
 	if !vote.Ballot.Valid() {
 		ErrMalformedBody.Withf("invalid ballot").Write(w)
 		return
 	}
+	canonicalAddress := common.BytesToAddress(vote.Address).Bytes()
+	vote.Address = types.HexBytes(canonicalAddress)
 	// get the process from the storage
 	process, err := a.storage.Process(vote.ProcessID)
 	if err != nil {
