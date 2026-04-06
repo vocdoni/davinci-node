@@ -222,6 +222,18 @@ func (s *Sequencer) processStateTransitionBatch(
 	innerProof groth16.Proof,
 ) (groth16.Proof, *blobs.BlobEvalData, *big.Int, error) {
 	startTime := time.Now()
+	rootBefore, err := processState.RootAsBigInt()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to get root before state transition batch: %w", err)
+	}
+
+	rollbackState := func(cause error, op string) (groth16.Proof, *blobs.BlobEvalData, *big.Int, error) {
+		if rollbackErr := processState.SetRootAsBigInt(rootBefore); rollbackErr != nil {
+			return nil, nil, nil, fmt.Errorf("%s: %w (rollback failed: %v)", op, cause, rollbackErr)
+		}
+		return nil, nil, nil, fmt.Errorf("%s: %w", op, cause)
+	}
+
 	// Generate the state transition assignment from the batch and the blob data.
 	assignment, blobData, err := s.stateBatchToAssignment(processState, votes, censusRoot, censusProofs, kSeed, innerProof)
 	if err != nil {
@@ -240,7 +252,7 @@ func (s *Sequencer) processStateTransitionBatch(
 	proof, err := s.stateTransition.ProveAndVerify(assignment)
 	if err != nil {
 		s.logStateTransitionDebugInfo(processState, votes, censusRoot, assignment, err)
-		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
+		return rollbackState(err, "failed to generate proof")
 	}
 	return proof, blobData, assignment.RootHashAfter.(*big.Int), nil
 }
@@ -330,24 +342,36 @@ func (s *Sequencer) stateBatchToAssignment(
 	kSeed *types.BigInt,
 	innerProof groth16.Proof,
 ) (*statetransition.StateTransitionCircuit, *blobs.BlobEvalData, error) {
+	rootBefore, err := processState.RootAsBigInt()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get root before batch: %w", err)
+	}
+
 	// add votes batch to state
 	if err := processState.AddVotesBatch(votes); err != nil {
 		return nil, nil, fmt.Errorf("failed to add votes batch to state: %w", err)
 	}
 
+	rollbackOnError := func(cause error, op string) (*statetransition.StateTransitionCircuit, *blobs.BlobEvalData, error) {
+		if rollbackErr := processState.SetRootAsBigInt(rootBefore); rollbackErr != nil {
+			return nil, nil, fmt.Errorf("%s: %w (rollback failed: %v)", op, cause, rollbackErr)
+		}
+		return nil, nil, fmt.Errorf("%s: %w", op, cause)
+	}
+
 	// Generate the state transition assignment.
 	proofAssignment, _, err := statetransition.GenerateAssignment(processState, censusRoot, censusProofs, kSeed)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate assignment: %w", err)
+		return rollbackOnError(err, "failed to generate assignment")
 	}
 	proofAssignment.AggregatorProof, err = stdgroth16.ValueOfProof[sw_bw6761.G1Affine, sw_bw6761.G2Affine](innerProof)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to transform recursive proof: %w", err)
+		return rollbackOnError(err, "failed to transform recursive proof")
 	}
 
 	blobData, err := processState.BlobEvalData()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get blob eval data: %w", err)
+		return rollbackOnError(err, "failed to get blob eval data")
 	}
 
 	return proofAssignment, blobData, nil
