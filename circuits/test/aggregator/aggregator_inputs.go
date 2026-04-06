@@ -75,7 +75,7 @@ func AggregatorInputsForTest(
 
 	// Build the final aggregator assignment.
 	assignment := &aggregator.AggregatorCircuit{
-		ValidProofs:  nValidVoters,
+		VotersCount:  nValidVoters,
 		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 		BallotHashes: proofsInputsHashes,
 		Proofs:       proofs,
