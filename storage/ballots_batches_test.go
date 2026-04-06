@@ -310,6 +310,67 @@ func TestMarkStateTransitionOutdated(t *testing.T) {
 	c.Assert(err, qt.IsNil, qt.Commentf("marking non-existent batch as outdated should not error"))
 }
 
+func TestMarkStateTransitionBatchOutdatedRequeuesPendingBatchAndClearsPendingTx(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+	ensureProcess(t, stg, processID)
+
+	voteID := testutil.RandomVoteID()
+	batch := &AggregatorBallotBatch{
+		ProcessID: processID,
+		Ballots: []*AggregatorBallot{
+			{
+				VoteID:  voteID,
+				Address: big.NewInt(5001),
+			},
+		},
+	}
+
+	c.Assert(stg.PushAggregatorBatch(batch), qt.IsNil)
+
+	retrievedBatch, batchID, err := stg.NextAggregatorBatch(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(retrievedBatch, qt.Not(qt.IsNil))
+
+	c.Assert(stg.SetPendingTx(StateTransitionTx, processID), qt.IsNil)
+	c.Assert(stg.MarkAggregatorBatchPending(retrievedBatch), qt.IsNil)
+	c.Assert(stg.MarkAggregatorBatchDone(batchID), qt.IsNil)
+
+	stb := &StateTransitionBatch{
+		ProcessID: processID,
+		BatchID:   batchID,
+		Ballots:   retrievedBatch.Ballots,
+		Inputs: StateTransitionBatchProofInputs{
+			RootHashBefore: big.NewInt(10),
+			RootHashAfter:  big.NewInt(11),
+			CensusRoot:     big.NewInt(12),
+		},
+	}
+	c.Assert(stg.PushStateTransitionBatch(stb), qt.IsNil)
+
+	_, stateTransitionKey, err := stg.NextStateTransitionBatch(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(stg.HasPendingTx(StateTransitionTx, processID), qt.IsTrue)
+
+	err = stg.MarkStateTransitionBatchOutdated(stateTransitionKey)
+	c.Assert(err, qt.IsNil)
+
+	c.Assert(stg.HasPendingTx(StateTransitionTx, processID), qt.IsFalse)
+
+	_, err = stg.PendingAggregatorBatch(processID)
+	c.Assert(err, qt.Equals, ErrNotFound)
+
+	requeuedBatch, _, err := stg.NextAggregatorBatch(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(requeuedBatch, qt.Not(qt.IsNil))
+	c.Assert(requeuedBatch.ProcessID, qt.Equals, processID)
+	c.Assert(requeuedBatch.Ballots, qt.HasLen, 1)
+	c.Assert(requeuedBatch.Ballots[0].VoteID, qt.Equals, voteID)
+}
+
 // TestMarkStateTransitionOutdatedVsMarkDone tests the difference between outdated and done
 func TestMarkStateTransitionOutdatedVsMarkDone(t *testing.T) {
 	c := qt.New(t)
