@@ -548,7 +548,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 
 	// Create the aggregator circuit assignment
 	assignment := &aggregator.AggregatorCircuit{
-		ValidProofs:  len(batchInputs.AggBallots),
+		VotersCount:  len(batchInputs.AggBallots),
 		BatchHash:    emulated.ValueOf[sw_bn254.ScalarField](inputsHash),
 		BallotHashes: batchInputs.ProofsInputHash,
 		Proofs:       batchInputs.Proofs,
