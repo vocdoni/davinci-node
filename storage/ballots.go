@@ -242,15 +242,26 @@ func (s *Storage) MarkBallotVerified(voteID types.VoteID, vb *VerifiedBallot) er
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
-	// Remove reservation
-	if err := s.deleteReservation(ballotPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("delete reservation: %w", err)
+	if vb == nil {
+		return fmt.Errorf("verified ballot is nil")
 	}
 
-	// Remove from pending queue
-	if err := s.deleteArtifact(ballotPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("delete pending ballot: %w", err)
+	var pendingBallot Ballot
+	processID := vb.ProcessID
+	pendingBallotFound := true
+	if err := s.getArtifact(ballotPrefix, voteID.Bytes(), &pendingBallot); err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("get pending ballot: %w", err)
+		}
+		if !processID.IsValid() {
+			return fmt.Errorf("pending ballot not found for vote %s and verified ballot process ID is invalid", voteID.String())
+		}
+		pendingBallotFound = false
+	} else {
+		processID = pendingBallot.ProcessID
 	}
+
+	vb.ProcessID = processID
 
 	// store verified ballot
 	val, err := EncodeArtifact(vb)
@@ -259,7 +270,7 @@ func (s *Storage) MarkBallotVerified(voteID types.VoteID, vb *VerifiedBallot) er
 	}
 	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), verifiedBallotPrefix)
 	// key with processID as prefix + unique portion from original key
-	combKey := append(vb.ProcessID.Bytes(), voteID.Bytes()...)
+	combKey := append(processID.Bytes(), voteID.Bytes()...)
 	if err := wTx.Set(combKey, val); err != nil {
 		wTx.Discard()
 		return err
@@ -268,17 +279,30 @@ func (s *Storage) MarkBallotVerified(voteID types.VoteID, vb *VerifiedBallot) er
 		return err
 	}
 
-	// Update process stats
-	if err := s.updateProcessStats(vb.ProcessID, []ProcessStatsUpdate{
+	// Remove reservation after the verified ballot is durably stored.
+	if err := s.deleteReservation(ballotPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("delete reservation: %w", err)
+	}
+
+	updates := []ProcessStatsUpdate{
 		{TypeStats: types.TypeStatsVerifiedVotes, Delta: 1},
-		{TypeStats: types.TypeStatsPendingVotes, Delta: -1},
 		{TypeStats: types.TypeStatsCurrentBatchSize, Delta: 1},
-	}); err != nil {
+	}
+	if pendingBallotFound {
+		// Remove from pending queue after the verified ballot is durably stored.
+		if err := s.deleteArtifact(ballotPrefix, voteID.Bytes()); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete pending ballot: %w", err)
+		}
+		updates = append(updates, ProcessStatsUpdate{TypeStats: types.TypeStatsPendingVotes, Delta: -1})
+	}
+
+	// Update process stats
+	if err := s.updateProcessStats(processID, updates); err != nil {
 		return fmt.Errorf("failed to update process stats: %w", err)
 	}
 
 	// Update vote ID status to verified
-	return s.setVoteIDStatus(vb.ProcessID, voteID, VoteIDStatusVerified)
+	return s.setVoteIDStatus(processID, voteID, VoteIDStatusVerified)
 }
 
 // PullVerifiedBallots returns a list of non-reserved verified ballots for a

@@ -331,15 +331,6 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set job as completed
-	job := a.jobsManager.CompleteJob(ballot.VoteID, true)
-	if job == nil {
-		log.Warnw("job not found or expired",
-			"voteID", ballot.VoteID.String())
-		ErrResourceNotFound.Withf("job not found or expired").Write(w)
-		return
-	}
-
 	verifiedBallot := storage.VerifiedBallot{
 		VoteID:          ballot.VoteID,
 		ProcessID:       ballot.ProcessID,
@@ -357,6 +348,15 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 			"error", err.Error(),
 			"voteID", ballot.VoteID.String())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+
+	// Mark the job as completed only after the verified ballot has been stored.
+	job := a.jobsManager.CompleteJob(ballot.VoteID, true)
+	if job == nil {
+		log.Warnw("job not found or expired after ballot verification was stored",
+			"voteID", ballot.VoteID.String())
+		ErrResourceNotFound.Withf("job not found or expired").Write(w)
 		return
 	}
 

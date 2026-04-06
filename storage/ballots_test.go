@@ -184,6 +184,67 @@ func TestBallotQueue_MarkBallotDoneAndPullVerified(t *testing.T) {
 	c.Assert(stg.CountVerifiedBallots(pid), qt.Equals, 0)
 }
 
+func TestMarkBallotVerifiedUsesCanonicalPendingBallotProcessID(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	canonicalPID := testutil.RandomProcessID()
+	wrongPID := testutil.RandomProcessID()
+	voteID := testutil.RandomVoteID()
+
+	ensureProcess(t, stg, canonicalPID)
+	ensureProcess(t, stg, wrongPID)
+
+	c.Assert(stg.PushPendingBallot(mkBallot(canonicalPID, voteID)), qt.IsNil)
+
+	_, key, err := stg.NextPendingBallot()
+	c.Assert(err, qt.IsNil)
+
+	err = stg.MarkBallotVerified(key, mkVerifiedBallot(wrongPID, voteID))
+	c.Assert(err, qt.IsNil)
+
+	c.Assert(stg.CountVerifiedBallots(canonicalPID), qt.Equals, 1)
+	c.Assert(stg.CountVerifiedBallots(wrongPID), qt.Equals, 0)
+
+	vbs, _, err := stg.PullVerifiedBallots(canonicalPID, 1)
+	c.Assert(err, qt.IsNil)
+	c.Assert(vbs, qt.HasLen, 1)
+	c.Assert(vbs[0].ProcessID, qt.Equals, canonicalPID)
+
+	status, err := stg.VoteIDStatus(canonicalPID, voteID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(status, qt.Equals, VoteIDStatusVerified)
+}
+
+func TestMarkBallotVerifiedStoresBallotWhenPendingBallotIsMissing(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	pid := testutil.RandomProcessID()
+	voteID := testutil.RandomVoteID()
+
+	ensureProcess(t, stg, pid)
+
+	vb := mkVerifiedBallot(pid, voteID)
+
+	err := stg.MarkBallotVerified(voteID, vb)
+	c.Assert(err, qt.IsNil)
+
+	c.Assert(stg.CountVerifiedBallots(pid), qt.Equals, 1)
+
+	vbs, _, err := stg.PullVerifiedBallots(pid, 1)
+	c.Assert(err, qt.IsNil)
+	c.Assert(vbs, qt.HasLen, 1)
+	c.Assert(vbs[0].ProcessID, qt.Equals, pid)
+	c.Assert(vbs[0].VoteID, qt.Equals, voteID)
+
+	status, err := stg.VoteIDStatus(pid, voteID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(status, qt.Equals, VoteIDStatusVerified)
+}
+
 func TestBallotQueue_PullVerifiedBallots_ReservationsAndLimits(t *testing.T) {
 	c := qt.New(t)
 	stg := newTestStorage(t)
