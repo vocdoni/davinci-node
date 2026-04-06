@@ -30,7 +30,7 @@ func (s *Sequencer) debugAggregationFailure(
 	log.Warnw("aggregator proving failed; investigating batch inputs",
 		"processID", processID.String(),
 		"error", proveErr.Error(),
-		"validProofs", len(batchInputs.VerifiedBallots),
+		"votersCount", len(batchInputs.VerifiedBallots),
 		"inputsHash", batchInputsHash.String(),
 		"voteVerifierNbPublicWitness", s.voteVerifier.VerifyingKey().NbPublicWitness(),
 		"voteVerifierNbConstraints", s.voteVerifier.ConstraintSystem().GetNbConstraints(),
