@@ -17,11 +17,25 @@ import (
 )
 
 type AggregatorCircuit struct {
-	ValidProofs     frontend.Variable                      `gnark:",public"`
+	VotersCount     frontend.Variable                      `gnark:",public"`
 	BatchHash       emulated.Element[sw_bn254.ScalarField] `gnark:",public"`
 	BallotHashes    [params.VotesPerBatch]emulated.Element[sw_bn254.ScalarField]
 	Proofs          [params.VotesPerBatch]groth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]
 	VerificationKey groth16.VerifyingKey[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT] `gnark:"-"`
+}
+
+// VoteMask returns the latch-based mask for real vote slots.
+func (c *AggregatorCircuit) VoteMask(api frontend.API) []frontend.Variable {
+	mask := make([]frontend.Variable, params.VotesPerBatch)
+	// if VotersCount > 0, the first vote is real
+	isReal := api.Sub(1, api.IsZero(c.VotersCount))
+	for i := range params.VotesPerBatch {
+		mask[i] = isReal
+		// if VotersCount == i+1, the next vote is dummy
+		isEnd := api.IsZero(api.Sub(c.VotersCount, i+1))
+		isReal = api.Mul(isReal, api.Sub(1, isEnd))
+	}
+	return mask
 }
 
 // checkBatchHash recalculates the batch hash using the Poseidon hash function
@@ -35,40 +49,28 @@ func (c *AggregatorCircuit) checkBatchHash(api frontend.API) {
 }
 
 // calculateWitnesses calculates the witnesses for the proofs. The first
-// limb of the first input in the witness is set to 1 if the proof is valid,
-// otherwise it is set to 0. The rest of the limbs are set to the inputs hash
-// limbs.
+// limb of the first input in the witness is set to 1 for real vote slots,
+// otherwise it is set to 0 for dummy slots. The rest of the limbs are set to
+// the inputs hash limbs.
 func (c *AggregatorCircuit) calculateWitnesses(api frontend.API) []groth16.Witness[sw_bls12377.ScalarField] {
 	// compose the witness for the inputs
 	witnesses := []groth16.Witness[sw_bls12377.ScalarField]{}
-
-	// Latch logic for isValid:
-	// 'isReal' is 1 if c.ValidProofs > current_index, otherwise 0.
-	// Initialize 'isReal' to 1 if c.ValidProofs > 0, else 0.
-	isReal := api.Sub(1, api.IsZero(c.ValidProofs))
+	isRealVote := c.VoteMask(api)
 
 	for i := range len(c.Proofs) { // len(c.Proofs) is params.VotesPerBatch
-		isValid := isReal // Current iteration's validity state
-
-		// Update 'isReal' for the next iteration (i.e., for i+1).
-		// If c.ValidProofs == i+1, then 'isReal' becomes 0 from the next iteration onwards.
-		isEnd := api.IsZero(api.Sub(c.ValidProofs, i+1))
-		isReal = api.Mul(isReal, api.Sub(1, isEnd))
-
 		// create the witness for the proof
 		witness := groth16.Witness[sw_bls12377.ScalarField]{
 			Public: []emulated.Element[sw_bls12377.ScalarField]{
-				{Limbs: []frontend.Variable{isValid, 0, 0, 0}},
+				{Limbs: []frontend.Variable{isRealVote[i], 0, 0, 0}},
 			},
 		}
-		// if the proof is valid, the first limb of the first input in the
-		// witness should be 1, otherwise it should be 0
+		// Real slots use the provided input hash. Dummy slots use the dummy hash.
 		for j, inputsHashLimb := range c.BallotHashes[i].Limbs {
 			dummyLimb := 0
 			if j == 0 {
 				dummyLimb = 1
 			}
-			finalLimb := api.Select(isValid, inputsHashLimb, dummyLimb)
+			finalLimb := api.Select(isRealVote[i], inputsHashLimb, dummyLimb)
 			witness.Public = append(witness.Public, emulated.Element[sw_bls12377.ScalarField]{
 				Limbs: []frontend.Variable{finalLimb, 0, 0, 0},
 			})
@@ -79,10 +81,9 @@ func (c *AggregatorCircuit) calculateWitnesses(api frontend.API) []groth16.Witne
 	return witnesses
 }
 
-// checkProofs checks that the proofs are valid and that the number of valid
-// proofs is the expected. The verification of the proofs is done using the
-// provided verification key and the public inputs of the witnesses. The number
-// of valid proofs is calculated by counting the number of valid votes.
+// checkProofs checks that the proofs are valid using the provided verification
+// key and the public inputs of the witnesses. Real vote slots are counted by
+// VotersCount and any remaining slots are padded with dummy proofs.
 func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 	// initialize the verifier of the BLS12-377 curve
 	verifier, err := groth16.NewVerifier[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](api)
@@ -94,10 +95,8 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 	witnesses := c.calculateWitnesses(api)
 	for i := range len(c.Proofs) {
 		// verify the proof
-		// groth16.WithSubgroupCheck() is omitted to save constraints, since subgroup membership
-		// is validated out of circuit when worker proofs are received
-		// and again in collectAggregationBatchInputs before the recursive witness is assembled.
-		if err := verifier.AssertProof(c.VerificationKey, c.Proofs[i], witnesses[i], groth16.WithCompleteArithmetic()); err != nil {
+		if err := verifier.AssertProof(c.VerificationKey, c.Proofs[i], witnesses[i],
+			groth16.WithCompleteArithmetic(), groth16.WithSubgroupCheck()); err != nil {
 			circuits.FrontendError(api, "failed to verify proof", err)
 		}
 	}

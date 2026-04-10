@@ -53,6 +53,22 @@ func (c *encryptionKeyBindingCircuit) Define(api frontend.API) error {
 	return nil
 }
 
+type resultsSubtractionCircuit struct {
+	Results         [params.FieldsPerBallot]frontend.Variable `gnark:",public"`
+	AddAccumulators [params.FieldsPerBallot]frontend.Variable
+	SubAccumulators [params.FieldsPerBallot]frontend.Variable
+}
+
+func (c *resultsSubtractionCircuit) Define(api frontend.API) error {
+	rc := ResultsVerifierCircuit{
+		Results:         c.Results,
+		AddAccumulators: c.AddAccumulators,
+		SubAccumulators: c.SubAccumulators,
+	}
+	rc.VerifyResults(api)
+	return nil
+}
+
 func TestResultsVerifierCircuit(t *testing.T) {
 	c := qt.New(t)
 	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
@@ -135,12 +151,33 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	invalid := *assignment
 	invalid.DecryptionAddProofs[0].A1.Y = big.NewInt(0)
 
-	// Start the proving process
+	// subgroup order used by the ElGamal scalar arithmetic
+	q := new(big.Int).Set(curves.New(bjj.CurveType).Order())
+
+	shiftedAssignment := func(slot int) *ResultsVerifierCircuit {
+		honestAdd := new(big.Int).Set(addAccumulator[slot])
+		honestSub := new(big.Int).Set(subAccumulator[slot])
+		honestRes := new(big.Int).Sub(honestAdd, honestSub)
+
+		// Malicious witness: same ciphertext and same proof, but plaintext shifted by q.
+		shifted := *assignment
+		shifted.AddAccumulators[slot] = new(big.Int).Add(honestAdd, q)
+		shifted.Results[slot] = new(big.Int).Add(honestRes, q)
+
+		c.Assert(shifted.Results[slot].(*big.Int).Cmp(assignment.Results[slot].(*big.Int)), qt.Not(qt.Equals), 0)
+
+		// Human-readable explanation of the bug
+		c.Logf("[BUG DEMO] slot=%d\n  honest result:  %s\n  shifted result: %s (= honest + subgroup order)",
+			slot, honestRes.String(), shifted.Results[slot].(*big.Int).String())
+		return &shifted
+	}
 	startTime = time.Now()
 	assert.CheckCircuit(
 		&ResultsVerifierCircuit{},
 		test.WithValidAssignment(assignment),
 		test.WithInvalidAssignment(&invalid),
+		test.WithInvalidAssignment(shiftedAssignment(0)),
+		test.WithInvalidAssignment(shiftedAssignment(1)),
 		test.WithCurves(params.ResultsVerifierCurve),
 		test.WithBackends(backend.GROTH16),
 	)
@@ -235,6 +272,38 @@ func TestResultsVerifierCircuitBindsEncryptionKeyToMerkleLeaf(t *testing.T) {
 		&encryptionKeyBindingCircuit{},
 		test.WithValidAssignment(valid),
 		test.WithInvalidAssignment(&invalid),
+		test.WithCurves(params.ResultsVerifierCurve),
+		test.WithBackends(backend.GROTH16),
+	)
+}
+
+func TestResultsVerifierCircuitRejectsWrappedSubtraction(t *testing.T) {
+	assert := test.NewAssert(t)
+
+	valid := &resultsSubtractionCircuit{}
+	validWitness := &resultsSubtractionCircuit{}
+	for i := range params.FieldsPerBallot {
+		validWitness.AddAccumulators[i] = big.NewInt(0)
+		validWitness.SubAccumulators[i] = big.NewInt(0)
+		validWitness.Results[i] = big.NewInt(0)
+	}
+	validWitness.AddAccumulators[0] = big.NewInt(2)
+	validWitness.SubAccumulators[0] = big.NewInt(1)
+	validWitness.Results[0] = big.NewInt(1)
+
+	invalidWitness := &resultsSubtractionCircuit{}
+	for i := range params.FieldsPerBallot {
+		invalidWitness.AddAccumulators[i] = big.NewInt(0)
+		invalidWitness.SubAccumulators[i] = big.NewInt(0)
+		invalidWitness.Results[i] = big.NewInt(0)
+	}
+	invalidWitness.AddAccumulators[0] = big.NewInt(0)
+	invalidWitness.SubAccumulators[0] = big.NewInt(1)
+	invalidWitness.Results[0] = new(big.Int).Sub(params.ResultsVerifierCurve.ScalarField(), big.NewInt(1))
+
+	assert.CheckCircuit(valid,
+		test.WithValidAssignment(validWitness),
+		test.WithInvalidAssignment(invalidWitness),
 		test.WithCurves(params.ResultsVerifierCurve),
 		test.WithBackends(backend.GROTH16),
 	)

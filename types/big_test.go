@@ -50,3 +50,14 @@ func TestBigUnmarshalJSONNumeric(t *testing.T) {
 	c.Assert(json.Unmarshal([]byte(`123456789`), &biNumeric), qt.IsNil)
 	c.Assert(biNumeric.String(), qt.Equals, "123456789")
 }
+
+func TestBigIntIsInFieldRejectsNegativeValues(t *testing.T) {
+	c := qt.New(t)
+
+	field := big.NewInt(17)
+
+	c.Assert((*BigInt)(big.NewInt(-1)).IsInField(field), qt.IsFalse)
+	c.Assert((*BigInt)(big.NewInt(0)).IsInField(field), qt.IsTrue)
+	c.Assert((*BigInt)(big.NewInt(16)).IsInField(field), qt.IsTrue)
+	c.Assert((*BigInt)(big.NewInt(17)).IsInField(field), qt.IsFalse)
+}

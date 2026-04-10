@@ -2,6 +2,7 @@ package ethereum
 
 import (
 	"crypto/ecdsa"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -22,8 +23,11 @@ func TestNewSigner(t *testing.T) {
 	privKey := (*ecdsa.PrivateKey)(signer)
 	c.Assert(privKey, qt.Not(qt.IsNil))
 	c.Assert(privKey.D, qt.Not(qt.IsNil))
-	c.Assert(privKey.X, qt.Not(qt.IsNil))
-	c.Assert(privKey.Y, qt.Not(qt.IsNil))
+
+	x, y, err := signer.PublicKeyCoordinates()
+	c.Assert(err, qt.IsNil)
+	c.Assert(x, qt.Not(qt.IsNil))
+	c.Assert(y, qt.Not(qt.IsNil))
 }
 
 func TestNewSignerFromHex(t *testing.T) {
@@ -97,4 +101,20 @@ func TestNewSignerFromSeed(t *testing.T) {
 	// Verify the signature
 	ok, _ := signature.Verify(msg, signer.Address())
 	c.Assert(ok, qt.IsTrue)
+}
+
+func TestSignerPublicKeyCoordinates(t *testing.T) {
+	c := qt.New(t)
+
+	signer, err := NewSignerFromSeed([]byte("coordinates"))
+	c.Assert(err, qt.IsNil)
+
+	x, y, err := signer.PublicKeyCoordinates()
+	c.Assert(err, qt.IsNil)
+
+	pubBytes := ethcrypto.FromECDSAPub(&signer.PublicKey)
+	c.Assert(pubBytes, qt.HasLen, 65)
+	c.Assert(pubBytes[0], qt.Equals, byte(0x04))
+	c.Assert(x.Cmp(new(big.Int).SetBytes(pubBytes[1:33])), qt.Equals, 0)
+	c.Assert(y.Cmp(new(big.Int).SetBytes(pubBytes[33:65])), qt.Equals, 0)
 }

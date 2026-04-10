@@ -176,5 +176,5 @@ func (i *BigInt) IsInField(field *big.Int) bool {
 	if i == nil {
 		return false
 	}
-	return i.MathBigInt().Cmp(field) < 0
+	return i.MathBigInt().Sign() >= 0 && i.MathBigInt().Cmp(field) < 0
 }

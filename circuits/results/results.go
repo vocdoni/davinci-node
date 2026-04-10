@@ -2,11 +2,14 @@ package results
 
 import (
 	"errors"
+	"math/big"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/circuits/merkleproof"
+	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
+	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/gnark-crypto-primitives/elgamal"
@@ -110,8 +113,13 @@ func (c *ResultsVerifierCircuit) VerifyDecryptionProofs(api frontend.API) {
 }
 
 func (c *ResultsVerifierCircuit) VerifyResults(api frontend.API) {
+	bjjOrderMinusOne := new(big.Int).Sub(curves.New(bjj.CurveType).Order(), big.NewInt(1))
+
 	// Verify that the results add minus results sub equals results
 	for i := range params.FieldsPerBallot {
+		api.AssertIsLessOrEqual(c.AddAccumulators[i], bjjOrderMinusOne)
+		api.AssertIsLessOrEqual(c.SubAccumulators[i], bjjOrderMinusOne)
+		api.AssertIsLessOrEqual(c.SubAccumulators[i], c.AddAccumulators[i])
 		api.AssertIsEqual(
 			api.Sub(c.AddAccumulators[i], c.SubAccumulators[i]),
 			c.Results[i],

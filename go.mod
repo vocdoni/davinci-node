@@ -37,8 +37,8 @@ require (
 	github.com/vocdoni/davinci-circom v0.1.0
 	github.com/vocdoni/davinci-contracts v0.0.41-rc1
 	github.com/vocdoni/davinci-node/spec v0.0.0-20260305103337-7a52760babbc
-	github.com/vocdoni/gnark-crypto-primitives v0.0.3
-	github.com/vocdoni/lean-imt-go v0.0.2
+	github.com/vocdoni/gnark-crypto-primitives v0.0.5
+	github.com/vocdoni/lean-imt-go v0.0.4-rc1
 	github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/mod v0.33.0
