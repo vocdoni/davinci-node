@@ -593,13 +593,6 @@ func (cr *CircuitRuntime) ProveWithWitness(fullWitness witness.Witness) (proof g
 
 // Verify builds a public witness from the public assignment and verifies the proof.
 func (cr *CircuitRuntime) Verify(proof groth16.Proof, publicAssignment frontend.Circuit) (err error) {
-	startTime := time.Now()
-	defer func() {
-		if err == nil {
-			log.DebugTime("proof verified", startTime, "circuit", cr.Name())
-		}
-	}()
-
 	publicWitness, err := frontend.NewWitness(publicAssignment, cr.curve.ScalarField(), frontend.PublicOnly())
 	if err != nil {
 		return fmt.Errorf("create public witness: %w", err)
