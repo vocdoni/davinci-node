@@ -63,6 +63,26 @@ func (s *Storage) pushAggregatorBatch(abb *AggregatorBallotBatch) error {
 	return nil
 }
 
+// requeueAggregatorBatch writes an aggregated ballot batch back to the
+// aggregator queue without reapplying aggregation side effects. It assumes the
+// caller already holds the globalLock.
+func (s *Storage) requeueAggregatorBatch(abb *AggregatorBallotBatch) error {
+	val, err := EncodeArtifact(abb)
+	if err != nil {
+		return fmt.Errorf("encode batch: %w", err)
+	}
+	wTx := prefixeddb.NewPrefixedWriteTx(s.db.WriteTx(), aggregBatchPrefix)
+	key := hashKey(val)
+	if err := wTx.Set(append(abb.ProcessID.Bytes(), key...), val); err != nil {
+		wTx.Discard()
+		return err
+	}
+	if err := wTx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // RemoveAggregatorBatchesByProcess removes all ballot batches for a given processID.
 func (s *Storage) RemoveAggregatorBatchesByProcess(processID types.ProcessID) error {
 	s.globalLock.Lock()
@@ -571,7 +591,7 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 			if err := s.releasePendingAggregatorBatch(stb.ProcessID); err != nil && !errors.Is(err, db.ErrKeyNotFound) {
 				return fmt.Errorf("release pending aggregator batch: %w", err)
 			}
-			if err := s.pushAggregatorBatch(pendingBatch); err != nil && !errors.Is(err, ErrKeyAlreadyExists) {
+			if err := s.requeueAggregatorBatch(pendingBatch); err != nil && !errors.Is(err, ErrKeyAlreadyExists) {
 				return fmt.Errorf("requeue pending aggregator batch: %w", err)
 			}
 		case !errors.Is(err, ErrNotFound):
@@ -596,7 +616,7 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 // sets all ballots in the batch to error status, removes the reservation,
 // and deletes the batch from the state transition queue. This is typically
 // called when the state transition processing fails or is not valid.
-func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.ProcessID) error {
+func (s *Storage) MarkStateTransitionBatchFailed(key []byte) error {
 	s.globalLock.Lock()
 	defer s.globalLock.Unlock()
 
@@ -624,18 +644,18 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 			log.Errorw(err, "failed to remove failed state transition batch")
 		}
 		// Release pending tx
-		if err := s.prunePendingTx(StateTransitionTx, processID); err != nil {
+		if err := s.prunePendingTx(StateTransitionTx, stb.ProcessID); err != nil {
 			log.Warnw("failed to release pending tx",
 				"error", err,
-				"processID", processID.String())
+				"processID", stb.ProcessID.String())
 		}
 	}()
 
-	if pendingBatch, err := s.pendingAggregatorBatch(processID); err != nil && !errors.Is(err, ErrNotFound) {
+	if pendingBatch, err := s.pendingAggregatorBatch(stb.ProcessID); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("failed to get pending aggregator batch: %w", err)
 	} else if pendingBatch != nil {
 		// Release pending aggregator batch to be able to reprocess it
-		if err := s.releasePendingAggregatorBatch(processID); err != nil {
+		if err := s.releasePendingAggregatorBatch(stb.ProcessID); err != nil {
 			return fmt.Errorf("failed to release pending aggregator batch: %w", err)
 		}
 
@@ -643,12 +663,12 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 		pendingBatch.Attempts++
 		if pendingBatch.Attempts >= MaxStateTransitionAttempts {
 			log.Warnw("maximum state transition attempts reached for pending aggregator batch",
-				"processID", processID.String(),
+				"processID", stb.ProcessID.String(),
 				"attempts", pendingBatch.Attempts)
 			// Mark all ballots in the batch as error
 			for _, v := range stb.Ballots {
-				if err := s.setVoteIDStatus(processID, v.VoteID, VoteIDStatusError); err != nil {
-					log.Warnw("failed to set vote ID status to failed", "error", err.Error())
+				if err := s.setVoteIDStatus(stb.ProcessID, v.VoteID, VoteIDStatusError); err != nil {
+					log.Warnw("failed to set vote ID status to error", "error", err.Error())
 				}
 			}
 			return nil
@@ -666,14 +686,14 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 			// Mark all ballots in the batch as error
 			for _, v := range stb.Ballots {
 				if err := s.setVoteIDStatus(stb.ProcessID, v.VoteID, VoteIDStatusError); err != nil {
-					log.Warnw("failed to set vote ID status to failed", "error", err.Error())
+					log.Warnw("failed to set vote ID status to error", "error", err.Error())
 				}
 			}
 			return nil
 		}
 
 		if process.StateRoot == nil {
-			return fmt.Errorf("process %s has no state root", processID.String())
+			return fmt.Errorf("process %s has no state root", stb.ProcessID.String())
 		}
 
 		// Load the confirmed state root without moving the in-construction root.
@@ -682,53 +702,61 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 			return fmt.Errorf("failed to load state for process %s: %w", stb.ProcessID.String(), err)
 		}
 
-		// Check which votes are already in the state and filter them out
-		validBallots := make([]*AggregatorBallot, 0, len(pendingBatch.Ballots))
+		// Check which votes are already in the state. If any voteIDs are already
+		// present, we cannot safely mutate the pending aggregator batch because its
+		// recursive proof is bound to the original ballot set.
+		staleVoteCount := 0
 		for _, v := range stb.Ballots {
-			if currentState.ContainsVoteID(v.VoteID) {
-				log.Debugw("vote already in state, marking as failed",
-					"processID", stb.ProcessID.String(),
-					"voteID", v.VoteID.String())
-				if err := s.setVoteIDStatus(stb.ProcessID, v.VoteID, VoteIDStatusError); err != nil {
-					log.Warnw("failed to set vote ID status to failed", "error", err.Error())
-				}
-			} else {
-				// Vote is still valid, keep it in the batch
-				validBallots = append(validBallots, v)
+			if !currentState.ContainsVoteID(v.VoteID) {
+				continue
 			}
+			staleVoteCount++
+			log.Debugw("vote already in state during state transition retry",
+				"processID", stb.ProcessID.String(),
+				"voteID", v.VoteID.String())
 		}
 
-		// If no valid ballots remain, don't retry
-		if len(validBallots) == 0 {
-			log.Infow("no valid ballots remaining after filtering, batch not retried",
-				"processID", stb.ProcessID.String())
+		if staleVoteCount > 0 {
+			log.Warnw("state transition retry cannot reuse pending aggregator batch with stale vote IDs; proof is bound to the original batch",
+				"processID", stb.ProcessID.String(),
+				"staleVoteCount", staleVoteCount,
+				"totalBallots", len(stb.Ballots),
+			)
+			for _, v := range stb.Ballots {
+				if err := s.setVoteIDStatus(stb.ProcessID, v.VoteID, VoteIDStatusError); err != nil {
+					log.Warnw("failed to set vote ID status to error", "error", err.Error())
+				}
+			}
 			return nil
 		}
 
-		// Update the pending batch with only valid ballots
-		pendingBatch.Ballots = validBallots
-
-		// Set LastAttemptTime to implement cooldown
+		// No voteIDs were absorbed into the latest state, so the original
+		// aggregator proof is still aligned with the batch contents. Requeue the
+		// batch unchanged with a cooldown.
 		pendingBatch.LastAttemptTime = time.Now()
-		if err := s.pushAggregatorBatch(pendingBatch); err != nil {
+		if err := s.requeueAggregatorBatch(pendingBatch); err != nil {
 			return fmt.Errorf("failed to recover pending aggregator batch: %w", err)
 		}
 		log.Infow("re-pushed aggregator batch for retry with cooldown",
 			"processID", stb.ProcessID.String(),
 			"attempts", pendingBatch.Attempts,
-			"validBallots", len(validBallots),
+			"ballots", len(pendingBatch.Ballots),
 			"lastAttemptTime", pendingBatch.LastAttemptTime.Format(time.RFC3339))
 		return nil
 	}
 	// If there is not pending batch or some of their votes are already in the
 	// state we cannot re-push the batch, we need to mark the votes as failed.
 	for _, v := range stb.Ballots {
-		if err := s.setVoteIDStatus(processID, v.VoteID, VoteIDStatusError); err != nil {
-			log.Warnw("failed to set vote ID status to failed", "error", err.Error())
+		s.releaseVoteID(v.VoteID)
+		if v.Address != nil {
+			s.releaseAddress(stb.ProcessID, v.Address)
+		}
+		if err := s.setVoteIDStatus(stb.ProcessID, v.VoteID, VoteIDStatusError); err != nil {
+			log.Warnw("failed to set vote ID status to error", "error", err.Error())
 		}
 	}
 	log.Warnw("batch can not be recovered after state transition failure",
-		"processID", processID.String(),
+		"processID", stb.ProcessID.String(),
 		"batchID", hex.EncodeToString(key))
 	return nil
 }

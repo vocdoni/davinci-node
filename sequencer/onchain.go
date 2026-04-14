@@ -116,7 +116,7 @@ func (s *Sequencer) processTransitionOnChain() {
 		// send the proof to the contract with the public witness
 		if err := s.pushTransitionToContract(contracts, processID, batchID, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
 			log.Errorw(err, "failed to push to contract")
-			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
+			if err := s.stg.MarkStateTransitionBatchFailed(batchID); err != nil {
 				log.Errorw(err, "failed to mark state transition batch as failed")
 			}
 			return true // Continue to next process ID
@@ -220,7 +220,7 @@ func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batch
 		if err != nil {
 			log.Errorf("failed to wait for state transition of %s: %s", processID.String(), err)
 			// Use MarkStateTransitionBatchFailed for consistent recovery logic
-			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
+			if err := s.stg.MarkStateTransitionBatchFailed(batchID); err != nil {
 				log.Warnw("failed to mark state transition batch as failed after callback error",
 					"error", err, "processID", processID.String())
 			}
@@ -230,7 +230,7 @@ func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batch
 		if err := s.promoteCommittedStateFromTransition(processID, rootHashAfter); err != nil {
 			log.Errorw(err, fmt.Sprintf("failed to promote committed state from transition confirmation for process %s root %s",
 				processID.String(), rootHashAfter.String()))
-			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
+			if err := s.stg.MarkStateTransitionBatchFailed(batchID); err != nil {
 				log.Warnw("failed to mark state transition batch as failed after promotion error",
 					"error", err, "processID", processID.String())
 			}
