@@ -58,6 +58,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
 	"github.com/consensys/gnark/std/hash/sha3"
 	"github.com/consensys/gnark/std/math/emulated"
+	"github.com/consensys/gnark/std/rangecheck"
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/consensys/gnark/std/signature/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
@@ -137,9 +138,8 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert address to var", err)
 	}
-	// api.ToBinary adds constraints such that solving fails when the value doesn’t fit in n bits,
-	// effectively range-constraining address to the canonical AddressLength.
-	api.ToBinary(addressVar, common.AddressLength*8)
+	// Range constrain address to the canonical AddressLength.
+	rangecheck.New(api).Check(addressVar, common.AddressLength*8)
 	// Only enforce address equality when inputs are marked as valid.
 	circuits.AssertIsEqualIf(api, c.IsValid, derivedAddr, addressVar)
 }
