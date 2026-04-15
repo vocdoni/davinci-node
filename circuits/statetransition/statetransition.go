@@ -105,6 +105,20 @@ type Vote struct {
 	OverwrittenBallot circuits.Ballot
 }
 
+func (v Vote) ballotLeafValues(ballot circuits.Ballot) []frontend.Variable {
+	return append(ballot.SerializeVars(), v.Address, v.VoteWeight)
+}
+
+// ReencryptedBallotLeafValues returns the values stored in the new ballot leaf.
+func (v Vote) ReencryptedBallotLeafValues() []frontend.Variable {
+	return v.ballotLeafValues(v.ReencryptedBallot)
+}
+
+// OverwrittenBallotLeafValues returns the values stored in the overwritten ballot leaf.
+func (v Vote) OverwrittenBallotLeafValues() []frontend.Variable {
+	return v.ballotLeafValues(v.OverwrittenBallot)
+}
+
 // Define declares the circuit's constraints
 func (circuit StateTransitionCircuit) Define(api frontend.API) error {
 	std.RegisterHints()
@@ -361,12 +375,12 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 	// Votes
 	for i := range params.VotesPerBatch {
 		// Ballot
-		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, circuit.Votes[i].ReencryptedBallot.SerializeVars()...); err != nil {
+		if err := circuit.VotesProofs.Ballot[i].VerifyNewLeafHash(api, hFn, circuit.Votes[i].ReencryptedBallotLeafValues()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
 			return
 		}
 		// OverwrittenBallot
-		if err := circuit.VotesProofs.Ballot[i].VerifyOverwrittenBallot(api, hFn, circuit.Votes[i].OverwrittenBallot.SerializeVars()...); err != nil {
+		if err := circuit.VotesProofs.Ballot[i].VerifyOverwrittenBallot(api, hFn, circuit.Votes[i].OverwrittenBallotLeafValues()...); err != nil {
 			circuits.FrontendError(api, "failed to verify ballot vote proof leaf hash: ", err)
 			return
 		}
@@ -403,6 +417,8 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	// The blob is built as follows:
 	// - First, we add the new results (addition and subtraction) and VotersCount
 	// - Finally, we add exactly VotersCount votes sequentially
+	// Each vote is serialized as voteID, address, ballotIndex, weight, and
+	// then the reencrypted ballot coordinates.
 	// Each ballot coordinate is represented as a field element (32 bytes).
 	// Each field element is represented as a big-endian byte array.
 	// The blob is a fixed-size array (FieldElementsPerBlob * BytesPerFieldElement).
@@ -427,12 +443,14 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 		api.AssertIsLessOrEqual(voteID, params.VoteIDMax)
 
 		writeMask := isRealVote[i]
-		// VoteID, Address and BallotIndex
+		// VoteID, Address, BallotIndex and Weight
 		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].VoteID)
 		blobIndex++
 		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].Address)
 		blobIndex++
 		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].BallotIndex)
+		blobIndex++
+		blob[blobIndex] = api.Mul(writeMask, circuit.Votes[i].VoteWeight)
 		blobIndex++
 		// Reencrypted ballot (masked)
 		appendBallotMasked(circuit.Votes[i].ReencryptedBallot, writeMask)
