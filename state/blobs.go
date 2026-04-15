@@ -44,9 +44,18 @@ func (st *State) BlobEvalData() (*blobs.BlobEvalData, error) {
 func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 	var cells [BlobTxFieldElementsPerBlob][BlobTxBytesPerFieldElement]byte
 	cell := 0
-	push := func(bi *big.Int) error {
+	push := func(name string, bi *big.Int) error {
 		if cell >= BlobTxFieldElementsPerBlob {
 			return fmt.Errorf("blob overflow")
+		}
+		if bi == nil {
+			return fmt.Errorf("%s is nil", name)
+		}
+		if bi.Sign() < 0 {
+			return fmt.Errorf("%s is negative", name)
+		}
+		if bi.BitLen() > BlobTxBytesPerFieldElement*8 {
+			return fmt.Errorf("%s exceeds %d bytes", name, BlobTxBytesPerFieldElement)
 		}
 		biBytes := bi.Bytes()
 		// Pad to 32 bytes if necessary (big-endian)
@@ -63,35 +72,35 @@ func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 
 	// First, add results (always present)
 	for _, p := range st.newResultsAdd.BigInts() {
-		if err := push(p); err != nil {
+		if err := push("results add coordinate", p); err != nil {
 			return nil, err
 		}
 	}
 	for _, p := range st.newResultsSub.BigInts() {
-		if err := push(p); err != nil {
+		if err := push("results sub coordinate", p); err != nil {
 			return nil, err
 		}
 	}
-	if err := push(big.NewInt(int64(st.VotersCount()))); err != nil {
+	if err := push("voters count", big.NewInt(int64(st.VotersCount()))); err != nil {
 		return nil, err
 	}
 
 	// Then add exactly VotersCount votes sequentially (no padding)
 	for _, v := range st.Votes() {
-		if err := push(v.VoteID.BigInt()); err != nil { // voteId hash
+		if err := push("vote ID", v.VoteID.BigInt()); err != nil {
 			return nil, err
 		}
-		if err := push(v.Address); err != nil { // address
+		if err := push("vote address", v.Address); err != nil {
 			return nil, err
 		}
-		if err := push(v.BallotIndex.BigInt()); err != nil { // ballot index
+		if err := push("vote ballot index", v.BallotIndex.BigInt()); err != nil {
 			return nil, err
 		}
-		if err := push(v.Weight); err != nil { // vote weight
+		if err := push("vote weight", v.Weight); err != nil {
 			return nil, err
 		}
-		for _, p := range v.ReencryptedBallot.BigInts() { // reencrypted ballot coordinates
-			if err := push(p); err != nil {
+		for _, p := range v.ReencryptedBallot.BigInts() {
+			if err := push("reencrypted ballot coordinate", p); err != nil {
 				return nil, err
 			}
 		}

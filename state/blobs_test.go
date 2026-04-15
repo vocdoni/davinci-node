@@ -194,6 +194,64 @@ func TestParseBlobDataPreservesVoteWeight(t *testing.T) {
 	}
 }
 
+func TestBlobEvalDataRejectsNilVoteWeight(t *testing.T) {
+	c := qt.New(t)
+
+	publicKey, _, err := elgamal.GenerateKey(state.Curve)
+	c.Assert(err, qt.IsNil)
+
+	st, err := state.New(memdb.New(), testutil.RandomProcessID())
+	c.Assert(err, qt.IsNil)
+	defer func() {
+		if err := st.Close(); err != nil {
+			c.Assert(err, qt.IsNil, qt.Commentf("failed to close state"))
+		}
+	}()
+
+	err = st.Initialize(
+		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
+		testutil.BallotModePacked(),
+		types.EncryptionKeyFromPoint(publicKey),
+	)
+	c.Assert(err, qt.IsNil)
+
+	vote := statetest.NewVoteForTest(publicKey, 0, 1)
+	vote.Weight = nil
+
+	err = st.AddVotesBatch([]*state.Vote{vote})
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "vote weight is nil")
+}
+
+func TestBlobEvalDataRejectsOversizedVoteWeight(t *testing.T) {
+	c := qt.New(t)
+
+	publicKey, _, err := elgamal.GenerateKey(state.Curve)
+	c.Assert(err, qt.IsNil)
+
+	st, err := state.New(memdb.New(), testutil.RandomProcessID())
+	c.Assert(err, qt.IsNil)
+	defer func() {
+		if err := st.Close(); err != nil {
+			c.Assert(err, qt.IsNil, qt.Commentf("failed to close state"))
+		}
+	}()
+
+	err = st.Initialize(
+		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
+		testutil.BallotModePacked(),
+		types.EncryptionKeyFromPoint(publicKey),
+	)
+	c.Assert(err, qt.IsNil)
+
+	vote := statetest.NewVoteForTest(publicKey, 0, 1)
+	vote.Weight = new(big.Int).Lsh(big.NewInt(1), state.BlobTxBytesPerFieldElement*8)
+
+	err = st.AddVotesBatch([]*state.Vote{vote})
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "vote weight exceeds 32 bytes")
+}
+
 func TestBlobStateTransition(t *testing.T) {
 	c := qt.New(t)
 	processID := testutil.RandomProcessID()
