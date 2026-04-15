@@ -246,7 +246,7 @@ func (o *State) endBatch() error {
 		if i < len(o.Votes()) {
 			v := o.Votes()[i]
 			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
-				v.BallotIndex.StateKey(), v.ReencryptedBallot.BigInts()...)
+				v.BallotIndex.StateKey(), v.TreeLeafValues()...)
 			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
 				v.VoteID.StateKey(), voteIDLeafValue)
 		} else {

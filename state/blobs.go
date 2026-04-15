@@ -32,7 +32,7 @@ type BlobData struct {
 //  2. ResultsSub (params.FieldsPerBallot * 4 coordinates)
 //  3. VotersCount
 //  4. Votes sequentially for exactly VotersCount entries:
-//     Each vote: voteID + address + ballotIndex + reencryptedBallot coordinates
+//     Each vote: voteID + address + ballotIndex + weight + reencryptedBallot coordinates
 func (st *State) BlobEvalData() (*blobs.BlobEvalData, error) {
 	if st.blobEvalData == nil {
 		return nil, fmt.Errorf("blob eval data not available")
@@ -85,6 +85,9 @@ func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 			return nil, err
 		}
 		if err := push(v.BallotIndex.BigInt()); err != nil { // ballot index
+			return nil, err
+		}
+		if err := push(v.Weight); err != nil { // vote weight
 			return nil, err
 		}
 		for _, p := range v.ReencryptedBallot.BigInts() { // reencrypted ballot coordinates
@@ -177,8 +180,8 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 	// Extract exactly VotersCount votes.
 	for range data.VotersCount {
 		// Check if we have enough cells for a complete vote:
-		// voteID + address + ballotIndex + ballot coordinates.
-		if cellIndex+3+coordsPerBallot > BlobTxFieldElementsPerBlob {
+		// voteID + address + ballotIndex + weight + ballot coordinates.
+		if cellIndex+4+coordsPerBallot > BlobTxFieldElementsPerBlob {
 			return nil, fmt.Errorf("incomplete vote data in blob")
 		}
 		voteIDcell := getCell(cellIndex)
@@ -190,6 +193,9 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 
 		// Extract ballotIndex
 		ballotIndexCell := getCell(cellIndex)
+		cellIndex++
+
+		weight := getCell(cellIndex)
 		cellIndex++
 
 		// Extract ballot coordinates
@@ -221,6 +227,7 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 			Address:           address,
 			BallotIndex:       ballotIndex,
 			VoteID:            voteID,
+			Weight:            weight,
 			ReencryptedBallot: ballot,
 		}
 		data.Votes = append(data.Votes, vote)
@@ -241,13 +248,13 @@ func (st *State) ApplyBlobToState(blob *types.Blob) error {
 		// Add or update the vote ballot in the tree
 		if _, err := st.EncryptedBallot(vote.BallotIndex); err != nil {
 			// Key doesn't exist, add it
-			if err := st.tree.AddBigInt(vote.BallotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {
-				return fmt.Errorf("failed to add vote with address %d to tree: %w", vote.Address, err)
+			if err := st.tree.AddBigInt(vote.BallotIndex.BigInt(), vote.TreeLeafValues()...); err != nil {
+				return fmt.Errorf("failed to add vote with address %s to tree: %w", vote.Address.String(), err)
 			}
 		} else {
 			// Key exists, update it
-			if err := st.tree.UpdateBigInt(vote.BallotIndex.BigInt(), vote.ReencryptedBallot.BigInts()...); err != nil {
-				return fmt.Errorf("failed to update vote with address %d in tree: %w", vote.Address, err)
+			if err := st.tree.UpdateBigInt(vote.BallotIndex.BigInt(), vote.TreeLeafValues()...); err != nil {
+				return fmt.Errorf("failed to update vote with address %s in tree: %w", vote.Address.String(), err)
 			}
 		}
 
