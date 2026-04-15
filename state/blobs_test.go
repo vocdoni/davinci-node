@@ -93,6 +93,7 @@ func TestBlobDataStructures(t *testing.T) {
 			push(v.VoteID.BigInt())                           // voteID
 			push(v.Address)                                   // address
 			push(v.BallotIndex.BigInt())                      // ballot index
+			push(v.Weight)                                    // weight
 			for _, p := range v.ReencryptedBallot.BigInts() { // ballot coords
 				push(p)
 			}
@@ -102,7 +103,7 @@ func TestBlobDataStructures(t *testing.T) {
 		coordsPerBallot := params.FieldsPerBallot * 4
 		resultsCells := 2 * coordsPerBallot // resultsAdd + resultsSub
 		countCells := 1
-		cellsPerVote := 1 + 1 + 1 + coordsPerBallot // voteID + address + ballotIndex + ballot
+		cellsPerVote := 1 + 1 + 1 + 1 + coordsPerBallot // voteID + address + ballotIndex + weight + ballot
 		expectedCells := resultsCells + countCells + len(votes)*cellsPerVote
 		c.Assert(cell, qt.Equals, expectedCells, qt.Commentf("Expected %d cells, used %d", expectedCells, cell))
 
@@ -137,11 +138,13 @@ func TestBlobDataStructures(t *testing.T) {
 			voteID := getCell()
 			address := getCell()
 			ballotIndex := getCell()
+			weight := getCell()
 
-			// Verify vote ID, address and ballot index
+			// Verify vote ID, address, ballot index, and weight
 			c.Assert(originalVote.VoteID.BigInt().Cmp(voteID), qt.Equals, 0, qt.Commentf("Vote %d ID mismatch", i))
 			c.Assert(originalVote.Address.Cmp(address), qt.Equals, 0, qt.Commentf("Vote %d address mismatch", i))
 			c.Assert(originalVote.BallotIndex.BigInt().Cmp(ballotIndex), qt.Equals, 0, qt.Commentf("Vote %d ballotIndex mismatch", i))
+			c.Assert(originalVote.Weight.Cmp(weight), qt.Equals, 0, qt.Commentf("Vote %d weight mismatch", i))
 
 			// Verify ballot coordinates
 			originalCoords := originalVote.ReencryptedBallot.BigInts()
@@ -151,6 +154,44 @@ func TestBlobDataStructures(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestParseBlobDataPreservesVoteWeight(t *testing.T) {
+	c := qt.New(t)
+
+	publicKey, _, err := elgamal.GenerateKey(state.Curve)
+	c.Assert(err, qt.IsNil)
+
+	st, err := state.New(memdb.New(), testutil.RandomProcessID())
+	c.Assert(err, qt.IsNil)
+	defer func() {
+		if err := st.Close(); err != nil {
+			c.Assert(err, qt.IsNil, qt.Commentf("failed to close state"))
+		}
+	}()
+
+	ballotMode := testutil.BallotMode()
+	packedBallotMode, err := ballotMode.Pack()
+	c.Assert(err, qt.IsNil)
+
+	err = st.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), packedBallotMode, types.EncryptionKeyFromPoint(publicKey))
+	c.Assert(err, qt.IsNil)
+
+	votes := statetest.NewVotesForTest(publicKey, 2, 1)
+	err = st.AddVotesBatch(votes)
+	c.Assert(err, qt.IsNil)
+
+	blobData, err := st.BlobEvalData()
+	c.Assert(err, qt.IsNil)
+
+	parsed, err := state.ParseBlobData(blobData.Blob.Bytes())
+	c.Assert(err, qt.IsNil)
+	c.Assert(parsed.Votes, qt.HasLen, len(votes))
+
+	for i := range votes {
+		c.Assert(parsed.Votes[i].Weight, qt.Not(qt.IsNil), qt.Commentf("vote %d weight should be present", i))
+		c.Assert(parsed.Votes[i].Weight.Cmp(votes[i].Weight), qt.Equals, 0, qt.Commentf("vote %d weight mismatch", i))
+	}
 }
 
 func TestBlobStateTransition(t *testing.T) {
@@ -396,6 +437,7 @@ func verifyBlobStructureBasic(t *testing.T, blob *types.Blob, votes []*state.Vot
 
 		// Verify vote ID
 		c.Assert(originalVote.VoteID, qt.Equals, parsedVote.VoteID, qt.Commentf("Vote %d ID mismatch", i))
+		c.Assert(originalVote.Weight.Cmp(parsedVote.Weight), qt.Equals, 0, qt.Commentf("Vote %d weight mismatch", i))
 
 		// Verify ballot coordinates match (comparing reencrypted ballot since that's what's stored in blob)
 		originalCoords := originalVote.ReencryptedBallot.BigInts()
