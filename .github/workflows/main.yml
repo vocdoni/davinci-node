@@ -170,7 +170,7 @@ jobs:
               - 'config/*_vkey.sol'
 
       - name: Comment on PR
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         if: steps.solidity_changes.outputs.verifiers == 'true' && github.event_name == 'pull_request'
         with:
           script: |
