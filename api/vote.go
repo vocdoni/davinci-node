@@ -114,7 +114,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Calculate the ballot index
-	ballotIndex := types.CalculateBallotIndex(proof.AddressIndex)
+	ballotIndex := types.CalculateBallotIndex(types.VoterIndex(proof.AddressIndex))
 
 	// Open the state for the process
 	s, err := state.LoadOnRoot(a.storage.StateDB(), *process.ID, process.StateRoot.MathBigInt())
@@ -276,7 +276,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			ErrInvalidCensusProof.Withf("address not in census").Write(w)
 			return
 		}
-		vote.CensusProof.VoterIndex = proof.AddressIndex
+		vote.CensusProof.VoterIndex = types.VoterIndex(proof.AddressIndex)
 		voterWeight = new(types.BigInt).SetBigInt(proof.Weight)
 	case process.Census.CensusOrigin.IsCSP():
 		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {
