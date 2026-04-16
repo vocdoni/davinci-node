@@ -2,10 +2,12 @@ package types
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 
 	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/davinci-node/spec/params"
 )
 
 // CensusOrigin represents the origin of the census used in a voting process.
@@ -155,7 +157,7 @@ type CensusProof struct {
 	Address      HexBytes     `json:"address"`
 	Weight       *BigInt      `json:"weight,omitempty"`
 	// VoterIndex is a unique census participant index, used to derive the ballot index.
-	VoterIndex uint64 `json:"voterIndex,omitempty"`
+	VoterIndex VoterIndex `json:"voterIndex"`
 	// Merkletree related fields
 	Siblings HexBytes `json:"siblings,omitempty"`
 	Value    HexBytes `json:"value,omitempty"`
@@ -171,6 +173,44 @@ type CensusRoot struct {
 	Root HexBytes `json:"root"`
 }
 
+// VoterIndex is a unique census participant index.
+type VoterIndex uint64
+
+// Uint64 returns the voter index as a uint64.
+func (v VoterIndex) Uint64() uint64 { return uint64(v) }
+
+// BigInt returns the voter index as a *BigInt.
+func (v VoterIndex) BigInt() *BigInt { return new(BigInt).SetUint64(uint64(v)) }
+
+// Valid checks that the VoterIndex is within the allowed range.
+func (v VoterIndex) Valid() bool { return uint64(v) <= params.VoterIndexMax }
+
+// MarshalJSON encodes the voter index as a decimal string.
+func (v VoterIndex) MarshalJSON() ([]byte, error) { return json.Marshal(v.BigInt()) }
+
+// UnmarshalJSON decodes the voter index from a decimal string.
+func (v *VoterIndex) UnmarshalJSON(data []byte) error {
+	if v == nil {
+		return fmt.Errorf("cannot unmarshal into nil VoterIndex")
+	}
+	if len(data) == 2 && data[0] == '"' && data[1] == '"' {
+		return fmt.Errorf("invalid VoterIndex: empty")
+	}
+	var bi BigInt
+	if err := bi.UnmarshalJSON(data); err != nil {
+		return fmt.Errorf("invalid VoterIndex: %w", err)
+	}
+	if !bi.MathBigInt().IsUint64() {
+		return fmt.Errorf("invalid VoterIndex: out of range")
+	}
+	n := bi.MathBigInt().Uint64()
+	if n > params.VoterIndexMax {
+		return fmt.Errorf("invalid VoterIndex: out of range (got %s)", bi.String())
+	}
+	*v = VoterIndex(n)
+	return nil
+}
+
 // Valid checks that the CensusProof is well-formed
 func (cp *CensusProof) Valid() bool {
 	if cp == nil || !cp.CensusOrigin.Valid() {
@@ -182,7 +222,8 @@ func (cp *CensusProof) Valid() bool {
 		return true
 	case cp.CensusOrigin.IsCSP():
 		return cp.Root != nil && cp.Address != nil &&
-			cp.ProcessID.IsValid() && cp.PublicKey != nil && cp.Signature != nil
+			cp.ProcessID.IsValid() && cp.PublicKey != nil && cp.Signature != nil &&
+			cp.VoterIndex.Valid()
 	default:
 		return false
 	}
@@ -201,4 +242,4 @@ func (cp *CensusProof) String() string {
 // CSPIndexFn is a function that returns the index of a given process ID,
 // address and weight. It is used during the CensusProof generation process to
 // calculate deterministic indexes for CSP proofs.
-type CSPIndexFn func(processID ProcessID, address common.Address, weight *BigInt) uint64
+type CSPIndexFn func(processID ProcessID, address common.Address, weight *BigInt) VoterIndex

@@ -116,6 +116,6 @@ func CensusProofToCSPProof(curveID ecc_twedwards.ID, censusProof *types.CensusPr
 	return &CSPProof{
 		Signature:  eddsa.SignatureFromIden3(signature),
 		PublicKey:  eddsa.PublicKeyFromIden3(pubKey),
-		VoterIndex: censusProof.VoterIndex,
+		VoterIndex: censusProof.VoterIndex.Uint64(),
 	}, nil
 }
