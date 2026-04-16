@@ -191,7 +191,7 @@ func (c *BabyJubJubEdDSA) root() (types.HexBytes, error) {
 // current hash function to hash the voterIndex, process ID, the address and
 // the weight.
 func (c *BabyJubJubEdDSA) signatureMessage(
-	voterIndex uint64,
+	voterIndex types.VoterIndex,
 	processID types.ProcessID,
 	address types.HexBytes,
 	weight *types.BigInt,
@@ -213,7 +213,7 @@ func (c *BabyJubJubEdDSA) signatureMessage(
 	// using the poseidon hash function. Ensure that the process ID and address
 	// are converted to field elements for the curve.
 	message, err := c.hashFn.BigIntsSum([]*big.Int{
-		new(big.Int).SetUint64(voterIndex),
+		voterIndex.BigInt().MathBigInt(),
 		processID.BigInt().MathBigInt(),
 		address.BigInt().MathBigInt(),
 		weight.MathBigInt(),
@@ -227,7 +227,7 @@ func (c *BabyJubJubEdDSA) signatureMessage(
 // sign method signs a message with the current EdDSA private key. It returns
 // the compressed signature of the message.
 func (c *BabyJubJubEdDSA) sign(
-	voterIndex uint64,
+	voterIndex types.VoterIndex,
 	processID types.ProcessID,
 	address common.Address,
 	weight *types.BigInt,
@@ -250,7 +250,7 @@ func (c *BabyJubJubEdDSA) sign(
 // a given process ID, address and weight. It uses the poseidon hash function
 // to compute a deterministic index based on the inputs. It ensures that the
 // result is in the VoterIndex range [0, params.VoterIndexMax).
-func DefaultCSPIndexFn(processID types.ProcessID, address common.Address, weight *types.BigInt) uint64 {
+func DefaultCSPIndexFn(processID types.ProcessID, address common.Address, weight *types.BigInt) types.VoterIndex {
 	if !processID.IsValid() {
 		panic("invalid process ID")
 	}
@@ -270,5 +270,5 @@ func DefaultCSPIndexFn(processID types.ProcessID, address common.Address, weight
 		panic(err)
 	}
 
-	return new(big.Int).Mod(bigHash, new(big.Int).SetUint64(params.VoterIndexMax)).Uint64()
+	return types.VoterIndex(new(big.Int).Mod(bigHash, new(big.Int).SetUint64(params.VoterIndexMax)).Uint64())
 }
