@@ -271,49 +271,19 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 			processID.String(), processStateRoot, stateRoot)
 	}
 
-	// Fetch the encrypted accumulators
-	encryptedAddAccumulator, ok := st.ResultsAdd()
+	// Fetch the encrypted results accumulator
+	encryptedResultsAccumulator, ok := st.Results()
 	if !ok {
 		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s", processID.String())
-	}
-	encryptedSubAccumulator, ok := st.ResultsSub()
-	if !ok {
-		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s", processID.String())
+		return fmt.Errorf("could not retrieve encrypted results accumulator for process %s", processID.String())
 	}
 
-	// Decrypt the accumulators
+	// Decrypt the accumulator
 	startTime := time.Now()
-	addAccumulator := [params.FieldsPerBallot]*big.Int{}
-	addAccumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
-	addDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
-	for i, ct := range encryptedAddAccumulator.Ciphertexts {
-		if ct.C1 == nil || ct.C2 == nil {
-			setProcessInvalid()
-			return fmt.Errorf("invalid ciphertext for process %s: %v", processID.String(), ct)
-		}
-		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
-		if err != nil {
-			setProcessInvalid()
-			return fmt.Errorf("could not decrypt add accumulator for process %s: %w", processID.String(), err)
-		}
-		addAccumulator[i] = result
-		addAccumulatorsEncrypted[i] = *ct
-		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
-		if err != nil {
-			setProcessInvalid()
-			return fmt.Errorf("could not build decryption proof for add accumulator for process %s: %w", processID.String(), err)
-		}
-	}
-	log.Debugw("decrypted add accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
-
-	startTime = time.Now()
 	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
-	subAccumulator := [params.FieldsPerBallot]*big.Int{}
-	subAccumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
-	subDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
-	for i, ct := range encryptedSubAccumulator.Ciphertexts {
+	accumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	decryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
+	for i, ct := range encryptedResultsAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			setProcessInvalid()
 			return fmt.Errorf("invalid ciphertext for process %s: %v", processID.String(), ct)
@@ -321,29 +291,25 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
 		if err != nil {
 			setProcessInvalid()
-			return fmt.Errorf("could not decrypt sub accumulator for process %s: %w", processID.String(), err)
+			return fmt.Errorf("could not decrypt results accumulator for process %s: %w", processID.String(), err)
 		}
-		subAccumulator[i] = result
-		subAccumulatorsEncrypted[i] = *ct
-		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
+		resultsAccumulator[i] = result
+		accumulatorsEncrypted[i] = *ct
+		decryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
 		if err != nil {
 			setProcessInvalid()
-			return fmt.Errorf("could not build decryption proof for sub accumulator for process %s: %w", processID.String(), err)
+			return fmt.Errorf("could not build decryption proof for results accumulator for process %s: %w", processID.String(), err)
 		}
-		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
 	}
-	log.Debugw("decrypted sub accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
+	log.Debugw("decrypted results accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", resultsAccumulator)
 
 	// Build the circuit assignment.
 	resultsVerifierAssignment, err := results.GenerateAssignment(
 		st,
 		resultsAccumulator,
-		addAccumulator,
-		subAccumulator,
-		addAccumulatorsEncrypted,
-		subAccumulatorsEncrypted,
-		addDecryptionProofs,
-		subDecryptionProofs,
+		resultsAccumulator,
+		accumulatorsEncrypted,
+		decryptionProofs,
 	)
 	if err != nil {
 		setProcessInvalid()

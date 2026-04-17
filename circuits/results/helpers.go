@@ -16,12 +16,9 @@ import (
 func GenerateAssignment(
 	o *state.State,
 	results [params.FieldsPerBallot]*big.Int,
-	addAccumulators [params.FieldsPerBallot]*big.Int,
-	subAccumulators [params.FieldsPerBallot]*big.Int,
-	addAccumulatorsEncrypted [params.FieldsPerBallot]elgamal.Ciphertext,
-	subAccumulatorsEncrypted [params.FieldsPerBallot]elgamal.Ciphertext,
-	decryptionAddProofs [params.FieldsPerBallot]*elgamal.DecryptionProof,
-	decryptionSubProofs [params.FieldsPerBallot]*elgamal.DecryptionProof,
+	accumulators [params.FieldsPerBallot]*big.Int,
+	accumulatorsEncrypted [params.FieldsPerBallot]elgamal.Ciphertext,
+	decryptionProofs [params.FieldsPerBallot]*elgamal.DecryptionProof,
 ) (*ResultsVerifierCircuit, error) {
 	var err error
 	assignment := &ResultsVerifierCircuit{}
@@ -34,27 +31,20 @@ func GenerateAssignment(
 
 	// Encrypted and decrypted results
 	for i := range params.FieldsPerBallot {
-		assignment.AddAccumulatorsEncrypted[i] = *addAccumulatorsEncrypted[i].ToGnark()
-		assignment.SubAccumulatorsEncrypted[i] = *subAccumulatorsEncrypted[i].ToGnark()
+		assignment.AccumulatorsEncrypted[i] = *accumulatorsEncrypted[i].ToGnark()
 		assignment.Results[i] = results[i]
-		assignment.AddAccumulators[i] = addAccumulators[i]
-		assignment.SubAccumulators[i] = subAccumulators[i]
+		assignment.Accumulators[i] = accumulators[i]
 	}
 
-	// Results accumulators proofs
-	assignment.AddAccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResultsAdd)
+	// Results accumulators proof
+	assignment.AccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResults)
 	if err != nil {
-		return nil, fmt.Errorf("failed to transform results add arbo proof to merkle proof: %w", err)
-	}
-	assignment.SubAccumulatorsMerkleProof, err = merkleProofFromKey(o, state.KeyResultsSub)
-	if err != nil {
-		return nil, fmt.Errorf("failed to transform results sub arbo proof to merkle proof: %w", err)
+		return nil, fmt.Errorf("failed to transform results arbo proof to merkle proof: %w", err)
 	}
 
-	// Decryption add and sub proofs
+	// Decryption proofs
 	for i := range params.FieldsPerBallot {
-		assignment.DecryptionAddProofs[i] = decryptionAddProofs[i].ToGnark()
-		assignment.DecryptionSubProofs[i] = decryptionSubProofs[i].ToGnark()
+		assignment.DecryptionProofs[i] = decryptionProofs[i].ToGnark()
 	}
 
 	// EncryptionKey proof and public key

@@ -80,10 +80,7 @@ func TestBlobDataStructures(t *testing.T) {
 		}
 
 		// Pack results first
-		for _, p := range state.NewResultsAdd().BigInts() {
-			push(p)
-		}
-		for _, p := range state.NewResultsSub().BigInts() {
+		for _, p := range state.NewResults().BigInts() {
 			push(p)
 		}
 		push(big.NewInt(int64(len(state.Votes()))))
@@ -101,7 +98,7 @@ func TestBlobDataStructures(t *testing.T) {
 
 		// Verify we used the expected number of cells
 		coordsPerBallot := params.FieldsPerBallot * 4
-		resultsCells := 2 * coordsPerBallot // resultsAdd + resultsSub
+		resultsCells := coordsPerBallot
 		countCells := 1
 		cellsPerVote := 1 + 1 + 1 + 1 + coordsPerBallot // voteID + address + ballotIndex + weight + ballot
 		expectedCells := resultsCells + countCells + len(votes)*cellsPerVote
@@ -119,16 +116,10 @@ func TestBlobDataStructures(t *testing.T) {
 		}
 
 		// Verify results can be reconstructed first
-		originalResultsAdd := state.NewResultsAdd().BigInts()
-		for i, originalCoord := range originalResultsAdd {
+		originalResults := state.NewResults().BigInts()
+		for i, originalCoord := range originalResults {
 			reconstructedCoord := getCell()
-			c.Assert(originalCoord.Cmp(reconstructedCoord), qt.Equals, 0, qt.Commentf("ResultsAdd coordinate %d mismatch", i))
-		}
-
-		originalResultsSub := state.NewResultsSub().BigInts()
-		for i, originalCoord := range originalResultsSub {
-			reconstructedCoord := getCell()
-			c.Assert(originalCoord.Cmp(reconstructedCoord), qt.Equals, 0, qt.Commentf("ResultsSub coordinate %d mismatch", i))
+			c.Assert(originalCoord.Cmp(reconstructedCoord), qt.Equals, 0, qt.Commentf("Results coordinate %d mismatch", i))
 		}
 		votersCount := getCell()
 		c.Assert(votersCount.Cmp(big.NewInt(int64(len(votes)))), qt.Equals, 0, qt.Commentf("VotersCount mismatch"))
@@ -451,7 +442,7 @@ func TestParseBlobDataRejectsTooManyVotes(t *testing.T) {
 
 	raw := make([]byte, types.BlobLength)
 	coordsPerBallot := params.FieldsPerBallot * 4
-	votersCountCell := 2 * coordsPerBallot
+	votersCountCell := coordsPerBallot
 	setBlobCell(raw, votersCountCell, big.NewInt(int64(params.VotesPerBatch+1)))
 
 	_, err := state.ParseBlobData(raw)
@@ -463,7 +454,7 @@ func TestParseBlobDataRejectsInvalidVotersCountEncoding(t *testing.T) {
 
 	raw := make([]byte, types.BlobLength)
 	coordsPerBallot := params.FieldsPerBallot * 4
-	votersCountCell := 2 * coordsPerBallot
+	votersCountCell := coordsPerBallot
 	invalidCount := new(big.Int).Lsh(big.NewInt(1), 70)
 	setBlobCell(raw, votersCountCell, invalidCount)
 
@@ -505,8 +496,7 @@ func verifyBlobStructureBasic(t *testing.T, blob *types.Blob, votes []*state.Vot
 	}
 
 	// Verify that results data exists (but don't compare values since they accumulate across transitions)
-	c.Assert(len(blobData.ResultsAdd), qt.Equals, 32, qt.Commentf("Expected 32 ResultsAdd coordinates, got %d", len(blobData.ResultsAdd)))
-	c.Assert(len(blobData.ResultsSub), qt.Equals, 32, qt.Commentf("Expected 32 ResultsSub coordinates, got %d", len(blobData.ResultsSub)))
+	c.Assert(len(blobData.Results), qt.Equals, 32, qt.Commentf("Expected 32 Results coordinates, got %d", len(blobData.Results)))
 }
 
 func verifyKZGCommitment(t *testing.T, blob *types.Blob, commit *types.KZGCommitment, z, y *big.Int, versionedHash [32]byte) {
@@ -578,22 +568,12 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	}
 
 	// Verify results match
-	restoredResultsAdd := newState.NewResultsAdd()
-	restoredResultsSub := newState.NewResultsSub()
-
-	if restoredResultsAdd != nil {
-		restoredAddCoords := restoredResultsAdd.BigInts()
-		c.Assert(len(blobData.ResultsAdd), qt.Equals, len(restoredAddCoords), qt.Commentf("Restored ResultsAdd coordinate count mismatch"))
-		for i, coord := range blobData.ResultsAdd {
-			c.Assert(coord.Cmp(restoredAddCoords[i]), qt.Equals, 0, qt.Commentf("Restored ResultsAdd coordinate %d mismatch", i))
-		}
-	}
-
-	if restoredResultsSub != nil {
-		restoredSubCoords := restoredResultsSub.BigInts()
-		c.Assert(len(blobData.ResultsSub), qt.Equals, len(restoredSubCoords), qt.Commentf("Restored ResultsSub coordinate count mismatch"))
-		for i, coord := range blobData.ResultsSub {
-			c.Assert(coord.Cmp(restoredSubCoords[i]), qt.Equals, 0, qt.Commentf("Restored ResultsSub coordinate %d mismatch", i))
+	restoredResults := newState.NewResults()
+	if restoredResults != nil {
+		restoredCoords := restoredResults.BigInts()
+		c.Assert(len(blobData.Results), qt.Equals, len(restoredCoords), qt.Commentf("Restored Results coordinate count mismatch"))
+		for i, coord := range blobData.Results {
+			c.Assert(coord.Cmp(restoredCoords[i]), qt.Equals, 0, qt.Commentf("Restored Results coordinate %d mismatch", i))
 		}
 	}
 }
@@ -629,11 +609,10 @@ func TestParseBlobData_FromFile(t *testing.T) {
 
 	// Basic sanity logs (helpful while debugging)
 	t.Logf("parsed votes: %d", len(data.Votes))
-	t.Logf("results add coords: %d", len(data.ResultsAdd))
-	t.Logf("results sub coords: %d", len(data.ResultsSub))
+	t.Logf("results coords: %d", len(data.Results))
 
 	// Optional extra invariants:
-	if len(data.ResultsAdd) != len(data.ResultsSub) {
-		t.Fatalf("results length mismatch add=%d sub=%d", len(data.ResultsAdd), len(data.ResultsSub))
+	if len(data.Results) != params.FieldsPerBallot*4 {
+		t.Fatalf("results length mismatch got=%d", len(data.Results))
 	}
 }
