@@ -13,7 +13,6 @@ import (
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/spec/params"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/emulated/bn254/poseidon"
 )
 
 type AggregatorCircuit struct {
@@ -38,16 +37,6 @@ func (c *AggregatorCircuit) VoteMask(api frontend.API) []frontend.Variable {
 		isReal = api.Mul(isReal, api.Sub(1, isEnd))
 	}
 	return mask
-}
-
-// checkBatchHash recalculates the batch hash using the Poseidon hash function
-// and compares it with the expected batch hash. The batch hash is calculated
-// by hashing the ballot hashes.
-func (c *AggregatorCircuit) checkBatchHash(api frontend.API) {
-	if err := poseidon.AssertMultiHashEqual(api, c.BallotHashes[:], c.BatchHash); err != nil {
-		circuits.FrontendError(api, "failed to assert Poseidon batch hash", err)
-		return
-	}
 }
 
 // calculateWitnesses calculates the witnesses for the proofs. The first
@@ -109,7 +98,6 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 }
 
 func (c *AggregatorCircuit) Define(api frontend.API) error {
-	c.checkBatchHash(api)
 	c.checkProofs(api)
 	return nil
 }
