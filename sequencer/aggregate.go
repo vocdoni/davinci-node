@@ -557,7 +557,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	// Fill any remaining slots with dummy proofs if needed
 	if len(batchInputs.AggBallots) < params.VotesPerBatch {
 		log.Debugw("filling with dummy proofs", "count", params.VotesPerBatch-len(batchInputs.AggBallots))
-		if err := assignment.FillWithDummy(len(batchInputs.AggBallots), s.voteVerifierDummyProof); err != nil {
+		if err := assignment.FillWithDummy(len(batchInputs.AggBallots)); err != nil {
 			if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
 				log.Warnw("failed to release ballot reservations after dummy fill failure",
 					"error", err.Error(),
