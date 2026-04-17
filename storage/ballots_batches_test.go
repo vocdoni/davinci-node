@@ -9,6 +9,8 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/state"
+	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -339,6 +341,10 @@ func TestMarkStateTransitionBatchOutdatedRequeuesPendingBatchAndClearsPendingTx(
 	c.Assert(stg.MarkAggregatorBatchPending(retrievedBatch), qt.IsNil)
 	c.Assert(stg.MarkAggregatorBatchDone(batchID), qt.IsNil)
 
+	processBeforeRetry, err := stg.Process(processID)
+	c.Assert(err, qt.IsNil)
+	beforeRetryStats := processBeforeRetry.SequencerStats
+
 	stb := &StateTransitionBatch{
 		ProcessID: processID,
 		BatchID:   batchID,
@@ -369,6 +375,95 @@ func TestMarkStateTransitionBatchOutdatedRequeuesPendingBatchAndClearsPendingTx(
 	c.Assert(requeuedBatch.ProcessID, qt.Equals, processID)
 	c.Assert(requeuedBatch.Ballots, qt.HasLen, 1)
 	c.Assert(requeuedBatch.Ballots[0].VoteID, qt.Equals, voteID)
+
+	processAfterRetry, err := stg.Process(processID)
+	c.Assert(err, qt.IsNil)
+	afterRetryStats := processAfterRetry.SequencerStats
+	c.Assert(afterRetryStats.AggregatedVotesCount, qt.Equals, beforeRetryStats.AggregatedVotesCount)
+	c.Assert(afterRetryStats.CurrentBatchSize, qt.Equals, beforeRetryStats.CurrentBatchSize)
+	c.Assert(afterRetryStats.LastBatchSize, qt.Equals, beforeRetryStats.LastBatchSize)
+
+	status, err := stg.VoteIDStatus(processID, voteID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(status, qt.Equals, VoteIDStatusProcessed)
+}
+
+func TestMarkStateTransitionBatchFailedDoesNotRequeueMutatedPendingBatch(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+	ensureProcess(t, stg, processID)
+
+	staleVoteID := testutil.RandomVoteID()
+	freshVoteID := testutil.RandomVoteID()
+	batch := &AggregatorBallotBatch{
+		ProcessID: processID,
+		Ballots: []*AggregatorBallot{
+			{VoteID: staleVoteID, Address: big.NewInt(6001)},
+			{VoteID: freshVoteID, Address: big.NewInt(6002)},
+		},
+	}
+	c.Assert(stg.PushAggregatorBatch(batch), qt.IsNil)
+
+	retrievedBatch, batchID, err := stg.NextAggregatorBatch(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(retrievedBatch, qt.Not(qt.IsNil))
+
+	c.Assert(stg.SetPendingTx(StateTransitionTx, processID), qt.IsNil)
+	c.Assert(stg.MarkAggregatorBatchPending(retrievedBatch), qt.IsNil)
+	c.Assert(stg.MarkAggregatorBatchDone(batchID), qt.IsNil)
+
+	process, err := stg.Process(processID)
+	c.Assert(err, qt.IsNil)
+	processState, err := state.New(stg.StateDB(), processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(processState.SetRootAsBigInt(process.StateRoot.MathBigInt()), qt.IsNil)
+
+	staleVote := statetest.NewVoteForTest(ProcessEncryptionKeyToPoint(process.EncryptionKey), 7, 10)
+	staleVote.VoteID = staleVoteID
+	c.Assert(processState.AddVotesBatch([]*state.Vote{staleVote}), qt.IsNil)
+
+	latestRoot, err := processState.RootAsBigInt()
+	c.Assert(err, qt.IsNil)
+	c.Assert(stg.UpdateProcess(processID, func(p *types.Process) error {
+		p.StateRoot = types.BigIntConverter(latestRoot)
+		return nil
+	}), qt.IsNil)
+
+	stb := &StateTransitionBatch{
+		ProcessID: processID,
+		BatchID:   batchID,
+		Ballots:   retrievedBatch.Ballots,
+		Inputs: StateTransitionBatchProofInputs{
+			RootHashBefore: big.NewInt(20),
+			RootHashAfter:  big.NewInt(21),
+			CensusRoot:     big.NewInt(22),
+		},
+	}
+	c.Assert(stg.PushStateTransitionBatch(stb), qt.IsNil)
+
+	_, stateTransitionKey, err := stg.NextStateTransitionBatch(processID)
+	c.Assert(err, qt.IsNil)
+
+	err = stg.MarkStateTransitionBatchFailed(stateTransitionKey, processID)
+	c.Assert(err, qt.IsNil)
+
+	c.Assert(stg.HasPendingTx(StateTransitionTx, processID), qt.IsFalse)
+	_, err = stg.PendingAggregatorBatch(processID)
+	c.Assert(err, qt.Equals, ErrNotFound)
+
+	_, _, err = stg.NextAggregatorBatch(processID)
+	c.Assert(err, qt.Equals, ErrNoMoreElements)
+
+	staleStatus, err := stg.VoteIDStatus(processID, staleVoteID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(staleStatus, qt.Equals, VoteIDStatusError)
+
+	freshStatus, err := stg.VoteIDStatus(processID, freshVoteID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(freshStatus, qt.Equals, VoteIDStatusError)
 }
 
 // TestMarkStateTransitionOutdatedVsMarkDone tests the difference between outdated and done
