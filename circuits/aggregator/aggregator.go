@@ -52,7 +52,7 @@ func (c *AggregatorCircuit) calculateWitnesses(api frontend.API) []groth16.Witne
 		// create the witness for the proof
 		witness := groth16.Witness[sw_bls12377.ScalarField]{
 			Public: []emulated.Element[sw_bls12377.ScalarField]{
-				{Limbs: []frontend.Variable{isRealVote[i], 0, 0, 0}},
+				{Limbs: []frontend.Variable{1, 0, 0, 0}},
 			},
 		}
 		// Real slots use the provided input hash. Dummy slots use the dummy hash.
