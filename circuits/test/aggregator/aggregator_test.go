@@ -16,7 +16,7 @@ import (
 func TestAggregatorCircuit(t *testing.T) {
 	// inputs generation
 	startTime := time.Now()
-	_, placeholder, assignment := AggregatorInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)
+	_, placeholder, assignment := AggregatorInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 2)
 	log.DebugTime("aggregator inputs generation", startTime)
 	// proving
 	startTime = time.Now()
