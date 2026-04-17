@@ -1,6 +1,8 @@
 module github.com/vocdoni/davinci-node
 
-go 1.25.5
+go 1.25.7
+
+replace github.com/consensys/gnark => github.com/vocdoni/gnark v0.0.0-20260417104944-0b16758aa500
 
 require (
 	github.com/attestantio/go-eth2-client v0.28.0
@@ -11,7 +13,7 @@ require (
 	github.com/aws/smithy-go v1.22.2
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/consensys/gnark v0.14.1-0.20260126121332-407111efab55
-	github.com/consensys/gnark-crypto v0.19.3-0.20260126145145-b5cf053fbc34
+	github.com/consensys/gnark-crypto v0.20.1
 	github.com/ethereum/go-ethereum v1.17.1
 	github.com/frankban/quicktest v1.14.6
 	github.com/fxamacker/cbor/v2 v2.9.0
@@ -280,7 +282,7 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/cobra v1.10.1 // indirect
+	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/supranational/blst v0.3.16 // indirect

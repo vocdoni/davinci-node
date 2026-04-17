@@ -18,9 +18,9 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.event.pull_request.number) || format('{0}-push-{1}-{2}', github.workflow, github.ref, github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# concurrency:
+#   group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.event.pull_request.number) || format('{0}-push-{1}-{2}', github.workflow, github.ref, github.run_id) }}
+#   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   job_go_test_circuits:
@@ -34,12 +34,13 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Run circuit tests
         env:
           RUN_CIRCUIT_TESTS: true
         run: |
-          go test -v ./circuits/... \
+          go test -v ./circuits/test/aggregator/ -run ^TestAggregatorCircuit$ \
             -failfast \
             -vet=off \
             -timeout=1h

@@ -3,7 +3,10 @@ package aggregator
 import (
 	"fmt"
 
-	"github.com/consensys/gnark/backend/groth16"
+	groth16bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
+
+	bls12377 "github.com/consensys/gnark-crypto/ecc/bls12-377"
+	"github.com/consensys/gnark-crypto/ecc/bls12-377/fp"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
@@ -16,7 +19,17 @@ import (
 // the proving key. It generates dummy proofs using the inner verification key
 // provided. It starts to fill from the index provided. Returns an error if
 // something fails.
-func (assignment *AggregatorCircuit) FillWithDummy(fromIdx int, dummyProof groth16.Proof) error {
+func (assignment *AggregatorCircuit) FillWithDummy(fromIdx int) error {
+	p := fp.NewElement(1)
+	dummyProof := &groth16bls12377.Proof{
+		Ar:  bls12377.G1Affine{},
+		Bs:  bls12377.G2Affine{},
+		Krs: bls12377.G1Affine{},
+		Commitments: []bls12377.G1Affine{
+			{X: p, Y: p},
+		},
+	}
+
 	// prepare dummy proof to recursion
 	recursiveDummyProof, err := stdgroth16.ValueOfProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](dummyProof)
 	if err != nil {

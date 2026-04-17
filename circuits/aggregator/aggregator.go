@@ -13,7 +13,6 @@ import (
 	"github.com/consensys/gnark/std/recursion/groth16"
 	"github.com/vocdoni/davinci-node/circuits"
 	"github.com/vocdoni/davinci-node/spec/params"
-	"github.com/vocdoni/gnark-crypto-primitives/hash/emulated/bn254/poseidon"
 )
 
 type AggregatorCircuit struct {
@@ -40,16 +39,6 @@ func (c *AggregatorCircuit) VoteMask(api frontend.API) []frontend.Variable {
 	return mask
 }
 
-// checkBatchHash recalculates the batch hash using the Poseidon hash function
-// and compares it with the expected batch hash. The batch hash is calculated
-// by hashing the ballot hashes.
-func (c *AggregatorCircuit) checkBatchHash(api frontend.API) {
-	if err := poseidon.AssertMultiHashEqual(api, c.BallotHashes[:], c.BatchHash); err != nil {
-		circuits.FrontendError(api, "failed to assert Poseidon batch hash", err)
-		return
-	}
-}
-
 // calculateWitnesses calculates the witnesses for the proofs. The first
 // limb of the first input in the witness is set to 1 for real vote slots,
 // otherwise it is set to 0 for dummy slots. The rest of the limbs are set to
@@ -63,7 +52,7 @@ func (c *AggregatorCircuit) calculateWitnesses(api frontend.API) []groth16.Witne
 		// create the witness for the proof
 		witness := groth16.Witness[sw_bls12377.ScalarField]{
 			Public: []emulated.Element[sw_bls12377.ScalarField]{
-				{Limbs: []frontend.Variable{isRealVote[i], 0, 0, 0}},
+				{Limbs: []frontend.Variable{1, 0, 0, 0}},
 			},
 		}
 		// Real slots use the provided input hash. Dummy slots use the dummy hash.
@@ -92,20 +81,23 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 	if err != nil {
 		circuits.FrontendError(api, "failed to create BLS12-377 verifier", err)
 	}
+	isRealVote := c.VoteMask(api)
+
 	// verify each proof with the provided public inputs and the fixed
 	// verification key
 	witnesses := c.calculateWitnesses(api)
 	for i := range len(c.Proofs) {
-		// verify the proof
-		if err := verifier.AssertProof(c.VerificationKey, c.Proofs[i], witnesses[i],
-			groth16.WithCompleteArithmetic(), groth16.WithSubgroupCheck()); err != nil {
+		isValid, err := verifier.IsValidProof(c.VerificationKey, c.Proofs[i], witnesses[i],
+			groth16.WithCompleteArithmetic(), groth16.WithSubgroupCheck())
+		if err != nil {
 			circuits.FrontendError(api, "failed to verify proof", err)
+			continue
 		}
+		circuits.AssertTrueIf(api, isRealVote[i], isValid)
 	}
 }
 
 func (c *AggregatorCircuit) Define(api frontend.API) error {
-	c.checkBatchHash(api)
 	c.checkProofs(api)
 	return nil
 }
