@@ -93,6 +93,8 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 		circuits.FrontendError(api, "failed to create BLS12-377 verifier", err)
 		return
 	}
+	isRealVote := c.VoteMask(api)
+
 	// verify each proof with the provided public inputs and the fixed
 	// verification key
 	witnesses := c.calculateWitnesses(api)
@@ -101,10 +103,13 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 		// groth16.WithSubgroupCheck() is omitted to save constraints, since subgroup membership
 		// is validated out of circuit when worker proofs are received
 		// and again in collectAggregationBatchInputs before the recursive witness is assembled.
-		if err := verifier.AssertProof(c.VerificationKey, c.Proofs[i], witnesses[i], groth16.WithCompleteArithmetic()); err != nil {
+		isValid, err := verifier.IsValidProof(c.VerificationKey, c.Proofs[i], witnesses[i],
+			groth16.WithCompleteArithmetic())
+		if err != nil {
 			circuits.FrontendError(api, "failed to verify proof", err)
 			return
 		}
+		circuits.AssertTrueIf(api, isRealVote[i], isValid)
 	}
 }
 
