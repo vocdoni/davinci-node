@@ -29,8 +29,7 @@ var (
 	KeyProcessID     = types.StateKey(params.StateKeyProcessID)
 	KeyBallotMode    = types.StateKey(params.StateKeyBallotMode)
 	KeyEncryptionKey = types.StateKey(params.StateKeyEncryptionKey)
-	KeyResultsAdd    = types.StateKey(params.StateKeyResultsAdd)
-	KeyResultsSub    = types.StateKey(params.StateKeyResultsSub)
+	KeyResults       = types.StateKey(params.StateKeyResults)
 	KeyCensusOrigin  = types.StateKey(params.StateKeyCensusOrigin)
 
 	ErrStateAlreadyInitialized = fmt.Errorf("state already initialized")
@@ -43,10 +42,8 @@ type State struct {
 	db        db.Database
 	dbTx      db.WriteTx
 
-	oldResultsAdd         *elgamal.Ballot
-	oldResultsSub         *elgamal.Ballot
-	newResultsAdd         *elgamal.Ballot
-	newResultsSub         *elgamal.Ballot
+	oldResults            *elgamal.Ballot
+	newResults            *elgamal.Ballot
 	allBallotsSum         *elgamal.Ballot
 	overwrittenSum        *elgamal.Ballot
 	votersCount           int
@@ -72,10 +69,9 @@ type ProcessProofs struct {
 // VotesProofs stores the Merkle proofs for the votes, including the results
 // add and sub proofs, as well as the ballot and commitment proofs.
 type VotesProofs struct {
-	ResultsAdd *ArboTransition
-	ResultsSub *ArboTransition
-	Ballot     [params.VotesPerBatch]*ArboTransition
-	VoteID     [params.VotesPerBatch]*ArboTransition
+	Results *ArboTransition
+	Ballot  [params.VotesPerBatch]*ArboTransition
+	VoteID  [params.VotesPerBatch]*ArboTransition
 }
 
 // New creates or opens a State stored in the passed database.
@@ -156,11 +152,8 @@ func (o *State) Initialize(
 	if err := o.tree.AddBigInt(KeyEncryptionKey.BigInt(), encryptionKey.BigInts()...); err != nil {
 		return fmt.Errorf("could not set encryption key: %w", err)
 	}
-	if err := o.tree.AddBigInt(KeyResultsAdd.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
-		return fmt.Errorf("could not set results add: %w", err)
-	}
-	if err := o.tree.AddBigInt(KeyResultsSub.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
-		return fmt.Errorf("could not set results sub: %w", err)
+	if err := o.tree.AddBigInt(KeyResults.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
+		return fmt.Errorf("could not set results: %w", err)
 	}
 	if err := o.tree.AddBigInt(KeyCensusOrigin.BigInt(), censusOrigin); err != nil {
 		return fmt.Errorf("could not set census origin: %w", err)
@@ -195,10 +188,8 @@ func (o *State) AddVotesBatch(votes []*Vote) error {
 // and creates a new write transaction in the db
 func (o *State) startBatch() error {
 	o.dbTx = o.db.WriteTx()
-	o.oldResultsAdd = elgamal.NewBallot(Curve)
-	o.oldResultsSub = elgamal.NewBallot(Curve)
-	o.newResultsAdd = elgamal.NewBallot(Curve)
-	o.newResultsSub = elgamal.NewBallot(Curve)
+	o.oldResults = elgamal.NewBallot(Curve)
+	o.newResults = elgamal.NewBallot(Curve)
 	o.allBallotsSum = elgamal.NewBallot(Curve)
 	o.overwrittenSum = elgamal.NewBallot(Curve)
 	o.votersCount = 0
@@ -260,29 +251,18 @@ func (o *State) endBatch() error {
 			return fmt.Errorf("could not get VoteID proof for index %d: %w", i, errVoteID)
 		}
 	}
-	// update ResultsAdd
+	// update Results
 	var ok bool
-	o.oldResultsAdd, ok = o.ResultsAdd()
+	o.oldResults, ok = o.Results()
 	if !ok {
-		return fmt.Errorf("resultsAdd not found in state")
+		return fmt.Errorf("results not found in state")
 	}
-	o.newResultsAdd = o.newResultsAdd.Add(o.oldResultsAdd, o.allBallotsSum)
-	o.votesProofs.ResultsAdd, err = ArboTransitionFromAddOrUpdate(o,
-		KeyResultsAdd, o.newResultsAdd.BigInts()...)
+	netBallots := subtractBallots(o.allBallotsSum, o.overwrittenSum)
+	o.newResults = o.newResults.Add(o.oldResults, netBallots)
+	o.votesProofs.Results, err = ArboTransitionFromAddOrUpdate(o,
+		KeyResults, o.newResults.BigInts()...)
 	if err != nil {
-		return fmt.Errorf("resultsAdd: %w", err)
-	}
-
-	// update ResultsSub
-	o.oldResultsSub, ok = o.ResultsSub()
-	if !ok {
-		return fmt.Errorf("resultsSub not found in state")
-	}
-	o.newResultsSub = o.newResultsSub.Add(o.oldResultsSub, o.overwrittenSum)
-	o.votesProofs.ResultsSub, err = ArboTransitionFromAddOrUpdate(o,
-		KeyResultsSub, o.newResultsSub.BigInts()...)
-	if err != nil {
-		return fmt.Errorf("resultsSub: %w", err)
+		return fmt.Errorf("results: %w", err)
 	}
 
 	o.blobEvalData, err = o.computeBlobEvalData()
@@ -341,24 +321,14 @@ func (o *State) VotersCount() int {
 	return o.votersCount
 }
 
-// OldResultsAdd returns the old results add ballot of the current batch.
-func (o *State) OldResultsAdd() *elgamal.Ballot {
-	return o.oldResultsAdd
+// OldResults returns the old results ballot of the current batch.
+func (o *State) OldResults() *elgamal.Ballot {
+	return o.oldResults
 }
 
-// OldResultsSub returns the old results sub ballot of the current batch.
-func (o *State) OldResultsSub() *elgamal.Ballot {
-	return o.oldResultsSub
-}
-
-// NewResultsAdd returns the new results add ballot of the current batch.
-func (o *State) NewResultsAdd() *elgamal.Ballot {
-	return o.newResultsAdd
-}
-
-// NewResultsSub returns the new results sub ballot of the current batch.
-func (o *State) NewResultsSub() *elgamal.Ballot {
-	return o.newResultsSub
+// NewResults returns the new results ballot of the current batch.
+func (o *State) NewResults() *elgamal.Ballot {
+	return o.newResults
 }
 
 // OverwrittenVotesCount returns the number of ballots overwritten in the current
@@ -465,46 +435,44 @@ func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
 	return ek
 }
 
-// ResultsAdd returns the resultsAdd of the state as a elgamal.Ballot
-func (o *State) ResultsAdd() (*elgamal.Ballot, bool) {
-	_, v, err := o.tree.GetBigInt(KeyResultsAdd.BigInt())
+// Results returns the results of the state as an elgamal.Ballot.
+func (o *State) Results() (*elgamal.Ballot, bool) {
+	_, v, err := o.tree.GetBigInt(KeyResults.BigInt())
 	if err != nil {
-		log.Errorw(err, "failed to get resultsAdd from state")
+		log.Errorw(err, "failed to get results from state")
 		return elgamal.NewBallot(Curve), false
 	}
-	resultsAdd, err := elgamal.NewBallot(Curve).SetBigInts(v)
+	results, err := elgamal.NewBallot(Curve).SetBigInts(v)
 	if err != nil {
-		log.Errorw(err, "failed to set resultsAdd from state")
+		log.Errorw(err, "failed to set results from state")
 		return elgamal.NewBallot(Curve), false
 	}
-	return resultsAdd, true
+	return results, true
 }
 
-// SetResultsAdd sets the resultsAdd directly in the state tree
-func (o *State) SetResultsAdd(resultsAdd *elgamal.Ballot) {
-	if err := o.tree.UpdateBigInt(KeyResultsAdd.BigInt(), resultsAdd.BigInts()...); err != nil {
-		log.Errorw(err, "failed to set resultsAdd in state")
-	}
-}
-
-// SetResultsSub sets the resultsSub directly in the state tree
-func (o *State) SetResultsSub(resultsSub *elgamal.Ballot) {
-	if err := o.tree.UpdateBigInt(KeyResultsSub.BigInt(), resultsSub.BigInts()...); err != nil {
-		log.Errorw(err, "failed to set resultsSub in state")
+// SetResults sets the results directly in the state tree.
+func (o *State) SetResults(results *elgamal.Ballot) {
+	if err := o.tree.UpdateBigInt(KeyResults.BigInt(), results.BigInts()...); err != nil {
+		log.Errorw(err, "failed to set results in state")
 	}
 }
 
-// ResultsSub returns the resultsSub of the state as a elgamal.Ballot
-func (o *State) ResultsSub() (*elgamal.Ballot, bool) {
-	_, v, err := o.tree.GetBigInt(KeyResultsSub.BigInt())
-	if err != nil {
-		return elgamal.NewBallot(Curve), false
+func subtractBallots(x, y *elgamal.Ballot) *elgamal.Ballot {
+	result := elgamal.NewBallot(Curve)
+	negY := negateBallot(y)
+	return result.Add(x, negY)
+}
+
+func negateBallot(ballot *elgamal.Ballot) *elgamal.Ballot {
+	negated := elgamal.NewBallot(Curve)
+	if ballot == nil {
+		return negated
 	}
-	resultsSub, err := elgamal.NewBallot(Curve).SetBigInts(v)
-	if err != nil {
-		return elgamal.NewBallot(Curve), false
+	for i := range negated.Ciphertexts {
+		negated.Ciphertexts[i].C1.Neg(ballot.Ciphertexts[i].C1)
+		negated.Ciphertexts[i].C2.Neg(ballot.Ciphertexts[i].C2)
 	}
-	return resultsSub, true
+	return negated
 }
 
 // EncodeKey encodes a key to a byte array using the maximum key length for the

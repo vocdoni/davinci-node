@@ -98,7 +98,7 @@ func (o *State) addVote(v *Vote) error {
 		return fmt.Errorf("too many votes for this batch")
 	}
 	// if address exists, it's a vote overwrite, need to count the overwritten
-	// vote so it's later added to circuit.ResultsSub
+	// vote so it's later subtracted from circuit.Results.
 	if oldLeaf, err := o.BallotLeaf(v.BallotIndex); err == nil {
 		if oldLeaf.Address.Cmp(v.Address) != 0 || oldLeaf.Weight.Cmp(v.Weight) != 0 {
 			return fmt.Errorf("stored ballot leaf metadata mismatch for ballot index %s", v.BallotIndex.String())

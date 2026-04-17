@@ -31,7 +31,7 @@ func TestBuildKZGCommitmentOverflow(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	coordsPerBallot := params.FieldsPerBallot * 4
-	resultsCells := 2 * coordsPerBallot
+	resultsCells := coordsPerBallot
 	countCells := 1
 	cellsPerVote := 1 + 1 + 1 + 1 + coordsPerBallot
 	maxVotes := (BlobTxFieldElementsPerBlob - resultsCells - countCells) / cellsPerVote
@@ -48,6 +48,7 @@ func TestBuildKZGCommitmentOverflow(t *testing.T) {
 
 	err = st.startBatch()
 	c.Assert(err, qt.IsNil)
+	st.rootHashBefore = big.NewInt(1)
 	st.votes = votes
 
 	_, err = st.computeBlobEvalData()

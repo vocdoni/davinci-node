@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	ecc_tweds "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	tweds "github.com/consensys/gnark/std/algebra/native/twistededwards"
@@ -290,6 +291,21 @@ func (b *Ballot) EncryptedZero(api frontend.API, encKey EncryptionKey[frontend.V
 func (z *Ballot) Add(api frontend.API, x, y *Ballot) *Ballot {
 	for i := range z {
 		z[i].Add(api, &x[i], &y[i])
+	}
+	return z
+}
+
+// Neg sets z to the negation of x and returns z.
+//
+// Panics if twistededwards curve init fails.
+func (z *Ballot) Neg(api frontend.API, x *Ballot) *Ballot {
+	curve, err := tweds.NewEdCurve(api, ecc_tweds.BN254)
+	if err != nil {
+		panic(err)
+	}
+	for i := range z {
+		z[i].C1 = curve.Neg(x[i].C1)
+		z[i].C2 = curve.Neg(x[i].C2)
 	}
 	return z
 }

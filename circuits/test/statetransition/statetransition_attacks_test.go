@@ -117,8 +117,8 @@ func TestResultsTransitionsMustBeUpdate(t *testing.T) {
 	}
 
 	assignment := NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
-	assignment.ResultsProofs.ResultsAdd.Fnc0 = 0
-	assignment.ResultsProofs.ResultsAdd.Fnc1 = 0
+	assignment.ResultsProofs.Results.Fnc0 = 0
+	assignment.ResultsProofs.Results.Fnc1 = 0
 
 	assert := test.NewAssert(t)
 	assert.CheckCircuit(
@@ -129,8 +129,8 @@ func TestResultsTransitionsMustBeUpdate(t *testing.T) {
 	)
 
 	assignment = NewTransitionWithOverwrittenVotes(t, types.CensusOriginMerkleTreeOffchainStaticV1)
-	assignment.ResultsProofs.ResultsSub.Fnc0 = 0
-	assignment.ResultsProofs.ResultsSub.Fnc1 = 0
+	assignment.ResultsProofs.Results.Fnc0 = 0
+	assignment.ResultsProofs.Results.Fnc1 = 0
 
 	assert.CheckCircuit(
 		&CircuitMerkleTransitions{*CircuitPlaceholderWithProof(&assignment.AggregatorProof, &assignment.AggregatorVK)},
