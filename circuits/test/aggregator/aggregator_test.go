@@ -1,7 +1,6 @@
 package aggregatortest
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -15,9 +14,6 @@ import (
 )
 
 func TestAggregatorCircuit(t *testing.T) {
-	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
-		t.Skip("skipping circuit tests...")
-	}
 	// inputs generation
 	startTime := time.Now()
 	_, placeholder, assignment := AggregatorInputsForTest(t, testutil.FixedProcessID(), types.CensusOriginMerkleTreeOffchainStaticV1, 3)

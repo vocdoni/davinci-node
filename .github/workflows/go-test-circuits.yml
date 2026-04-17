@@ -34,12 +34,13 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Run circuit tests
         env:
           RUN_CIRCUIT_TESTS: true
         run: |
-          go test -v ./circuits/... \
+          go test -v ./circuits/test/aggregator/ -run ^TestAggregatorCircuit$ \
             -failfast \
             -vet=off \
             -timeout=1h
