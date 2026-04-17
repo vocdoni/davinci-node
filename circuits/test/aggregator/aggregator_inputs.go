@@ -7,8 +7,6 @@ import (
 
 	"github.com/vocdoni/davinci-node/spec/params"
 
-	bls12377 "github.com/consensys/gnark-crypto/ecc/bls12-377"
-	groth16bls12377 "github.com/consensys/gnark/backend/groth16/bls12-377"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -84,12 +82,7 @@ func AggregatorInputsForTest(
 	}
 
 	// Fill the remaining slots with dummy values.
-	dummyProof := &groth16bls12377.Proof{
-		Ar:  bls12377.G1Affine{},
-		Bs:  bls12377.G2Affine{},
-		Krs: bls12377.G1Affine{},
-	}
-	err = assignment.FillWithDummy(nValidVoters, dummyProof)
+	err = assignment.FillWithDummy(nValidVoters)
 	c.Assert(err, qt.IsNil, qt.Commentf("fill with dummy values"))
 
 	// fix the vote verifier verification key
