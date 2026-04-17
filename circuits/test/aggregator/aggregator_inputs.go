@@ -82,13 +82,7 @@ func AggregatorInputsForTest(
 	}
 
 	// Fill the remaining slots with dummy values.
-	dummyAssignment, err := voteverifier.DummyAssignment()
-	c.Assert(err, qt.IsNil, qt.Commentf("dummy assignment"))
-
-	dummyProof, err := voteverifierRuntime.ProveAndVerify(dummyAssignment)
-	c.Assert(err, qt.IsNil, qt.Commentf("dummy proof"))
-
-	err = assignment.FillWithDummy(nValidVoters, dummyProof)
+	err = assignment.FillWithDummy(nValidVoters)
 	c.Assert(err, qt.IsNil, qt.Commentf("fill with dummy values"))
 
 	// fix the vote verifier verification key
