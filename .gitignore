@@ -5,3 +5,5 @@ debug_*
 *.log
 letsencrypt
 .worktrees
+go.work
+go.work.sum
