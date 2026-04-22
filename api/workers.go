@@ -60,7 +60,7 @@ func (a *API) startWorkersAPI(conf APIConfig) error {
 		log.Infow("register handler", "endpoint", WorkerJobEndpoint, "method", "POST")
 		a.router.Post(WorkerJobEndpoint, a.workersSubmitJob)
 
-		log.Infow("worker API enabled",
+		log.Debugw("worker API enabled",
 			"sequencerUUID", a.sequencerUUID.String(),
 			"sequencerAddr", a.sequencerSigner.Address().Hex(),
 			"workersEndpoint", EndpointWithParam(WorkersEndpoint, SequencerUUIDURLParam, a.sequencerUUID.String()))
