@@ -28,8 +28,8 @@ func Encrypt(publicKey ecc.Point, msg *big.Int) (ecc.Point, ecc.Point, *big.Int,
 // points that represent the encrypted message.
 func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point) {
 	order := pubKey.Order()
-	// ensure the message is within the field
-	msg.Mod(msg, order)
+	// ensure the message is within the field without mutating the caller's value
+	m := new(big.Int).Mod(msg, order)
 	// compute C1 = k * G
 	c1 := pubKey.New()
 	c1.ScalarBaseMult(k)
@@ -37,11 +37,11 @@ func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point) {
 	s := pubKey.New()
 	s.ScalarMult(pubKey, k)
 	// encode message as point M = message * G
-	m := pubKey.New()
-	m.ScalarBaseMult(msg)
+	mPoint := pubKey.New()
+	mPoint.ScalarBaseMult(m)
 	// compute C2 = M + s
 	c2 := pubKey.New()
-	c2.Add(m, s)
+	c2.Add(mPoint, s)
 	return c1, c2
 }
 
