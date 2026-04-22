@@ -75,3 +75,25 @@ func TestZeroBallotReencryptChangesBallot(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(reencryptedBallot.IsZero(), qt.IsFalse, qt.Commentf("reencryption should add encrypted zero even for zero ballots"))
 }
+
+func TestBallotNegProducesAdditiveInverse(t *testing.T) {
+	c := qt.New(t)
+
+	_, encKey := testutil.RandomEncryptionKeys()
+	publicKey := new(bjj.BJJ).SetPoint(encKey.X.MathBigInt(), encKey.Y.MathBigInt())
+
+	k, err := specutil.RandomK()
+	c.Assert(err, qt.IsNil)
+
+	fields := [params.FieldsPerBallot]*big.Int{}
+	for i := range fields {
+		fields[i] = big.NewInt(int64(i + 1))
+	}
+
+	ballot, err := NewBallot(publicKey).Encrypt(fields, publicKey, k)
+	c.Assert(err, qt.IsNil)
+
+	negBallot := NewBallot(publicKey).Neg(ballot)
+	sum := NewBallot(publicKey).Add(ballot, negBallot)
+	c.Assert(sum.IsZero(), qt.IsTrue, qt.Commentf("ballot plus its negation should be zero"))
+}

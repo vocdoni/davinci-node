@@ -19,8 +19,7 @@ const (
 
 // BlobData represents the structured data extracted from a blob
 type BlobData struct {
-	ResultsAdd  []*big.Int
-	ResultsSub  []*big.Int
+	Results     []*big.Int
 	VotersCount uint64
 	Votes       []*Vote
 }
@@ -28,10 +27,9 @@ type BlobData struct {
 // BlobEvalData returns the cached blob evaluation data for the current batch.
 //
 // blob layout:
-//  1. ResultsAdd (params.FieldsPerBallot * 4 coordinates)
-//  2. ResultsSub (params.FieldsPerBallot * 4 coordinates)
-//  3. VotersCount
-//  4. Votes sequentially for exactly VotersCount entries:
+//  1. Results (params.FieldsPerBallot * 4 coordinates)
+//  2. VotersCount
+//  3. Votes sequentially for exactly VotersCount entries:
 //     Each vote: voteID + address + ballotIndex + weight + reencryptedBallot coordinates
 func (st *State) BlobEvalData() (*blobs.BlobEvalData, error) {
 	if st.blobEvalData == nil {
@@ -71,13 +69,8 @@ func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 	}
 
 	// First, add results (always present)
-	for _, p := range st.newResultsAdd.BigInts() {
-		if err := push("results add coordinate", p); err != nil {
-			return nil, err
-		}
-	}
-	for _, p := range st.newResultsSub.BigInts() {
-		if err := push("results sub coordinate", p); err != nil {
+	for _, p := range st.newResults.BigInts() {
+		if err := push("results coordinate", p); err != nil {
 			return nil, err
 		}
 	}
@@ -147,8 +140,7 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 	data := &BlobData{
 		VotersCount: 0,
 		Votes:       make([]*Vote, 0),
-		ResultsAdd:  make([]*big.Int, coordsPerBallot),
-		ResultsSub:  make([]*big.Int, coordsPerBallot),
+		Results:     make([]*big.Int, coordsPerBallot),
 	}
 
 	// extract big.Int from blob cell
@@ -164,15 +156,9 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 
 	cellIndex := 0
 
-	// Extract ResultsAdd (first coordsPerBallot cells)
+	// Extract Results (first coordsPerBallot cells)
 	for i := range coordsPerBallot {
-		data.ResultsAdd[i] = getCell(cellIndex)
-		cellIndex++
-	}
-
-	// Extract ResultsSub (next coordsPerBallot cells)
-	for i := range coordsPerBallot {
-		data.ResultsSub[i] = getCell(cellIndex)
+		data.Results[i] = getCell(cellIndex)
 		cellIndex++
 	}
 	votersCountCell := getCell(cellIndex)
@@ -277,17 +263,11 @@ func (st *State) ApplyBlobToState(blob *types.Blob) error {
 	}
 
 	// Set the results from the blob data directly
-	resultsAdd, err := elgamal.NewBallot(Curve).SetBigInts(blobData.ResultsAdd)
+	results, err := elgamal.NewBallot(Curve).SetBigInts(blobData.Results)
 	if err != nil {
 		return err
 	}
-	st.SetResultsAdd(resultsAdd)
-
-	resultsSub, err := elgamal.NewBallot(Curve).SetBigInts(blobData.ResultsSub)
-	if err != nil {
-		return err
-	}
-	st.SetResultsSub(resultsSub)
+	st.SetResults(results)
 
 	return nil
 }

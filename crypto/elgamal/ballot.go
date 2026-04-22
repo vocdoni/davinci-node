@@ -162,6 +162,18 @@ func (z *Ballot) Add(x, y *Ballot) *Ballot {
 	return z
 }
 
+// Neg sets z to the negation of x and returns z.
+func (z *Ballot) Neg(x *Ballot) *Ballot {
+	if x == nil {
+		return z
+	}
+	for i := range z.Ciphertexts {
+		z.Ciphertexts[i].C1.Neg(x.Ciphertexts[i].C1)
+		z.Ciphertexts[i].C2.Neg(x.Ciphertexts[i].C2)
+	}
+	return z
+}
+
 // BigInts returns a slice with 8*4 BigInts, namely the coords of each Ciphertext
 // C1.X, C1.Y, C2.X, C2.Y as little-endian, in reduced twisted edwards form.
 func (z *Ballot) BigInts() []*big.Int {
