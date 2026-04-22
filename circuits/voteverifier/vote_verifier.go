@@ -102,11 +102,13 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	msgSecp256, err := utils.UnpackVarToScalar[emulated.Secp256k1Fr](api, c.VoteID)
 	if err != nil {
 		circuits.FrontendError(api, "failed to unpack voteID", err)
+		return
 	}
 	// first convert the message to bytes and swap the endianness of the content (the hash of the data to be signed)
 	content, err := utils.BytesFromElement(api, *msgSecp256)
 	if err != nil {
-		circuits.FrontendError(api, "failed to convert circomHash to bytes", err)
+		circuits.FrontendError(api, "failed to convert voteID to bytes", err)
+		return
 	}
 	content = utils.SwapEndianness(content)
 	// concatenate the prefix and content to create the hash to be signed
@@ -114,6 +116,7 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	keccak, err := sha3.NewLegacyKeccak256(api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create hash function", err)
+		return
 	}
 	keccak.Write(msg)
 	// we need to swap the endianess again and convert the bytes back to the emulated secp256k1 field
@@ -121,6 +124,7 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	emulatedHash, err := utils.U8ToElem[emulated.Secp256k1Fr](api, hash)
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert hash to emulated element", err)
+		return
 	}
 	// check the signature of the circom inputs hash provided as Secp256k1 emulated element
 	validSign := c.PublicKey.IsValid(api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp](), &emulatedHash, &c.Signature)
@@ -132,11 +136,13 @@ func (c *VerifyVoteCircuit) verifySigForAddress(api frontend.API) {
 	derivedAddr, err := address.DeriveAddress(api, c.PublicKey)
 	if err != nil {
 		circuits.FrontendError(api, "failed to derive address", err)
+		return
 	}
 	// Convert the emulated address to a variable for comparison
 	addressVar, err := utils.PackScalarToVar(api, c.Address)
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert address to var", err)
+		return
 	}
 	// Range constrain address to the canonical AddressLength.
 	rangecheck.New(api).Check(addressVar, common.AddressLength*8)
@@ -148,10 +154,12 @@ func assertValidSecp256k1PublicKey(api frontend.API, pubKey ecdsa.PublicKey[emul
 	curve, err := sw_emulated.New[emulated.Secp256k1Fp, emulated.Secp256k1Fr](api, sw_emulated.GetCurveParams[emulated.Secp256k1Fp]())
 	if err != nil {
 		circuits.FrontendError(api, "failed to initialize secp256k1 curve", err)
+		return
 	}
 	baseApi, err := emulated.NewField[emulated.Secp256k1Fp](api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to initialize secp256k1 field", err)
+		return
 	}
 	pkPoint := sw_emulated.AffinePoint[emulated.Secp256k1Fp]{X: pubKey.X, Y: pubKey.Y}
 	curve.AssertIsOnCurve(&pkPoint)
@@ -168,6 +176,7 @@ func (c *VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
 	voteID, err := utils.UnpackVarToScalar[sw_bn254.ScalarField](api, c.VoteID)
 	if err != nil {
 		circuits.FrontendError(api, "failed to convert voteID to bn254", err)
+		return
 	}
 	witness := groth16.Witness[sw_bn254.ScalarField]{
 		Public: []emulated.Element[sw_bn254.ScalarField]{c.Address, *voteID, c.BallotHash},
@@ -176,12 +185,14 @@ func (c *VerifyVoteCircuit) verifyCircomProof(api frontend.API) {
 	verifier, err := groth16.NewVerifier[sw_bn254.ScalarField, sw_bn254.G1Affine, sw_bn254.G2Affine, sw_bn254.GTEl](api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create BN254 verifier", err)
+		return
 	}
 	validProof, err := verifier.IsValidProof(c.CircomVerificationKey, c.CircomProof,
 		witness, groth16.WithCompleteArithmetic(), groth16.WithSubgroupCheck())
 	if err != nil {
 		circuits.FrontendError(api, "failed to verify circom proof", err)
 		api.AssertIsEqual(0, 1)
+		return
 	}
 	// if the inputs are valid, ensure that the result of the verification is 1,
 	// otherwise, the result does not matter so force it to be 1
