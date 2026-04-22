@@ -305,6 +305,18 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// verify the signature of the vote early (cheap check before expensive proof verification)
+	signature := new(ethereum.ECDSASignature).SetBytes(vote.Signature)
+	if signature == nil {
+		ErrMalformedBody.Withf("could not decode signature").Write(w)
+		return
+	}
+	signatureOk, pubkey := signature.VerifyVoteID(vote.VoteID, common.BytesToAddress(vote.Address))
+	if !signatureOk {
+		ErrInvalidSignature.Write(w)
+		return
+	}
+
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := ballotproof.BallotInputsHashIden3(
 		vote.ProcessID,
@@ -342,17 +354,6 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		ErrInvalidBallotProof.Withf("could not verify and convert proof: %v", err).Write(w)
-		return
-	}
-	// verify the signature of the vote
-	signature := new(ethereum.ECDSASignature).SetBytes(vote.Signature)
-	if signature == nil {
-		ErrMalformedBody.Withf("could not decode signature: %v", err).Write(w)
-		return
-	}
-	signatureOk, pubkey := signature.VerifyVoteID(vote.VoteID, common.BytesToAddress(vote.Address))
-	if !signatureOk {
-		ErrInvalidSignature.Write(w)
 		return
 	}
 	// Create the ballot object
