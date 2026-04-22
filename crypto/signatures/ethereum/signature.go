@@ -53,8 +53,8 @@ func (sig *ECDSASignature) Valid() bool {
 
 // Bytes returns the bytes of the binary representation of the signature, which
 // is built by appending the R and S values as byte slices and the recovery byte.
-// The recovery byte is adjusted to the Ethereum standard format (27-30) for compatibility
-// with ethcrypto.SigToPub().
+// The recovery byte is preserved as-is in Ethereum's low form (0-3), which is
+// compatible with ethcrypto.SigToPub().
 func (sig *ECDSASignature) Bytes() []byte {
 	rBytes := sig.R.Bytes()
 	sBytes := sig.S.Bytes()
@@ -65,12 +65,9 @@ func (sig *ECDSASignature) Bytes() []byte {
 	copy(r[32-len(rBytes):], rBytes)
 	copy(s[32-len(sBytes):], sBytes)
 
-	// Subtract 27 from the recovery value to match Ethereum standard
-	// Internal representation is 0-3, but Ethereum expects 27-30
+	// Preserve the recovery byte so SetBytes(Bytes(sig)) is lossless.
+	// ethcrypto.SigToPub accepts the low Ethereum recovery form (0-3).
 	v := sig.recovery
-	if v > 1 {
-		v -= 27
-	}
 
 	return append(r, append(s, v)...)
 }
