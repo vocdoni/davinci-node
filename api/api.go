@@ -193,7 +193,7 @@ func (a *API) initRouter() {
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 		MaxAge:           300,
 	}).Handler)
 	a.router.Use(loggingMiddleware(maxRequestBodyLog))
