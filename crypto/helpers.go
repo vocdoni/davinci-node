@@ -3,8 +3,6 @@
 // serialization, and other cryptographic operations.
 package crypto
 
-import "math/big"
-
 // SignatureCircuitVariableLen is the standard size in bytes for serialized
 // field elements
 const SignatureCircuitVariableLen = 32 // bytes
@@ -27,16 +25,4 @@ func PadToSign(input []byte) []byte {
 		input = input[len(input)-SignatureCircuitVariableLen:]
 	}
 	return input
-}
-
-// BigToFF function returns the finite field representation of the big.Int
-// provided. It uses the curve scalar field to represent the provided number.
-func BigToFF(field, iv *big.Int) *big.Int {
-	z := big.NewInt(0)
-	if c := iv.Cmp(field); c == 0 {
-		return z
-	} else if c != 1 && iv.Cmp(z) != -1 {
-		return iv
-	}
-	return z.Mod(iv, field)
 }

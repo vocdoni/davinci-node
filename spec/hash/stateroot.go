@@ -36,7 +36,7 @@ func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, ballotMode *big.Int) (
 	keyCensusOrigin := bigFromUint64(params.StateKeyCensusOrigin)
 
 	leafProcess, err := PoseidonHash(keyProcessID,
-		bigToFF(params.StateTransitionCurve.ScalarField(), processID), leafDomain)
+		new(big.Int).Mod(processID, params.StateTransitionCurve.ScalarField()), leafDomain)
 	if err != nil {
 		return nil, fmt.Errorf("state root: leaf process: %w", err)
 	}
