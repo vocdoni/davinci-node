@@ -91,6 +91,7 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 	verifier, err := groth16.NewVerifier[sw_bls12377.ScalarField, sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](api)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create BLS12-377 verifier", err)
+		return
 	}
 	// verify each proof with the provided public inputs and the fixed
 	// verification key
@@ -100,6 +101,7 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 		if err := verifier.AssertProof(c.VerificationKey, c.Proofs[i], witnesses[i],
 			groth16.WithCompleteArithmetic(), groth16.WithSubgroupCheck()); err != nil {
 			circuits.FrontendError(api, "failed to verify proof", err)
+			return
 		}
 	}
 }
