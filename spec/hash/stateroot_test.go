@@ -75,7 +75,7 @@ func TestStateRootMatchesManualConstruction(t *testing.T) {
 	keyResults := big.NewInt(int64(params.StateKeyResults))
 
 	leafProcess, err := PoseidonHash(keyProcessID,
-		bigToFF(params.StateTransitionCurve.ScalarField(), processID), leafDomain)
+		new(big.Int).Mod(processID, params.StateTransitionCurve.ScalarField()), leafDomain)
 	if err != nil {
 		t.Fatalf("leafProcess error: %v", err)
 	}
