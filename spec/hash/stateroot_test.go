@@ -33,29 +33,18 @@ func TestLeafResultsConstants(t *testing.T) {
 	}
 	leafDomain := big.NewInt(1)
 
-	wantAdd, ok := new(big.Int).SetString(LeafResultsAddHex, 16)
+	want, ok := new(big.Int).SetString(LeafResultsHex, 16)
 	if !ok {
-		t.Fatalf("invalid LeafResultsAddHex")
-	}
-	wantSub, ok := new(big.Int).SetString(LeafResultsSubHex, 16)
-	if !ok {
-		t.Fatalf("invalid LeafResultsSubHex")
+		t.Fatalf("invalid LeafResultsHex")
 	}
 
-	gotAdd, err := PoseidonHash(big.NewInt(int64(params.StateKeyResultsAdd)), zeroBallot, leafDomain)
+	got, err := PoseidonHash(big.NewInt(int64(params.StateKeyResults)), zeroBallot, leafDomain)
 	if err != nil {
-		t.Fatalf("leaf results add hash error: %v", err)
-	}
-	gotSub, err := PoseidonHash(big.NewInt(int64(params.StateKeyResultsSub)), zeroBallot, leafDomain)
-	if err != nil {
-		t.Fatalf("leaf results sub hash error: %v", err)
+		t.Fatalf("leaf results hash error: %v", err)
 	}
 
-	if gotAdd.Cmp(wantAdd) != 0 {
-		t.Fatalf("LeafResultsAddHex mismatch: got %s want %s", gotAdd.String(), wantAdd.String())
-	}
-	if gotSub.Cmp(wantSub) != 0 {
-		t.Fatalf("LeafResultsSubHex mismatch: got %s want %s", gotSub.String(), wantSub.String())
+	if got.Cmp(want) != 0 {
+		t.Fatalf("LeafResultsHex mismatch: got %s want %s", got.String(), want.String())
 	}
 }
 
@@ -82,9 +71,8 @@ func TestStateRootMatchesManualConstruction(t *testing.T) {
 	keyProcessID := big.NewInt(int64(params.StateKeyProcessID))
 	keyBallotMode := big.NewInt(int64(params.StateKeyBallotMode))
 	keyEncryptionKey := big.NewInt(int64(params.StateKeyEncryptionKey))
-	keyResultsAdd := big.NewInt(int64(params.StateKeyResultsAdd))
-	keyResultsSub := big.NewInt(int64(params.StateKeyResultsSub))
 	keyCensusOrigin := big.NewInt(int64(params.StateKeyCensusOrigin))
+	keyResults := big.NewInt(int64(params.StateKeyResults))
 
 	leafProcess, err := PoseidonHash(keyProcessID,
 		bigToFF(params.StateTransitionCurve.ScalarField(), processID), leafDomain)
@@ -108,16 +96,12 @@ func TestStateRootMatchesManualConstruction(t *testing.T) {
 		t.Fatalf("leafCensus error: %v", err)
 	}
 
-	leafResultsAdd, err := PoseidonHash(keyResultsAdd, zeroBallotHashBig, leafDomain)
+	leafResults, err := PoseidonHash(keyResults, zeroBallotHashBig, leafDomain)
 	if err != nil {
-		t.Fatalf("leafResultsAdd error: %v", err)
-	}
-	leafResultsSub, err := PoseidonHash(keyResultsSub, zeroBallotHashBig, leafDomain)
-	if err != nil {
-		t.Fatalf("leafResultsSub error: %v", err)
+		t.Fatalf("leafResults error: %v", err)
 	}
 
-	nodeA0, err := PoseidonHash(leafProcess, leafResultsAdd)
+	nodeA0, err := PoseidonHash(leafProcess, leafResults)
 	if err != nil {
 		t.Fatalf("nodeA0 error: %v", err)
 	}
@@ -129,11 +113,7 @@ func TestStateRootMatchesManualConstruction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("nodeA error: %v", err)
 	}
-	nodeB, err := PoseidonHash(leafResultsSub, leafEncKey)
-	if err != nil {
-		t.Fatalf("nodeB error: %v", err)
-	}
-	expected, err := PoseidonHash(nodeA, nodeB)
+	expected, err := PoseidonHash(nodeA, leafEncKey)
 	if err != nil {
 		t.Fatalf("expected root error: %v", err)
 	}

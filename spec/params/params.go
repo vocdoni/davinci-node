@@ -34,8 +34,7 @@ const (
 	StateKeyCensusOrigin  uint64 = 0x06
 	StateKeyBallotMode    uint64 = 0x02
 	StateKeyEncryptionKey uint64 = 0x03
-	StateKeyResultsAdd    uint64 = 0x04
-	StateKeyResultsSub    uint64 = 0x05
+	StateKeyResults       uint64 = 0x04
 )
 
 // State Namespaces
