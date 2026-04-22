@@ -376,6 +376,7 @@ func (circuit CircuitCalculateAggregatorWitness) Define(api frontend.API) error 
 	_, err := circuit.CalculateAggregatorWitness(api, isRealVote)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 witness: ", err)
+		return nil
 	}
 	return nil
 }

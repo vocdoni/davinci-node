@@ -242,6 +242,7 @@ func (circuit StateTransitionCircuit) VerifyAggregatorProof(api frontend.API, is
 	witness, err := circuit.CalculateAggregatorWitness(api, isRealVote)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 witness: ", err)
+		return
 	}
 	// initialize the verifier
 	verifier, err := groth16.NewVerifier[sw_bw6761.ScalarField, sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl](api)

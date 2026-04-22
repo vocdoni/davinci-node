@@ -57,7 +57,8 @@ func (kt EncryptionKey[T]) SerializeAsTE(api frontend.API) []emulated.Element[sw
 	}
 	kTE0, kTE1, err := format.FromEmulatedRTEtoTE(api, k.PubKey[0], k.PubKey[1])
 	if err != nil {
-		FrontendError(api, "failed to convert encryption key to RTE", err)
+		FrontendError(api, "failed to convert encryption key from RTE to TE", err)
+		return nil
 	}
 	return []emulated.Element[sw_bn254.ScalarField]{kTE0, kTE1}
 }
@@ -265,6 +266,7 @@ func (z *Ballot) AssertDecrypt(api frontend.API, privKey frontend.Variable, orig
 	for i := range z {
 		if err := z[i].AssertDecrypt(api, privKey, originals[i]); err != nil {
 			FrontendError(api, "failed to assert decrypt", err)
+			return
 		}
 	}
 }
@@ -459,11 +461,13 @@ func (zt *EmulatedBallot[F]) SerializeAsTE(api frontend.API) []emulated.Element[
 	for _, zi := range z {
 		c1xTE, c1yTE, err := format.FromEmulatedRTEtoTE(api, zi.C1.X, zi.C1.Y)
 		if err != nil {
-			FrontendError(api, "failed to convert coords to RTE", err)
+			FrontendError(api, "failed to convert C1 from RTE to TE", err)
+			return nil
 		}
 		c2xTE, c2yTE, err := format.FromEmulatedRTEtoTE(api, zi.C2.X, zi.C2.Y)
 		if err != nil {
-			FrontendError(api, "failed to convert coords to RTE", err)
+			FrontendError(api, "failed to convert C2 from RTE to TE", err)
+			return nil
 		}
 		list = append(list,
 			c1xTE,
