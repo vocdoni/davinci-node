@@ -29,43 +29,35 @@ import (
 const nVotes = 10
 
 type encryptionKeyBindingCircuit struct {
-	StateRoot                  frontend.Variable `gnark:",public"`
-	AddAccumulatorsEncrypted   circuits.Ballot
-	SubAccumulatorsEncrypted   circuits.Ballot
-	AddAccumulatorsMerkleProof merkleproof.MerkleProof
-	SubAccumulatorsMerkleProof merkleproof.MerkleProof
-	EncryptionKeyMerkleProof   merkleproof.MerkleProof
-	EncryptionPublicKey        circuits.EncryptionKey[frontend.Variable]
+	StateRoot                frontend.Variable `gnark:",public"`
+	EncryptedResults         circuits.Ballot
+	ResultsMerkleProof       merkleproof.MerkleProof
+	EncryptionKeyMerkleProof merkleproof.MerkleProof
+	EncryptionPublicKey      circuits.EncryptionKey[frontend.Variable]
 }
 
 func (c *encryptionKeyBindingCircuit) Define(api frontend.API) error {
 	rc := ResultsVerifierCircuit{
-		StateRoot:                  c.StateRoot,
-		AddAccumulatorsEncrypted:   c.AddAccumulatorsEncrypted,
-		SubAccumulatorsEncrypted:   c.SubAccumulatorsEncrypted,
-		AddAccumulatorsMerkleProof: c.AddAccumulatorsMerkleProof,
-		SubAccumulatorsMerkleProof: c.SubAccumulatorsMerkleProof,
-		EncryptionKeyMerkleProof:   c.EncryptionKeyMerkleProof,
-		EncryptionPublicKey:        c.EncryptionPublicKey,
+		StateRoot:                c.StateRoot,
+		EncryptedResults:         c.EncryptedResults,
+		ResultsMerkleProof:       c.ResultsMerkleProof,
+		EncryptionKeyMerkleProof: c.EncryptionKeyMerkleProof,
+		EncryptionPublicKey:      c.EncryptionPublicKey,
 	}
 	rc.VerifyMerkleProofs(api)
 	rc.VerifyMerkleProofLeaves(api)
 	return nil
 }
 
-type resultsSubtractionCircuit struct {
-	Results         [params.FieldsPerBallot]frontend.Variable `gnark:",public"`
-	AddAccumulators [params.FieldsPerBallot]frontend.Variable
-	SubAccumulators [params.FieldsPerBallot]frontend.Variable
+type resultsComparisonCircuit struct {
+	Results [params.FieldsPerBallot]frontend.Variable `gnark:",public"`
 }
 
-func (c *resultsSubtractionCircuit) Define(api frontend.API) error {
+func (c *resultsComparisonCircuit) Define(api frontend.API) error {
 	rc := ResultsVerifierCircuit{
-		Results:         c.Results,
-		AddAccumulators: c.AddAccumulators,
-		SubAccumulators: c.SubAccumulators,
+		Results: c.Results,
 	}
-	rc.VerifyResults(api)
+	rc.ConstrainResultsRange(api)
 	return nil
 }
 
@@ -98,50 +90,30 @@ func TestResultsVerifierCircuit(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	// Get encrypted votes
-	encryptedAddAccumulator, addOk := st.ResultsAdd()
-	c.Assert(addOk, qt.IsTrue, qt.Commentf("Add accumulator should be available"))
-	encryptedSubAccumulator, subOk := st.ResultsSub()
-	c.Assert(subOk, qt.IsTrue, qt.Commentf("Sub accumulator should be available"))
+	encryptedResultsState, err := st.Results()
+	c.Assert(err, qt.IsNil, qt.Commentf("Encrypted results should be available"))
 
 	// Decrypt the votes and generate the decryption proofs
 	maxValue := ballotMode.MaxValue * 1000
-	addAccumulator := [params.FieldsPerBallot]*big.Int{}
-	addCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
-	addDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
-	for i, ct := range encryptedAddAccumulator.Ciphertexts {
+	results := [params.FieldsPerBallot]*big.Int{}
+	encryptedResults := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	decryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
+	for i, ct := range encryptedResultsState.Ciphertexts {
 		c.Assert(ct.C1 != nil && ct.C2 != nil, qt.IsTrue)
-		addCiphertexts[i] = *ct
+		encryptedResults[i] = *ct
 		_, result, err := elgamal.Decrypt(pubKey, privKey, ct.C1, ct.C2, maxValue)
 		c.Assert(err, qt.IsNil)
-		addAccumulator[i] = result
-		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
-		c.Assert(err, qt.IsNil)
-	}
-	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
-	subAccumulator := [params.FieldsPerBallot]*big.Int{}
-	subCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
-	subDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
-	for i, ct := range encryptedSubAccumulator.Ciphertexts {
-		c.Assert(ct.C1 != nil && ct.C2 != nil, qt.IsTrue)
-		subCiphertexts[i] = *ct
-		_, result, err := elgamal.Decrypt(pubKey, privKey, ct.C1, ct.C2, maxValue)
-		c.Assert(err, qt.IsNil)
-		subAccumulator[i] = result
-		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
-		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
+		results[i] = result
+		decryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
 		c.Assert(err, qt.IsNil)
 	}
 
 	// Generate the assignment for the circuit
 	assignment, err := GenerateAssignment(
 		st,
-		resultsAccumulator,
-		addAccumulator,
-		subAccumulator,
-		addCiphertexts,
-		subCiphertexts,
-		addDecryptionProofs,
-		subDecryptionProofs,
+		results,
+		encryptedResults,
+		decryptionProofs,
 	)
 	c.Assert(err, qt.IsNil)
 
@@ -149,26 +121,23 @@ func TestResultsVerifierCircuit(t *testing.T) {
 
 	assert := test.NewAssert(t)
 	invalid := *assignment
-	invalid.DecryptionAddProofs[0].A1.Y = big.NewInt(0)
+	invalid.DecryptionProofs[0].A1.Y = big.NewInt(0)
 
 	// subgroup order used by the ElGamal scalar arithmetic
 	q := new(big.Int).Set(curves.New(bjj.CurveType).Order())
 
 	shiftedAssignment := func(slot int) *ResultsVerifierCircuit {
-		honestAdd := new(big.Int).Set(addAccumulator[slot])
-		honestSub := new(big.Int).Set(subAccumulator[slot])
-		honestRes := new(big.Int).Sub(honestAdd, honestSub)
+		honestResult := new(big.Int).Set(results[slot])
 
 		// Malicious witness: same ciphertext and same proof, but plaintext shifted by q.
 		shifted := *assignment
-		shifted.AddAccumulators[slot] = new(big.Int).Add(honestAdd, q)
-		shifted.Results[slot] = new(big.Int).Add(honestRes, q)
+		shifted.Results[slot] = new(big.Int).Add(honestResult, q)
 
 		c.Assert(shifted.Results[slot].(*big.Int).Cmp(assignment.Results[slot].(*big.Int)), qt.Not(qt.Equals), 0)
 
 		// Human-readable explanation of the bug
 		c.Logf("[BUG DEMO] slot=%d\n  honest result:  %s\n  shifted result: %s (= honest + subgroup order)",
-			slot, honestRes.String(), shifted.Results[slot].(*big.Int).String())
+			slot, honestResult.String(), shifted.Results[slot].(*big.Int).String())
 		return &shifted
 	}
 	startTime = time.Now()
@@ -204,58 +173,36 @@ func TestResultsVerifierCircuitBindsEncryptionKeyToMerkleLeaf(t *testing.T) {
 	err = st.AddVotesBatch(statetest.NewVotesForTest(pubKey, nVotes, 100))
 	c.Assert(err, qt.IsNil)
 
-	encryptedAddAccumulator, addOk := st.ResultsAdd()
-	c.Assert(addOk, qt.IsTrue)
-	encryptedSubAccumulator, subOk := st.ResultsSub()
-	c.Assert(subOk, qt.IsTrue)
+	encryptedResultsState, err := st.Results()
+	c.Assert(err, qt.IsNil)
 
 	maxValue := ballotMode.MaxValue * 1000
-	addAccumulator := [params.FieldsPerBallot]*big.Int{}
-	addCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
-	addDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
-	for i, ct := range encryptedAddAccumulator.Ciphertexts {
-		addCiphertexts[i] = *ct
+	results := [params.FieldsPerBallot]*big.Int{}
+	encryptedResults := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	decryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
+	for i, ct := range encryptedResultsState.Ciphertexts {
+		encryptedResults[i] = *ct
 		_, result, err := elgamal.Decrypt(pubKey, privKey, ct.C1, ct.C2, maxValue)
 		c.Assert(err, qt.IsNil)
-		addAccumulator[i] = result
-		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
-		c.Assert(err, qt.IsNil)
-	}
-
-	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
-	subAccumulator := [params.FieldsPerBallot]*big.Int{}
-	subCiphertexts := [params.FieldsPerBallot]elgamal.Ciphertext{}
-	subDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
-	for i, ct := range encryptedSubAccumulator.Ciphertexts {
-		subCiphertexts[i] = *ct
-		_, result, err := elgamal.Decrypt(pubKey, privKey, ct.C1, ct.C2, maxValue)
-		c.Assert(err, qt.IsNil)
-		subAccumulator[i] = result
-		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
-		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
+		results[i] = result
+		decryptionProofs[i], err = elgamal.BuildDecryptionProof(privKey, pubKey, ct.C1, ct.C2, result)
 		c.Assert(err, qt.IsNil)
 	}
 
 	assignment, err := GenerateAssignment(
 		st,
-		resultsAccumulator,
-		addAccumulator,
-		subAccumulator,
-		addCiphertexts,
-		subCiphertexts,
-		addDecryptionProofs,
-		subDecryptionProofs,
+		results,
+		encryptedResults,
+		decryptionProofs,
 	)
 	c.Assert(err, qt.IsNil)
 
 	valid := &encryptionKeyBindingCircuit{
-		StateRoot:                  assignment.StateRoot,
-		AddAccumulatorsEncrypted:   assignment.AddAccumulatorsEncrypted,
-		SubAccumulatorsEncrypted:   assignment.SubAccumulatorsEncrypted,
-		AddAccumulatorsMerkleProof: assignment.AddAccumulatorsMerkleProof,
-		SubAccumulatorsMerkleProof: assignment.SubAccumulatorsMerkleProof,
-		EncryptionKeyMerkleProof:   assignment.EncryptionKeyMerkleProof,
-		EncryptionPublicKey:        assignment.EncryptionPublicKey,
+		StateRoot:                assignment.StateRoot,
+		EncryptedResults:         assignment.EncryptedResults,
+		ResultsMerkleProof:       assignment.ResultsMerkleProof,
+		EncryptionKeyMerkleProof: assignment.EncryptionKeyMerkleProof,
+		EncryptionPublicKey:      assignment.EncryptionPublicKey,
 	}
 
 	otherPubKey, _, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
@@ -277,28 +224,20 @@ func TestResultsVerifierCircuitBindsEncryptionKeyToMerkleLeaf(t *testing.T) {
 	)
 }
 
-func TestResultsVerifierCircuitRejectsWrappedSubtraction(t *testing.T) {
+func TestResultsVerifierCircuitRejectsWrappedResult(t *testing.T) {
 	assert := test.NewAssert(t)
 
-	valid := &resultsSubtractionCircuit{}
-	validWitness := &resultsSubtractionCircuit{}
+	valid := &resultsComparisonCircuit{}
+	validWitness := &resultsComparisonCircuit{}
 	for i := range params.FieldsPerBallot {
-		validWitness.AddAccumulators[i] = big.NewInt(0)
-		validWitness.SubAccumulators[i] = big.NewInt(0)
 		validWitness.Results[i] = big.NewInt(0)
 	}
-	validWitness.AddAccumulators[0] = big.NewInt(2)
-	validWitness.SubAccumulators[0] = big.NewInt(1)
 	validWitness.Results[0] = big.NewInt(1)
 
-	invalidWitness := &resultsSubtractionCircuit{}
+	invalidWitness := &resultsComparisonCircuit{}
 	for i := range params.FieldsPerBallot {
-		invalidWitness.AddAccumulators[i] = big.NewInt(0)
-		invalidWitness.SubAccumulators[i] = big.NewInt(0)
 		invalidWitness.Results[i] = big.NewInt(0)
 	}
-	invalidWitness.AddAccumulators[0] = big.NewInt(0)
-	invalidWitness.SubAccumulators[0] = big.NewInt(1)
 	invalidWitness.Results[0] = new(big.Int).Sub(params.ResultsVerifierCurve.ScalarField(), big.NewInt(1))
 
 	assert.CheckCircuit(valid,

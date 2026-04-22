@@ -294,6 +294,14 @@ func (z *Ballot) Add(api frontend.API, x, y *Ballot) *Ballot {
 	return z
 }
 
+// Neg sets z to the negation of x and returns z.
+func (z *Ballot) Neg(api frontend.API, x *Ballot) *Ballot {
+	for i := range z {
+		z[i].Neg(api, &x[i])
+	}
+	return z
+}
+
 // AssertIsEqual fails if any of the fields differ between z and x
 func (z *Ballot) AssertIsEqual(api frontend.API, x *Ballot) {
 	api.AssertIsEqual(z.IsEqual(api, x), 1)

@@ -57,13 +57,11 @@ type StateTransitionCircuit struct {
 	AggregatorVK    groth16.VerifyingKey[sw_bw6761.G1Affine, sw_bw6761.G2Affine, sw_bw6761.GTEl] `gnark:"-"`
 }
 
-// Results struct contains the ballot structs for addition and subtraction
-// after and before the aggregation.
+// Results struct contains the ballot struct for the net results before and
+// after the aggregation.
 type Results struct {
-	OldResultsAdd circuits.Ballot
-	OldResultsSub circuits.Ballot
-	NewResultsAdd circuits.Ballot
-	NewResultsSub circuits.Ballot
+	OldResults circuits.Ballot
+	NewResults circuits.Ballot
 }
 
 // ProcessProofs struct contains the Merkle proofs for the process for the ID
@@ -90,11 +88,9 @@ type VotesProofs struct {
 	VoteIDs [params.VotesPerBatch]merkleproof.MerkleTransition
 }
 
-// ResultsProofs struct contains the Merkle transition proofs for the addition
-// and subtraction of the results.
+// ResultsProofs struct contains the Merkle transition proof for the results.
 type ResultsProofs struct {
-	ResultsAdd merkleproof.MerkleTransition
-	ResultsSub merkleproof.MerkleTransition
+	Results merkleproof.MerkleTransition
 }
 
 // Vote struct contains the circuits.Vote struct and the overwritten ballot.
@@ -308,7 +304,7 @@ func (circuit StateTransitionCircuit) VerifyIsValidCensusOrigin(api frontend.API
 // VerifyMerkleTransitions enforces that each MerkleTransition is of the expected type:
 //   - Ballot transitions must be INSERT or UPDATE
 //   - VoteID transitions must be INSERT
-//   - ResultsAdd and ResultsSub transitions must be UPDATE
+//   - Results transition must be UPDATE
 //   - all dummy slots must be NOOP
 func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, isRealVote []frontend.Variable) {
 	for i := range params.VotesPerBatch {
@@ -320,15 +316,13 @@ func (circuit StateTransitionCircuit) VerifyMerkleTransitions(api frontend.API, 
 		circuits.AssertTrueIf(api, isDummy, circuit.VotesProofs.Ballot[i].IsNoop(api))
 		circuits.AssertTrueIf(api, isDummy, circuit.VotesProofs.VoteIDs[i].IsNoop(api))
 	}
-	api.AssertIsEqual(circuit.ResultsProofs.ResultsAdd.IsUpdate(api), 1)
-	api.AssertIsEqual(circuit.ResultsProofs.ResultsSub.IsUpdate(api), 1)
+	api.AssertIsEqual(circuit.ResultsProofs.Results.IsUpdate(api), 1)
 }
 
 // VerifyMerkleTransitionKeys asserts that the merkle transition keys are bound to the
 // canonical state keys or namespaces.
 func (circuit StateTransitionCircuit) VerifyMerkleTransitionKeys(api frontend.API) {
-	circuit.ResultsProofs.ResultsAdd.VerifyNewKey(api, params.StateKeyResultsAdd)
-	circuit.ResultsProofs.ResultsSub.VerifyNewKey(api, params.StateKeyResultsSub)
+	circuit.ResultsProofs.Results.VerifyNewKey(api, params.StateKeyResults)
 	// Votes
 	for i := range params.VotesPerBatch {
 		circuit.VotesProofs.VoteIDs[i].VerifyNewKey(api, circuit.Votes[i].VoteID)
@@ -344,8 +338,7 @@ func (circuit StateTransitionCircuit) VerifyRootTransition(api frontend.API, hFn
 		root = circuit.VotesProofs.Ballot[i].Verify(api, hFn, root)
 		root = circuit.VotesProofs.VoteIDs[i].Verify(api, hFn, root)
 	}
-	root = circuit.ResultsProofs.ResultsAdd.Verify(api, hFn, root)
-	root = circuit.ResultsProofs.ResultsSub.Verify(api, hFn, root)
+	root = circuit.ResultsProofs.Results.Verify(api, hFn, root)
 	api.AssertIsEqual(root, circuit.RootHashAfter)
 }
 
@@ -391,20 +384,12 @@ func (circuit StateTransitionCircuit) VerifyLeafHashes(api frontend.API, hFn uti
 		}
 	}
 	// Results
-	if err := circuit.ResultsProofs.ResultsAdd.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsAdd.SerializeVars()...); err != nil {
-		circuits.FrontendError(api, "failed to verify add results proof old leaf hash: ", err)
+	if err := circuit.ResultsProofs.Results.VerifyOldLeafHash(api, hFn, circuit.Results.OldResults.SerializeVars()...); err != nil {
+		circuits.FrontendError(api, "failed to verify results proof old leaf hash: ", err)
 		return
 	}
-	if err := circuit.ResultsProofs.ResultsAdd.VerifyNewLeafHash(api, hFn, circuit.Results.NewResultsAdd.SerializeVars()...); err != nil {
-		circuits.FrontendError(api, "failed to verify add results proof new leaf hash: ", err)
-		return
-	}
-	if err := circuit.ResultsProofs.ResultsSub.VerifyOldLeafHash(api, hFn, circuit.Results.OldResultsSub.SerializeVars()...); err != nil {
-		circuits.FrontendError(api, "failed to verify sub results proof old leaf hash: ", err)
-		return
-	}
-	if err := circuit.ResultsProofs.ResultsSub.VerifyNewLeafHash(api, hFn, circuit.Results.NewResultsSub.SerializeVars()...); err != nil {
-		circuits.FrontendError(api, "failed to verify sub results proof new leaf hash: ", err)
+	if err := circuit.ResultsProofs.Results.VerifyNewLeafHash(api, hFn, circuit.Results.NewResults.SerializeVars()...); err != nil {
+		circuits.FrontendError(api, "failed to verify results proof new leaf hash: ", err)
 		return
 	}
 }
@@ -415,7 +400,7 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 	// Build blob and verify evaluation
 	//
 	// The blob is built as follows:
-	// - First, we add the new results (addition and subtraction) and VotersCount
+	// - First, we add the new results and VotersCount
 	// - Finally, we add exactly VotersCount votes sequentially
 	// Each vote is serialized as voteID, address, ballotIndex, weight, and
 	// then the reencrypted ballot coordinates.
@@ -432,8 +417,7 @@ func (circuit StateTransitionCircuit) VerifyBlobs(api frontend.API) {
 		}
 	}
 	// Always include results.
-	appendBallotMasked(circuit.Results.NewResultsAdd, 1)
-	appendBallotMasked(circuit.Results.NewResultsSub, 1)
+	appendBallotMasked(circuit.Results.NewResults, 1)
 	blob[blobIndex] = circuit.VotersCount
 	blobIndex++
 	isRealVote := circuit.VoteMask(api)
@@ -496,10 +480,9 @@ func (circuit StateTransitionCircuit) VerifyBallots(api frontend.API) {
 	}
 
 	// Assert new results are equal to old results plus ballot sums
-	circuit.Results.NewResultsAdd.AssertIsEqual(api,
-		circuits.NewBallot().Add(api, &circuit.Results.OldResultsAdd, sumOfAllBallots))
-	circuit.Results.NewResultsSub.AssertIsEqual(api,
-		circuits.NewBallot().Add(api, &circuit.Results.OldResultsSub, sumOfOverwrittenBallots))
+	netBallots := circuits.NewBallot().Add(api, sumOfAllBallots, circuits.NewBallot().Neg(api, sumOfOverwrittenBallots))
+	circuit.Results.NewResults.AssertIsEqual(api,
+		circuits.NewBallot().Add(api, &circuit.Results.OldResults, netBallots))
 	api.AssertIsEqual(circuit.VotersCount, votersCount)
 	api.AssertIsEqual(circuit.OverwrittenVotesCount, overwrittenVotesCount)
 }
