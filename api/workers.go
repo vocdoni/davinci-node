@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -11,12 +12,15 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/workers"
 )
+
+const uuidTextLen = 36
 
 // startWorkersAPI method checks if the workers API should be started. If so,
 // it generates the sequencer signer and uuid using the seed defined in the
@@ -103,7 +107,7 @@ func (a *API) authWorkerFromRequest(r *http.Request) (common.Address, *Error) {
 	// Extract the sequencer UUID from the url and compare with UUID of the
 	// current sequencer API.
 	sequencerUUID := chi.URLParam(r, "uuid")
-	if a.sequencerUUID.String() != sequencerUUID {
+	if !a.matchesSequencerUUID(sequencerUUID) {
 		return common.Address{}, &ErrResourceNotFound
 	}
 
@@ -148,6 +152,22 @@ func (a *API) authWorkerFromRequest(r *http.Request) (common.Address, *Error) {
 	// updated
 	a.jobsManager.WorkerManager.AddWorker(strWorkerAddress, workerName)
 	return common.HexToAddress(strWorkerAddress), nil
+}
+
+func (a *API) matchesSequencerUUID(sequencerUUID string) bool {
+	if a == nil || a.sequencerUUID == nil {
+		return false
+	}
+	if len(sequencerUUID) != uuidTextLen {
+		return false
+	}
+
+	parsedUUID, err := uuid.Parse(sequencerUUID)
+	if err != nil {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare(parsedUUID[:], a.sequencerUUID[:]) == 1
 }
 
 // workersList handles GET /workers
