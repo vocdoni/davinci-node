@@ -14,12 +14,59 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/spec/params"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
+
+func TestMaxPossibleResult(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		process *types.Process
+		want    uint64
+	}{
+		{
+			name: "returns zero when no votes can contribute",
+			process: &types.Process{
+				BallotMode:  spec.BallotMode{MaxValue: 16},
+				VotersCount: types.BigIntConverter(big.NewInt(0)),
+			},
+			want: 0,
+		},
+		{
+			name: "uses maxValue times votersCount",
+			process: &types.Process{
+				BallotMode:  spec.BallotMode{MaxValue: 16},
+				VotersCount: types.BigIntConverter(big.NewInt(3)),
+			},
+			want: 48,
+		},
+		{
+			name: "caps at fallback maximum",
+			process: &types.Process{
+				BallotMode:  spec.BallotMode{MaxValue: 1_000_000_000_000},
+				VotersCount: types.BigIntConverter(big.NewInt(2)),
+			},
+			want: maxPossibleResultCap,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := maxPossibleResult(tc.process); got != tc.want {
+				t.Fatalf("maxPossibleResult() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
 
 func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
 	t.Helper()
