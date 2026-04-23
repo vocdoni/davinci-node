@@ -77,12 +77,16 @@ func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
 	if len(signature) < SignatureLength-1 {
 		return nil
 	}
-	//var sigStruct gecdsa.Signature
-	//if _, err := sigStruct.SetBytes(signature[:64]); err != nil {
-	//	return nil
-	//}
 	sig.R = new(big.Int).SetBytes(signature[:32])
 	sig.S = new(big.Int).SetBytes(signature[32:64])
+
+	// Reject high-S signatures to prevent malleability (R-01)
+	// S must be in [1, n/2]
+	n := ethcrypto.S256().Params().N
+	halfOrder := new(big.Int).Rsh(n, 1)
+	if sig.S.Cmp(halfOrder) > 0 {
+		return nil
+	}
 
 	if len(signature) == SignatureLength {
 		// Make a copy of the recovery byte to avoid modifying the input array
