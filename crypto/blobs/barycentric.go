@@ -181,6 +181,9 @@ func EvaluateBarycentricNative(blob *types.Blob, z *big.Int, debug bool) (*big.I
 // blobCell extracts the i-th 32-byte element from the blob and converts it to a big integer.
 // The blob stores field elements in big-endian format.
 func blobCell(blob *types.Blob, i int) *big.Int {
+	if i < 0 || i >= len(*blob)/32 {
+		return big.NewInt(0)
+	}
 	start := i * 32
 	return new(big.Int).SetBytes(blob[start : start+32])
 }
