@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -359,7 +360,8 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		ErrInvalidBallotProof.Withf("could not verify and convert proof: %v", err).Write(w)
+		log.Errorw(err, fmt.Sprintf("failed to verify and convert ballot proof for address %s", vote.Address))
+		ErrInvalidBallotProof.Write(w)
 		return
 	}
 	// Create the ballot object
