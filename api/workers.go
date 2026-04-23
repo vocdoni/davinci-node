@@ -295,9 +295,15 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Decode verified ballot
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB limit for worker submissions
 	var workerVerifiedBallot storage.VerifiedBallot
 	body, err := io.ReadAll(r.Body) // Read the body to ensure it's consumed
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			ErrRequestBodyTooLarge.Write(w)
+			return
+		}
 		log.Warnw("failed to read request body",
 			"error", err.Error())
 		ErrMalformedBody.WithErr(err).Write(w)
