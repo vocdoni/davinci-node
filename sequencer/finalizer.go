@@ -19,7 +19,12 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-const maxValue = 2 << 24 // 2^24
+// maxPossibleResultCap bounds the BSGS discrete-log search used to decrypt
+// accumulated results. It is an operational guardrail against too-expensive
+// decryption, and it also matches the onchain business cap
+// `maxVoters * maxValue < 1_000_000_000_000`. The runtime still narrows each
+// search further to `process.BallotMode.MaxValue * process.VotersCount`.
+const maxPossibleResultCap = 1_000_000_000_000
 
 // finalizer is responsible for finalizing processes.
 type finalizer struct {
@@ -33,6 +38,35 @@ type finalizer struct {
 	cancel           context.CancelFunc
 	lock             sync.Mutex                                   // Mutex to ensure that only one process results calculation is running at a time
 	getStateRoot     func(types.ProcessID) (*types.BigInt, error) // Function to get state root from contract
+}
+
+// maxPossibleResult returns the maximum possible accumulated result for a
+// process, computed as VotersCount * BallotMode.MaxValue, capped by the
+// operational search limit (maxPossibleResultCap). A nil VotersCount is
+// treated as zero counted voters.
+func maxPossibleResult(process *types.Process) uint64 {
+	if process == nil {
+		return maxPossibleResultCap
+	}
+	if process.VotersCount == nil {
+		return 0
+	}
+
+	votersCount := process.VotersCount.MathBigInt()
+	if !votersCount.IsUint64() {
+		return maxPossibleResultCap
+	}
+
+	count := votersCount.Uint64()
+	maxValue := process.BallotMode.MaxValue
+	if count == 0 || maxValue == 0 {
+		return 0
+	}
+	if maxValue > maxPossibleResultCap/count {
+		return maxPossibleResultCap
+	}
+
+	return maxValue * count
 }
 
 // New creates a new Finalizer instance.
@@ -283,12 +317,13 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
 	accumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
 	decryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
+	maxResult := maxPossibleResult(process)
 	for i, ct := range encryptedResultsAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			setProcessInvalid()
 			return fmt.Errorf("invalid ciphertext for process %s: %v", processID.String(), ct)
 		}
-		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
+		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxResult)
 		if err != nil {
 			setProcessInvalid()
 			return fmt.Errorf("could not decrypt results accumulator for process %s: %w", processID.String(), err)
