@@ -351,9 +351,8 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	// Verify the worker proof
 	if err := a.voteVerifier.Verify(workerVerifiedBallot.Proof, assignment); err != nil {
-		ErrGenericInternalServerError.WithErr(
-			fmt.Errorf("failed to verify worker proof, ballotHash: %v, proof: %v, err: %s",
-				assignment.BallotHash, workerVerifiedBallot.Proof, err.Error())).Write(w)
+		log.Errorw(err, fmt.Sprintf("failed to verify worker proof, ballotHash: %v, proof: %v", assignment.BallotHash, workerVerifiedBallot.Proof))
+		ErrGenericInternalServerError.Write(w)
 		return
 	}
 
