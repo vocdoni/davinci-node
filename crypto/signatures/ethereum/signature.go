@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 
-	gecc "github.com/consensys/gnark-crypto/ecc"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/davinci-node/crypto"
@@ -102,15 +101,6 @@ func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
 	}
 
 	return sig
-}
-
-// VerifyBLS12377 checks if the signature is valid for the given input and
-// public key. The public key should be an ecdsa address. The input should be
-// a big integer that will be converted in a byte slice ensuring that the final
-// value is in the expected scalar field (BLS12_377) and has the expected size.
-func (sig *ECDSASignature) VerifyBLS12377(signedInput *big.Int, expectedAddress common.Address) (bool, []byte) {
-	ffInput := crypto.BigIntToFFToSign(signedInput, gecc.BLS12_377.ScalarField())
-	return sig.Verify(ffInput, expectedAddress)
 }
 
 // VerifyVoteID checks if the signature is valid for the given voteID.

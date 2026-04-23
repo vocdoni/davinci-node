@@ -9,24 +9,6 @@ import "math/big"
 // field elements
 const SignatureCircuitVariableLen = 32 // bytes
 
-// BigIntToFFToSign transform the inputs bigInt to the field provided, if it
-// is not done, the circuit will transform it during the witness calculation
-// and the resulting hash will be different. Moreover, the input hash should
-// be 32 bytes so if it is not, fill with zeros at the beginning of the bytes
-// representation.
-func BigIntToFFToSign(input, field *big.Int) []byte {
-	return BigIntToBytesToSign(BigToFF(field, input))
-}
-
-// BigIntToBytesToSign converts a big.Int to a byte slice, ensuring that
-// the resulting byte slice has SignatureCircuitVariableLen bytes. If the
-// byte slice is shorter than SerializedFieldSize, it prepends zeros until
-// the length is equal to SerializedFieldSize. If the byte slice is longer,
-// it truncates it to the last SerializedFieldSize bytes.
-func BigIntToBytesToSign(input *big.Int) []byte {
-	return PadToSign(input.Bytes())
-}
-
 // PadToSign pads the input byte slice to ensure it has a length of
 // SignatureCircuitVariableLen bytes. If the input is shorter, it prepends
 // zeros until the length is equal to SignatureCircuitVariableLen. If the
