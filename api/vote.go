@@ -190,9 +190,15 @@ func (a *API) ballotByIndex(w http.ResponseWriter, r *http.Request) {
 // POST /votes
 func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// decode the vote
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB limit for /votes
 	vote := &Vote{}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			ErrRequestBodyTooLarge.Write(w)
+			return
+		}
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
 	}
