@@ -16,11 +16,9 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // voteStatus returns the status of a vote for a given processID and voteID
@@ -342,22 +340,11 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidBallotInputsHash.Withf("ballot inputs hash mismatch").Write(w)
 		return
 	}
-	rawBallotProofVK, err := ballotproof.Artifacts.RawVerifyingKey()
-	if err != nil {
-		ErrGenericInternalServerError.Withf("could not load ballot proof verification key: %v", err).Write(w)
-		return
-	}
-	// convert the circom proof to gnark proof and verify it
-	ballotProofAddress := vote.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ballotProofVoteID := vote.VoteID.BigInt() // ToFF unneeded since VoteID is a uint64
-	proof, err := circomgnark.VerifyAndConvertToRecursion(
-		rawBallotProofVK,
+	proof, err := defaultBallotProofVerifier.VerifyBallotProof(
+		vote.Address,
+		vote.VoteID,
+		vote.BallotInputsHash,
 		vote.BallotProof,
-		[]string{
-			ballotProofAddress.String(),
-			ballotProofVoteID.String(),
-			vote.BallotInputsHash.String(),
-		},
 	)
 	if err != nil {
 		log.Errorw(err, fmt.Sprintf("failed to verify and convert ballot proof for address %s", vote.Address))
