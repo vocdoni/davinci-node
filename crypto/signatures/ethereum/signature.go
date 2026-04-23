@@ -125,7 +125,10 @@ func (sig *ECDSASignature) Verify(signedInput []byte, expectedAddress common.Add
 		return false, nil
 	}
 	// Check if the public key matches the expected address
-	return bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes()), ethcrypto.FromECDSAPub(pubKey)
+	if !bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes()) {
+		return false, nil
+	}
+	return true, ethcrypto.FromECDSAPub(pubKey)
 }
 
 // String returns a string representation of the ECDSASignature, including
