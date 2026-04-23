@@ -53,6 +53,11 @@ var (
 	ballotMode = testutil.BallotMode()
 )
 
+type VoteWithValues struct {
+	api.Vote
+	FieldValues []*types.BigInt
+}
+
 func main() {
 	// define cli flags
 	var (
@@ -201,11 +206,15 @@ func main() {
 	log.Infow("process created", "processID", processID.String())
 
 	// Generate votes for each participant and send them to the sequencer
+	expectedResultsByAddress := make(map[common.Address][]*types.BigInt, len(signers))
 	{
 		votes, err := createVotes(signers, processID, encryptionKey)
 		if err != nil {
 			log.Errorw(err, "failed to create votes")
 			return
+		}
+		for _, vote := range votes {
+			expectedResultsByAddress[common.BytesToAddress(vote.Address)] = vote.FieldValues
 		}
 
 		if err := sendVotesToSequencer(testCtx, sequencers[0], *voteSleepTime, votes); err != nil {
@@ -238,6 +247,9 @@ func main() {
 		if err != nil {
 			log.Errorw(err, "failed to create vote overwrites")
 			return
+		}
+		for _, vote := range votes {
+			expectedResultsByAddress[common.BytesToAddress(vote.Address)] = vote.FieldValues
 		}
 		overwrittenVotesCount += len(overwriters)
 		log.Infof("now overwriting votes, using sequencer %d (%s)", i, sequencer)
@@ -284,7 +296,14 @@ func main() {
 		log.Errorw(err, "failed to wait for on-chain results")
 		return
 	}
-	log.Infow("on-chain results received", "processID", processID.String(), "results", results)
+	expectedResults := calculateExpectedResults(expectedResultsByAddress)
+	if err := compareResults(expectedResults, results); err != nil {
+		log.Infow("final results mismatch details", "processID", processID.String(), "expected", expectedResults, "actual", results)
+		log.Errorw(err, "final results mismatch")
+		return
+	}
+	log.Infow("on-chain results received and verified against expected tally",
+		"processID", processID.String(), "results", results)
 }
 
 type localService struct {
@@ -354,7 +373,7 @@ func (s *localService) Stop() {
 	}
 }
 
-func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime time.Duration, votes []api.Vote) error {
+func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime time.Duration, votes []VoteWithValues) error {
 	// Create a API client
 	cli, err := client.New(seqEndpoint)
 	if err != nil {
@@ -384,9 +403,9 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 	// Generate votes for each participant and send them to the sequencer
 	for i, vote := range votes {
 		// Send the vote to the sequencer
-		voteID, err := sendVote(cli, vote)
+		voteID, err := sendVote(cli, vote.Vote)
 		if err != nil {
-			log.Errorf("failed to send this vote: %+v", vote)
+			log.Errorf("failed to send this vote: %+v", vote.Vote)
 			return fmt.Errorf("failed to send vote: %w", err)
 		}
 		log.Infow("vote sent",
@@ -503,8 +522,8 @@ func createProcess(
 	return processID, encryptionKeys, nil
 }
 
-func createVotes(signers []*ethereum.Signer, processID types.ProcessID, encryptionKey *types.EncryptionKey) ([]api.Vote, error) {
-	votes := make([]api.Vote, 0, len(signers))
+func createVotes(signers []*ethereum.Signer, processID types.ProcessID, encryptionKey *types.EncryptionKey) ([]VoteWithValues, error) {
+	votes := make([]VoteWithValues, 0, len(signers))
 	for _, signer := range signers {
 		vote, err := createVote(signer, processID, encryptionKey, ballotMode)
 		if err != nil {
@@ -520,12 +539,12 @@ func createVote(
 	processID types.ProcessID,
 	encKey *types.EncryptionKey,
 	bm spec.BallotMode,
-) (api.Vote, error) {
+) (VoteWithValues, error) {
 	// Emulate user inputs
 	address := ethcrypto.PubkeyToAddress(privKey.PublicKey)
 	k, err := specutil.RandomK()
 	if err != nil {
-		return api.Vote{}, fmt.Errorf("failed to generate random k: %v", err)
+		return VoteWithValues{}, fmt.Errorf("failed to generate random k: %v", err)
 	}
 
 	// Generate random ballot fields
@@ -558,46 +577,80 @@ func createVote(
 	// Generate the inputs for the ballot proof circuit
 	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
 	if err != nil {
-		return api.Vote{}, fmt.Errorf("failed to generate ballot proof inputs: %v", err)
+		return VoteWithValues{}, fmt.Errorf("failed to generate ballot proof inputs: %v", err)
 	}
 
 	// Encode the inputs to json
 	encodedCircomInputs, err := json.Marshal(wasmResult.CircomInputs)
 	if err != nil {
-		return api.Vote{}, fmt.Errorf("failed to encode circom inputs: %v", err)
+		return VoteWithValues{}, fmt.Errorf("failed to encode circom inputs: %v", err)
 	}
 
 	// Generate the proof using the circom circuit
 	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
 	if err != nil {
-		return api.Vote{}, fmt.Errorf("failed to generate proof: %v", err)
+		return VoteWithValues{}, fmt.Errorf("failed to generate proof: %v", err)
 	}
 
 	// Convert the proof to gnark format
 	circomProof, _, err := circomgnark.UnmarshalCircom(rawProof, pubInputs)
 	if err != nil {
-		return api.Vote{}, fmt.Errorf("failed to convert proof to gnark format: %v", err)
+		return VoteWithValues{}, fmt.Errorf("failed to convert proof to gnark format: %v", err)
 	}
 
 	// Sign the hash of the circuit inputs
 	signature, err := ballotprooftest.SignECDSAForTest(privKey, wasmResult.VoteID)
 	if err != nil {
-		return api.Vote{}, fmt.Errorf("failed to sign vote: %v", err)
+		return VoteWithValues{}, fmt.Errorf("failed to sign vote: %v", err)
 	}
 
 	// Return the vote ready to be sent to the sequencer
-	return api.Vote{
-		ProcessID:        wasmResult.ProcessID,
-		Address:          wasmInputs.Address,
-		Ballot:           wasmResult.Ballot,
-		BallotProof:      circomProof,
-		BallotInputsHash: wasmResult.BallotInputsHash,
-		Signature:        signature.Bytes(),
-		VoteID:           wasmResult.VoteID,
-		CensusProof: types.CensusProof{
-			Weight: new(types.BigInt).SetInt(testutil.Weight),
+	return VoteWithValues{
+		Vote: api.Vote{
+			ProcessID:        wasmResult.ProcessID,
+			Address:          wasmInputs.Address,
+			Ballot:           wasmResult.Ballot,
+			BallotProof:      circomProof,
+			BallotInputsHash: wasmResult.BallotInputsHash,
+			Signature:        signature.Bytes(),
+			VoteID:           wasmResult.VoteID,
+			CensusProof: types.CensusProof{
+				Weight: new(types.BigInt).SetInt(testutil.Weight),
+			},
 		},
+		FieldValues: fields,
 	}, nil
+}
+
+func calculateExpectedResults(fieldValuesByAddress map[common.Address][]*types.BigInt) []*types.BigInt {
+	var expectedResults []*types.BigInt
+	for _, fieldValues := range fieldValuesByAddress {
+		if expectedResults == nil {
+			expectedResults = make([]*types.BigInt, len(fieldValues))
+			for i := range expectedResults {
+				expectedResults[i] = types.NewInt(0)
+			}
+		}
+		for i, fieldValue := range fieldValues {
+			expectedResults[i] = expectedResults[i].Add(expectedResults[i], fieldValue)
+		}
+	}
+	if expectedResults == nil {
+		return []*types.BigInt{}
+	}
+	return expectedResults
+}
+
+func compareResults(expected, actual []*types.BigInt) error {
+	if len(expected) != len(actual) {
+		return fmt.Errorf("unexpected results length: expected %d, got %d", len(expected), len(actual))
+	}
+	for i := range expected {
+		if expected[i].Cmp(actual[i]) != 0 {
+			return fmt.Errorf("result mismatch at index %d: expected %s, got %s", i, expected[i].String(), actual[i].String())
+		}
+	}
+	return nil
 }
 
 func sendVote(cli *client.HTTPclient, vote api.Vote) (types.VoteID, error) {
