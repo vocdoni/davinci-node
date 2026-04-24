@@ -27,8 +27,6 @@
 //   - MaxValueSum: The maximum total cost of the votes in the package.
 //   - MinValueSum: The minimum total cost of the votes in the package.
 //   - CostExponent: The exponent used to calculate the cost of a vote.
-//   - CostFromWeight: A flag that indicates if the cost of a vote is
-//     calculated from the weight of the user or from the value of the vote.
 //   - Address: The address of the voter.
 //   - UserWeight: The weight of the user that is voting.
 //   - EncryptionPubKey: The public key used to encrypt the votes in the
