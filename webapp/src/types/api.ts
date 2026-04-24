@@ -55,7 +55,6 @@ export interface BallotMode {
   maxValue: string
   minValue: string
   uniqueValues: boolean
-  costFromWeight: boolean
   costExponent: number
   maxValueSum: string
   minValueSum: string

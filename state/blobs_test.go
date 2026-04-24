@@ -46,15 +46,14 @@ func TestBlobDataStructures(t *testing.T) {
 
 	// Initialize state with process parameters
 	ballotMode := spec.BallotMode{
-		NumFields:      3,
-		GroupSize:      3,
-		MaxValue:       100,
-		MinValue:       0,
-		MaxValueSum:    1000,
-		MinValueSum:    0,
-		CostExponent:   1,
-		UniqueValues:   false,
-		CostFromWeight: false,
+		NumFields:    3,
+		GroupSize:    3,
+		MaxValue:     100,
+		MinValue:     0,
+		MaxValueSum:  1000,
+		MinValueSum:  0,
+		CostExponent: 1,
+		UniqueValues: false,
 	}
 	ballotModeCircuit, err := ballotMode.Pack()
 	c.Assert(err, qt.IsNil)
