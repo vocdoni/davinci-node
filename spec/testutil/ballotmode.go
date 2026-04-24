@@ -11,7 +11,6 @@ const (
 	BallotMaxValueSum    = 1280 // (maxValue ^ costExponent) * numFields
 	BallotMinValueSum    = BallotNumFields
 	BallotCostExponent   = 2
-	BallotCostFromWeight = 0
 )
 
 // FixedBallotMode returns a fixed ballot mode fixture used in tests.
@@ -25,6 +24,5 @@ func FixedBallotMode() spec.BallotMode {
 		MaxValueSum:    BallotMaxValueSum,
 		MinValueSum:    BallotMinValueSum,
 		CostExponent:   BallotCostExponent,
-		CostFromWeight: BallotCostFromWeight == 1,
 	}
 }

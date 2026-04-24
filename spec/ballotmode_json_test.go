@@ -7,15 +7,14 @@ import (
 
 func TestBallotModeJSONTags(t *testing.T) {
 	bm := BallotMode{
-		NumFields:      2,
-		GroupSize:      1,
-		UniqueValues:   true,
-		CostFromWeight: false,
-		CostExponent:   3,
-		MaxValue:       4,
-		MinValue:       1,
-		MaxValueSum:    10,
-		MinValueSum:    2,
+		NumFields:    2,
+		GroupSize:    1,
+		UniqueValues: true,
+		CostExponent: 3,
+		MaxValue:     4,
+		MinValue:     1,
+		MaxValueSum:  10,
+		MinValueSum:  2,
 	}
 
 	data, err := json.Marshal(bm)
@@ -31,12 +30,14 @@ func TestBallotModeJSONTags(t *testing.T) {
 	assertJSONFieldNumber(t, decoded, "numFields", 2)
 	assertJSONFieldNumber(t, decoded, "groupSize", 1)
 	assertJSONFieldBool(t, decoded, "uniqueValues", true)
-	assertJSONFieldBool(t, decoded, "costFromWeight", false)
 	assertJSONFieldNumber(t, decoded, "costExponent", 3)
 	assertJSONFieldNumber(t, decoded, "maxValue", 4)
 	assertJSONFieldNumber(t, decoded, "minValue", 1)
 	assertJSONFieldNumber(t, decoded, "maxValueSum", 10)
 	assertJSONFieldNumber(t, decoded, "minValueSum", 2)
+	if _, ok := decoded["costFromWeight"]; ok {
+		t.Fatalf("unexpected json field costFromWeight")
+	}
 }
 
 func assertJSONFieldNumber(t *testing.T, decoded map[string]any, key string, want int) {
