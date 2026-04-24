@@ -221,9 +221,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 			// Create a function to store the new process
 			processSetup := func(p *types.Process) {
 				if err := pm.storage.NewProcess(p); err != nil {
-					log.Warnw("failed to store new process",
-						"processID", p.ID.String(),
-						"error", err.Error())
+					log.Errorw(err, fmt.Sprintf("failed to store new process %s", p.ID.String()))
 					return
 				}
 				log.Debugw("process created",
@@ -340,9 +338,8 @@ func (pm *ProcessMonitor) monitorProcesses(
 					update.NewVotersCount,
 					update.NewOverwrittenVotesCount,
 				)); err != nil {
-					log.Warnw("failed to update process state root",
-						"processID", update.ProcessID.String(),
-						"error", err.Error())
+					log.Errorw(err, fmt.Sprintf("failed to update process %s state root", update.ProcessID.String()))
+					continue
 				}
 				// Notify StateSync service for blob fetching and state reconstruction (non-blocking)
 				if pm.statesync != nil {
