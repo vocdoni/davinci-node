@@ -10,15 +10,14 @@ import (
 
 // BallotMode defines the ballot configuration fields used by the spec.
 type BallotMode struct {
-	NumFields      uint8  `json:"numFields" cbor:"0,keyasint,omitempty"`
-	GroupSize      uint8  `json:"groupSize" cbor:"1,keyasint,omitempty"`
-	UniqueValues   bool   `json:"uniqueValues" cbor:"2,keyasint,omitempty"`
-	CostFromWeight bool   `json:"costFromWeight" cbor:"3,keyasint,omitempty"`
-	CostExponent   uint8  `json:"costExponent" cbor:"4,keyasint,omitempty"`
-	MaxValue       uint64 `json:"maxValue" cbor:"5,keyasint,omitempty"`
-	MinValue       uint64 `json:"minValue" cbor:"6,keyasint,omitempty"`
-	MaxValueSum    uint64 `json:"maxValueSum" cbor:"7,keyasint,omitempty"`
-	MinValueSum    uint64 `json:"minValueSum" cbor:"8,keyasint,omitempty"`
+	NumFields    uint8  `json:"numFields" cbor:"0,keyasint,omitempty"`
+	GroupSize    uint8  `json:"groupSize" cbor:"1,keyasint,omitempty"`
+	UniqueValues bool   `json:"uniqueValues" cbor:"2,keyasint,omitempty"`
+	CostExponent uint8  `json:"costExponent" cbor:"3,keyasint,omitempty"`
+	MaxValue     uint64 `json:"maxValue" cbor:"4,keyasint,omitempty"`
+	MinValue     uint64 `json:"minValue" cbor:"5,keyasint,omitempty"`
+	MaxValueSum  uint64 `json:"maxValueSum" cbor:"6,keyasint,omitempty"`
+	MinValueSum  uint64 `json:"minValueSum" cbor:"7,keyasint,omitempty"`
 }
 
 // Pack packs the ballot mode fields into a single field element.
@@ -44,14 +43,11 @@ func (bm BallotMode) Pack() (*big.Int, error) {
 	if bm.UniqueValues {
 		packed.Or(packed, new(big.Int).Lsh(big.NewInt(1), 16))
 	}
-	if bm.CostFromWeight {
-		packed.Or(packed, new(big.Int).Lsh(big.NewInt(1), 17))
-	}
-	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(uint64(bm.CostExponent)), 18))
-	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(bm.MaxValue), 26))
-	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(bm.MinValue), 74))
-	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(bm.MaxValueSum), 122))
-	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(bm.MinValueSum), 185))
+	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(uint64(bm.CostExponent)), 17))
+	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(bm.MaxValue), 25))
+	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(bm.MinValue), 73))
+	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(bm.MaxValueSum), 121))
+	packed.Or(packed, new(big.Int).Lsh(new(big.Int).SetUint64(bm.MinValueSum), 184))
 	return packed, nil
 }
 
