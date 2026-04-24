@@ -294,20 +294,9 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
                 <Text fontSize="xs" fontWeight="medium">Vote Weight</Text>
               </HStack>
               <Box pl={6}>
-                {mode.costFromWeight ? (
-                  <>
-                    <Text fontSize="xs">Based on census weight</Text>
-                    {mode.costExponent > 1 && (
-                      <Text fontSize="xs">Exponent: {mode.costExponent}</Text>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Text fontSize="xs">Total budget: {mode.maxValueSum}</Text>
-                    {mode.minValueSum !== '0' && (
-                      <Text fontSize="xs">Min required: {mode.minValueSum}</Text>
-                    )}
-                  </>
+                <Text fontSize="xs">Total budget: {mode.maxValueSum}</Text>
+                {mode.minValueSum !== '0' && (
+                  <Text fontSize="xs">Min required: {mode.minValueSum}</Text>
                 )}
               </Box>
             </VStack>
