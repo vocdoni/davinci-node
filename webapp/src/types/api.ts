@@ -13,10 +13,6 @@ export interface InfoResponse {
   provingKeyHash: string
   verificationKeyUrl: string
   verificationKeyHash: string
-  ballotProofWasmHelperUrl: string
-  ballotProofWasmHelperHash: string
-  ballotProofWasmHelperExecJsUrl: string
-  ballotProofWasmHelperExecJsHash: string
   contracts: ContractAddresses
 }
 

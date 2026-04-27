@@ -21,16 +21,12 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 	contracts := npbindings.GetAllContractAddresses(a.network)
 	// Build the response with the necessary circuit information
 	response := &SequencerInfo{
-		CircuitURL:           config.BallotProofCircuitURL,
-		CircuitHash:          config.BallotProofCircuitHash,
-		ProvingKeyURL:        config.BallotProofProvingKeyURL,
-		ProvingKeyHash:       config.BallotProofProvingKeyHash,
-		VerificationKeyURL:   config.BallotProofVerificationKeyURL,
-		VerificationKeyHash:  config.BallotProofVerificationKeyHash,
-		WASMhelperURL:        config.BallotProofWasmHelperURL,
-		WASMhelperHash:       config.BallotProofWasmHelperHash,
-		WASMhelperExecJsURL:  config.BallotProofWasmExecJsURL,
-		WASMhelperExecJsHash: config.BallotProofWasmExecJsHash,
+		CircuitURL:          config.BallotProofCircuitURL,
+		CircuitHash:         config.BallotProofCircuitHash,
+		ProvingKeyURL:       config.BallotProofProvingKeyURL,
+		ProvingKeyHash:      config.BallotProofProvingKeyHash,
+		VerificationKeyURL:  config.BallotProofVerificationKeyURL,
+		VerificationKeyHash: config.BallotProofVerificationKeyHash,
 		Contracts: ContractAddresses{
 			ProcessRegistry:           contracts[npbindings.ProcessRegistryContract],
 			StateTransitionZKVerifier: contracts[npbindings.StateTransitionVerifierGroth16Contract],
