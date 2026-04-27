@@ -13,21 +13,21 @@ const (
 
 // Hashes of each circuit artifacts
 const (
-	BallotProofCircuitHash         = "e287dbc72dbdb4a938db90b61637a0249b5d4f8c294fbcf55e4f08881883112a"
-	BallotProofProvingKeyHash      = "982f1a850bc12325001e0c91d5238ae69b6b7ea20b3d5c1c18319d70a5dd2d65"
-	BallotProofVerificationKeyHash = "1675949c5628cfd347e93cfe5187805d28b5e8cb58591085b58eaa1953371991"
+	BallotProofCircuitHash         = "fb0856e46cb630114f7068010f1ab4edcb43a2a491e56518dba0102cfd6926be"
+	BallotProofProvingKeyHash      = "f5809dd04a10a1546a1a80276ed27881ebc9bfb0272c2cac6a03abf11b5543d4"
+	BallotProofVerificationKeyHash = "d45aa6c83b8df847e9c7bbd0cce299c791ce18a2203473e9a1a89e73818e85c6"
 
-	VoteVerifierCircuitHash         = "a9abc91e981b0589ee40441468d7b545f7b144c19b116ce38782b7b94902febd"
-	VoteVerifierProvingKeyHash      = "151d1c071adc855bdddcf6c4c89e433b24854d571deea99aaf9438cfa133fbea"
-	VoteVerifierVerificationKeyHash = "2227d4222b7b71325840aa1dc582487fc6cc2ef9ff6a431c1cd17b99844041ca"
+	VoteVerifierCircuitHash         = "28f60015e6f5da5f54b5bda40f7bc47b50d3299926a06cc48296e52baf4cfad0"
+	VoteVerifierProvingKeyHash      = "258a94202aefdfa42ec8a89840faf5b8ce881d7192685fafd7b66c57cbc2bbdc"
+	VoteVerifierVerificationKeyHash = "2cd6f8735ea6fdfed83f1c5b50c0d13fb7f6569a15682fd055f49cdd37dfadf9"
 
-	AggregatorCircuitHash         = "b01041aaedb70d053fa59837a6516b6d995eca0998c2ca23c9b42aea5d86e922"
-	AggregatorProvingKeyHash      = "09329c30dee024c54766a54d061680176122894fda3b1b71d530f80defedd0a1"
-	AggregatorVerificationKeyHash = "b254195422666dd50a6b3656de9e551904b1e6897a86036926877baf91c952e3"
+	AggregatorCircuitHash         = "a771f36ddd9e5d7dbc09d5f833b74d123b155e1b933153bc8f1ed3f1e5dde328"
+	AggregatorProvingKeyHash      = "153d3996986e41025edc33529125fd6d2ecfa3b996afab3c8ec06c7e62240076"
+	AggregatorVerificationKeyHash = "29370fb5da5ee891108e157095d548087fa1c1651fb38ef9915fadcd1045368b"
 
-	StateTransitionCircuitHash         = "d6fe3e566d68ff8f9f7d0d28a21e8a575ad17ca109507c1570687c4877de1b81"
-	StateTransitionProvingKeyHash      = "d8957d909801efb562a63d4c373502e98222aa2c014b9228aed0dbbf245181f1"
-	StateTransitionVerificationKeyHash = "0d2ef5018a6567ab059a0ea8c2b7f1f6175b4ff1fa91b8604fdbd2ef84c54541"
+	StateTransitionCircuitHash         = "9e61d748e6ac9a23d587a504e90525272fc4cce41a90540a791ef1f2e494cef4"
+	StateTransitionProvingKeyHash      = "e70fcbf84608071f91bac819c5012e5665c2b3ea82fce1f0bcea9b0080ef8cd8"
+	StateTransitionVerificationKeyHash = "a25175843ab6acff863eac1c41d72dad0d00cf431cfe464e989bcf3e012cd459"
 
 	ResultsVerifierCircuitHash         = "386646c4ab455b71afa2bd8a8f03e3ad1913e81972c8eb4a14455393846c00a3"
 	ResultsVerifierProvingKeyHash      = "448592882f39f7e5ef17ad70cdee5a23f95b1337ec72ae1ac36266a306cc6bea"
