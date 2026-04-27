@@ -54,6 +54,28 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 }
 
+func TestDecryptAllowsZeroUpperBoundForZeroMessage(t *testing.T) {
+	c := qt.New(t)
+	curve := curves.New(bn254.CurveType)
+
+	publicKey, privateKey, err := GenerateKey(curve)
+	c.Assert(err, qt.IsNil)
+
+	msg := big.NewInt(0)
+	c1, c2, _, err := Encrypt(publicKey, msg)
+	c.Assert(err, qt.IsNil)
+
+	M, recoveredMsg, err := Decrypt(publicKey, privateKey, c1, c2, 0)
+	c.Assert(err, qt.IsNil)
+	c.Assert(recoveredMsg, qt.Not(qt.IsNil))
+	c.Assert(recoveredMsg.Cmp(msg), qt.Equals, 0)
+
+	testPoint := curve.New()
+	testPoint.SetGenerator()
+	testPoint.ScalarMult(testPoint, msg)
+	c.Assert(testPoint.Equal(M), qt.IsTrue)
+}
+
 func TestCheckK(t *testing.T) {
 	c := qt.New(t)
 

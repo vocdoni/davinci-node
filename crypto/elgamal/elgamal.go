@@ -75,9 +75,6 @@ func Decrypt(
 	if privateKey == nil || privateKey.Sign() <= 0 {
 		return nil, nil, fmt.Errorf("Decrypt: empty or negative private key")
 	}
-	if maxMessage == 0 {
-		return nil, nil, fmt.Errorf("Decrypt: maxMessage == 0")
-	}
 
 	// recover the plaintext point
 
@@ -107,6 +104,15 @@ func Decrypt(
 // compressed point encoding as hash‑map key to remove an O(1) string
 // allocation at every iteration present in the original version.
 func BabyStepGiantStepECC(beta, alpha ecc.Point, max uint64) (*big.Int, error) {
+	if max == 0 {
+		zero := beta.New()
+		zero.SetZero()
+		if beta.Equal(zero) {
+			return big.NewInt(0), nil
+		}
+		return nil, fmt.Errorf("bsgs: discrete log not found in interval")
+	}
+
 	// compute m = ⌈sqrt(max)⌉ using integer arithmetic only
 	m := new(big.Int).Sqrt(new(big.Int).SetUint64(max))
 	if new(big.Int).Mul(m, m).Cmp(new(big.Int).SetUint64(max)) < 0 {
