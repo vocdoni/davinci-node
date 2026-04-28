@@ -59,16 +59,21 @@ func NewTransitionWithVotes(t *testing.T, s *state.State, votes ...*state.Vote) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AddVotesBatch(votes); err != nil {
+	batch, err := s.PrepareVotesBatch(votes)
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer batch.Discard()
 
 	assignment, _, err := statetransition.GenerateAssignment(
-		s,
+		batch,
 		new(types.BigInt).SetBigInt(censusRoot),
 		censusProofs,
 		new(types.BigInt).SetBigInt(reencryptionK))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := batch.Commit(); err != nil {
 		t.Fatal(err)
 	}
 

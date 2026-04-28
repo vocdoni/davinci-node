@@ -28,6 +28,7 @@ The ballot processing follows these stages:
 4. State Transitions
   - st/   : processID + hash → StateTransitionBatch (state changes ready for chain)
   - r/st/ : processID + hash → reservation timestamp
+  - sta/  : processID + rootAfter → StateTransitionArtifact (transition metadata keyed by the resulting root)
 
 5. Verified Results
   - vr/ : processID → VerifiedResults (final tally results with proof)
@@ -81,20 +82,21 @@ var (
 	ErrAddressProcessing   = errors.New("address is already processing a vote")
 
 	// Prefixes
-	reservationPrefixRoot    = []byte("r/")
-	ballotPrefix             = []byte("b/")
-	voteIDStatusPrefix       = []byte("vs/")
-	verifiedBallotPrefix     = []byte("vb/")
-	aggregBatchPrefix        = []byte("ag/")
-	pendingAggregBatchPrefix = []byte("pag/")
-	stateTransitionPrefix    = []byte("st/")
-	verifiedResultPrefix     = []byte("vr/")
-	encryptionKeyPrefix      = []byte("ek/")
-	processPrefix            = []byte("p/")
-	statsPrefix              = []byte("s/")
-	censusDBprefix           = []byte("cs_")
-	stateDBprefix            = []byte("st_")
-	pendingTxPrefix          = []byte("ptx/")
+	reservationPrefixRoot         = []byte("r/")
+	ballotPrefix                  = []byte("b/")
+	voteIDStatusPrefix            = []byte("vs/")
+	verifiedBallotPrefix          = []byte("vb/")
+	aggregBatchPrefix             = []byte("ag/")
+	pendingAggregBatchPrefix      = []byte("pag/")
+	stateTransitionPrefix         = []byte("st/")
+	stateTransitionArtifactPrefix = []byte("sta/")
+	verifiedResultPrefix          = []byte("vr/")
+	encryptionKeyPrefix           = []byte("ek/")
+	processPrefix                 = []byte("p/")
+	statsPrefix                   = []byte("s/")
+	censusDBprefix                = []byte("cs_")
+	stateDBprefix                 = []byte("st_")
+	pendingTxPrefix               = []byte("ptx/")
 
 	maxKeySize = 12
 )

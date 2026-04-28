@@ -83,7 +83,13 @@ func New(stg *storage.Storage, resolver web3.ProcessContractsResolver, batchTime
 	if err := s.loadInternalCircuitArtifacts(); err != nil {
 		return nil, fmt.Errorf("failed to load internal circuit artifacts: %w", err)
 	}
-	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, stateRootGetter(resolver))
+	s.finalizer = newFinalizer(
+		stg,
+		stg.StateDB(),
+		s.internalCircuits,
+		stateRootGetter(resolver),
+		blobSupportGetter(resolver),
+	)
 	log.InfoTime("sequencer initialized", startTime, "batchTimeWindow", batchTimeWindow.String())
 	return s, nil
 }
@@ -113,6 +119,19 @@ func stateRootGetter(resolver web3.ProcessContractsResolver) func(types.ProcessI
 			return nil, err
 		}
 		return contracts.StateRoot(processID)
+	}
+}
+
+func blobSupportGetter(resolver web3.ProcessContractsResolver) func(types.ProcessID) (bool, error) {
+	if resolver == nil {
+		return nil
+	}
+	return func(processID types.ProcessID) (bool, error) {
+		contracts, err := resolveContractsForProcess(resolver, processID)
+		if err != nil {
+			return false, err
+		}
+		return contracts.SupportBlobTxs(), nil
 	}
 }
 

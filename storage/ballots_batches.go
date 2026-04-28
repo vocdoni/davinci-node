@@ -544,6 +544,12 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 		// - Only the proof is outdated, not the underlying data
 	}
 
+	if stb.Inputs.RootHashAfter != nil {
+		if err := s.removeStateTransitionArtifact(stb.ProcessID, stb.Inputs.RootHashAfter); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete state transition artifact: %w", err)
+		}
+	}
+
 	// Remove the reservation
 	if err := s.deleteReservation(stateTransitionPrefix, key); err != nil && !errors.Is(err, ErrNotFound) {
 		return fmt.Errorf("delete state transition reservation: %w", err)
@@ -606,6 +612,11 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 	if err := DecodeArtifact(rawBatch, &stb); err != nil {
 		return fmt.Errorf("decode state transition batch: %w", err)
 	}
+	if stb.Inputs.RootHashAfter != nil {
+		if err := s.removeStateTransitionArtifact(stb.ProcessID, stb.Inputs.RootHashAfter); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("delete state transition artifact: %w", err)
+		}
+	}
 
 	// Remove the state transition batch any way
 	defer func() {
@@ -665,13 +676,10 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 			return fmt.Errorf("process %s has no state root", processID.String())
 		}
 
-		// Load the current state with the latest root
-		currentState, err := state.New(s.StateDB(), stb.ProcessID)
+		// Load the confirmed state root without moving the in-construction root.
+		currentState, err := state.LoadSnapshotOnRoot(s.StateDB(), stb.ProcessID, process.StateRoot.MathBigInt())
 		if err != nil {
 			return fmt.Errorf("failed to load state for process %s: %w", stb.ProcessID.String(), err)
-		}
-		if err := currentState.SetRootAsBigInt(process.StateRoot.MathBigInt()); err != nil {
-			return fmt.Errorf("failed to set latest state root for process %s: %w", stb.ProcessID.String(), err)
 		}
 
 		// Check which votes are already in the state and filter them out

@@ -20,10 +20,6 @@ func TestBuildKZGCommitmentOverflow(t *testing.T) {
 
 	st, err := New(memdb.New(), testutil.RandomProcessID())
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		c.Assert(st.Close(), qt.IsNil)
-	}()
-
 	err = st.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
 		testutil.BallotModePacked(),
 		types.EncryptionKeyFromPoint(publicKey),
@@ -46,55 +42,17 @@ func TestBuildKZGCommitmentOverflow(t *testing.T) {
 		})
 	}
 
-	err = st.startBatch()
-	c.Assert(err, qt.IsNil)
 	rootHashBefore, err := st.RootAsBigInt()
 	c.Assert(err, qt.IsNil)
-	st.rootHashBefore = rootHashBefore
-	st.votes = votes
-	st.votersCount = len(votes)
+	batch := &Batch{
+		state:          st,
+		newResults:     elgamal.NewBallot(Curve),
+		votes:          votes,
+		votersCount:    len(votes),
+		rootHashBefore: rootHashBefore,
+	}
 
-	_, err = st.computeBlobEvalData()
+	_, err = batch.computeBlobEvalData()
 	c.Assert(err, qt.Not(qt.IsNil))
 	c.Assert(err.Error(), qt.Contains, "blob overflow")
-}
-
-func TestBlobEvalDataCachedAfterBatch(t *testing.T) {
-	c := qt.New(t)
-
-	publicKey, _, err := elgamal.GenerateKey(Curve)
-	c.Assert(err, qt.IsNil)
-
-	st, err := New(memdb.New(), testutil.RandomProcessID())
-	c.Assert(err, qt.IsNil)
-	defer func() {
-		c.Assert(st.Close(), qt.IsNil)
-	}()
-
-	err = st.Initialize(
-		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
-		testutil.BallotModePacked(),
-		types.EncryptionKeyFromPoint(publicKey),
-	)
-	c.Assert(err, qt.IsNil)
-
-	err = st.AddVotesBatch([]*Vote{
-		{
-			Address:           big.NewInt(1),
-			BallotIndex:       types.CalculateBallotIndex(0),
-			VoteID:            testutil.RandomVoteID(),
-			Ballot:            elgamal.NewBallot(Curve),
-			ReencryptedBallot: elgamal.NewBallot(Curve),
-			Weight:            big.NewInt(1),
-		},
-	})
-	c.Assert(err, qt.IsNil)
-
-	firstBlobData, err := st.BlobEvalData()
-	c.Assert(err, qt.IsNil)
-	c.Assert(firstBlobData, qt.Not(qt.IsNil))
-
-	secondBlobData, err := st.BlobEvalData()
-	c.Assert(err, qt.IsNil)
-	c.Assert(secondBlobData, qt.Equals, firstBlobData)
 }

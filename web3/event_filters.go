@@ -28,7 +28,7 @@ func (c *Contracts) NewProcessFilter(ctx context.Context, start, end uint64, ch 
 	}
 	for iter.Next() {
 		// Get the process info from the contract
-		process, err := c.Process(iter.Event.ProcessId)
+		process, err := c.ProcessAtBlock(iter.Event.ProcessId, iter.Event.Raw.BlockNumber)
 		if err != nil {
 			log.Warnw("error getting new process info",
 				"processID", types.HexBytes(iter.Event.ProcessId[:]).String(),

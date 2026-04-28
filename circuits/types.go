@@ -136,6 +136,21 @@ type Process[T any] struct {
 	EncryptionKey EncryptionKey[T]
 }
 
+// ToGnark returns the Process as a different type.
+// Returns an empty Process if T is not *big.Int.
+func (p Process[T]) ToGnark() Process[frontend.Variable] {
+	pbi, ok := any(p).(Process[*big.Int])
+	if !ok {
+		return Process[frontend.Variable]{}
+	}
+	return Process[frontend.Variable]{
+		ID:            pbi.ID,
+		CensusOrigin:  pbi.CensusOrigin,
+		BallotMode:    pbi.BallotMode,
+		EncryptionKey: pbi.EncryptionKey.AsVar(),
+	}
+}
+
 // Serialize returns a slice with the process parameters in order
 //
 //	Process.ID

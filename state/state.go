@@ -1,13 +1,12 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
-	"slices"
 
 	"github.com/vocdoni/arbo"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/crypto/blobs"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
@@ -40,21 +39,6 @@ type State struct {
 	tree      *arbo.Tree
 	processID types.ProcessID
 	db        db.Database
-	dbTx      db.WriteTx
-
-	oldResults            *elgamal.Ballot
-	newResults            *elgamal.Ballot
-	allBallotsSum         *elgamal.Ballot
-	overwrittenSum        *elgamal.Ballot
-	votersCount           int
-	overwrittenVotesCount int
-	votes                 []*Vote
-
-	// Transition Witness
-	rootHashBefore *big.Int
-	processProofs  ProcessProofs
-	votesProofs    VotesProofs
-	blobEvalData   *blobs.BlobEvalData
 }
 
 // ProcessProofs stores the Merkle proofs for the process, including the ID
@@ -100,292 +84,255 @@ func New(db db.Database, processID types.ProcessID) (*State, error) {
 	}, nil
 }
 
-// LoadOnRoot loads a State from the database using the provided processId and
-// root. It creates a new State with the given processId and sets the root of
-// the tree to the provided root. It returns an error if the processId is not
-// found in the database or if the root cannot be set.
-// The root provided is formatted to the arbo format before being set in the
-// state tree.
-func LoadOnRoot(db db.Database, processId types.ProcessID, root *big.Int) (*State, error) {
-	state, err := New(db, processId)
+// LoadSnapshotOnRoot loads a read-only State view at the provided root.
+func LoadSnapshotOnRoot(db db.Database, processID types.ProcessID, root *big.Int) (*State, error) {
+	pdb, tree, rootBytes, err := openTreeForRootCheck(db, processID, root)
 	if err != nil {
-		return nil, fmt.Errorf("could not open state: %v", err)
+		return nil, err
 	}
-	if err := state.SetRootAsBigInt(root); err != nil {
-		return nil, fmt.Errorf("could not set state root: %v", err)
+	if err := tree.RootExists(rootBytes); err != nil {
+		return nil, fmt.Errorf("could not find root in state: %w", err)
 	}
-	return state, nil
+	snapshot, err := tree.Snapshot(rootBytes)
+	if err != nil {
+		return nil, fmt.Errorf("could not snapshot state root: %w", err)
+	}
+	return &State{
+		db:        pdb,
+		tree:      snapshot,
+		processID: processID,
+	}, nil
 }
 
 // RootExists checks if the provided root exists in the tree for the given
 // processId. Returns nil if the root exists, or an error if it does not.
-func RootExists(db db.Database, processId types.ProcessID, root *big.Int) error {
-	state, err := New(db, processId)
-	if err != nil {
-		return fmt.Errorf("could not open state: %v", err)
-	}
-	if err := state.RootExists(root); err != nil {
-		return fmt.Errorf("could not find root in state: %v", err)
-	}
-	return nil
-}
-
-// Initialize creates a new State, initialized with the passed parameters.
-// After Initialize, caller is expected to StartBatch, AddVote, EndBatch,
-// StartBatch...
-func (o *State) Initialize(
-	censusOrigin *big.Int,
-	ballotMode *big.Int,
-	encryptionKey types.EncryptionKey,
-) error {
-	// Check if the state is already initialized
-	// TODO: refactor arbo to use uint64 instead
-	if _, _, err := o.tree.GetBigInt(KeyProcessID.BigInt()); err == nil {
-		return ErrStateAlreadyInitialized
-	}
-	if err := o.tree.AddBigInt(KeyProcessID.BigInt(), o.processID.MathBigInt()); err != nil {
-		return fmt.Errorf("could not set process ID: %w", err)
-	}
-	if err := o.tree.AddBigInt(KeyBallotMode.BigInt(), ballotMode); err != nil {
-		return fmt.Errorf("could not set ballot mode: %w", err)
-	}
-	if err := o.tree.AddBigInt(KeyEncryptionKey.BigInt(), encryptionKey.BigInts()...); err != nil {
-		return fmt.Errorf("could not set encryption key: %w", err)
-	}
-	if err := o.tree.AddBigInt(KeyResults.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
-		return fmt.Errorf("could not set results: %w", err)
-	}
-	if err := o.tree.AddBigInt(KeyCensusOrigin.BigInt(), censusOrigin); err != nil {
-		return fmt.Errorf("could not set census origin: %w", err)
-	}
-	return nil
-}
-
-// Close the database, no more operations can be done after this.
-func (o *State) Close() error {
-	if o.dbTx != nil {
-		o.dbTx.Discard()
-	}
-	return nil
-}
-
-func (o *State) AddVotesBatch(votes []*Vote) error {
-	if err := o.startBatch(); err != nil {
-		return fmt.Errorf("failed to start batch: %w", err)
-	}
-	for _, v := range votes {
-		if err := o.addVote(v); err != nil {
-			return fmt.Errorf("failed to add vote: %w", err)
-		}
-	}
-	if err := o.endBatch(); err != nil {
-		return fmt.Errorf("failed to end batch: %w", err)
-	}
-	return nil
-}
-
-// StartBatch resets counters and sums to zero,
-// and creates a new write transaction in the db
-func (o *State) startBatch() error {
-	o.dbTx = o.db.WriteTx()
-	o.oldResults = elgamal.NewBallot(Curve)
-	o.newResults = elgamal.NewBallot(Curve)
-	o.allBallotsSum = elgamal.NewBallot(Curve)
-	o.overwrittenSum = elgamal.NewBallot(Curve)
-	o.votersCount = 0
-	o.overwrittenVotesCount = 0
-	o.votes = []*Vote{}
-	o.blobEvalData = nil
-	return nil
-}
-
-// EndBatch commits the current batch to the database and generates the Merkle
-// proofs for the current batch. It also updates the results of the state tree
-// with the new results. The results are calculated by adding the old results
-// with the new results. The function returns an error if the commit fails or
-// if the Merkle proofs cannot be generated.
-func (o *State) endBatch() error {
-	var err error
-	// RootHashBefore
-	o.rootHashBefore, err = o.RootAsBigInt()
+func RootExists(db db.Database, processID types.ProcessID, root *big.Int) error {
+	_, tree, rootBytes, err := openTreeForRootCheck(db, processID, root)
 	if err != nil {
 		return err
 	}
-
-	// first get MerkleProofs, since they need to belong to RootHashBefore, i.e.
-	// before MerkleTransitions
-	if o.processProofs.ID, err = o.GenArboProof(KeyProcessID); err != nil {
-		return fmt.Errorf("could not get ID proof: %w", err)
+	if err := tree.RootExists(rootBytes); err != nil {
+		return fmt.Errorf("could not find root in state: %w", err)
 	}
-	if o.processProofs.CensusOrigin, err = o.GenArboProof(KeyCensusOrigin); err != nil {
-		return fmt.Errorf("could not get CensusOrigin proof: %w", err)
-	}
-	if o.processProofs.BallotMode, err = o.GenArboProof(KeyBallotMode); err != nil {
-		return fmt.Errorf("could not get BallotMode proof: %w", err)
-	}
-	if o.processProofs.EncryptionKey, err = o.GenArboProof(KeyEncryptionKey); err != nil {
-		return fmt.Errorf("could not get EncryptionKey proof: %w", err)
-	}
-
-	// now build ordered chain of MerkleTransitions. The order should be the
-	// same that the circuit will process them, so that the MerkleProofs are
-	// in the same order as the MerkleTransitions
-
-	// add Ballots
-	for i := range o.votesProofs.Ballot {
-		var errBallot, errVoteID error
-		if i < len(o.Votes()) {
-			v := o.Votes()[i]
-			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromAddOrUpdate(o,
-				v.BallotIndex.StateKey(), v.TreeLeafValues()...)
-			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromAddOrUpdate(o,
-				v.VoteID.StateKey(), voteIDLeafValue)
-		} else {
-			o.votesProofs.Ballot[i], errBallot = ArboTransitionFromNoop(o)
-			o.votesProofs.VoteID[i], errVoteID = ArboTransitionFromNoop(o)
-		}
-		if errBallot != nil {
-			return fmt.Errorf("could not get Ballot proof for index %d: %w", i, errBallot)
-		}
-		if errVoteID != nil {
-			return fmt.Errorf("could not get VoteID proof for index %d: %w", i, errVoteID)
-		}
-	}
-	// update Results
-	o.oldResults, err = o.Results()
-	if err != nil {
-		return fmt.Errorf("results not found in state: %w", err)
-	}
-	o.newResults.Add(o.oldResults, o.allBallotsSum)
-	o.newResults.Add(o.newResults, elgamal.NewBallot(Curve).Neg(o.overwrittenSum))
-	o.votesProofs.Results, err = ArboTransitionFromAddOrUpdate(o, KeyResults, o.newResults.BigInts()...)
-	if err != nil {
-		return fmt.Errorf("results: %w", err)
-	}
-
-	o.blobEvalData, err = o.computeBlobEvalData()
-	if err != nil {
-		return fmt.Errorf("blob eval data: %w", err)
-	}
-
-	// Commit the transaction
-	if err := o.dbTx.Commit(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
-// Root method returns the root of the tree as a byte array.
-func (o *State) Root() ([]byte, error) {
-	return o.tree.Root()
+func openTreeForRootCheck(database db.Database, processID types.ProcessID, root *big.Int) (db.Database, *arbo.Tree, []byte, error) {
+	if root == nil {
+		return nil, nil, nil, fmt.Errorf("nil state root")
+	}
+
+	if !processID.IsValid() {
+		return nil, nil, nil, fmt.Errorf("processID is not valid")
+	}
+
+	pdb := prefixeddb.NewPrefixedDatabase(database, processID.Bytes())
+	tx := arbo.NewTreeWriteTx(pdb)
+	defer tx.Discard()
+	tree, err := arbo.NewTreeWithTx(tx, arbo.Config{
+		Database:     pdb,
+		MaxLevels:    params.StateTreeMaxLevels,
+		HashFunction: HashFn,
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("could not open state: %w", err)
+	}
+	return pdb, tree, BigIntToBytes(root), nil
 }
 
-// RootAsBigInt method returns the root of the tree as a big.Int.
-func (o *State) RootAsBigInt() (*big.Int, error) {
-	root, err := o.tree.Root()
+type stateTreeTx struct {
+	state *State
+	tx    db.WriteTx
+}
+
+func (s *State) newTreeTx() *stateTreeTx {
+	return &stateTreeTx{
+		state: s,
+		tx:    s.tree.WriteTx(),
+	}
+}
+
+func (tx *stateTreeTx) commit(op string) error {
+	if tx.tx == nil {
+		return fmt.Errorf("%s: no active state transaction", op)
+	}
+	activeTx := tx.tx
+	if err := activeTx.Commit(); err != nil {
+		activeTx.Discard()
+		tx.tx = nil
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	activeTx.Discard()
+	tx.tx = nil
+	return nil
+}
+
+func (tx *stateTreeTx) discard() {
+	if tx.tx == nil {
+		return
+	}
+	tx.tx.Discard()
+	tx.tx = nil
+}
+
+func (s *State) getBigInt(key *big.Int) (*big.Int, []*big.Int, error) {
+	return s.tree.GetBigInt(key)
+}
+
+func (s *State) addBigInt(key *big.Int, values ...*big.Int) error {
+	return s.tree.AddBigInt(key, values...)
+}
+
+func (s *State) updateBigInt(key *big.Int, values ...*big.Int) error {
+	return s.tree.UpdateBigInt(key, values...)
+}
+
+func (s *State) generateGnarkVerifierProofBigInt(key *big.Int) (*arbo.GnarkVerifierProof, error) {
+	return s.tree.GenerateGnarkVerifierProofBigInt(key)
+}
+
+func (tx *stateTreeTx) getBigInt(key *big.Int) (*big.Int, []*big.Int, error) {
+	if tx.tx == nil {
+		return nil, nil, fmt.Errorf("state transaction is not active")
+	}
+	return tx.state.tree.GetBigIntWithTx(tx.tx, key)
+}
+
+func (tx *stateTreeTx) addBigInt(key *big.Int, values ...*big.Int) error {
+	if tx.tx == nil {
+		return fmt.Errorf("state transaction is not active")
+	}
+	return tx.state.tree.AddBigIntWithTx(tx.tx, key, values...)
+}
+
+func (tx *stateTreeTx) updateBigInt(key *big.Int, values ...*big.Int) error {
+	if tx.tx == nil {
+		return fmt.Errorf("state transaction is not active")
+	}
+	return tx.state.tree.UpdateBigIntWithTx(tx.tx, key, values...)
+}
+
+func (tx *stateTreeTx) RootAsBigInt() (*big.Int, error) {
+	if tx.tx == nil {
+		return nil, fmt.Errorf("state transaction is not active")
+	}
+	root, err := tx.state.tree.RootWithTx(tx.tx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get state root: %w", err)
 	}
 	return BytesToBigInt(root), nil
 }
 
-// SetRoot method sets the root of the tree to the provided one.
-func (o *State) SetRoot(newRoot []byte) error {
-	if err := o.tree.SetRoot(newRoot); err != nil {
-		return err
+func (tx *stateTreeTx) SetRootAsBigInt(newRoot *big.Int) error {
+	if tx.tx == nil {
+		return fmt.Errorf("state transaction is not active")
+	}
+	if newRoot == nil {
+		return fmt.Errorf("nil state root")
+	}
+	if err := tx.state.tree.SetRootWithTx(tx.tx, BigIntToBytes(newRoot)); err != nil {
+		return fmt.Errorf("set state root: %w", err)
 	}
 	return nil
 }
 
+func (tx *stateTreeTx) setResults(results *elgamal.Ballot) error {
+	if results == nil {
+		return fmt.Errorf("nil results")
+	}
+	return tx.updateBigInt(KeyResults.BigInt(), results.BigInts()...)
+}
+
+// Initialize creates a new State, initialized with the passed parameters.
+func (s *State) Initialize(
+	censusOrigin *big.Int,
+	ballotMode *big.Int,
+	encryptionKey types.EncryptionKey,
+) (err error) {
+	treeTx := s.newTreeTx()
+	defer func() {
+		if err != nil {
+			treeTx.discard()
+		}
+	}()
+
+	// Check if the state is already initialized
+	// TODO: refactor arbo to use uint64 instead
+	if _, _, err := treeTx.getBigInt(KeyProcessID.BigInt()); err == nil {
+		return ErrStateAlreadyInitialized
+	} else if !errors.Is(err, arbo.ErrKeyNotFound) {
+		return fmt.Errorf("check state initialization: %w", err)
+	}
+	if err := treeTx.addBigInt(KeyProcessID.BigInt(), s.processID.MathBigInt()); err != nil {
+		return fmt.Errorf("could not set process ID: %w", err)
+	}
+	if err := treeTx.addBigInt(KeyBallotMode.BigInt(), ballotMode); err != nil {
+		return fmt.Errorf("could not set ballot mode: %w", err)
+	}
+	if err := treeTx.addBigInt(KeyEncryptionKey.BigInt(), encryptionKey.BigInts()...); err != nil {
+		return fmt.Errorf("could not set encryption key: %w", err)
+	}
+	if err := treeTx.addBigInt(KeyResults.BigInt(), elgamal.NewBallot(Curve).BigInts()...); err != nil {
+		return fmt.Errorf("could not set results: %w", err)
+	}
+	if err := treeTx.addBigInt(KeyCensusOrigin.BigInt(), censusOrigin); err != nil {
+		return fmt.Errorf("could not set census origin: %w", err)
+	}
+	return treeTx.commit("initialize state")
+}
+
+func (s *State) AddVotesBatch(votes []*Vote) error {
+	batch, err := s.PrepareVotesBatch(votes)
+	if err != nil {
+		return err
+	}
+	return batch.Commit()
+}
+
+// RootAsBigInt method returns the root of the tree as a big.Int.
+func (s *State) RootAsBigInt() (*big.Int, error) {
+	root, err := s.tree.Root()
+	if err != nil {
+		return nil, fmt.Errorf("get state root: %w", err)
+	}
+	return BytesToBigInt(root), nil
+}
+
 // SetRootAsBigInt method sets the root of the tree to the provided one as a
 // big.Int.
-func (o *State) SetRootAsBigInt(newRoot *big.Int) error {
-	if err := o.tree.SetRoot(BigIntToBytes(newRoot)); err != nil {
-		return err
+func (s *State) SetRootAsBigInt(newRoot *big.Int) error {
+	if newRoot == nil {
+		return fmt.Errorf("nil state root")
+	}
+	root := BigIntToBytes(newRoot)
+	if err := s.tree.SetRoot(root); err != nil {
+		return fmt.Errorf("set state root: %w", err)
 	}
 	return nil
 }
 
 // RootExists checks if the provided root exists in the tree.
 // Returns nil if the root exists, or an error if it does not.
-func (o *State) RootExists(root *big.Int) error {
-	return o.tree.RootExists(BigIntToBytes(root))
-}
-
-// VotersCount returns the number of voters participating in the current batch,
-// i.e. either casting their first vote or overwriting a previous one.
-func (o *State) VotersCount() int {
-	return o.votersCount
-}
-
-// OldResults returns the old results ballot of the current batch.
-func (o *State) OldResults() *elgamal.Ballot {
-	return o.oldResults
-}
-
-// NewResults returns the new results ballot of the current batch.
-func (o *State) NewResults() *elgamal.Ballot {
-	return o.newResults
-}
-
-// OverwrittenVotesCount returns the number of ballots overwritten in the current
-// batch.
-func (o *State) OverwrittenVotesCount() int {
-	return o.overwrittenVotesCount
-}
-
-// Votes returns the votes added in the current batch.
-func (o *State) Votes() []*Vote {
-	return o.votes
-}
-
-// PaddedVotes returns the votes added in the current batch, padded to
-// circuits.VotesPerBatch. The padding is done by adding empty votes with zero
-// values.
-func (o *State) PaddedVotes() []*Vote {
-	v := slices.Clone(o.votes)
-	for len(v) < params.VotesPerBatch {
-		v = append(v, &Vote{
-			Address:           big.NewInt(0),
-			BallotIndex:       0,
-			Ballot:            elgamal.NewBallot(Curve),
-			ReencryptedBallot: elgamal.NewBallot(Curve),
-			OverwrittenBallot: elgamal.NewBallot(Curve),
-			Weight:            big.NewInt(0),
-		})
+func (s *State) RootExists(root *big.Int) error {
+	if root == nil {
+		return fmt.Errorf("nil state root")
 	}
-	return v
+	return s.tree.RootExists(BigIntToBytes(root))
 }
 
-// Proccess returns all process details from the state
-func (o *State) Process() circuits.Process[*big.Int] {
+// Process returns all process details from the state.
+func (s *State) Process() circuits.Process[*big.Int] {
 	return circuits.Process[*big.Int]{
-		ID:            o.ProcessID(),
-		CensusOrigin:  o.CensusOrigin(),
-		BallotMode:    o.BallotMode(),
-		EncryptionKey: o.EncryptionKey(),
+		ID:            s.ProcessID(),
+		CensusOrigin:  s.CensusOrigin(),
+		BallotMode:    s.BallotMode(),
+		EncryptionKey: s.EncryptionKey(),
 	}
 }
 
-// ProcessSerializeBigInts returns
-//
-//	process.ID
-//	process.CensusOrigin
-//	process.BallotMode
-//	process.EncryptionKey
-func (o *State) ProcessSerializeBigInts() []*big.Int {
-	list := []*big.Int{}
-	list = append(list, o.ProcessID())
-	list = append(list, o.CensusOrigin())
-	list = append(list, o.BallotMode())
-	list = append(list, o.EncryptionKey().Serialize()...)
-	return list
-}
-
-// ProccessID returns the process ID of the state as a big.Int.
-func (o *State) ProcessID() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyProcessID.BigInt())
+// ProcessID returns the process ID of the state as a big.Int.
+func (s *State) ProcessID() *big.Int {
+	_, v, err := s.getBigInt(KeyProcessID.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get process ID from state")
 	}
@@ -396,8 +343,8 @@ func (o *State) ProcessID() *big.Int {
 }
 
 // CensusOrigin returns the census origin of the state as a *big.Int.
-func (o *State) CensusOrigin() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyCensusOrigin.BigInt())
+func (s *State) CensusOrigin() *big.Int {
+	_, v, err := s.getBigInt(KeyCensusOrigin.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get census origin from state")
 	}
@@ -408,8 +355,8 @@ func (o *State) CensusOrigin() *big.Int {
 }
 
 // BallotMode returns the packed ballot mode of the state as a *big.Int.
-func (o *State) BallotMode() *big.Int {
-	_, v, err := o.tree.GetBigInt(KeyBallotMode.BigInt())
+func (s *State) BallotMode() *big.Int {
+	_, v, err := s.getBigInt(KeyBallotMode.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get ballot mode from state")
 	}
@@ -421,8 +368,8 @@ func (o *State) BallotMode() *big.Int {
 
 // EncryptionKey returns the encryption key of the state as a
 // circuits.EncryptionKey[*big.Int].
-func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
-	_, v, err := o.tree.GetBigInt(KeyEncryptionKey.BigInt())
+func (s *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
+	_, v, err := s.getBigInt(KeyEncryptionKey.BigInt())
 	if err != nil {
 		log.Errorw(err, "failed to get encryption key from state")
 	}
@@ -434,8 +381,12 @@ func (o *State) EncryptionKey() circuits.EncryptionKey[*big.Int] {
 }
 
 // Results returns the results of the state as an elgamal.Ballot.
-func (o *State) Results() (*elgamal.Ballot, error) {
-	_, v, err := o.tree.GetBigInt(KeyResults.BigInt())
+func (s *State) Results() (*elgamal.Ballot, error) {
+	return resultsFromTree(s)
+}
+
+func resultsFromTree(reader stateValueReader) (*elgamal.Ballot, error) {
+	_, v, err := reader.getBigInt(KeyResults.BigInt())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get results from state: %w", err)
 	}
@@ -443,10 +394,11 @@ func (o *State) Results() (*elgamal.Ballot, error) {
 }
 
 // SetResults sets the results directly in the state tree.
-func (o *State) SetResults(results *elgamal.Ballot) {
-	if err := o.tree.UpdateBigInt(KeyResults.BigInt(), results.BigInts()...); err != nil {
-		log.Errorw(err, "failed to set results in state")
+func (s *State) SetResults(results *elgamal.Ballot) error {
+	if results == nil {
+		return fmt.Errorf("nil results")
 	}
+	return s.updateBigInt(KeyResults.BigInt(), results.BigInts()...)
 }
 
 // EncodeKey encodes a key to a byte array using the maximum key length for the
@@ -454,19 +406,4 @@ func (o *State) SetResults(results *elgamal.Ballot) {
 func EncodeKey(key *big.Int) []byte {
 	maxKeyLen := arbo.MaxKeyLen(params.StateTreeMaxLevels, HashFn.Len())
 	return arbo.BigIntToBytes(maxKeyLen, key)
-}
-
-// RootHashBefore returns the root hash before state transition.
-func (o *State) RootHashBefore() *big.Int {
-	return o.rootHashBefore
-}
-
-// ProcessProofs returns a pointer to the process proofs for the state.
-func (o *State) ProcessProofs() ProcessProofs {
-	return o.processProofs
-}
-
-// VotesProofs returns a pointer to the votes proofs for the state.
-func (o *State) VotesProofs() VotesProofs {
-	return o.votesProofs
 }

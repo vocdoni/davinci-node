@@ -112,6 +112,11 @@ func NewPrefixedWriteTx(tx db.WriteTx, prefix []byte) *PrefixedWriteTx {
 	return &PrefixedWriteTx{prefix, tx}
 }
 
+// Prefix returns the key prefix applied by this transaction.
+func (t *PrefixedWriteTx) Prefix() []byte {
+	return slices.Clone(t.prefix)
+}
+
 // Get implements the db.WriteTx.Get interface method
 func (t *PrefixedWriteTx) Get(key []byte) ([]byte, error) {
 	return t.tx.Get(prefixSlice(t.prefix, key))

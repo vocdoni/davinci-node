@@ -87,7 +87,7 @@ func TestFinalize(t *testing.T) {
 	defer cleanup()
 
 	// Create a finalizer
-	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil)
+	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil, nil)
 	f.Start(t.Context(), 0)
 
 	// Test finalize
@@ -113,11 +113,67 @@ func TestFinalizeMissingEncryptionKeysReturnsSequencerSentinel(t *testing.T) {
 	stg, stateDB, processID, _, _, cleanup := setupTestEnvironment(t, 5000)
 	defer cleanup()
 
-	f := newFinalizer(stg, stateDB, nil, nil)
+	f := newFinalizer(stg, stateDB, nil, nil, nil)
 
 	err := f.finalize(processID)
 	c.Assert(err, qt.IsNotNil)
 	c.Assert(errors.Is(err, ErrProcessEncryptionKeysMissing), qt.IsTrue)
+}
+
+func TestShouldMarkMissingRootInvalid(t *testing.T) {
+	t.Parallel()
+
+	processID := testutil.DeterministicProcessID(42)
+
+	testCases := []struct {
+		name            string
+		supportsBlobTxs func(types.ProcessID) (bool, error)
+		wantMarkInvalid bool
+	}{
+		{
+			name:            "blob-capable runtimes keep missing roots retryable",
+			supportsBlobTxs: func(types.ProcessID) (bool, error) { return true, nil },
+			wantMarkInvalid: false,
+		},
+		{
+			name:            "non-blob runtimes treat missing roots as terminal",
+			supportsBlobTxs: func(types.ProcessID) (bool, error) { return false, nil },
+			wantMarkInvalid: true,
+		},
+		{
+			name:            "missing capability getter preserves terminal fallback",
+			supportsBlobTxs: nil,
+			wantMarkInvalid: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := qt.New(t)
+			calls := 0
+			getter := tc.supportsBlobTxs
+			if getter != nil {
+				getter = func(processID types.ProcessID) (bool, error) {
+					calls++
+					return tc.supportsBlobTxs(processID)
+				}
+			}
+
+			f := &finalizer{supportsBlobTxs: getter}
+
+			gotMarkInvalid, err := f.shouldMarkMissingRootInvalid(processID)
+			c.Assert(err, qt.IsNil)
+			c.Assert(gotMarkInvalid, qt.Equals, tc.wantMarkInvalid)
+
+			wantCalls := 0
+			if getter != nil {
+				wantCalls = 1
+			}
+			c.Assert(calls, qt.Equals, wantCalls)
+		})
+	}
 }
 
 // setupTestEnvironment creates a test environment with necessary objects
@@ -200,10 +256,13 @@ func setupTestState(
 	stateRoot *big.Int,
 	resultValue int64,
 ) *types.BigInt {
-	// Load the initial state
-	st, err := state.LoadOnRoot(stateDB, processID, stateRoot)
+	// Load the initial state for mutation.
+	st, err := state.New(stateDB, processID)
 	if err != nil {
 		t.Fatalf("failed to load state: %v", err)
+	}
+	if err := st.SetRootAsBigInt(stateRoot); err != nil {
+		t.Fatalf("failed to set state root: %v", err)
 	}
 
 	// Create an encrypted results accumulator with a known value
@@ -223,7 +282,9 @@ func setupTestState(
 	}
 
 	// Store the encrypted results in the state
-	st.SetResults(encryptedResults)
+	if err := st.SetResults(encryptedResults); err != nil {
+		t.Fatalf("failed to set encrypted results: %v", err)
+	}
 
 	stateRoot, err = st.RootAsBigInt()
 	if err != nil {

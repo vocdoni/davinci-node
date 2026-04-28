@@ -297,6 +297,26 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 		"processID", process.ID.String(),
 		"stateRoot", process.StateRoot.HexBytes().String())
 
+	if latestProcess, err := pm.contracts.Process(*process.ID); err == nil {
+		switch latestProcess.Status {
+		case types.ProcessStatusResults, types.ProcessStatusCanceled:
+			log.Infow("skipping process creation event",
+				"processID", process.ID.String(),
+				"creationStatus", process.Status.String(),
+				"latestStatus", latestProcess.Status.String())
+			return
+		}
+	} else {
+		log.Warnw("failed to fetch latest process state before storing new process",
+			"processID", process.ID.String(),
+			"error", err.Error())
+	}
+
+	if process.Census == nil {
+		log.Warnw("skipping process creation without census", "processID", process.ID.String())
+		return
+	}
+
 	// Create a function to store the new process
 	processSetup := func(p *types.Process) {
 		if err := pm.storage.NewProcess(p); err != nil {
@@ -309,10 +329,10 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 			"censusRoot", p.Census.CensusRoot.String())
 	}
 
-	// If the process is ready and has a census, download and import it
+	// If the process is ready, download census and import it
 	// first, then store the process. If not, just store the process
 	// directly.
-	if process.Status == types.ProcessStatusReady && process.Census != nil {
+	if process.Status == types.ProcessStatusReady {
 		go func(process *types.Process) {
 			// Keep one census copy for the async downloader queue and a
 			// separate one for process state updates so the monitor does

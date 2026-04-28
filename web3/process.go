@@ -3,6 +3,7 @@ package web3
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -55,10 +56,25 @@ func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *com
 // Process returns the process with the given ID from the ProcessRegistry
 // contract.
 func (c *Contracts) Process(processID types.ProcessID) (*types.Process, error) {
+	return c.processAtBlock(processID, nil)
+}
+
+// ProcessAtBlock returns the process with the given ID as it existed at the
+// specified block number.
+func (c *Contracts) ProcessAtBlock(processID types.ProcessID, blockNumber uint64) (*types.Process, error) {
+	bn := new(big.Int).SetUint64(blockNumber)
+	return c.processAtBlock(processID, bn)
+}
+
+func (c *Contracts) processAtBlock(processID types.ProcessID, blockNumber *big.Int) (*types.Process, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
-	p, err := c.processes.GetProcess(&bind.CallOpts{Context: ctx}, processID)
+	callOpts := &bind.CallOpts{Context: ctx}
+	if blockNumber != nil {
+		callOpts.BlockNumber = blockNumber
+	}
+	p, err := c.processes.GetProcess(callOpts, processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
@@ -157,9 +173,10 @@ func (c *Contracts) sendProcessTransition(processID types.ProcessID, proof, inpu
 }
 
 // SetProcessTransition submits a state transition for the process with the
-// given ID and waits for the transaction to be mined. Once mined or the timeout
-// is reached, it calls the optional callback with the result of the operation.
-// It returns an error if the submission fails.
+// given ID and waits for the transaction to be mined when no callback is
+// provided. If one or more callbacks are provided, it forwards them to
+// WaitTxByID and returns after scheduling the wait. It returns an error if the
+// submission fails, or if the synchronous wait fails.
 func (c *Contracts) SetProcessTransition(
 	processID types.ProcessID,
 	proof, inputs []byte,
@@ -178,6 +195,10 @@ func (c *Contracts) SetProcessTransition(
 		"hash", txHash.Hex(),
 		"txID", txID.String(),
 		"processID", processID.String())
+	if len(callback) == 0 {
+		return c.txManager.WaitTxByID(txID, timeout)
+	}
+
 	return c.txManager.WaitTxByID(txID, timeout, callback...)
 }
 

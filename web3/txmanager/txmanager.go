@@ -275,7 +275,11 @@ func (tm *TxManager) WaitTxByHash(hash common.Hash, timeOut time.Duration, cb ..
 	if len(cb) > 0 {
 		go func() {
 			err := waitFn()
-			cb[0](err)
+			for _, callback := range cb {
+				if callback != nil {
+					callback(err)
+				}
+			}
 		}()
 		return nil
 	}
@@ -316,7 +320,11 @@ func (tm *TxManager) WaitTxByID(id []byte, timeOut time.Duration, cb ...func(err
 	if len(cb) > 0 {
 		go func() {
 			err := waitFn()
-			cb[0](err)
+			for _, callback := range cb {
+				if callback != nil {
+					callback(err)
+				}
+			}
 		}()
 		return nil
 	}

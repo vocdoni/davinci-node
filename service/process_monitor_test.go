@@ -110,6 +110,65 @@ func TestProcessMonitor(t *testing.T) {
 	c.Assert(proc.MetadataURI, qt.Equals, "https://example.com/metadata")
 }
 
+func TestProcessMonitorSkipsProcessCreationWhenLatestStateHasResults(t *testing.T) {
+	c := qt.New(t)
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
+
+	processID := testMonitorProcessID(defaultMockProcessIDVersion, 7)
+	process := testutil.RandomProcess(processID)
+	process.OrganizationID = contracts.AccountAddress()
+	process.Status = types.ProcessStatusPaused
+
+	contracts.processes = []*types.Process{cloneProcess(process)}
+
+	latest := *process
+	latest.Status = types.ProcessStatusResults
+	contracts.SetLatestProcess(&latest)
+
+	monitor.newProcessCallback(context.Background(), &types.ProcessWithChanges{
+		ProcessID: processID,
+		NewProcess: &types.NewProcess{
+			Process: process,
+		},
+	})
+
+	_, err := store.Process(processID)
+	c.Assert(err, qt.Equals, storage.ErrNotFound)
+	c.Assert(contracts.processLookups, qt.DeepEquals, []types.ProcessID{processID})
+}
+
+func TestProcessMonitorSkipsReadyProcessWithoutCensus(t *testing.T) {
+	c := qt.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, 10*time.Millisecond)
+	c.Assert(monitor.Start(ctx), qt.IsNil)
+	c.Cleanup(monitor.Stop)
+
+	process := testutil.RandomProcess(testutil.RandomProcessID())
+	process.OrganizationID = contracts.AccountAddress()
+	process.Census = nil
+
+	processID, _, err := contracts.CreateProcess(process)
+	c.Assert(err, qt.IsNil)
+
+	time.Sleep(200 * time.Millisecond)
+
+	_, err = store.Process(processID)
+	c.Assert(err, qt.Equals, storage.ErrNotFound)
+}
+
 func TestProcessMonitorDoesNotCreateProcessWhenInitialCensusDownloadFails(t *testing.T) {
 	c := qt.New(t)
 

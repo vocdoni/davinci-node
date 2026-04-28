@@ -35,7 +35,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
-	github.com/vocdoni/arbo v0.0.0-20260224125436-30808c99dfb2
+	github.com/vocdoni/arbo v0.0.0-20260501121933-158dce698e7a
 	github.com/vocdoni/census3-bigquery v0.0.2
 	github.com/vocdoni/davinci-circom v0.1.1-0.20260424075126-6b7e6be69f1d
 	github.com/vocdoni/davinci-contracts v0.0.47-0.20260507095610-b53a31389d29

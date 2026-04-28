@@ -3,10 +3,12 @@ package sequencer
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/solidity"
+	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
@@ -186,7 +188,7 @@ func (s *Sequencer) pushTransitionToContract(
 	log.Infow("state transition pending to be mined",
 		"processID", processID.String())
 	// Create a callback for the state transition
-	callback := s.pushStateTransitionCallback(processID, batchID)
+	callback := s.pushStateTransitionCallback(processID, batchID, inputs.RootHashAfter)
 	if err := contracts.SetProcessTransition(
 		processID,
 		abiProof,
@@ -203,7 +205,7 @@ func (s *Sequencer) pushTransitionToContract(
 // pushStateTransitionCallback returns a callback function to be called when
 // the state transition transaction is mined or fails. It handles logging and
 // recovery of pending state transitions.
-func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batchID []byte) func(err error) {
+func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batchID []byte, rootHashAfter *big.Int) func(err error) {
 	return func(err error) {
 		defer func() {
 			// Remove the pending tx mark
@@ -220,22 +222,57 @@ func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batch
 			// Use MarkStateTransitionBatchFailed for consistent recovery logic
 			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
 				log.Warnw("failed to mark state transition batch as failed after callback error",
-					"error", err,
-					"processID", processID.String())
+					"error", err, "processID", processID.String())
+			}
+			return
+		}
+
+		if err := s.promoteCommittedStateFromTransition(processID, rootHashAfter); err != nil {
+			log.Errorw(err, fmt.Sprintf("failed to promote committed state from transition confirmation for process %s root %s",
+				processID.String(), rootHashAfter.String()))
+			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
+				log.Warnw("failed to mark state transition batch as failed after promotion error",
+					"error", err, "processID", processID.String())
 			}
 			return
 		}
 
 		if err := s.stg.MarkStateTransitionBatchDone(batchID, processID); err != nil {
 			log.Warnw("failed to mark state transition batch as done after mining confirmation",
-				"error", err,
-				"processID", processID.String())
+				"error", err, "processID", processID.String())
 			return
 		}
 
 		s.processIDs.Add(processID)
 		log.Infow("state transition pushed to contract", "processID", processID.String())
 	}
+}
+
+func (s *Sequencer) promoteCommittedStateFromTransition(processID types.ProcessID, rootHashAfter *big.Int) error {
+	if rootHashAfter == nil {
+		return fmt.Errorf("nil rootHashAfter")
+	}
+
+	if err := state.RootExists(s.stg.StateDB(), processID, rootHashAfter); err == nil {
+		st, err := state.New(s.stg.StateDB(), processID)
+		if err != nil {
+			return fmt.Errorf("failed to open state for process %s: %w", processID.String(), err)
+		}
+		if err := st.SetRootAsBigInt(rootHashAfter); err != nil {
+			return fmt.Errorf("failed to promote confirmed root %s: %w", rootHashAfter.String(), err)
+		}
+		log.Debugw("state root already present locally, promoted root pointer",
+			"processID", processID.String(),
+			"rootHashAfter", rootHashAfter.String())
+		return nil
+	}
+
+	artifact, err := s.stg.GetStateTransitionArtifact(processID, rootHashAfter)
+	if err != nil {
+		return fmt.Errorf("failed to get state transition artifact for root %s: %w",
+			rootHashAfter.String(), err)
+	}
+	return state.ApplyTransitionArtifact(s.stg.StateDB(), artifact)
 }
 
 // processResultsOnChain processes verified results and uploads them to the

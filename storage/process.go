@@ -57,6 +57,9 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	if process.EncryptionKey == nil {
 		return fmt.Errorf("invalid process: no encryption keys provided")
 	}
+	if process.Census == nil {
+		return fmt.Errorf("invalid process: no census provided")
+	}
 	if err := s.setEncryptionPubKeyUnsafe(ProcessEncryptionKeyToPoint(process.EncryptionKey)); err != nil {
 		log.Warnw("failed to store encryption keys for process",
 			"processID", process.ID.String(), "error", err.Error())
@@ -74,7 +77,10 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	); err != nil {
 		return fmt.Errorf("failed to initialize process state: %w", err)
 	}
-	// Set the process state root with the provided state root
+	if process.StateRoot == nil {
+		return fmt.Errorf("invalid process: no initial state root provided")
+	}
+	// Set the process state root with the initial snapshot root.
 	if err := pState.SetRootAsBigInt(process.StateRoot.MathBigInt()); err != nil {
 		return fmt.Errorf("failed to set process state root: %w", err)
 	}

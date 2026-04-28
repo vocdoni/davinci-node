@@ -23,6 +23,10 @@ var (
 
 const ballotTreeLeafBallotValueCount = params.FieldsPerBallot * 4
 
+type stateValueReader interface {
+	getBigInt(key *big.Int) (*big.Int, []*big.Int, error)
+}
+
 // TreeLeafValues returns the ballot leaf values in this order:
 // ballot coordinates, address, weight.
 func (v *Vote) TreeLeafValues() []*big.Int {
@@ -90,35 +94,43 @@ type Vote struct {
 // AddVote adds a vote to the state.
 // If v.Address exists already in the tree, it counts as vote overwrite.
 // Note that this method modifies passed v, sets v.OverwrittenBallot
-func (o *State) addVote(v *Vote) error {
-	if o.dbTx == nil {
-		return fmt.Errorf("need to StartBatch() first")
+func (b *Batch) addVote(v *Vote) error {
+	if b.tx == nil {
+		return fmt.Errorf("need to start batch first")
 	}
-	if len(o.votes) >= params.VotesPerBatch {
+	if len(b.votes) >= params.VotesPerBatch {
 		return fmt.Errorf("too many votes for this batch")
 	}
 	// if address exists, it's a vote overwrite, need to count the overwritten
 	// vote so it's later subtracted from circuit.Results.
-	if oldLeaf, err := o.BallotLeaf(v.BallotIndex); err == nil {
+	if oldLeaf, err := b.BallotLeaf(v.BallotIndex); err == nil {
 		if oldLeaf.Address.Cmp(v.Address) != 0 || oldLeaf.Weight.Cmp(v.Weight) != 0 {
 			return fmt.Errorf("stored ballot leaf metadata mismatch for ballot index %s", v.BallotIndex.String())
 		}
-		o.overwrittenSum.Add(o.overwrittenSum, oldLeaf.Ballot)
-		o.overwrittenVotesCount++
+		b.overwrittenSum.Add(b.overwrittenSum, oldLeaf.Ballot)
+		b.overwrittenVotesCount++
 		v.OverwrittenBallot = oldLeaf.Ballot
 	} else {
 		v.OverwrittenBallot = elgamal.NewBallot(Curve)
 	}
-	o.allBallotsSum.Add(o.allBallotsSum, v.ReencryptedBallot)
-	o.votersCount++
+	b.allBallotsSum.Add(b.allBallotsSum, v.ReencryptedBallot)
+	b.votersCount++
 
-	o.votes = append(o.votes, v)
+	b.votes = append(b.votes, v)
 	return nil
 }
 
 // EncryptedBallot returns the ballot associated with a address
-func (o *State) EncryptedBallot(ballotIndex types.BallotIndex) (*elgamal.Ballot, error) {
-	_, value, err := o.tree.GetBigInt(ballotIndex.BigInt())
+func (s *State) EncryptedBallot(ballotIndex types.BallotIndex) (*elgamal.Ballot, error) {
+	return encryptedBallotFromTree(s, ballotIndex)
+}
+
+func (tx *stateTreeTx) EncryptedBallot(ballotIndex types.BallotIndex) (*elgamal.Ballot, error) {
+	return encryptedBallotFromTree(tx, ballotIndex)
+}
+
+func encryptedBallotFromTree(reader stateValueReader, ballotIndex types.BallotIndex) (*elgamal.Ballot, error) {
+	_, value, err := reader.getBigInt(ballotIndex.BigInt())
 	if err != nil {
 		// Wrap arbo.ErrKeyNotFound to a specific error
 		if errors.Is(err, arbo.ErrKeyNotFound) {
@@ -134,8 +146,18 @@ func (o *State) EncryptedBallot(ballotIndex types.BallotIndex) (*elgamal.Ballot,
 }
 
 // BallotLeaf returns the stored ballot leaf associated with a ballot index.
-func (o *State) BallotLeaf(ballotIndex types.BallotIndex) (*BallotLeaf, error) {
-	_, value, err := o.tree.GetBigInt(ballotIndex.BigInt())
+func (s *State) BallotLeaf(ballotIndex types.BallotIndex) (*BallotLeaf, error) {
+	return ballotLeafFromTree(s, ballotIndex)
+}
+
+// BallotLeaf returns the stored ballot leaf associated with a ballot index in
+// the staged batch.
+func (b *Batch) BallotLeaf(ballotIndex types.BallotIndex) (*BallotLeaf, error) {
+	return ballotLeafFromTree(b, ballotIndex)
+}
+
+func ballotLeafFromTree(reader stateValueReader, ballotIndex types.BallotIndex) (*BallotLeaf, error) {
+	_, value, err := reader.getBigInt(ballotIndex.BigInt())
 	if err != nil {
 		if errors.Is(err, arbo.ErrKeyNotFound) {
 			return nil, ErrKeyNotFound
@@ -146,18 +168,18 @@ func (o *State) BallotLeaf(ballotIndex types.BallotIndex) (*BallotLeaf, error) {
 }
 
 // ContainsVoteID checks if the state contains a vote ID
-func (o *State) ContainsVoteID(voteID types.VoteID) bool {
+func (s *State) ContainsVoteID(voteID types.VoteID) bool {
 	if !voteID.Valid() {
 		log.Errorf("voteID %d is invalid", voteID)
 		return false
 	}
-	_, _, err := o.tree.GetBigInt(voteID.BigInt())
+	_, _, err := s.getBigInt(voteID.BigInt())
 	return err == nil
 }
 
 // ContainsBallot checks if the state contains an address
-func (o *State) ContainsBallot(ballotIndex types.BallotIndex) bool {
-	_, _, err := o.tree.GetBigInt(ballotIndex.BigInt())
+func (s *State) ContainsBallot(ballotIndex types.BallotIndex) bool {
+	_, _, err := s.getBigInt(ballotIndex.BigInt())
 	return err == nil
 }
 
