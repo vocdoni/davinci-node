@@ -3,6 +3,7 @@ package sequencer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -25,6 +26,8 @@ import (
 // `maxVoters * maxValue < 1_000_000_000_000`. The runtime still narrows each
 // search further to `process.BallotMode.MaxValue * process.VotersCount`.
 const maxPossibleResultCap = 1_000_000_000_000
+
+var ErrProcessEncryptionKeysMissing = errors.New("process encryption keys missing")
 
 // finalizer is responsible for finalizing processes.
 type finalizer struct {
@@ -99,6 +102,10 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 					// Check if process is marked as invalid (thread-safe)
 					if _, isInvalid := f.invalidProcesses.Load(processID); !isInvalid {
 						if err := f.finalize(processID); err != nil {
+							if errors.Is(err, ErrProcessEncryptionKeysMissing) {
+								log.Infow(err.Error(), "processID", processID.String())
+								return
+							}
 							log.Errorw(err, fmt.Sprintf("finalizing process %s", processID.String()))
 						}
 					}
@@ -278,11 +285,10 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	encryptionPubKey, encryptionPrivKey, err := f.stg.ProcessEncryptionKeys(processID)
 	if err != nil || encryptionPubKey == nil || encryptionPrivKey == nil {
 		setProcessInvalid()
-		finalErr := fmt.Errorf("encryption keys are nil for process %s", processID.String())
 		if err != nil {
-			finalErr = fmt.Errorf("%w: %w", finalErr, err)
+			return fmt.Errorf("process %s: %w: %w", processID.String(), ErrProcessEncryptionKeysMissing, err)
 		}
-		return finalErr
+		return fmt.Errorf("process %s: %w", processID.String(), ErrProcessEncryptionKeysMissing)
 	}
 
 	// Open the state for the process

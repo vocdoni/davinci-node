@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"errors"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -105,6 +106,19 @@ func TestFinalize(t *testing.T) {
 	expected := big.NewInt(5000)
 	c.Assert(process.Result[0].MathBigInt().Cmp(expected), qt.Equals, 0,
 		qt.Commentf("Expected first result to be 500, got %s", process.Result[0].String()))
+}
+
+func TestFinalizeMissingEncryptionKeysReturnsSequencerSentinel(t *testing.T) {
+	c := qt.New(t)
+
+	stg, stateDB, processID, _, _, cleanup := setupTestEnvironment(t, 5000)
+	defer cleanup()
+
+	f := newFinalizer(stg, stateDB, nil, nil)
+
+	err := f.finalize(processID)
+	c.Assert(err, qt.IsNotNil)
+	c.Assert(errors.Is(err, ErrProcessEncryptionKeysMissing), qt.IsTrue)
 }
 
 // setupTestEnvironment creates a test environment with necessary objects
