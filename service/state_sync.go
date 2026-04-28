@@ -95,12 +95,10 @@ func (ss *StateSync) consumeQueue(ctx context.Context) {
 // fetchBlobAndApply fetches an onchain blob and applies it over local state.
 func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.ProcessWithChanges) error {
 	// First check if NEW state root is already present (i.e. we're synced already), skip sync
-	if _, err := state.LoadOnRoot(ss.storage.StateDB(),
+	if err := state.RootExists(ss.storage.StateDB(),
 		process.ProcessID,
 		process.NewStateRoot.MathBigInt()); err == nil {
-		log.Debugf("process %s with state %d is up-to-date, no need for StateSync",
-			process.ProcessID.String(), process.NewStateRoot.MathBigInt())
-		return nil
+		return ss.promoteConfirmedStateRoot(process)
 	}
 
 	log.Debugw("syncing state from blob",
@@ -108,15 +106,6 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 		"txHash", process.TxHash.String(),
 		"oldStateRoot", process.OldStateRoot.String(),
 		"newStateRoot", process.NewStateRoot.String())
-
-	// Load state at the OLD state root (before the transition)
-	st, err := state.LoadOnRoot(ss.storage.StateDB(),
-		process.ProcessID,
-		process.OldStateRoot.MathBigInt())
-	if err != nil {
-		return fmt.Errorf("failed to load state on old root %s: %w",
-			process.OldStateRoot.String(), err)
-	}
 
 	blobFetcher, err := resolveBlobFetcherForProcess(ss.blobFetcherResolver, process.ProcessID)
 	if err != nil {
@@ -133,11 +122,30 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 		return fmt.Errorf("no blobs found for tx %s", process.TxHash.String())
 	}
 
-	// Apply blob data to reconstruct the state
+	// Apply blob data to reconstruct the state.
+	sidecar := &types.BlobTxSidecar{
+		Blobs: make([]*types.Blob, 0, len(blobs)),
+	}
 	for _, blobSidecar := range blobs {
-		if err := st.ApplyBlobToState(blobSidecar.Blob); err != nil {
-			return fmt.Errorf("failed to apply blob data to state: %w", err)
+		if blobSidecar == nil || blobSidecar.Blob == nil {
+			continue
 		}
+		sidecar.Blobs = append(sidecar.Blobs, blobSidecar.Blob)
+	}
+	if len(sidecar.Blobs) == 0 {
+		return fmt.Errorf("no usable blobs found for tx %s", process.TxHash.String())
+	}
+
+	st, err := state.New(ss.storage.StateDB(), process.ProcessID)
+	if err != nil {
+		return fmt.Errorf("failed to open state for process %s: %w", process.ProcessID.String(), err)
+	}
+	if err := st.ApplyBlobSidecarFromRoot(
+		process.OldStateRoot.MathBigInt(),
+		process.NewStateRoot.MathBigInt(),
+		sidecar,
+	); err != nil {
+		return fmt.Errorf("failed to apply blob data to state: %w", err)
 	}
 
 	// Verify that the reconstructed state matches the expected new state root
@@ -157,6 +165,22 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 		"oldStateRoot", process.OldStateRoot.String(),
 		"verifiedStateRoot", newRoot.String())
 
+	return nil
+}
+
+func (ss *StateSync) promoteConfirmedStateRoot(process *types.ProcessWithChanges) error {
+	st, err := state.New(ss.storage.StateDB(), process.ProcessID)
+	if err != nil {
+		return fmt.Errorf("failed to open state for process %s: %w", process.ProcessID.String(), err)
+	}
+	if err := st.SetRootAsBigInt(process.NewStateRoot.MathBigInt()); err != nil {
+		return fmt.Errorf("failed to promote confirmed root %s: %w",
+			process.NewStateRoot.String(), err)
+	}
+	log.Debugw("confirmed state root already present locally, promoted root pointer",
+		"processID", process.ProcessID.String(),
+		"oldStateRoot", process.OldStateRoot.String(),
+		"newStateRoot", process.NewStateRoot.String())
 	return nil
 }
 

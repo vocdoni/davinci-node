@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/census/censusdb"
 	"github.com/vocdoni/davinci-node/circuits/statetransition"
-	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/csp"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/log"
@@ -53,6 +52,15 @@ func (s *Sequencer) processPendingTransitions() {
 			log.Debugw("process not supported", "processID", processID.String())
 			return true // Continue to next process ID
 		}
+		// If there are pending txs, skip this process ID before reserving more
+		// work. The queued batch must remain available after the pending tx is
+		// confirmed or fails.
+		if s.stg.HasPendingTx(storage.StateTransitionTx, processID) {
+			log.Debugw("skipping state transition processing due to pending txs",
+				"processID", processID.String())
+			return true // Continue to next process ID
+		}
+
 		// Check if there is a batch ready for processing
 		batch, batchID, err := s.stg.NextAggregatorBatch(processID)
 		if err != nil {
@@ -64,16 +72,7 @@ func (s *Sequencer) processPendingTransitions() {
 		// If the batch is nil, skip it
 		if batch == nil || len(batch.Ballots) == 0 {
 			log.Debugw("no ballots in batch", "batchID", batchID)
-			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
-				log.Errorw(err, "failed to mark ballot batch as failed")
-			}
-			return true // Continue to next process ID
-		}
-
-		// If there are pending txs, skip this process ID
-		if s.stg.HasPendingTx(storage.StateTransitionTx, processID) {
-			log.Debugw("skipping state transition processing due to pending txs",
-				"processID", processID.String())
+			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
 
@@ -86,35 +85,20 @@ func (s *Sequencer) processPendingTransitions() {
 		processState, err := s.currentProcessState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
-			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
-				log.Errorw(err, "failed to mark ballot batch as failed")
-			}
-			return true // Continue to next process ID
-		}
-
-		// Get the root hash, this is the state before the batch
-		rootHashBefore, err := processState.RootAsBigInt()
-		if err != nil {
-			log.Errorw(err, "failed to get root")
-			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
-				log.Errorw(err, "failed to mark ballot batch as failed")
-			}
+			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
 
 		log.Debugw("state transition ready for processing",
 			"processID", batch.ProcessID.String(),
 			"ballotCount", len(batch.Ballots),
-			"rootHashBefore", rootHashBefore.String(),
 		)
 
 		// Reencrypt the votes with a new k
 		reencryptedVotes, kSeed, err := s.reencryptVotes(batch.ProcessID, batch.Ballots)
 		if err != nil {
 			log.Errorw(err, "failed to reencrypt votes")
-			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
-				log.Errorw(err, "failed to mark ballot batch as failed")
-			}
+			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
 
@@ -126,12 +110,13 @@ func (s *Sequencer) processPendingTransitions() {
 		censusRoot, circuitCensusProofs, err := s.processCensusProofs(batch.ProcessID, reencryptedVotes, censusProofs)
 		if err != nil {
 			log.Errorw(err, "failed to get census proofs")
+			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
 
 		// Process the batch inner proof and votes to get the proof of the
 		// state transition
-		proof, blobData, rootHashAfter, err := s.processStateTransitionBatch(
+		proof, stateBatch, err := s.processStateTransitionBatch(
 			processState,
 			censusRoot,
 			*circuitCensusProofs,
@@ -140,34 +125,30 @@ func (s *Sequencer) processPendingTransitions() {
 			batch.Proof)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
-			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
-				log.Errorw(err, "failed to mark ballot batch as failed")
-			}
+			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
 
 		// Sanity check: roots must be different if voters were added
-		if rootHashBefore.Cmp(rootHashAfter) == 0 && len(reencryptedVotes) > 0 {
+		if stateBatch.RootHashBefore().Cmp(stateBatch.RootHashAfter()) == 0 && len(reencryptedVotes) > 0 {
 			log.Errorw(fmt.Errorf("state root unchanged after adding %d votes", len(reencryptedVotes)),
 				"failed to update state root")
 			log.Debugw("state root unchanged details",
-				"rootBefore", rootHashBefore.String(),
-				"rootAfter", rootHashAfter.String(),
+				"rootBefore", stateBatch.RootHashBefore().String(),
+				"rootAfter", stateBatch.RootHashAfter().String(),
 				"processID", processID.String(),
 				"voteCount", len(reencryptedVotes))
-			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
-				log.Errorw(err, "failed to mark ballot batch as failed")
-			}
+			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
 
 		// Get blob sidecar and hash
-		blobSidecar := blobData.TxSidecar()
+		blobSidecar := stateBatch.BlobEvalData().TxSidecar()
 
 		log.InfoTime("state transition proof generated", startTime,
 			"processID", processID.String(),
-			"rootHashBefore", rootHashBefore.String(),
-			"rootHashAfter", rootHashAfter.String(),
+			"rootHashBefore", stateBatch.RootHashBefore().String(),
+			"rootHashAfter", stateBatch.RootHashAfter().String(),
 			"blobHash", blobSidecar.BlobHashes()[0].String(),
 		)
 
@@ -183,26 +164,30 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 
 		// Store the proof in the state transition storage
-		if err := s.stg.PushStateTransitionBatch(&storage.StateTransitionBatch{
-			ProcessID: batch.ProcessID,
-			BatchID:   batchID,
-			Proof:     proof.(*groth16_bn254.Proof),
-			Ballots:   batch.Ballots,
-			Inputs: storage.StateTransitionBatchProofInputs{
-				RootHashBefore:        rootHashBefore,
-				RootHashAfter:         rootHashAfter,
-				VotersCount:           processState.VotersCount(),
-				OverwrittenVotesCount: processState.OverwrittenVotesCount(),
-				CensusRoot:            censusRoot.MathBigInt(),
-				BlobCommitmentLimbs:   blobData.CommitmentLimbs,
-			},
+		stb := &storage.StateTransitionBatch{
+			ProcessID:       batch.ProcessID,
+			BatchID:         batchID,
+			Proof:           proof.(*groth16_bn254.Proof),
+			Ballots:         batch.Ballots,
+			Inputs:          buildStateTransitionBatchProofInputs(stateBatch, censusRoot),
 			BlobVersionHash: blobSidecar.BlobHashes()[0],
 			BlobSidecar:     blobSidecar,
-		}); err != nil {
+		}
+		if err := s.stg.PushStateTransitionBatch(stb); err != nil {
 			log.Errorw(err, "failed to push state transition batch")
-			if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
-				log.Errorw(err, "failed to mark ballot batch as failed")
-			}
+			s.markAggregatorBatchFailed(batchID)
+			return true // Continue to next process ID
+		}
+		if err := s.stg.PushStateTransitionArtifact(&state.TransitionArtifact{
+			ProcessID:       batch.ProcessID,
+			RootHashBefore:  stateBatch.RootHashBefore(),
+			RootHashAfter:   stateBatch.RootHashAfter(),
+			BlobVersionHash: blobSidecar.BlobHashes()[0],
+			BlobSidecar:     blobSidecar,
+			BatchID:         batchID,
+		}); err != nil {
+			log.Errorw(err, "failed to push state transition artifact")
+			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
 
@@ -217,6 +202,23 @@ func (s *Sequencer) processPendingTransitions() {
 	})
 }
 
+func (s *Sequencer) markAggregatorBatchFailed(batchID []byte) {
+	if err := s.stg.MarkAggregatorBatchFailed(batchID); err != nil {
+		log.Errorw(err, "failed to mark ballot batch as failed")
+	}
+}
+
+func buildStateTransitionBatchProofInputs(stateBatch *state.Batch, censusRoot *types.BigInt) storage.StateTransitionBatchProofInputs {
+	return storage.StateTransitionBatchProofInputs{
+		RootHashBefore:        stateBatch.RootHashBefore(),
+		RootHashAfter:         stateBatch.RootHashAfter(),
+		VotersCount:           stateBatch.VotersCount(),
+		OverwrittenVotesCount: stateBatch.OverwrittenVotesCount(),
+		CensusRoot:            censusRoot.MathBigInt(),
+		BlobCommitmentLimbs:   stateBatch.BlobEvalData().CommitmentLimbs,
+	}
+}
+
 func (s *Sequencer) processStateTransitionBatch(
 	processState *state.State,
 	censusRoot *types.BigInt,
@@ -224,25 +226,15 @@ func (s *Sequencer) processStateTransitionBatch(
 	votes []*state.Vote,
 	kSeed *types.BigInt,
 	innerProof groth16.Proof,
-) (groth16.Proof, *blobs.BlobEvalData, *big.Int, error) {
+) (groth16.Proof, *state.Batch, error) {
 	startTime := time.Now()
-	rootBefore, err := processState.RootAsBigInt()
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get root before state transition batch: %w", err)
-	}
-
-	rollbackState := func(cause error, op string) (groth16.Proof, *blobs.BlobEvalData, *big.Int, error) {
-		if rollbackErr := processState.SetRootAsBigInt(rootBefore); rollbackErr != nil {
-			return nil, nil, nil, fmt.Errorf("%s: %w (rollback failed: %v)", op, cause, rollbackErr)
-		}
-		return nil, nil, nil, fmt.Errorf("%s: %w", op, cause)
-	}
 
 	// Generate the state transition assignment from the batch and the blob data.
-	assignment, blobData, err := s.stateBatchToAssignment(processState, votes, censusRoot, censusProofs, kSeed, innerProof)
+	assignment, batch, err := s.stateBatchToAssignment(processState, votes, censusRoot, censusProofs, kSeed, innerProof)
 	if err != nil {
-		return rollbackState(err, "failed to generate assignment")
+		return nil, nil, fmt.Errorf("failed to generate assignment: %w", err)
 	}
+	defer batch.Discard()
 	log.DebugTime("state transition assignment ready for proof generation", startTime,
 		"processID", processState.ProcessID(),
 		"votersCount", assignment.VotersCount,
@@ -256,9 +248,12 @@ func (s *Sequencer) processStateTransitionBatch(
 	proof, err := s.stateTransition.ProveAndVerify(assignment)
 	if err != nil {
 		s.logStateTransitionDebugInfo(processState, votes, censusRoot, assignment, err)
-		return rollbackState(err, "failed to generate proof")
+		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
-	return proof, blobData, assignment.RootHashAfter.(*big.Int), nil
+	if err := batch.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("failed to commit state transition batch: %w", err)
+	}
+	return proof, batch, nil
 }
 
 // logStateTransitionDebugInfo logs detailed information about a failed state transition
@@ -345,14 +340,22 @@ func (s *Sequencer) stateBatchToAssignment(
 	censusProofs statetransition.CensusProofs,
 	kSeed *types.BigInt,
 	innerProof groth16.Proof,
-) (*statetransition.StateTransitionCircuit, *blobs.BlobEvalData, error) {
-	// add votes batch to state
-	if err := processState.AddVotesBatch(votes); err != nil {
-		return nil, nil, fmt.Errorf("failed to add votes batch to state: %w", err)
+) (*statetransition.StateTransitionCircuit, *state.Batch, error) {
+	// Stage the vote batch in the state transaction. The caller commits after
+	// the proof succeeds, or rolls back on any error.
+	batch, err := processState.PrepareVotesBatch(votes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to prepare votes batch in state: %w", err)
 	}
+	discardOnErr := true
+	defer func() {
+		if discardOnErr {
+			batch.Discard()
+		}
+	}()
 
 	// Generate the state transition assignment.
-	proofAssignment, _, err := statetransition.GenerateAssignment(processState, censusRoot, censusProofs, kSeed)
+	proofAssignment, _, err := statetransition.GenerateAssignment(batch, censusRoot, censusProofs, kSeed)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate assignment: %w", err)
 	}
@@ -361,12 +364,8 @@ func (s *Sequencer) stateBatchToAssignment(
 		return nil, nil, fmt.Errorf("failed to transform recursive proof: %w", err)
 	}
 
-	blobData, err := processState.BlobEvalData()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get blob eval data: %w", err)
-	}
-
-	return proofAssignment, blobData, nil
+	discardOnErr = false
+	return proofAssignment, batch, nil
 }
 
 func (s *Sequencer) processCensusProofs(

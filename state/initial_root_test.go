@@ -26,7 +26,6 @@ func TestInitializeRootMatchesSpecHash(t *testing.T) {
 
 	st, err := New(memdb.New(), processID)
 	c.Assert(err, qt.IsNil)
-	t.Cleanup(func() { _ = st.Close() })
 
 	err = st.Initialize(censusOrigin, packedBallotMode, types.EncryptionKeyFromPoint(publicKey))
 	c.Assert(err, qt.IsNil)

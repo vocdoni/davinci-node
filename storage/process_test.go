@@ -68,3 +68,22 @@ func TestProcess(t *testing.T) {
 	_, err = st.ProcessExists(processID)
 	c.Assert(err, qt.IsNotNil)
 }
+
+func TestNewProcessRejectsNilCensus(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	process := testutil.RandomProcess(testutil.DeterministicProcessID(43))
+	process.Census = nil
+
+	err = st.NewProcess(process)
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "no census provided")
+}

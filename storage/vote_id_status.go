@@ -73,7 +73,7 @@ func (s *Storage) voteIDStatus(processID types.ProcessID, voteID types.VoteID) (
 		}
 
 		// Load the state of the process
-		pState, err := state.LoadOnRoot(s.stateDB, processID, process.StateRoot.MathBigInt())
+		pState, err := state.LoadSnapshotOnRoot(s.stateDB, processID, process.StateRoot.MathBigInt())
 		if err != nil {
 			return status, nil
 		}

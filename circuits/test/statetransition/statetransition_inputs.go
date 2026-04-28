@@ -87,16 +87,18 @@ func StateTransitionInputsForTest(
 		processID,
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("generate census proofs for test"))
-	err = s.AddVotesBatch(aggInputs.Votes)
-	c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
+	batch, err := s.PrepareVotesBatch(aggInputs.Votes)
+	c.Assert(err, qt.IsNil, qt.Commentf("prepare votes batch"))
+	defer batch.Discard()
 
 	assignment, publicInputs, err := statetransition.GenerateAssignment(
-		s,
+		batch,
 		new(types.BigInt).SetBigInt(censusRoot),
 		censusProofs,
 		new(types.BigInt).SetBigInt(reencryptionK),
 	)
 	c.Assert(err, qt.IsNil, qt.Commentf("generate assignment"))
+	c.Assert(batch.Commit(), qt.IsNil, qt.Commentf("commit votes batch"))
 
 	assignment.AggregatorProof = proofInBW6761
 

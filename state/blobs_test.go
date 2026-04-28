@@ -38,12 +38,6 @@ func TestBlobDataStructures(t *testing.T) {
 	// Initialize state
 	state, err := state.New(memdb.New(), testutil.RandomProcessID())
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		if err := state.Close(); err != nil {
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to close state"))
-		}
-	}()
-
 	// Initialize state with process parameters
 	ballotMode := spec.BallotMode{
 		NumFields:    3,
@@ -63,8 +57,9 @@ func TestBlobDataStructures(t *testing.T) {
 	// Create test votes
 	votes := statetest.NewVotesForTest(publicKey, 3, 1)
 
-	err = state.AddVotesBatch(votes)
-	c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
+	batch, err := state.PrepareVotesBatch(votes)
+	c.Assert(err, qt.IsNil, qt.Commentf("prepare votes batch"))
+	defer batch.Discard()
 
 	// Test blob data serialization logic
 	t.Run("TestBlobDataSerialization", func(t *testing.T) {
@@ -79,13 +74,13 @@ func TestBlobDataStructures(t *testing.T) {
 		}
 
 		// Pack results first
-		for _, p := range state.NewResults().BigInts() {
+		for _, p := range batch.NewResults().BigInts() {
 			push(p)
 		}
-		push(big.NewInt(int64(len(state.Votes()))))
+		push(big.NewInt(int64(len(batch.Votes()))))
 
 		// Pack votes
-		for _, v := range state.Votes() {
+		for _, v := range batch.Votes() {
 			push(v.VoteID.BigInt())                           // voteID
 			push(v.Address)                                   // address
 			push(v.BallotIndex.BigInt())                      // ballot index
@@ -115,7 +110,7 @@ func TestBlobDataStructures(t *testing.T) {
 		}
 
 		// Verify results can be reconstructed first
-		originalResults := state.NewResults().BigInts()
+		originalResults := batch.NewResults().BigInts()
 		for i, originalCoord := range originalResults {
 			reconstructedCoord := getCell()
 			c.Assert(originalCoord.Cmp(reconstructedCoord), qt.Equals, 0, qt.Commentf("Results coordinate %d mismatch", i))
@@ -124,7 +119,7 @@ func TestBlobDataStructures(t *testing.T) {
 		c.Assert(votersCount.Cmp(big.NewInt(int64(len(votes)))), qt.Equals, 0, qt.Commentf("VotersCount mismatch"))
 
 		// Verify votes can be reconstructed
-		for i, originalVote := range state.Votes() {
+		for i, originalVote := range batch.Votes() {
 			voteID := getCell()
 			address := getCell()
 			ballotIndex := getCell()
@@ -154,12 +149,6 @@ func TestParseBlobDataPreservesVoteWeight(t *testing.T) {
 
 	st, err := state.New(memdb.New(), testutil.RandomProcessID())
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		if err := st.Close(); err != nil {
-			c.Assert(err, qt.IsNil, qt.Commentf("failed to close state"))
-		}
-	}()
-
 	ballotMode := testutil.BallotMode()
 	packedBallotMode, err := ballotMode.Pack()
 	c.Assert(err, qt.IsNil)
@@ -168,13 +157,11 @@ func TestParseBlobDataPreservesVoteWeight(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	votes := statetest.NewVotesForTest(publicKey, 2, 1)
-	err = st.AddVotesBatch(votes)
+	batch, err := st.PrepareVotesBatch(votes)
 	c.Assert(err, qt.IsNil)
+	defer batch.Discard()
 
-	blobData, err := st.BlobEvalData()
-	c.Assert(err, qt.IsNil)
-
-	parsed, err := state.ParseBlobData(blobData.Blob.Bytes())
+	parsed, err := state.ParseBlobData(batch.BlobEvalData().Blob.Bytes())
 	c.Assert(err, qt.IsNil)
 	c.Assert(parsed.Votes, qt.HasLen, len(votes))
 
@@ -192,12 +179,6 @@ func TestBlobEvalDataRejectsNilVoteWeight(t *testing.T) {
 
 	st, err := state.New(memdb.New(), testutil.RandomProcessID())
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		if err := st.Close(); err != nil {
-			c.Assert(err, qt.IsNil, qt.Commentf("failed to close state"))
-		}
-	}()
-
 	err = st.Initialize(
 		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
 		testutil.BallotModePacked(),
@@ -221,12 +202,6 @@ func TestBlobEvalDataRejectsOversizedVoteWeight(t *testing.T) {
 
 	st, err := state.New(memdb.New(), testutil.RandomProcessID())
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		if err := st.Close(); err != nil {
-			c.Assert(err, qt.IsNil, qt.Commentf("failed to close state"))
-		}
-	}()
-
 	err = st.Initialize(
 		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
 		testutil.BallotModePacked(),
@@ -254,12 +229,6 @@ func TestBlobStateTransition(t *testing.T) {
 	// Initialize original state
 	originalState, err := state.New(memdb.New(), processID)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to create original state"))
-	defer func() {
-		if err := originalState.Close(); err != nil {
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to close original state"))
-		}
-	}()
-
 	// Initialize state with process parameters
 	ballotMode := testutil.BallotMode()
 	ballotModeCircuit, err := ballotMode.Pack()
@@ -284,22 +253,20 @@ func TestBlobStateTransition(t *testing.T) {
 		votes := statetest.NewVotesForTest(publicKey, 3, i)
 
 		// Perform batch operation on original state
-		err = originalState.AddVotesBatch(votes)
-		c.Assert(err, qt.IsNil, qt.Commentf("add votes batch"))
+		batch, err := originalState.PrepareVotesBatch(votes)
+		c.Assert(err, qt.IsNil, qt.Commentf("prepare votes batch"))
 
 		// Get state root after this transition
-		root, err := originalState.RootAsBigInt()
+		root, err := batch.RootAsBigInt()
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get root for batch %d", i+1))
 
-		// Generate blob with KZG commitment
-		blob, err := originalState.BlobEvalData()
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to build KZG commitment for batch %d", i+1))
+		c.Assert(batch.Commit(), qt.IsNil, qt.Commentf("commit votes batch"))
 
 		// Store transition data
 		// Note: With EIP-7594, we now have cell proofs instead of a single blob proof.
 		// Store the first cell proof for compatibility with the test structure.
 		transitions[i] = TransitionData{
-			Blob:     blob,
+			Blob:     batch.BlobEvalData(),
 			Root:     root,
 			Votes:    votes,
 			BatchNum: batchNum,
@@ -341,11 +308,6 @@ func TestBlobStateTransition(t *testing.T) {
 		// Create a fresh state with only the initial setup
 		testState, err := state.New(memdb.New(), processID)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create test state"))
-		defer func() {
-			if err := testState.Close(); err != nil {
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to close test state"))
-			}
-		}()
 		err = testState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, types.EncryptionKeyFromPoint(publicKey))
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize test state"))
 
@@ -365,11 +327,6 @@ func TestBlobStateTransition(t *testing.T) {
 		// Create a fresh state for sequential restoration
 		testState, err := state.New(memdb.New(), processID)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create test state"))
-		defer func() {
-			if err := testState.Close(); err != nil {
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to close test state"))
-			}
-		}()
 
 		err = testState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, types.EncryptionKeyFromPoint(publicKey))
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize test state"))
@@ -397,11 +354,6 @@ func TestBlobStateTransition(t *testing.T) {
 		// Create a state with all transitions except the last one
 		testState, err := state.New(memdb.New(), processID)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create test state"))
-		defer func() {
-			if err := testState.Close(); err != nil {
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to close test state"))
-			}
-		}()
 
 		err = testState.Initialize(types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(), ballotModeCircuit, types.EncryptionKeyFromPoint(publicKey))
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize test state"))
@@ -532,12 +484,6 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	// Create new state
 	newState, err := state.New(memdb.New(), processID)
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to create new state"))
-	defer func() {
-		if err := newState.Close(); err != nil {
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to close new state"))
-		}
-	}()
-
 	// Initialize new state with same parameters
 	ballotModeCircuit, err := ballotMode.Pack()
 	c.Assert(err, qt.IsNil)
@@ -567,13 +513,12 @@ func restoreStateFromBlob(t *testing.T, blob *types.Blob, processID types.Proces
 	}
 
 	// Verify results match
-	restoredResults := newState.NewResults()
-	if restoredResults != nil {
-		restoredCoords := restoredResults.BigInts()
-		c.Assert(len(blobData.Results), qt.Equals, len(restoredCoords), qt.Commentf("Restored Results coordinate count mismatch"))
-		for i, coord := range blobData.Results {
-			c.Assert(coord.Cmp(restoredCoords[i]), qt.Equals, 0, qt.Commentf("Restored Results coordinate %d mismatch", i))
-		}
+	restoredResults, err := newState.Results()
+	c.Assert(err, qt.IsNil)
+	restoredCoords := restoredResults.BigInts()
+	c.Assert(len(blobData.Results), qt.Equals, len(restoredCoords), qt.Commentf("Restored Results coordinate count mismatch"))
+	for i, coord := range blobData.Results {
+		c.Assert(coord.Cmp(restoredCoords[i]), qt.Equals, 0, qt.Commentf("Restored Results coordinate %d mismatch", i))
 	}
 }
 

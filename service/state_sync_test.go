@@ -119,12 +119,6 @@ func TestStateSync(t *testing.T) {
 	// Initialize state
 	originalState, err := state.New(memdb.New(), processID)
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		if err := originalState.Close(); err != nil {
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to close state"))
-		}
-	}()
-
 	// Initialize state with process parameters
 	ballotMode := spec.BallotMode{
 		NumFields:    3,
@@ -153,16 +147,15 @@ func TestStateSync(t *testing.T) {
 	votes := createTestVotesWithOffset(t, publicKey, 3, i*1000)
 
 	// Perform batch operation on original state
-	err = originalState.AddVotesBatch(votes)
-	c.Assert(err, qt.IsNil, qt.Commentf("Failed to end batch %d", i+1))
+	batch, err := originalState.PrepareVotesBatch(votes)
+	c.Assert(err, qt.IsNil, qt.Commentf("Failed to prepare batch %d", i+1))
 
-	newStateRoot, err := originalState.RootAsBigInt()
+	newStateRoot, err := batch.RootAsBigInt()
 	c.Assert(err, qt.IsNil)
 
-	blobData, err := originalState.BlobEvalData()
-	c.Assert(err, qt.IsNil)
+	c.Assert(batch.Commit(), qt.IsNil)
 
-	txHash := contracts.SendBlobTx(blobData.Blob[:])
+	txHash := contracts.SendBlobTx(batch.BlobEvalData().Blob[:])
 	{
 		// Verify process is still untouched
 		proc, err := store.Process(processID)
@@ -306,9 +299,6 @@ func TestStateSyncFetchBlobAndApplyUsesResolvedBlobFetcher(t *testing.T) {
 
 	storedState, err := state.New(store.StateDB(), processID)
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		c.Assert(storedState.Close(), qt.IsNil)
-	}()
 	err = storedState.Initialize(
 		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
 		testutil.BallotModePacked(),

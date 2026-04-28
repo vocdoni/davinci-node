@@ -121,16 +121,11 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	ballotIndex := types.CalculateBallotIndex(types.VoterIndex(proof.AddressIndex))
 
 	// Open the state for the process
-	s, err := state.LoadOnRoot(a.storage.StateDB(), *process.ID, process.StateRoot.MathBigInt())
+	s, err := state.LoadSnapshotOnRoot(a.storage.StateDB(), *process.ID, process.StateRoot.MathBigInt())
 	if err != nil {
 		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
 		return
 	}
-	defer func() {
-		if err := s.Close(); err != nil {
-			log.Warnw("could not close state", "processID", processID.String(), "error", err.Error())
-		}
-	}()
 
 	// Get the ballot by its index
 	ballot, err := s.EncryptedBallot(ballotIndex)
@@ -170,11 +165,6 @@ func (a *API) ballotByIndex(w http.ResponseWriter, r *http.Request) {
 		ErrProcessNotFound.Withf("could not open state: %v", err).Write(w)
 		return
 	}
-	defer func() {
-		if err := s.Close(); err != nil {
-			log.Warnw("could not close state", "processID", processID.String(), "error", err.Error())
-		}
-	}()
 
 	// Get the ballot by index
 	ballot, err := s.EncryptedBallot(ballotIndex)

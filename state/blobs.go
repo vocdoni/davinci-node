@@ -1,10 +1,12 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 
 	gethparams "github.com/ethereum/go-ethereum/params"
+	"github.com/vocdoni/arbo"
 
 	"github.com/vocdoni/davinci-node/crypto/blobs"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
@@ -24,22 +26,7 @@ type BlobData struct {
 	Votes       []*Vote
 }
 
-// BlobEvalData returns the cached blob evaluation data for the current batch.
-//
-// blob layout:
-//  1. Results (params.FieldsPerBallot * 4 coordinates)
-//  2. VotersCount
-//  3. Votes sequentially for exactly VotersCount entries:
-//     Each vote: voteID + address + ballotIndex + weight + reencryptedBallot coordinates
-func (st *State) BlobEvalData() (*blobs.BlobEvalData, error) {
-	if st.blobEvalData == nil {
-		return nil, fmt.Errorf("blob eval data not available")
-	}
-
-	return st.blobEvalData, nil
-}
-
-func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
+func (b *Batch) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 	var cells [BlobTxFieldElementsPerBlob][BlobTxBytesPerFieldElement]byte
 	cell := 0
 	push := func(name string, bi *big.Int) error {
@@ -69,17 +56,17 @@ func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 	}
 
 	// First, add results (always present)
-	for _, p := range st.newResults.BigInts() {
+	for _, p := range b.newResults.BigInts() {
 		if err := push("results coordinate", p); err != nil {
 			return nil, err
 		}
 	}
-	if err := push("voters count", big.NewInt(int64(st.VotersCount()))); err != nil {
+	if err := push("voters count", big.NewInt(int64(b.VotersCount()))); err != nil {
 		return nil, err
 	}
 
 	// Then add exactly VotersCount votes sequentially (no padding)
-	for _, v := range st.Votes() {
+	for _, v := range b.Votes() {
 		if err := push("vote ID", v.VoteID.BigInt()); err != nil {
 			return nil, err
 		}
@@ -115,7 +102,7 @@ func (st *State) computeBlobEvalData() (*blobs.BlobEvalData, error) {
 	}
 
 	// Compute evaluation point z from commitment and blob
-	z, err := blobs.ComputeEvaluationPoint(st.processID.MathBigInt(), st.rootHashBefore, commitment)
+	z, err := blobs.ComputeEvaluationPoint(b.state.processID.MathBigInt(), b.rootHashBefore, commitment)
 	if err != nil {
 		return nil, err
 	}
@@ -232,32 +219,98 @@ func ParseBlobData(blob []byte) (*BlobData, error) {
 }
 
 // ApplyBlobToState applies the data from a blob to restore state
-func (st *State) ApplyBlobToState(blob *types.Blob) error {
+func (s *State) ApplyBlobToState(blob *types.Blob) (err error) {
+	if blob == nil {
+		return fmt.Errorf("nil blob")
+	}
 	blobData, err := ParseBlobData(blob.Bytes())
 	if err != nil {
 		return err
 	}
 
+	treeTx := s.newTreeTx()
+	defer func() {
+		if err != nil {
+			treeTx.discard()
+		}
+	}()
+
+	if err := treeTx.applyBlobData(blobData); err != nil {
+		return err
+	}
+	return treeTx.commit("apply blob to state")
+}
+
+// ApplyBlobSidecarFromRoot atomically applies a blob sidecar from rootBefore and
+// commits only if the staged root matches rootAfter.
+func (s *State) ApplyBlobSidecarFromRoot(rootBefore, rootAfter *big.Int, sidecar *types.BlobTxSidecar) (err error) {
+	if rootBefore == nil {
+		return fmt.Errorf("nil root before")
+	}
+	if rootAfter == nil {
+		return fmt.Errorf("nil root after")
+	}
+	if sidecar == nil {
+		return fmt.Errorf("nil blob sidecar")
+	}
+
+	treeTx := s.newTreeTx()
+	defer func() {
+		if err != nil {
+			treeTx.discard()
+		}
+	}()
+
+	if err := treeTx.SetRootAsBigInt(rootBefore); err != nil {
+		return fmt.Errorf("set root before blob sidecar: %w", err)
+	}
+	if err := treeTx.applyBlobSidecar(sidecar); err != nil {
+		return fmt.Errorf("apply blob sidecar from root: %w", err)
+	}
+
+	stagedRoot, err := treeTx.RootAsBigInt()
+	if err != nil {
+		return fmt.Errorf("get restored state root: %w", err)
+	}
+	if stagedRoot.Cmp(rootAfter) != 0 {
+		return fmt.Errorf("restored state root mismatch: expected %s, got %s",
+			rootAfter.String(), stagedRoot.String())
+	}
+
+	return treeTx.commit("apply blob sidecar from root")
+}
+
+func (tx *stateTreeTx) applyBlobData(blobData *BlobData) error {
+	if tx.tx == nil {
+		return fmt.Errorf("need active state transaction")
+	}
+
 	// Add votes directly to the state tree without batch processing
 	for _, vote := range blobData.Votes {
 		// Add or update the vote ballot in the tree
-		if _, err := st.EncryptedBallot(vote.BallotIndex); err != nil {
+		if _, err := tx.EncryptedBallot(vote.BallotIndex); err != nil {
+			if !errors.Is(err, ErrKeyNotFound) {
+				return fmt.Errorf("failed to get vote with ballot index %s from tree: %w",
+					vote.BallotIndex.String(), err)
+			}
 			// Key doesn't exist, add it
-			if err := st.tree.AddBigInt(vote.BallotIndex.BigInt(), vote.TreeLeafValues()...); err != nil {
+			if err := tx.addBigInt(vote.BallotIndex.BigInt(), vote.TreeLeafValues()...); err != nil {
 				return fmt.Errorf("failed to add vote with address %s to tree: %w", vote.Address.String(), err)
 			}
 		} else {
 			// Key exists, update it
-			if err := st.tree.UpdateBigInt(vote.BallotIndex.BigInt(), vote.TreeLeafValues()...); err != nil {
+			if err := tx.updateBigInt(vote.BallotIndex.BigInt(), vote.TreeLeafValues()...); err != nil {
 				return fmt.Errorf("failed to update vote with address %s in tree: %w", vote.Address.String(), err)
 			}
 		}
 
 		// Add the vote ID in the tree
-		if _, _, err := st.tree.GetBigInt(vote.VoteID.BigInt()); err == nil {
+		if _, _, err := tx.getBigInt(vote.VoteID.BigInt()); err == nil {
 			return fmt.Errorf("failed to add vote ID %d to tree: already exists", vote.VoteID)
+		} else if !errors.Is(err, arbo.ErrKeyNotFound) {
+			return fmt.Errorf("failed to check vote ID %d in tree: %w", vote.VoteID, err)
 		}
-		if err := st.tree.AddBigInt(vote.VoteID.BigInt(), voteIDLeafValue); err != nil {
+		if err := tx.addBigInt(vote.VoteID.BigInt(), voteIDLeafValue); err != nil {
 			return fmt.Errorf("failed to add vote ID %d to tree: %w", vote.VoteID, err)
 		}
 	}
@@ -267,7 +320,48 @@ func (st *State) ApplyBlobToState(blob *types.Blob) error {
 	if err != nil {
 		return err
 	}
-	st.SetResults(results)
+	if err := tx.setResults(results); err != nil {
+		return fmt.Errorf("failed to set results from blob: %w", err)
+	}
 
+	return nil
+}
+
+// ApplyBlobSidecar applies every blob in the provided sidecar to the state.
+func (s *State) ApplyBlobSidecar(sidecar *types.BlobTxSidecar) (err error) {
+	if sidecar == nil {
+		return fmt.Errorf("nil blob sidecar")
+	}
+
+	treeTx := s.newTreeTx()
+	defer func() {
+		if err != nil {
+			treeTx.discard()
+		}
+	}()
+
+	if err := treeTx.applyBlobSidecar(sidecar); err != nil {
+		return err
+	}
+
+	return treeTx.commit("apply blob sidecar")
+}
+
+func (tx *stateTreeTx) applyBlobSidecar(sidecar *types.BlobTxSidecar) error {
+	if sidecar == nil {
+		return fmt.Errorf("nil blob sidecar")
+	}
+	for _, blob := range sidecar.Blobs {
+		if blob == nil {
+			continue
+		}
+		blobData, err := ParseBlobData(blob.Bytes())
+		if err != nil {
+			return fmt.Errorf("failed to parse blob sidecar: %w", err)
+		}
+		if err := tx.applyBlobData(blobData); err != nil {
+			return fmt.Errorf("failed to apply blob sidecar: %w", err)
+		}
+	}
 	return nil
 }

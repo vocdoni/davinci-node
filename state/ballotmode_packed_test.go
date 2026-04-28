@@ -18,7 +18,6 @@ func TestStateStoresPackedBallotMode(t *testing.T) {
 	processID := testutil.RandomProcessID()
 	st, err := New(memdb.New(), processID)
 	c.Assert(err, qt.IsNil)
-	t.Cleanup(func() { _ = st.Close() })
 
 	bm := spec.BallotMode{
 		NumFields:    3,

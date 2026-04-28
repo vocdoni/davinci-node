@@ -1,16 +1,23 @@
 package web3
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
+	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
+	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
@@ -76,6 +83,154 @@ func TestWaitTxByHashReturnsOnRevert(t *testing.T) {
 	c.Assert(err, qt.Not(qt.IsNil))
 	c.Assert(err.Error(), qt.Contains, "reverted")
 	c.Assert(time.Since(start) < 1500*time.Millisecond, qt.IsTrue)
+}
+
+func TestProcessAtBlockUsesHistoricalSnapshot(t *testing.T) {
+	c := qt.New(t)
+
+	processID := testutil.RandomProcessID()
+	historicalRoot := big.NewInt(11)
+	latestRoot := big.NewInt(22)
+
+	backend := &testProcessRegistryBackend{
+		historical: npbindings.DAVINCITypesProcess{
+			Status:                uint8(types.ProcessStatusReady),
+			OrganizationId:        common.HexToAddress("0x1234567890123456789012345678901234567890"),
+			EncryptionKey:         npbindings.DAVINCITypesEncryptionKey{X: big.NewInt(3), Y: big.NewInt(7)},
+			LatestStateRoot:       historicalRoot,
+			Result:                []*big.Int{},
+			StartTime:             big.NewInt(1000),
+			Duration:              big.NewInt(3600),
+			MaxVoters:             big.NewInt(100),
+			VotersCount:           big.NewInt(0),
+			OverwrittenVotesCount: big.NewInt(0),
+			CreationBlock:         big.NewInt(10),
+			BatchNumber:           big.NewInt(0),
+			MetadataURI:           "https://example.com/metadata",
+			BallotMode:            npbindings.DAVINCITypesBallotMode{UniqueValues: false, NumFields: 5, GroupSize: 0, CostExponent: 2, MaxValue: big.NewInt(10), MinValue: big.NewInt(0), MaxValueSum: big.NewInt(100), MinValueSum: big.NewInt(0)},
+			Census: npbindings.DAVINCITypesCensus{
+				CensusOrigin:    uint8(types.CensusOriginMerkleTreeOffchainStaticV1),
+				CensusRoot:      [32]byte{},
+				ContractAddress: common.Address{},
+				CensusURI:       "https://example.com/census",
+			},
+		},
+		latest: npbindings.DAVINCITypesProcess{
+			Status:                uint8(types.ProcessStatusReady),
+			OrganizationId:        common.HexToAddress("0x1234567890123456789012345678901234567890"),
+			EncryptionKey:         npbindings.DAVINCITypesEncryptionKey{X: big.NewInt(3), Y: big.NewInt(7)},
+			LatestStateRoot:       latestRoot,
+			Result:                []*big.Int{},
+			StartTime:             big.NewInt(1000),
+			Duration:              big.NewInt(3600),
+			MaxVoters:             big.NewInt(100),
+			VotersCount:           big.NewInt(7),
+			OverwrittenVotesCount: big.NewInt(0),
+			CreationBlock:         big.NewInt(10),
+			BatchNumber:           big.NewInt(0),
+			MetadataURI:           "https://example.com/metadata",
+			BallotMode:            npbindings.DAVINCITypesBallotMode{UniqueValues: false, NumFields: 5, GroupSize: 0, CostExponent: 2, MaxValue: big.NewInt(10), MinValue: big.NewInt(0), MaxValueSum: big.NewInt(100), MinValueSum: big.NewInt(0)},
+			Census: npbindings.DAVINCITypesCensus{
+				CensusOrigin:    uint8(types.CensusOriginMerkleTreeOffchainStaticV1),
+				CensusRoot:      [32]byte{},
+				ContractAddress: common.Address{},
+				CensusURI:       "https://example.com/census",
+			},
+		},
+	}
+
+	processes, err := npbindings.NewProcessRegistryCaller(common.HexToAddress("0x1"), backend)
+	c.Assert(err, qt.IsNil)
+
+	contracts := &Contracts{
+		processes:              &npbindings.ProcessRegistry{ProcessRegistryCaller: *processes},
+		currentBlock:           99,
+		currentBlockLastUpdate: time.Now(),
+		knownProcesses:         make(map[types.ProcessID]struct{}),
+	}
+
+	got, err := contracts.ProcessAtBlock(processID, 42)
+	c.Assert(err, qt.IsNil)
+	c.Assert(got.StateRoot.MathBigInt().Cmp(historicalRoot), qt.Equals, 0)
+	c.Assert(got.VotersCount.MathBigInt().Cmp(big.NewInt(0)), qt.Equals, 0)
+}
+
+func TestProcessAtBlockUsesCreationSnapshot(t *testing.T) {
+	c := qt.New(t)
+
+	processID := testutil.RandomProcessID()
+	creationRoot := big.NewInt(33)
+
+	backend := &testProcessRegistryBackend{
+		creation: npbindings.DAVINCITypesProcess{
+			Status:                uint8(types.ProcessStatusReady),
+			OrganizationId:        common.HexToAddress("0x1234567890123456789012345678901234567890"),
+			EncryptionKey:         npbindings.DAVINCITypesEncryptionKey{X: big.NewInt(3), Y: big.NewInt(7)},
+			LatestStateRoot:       creationRoot,
+			Result:                []*big.Int{},
+			StartTime:             big.NewInt(1000),
+			Duration:              big.NewInt(3600),
+			MaxVoters:             big.NewInt(100),
+			VotersCount:           big.NewInt(0),
+			OverwrittenVotesCount: big.NewInt(0),
+			CreationBlock:         big.NewInt(10),
+			BatchNumber:           big.NewInt(0),
+			MetadataURI:           "https://example.com/metadata",
+			BallotMode:            npbindings.DAVINCITypesBallotMode{UniqueValues: false, NumFields: 5, GroupSize: 0, CostExponent: 2, MaxValue: big.NewInt(10), MinValue: big.NewInt(0), MaxValueSum: big.NewInt(100), MinValueSum: big.NewInt(0)},
+			Census: npbindings.DAVINCITypesCensus{
+				CensusOrigin:    uint8(types.CensusOriginMerkleTreeOffchainStaticV1),
+				CensusRoot:      [32]byte{},
+				ContractAddress: common.Address{},
+				CensusURI:       "https://example.com/census",
+			},
+		},
+	}
+
+	processes, err := npbindings.NewProcessRegistryCaller(common.HexToAddress("0x1"), backend)
+	c.Assert(err, qt.IsNil)
+
+	contracts := &Contracts{
+		processes:              &npbindings.ProcessRegistry{ProcessRegistryCaller: *processes},
+		currentBlock:           99,
+		currentBlockLastUpdate: time.Now(),
+		knownProcesses:         make(map[types.ProcessID]struct{}),
+	}
+
+	got, err := contracts.ProcessAtBlock(processID, 10)
+	c.Assert(err, qt.IsNil)
+	c.Assert(got.StateRoot.MathBigInt().Cmp(creationRoot), qt.Equals, 0)
+	c.Assert(got.VotersCount.MathBigInt().Cmp(big.NewInt(0)), qt.Equals, 0)
+}
+
+type testProcessRegistryBackend struct {
+	creation   npbindings.DAVINCITypesProcess
+	historical npbindings.DAVINCITypesProcess
+	latest     npbindings.DAVINCITypesProcess
+}
+
+func (b *testProcessRegistryBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
+	return []byte{0x1}, nil
+}
+
+func (b *testProcessRegistryBackend) CallContract(_ context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+	if call.To == nil {
+		return nil, fmt.Errorf("missing contract address")
+	}
+	if !bytes.Equal(call.To.Bytes(), common.HexToAddress("0x1").Bytes()) {
+		return nil, fmt.Errorf("unexpected contract address: %s", call.To.Hex())
+	}
+	process := b.latest
+	if blockNumber != nil && blockNumber.Cmp(big.NewInt(10)) == 0 {
+		process = b.creation
+	}
+	if blockNumber != nil && blockNumber.Cmp(big.NewInt(42)) == 0 {
+		process = b.historical
+	}
+	packed, err := processRegistryABI.Methods["getProcess"].Outputs.Pack(process)
+	if err != nil {
+		return nil, err
+	}
+	return packed, nil
 }
 
 func testContractsForReceipt(c *qt.C, txHash common.Hash, receiptStatus uint64) *Contracts {

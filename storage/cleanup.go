@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/log"
@@ -50,6 +51,11 @@ func (s *Storage) cleanupEndedProcess(processID types.ProcessID) error {
 	// Clean state transitions
 	if err := s.cleanStateTransitionsForProcess(processID); err != nil {
 		errs = append(errs, fmt.Errorf("state transitions: %w", err))
+	}
+
+	// Clean state transition artifacts
+	if err := s.cleanStateTransitionArtifactsForProcess(processID); err != nil {
+		errs = append(errs, fmt.Errorf("state transition artifacts: %w", err))
 	}
 
 	// Mark undone vote IDs as timeout (preserve vote status records for voters)
@@ -643,6 +649,33 @@ func (s *Storage) cleanStateTransitionsForProcess(processID types.ProcessID) err
 	}
 	if len(keysToDelete) > 0 {
 		log.Debugw("cleaned state transitions", "processID", processID.String(), "count", len(keysToDelete))
+	}
+	return nil
+}
+
+// cleanStateTransitionArtifactsForProcess removes all transition artifacts for
+// a given processID.
+func (s *Storage) cleanStateTransitionArtifactsForProcess(processID types.ProcessID) error {
+	rd := prefixeddb.NewPrefixedReader(s.db, stateTransitionArtifactPrefix)
+	var keysToDelete [][]byte
+
+	if err := rd.Iterate(processID.Bytes(), func(k, _ []byte) bool {
+		keysToDelete = append(keysToDelete, bytes.Clone(k))
+		return true
+	}); err != nil {
+		return fmt.Errorf("iterate state transition artifacts: %w", err)
+	}
+
+	for _, key := range keysToDelete {
+		rootAfter := new(big.Int).SetBytes(key)
+		if err := s.deleteArtifact(stateTransitionArtifactPrefix, stateTransitionArtifactKey(processID, rootAfter)); err != nil && !errors.Is(err, ErrNotFound) {
+			log.Warnw("failed to delete state transition artifact",
+				"rootAfter", rootAfter.String(),
+				"error", err)
+		}
+	}
+	if len(keysToDelete) > 0 {
+		log.Debugw("cleaned state transition artifacts", "processID", processID.String(), "count", len(keysToDelete))
 	}
 	return nil
 }

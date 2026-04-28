@@ -23,40 +23,44 @@ type PublicInputs struct {
 }
 
 // GenerateAssignment builds the circuit assignment for the state transition circuit
-// from the given state object. It populates the assignment structure with
+// from the given staged batch. It populates the assignment structure with
 // the necessary data, including the root hash before and after the
 // transition, the process information, the votes, and the results.
 // It also returns the public inputs in their original format.
 func GenerateAssignment(
-	o *state.State,
+	batch *state.Batch,
 	censusRoot *types.BigInt,
 	censusProofs CensusProofs,
 	kSeed *types.BigInt,
 ) (*StateTransitionCircuit, *PublicInputs, error) {
 	var err error
+
+	blobData := batch.BlobEvalData()
+
 	assignment := &StateTransitionCircuit{
-		CensusRoot:   censusRoot.MathBigInt(),
-		CensusProofs: censusProofs,
+		CensusRoot:    censusRoot.MathBigInt(),
+		CensusProofs:  censusProofs,
+		ReencryptionK: kSeed.MathBigInt(),
+
+		RootHashBefore: batch.RootHashBefore(),
+		RootHashAfter:  batch.RootHashAfter(),
+
+		Process: batch.Process().ToGnark(),
+
+		VotersCount:           batch.VotersCount(),
+		OverwrittenVotesCount: batch.OverwrittenVotesCount(),
+
+		Results: Results{
+			OldResults: *batch.OldResults().ToGnark(),
+			NewResults: *batch.NewResults().ToGnark(),
+		},
+
+		BlobCommitmentLimbs:   blobData.ForGnark.CommitmentLimbs,
+		BlobProofLimbs:        blobData.ForGnark.ProofLimbs,
+		BlobEvaluationResultY: blobData.ForGnark.Y,
 	}
 
-	// Include the k used for re-encryption
-	assignment.ReencryptionK = kSeed.MathBigInt()
-
-	// RootHashBefore
-	assignment.RootHashBefore = o.RootHashBefore()
-
-	// Process info
-	assignment.Process.ID = o.Process().ID
-	assignment.Process.CensusOrigin = o.Process().CensusOrigin
-	assignment.Process.BallotMode = o.Process().BallotMode
-	assignment.Process.EncryptionKey.PubKey[0] = o.Process().EncryptionKey.PubKey[0]
-	assignment.Process.EncryptionKey.PubKey[1] = o.Process().EncryptionKey.PubKey[1]
-
-	// update stats
-	assignment.VotersCount = o.VotersCount()
-	assignment.OverwrittenVotesCount = o.OverwrittenVotesCount()
-
-	for i, v := range o.PaddedVotes() {
+	for i, v := range batch.PaddedVotes() {
 		assignment.Votes[i].Ballot = *v.Ballot.ToGnark()
 		assignment.Votes[i].ReencryptedBallot = *v.ReencryptedBallot.ToGnark()
 		assignment.Votes[i].Address = v.Address
@@ -67,90 +71,45 @@ func GenerateAssignment(
 	}
 
 	assignment.ProcessProofs = ProcessProofs{}
-	assignment.ProcessProofs.ID, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().ID)
+	assignment.ProcessProofs.ID, err = merkleproof.MerkleProofFromArboProof(batch.ProcessProofs().ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not get ID proof: %w", err)
 	}
-	assignment.ProcessProofs.CensusOrigin, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().CensusOrigin)
+	assignment.ProcessProofs.CensusOrigin, err = merkleproof.MerkleProofFromArboProof(batch.ProcessProofs().CensusOrigin)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not get CensusOrigin proof: %w", err)
 	}
-	assignment.ProcessProofs.BallotMode, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().BallotMode)
+	assignment.ProcessProofs.BallotMode, err = merkleproof.MerkleProofFromArboProof(batch.ProcessProofs().BallotMode)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not get BallotMode proof: %w", err)
 	}
-	assignment.ProcessProofs.EncryptionKey, err = merkleproof.MerkleProofFromArboProof(o.ProcessProofs().EncryptionKey)
+	assignment.ProcessProofs.EncryptionKey, err = merkleproof.MerkleProofFromArboProof(batch.ProcessProofs().EncryptionKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not get EncryptionKey proof: %w", err)
 	}
-	// add Ballots and VoteIDs proofs
+
 	for i := range params.VotesPerBatch {
-		// ballots
-		assignment.VotesProofs.Ballot[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Ballot[i])
+		assignment.VotesProofs.Ballot[i], err = merkleproof.MerkleTransitionFromArboTransition(batch.VotesProofs().Ballot[i])
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not get Ballot proof for index %d: %w", i, err)
 		}
-		// vote IDs
-		assignment.VotesProofs.VoteIDs[i], err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().VoteID[i])
+
+		assignment.VotesProofs.VoteIDs[i], err = merkleproof.MerkleTransitionFromArboTransition(batch.VotesProofs().VoteID[i])
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not get VoteID proof for index %d: %w", i, err)
 		}
 	}
-	// update Results
-	assignment.ResultsProofs.Results, err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Results)
+
+	assignment.ResultsProofs.Results, err = merkleproof.MerkleTransitionFromArboTransition(batch.VotesProofs().Results)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not get Results proof: %w", err)
 	}
-	assignment.Results = Results{
-		OldResults: *o.OldResults().ToGnark(),
-		NewResults: *o.NewResults().ToGnark(),
-	}
-	// RootHashAfter
-	assignment.RootHashAfter, err = o.RootAsBigInt()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Blob evaluation data
-	blobData, err := o.BlobEvalData()
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not get blob eval data: %w", err)
-	}
-
-	// Assign commitment and proof limbs to the circuit assignment.
-	assignment.BlobCommitmentLimbs = blobData.ForGnark.CommitmentLimbs
-	assignment.BlobProofLimbs = blobData.ForGnark.ProofLimbs
-	assignment.BlobEvaluationResultY = blobData.ForGnark.Y
-
-	// Create public inputs in original format
-	// Convert frontend.Variable to *big.Int properly
-	var votersCount, overwrittenVotesCount *big.Int
-
-	// Handle VotersCount conversion
-	switch v := assignment.VotersCount.(type) {
-	case *big.Int:
-		votersCount = v
-	case int:
-		votersCount = big.NewInt(int64(v))
-	default:
-		return nil, nil, fmt.Errorf("unexpected type for VotersCount: %T", v)
-	}
-
-	// Handle OverwrittenVotesCount conversion
-	switch v := assignment.OverwrittenVotesCount.(type) {
-	case *big.Int:
-		overwrittenVotesCount = v
-	case int:
-		overwrittenVotesCount = big.NewInt(int64(v))
-	default:
-		return nil, nil, fmt.Errorf("unexpected type for OverwrittenVotesCount: %T", v)
-	}
 
 	publicInputs := &PublicInputs{
-		RootHashBefore:        o.RootHashBefore(),
-		RootHashAfter:         assignment.RootHashAfter.(*big.Int),
-		VotersCount:           votersCount,
-		OverwrittenVotesCount: overwrittenVotesCount,
+		RootHashBefore:        batch.RootHashBefore(),
+		RootHashAfter:         batch.RootHashAfter(),
+		VotersCount:           big.NewInt(int64(batch.VotersCount())),
+		OverwrittenVotesCount: big.NewInt(int64(batch.OverwrittenVotesCount())),
 		CensusRoot:            censusRoot.MathBigInt(),
 		BlobCommitmentLimbs:   blobData.CommitmentLimbs,
 	}

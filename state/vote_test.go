@@ -35,10 +35,6 @@ func TestEncryptedBallotReadsTreeLeafMetadata(t *testing.T) {
 
 	st, err := New(memdb.New(), testutil.RandomProcessID())
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		c.Assert(st.Close(), qt.IsNil)
-	}()
-
 	err = st.Initialize(
 		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
 		testutil.BallotModePacked(),
@@ -79,10 +75,6 @@ func TestAddVoteRejectsOverwriteWithMismatchedStoredMetadata(t *testing.T) {
 
 	st, err := New(memdb.New(), testutil.RandomProcessID())
 	c.Assert(err, qt.IsNil)
-	defer func() {
-		c.Assert(st.Close(), qt.IsNil)
-	}()
-
 	err = st.Initialize(
 		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
 		testutil.BallotModePacked(),

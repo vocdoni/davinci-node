@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,7 +26,7 @@ import (
 // search further to `process.BallotMode.MaxValue * process.VotersCount`.
 const maxPossibleResultCap = 1_000_000_000_000
 
-var ErrProcessEncryptionKeysMissing = errors.New("process encryption keys missing")
+var ErrProcessEncryptionKeysMissing = fmt.Errorf("process encryption keys missing")
 
 // finalizer is responsible for finalizing processes.
 type finalizer struct {
@@ -41,6 +40,7 @@ type finalizer struct {
 	cancel           context.CancelFunc
 	lock             sync.Mutex                                   // Mutex to ensure that only one process results calculation is running at a time
 	getStateRoot     func(types.ProcessID) (*types.BigInt, error) // Function to get state root from contract
+	supportsBlobTxs  func(types.ProcessID) (bool, error)          // Function to determine whether remote state sync is possible for a process
 }
 
 // maxPossibleResult returns the maximum possible accumulated result for a
@@ -73,14 +73,21 @@ func maxPossibleResult(process *types.Process) uint64 {
 }
 
 // New creates a new Finalizer instance.
-func newFinalizer(stg *storage.Storage, stateDB db.Database, ca *internalCircuits, getStateRootFn func(types.ProcessID) (*types.BigInt, error)) *finalizer {
+func newFinalizer(
+	stg *storage.Storage,
+	stateDB db.Database,
+	ca *internalCircuits,
+	getStateRootFn func(types.ProcessID) (*types.BigInt, error),
+	supportsBlobTxsFn func(types.ProcessID) (bool, error),
+) *finalizer {
 	// We'll create the context in Start() now to avoid premature cancellation
 	return &finalizer{
-		stg:          stg,
-		stateDB:      stateDB,
-		circuits:     ca,
-		OndemandCh:   make(chan types.ProcessID, 10), // Use buffered channel to prevent blocking
-		getStateRoot: getStateRootFn,
+		stg:             stg,
+		stateDB:         stateDB,
+		circuits:        ca,
+		OndemandCh:      make(chan types.ProcessID, 10), // Use buffered channel to prevent blocking
+		getStateRoot:    getStateRootFn,
+		supportsBlobTxs: supportsBlobTxsFn,
 	}
 }
 
@@ -220,16 +227,37 @@ func (f *finalizer) finalizeEnded() {
 			continue
 		}
 
-		// Check if the state root exists in the state DB. If not, mark as
-		// invalid and skip. This prevents trying to finalize processes that
-		// were never properly processed.
+		// Missing roots are retryable on blob-capable runtimes, because
+		// state sync may still catch up. On non-blob runtimes, treat them as
+		// terminal and cache the process as invalid.
 		if err := state.RootExists(f.stateDB, processID, process.StateRoot.MathBigInt()); err != nil {
-			f.invalidProcesses.Store(processID, struct{}{})
+			markInvalid, supportErr := f.shouldMarkMissingRootInvalid(processID)
+			if supportErr != nil {
+				log.Warnw("could not determine blob support for process with missing state root",
+					"processID", processID.String(),
+					"stateRoot", process.StateRoot.String(),
+					"err", supportErr)
+			}
+			if markInvalid {
+				f.invalidProcesses.Store(processID, struct{}{})
+			}
 			continue
 		}
 
 		f.OndemandCh <- processID
 	}
+}
+
+func (f *finalizer) shouldMarkMissingRootInvalid(processID types.ProcessID) (bool, error) {
+	if f.supportsBlobTxs == nil {
+		return true, nil
+	}
+
+	supportsBlobTxs, err := f.supportsBlobTxs(processID)
+	if err != nil {
+		return false, fmt.Errorf("determine blob support for process %s: %w", processID.String(), err)
+	}
+	return !supportsBlobTxs, nil
 }
 
 // finalize finalizes a process by decrypting the accumulators and storing the
@@ -256,10 +284,10 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		f.invalidProcesses.Store(processID, struct{}{})
 	}
 
-	// Ensure the state root exists in the state DB. If not
-	if err := state.RootExists(f.stateDB, processID, process.StateRoot.MathBigInt()); err != nil {
+	st, err := state.LoadSnapshotOnRoot(f.stateDB, *process.ID, process.StateRoot.MathBigInt())
+	if err != nil {
 		setProcessInvalid()
-		return fmt.Errorf("state root does not exist in state DB %s: %w", process.StateRoot.String(), err)
+		return err
 	}
 
 	log.Debugw("finalizing process", "processID", processID.String(), "stateRoot", process.StateRoot.String())
@@ -272,9 +300,20 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 			setProcessInvalid()
 			return fmt.Errorf("could not fetch contract state root for process %s: %w", processID.String(), err)
 		}
-		if contractStateRoot.MathBigInt().Cmp(process.StateRoot.MathBigInt()) != 0 {
-			// State root mismatch - mark as invalid to prevent infinite retries
-			setProcessInvalid()
+		if !contractStateRoot.Equal(process.StateRoot) {
+			// root mismatch is retryable on blob-capable runtimes, because
+			// state sync may still catch up. On non-blob runtimes, treat them as
+			// terminal and cache the process as invalid.
+			markInvalid, supportErr := f.shouldMarkMissingRootInvalid(processID)
+			if supportErr != nil {
+				log.Warnw("could not determine blob support for process with state root mismatch",
+					"processID", processID.String(),
+					"stateRoot", process.StateRoot.String(),
+					"err", supportErr)
+			}
+			if markInvalid {
+				setProcessInvalid()
+			}
 			return fmt.Errorf("local state root mismatch with contract for process %s: local=%s, contract=%s",
 				processID.String(), process.StateRoot.String(), contractStateRoot.String())
 		}
@@ -291,24 +330,16 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 		return fmt.Errorf("process %s: %w", processID.String(), ErrProcessEncryptionKeysMissing)
 	}
 
-	// Open the state for the process
-	st, err := state.LoadOnRoot(f.stateDB, processID, process.StateRoot.MathBigInt())
-	if err != nil {
-		setProcessInvalid()
-		return fmt.Errorf("could not open state for process %s: %w", processID.String(), err)
-	}
-
 	// Ensure the state root matches the process state root
-	stateRoot, err := st.Root()
+	stateRoot, err := st.RootAsBigInt()
 	if err != nil {
 		setProcessInvalid()
 		return fmt.Errorf("could not get state root for process %s: %w", processID.String(), err)
 	}
-	processStateRoot := state.BigIntToBytes(process.StateRoot.MathBigInt())
-	if !bytes.Equal(stateRoot, processStateRoot) {
+	if !process.StateRoot.Equal((*types.BigInt)(stateRoot)) {
 		setProcessInvalid()
-		return fmt.Errorf("state root is not synced or mismatch for process %s: expected %x, got %s",
-			processID.String(), processStateRoot, stateRoot)
+		return fmt.Errorf("state root is not synced or mismatch for process %s: expected %s, got %s",
+			processID.String(), process.StateRoot, stateRoot)
 	}
 
 	// Fetch the encrypted results accumulator

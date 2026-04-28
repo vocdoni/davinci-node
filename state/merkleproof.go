@@ -9,6 +9,22 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+type arboTransitionTree interface {
+	stateValueReader
+	RootAsBigInt() (*big.Int, error)
+	addBigInt(key *big.Int, values ...*big.Int) error
+	updateBigInt(key *big.Int, values ...*big.Int) error
+	generateGnarkVerifierProofBigInt(key *big.Int) (*arbo.GnarkVerifierProof, error)
+}
+
+type arboProofTree interface {
+	generateGnarkVerifierProofBigInt(key *big.Int) (*arbo.GnarkVerifierProof, error)
+}
+
+type arboRootReader interface {
+	RootAsBigInt() (*big.Int, error)
+}
+
 // ArboProof stores the proof in arbo native types
 type ArboProof struct {
 	// Key+Value hashed through Siblings path, should produce Root hash
@@ -19,8 +35,17 @@ type ArboProof struct {
 }
 
 // GenArboProof generates a ArboProof for the given key
-func (o *State) GenArboProof(key types.StateKey) (*ArboProof, error) {
-	proof, err := o.tree.GenerateGnarkVerifierProofBigInt(key.BigInt()) // TODO: refactor arbo to use uint64 instead
+func (s *State) GenArboProof(key types.StateKey) (*ArboProof, error) {
+	return genArboProof(s, key)
+}
+
+// GenArboProof generates an ArboProof for the given key in the staged batch.
+func (b *Batch) GenArboProof(key types.StateKey) (*ArboProof, error) {
+	return genArboProof(b, key)
+}
+
+func genArboProof(tree arboProofTree, key types.StateKey) (*ArboProof, error) {
+	proof, err := tree.generateGnarkVerifierProofBigInt(key.BigInt()) // TODO: refactor arbo to use uint64 instead
 	if err != nil {
 		return nil, err
 	}
@@ -34,22 +59,35 @@ func (o *State) GenArboProof(key types.StateKey) (*ArboProof, error) {
 
 // ArboProofsFromAddOrUpdate generates an ArboProof before adding (or updating) the given leaf,
 // and another ArboProof after updating, and returns both.
-func (o *State) ArboProofsFromAddOrUpdate(key types.StateKey, v []*big.Int) (*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error) {
+func (s *State) ArboProofsFromAddOrUpdate(key types.StateKey, v []*big.Int) (*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error) {
+	return arboProofsFromAddOrUpdate(s, key, v)
+}
+
+// ArboProofsFromAddOrUpdate generates the proof pair for a staged batch add or
+// update.
+func (b *Batch) ArboProofsFromAddOrUpdate(key types.StateKey, v []*big.Int) (*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error) {
+	return arboProofsFromAddOrUpdate(b, key, v)
+}
+
+func arboProofsFromAddOrUpdate(tree arboTransitionTree, key types.StateKey, v []*big.Int) (*arbo.GnarkVerifierProof, *arbo.GnarkVerifierProof, error) {
 	k := key.BigInt() // TODO: refactor arbo to use uint64 instead
-	mpBefore, err := o.tree.GenerateGnarkVerifierProofBigInt(k)
+	mpBefore, err := tree.generateGnarkVerifierProofBigInt(k)
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, _, err := o.tree.GetBigInt(k); errors.Is(err, arbo.ErrKeyNotFound) {
-		if err := o.tree.AddBigInt(k, v...); err != nil {
+	if _, _, err := tree.getBigInt(k); err != nil {
+		if !errors.Is(err, arbo.ErrKeyNotFound) {
+			return nil, nil, fmt.Errorf("get key failed: %w", err)
+		}
+		if err := tree.addBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("add key failed: %w", err)
 		}
 	} else {
-		if err := o.tree.UpdateBigInt(k, v...); err != nil {
+		if err := tree.updateBigInt(k, v...); err != nil {
 			return nil, nil, fmt.Errorf("update key failed: %w", err)
 		}
 	}
-	mpAfter, err := o.tree.GenerateGnarkVerifierProofBigInt(k)
+	mpAfter, err := tree.generateGnarkVerifierProofBigInt(k)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -122,8 +160,8 @@ func ArboTransitionFromArboProofPair(before, after *arbo.GnarkVerifierProof) *Ar
 
 // ArboTransitionFromAddOrUpdate adds or updates a key in the tree,
 // and returns a ArboTransition.
-func ArboTransitionFromAddOrUpdate(o *State, k types.StateKey, v ...*big.Int) (*ArboTransition, error) {
-	mpBefore, mpAfter, err := o.ArboProofsFromAddOrUpdate(k, v)
+func ArboTransitionFromAddOrUpdate(tree arboTransitionTree, k types.StateKey, v ...*big.Int) (*ArboTransition, error) {
+	mpBefore, mpAfter, err := arboProofsFromAddOrUpdate(tree, k, v)
 	if err != nil {
 		return &ArboTransition{}, err
 	}
@@ -131,13 +169,13 @@ func ArboTransitionFromAddOrUpdate(o *State, k types.StateKey, v ...*big.Int) (*
 }
 
 // ArboTransitionFromNoop returns a NOOP ArboTransition.
-func ArboTransitionFromNoop(o *State) (*ArboTransition, error) {
-	root, err := o.Root()
+func ArboTransitionFromNoop(tree arboRootReader) (*ArboTransition, error) {
+	root, err := tree.RootAsBigInt()
 	if err != nil {
 		return &ArboTransition{}, err
 	}
 	mp := &arbo.GnarkVerifierProof{
-		Root:     arbo.BytesToBigInt(root),
+		Root:     root,
 		Siblings: []*big.Int{},
 		Key:      big.NewInt(0),
 		Value:    big.NewInt(0),
