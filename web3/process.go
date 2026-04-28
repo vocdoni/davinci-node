@@ -3,6 +3,7 @@ package web3
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
@@ -55,10 +56,25 @@ func (c *Contracts) CreateProcess(process *types.Process) (types.ProcessID, *com
 // Process returns the process with the given ID from the ProcessRegistry
 // contract.
 func (c *Contracts) Process(processID types.ProcessID) (*types.Process, error) {
+	return c.processAtBlock(processID, nil)
+}
+
+// ProcessAtBlock returns the process with the given ID as it existed at the
+// specified block number.
+func (c *Contracts) ProcessAtBlock(processID types.ProcessID, blockNumber uint64) (*types.Process, error) {
+	bn := new(big.Int).SetUint64(blockNumber)
+	return c.processAtBlock(processID, bn)
+}
+
+func (c *Contracts) processAtBlock(processID types.ProcessID, blockNumber *big.Int) (*types.Process, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
 
-	p, err := c.processes.GetProcess(&bind.CallOpts{Context: ctx}, processID)
+	callOpts := &bind.CallOpts{Context: ctx}
+	if blockNumber != nil {
+		callOpts.BlockNumber = blockNumber
+	}
+	p, err := c.processes.GetProcess(callOpts, processID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process: %w", err)
 	}
@@ -376,7 +392,7 @@ func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Du
 					c.knownProcessesMutex.Lock()
 					c.knownProcesses[iter.Event.ProcessId] = struct{}{}
 					c.knownProcessesMutex.Unlock()
-					process, err := c.Process(iter.Event.ProcessId)
+					process, err := c.ProcessAtBlock(iter.Event.ProcessId, iter.Event.Raw.BlockNumber)
 					if err != nil {
 						log.Errorw(err, "failed to get process while monitoring process creation")
 						continue
