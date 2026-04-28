@@ -100,6 +100,9 @@ jobs:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cat deadcode.out | reviewdog -f=golint -name=deadcode -reporter=github-pr-review -filter-mode=diff_context
 
+      - name: Compare circuit verifier hashes in pinned contracts
+        run: sh scripts/check_contract_hashes.sh
+
   job_go_test:
     runs-on: [self-hosted]
     permissions:
