@@ -41,6 +41,7 @@ jobs:
           RUN_CIRCUIT_TESTS: true
         run: |
           go test -v ./circuits/... \
+            -p 1 \
             -failfast \
             -vet=off \
             -timeout=1h

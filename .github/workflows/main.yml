@@ -128,6 +128,7 @@ jobs:
           RUN_INTEGRATION_TESTS: false
         run: |
           go test -v ./... \
+            -p 1 \
             -failfast \
             -vet=off \
             -cover \
@@ -150,6 +151,7 @@ jobs:
         run: |
           set -o pipefail
           go test -v ./tests/... \
+            -p 1 \
             -failfast \
             -vet=off \
             -timeout=1h \
