@@ -9,10 +9,10 @@ This document describes the HTTP API endpoints for the Vocdoni Z Sandbox API ser
 - [Error Handling](#error-handling)
 - [Endpoints](#endpoints)
   - [Health Check](#health-check)
+  - [Information](#information)
   - [Process Management](#process-management)
   - [Vote Management](#vote-management)
   - [Vote Status](#vote-status)
-  - [Ballot Proof Information](#ballot-proof-information)
   - [Worker Management](#worker-management)
   - [Sequencer Statistics](#sequencer-statistics)
 
@@ -83,7 +83,9 @@ Simple health check endpoint to verify the API server is running.
 
 #### GET /info
 
-Returns information needed by the client to generate a ballot zkSNARK proof, including circuit URLs, hashes, and smart contract addresses.
+Returns the static proving artifacts plus the set of chain runtimes currently served by the sequencer.
+
+`runtimes` is a JSON object keyed by chain ID. Because JSON object keys are strings, a chain ID such as `11155111` is encoded as `"11155111"` in the response body.
 
 **Response Body**:
 ```json
@@ -94,21 +96,34 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
   "provingKeyHash": "hexString",
   "verificationKeyUrl": "string",
   "verificationKeyHash": "hexString",
-  "contracts": {
-    "process": "address",
-    "stateTransitionVerifier": "address",
-    "resultsVerifier": "address",
-  },
-  "network": { 
-    "sepolia": 11155111
+  "runtimes": {
+    "11155111": {
+      "network": "sepolia",
+      "contracts": {
+        "process": "address",
+        "stateTransitionVerifier": "address",
+        "resultsVerifier": "address"
+      }
+    },
+    "42161": {
+      "network": "arbitrum",
+      "contracts": {
+        "process": "address",
+        "stateTransitionVerifier": "address",
+        "resultsVerifier": "address"
+      }
+    }
   },
   "sequencerAddress": "hexString"
 }
 ```
 
+**Notes**:
+- `sequencerAddress` is included when the workers API is enabled.
+- Clients do not need to send a network or chain ID when calling process-scoped endpoints. The sequencer resolves the target runtime from the `processId` itself.
+
 **Errors**:
 - 50001: Marshaling server JSON failed
-- 50002: Internal server error (invalid network configuration)
 
 
 ### Process Management
@@ -235,6 +250,9 @@ Gets information about an existing voting process. It must exist in the smart co
 **URL Parameters**:
 - processId: Process ID in hexadecimal format
 
+**Notes**:
+- If the embedded process version does not belong to one of the runtimes served by the current sequencer, the endpoint returns HTTP 404.
+
 **Response Body**:
 ```json
 {
@@ -291,6 +309,10 @@ Gets information about a census member of a process.
 
 **URL Parameters**:
 - processId: Process ID in hexadecimal format
+- address: Ethereum address of the participant
+
+**Notes**:
+- If the embedded process version does not belong to one of the runtimes served by the current sequencer, the endpoint returns HTTP 404.
 
 **Response Body**:
 ```json
@@ -374,6 +396,9 @@ Gets an encrypted ballot by its index for a specific process.
 - processId: Process ID in hexadecimal format
 - ballotIndex: ballot index value as a hexadecimal string
 
+**Notes**:
+- If the embedded process version does not belong to one of the runtimes served by the current sequencer, the endpoint returns HTTP 404.
+
 **Response Body**:
 Returns the encrypted ballot if found.
 
@@ -393,6 +418,9 @@ Gets the status of a specific vote within a voting process.
 **URL Parameters**:
 - processId: Process ID in hexadecimal format
 - voteId: Vote ID in hexadecimal format
+
+**Notes**:
+- If the embedded process version does not belong to one of the runtimes served by the current sequencer, the endpoint returns HTTP 404.
 
 **Response Body**:
 ```json

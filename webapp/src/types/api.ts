@@ -6,6 +6,11 @@ export interface ContractAddresses {
   resultsVerifier: string
 }
 
+export interface RuntimeInfo {
+  network: string
+  contracts: ContractAddresses
+}
+
 export interface InfoResponse {
   circuitUrl: string
   circuitHash: string
@@ -13,7 +18,7 @@ export interface InfoResponse {
   provingKeyHash: string
   verificationKeyUrl: string
   verificationKeyHash: string
-  contracts: ContractAddresses
+  runtimes: Record<string, RuntimeInfo>
 }
 
 export interface SequencerStatsResponse {

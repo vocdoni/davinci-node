@@ -6,20 +6,17 @@ import (
 	"net/http"
 	"strconv"
 
-	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/config"
 )
 
 // info returns the information needed by the client to generate a ballot zkSNARK proof
 // GET /info
 func (a *API) info(w http.ResponseWriter, r *http.Request) {
-	_, ok := npbindings.AvailableNetworksByName[a.network]
-	if !ok {
-		ErrGenericInternalServerError.Withf("invalid network configuration for %s", a.network).Write(w)
-		return
-	}
-	contracts := npbindings.GetAllContractAddresses(a.network)
 	// Build the response with the necessary circuit information
+	runtimes := make(map[uint64]SequencerRuntimeInfo, len(a.runtimeInfos))
+	for chainID, runtime := range a.runtimeInfos {
+		runtimes[chainID] = runtime
+	}
 	response := &SequencerInfo{
 		CircuitURL:          config.BallotProofCircuitURL,
 		CircuitHash:         config.BallotProofCircuitHash,
@@ -27,30 +24,13 @@ func (a *API) info(w http.ResponseWriter, r *http.Request) {
 		ProvingKeyHash:      config.BallotProofProvingKeyHash,
 		VerificationKeyURL:  config.BallotProofVerificationKeyURL,
 		VerificationKeyHash: config.BallotProofVerificationKeyHash,
-		Contracts: ContractAddresses{
-			ProcessRegistry:           contracts[npbindings.ProcessRegistryContract],
-			StateTransitionZKVerifier: contracts[npbindings.StateTransitionVerifierGroth16Contract],
-			ResultsZKVerifier:         contracts[npbindings.ResultsVerifierGroth16Contract],
-		},
-		Network: map[string]uint32{
-			a.network: npbindings.AvailableNetworksByName[a.network],
-		},
+		Runtimes:            runtimes,
 	}
 	// if the sequencer has a signer, include the sequencer address
 	if a.sequencerSigner != nil {
 		response.SequencerAddress = a.sequencerSigner.Address().Bytes()
 	}
-
-	// Write the response
-	jsonResponse, err := json.Marshal(response)
-	if err != nil {
-		ErrMarshalingServerJSONFailed.WithErr(err).Write(w)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(jsonResponse)
+	httpWriteJSON(w, response)
 }
 
 // hostLoad reports expvar system metrics in a typed JSON object.

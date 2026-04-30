@@ -4,6 +4,7 @@ import { useSequencerInfo } from '~hooks/useSequencerAPI'
 
 export const Navbar = () => {
   const { data: info, isLoading } = useSequencerInfo()
+  const runtimes = Object.entries(info?.runtimes ?? {})
   
   // Get block explorer URL from runtime config (injected by Docker) or fallback to build-time env var
   const getBlockExplorerUrl = (): string => {
@@ -45,30 +46,46 @@ export const Navbar = () => {
                 </>
               ) : (
                 <>
-                  <Tooltip label={info?.contracts?.process || 'Not available'}>
-                    <HStack spacing={1}>
-                      <Text>Process:</Text>
-                      {info?.contracts?.process ? (
-                        <Link
-                          href={`${blockExplorerUrl}/${info.contracts.process}`}
-                          isExternal
-                          display="inline-flex"
-                          alignItems="center"
-                          gap={1}
-                          color="purple.500"
-                          _hover={{ color: 'purple.600' }}
-                        >
-                          <Badge colorScheme="purple" fontSize="xs" fontFamily="mono">
-                            {info.contracts.process.slice(0, 6)}...{info.contracts.process.slice(-4)}
-                          </Badge>
-                          <FaExternalLinkAlt size={10} />
-                        </Link>
-                      ) : (
-                        <Text color="gray.400" fontSize="xs">N/A</Text>
-                      )}
-                    </HStack>
-                  </Tooltip>
-                  
+                  {runtimes.length === 0 ? (
+                    <Text color="gray.400" fontSize="xs">N/A</Text>
+                  ) : (
+                    runtimes.map(([chainId, runtime]) => {
+                      const processAddress = runtime.contracts.process
+                      const processLabel = `${runtime.network} (${chainId})`
+
+                      return (
+                        <Tooltip key={chainId} label={processAddress || 'Not available'}>
+                          <HStack spacing={1}>
+                            <Text>{processLabel}:</Text>
+                            {processAddress ? (
+                              runtimes.length === 1 ? (
+                                <Link
+                                  href={`${blockExplorerUrl}/${processAddress}`}
+                                  isExternal
+                                  display="inline-flex"
+                                  alignItems="center"
+                                  gap={1}
+                                  color="purple.500"
+                                  _hover={{ color: 'purple.600' }}
+                                >
+                                  <Badge colorScheme="purple" fontSize="xs" fontFamily="mono">
+                                    {processAddress.slice(0, 6)}...{processAddress.slice(-4)}
+                                  </Badge>
+                                  <FaExternalLinkAlt size={10} />
+                                </Link>
+                              ) : (
+                                <Badge colorScheme="purple" fontSize="xs" fontFamily="mono">
+                                  {processAddress.slice(0, 6)}...{processAddress.slice(-4)}
+                                </Badge>
+                              )
+                            ) : (
+                              <Text color="gray.400" fontSize="xs">N/A</Text>
+                            )}
+                          </HStack>
+                        </Tooltip>
+                      )
+                    })
+                  )}
                 </>
               )}
             </HStack>

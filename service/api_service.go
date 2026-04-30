@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/vocdoni/davinci-node/api"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/metadata"
 	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
@@ -22,8 +22,7 @@ type APIService struct {
 	cancel                     context.CancelFunc
 	host                       string
 	port                       int
-	network                    string
-	web3Config                 config.DavinciWeb3Config
+	runtimes                   *web3.RuntimeRouter
 	pinataConfig               metadata.PinataMetadataProviderConfig
 	sequencerWorkersSeed       string
 	workersAuthtokenExpiration time.Duration
@@ -36,8 +35,7 @@ func NewAPI(
 	storage *storage.Storage,
 	host string,
 	port int,
-	network string,
-	web3Config config.DavinciWeb3Config,
+	runtimes *web3.RuntimeRouter,
 	pinataConfig metadata.PinataMetadataProviderConfig,
 	disableLogging bool,
 ) *APIService {
@@ -49,8 +47,7 @@ func NewAPI(
 		storage:      storage,
 		host:         host,
 		port:         port,
-		network:      network,
-		web3Config:   web3Config,
+		runtimes:     runtimes,
 		pinataConfig: pinataConfig,
 	}
 }
@@ -84,8 +81,7 @@ func (as *APIService) Start(ctx context.Context) error {
 		Host:                       as.host,
 		Port:                       as.port,
 		Storage:                    as.storage,
-		Network:                    as.network,
-		Web3Config:                 as.web3Config,
+		Runtimes:                   as.runtimes,
 		SequencerWorkersSeed:       as.sequencerWorkersSeed,
 		WorkersAuthtokenExpiration: as.workersAuthtokenExpiration,
 		WorkerJobTimeout:           as.workersJobTimeout,

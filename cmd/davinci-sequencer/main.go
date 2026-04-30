@@ -10,8 +10,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/log"
@@ -253,23 +251,20 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 
 	// Start API service
-	_, ok := npbindings.AvailableNetworksByName[cfg.Web3.Network]
-	if !ok {
-		return nil, fmt.Errorf("invalid network configuration for %s", cfg.Web3.Network)
+	apiRuntime, err := web3.NewNetworkRuntime(cfg.Web3.Network, services.Contracts, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create API runtime: %w", err)
 	}
-	contracts := npbindings.GetAllContractAddresses(cfg.Web3.Network)
-	web3Conf := config.DavinciWeb3Config{
-		ProcessRegistrySmartContract: contracts[npbindings.ProcessRegistryContract],
-		ResultsZKVerifier:            contracts[npbindings.ResultsVerifierGroth16Contract],
-		StateTransitionZKVerifier:    contracts[npbindings.StateTransitionVerifierGroth16Contract],
+	apiRuntimes, err := web3.NewRuntimeRouter(apiRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create API runtime router: %w", err)
 	}
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
 	services.API = service.NewAPI(
 		services.Storage,
 		cfg.API.Host,
 		cfg.API.Port,
-		cfg.Web3.Network,
-		web3Conf,
+		apiRuntimes,
 		metadata.PinataMetadataProviderConfig{
 			HostnameURL:  cfg.Metadata.PinataHostnameURL,
 			HostnameJWT:  cfg.Metadata.PinataHostnameJWT,
