@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -135,8 +136,6 @@ func (a *API) Router() *chi.Mux {
 
 // registerHandlers registers all the HTTP handlers for the API endpoints.
 func (a *API) registerHandlers() {
-	processScoped := a.router.With(skipUnknownProcessIDMiddleware(a.allowedVersions))
-
 	// health check endpoint
 	log.Infow("register handler", "endpoint", PingEndpoint, "method", "GET")
 	a.router.Get(PingEndpoint, func(w http.ResponseWriter, r *http.Request) {
@@ -157,11 +156,11 @@ func (a *API) registerHandlers() {
 
 	// processes endpoints
 	log.Infow("register handler", "endpoint", ProcessEndpoint, "method", "GET")
-	processScoped.Get(ProcessEndpoint, a.process)
+	a.router.Get(ProcessEndpoint, a.process)
 	log.Infow("register handler", "endpoint", ProcessesEndpoint, "method", "GET")
 	a.router.Get(ProcessesEndpoint, a.processList)
 	log.Infow("register handler", "endpoint", CensusParticipantEndpoint, "method", "GET")
-	processScoped.Get(CensusParticipantEndpoint, a.processParticipant)
+	a.router.Get(CensusParticipantEndpoint, a.processParticipant)
 	log.Infow("register handler", "endpoint", NewEncryptionKeysEndpoint, "method", "POST")
 	a.router.Post(NewEncryptionKeysEndpoint, a.processEncryptionKeys)
 
@@ -175,11 +174,11 @@ func (a *API) registerHandlers() {
 	log.Infow("register handler", "endpoint", VotesEndpoint, "method", "POST")
 	a.router.Post(VotesEndpoint, a.newVote)
 	log.Infow("register handler", "endpoint", VoteStatusEndpoint, "method", "GET")
-	processScoped.Get(VoteStatusEndpoint, a.voteStatus)
+	a.router.Get(VoteStatusEndpoint, a.voteStatus)
 	log.Infow("register handler", "endpoint", VoteByAddressEndpoint, "method", "GET")
-	processScoped.Get(VoteByAddressEndpoint, a.voteByAddress)
+	a.router.Get(VoteByAddressEndpoint, a.voteByAddress)
 	log.Infow("register handler", "endpoint", BallotByIndexEndpoint, "method", "GET")
-	processScoped.Get(BallotByIndexEndpoint, a.ballotByIndex)
+	a.router.Get(BallotByIndexEndpoint, a.ballotByIndex)
 
 	// sequencer workers stats endpoint - available even without worker mode
 	log.Infow("register handler", "endpoint", SequencerWorkersEndpoint, "method", "GET")
@@ -201,6 +200,8 @@ func (a *API) initRouter() {
 	a.router.Use(middleware.Throttle(100))
 	a.router.Use(middleware.ThrottleBacklog(5000, 40000, 60*time.Second))
 	a.router.Use(middleware.Timeout(45 * time.Second))
+	// Add middleware to skip unknown process ID versions
+	a.router.Use(skipUnknownProcessIDMiddleware(a.allowedVersions))
 
 	a.registerHandlers()
 }
@@ -273,15 +274,60 @@ func apiRuntimeData(router *web3.RuntimeRouter) (map[[4]byte]struct{}, map[uint6
 			return nil, nil, fmt.Errorf("duplicate runtime chain ID %d", chainID)
 		}
 
+		contractsInfo, err := apiContractAddresses(runtime.Contracts)
+		if err != nil {
+			return nil, nil, fmt.Errorf("runtime %q: %w", runtime.Network, err)
+		}
+
 		allowedVersions[runtime.ProcessIDVersion] = struct{}{}
 		runtimeInfos[chainID] = SequencerRuntimeInfo{
-			Network: runtime.Network,
-			Contracts: ContractAddresses{
-				ProcessRegistry:           runtime.Contracts.ContractsAddresses.ProcessRegistry.String(),
-				StateTransitionZKVerifier: runtime.Contracts.ContractsAddresses.StateTransitionZKVerifier.String(),
-				ResultsZKVerifier:         runtime.Contracts.ContractsAddresses.ResultsZKVerifier.String(),
-			},
+			Network:   runtime.Network,
+			Contracts: contractsInfo,
 		}
 	}
 	return allowedVersions, runtimeInfos, nil
+}
+
+func apiContractAddresses(contracts *web3.Contracts) (ContractAddresses, error) {
+	if contracts == nil {
+		return ContractAddresses{}, fmt.Errorf("nil contracts")
+	}
+	if contracts.ContractsAddresses == nil {
+		return ContractAddresses{}, fmt.Errorf("nil contract addresses")
+	}
+
+	processRegistry := contracts.ContractsAddresses.ProcessRegistry
+	if processRegistry == (common.Address{}) {
+		return ContractAddresses{}, fmt.Errorf("process registry address is required")
+	}
+
+	stateTransition := contracts.ContractsAddresses.StateTransitionZKVerifier
+	if stateTransition == (common.Address{}) {
+		addr, err := contracts.StateTransitionVerifierAddress()
+		if err != nil {
+			return ContractAddresses{}, fmt.Errorf("resolve state transition verifier address: %w", err)
+		}
+		stateTransition = common.HexToAddress(addr)
+	}
+	if stateTransition == (common.Address{}) {
+		return ContractAddresses{}, fmt.Errorf("state transition verifier address is required")
+	}
+
+	results := contracts.ContractsAddresses.ResultsZKVerifier
+	if results == (common.Address{}) {
+		addr, err := contracts.ResultsVerifierAddress()
+		if err != nil {
+			return ContractAddresses{}, fmt.Errorf("resolve results verifier address: %w", err)
+		}
+		results = common.HexToAddress(addr)
+	}
+	if results == (common.Address{}) {
+		return ContractAddresses{}, fmt.Errorf("results verifier address is required")
+	}
+
+	return ContractAddresses{
+		ProcessRegistry:           processRegistry.String(),
+		StateTransitionZKVerifier: stateTransition.String(),
+		ResultsZKVerifier:         results.String(),
+	}, nil
 }

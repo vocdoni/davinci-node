@@ -147,7 +147,7 @@ func loggingMiddlewareWithConfig(config LoggingConfig) func(http.Handler) http.H
 }
 
 // skipUnknownProcessIDMiddleware allows to skip requests with unknown
-// ProcessID versions. It checks the "processID" URL parameter and compares
+// ProcessID versions. It checks the "processId" URL parameter and compares
 // its version against the provided allowedVersions. If there is no match, it
 // responds with 404 Not Found. If the route does not contain a processID
 // parameter, it simply calls the next handler.
