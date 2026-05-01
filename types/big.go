@@ -161,10 +161,6 @@ func (i *BigInt) LessThanOrEqual(j *BigInt) bool {
 	return i.MathBigInt().Cmp(j.MathBigInt()) <= 0
 }
 
-func (i *BigInt) ToFF(field *big.Int) *BigInt {
-	return (*BigInt)(new(big.Int).Mod(i.MathBigInt(), field))
-}
-
 func (i *BigInt) IsInField(field *big.Int) bool {
 	if i == nil {
 		return false

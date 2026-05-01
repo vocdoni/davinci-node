@@ -35,13 +35,17 @@ func (v *ballotProofVerifier) VerifyBallotProof(
 	if proof == nil {
 		return nil, fmt.Errorf("ballot proof is required")
 	}
+	if !address.BigInt().IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("address is not in the scalar field")
+	}
+
 	rawBallotProofVK, err := v.rawVerifyingKey()
 	if err != nil {
 		return nil, fmt.Errorf("load ballot proof verification key: %w", err)
 	}
 
 	verifiedProof, err := v.verifyAndConvertFn(rawBallotProofVK, proof, []string{
-		address.BigInt().ToFF(params.BallotProofCurve.ScalarField()).String(),
+		address.BigInt().String(),
 		voteID.BigInt().String(),
 		ballotInputsHash.String(),
 	})

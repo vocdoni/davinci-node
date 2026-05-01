@@ -77,14 +77,14 @@ type VotesProofs struct {
 // New creates or opens a State stored in the passed database.
 // The processID is used as a prefix for the keys in the database.
 func New(db db.Database, processID types.ProcessID) (*State, error) {
-	// the process ID must be in the scalar field of the circuit curve
-	ffProcessID := processID.ToFF(params.StateTransitionCurve.ScalarField())
-
-	if !ffProcessID.IsValid() {
+	if !processID.BigInt().IsInField(params.StateTransitionCurve.ScalarField()) {
+		return nil, fmt.Errorf("processID is not in field")
+	}
+	if !processID.IsValid() {
 		return nil, fmt.Errorf("processID is not valid")
 	}
 
-	pdb := prefixeddb.NewPrefixedDatabase(db, ffProcessID.Bytes())
+	pdb := prefixeddb.NewPrefixedDatabase(db, processID.Bytes())
 	tree, err := arbo.NewTree(arbo.Config{
 		Database:     pdb,
 		MaxLevels:    params.StateTreeMaxLevels,
@@ -96,7 +96,7 @@ func New(db db.Database, processID types.ProcessID) (*State, error) {
 	return &State{
 		db:        pdb,
 		tree:      tree,
-		processID: ffProcessID,
+		processID: processID,
 	}, nil
 }
 

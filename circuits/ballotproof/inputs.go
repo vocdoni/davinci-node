@@ -81,18 +81,22 @@ func BallotInputsHashGnark(
 	if !weight.IsInField(params.BallotProofCurve.ScalarField()) {
 		return nil, fmt.Errorf("weight is not in the scalar field")
 	}
-	// safe address and processID
-	ffAddress := address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	if !address.BigInt().IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("address is not in the scalar field")
+	}
+	if !processID.BigInt().IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("processID is not in the scalar field")
+	}
+
 	// convert the encryption key to twisted edwards form
 	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(encryptionKey.Point())
 	// compose a list with the inputs of the circuit to hash them
 	ballotInputHash, err := spec.BallotInputsHashRTE(
-		ffProcessID.MathBigInt(),
+		processID.MathBigInt(),
 		ballotMode,
 		encryptionKeyXTE,
 		encryptionKeyYTE,
-		ffAddress.MathBigInt(),
+		address.BigInt().MathBigInt(),
 		voteID.Uint64(),
 		ballot.FromRTEtoTE().BigInts(),
 		weight.MathBigInt(),
@@ -119,19 +123,22 @@ func BallotInputsHashIden3(
 	if !weight.IsInField(params.BallotProofCurve.ScalarField()) {
 		return nil, fmt.Errorf("weight is not in the scalar field")
 	}
-	// safe address and processID
-	ffAddress := address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ffProcessID := processID.BigInt().ToFF(params.BallotProofCurve.ScalarField())
+	if !address.BigInt().IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("address is not in the scalar field")
+	}
+	if !processID.BigInt().IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("processID is not in the scalar field")
+	}
 
 	// convert the encryption key to twisted edwards form
 	encryptionKeyXTE, encryptionKeyYTE := format.FromRTEtoTE(encryptionKey.Point())
 
 	ballotInputHash, err := spec.BallotInputsHashRTE(
-		ffProcessID.MathBigInt(),
+		processID.MathBigInt(),
 		ballotMode,
 		encryptionKeyXTE,
 		encryptionKeyYTE,
-		ffAddress.MathBigInt(),
+		address.BigInt().MathBigInt(),
 		voteID.Uint64(),
 		ballot.BigInts(),
 		weight.MathBigInt(),
@@ -151,6 +158,13 @@ func BallotInputsHashIden3(
 func GenerateBallotProofInputs(
 	inputs *BallotProofInputs,
 ) (*BallotProofInputsResult, error) {
+	if !inputs.Address.BigInt().IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("address is not in the scalar field")
+	}
+	if !inputs.ProcessID.BigInt().IsInField(params.BallotProofCurve.ScalarField()) {
+		return nil, fmt.Errorf("processID is not in the scalar field")
+	}
+
 	// pad the field values to the number of circuits.FieldsPerBallot
 	fields := [params.FieldsPerBallot]*big.Int{}
 	for i := range fields {
@@ -211,9 +225,9 @@ func GenerateBallotProofInputs(
 		CircomInputs: &CircomInputs{
 			Fields:        circuits.BigIntArrayToNInternal(fields[:], params.FieldsPerBallot),
 			BallotMode:    new(types.BigInt).SetBigInt(packedBallot),
-			Address:       inputs.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField()),
+			Address:       inputs.Address.BigInt(),
 			Weight:        inputs.Weight,
-			ProcessID:     inputs.ProcessID.BigInt().ToFF(params.BallotProofCurve.ScalarField()),
+			ProcessID:     inputs.ProcessID.BigInt(),
 			VoteID:        new(types.BigInt).SetBigInt(voteID.BigInt()),
 			EncryptionKey: types.SliceOf([]*big.Int{circomEncryptionKeyX, circomEncryptionKeyY}, types.BigIntConverter),
 			K:             inputs.K,

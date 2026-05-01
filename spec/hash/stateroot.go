@@ -25,8 +25,13 @@ const (
 
 // StateRoot computes the state root hash for the process parameters.
 func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, ballotMode *big.Int) (*big.Int, error) {
-	if processID == nil || censusOrigin == nil || pubKeyX == nil || pubKeyY == nil || ballotMode == nil {
-		return nil, fmt.Errorf("state root: all inputs are required")
+	for _, bi := range []*big.Int{processID, censusOrigin, pubKeyX, pubKeyY, ballotMode} {
+		if bi == nil {
+			return nil, fmt.Errorf("state root: all inputs are required")
+		}
+		if bi.Sign() < 0 || bi.Cmp(params.StateTransitionCurve.ScalarField()) >= 0 {
+			return nil, fmt.Errorf("state root: all inputs must be in field")
+		}
 	}
 
 	leafDomain := bigFromUint64(1)
@@ -35,8 +40,7 @@ func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, ballotMode *big.Int) (
 	keyEncryptionKey := bigFromUint64(params.StateKeyEncryptionKey)
 	keyCensusOrigin := bigFromUint64(params.StateKeyCensusOrigin)
 
-	leafProcess, err := PoseidonHash(keyProcessID,
-		new(big.Int).Mod(processID, params.StateTransitionCurve.ScalarField()), leafDomain)
+	leafProcess, err := PoseidonHash(keyProcessID, processID, leafDomain)
 	if err != nil {
 		return nil, fmt.Errorf("state root: leaf process: %w", err)
 	}

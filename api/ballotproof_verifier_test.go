@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
@@ -42,7 +41,7 @@ func TestBallotProofVerifierVerifyBallotProof(t *testing.T) {
 	c.Assert(gotVK, qt.DeepEquals, expectedVK)
 	c.Assert(gotProof, qt.Equals, circomProof)
 	c.Assert(gotSignals, qt.DeepEquals, []string{
-		address.BigInt().ToFF(params.BallotProofCurve.ScalarField()).String(),
+		address.BigInt().String(),
 		voteID.BigInt().String(),
 		ballotInputsHash.String(),
 	})

@@ -49,7 +49,7 @@ func TestLeafResultsConstants(t *testing.T) {
 }
 
 func TestStateRootMatchesManualConstruction(t *testing.T) {
-	var b [32]byte
+	var b [31]byte
 	rand.Read(b[:])
 	processID := new(big.Int).SetBytes(b[:])
 	censusOrigin := big.NewInt(6)
@@ -74,8 +74,7 @@ func TestStateRootMatchesManualConstruction(t *testing.T) {
 	keyCensusOrigin := big.NewInt(int64(params.StateKeyCensusOrigin))
 	keyResults := big.NewInt(int64(params.StateKeyResults))
 
-	leafProcess, err := PoseidonHash(keyProcessID,
-		new(big.Int).Mod(processID, params.StateTransitionCurve.ScalarField()), leafDomain)
+	leafProcess, err := PoseidonHash(keyProcessID, processID, leafDomain)
 	if err != nil {
 		t.Fatalf("leafProcess error: %v", err)
 	}

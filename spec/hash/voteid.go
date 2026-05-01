@@ -10,15 +10,15 @@ import (
 // VoteID calculates the poseidon hash of processID, address, and k.
 // The hash is truncated to VoteIDHashBits and shifted into the upper half.
 func VoteID(processID, address, k *big.Int) (*big.Int, error) {
-	if processID == nil || address == nil || k == nil {
-		return nil, fmt.Errorf("processID, address, and k are required")
+	for _, bi := range []*big.Int{processID, address, k} {
+		if bi == nil {
+			return nil, fmt.Errorf("processID, address, and k are required")
+		}
+		if bi.Sign() < 0 || bi.Cmp(params.BallotProofCurve.ScalarField()) >= 0 {
+			return nil, fmt.Errorf("processID, address, and k must be in field")
+		}
 	}
-	baseField := params.BallotProofCurve.ScalarField()
-	h, err := PoseidonHash(
-		new(big.Int).Mod(processID, baseField),
-		new(big.Int).Mod(address, baseField),
-		new(big.Int).Mod(k, baseField),
-	)
+	h, err := PoseidonHash(processID, address, k)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate vote ID: %w", err)
 	}

@@ -12,7 +12,6 @@ import (
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	spechash "github.com/vocdoni/davinci-node/spec/hash"
-	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -22,7 +21,7 @@ func ensureProcess(t *testing.T, stg *Storage, pid types.ProcessID) {
 	encryptionKey := testutil.RandomEncryptionPubKey()
 	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
 	stateRoot, err := spechash.StateRoot(
-		pid.ToFF(params.StateTransitionCurve.ScalarField()).MathBigInt(),
+		pid.MathBigInt(),
 		censusOrigin.BigInt().MathBigInt(),
 		encryptionKey.X.MathBigInt(),
 		encryptionKey.Y.MathBigInt(),

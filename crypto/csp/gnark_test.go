@@ -53,15 +53,12 @@ func TestCSPProofCircuit(t *testing.T) {
 	gnarkProof, err := CensusProofToCSPProof(types.CensusOriginCSPEdDSABabyJubJubV1.CurveID(), proof)
 	c.Assert(err, qt.IsNil)
 
-	ffPID := types.BigIntConverter(processID.MathBigInt()).ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
-	ffAddress := types.BigIntConverter(userAddress.Big()).ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
-	ffWeight := userWeight.ToFF(params.BallotProofCurve.ScalarField()).MathBigInt()
 	assignments := &cspProofCircuit{
 		Proof:      *gnarkProof,
 		CensusRoot: proof.Root.BigInt().MathBigInt(),
-		ProcessID:  ffPID,
-		Address:    ffAddress,
-		Weight:     ffWeight,
+		ProcessID:  processID.MathBigInt(),
+		Address:    userAddress.Big(),
+		Weight:     userWeight.MathBigInt(),
 	}
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&cspProofCircuit{}, assignments,
