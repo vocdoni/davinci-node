@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
 	"github.com/vocdoni/davinci-node/crypto/ecc"
@@ -20,6 +22,7 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
 func TestStateSync(t *testing.T) {
@@ -265,6 +268,81 @@ func TestStateSyncSequentialPerProcess(t *testing.T) {
 	}
 }
 
+func TestResolveBlobFetcherForProcessErrors(t *testing.T) {
+	c := qt.New(t)
+
+	processID := testutil.FixedProcessID()
+
+	blobFetcher, err := resolveBlobFetcherForProcess(nil, processID)
+	c.Assert(blobFetcher, qt.IsNil)
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "blob fetcher resolver is not configured")
+
+	blobFetcher, err = resolveBlobFetcherForProcess(&testBlobFetcherResolver{
+		errByProcess: map[types.ProcessID]error{
+			processID: fmt.Errorf("boom"),
+		},
+	}, processID)
+	c.Assert(blobFetcher, qt.IsNil)
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "resolve blob fetcher for process")
+
+	blobFetcher, err = resolveBlobFetcherForProcess(&testBlobFetcherResolver{}, processID)
+	c.Assert(blobFetcher, qt.IsNil)
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "nil blob fetcher")
+}
+
+func TestStateSyncFetchBlobAndApplyUsesResolvedBlobFetcher(t *testing.T) {
+	c := qt.New(t)
+
+	ctx := context.Background()
+	store := storage.New(memdb.New())
+	defer store.Close()
+
+	processID := testutil.FixedProcessID()
+	publicKey, _, err := elgamal.GenerateKey(state.Curve)
+	c.Assert(err, qt.IsNil)
+
+	storedState, err := state.New(store.StateDB(), processID)
+	c.Assert(err, qt.IsNil)
+	defer func() {
+		c.Assert(storedState.Close(), qt.IsNil)
+	}()
+	err = storedState.Initialize(
+		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
+		testutil.BallotModePacked(),
+		types.EncryptionKeyFromPoint(publicKey),
+	)
+	c.Assert(err, qt.IsNil)
+	storedOldRoot, err := storedState.RootAsBigInt()
+	c.Assert(err, qt.IsNil)
+
+	txHash := common.HexToHash("0x1234")
+	selectedFetcher := &testBlobFetcher{}
+	otherFetcher := &testBlobFetcher{}
+	stateSync := NewStateSync(&testBlobFetcherResolver{
+		fetchersByProcess: map[types.ProcessID]web3.BlobFetcher{
+			processID:                          selectedFetcher,
+			testutil.DeterministicProcessID(2): otherFetcher,
+		},
+	}, store)
+
+	err = stateSync.fetchBlobAndApply(ctx, &types.ProcessWithChanges{
+		ProcessID: processID,
+		StateRootChange: &types.StateRootChange{
+			OldStateRoot: (*types.BigInt)(storedOldRoot),
+			NewStateRoot: testutil.DeterministicStateRoot(20),
+			TxHash:       &txHash,
+		},
+	})
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "no blobs found")
+	c.Assert(selectedFetcher.txHashes, qt.HasLen, 1)
+	c.Assert(selectedFetcher.txHashes[0], qt.DeepEquals, txHash)
+	c.Assert(otherFetcher.txHashes, qt.HasLen, 0)
+}
+
 func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, offset int) []*state.Vote {
 	c := qt.New(t)
 	votes := make([]*state.Vote, numVotes)
@@ -294,8 +372,35 @@ func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, 
 			VoteID:            testutil.RandomVoteID(),
 			Ballot:            ballot,
 			ReencryptedBallot: reencryptedBallot,
+			Weight:            big.NewInt(testutil.Weight),
 		}
 	}
 
 	return votes
+}
+
+type testBlobFetcher struct {
+	blobSidecars []*types.BlobSidecar
+	txHashes     []common.Hash
+	err          error
+}
+
+func (f *testBlobFetcher) BlobsByTxHash(_ context.Context, txHash common.Hash) ([]*types.BlobSidecar, error) {
+	f.txHashes = append(f.txHashes, txHash)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.blobSidecars, nil
+}
+
+type testBlobFetcherResolver struct {
+	fetchersByProcess map[types.ProcessID]web3.BlobFetcher
+	errByProcess      map[types.ProcessID]error
+}
+
+func (r *testBlobFetcherResolver) BlobFetcherForProcess(processID types.ProcessID) (web3.BlobFetcher, error) {
+	if err, ok := r.errByProcess[processID]; ok {
+		return nil, err
+	}
+	return r.fetchersByProcess[processID], nil
 }

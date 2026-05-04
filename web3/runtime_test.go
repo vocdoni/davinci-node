@@ -105,6 +105,10 @@ func TestNewRuntimeRouter(t *testing.T) {
 	contracts, err := router.ContractsForProcess(processID)
 	c.Assert(err, qt.IsNil)
 	c.Assert(contracts, qt.Equals, celoRuntime.Contracts)
+
+	blobFetcher, err := router.BlobFetcherForProcess(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(blobFetcher, qt.Equals, celoRuntime.Contracts)
 }
 
 func TestNewRuntimeRouterRejectsDuplicateVersions(t *testing.T) {

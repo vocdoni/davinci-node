@@ -314,7 +314,7 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 		return fmt.Errorf("failed to start census downloader: %w", err)
 	}
 	// Start StateSync
-	stateSync := service.NewStateSync(contracts, s.storage)
+	stateSync := service.NewStateSync(runtimeRouter, s.storage)
 	if err := stateSync.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start state sync: %v", err)
 	}

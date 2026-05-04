@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"expvar"
+	"maps"
 	"net/http"
 	"strconv"
 
@@ -14,9 +15,7 @@ import (
 func (a *API) info(w http.ResponseWriter, r *http.Request) {
 	// Build the response with the necessary circuit information
 	runtimes := make(map[uint64]SequencerRuntimeInfo, len(a.runtimeInfos))
-	for chainID, runtime := range a.runtimeInfos {
-		runtimes[chainID] = runtime
-	}
+	maps.Copy(runtimes, a.runtimeInfos)
 	response := &SequencerInfo{
 		CircuitURL:          config.BallotProofCircuitURL,
 		CircuitHash:         config.BallotProofCircuitHash,

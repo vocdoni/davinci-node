@@ -9,9 +9,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
-var _ ContractsService = &MockContracts{}
+var (
+	_ ContractsService                = &MockContracts{}
+	_ web3.BlobFetcher                = &MockContracts{}
+	_ web3.ProcessBlobFetcherResolver = &MockContracts{}
+)
 
 // MockContracts implements a mock version of web3.Contracts for testing
 type MockContracts struct {
@@ -116,6 +121,10 @@ func (m *MockContracts) BlobsByTxHash(ctx context.Context, txHash common.Hash,
 		}}, nil
 	}
 	return []*types.BlobSidecar{}, nil
+}
+
+func (m *MockContracts) BlobFetcherForProcess(_ types.ProcessID) (web3.BlobFetcher, error) {
+	return m, nil
 }
 
 func (m *MockContracts) MockStateRootChange(_ context.Context, process *types.ProcessWithChanges) error {

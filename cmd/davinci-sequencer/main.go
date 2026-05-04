@@ -230,6 +230,15 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		"account", services.Contracts.AccountAddress().Hex(),
 		"gasMultiplier", services.Contracts.GasMultiplier)
 
+	runtime, err := web3.NewNetworkRuntime(cfg.Web3.Network, services.Contracts, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create runtime: %w", err)
+	}
+	runtimeRouter, err := web3.NewRuntimeRouter(runtime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create runtime router: %w", err)
+	}
+
 	// Start census downloader
 	log.Info("starting census downloader")
 	services.CensusDownloader = service.NewCensusDownloader(services.Contracts, services.Storage, service.DefaultCensusDownloaderConfig)
@@ -238,7 +247,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	}
 
 	// Start StateSync
-	stateSync := service.NewStateSync(services.Contracts, services.Storage)
+	stateSync := service.NewStateSync(runtimeRouter, services.Storage)
 	if err := stateSync.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start state sync: %v", err)
 	}
@@ -250,15 +259,6 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		return nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}
 
-	// Start API service
-	apiRuntime, err := web3.NewNetworkRuntime(cfg.Web3.Network, services.Contracts, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create API runtime: %w", err)
-	}
-	runtimeRouter, err := web3.NewRuntimeRouter(apiRuntime)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create API runtime router: %w", err)
-	}
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
 	services.API = service.NewAPI(
 		services.Storage,

@@ -1,6 +1,7 @@
 package web3
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -10,6 +11,17 @@ import (
 
 // Since ProcessIDVersion is a uint32, we limit the chain ID to 32 bits
 const maxProcessIDChainID = uint64(^uint32(0))
+
+// BlobFetcher fetches blob sidecars from a state transition transaction.
+type BlobFetcher interface {
+	BlobsByTxHash(ctx context.Context, txHash common.Hash) ([]*types.BlobSidecar, error)
+}
+
+// ProcessBlobFetcherResolver resolves a blob fetcher for process-scoped state
+// synchronization.
+type ProcessBlobFetcherResolver interface {
+	BlobFetcherForProcess(processID types.ProcessID) (BlobFetcher, error)
+}
 
 // NetworkRuntime groups all chain-specific runtime state needed by the
 // sequencer for one enabled network.
@@ -110,6 +122,16 @@ func (r *RuntimeRouter) ContractsForProcess(processID types.ProcessID) (*Contrac
 		return nil, fmt.Errorf("runtime not found for process version %x", processID.Version())
 	}
 	return runtime.Contracts, nil
+}
+
+// BlobFetcherForProcess resolves the blob fetcher associated with the provided
+// process ID.
+func (r *RuntimeRouter) BlobFetcherForProcess(processID types.ProcessID) (BlobFetcher, error) {
+	contracts, err := r.ContractsForProcess(processID)
+	if err != nil {
+		return nil, err
+	}
+	return contracts, nil
 }
 
 // Runtimes returns the configured runtimes in registration order.

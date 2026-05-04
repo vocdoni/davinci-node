@@ -117,7 +117,7 @@ func NewTestServices(
 	services.CensusDownloader = cd
 
 	// Start StateSync
-	stateSync := service.NewStateSync(contracts, stg)
+	stateSync := service.NewStateSync(runtimeRouter, stg)
 	if err := stateSync.Start(ctx); err != nil {
 		cd.Stop()
 		vp.Stop()

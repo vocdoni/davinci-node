@@ -37,7 +37,6 @@ type ContractsService interface {
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
-	BlobsByTxHash(ctx context.Context, txHash common.Hash) ([]*types.BlobSidecar, error)
 }
 
 // NewProcessMonitor creates a new ProcessMonitor service. If storage is nil, it uses a memory storage.

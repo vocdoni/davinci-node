@@ -9,17 +9,18 @@ import (
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
 // StateSync is a service that synchronizes local state by fetching blobs
 // from state transition notifications and applying them to the state tree.
 type StateSync struct {
-	contracts ContractsService
-	storage   *storage.Storage
-	queue     chan *types.ProcessWithChanges
-	applyFn   func(context.Context, *types.ProcessWithChanges) error
-	workers   sync.Map
-	cancel    context.CancelFunc
+	blobFetcherResolver web3.ProcessBlobFetcherResolver
+	storage             *storage.Storage
+	queue               chan *types.ProcessWithChanges
+	applyFn             func(context.Context, *types.ProcessWithChanges) error
+	workers             sync.Map
+	cancel              context.CancelFunc
 }
 
 type stateSyncWorker struct {
@@ -29,13 +30,13 @@ type stateSyncWorker struct {
 
 // NewStateSync creates a new StateSync service.
 func NewStateSync(
-	contracts ContractsService,
+	resolver web3.ProcessBlobFetcherResolver,
 	stg *storage.Storage,
 ) *StateSync {
 	ss := &StateSync{
-		contracts: contracts,
-		storage:   stg,
-		queue:     make(chan *types.ProcessWithChanges, 100),
+		blobFetcherResolver: resolver,
+		storage:             stg,
+		queue:               make(chan *types.ProcessWithChanges, 100),
 	}
 	ss.applyFn = ss.fetchBlobAndApply
 	return ss
@@ -117,8 +118,13 @@ func (ss *StateSync) fetchBlobAndApply(ctx context.Context, process *types.Proce
 			process.OldStateRoot.String(), err)
 	}
 
+	blobFetcher, err := resolveBlobFetcherForProcess(ss.blobFetcherResolver, process.ProcessID)
+	if err != nil {
+		return err
+	}
+
 	// Fetch blob data using the transaction hash
-	blobs, err := ss.contracts.BlobsByTxHash(ctx, *process.TxHash)
+	blobs, err := blobFetcher.BlobsByTxHash(ctx, *process.TxHash)
 	if err != nil {
 		return fmt.Errorf("failed to fetch blobs for tx %s: %w", process.TxHash.String(), err)
 	}
@@ -172,6 +178,21 @@ func newStateSyncWorker(applyFn func(context.Context, *types.ProcessWithChanges)
 		queue:   make(chan *types.ProcessWithChanges, 100),
 		applyFn: applyFn,
 	}
+}
+
+func resolveBlobFetcherForProcess(resolver web3.ProcessBlobFetcherResolver, processID types.ProcessID) (web3.BlobFetcher, error) {
+	if resolver == nil {
+		return nil, fmt.Errorf("blob fetcher resolver is not configured")
+	}
+
+	blobFetcher, err := resolver.BlobFetcherForProcess(processID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve blob fetcher for process %s: %w", processID.String(), err)
+	}
+	if blobFetcher == nil {
+		return nil, fmt.Errorf("resolve blob fetcher for process %s: nil blob fetcher", processID.String())
+	}
+	return blobFetcher, nil
 }
 
 func (ssw *stateSyncWorker) run(ctx context.Context) {
