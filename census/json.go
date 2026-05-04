@@ -61,6 +61,7 @@ func (jsonImporter) ValidURI(targetURI string) bool {
 func (jsonImporter) ImportCensus(
 	ctx context.Context,
 	censusDB *censusdb.CensusDB,
+	chainID uint64,
 	census *types.Census,
 	_ int,
 ) (int, error) {
@@ -83,7 +84,7 @@ func (jsonImporter) ImportCensus(
 	if err != nil {
 		return 0, fmt.Errorf("failed to download census merkle tree from %s: %w", census.CensusURI, err)
 	}
-	size, err := importJSONDump(censusDB, jsonFormat, census.CensusRoot, jsonReader)
+	size, err := importJSONDump(censusDB, jsonFormat, chainID, census, jsonReader)
 	if err != nil {
 		return 0, fmt.Errorf("failed to import census merkle tree from %s: %w", census.CensusURI, err)
 	}
@@ -163,16 +164,22 @@ func jsonReader(res *http.Response) (io.Reader, JSONFormat, error) {
 func importJSONDump(
 	censusDB *censusdb.CensusDB,
 	format JSONFormat,
-	expectedRoot types.HexBytes,
+	chainID uint64,
+	census *types.Census,
 	dataReader io.Reader,
 ) (int, error) {
 	// Import the census merkle tree dump into the census DB
 	var err error
 	var ref *censusdb.CensusRef
+	expectedRoot := census.CensusRoot
 	switch format {
 	case JSONL:
-		// Import JSONL directly into census DB by expected root
-		if ref, err = censusDB.Import(expectedRoot, dataReader); err != nil {
+		if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+			ref, err = censusDB.ImportByScopedAddress(chainID, census.ContractAddress, expectedRoot, dataReader)
+		} else {
+			ref, err = censusDB.Import(expectedRoot, dataReader)
+		}
+		if err != nil {
 			return 0, fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 	case JSONArray:
@@ -183,7 +190,12 @@ func importJSONDump(
 		}
 		// Import JSON array dump into census DB
 
-		if ref, err = censusDB.ImportAll(dump); err != nil {
+		if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+			ref, err = censusDB.ImportAllByScopedAddress(chainID, census.ContractAddress, dump)
+		} else {
+			ref, err = censusDB.ImportAll(dump)
+		}
+		if err != nil {
 			return 0, fmt.Errorf("failed to import %s census dump, with expected root '%s': %w", format.String(), expectedRoot.String(), err)
 		}
 		// Verify the imported census root matches the expected root

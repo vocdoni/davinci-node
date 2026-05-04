@@ -135,6 +135,7 @@ func (d *graphqlImporter) ValidURI(targetURI string) bool {
 func (d *graphqlImporter) ImportCensus(
 	ctx context.Context,
 	censusDB *censusdb.CensusDB,
+	chainID uint64,
 	census *types.Census,
 	processedElements int,
 ) (int, error) {
@@ -154,20 +155,24 @@ func (d *graphqlImporter) ImportCensus(
 	}
 	// If the census does not exists, import all the received events as new census, otherwise
 	// update the existing census with the new events
-	if !censusDB.ExistsByAddress(census.ContractAddress) {
+	if !censusDB.ExistsByScopedAddress(chainID, census.ContractAddress) {
 		// Import all the available events into the census DB
-		if _, err := censusDB.ImportEventsByAddress(census.ContractAddress, census.CensusRoot, events); err != nil {
+		if _, err := censusDB.ImportEventsByScopedAddress(chainID, census.ContractAddress, census.CensusRoot, events); err != nil {
 			return 0, fmt.Errorf("failed to import census from events: %w", err)
 		}
 	} else {
 		// Get the reference of the census by its old root
-		ref, err := censusDB.LoadByAddress(census.ContractAddress)
+		ref, err := censusDB.LoadByScopedAddress(chainID, census.ContractAddress)
 		if err != nil {
 			return 0, fmt.Errorf("failed to load census by address %s: %w", census.ContractAddress.Hex(), err)
 		}
 		// Update the census with the new events
 		if err = ref.ApplyEvents(events); err != nil {
 			return 0, fmt.Errorf("failed to update census from events: %w", err)
+		}
+		if finalRoot := ref.Root(); !finalRoot.Equal(census.CensusRoot) {
+			return 0, fmt.Errorf("final root mismatch after applying events: expected %s, got %s",
+				census.CensusRoot.String(), finalRoot.String())
 		}
 	}
 	return processedElements + len(events), nil

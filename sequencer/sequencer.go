@@ -30,19 +30,13 @@ var (
 	ParticipateInAllProcesses = true
 )
 
-// ProcessContractsResolver resolves the contracts instance for a process-scoped
-// on-chain operation.
-type ProcessContractsResolver interface {
-	ContractsForProcess(processID types.ProcessID) (*web3.Contracts, error)
-}
-
 // Sequencer is a worker that takes verified ballots and aggregates them into a single proof.
 // It processes ballots and creates batches of proofs for efficient verification.
 type Sequencer struct {
 	*internalCircuits                   // Internal circuit artifacts for proof generation and verification
 	finalizer          *finalizer       // Finalizer for handling process finalization
 	stg                *storage.Storage // Storage instance for accessing ballots and other data
-	contractsResolver  ProcessContractsResolver
+	contractsResolver  web3.ProcessContractsResolver
 	ctx                context.Context
 	cancel             context.CancelFunc
 	processIDs         *ProcessIDMap // Maps process IDs to their last update time
@@ -68,7 +62,7 @@ type Sequencer struct {
 //   - batchTimeWindow: Maximum time to wait before processing a batch even if not full
 //
 // Returns a configured Sequencer instance or an error if initialization fails.
-func New(stg *storage.Storage, resolver ProcessContractsResolver, batchTimeWindow time.Duration) (*Sequencer, error) {
+func New(stg *storage.Storage, resolver web3.ProcessContractsResolver, batchTimeWindow time.Duration) (*Sequencer, error) {
 	if stg == nil {
 		return nil, fmt.Errorf("storage cannot be nil")
 	}
@@ -94,7 +88,7 @@ func New(stg *storage.Storage, resolver ProcessContractsResolver, batchTimeWindo
 	return s, nil
 }
 
-func resolveContractsForProcess(resolver ProcessContractsResolver, processID types.ProcessID) (*web3.Contracts, error) {
+func resolveContractsForProcess(resolver web3.ProcessContractsResolver, processID types.ProcessID) (*web3.Contracts, error) {
 	if resolver == nil {
 		return nil, fmt.Errorf("contracts resolver is not configured")
 	}
@@ -109,7 +103,7 @@ func resolveContractsForProcess(resolver ProcessContractsResolver, processID typ
 	return contracts, nil
 }
 
-func stateRootGetter(resolver ProcessContractsResolver) func(types.ProcessID) (*types.BigInt, error) {
+func stateRootGetter(resolver web3.ProcessContractsResolver) func(types.ProcessID) (*types.BigInt, error) {
 	if resolver == nil {
 		return nil
 	}

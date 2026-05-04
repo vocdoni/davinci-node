@@ -62,10 +62,11 @@ func TestCensusDownloaderStalledDownloadDoesNotBlockQueue(t *testing.T) {
 		CensusRoot:   readyRoot,
 		CensusURI:    readyServer.URL,
 	}
+	processID := testutil.FixedProcessID()
 
-	_, err := downloader.DownloadCensus(stalledCensus)
+	_, err := downloader.DownloadCensus(processID, stalledCensus)
 	c.Assert(err, qt.IsNil)
-	_, err = downloader.DownloadCensus(readyCensus)
+	_, err = downloader.DownloadCensus(processID, readyCensus)
 	c.Assert(err, qt.IsNil)
 
 	deadline := time.After(500 * time.Millisecond)
@@ -129,14 +130,15 @@ func TestOnCensusDownloadedWaitsForQueuedCensus(t *testing.T) {
 		CensusRoot:   readyRoot,
 		CensusURI:    readyServer.URL,
 	}
+	processID := testutil.FixedProcessID()
 
-	_, err := downloader.DownloadCensus(slowCensus)
+	_, err := downloader.DownloadCensus(processID, slowCensus)
 	c.Assert(err, qt.IsNil)
-	_, err = downloader.DownloadCensus(readyCensus)
+	_, err = downloader.DownloadCensus(processID, readyCensus)
 	c.Assert(err, qt.IsNil)
 
 	readyDownloaded := make(chan error, 1)
-	downloader.OnCensusDownloaded(readyCensus, ctx, func(err error) {
+	downloader.OnCensusDownloaded(processID, readyCensus, ctx, func(err error) {
 		readyDownloaded <- err
 	})
 
@@ -150,10 +152,12 @@ func TestOnCensusDownloadedWaitsForQueuedCensus(t *testing.T) {
 	c.Assert(store.CensusDB().ExistsByRoot(readyRoot), qt.IsTrue)
 }
 
-func TestCensusKeyUsesContractAddressForOnchainDynamicCensuses(t *testing.T) {
+func TestCensusKeyUsesChainScopedContractAddressForOnchainDynamicCensuses(t *testing.T) {
 	c := qt.New(t)
 
 	address := testutil.RandomAddress()
+	firstChainID := uint64(11155111)
+	secondChainID := uint64(42220)
 	first := &types.Census{
 		CensusOrigin:    types.CensusOriginMerkleTreeOnchainDynamicV1,
 		CensusRoot:      types.HexBytes{0x01},
@@ -165,8 +169,8 @@ func TestCensusKeyUsesContractAddressForOnchainDynamicCensuses(t *testing.T) {
 		ContractAddress: address,
 	}
 
-	c.Assert(censusKey(first), qt.Equals, address.String())
-	c.Assert(censusKey(second), qt.Equals, address.String())
+	c.Assert(censusKey(first, firstChainID), qt.Equals, censusKey(second, firstChainID))
+	c.Assert(censusKey(first, firstChainID), qt.Not(qt.Equals), censusKey(second, secondChainID))
 }
 
 func TestCensusDownloaderNotFoundIsTerminal(t *testing.T) {
@@ -202,12 +206,13 @@ func TestCensusDownloaderNotFoundIsTerminal(t *testing.T) {
 		CensusRoot:   types.HexBytes{0x03},
 		CensusURI:    notFoundServer.URL,
 	}
+	processID := testutil.FixedProcessID()
 
-	_, err := downloader.DownloadCensus(census)
+	_, err := downloader.DownloadCensus(processID, census)
 	c.Assert(err, qt.IsNil)
 
 	downloaded := make(chan error, 1)
-	downloader.OnCensusDownloaded(census, ctx, func(err error) {
+	downloader.OnCensusDownloaded(processID, census, ctx, func(err error) {
 		downloaded <- err
 	})
 
@@ -219,7 +224,7 @@ func TestCensusDownloaderNotFoundIsTerminal(t *testing.T) {
 		c.Fatal("timed out waiting for terminal 404 error")
 	}
 
-	status, exists := downloader.DownloadCensusStatus(census)
+	status, exists := downloader.DownloadCensusStatus(processID, census)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(status.Terminal, qt.IsTrue)
 	c.Assert(requests.Load(), qt.Equals, int32(1))
@@ -227,7 +232,7 @@ func TestCensusDownloaderNotFoundIsTerminal(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	downloader.cleanUpPendingCensuses()
 
-	_, err = downloader.DownloadCensus(census)
+	_, err = downloader.DownloadCensus(processID, census)
 	c.Assert(err, qt.IsNil)
 	time.Sleep(50 * time.Millisecond)
 	c.Assert(requests.Load(), qt.Equals, int32(1))

@@ -107,7 +107,7 @@ func NewTestServices(
 	}
 
 	// Start census downloader
-	cd := service.NewCensusDownloader(contracts, services.Storage, service.DefaultCensusDownloaderConfig)
+	cd := service.NewCensusDownloader(runtimeRouter, services.Storage, service.DefaultCensusDownloaderConfig)
 	if err := cd.Start(ctx); err != nil {
 		vp.Stop()
 		seqCancel()

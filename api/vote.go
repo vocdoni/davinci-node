@@ -94,7 +94,12 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load the process census
-	censusRef, err := a.storage.LoadCensus(process.Census)
+	runtime, err := a.runtimes.RuntimeForProcess(processID)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not resolve process runtime: %v", err).Write(w)
+		return
+	}
+	censusRef, err := a.storage.LoadCensus(runtime.Contracts.ChainID, process.Census)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
 		return
@@ -266,7 +271,12 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case process.Census.CensusOrigin.IsMerkleTree():
 		// load the census from the census DB
-		censusRef, err := a.storage.LoadCensus(process.Census)
+		runtime, err := a.runtimes.RuntimeForProcess(vote.ProcessID)
+		if err != nil {
+			ErrGenericInternalServerError.Withf("could not resolve process runtime: %v", err).Write(w)
+			return
+		}
+		censusRef, err := a.storage.LoadCensus(runtime.Contracts.ChainID, process.Census)
 		if err != nil {
 			ErrGenericInternalServerError.Withf("could not load census: %v", err).Write(w)
 			return

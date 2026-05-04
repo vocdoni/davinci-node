@@ -102,6 +102,10 @@ func TestNewRuntimeRouter(t *testing.T) {
 		celoRuntime.ProcessIDVersion,
 		7,
 	)
+	runtime, err = router.RuntimeForProcess(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(runtime, qt.Equals, celoRuntime)
+
 	contracts, err := router.ContractsForProcess(processID)
 	c.Assert(err, qt.IsNil)
 	c.Assert(contracts, qt.Equals, celoRuntime.Contracts)
@@ -125,14 +129,14 @@ func TestNewRuntimeRouterRejectsDuplicateVersions(t *testing.T) {
 	c.Assert(err.Error(), qt.Contains, "duplicate ProcessIDVersion")
 }
 
-func TestRuntimeRouterContractsForProcessErrors(t *testing.T) {
+func TestRuntimeRouterProcessResolutionErrors(t *testing.T) {
 	c := qt.New(t)
 
 	router, err := NewRuntimeRouter(testRuntime(c, "sepolia", 11155111, "0x015eac820688da203a0bd730a8a7a4cdb97e1a02"))
 	c.Assert(err, qt.IsNil)
 
-	contracts, err := router.ContractsForProcess(types.ProcessID{})
-	c.Assert(contracts, qt.IsNil)
+	runtime, err := router.RuntimeForProcess(types.ProcessID{})
+	c.Assert(runtime, qt.IsNil)
 	c.Assert(err, qt.Not(qt.IsNil))
 	c.Assert(err.Error(), qt.Contains, "invalid process ID")
 
@@ -141,7 +145,12 @@ func TestRuntimeRouterContractsForProcessErrors(t *testing.T) {
 		[4]byte{0xde, 0xad, 0xbe, 0xef},
 		1,
 	)
-	contracts, err = router.ContractsForProcess(unknownProcess)
+	runtime, err = router.RuntimeForProcess(unknownProcess)
+	c.Assert(runtime, qt.IsNil)
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "runtime not found")
+
+	contracts, err := router.ContractsForProcess(unknownProcess)
 	c.Assert(contracts, qt.IsNil)
 	c.Assert(err, qt.Not(qt.IsNil))
 	c.Assert(err.Error(), qt.Contains, "runtime not found")

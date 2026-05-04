@@ -27,7 +27,6 @@ type ProcessMonitor struct {
 
 // ContractsService defines the interface for web3 contract operations.
 type ContractsService interface {
-	OnchainCensusFetcher
 	MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
 	ProcessChangesFilters() []types.Web3FilterFn
 	MonitorProcessChanges(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
@@ -241,7 +240,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					processCensus := process.Census.Clone()
 
 					// Download and import the process census if needed
-					resolvedRoot, err := pm.censusDownloader.DownloadCensus(queuedCensus)
+					resolvedRoot, err := pm.censusDownloader.DownloadCensus(*process.ID, queuedCensus)
 					if err != nil {
 						log.Warnw("failed to start census download for new process",
 							"processID", process.ID.String(),
@@ -252,7 +251,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					processCensus.CensusRoot = resolvedRoot
 					// After census is downloaded and imported, store the new process
 					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
-					pm.censusDownloader.OnCensusDownloaded(processCensus, downloadCtx, func(err error) {
+					pm.censusDownloader.OnCensusDownloaded(*process.ID, processCensus, downloadCtx, func(err error) {
 						defer downloadCtxCancel()
 						// If no error, just proceed to store the process.
 						if err == nil {
@@ -379,7 +378,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				}
 				go func(censusInfo *types.Census, pid types.ProcessID, newRoot types.HexBytes, newURI string) {
 					// download and import the new census
-					censusInfo.CensusRoot, err = pm.censusDownloader.DownloadCensus(censusInfo)
+					censusInfo.CensusRoot, err = pm.censusDownloader.DownloadCensus(pid, censusInfo)
 					if err != nil {
 						log.Warnw("failed to start download of updated census for process",
 							"processID", pid.String(),
@@ -390,7 +389,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					// wait for census to be downloaded and imported, then update
 					// process census info
 					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
-					pm.censusDownloader.OnCensusDownloaded(censusInfo, downloadCtx, func(err error) {
+					pm.censusDownloader.OnCensusDownloaded(pid, censusInfo, downloadCtx, func(err error) {
 						defer downloadCtxCancel()
 						if err != nil {
 							log.Warnw("failed to download updated census for process",

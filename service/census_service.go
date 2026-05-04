@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
 // CensusDownloaderConfig holds the configuration for the CensusDownloader. It
@@ -48,6 +50,7 @@ var DefaultCensusDownloaderConfig = CensusDownloaderConfig{
 // internal use by the CensusDownloader.
 type DownloadStatus struct {
 	census      *types.Census
+	chainID     uint64
 	Complete    bool
 	Attempts    int
 	LastErr     error
@@ -60,38 +63,33 @@ type DownloadStatus struct {
 type internalCensus struct {
 	*types.Census
 	ProcessedElements int
-}
-
-// OnchainCensusFetcher defines the interface for fetching on-chain census
-// roots. It should be provided to the CensusImporter to handle dynamic
-// on-chain Merkle Tree censuses.
-type OnchainCensusFetcher interface {
-	FetchOnchainCensusRoot(address common.Address) (types.HexBytes, error)
+	ProcessID         types.ProcessID
+	ChainID           uint64
 }
 
 // CensusDownloader is responsible for downloading and importing censuses
 // asynchronously. It maintains a queue of censuses to download and tracks
 // the status of each download attempt.
 type CensusDownloader struct {
-	queue           chan internalCensus
-	config          CensusDownloaderConfig
-	ctx             context.Context
-	cancel          context.CancelFunc
-	onchainFetcher  OnchainCensusFetcher
-	storage         *storage.Storage
-	importer        *census.CensusImporter
-	censusStatus    map[string]DownloadStatus
-	onchainCensuses sync.Map
-	mu              sync.RWMutex
-	workers         sync.WaitGroup
+	queue             chan internalCensus
+	config            CensusDownloaderConfig
+	ctx               context.Context
+	cancel            context.CancelFunc
+	contractsResolver web3.ProcessContractsResolver
+	storage           *storage.Storage
+	importer          *census.CensusImporter
+	censusStatus      map[string]DownloadStatus
+	onchainCensuses   sync.Map
+	mu                sync.RWMutex
+	workers           sync.WaitGroup
 }
 
 const censusDownloadStatusPollInterval = 100 * time.Millisecond
 
 // NewCensusDownloader creates a new CensusDownloader instance with the given
-// ContractsService, Storage, and configuration.
+// process-scoped contracts resolver, storage, and configuration.
 func NewCensusDownloader(
-	onchainFetcher OnchainCensusFetcher,
+	contractsResolver web3.ProcessContractsResolver,
 	stg *storage.Storage,
 	config CensusDownloaderConfig,
 ) *CensusDownloader {
@@ -99,9 +97,9 @@ func NewCensusDownloader(
 		config.AttemptTimeout = DefaultCensusDownloaderConfig.AttemptTimeout
 	}
 	return &CensusDownloader{
-		queue:          make(chan internalCensus, 100),
-		onchainFetcher: onchainFetcher,
-		storage:        stg,
+		queue:             make(chan internalCensus, 100),
+		contractsResolver: contractsResolver,
+		storage:           stg,
 		importer: census.NewCensusImporter(
 			stg,
 			census.JSONImporter(),
@@ -151,7 +149,7 @@ func (cd *CensusDownloader) Start(ctx context.Context) error {
 				case <-runCtx.Done():
 					return
 				case icensus := <-cd.queue:
-					if !cd.addPendingCensus(icensus.Census) {
+					if !cd.addPendingCensus(icensus) {
 						continue
 					}
 					if err := cd.processCensusDownload(runCtx, icensus); err != nil {
@@ -176,11 +174,12 @@ func (cd *CensusDownloader) Stop() {
 }
 
 // DownloadCensus adds the specified census to the download queue for
-// asynchronous processing. It handles on-chain dynamic Merkle Tree censuses
-// by fetching the current root from the on-chain contract before adding it to
-// the queue. It returns the final census root (after any necessary updates)
-// and an error if the operation fails.
-func (cd *CensusDownloader) DownloadCensus(censusInfo *types.Census) (types.HexBytes, error) {
+// asynchronous processing. The processID is required so dynamic on-chain
+// censuses can resolve the process runtime, fetch the on-chain root from the
+// correct network, and derive the chain-scoped identity used to track that
+// census internally. It returns the final census root (after any necessary
+// updates) and an error if the operation fails.
+func (cd *CensusDownloader) DownloadCensus(processID types.ProcessID, censusInfo *types.Census) (types.HexBytes, error) {
 	runCtx, err := cd.downloaderContext()
 	if err != nil {
 		return nil, fmt.Errorf("census downloader unavailable: %w", err)
@@ -189,10 +188,11 @@ func (cd *CensusDownloader) DownloadCensus(censusInfo *types.Census) (types.HexB
 	icensus := internalCensus{
 		Census:            censusInfo,
 		ProcessedElements: 0,
+		ProcessID:         processID,
 	}
 	// Add on-chain census to the on-chain census map if applicable
 	if icensus.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-		if icensus.CensusRoot, err = cd.addOnchainCensus(icensus); err != nil {
+		if icensus, err = cd.addOnchainCensus(icensus); err != nil {
 			return nil, fmt.Errorf("failed to add on-chain census: %w", err)
 		}
 	}
@@ -211,21 +211,40 @@ func (cd *CensusDownloader) DownloadCensus(censusInfo *types.Census) (types.HexB
 }
 
 // DownloadCensusStatus retrieves the current download status of the specified
-// census. It returns the DownloadStatus and a boolean indicating whether the
-// census is found in the pending list.
-func (cd *CensusDownloader) DownloadCensusStatus(census *types.Census) (DownloadStatus, bool) {
+// census. The processID is required so dynamic on-chain censuses can resolve
+// the process runtime and look up the chain-scoped census identity. It returns
+// the DownloadStatus and a boolean indicating whether the census is found in
+// the pending list.
+func (cd *CensusDownloader) DownloadCensusStatus(processID types.ProcessID, census *types.Census) (DownloadStatus, bool) {
+	chainID, err := cd.chainIDForCensus(processID, census)
+	if err != nil {
+		return DownloadStatus{}, false
+	}
+	return cd.downloadCensusStatus(chainID, census)
+}
+
+func (cd *CensusDownloader) downloadCensusStatus(chainID uint64, census *types.Census) (DownloadStatus, bool) {
 	cd.mu.RLock()
 	defer cd.mu.RUnlock()
-	status, exists := cd.censusStatus[censusKey(census)]
+	status, exists := cd.censusStatus[censusKey(census, chainID)]
 	return status, exists
 }
 
 // OnCensusDownloaded registers a callback function that will be called when
 // the specified census has been downloaded and imported. The callback will
 // be called with an error if the download or import failed, or nil if it
-// succeeded. It allows to wait asynchronously for a census to be ready, and
-// then execute custom logic based on the result.
-func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context.Context, callback func(error)) {
+// succeeded. The processID is required so dynamic on-chain censuses can
+// resolve the process runtime, identify the correct chain-scoped census entry,
+// and check the imported census on the correct network. It allows callers to
+// wait asynchronously for a census to be ready, and then execute custom logic
+// based on the result.
+func (cd *CensusDownloader) OnCensusDownloaded(processID types.ProcessID, census *types.Census, ctx context.Context, callback func(error)) {
+	chainID, err := cd.chainIDForCensus(processID, census)
+	if err != nil {
+		callback(err)
+		return
+	}
+
 	go func() {
 		ticker := time.NewTicker(censusDownloadStatusPollInterval)
 		defer ticker.Stop()
@@ -233,12 +252,12 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 		innerCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		for {
-			if _, err := cd.storage.LoadCensus(census); err == nil {
+			if _, err := cd.storage.LoadCensus(chainID, census); err == nil {
 				callback(nil)
 				return
 			}
 
-			status, exists := cd.DownloadCensusStatus(census)
+			status, exists := cd.downloadCensusStatus(chainID, census)
 			if exists {
 				switch {
 				case status.Terminal && status.LastErr != nil:
@@ -254,7 +273,7 @@ func (cd *CensusDownloader) OnCensusDownloaded(census *types.Census, ctx context
 				case status.Complete:
 					// If the census download is complete, clean up the pending
 					// status and call the callback with nil error.
-					cd.CleanUp(status.census)
+					cd.CleanUp(status.chainID, status.census)
 					callback(nil)
 					return
 				}
@@ -305,7 +324,7 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census in
 		if cd.config.AttemptTimeout > 0 {
 			attemptCtx, cancel = context.WithTimeout(ctx, cd.config.AttemptTimeout)
 		}
-		census.ProcessedElements, importErr = cd.importer.ImportCensus(attemptCtx, census.Census, census.ProcessedElements)
+		census.ProcessedElements, importErr = cd.importer.ImportCensus(attemptCtx, census.ChainID, census.Census, census.ProcessedElements)
 		cancel()
 		cd.updateInternalStatus(census, importErr)
 		if importErr == nil {
@@ -378,35 +397,40 @@ func (cd *CensusDownloader) waitTimeout() time.Duration {
 
 // addPendingCensus adds a census to the internal tracking map of pending
 // censuses. It returns false when the census is already tracked.
-func (cd *CensusDownloader) addPendingCensus(census *types.Census) bool {
+func (cd *CensusDownloader) addPendingCensus(icensus internalCensus) bool {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
-	key := censusKey(census)
+	key := censusKey(icensus.Census, icensus.ChainID)
 	if _, exists := cd.censusStatus[key]; exists {
 		return false
 	}
 	cd.censusStatus[key] = DownloadStatus{
 		Attempts: 0,
-		census:   census,
+		census:   icensus.Census,
+		chainID:  icensus.ChainID,
 	}
 	return true
 }
 
-func (cd *CensusDownloader) addOnchainCensus(icensus internalCensus) (types.HexBytes, error) {
+func (cd *CensusDownloader) addOnchainCensus(icensus internalCensus) (internalCensus, error) {
 	// Convert the root to a contract address and validate it
 	if icensus.ContractAddress == (common.Address{}) {
-		return nil, fmt.Errorf("invalid on-chain census contract address")
+		return internalCensus{}, fmt.Errorf("invalid on-chain census contract address")
 	}
+	contracts, err := resolveContractsForCensusProcess(cd.contractsResolver, icensus.ProcessID)
+	if err != nil {
+		return internalCensus{}, err
+	}
+	icensus.ChainID = contracts.ChainID
 	// Fetch the current census root from the on-chain contract and update
 	// it in the original census
-	var err error
-	icensus.CensusRoot, err = cd.onchainFetcher.FetchOnchainCensusRoot(icensus.ContractAddress)
+	icensus.CensusRoot, err = contracts.FetchOnchainCensusRoot(icensus.ContractAddress)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch on-chain census root: %w", err)
+		return internalCensus{}, fmt.Errorf("failed to fetch on-chain census root: %w", err)
 	}
 	// Store the on-chain census information for later processing
-	cd.onchainCensuses.Store(icensus.ContractAddress.String(), icensus)
-	return icensus.CensusRoot, nil
+	cd.onchainCensuses.Store(dynamicOnchainCensusKey(icensus.ChainID, icensus.ContractAddress), icensus)
+	return icensus, nil
 }
 
 // updateInternalStatus updates the status of a pending census download
@@ -414,9 +438,9 @@ func (cd *CensusDownloader) addOnchainCensus(icensus internalCensus) (types.HexB
 func (cd *CensusDownloader) updateInternalStatus(icensus internalCensus, err error) {
 	// Update also on-chain census map if applicable
 	if icensus.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-		current, ok := cd.loadOnchainCensus(icensus.ContractAddress)
+		current, ok := cd.loadOnchainCensus(icensus.ChainID, icensus.ContractAddress)
 		if ok && current.ProcessedElements < icensus.ProcessedElements {
-			cd.onchainCensuses.Swap(icensus.ContractAddress.String(), icensus)
+			cd.onchainCensuses.Swap(dynamicOnchainCensusKey(icensus.ChainID, icensus.ContractAddress), icensus)
 		}
 	}
 
@@ -425,7 +449,7 @@ func (cd *CensusDownloader) updateInternalStatus(icensus internalCensus, err err
 	defer cd.mu.Unlock()
 
 	// Ensure the census exists in the pending map
-	key := censusKey(icensus.Census)
+	key := censusKey(icensus.Census, icensus.ChainID)
 	if status, exists := cd.censusStatus[key]; exists {
 		// Update the status with the current attempt results
 		status.lastUpdated = time.Now()
@@ -457,11 +481,11 @@ func (cd *CensusDownloader) checkOnchainCensuses() {
 			return true
 		}
 		// Skip those that are already downloading and not complete
-		if status, exists := cd.DownloadCensusStatus(icensus.Census); exists && !status.Complete {
+		if status, exists := cd.DownloadCensusStatus(icensus.ProcessID, icensus.Census); exists && !status.Complete {
 			return true
 		}
 		// Add on-chain census to the on-chain census map if applicable
-		if icensus.CensusRoot, err = cd.addOnchainCensus(icensus); err != nil {
+		if icensus, err = cd.addOnchainCensus(icensus); err != nil {
 			log.Warnw("failed to add on-chain census", "address", icensus.ContractAddress.Hex(), "error", err)
 			return true
 		}
@@ -474,8 +498,8 @@ func (cd *CensusDownloader) checkOnchainCensuses() {
 	})
 }
 
-func (cd *CensusDownloader) loadOnchainCensus(address common.Address) (internalCensus, bool) {
-	value, ok := cd.onchainCensuses.Load(address.String())
+func (cd *CensusDownloader) loadOnchainCensus(chainID uint64, address common.Address) (internalCensus, bool) {
+	value, ok := cd.onchainCensuses.Load(dynamicOnchainCensusKey(chainID, address))
 	if !ok {
 		return internalCensus{}, false
 	}
@@ -495,7 +519,7 @@ func (cd *CensusDownloader) cleanUpPendingCensuses() {
 			continue
 		}
 		if status.lastUpdated.Add(cd.config.Expiration).Before(now) {
-			cd.cleanUpStatusUnsafe(status.census)
+			cd.cleanUpStatusUnsafe(status.chainID, status.census)
 		}
 	}
 }
@@ -513,30 +537,63 @@ func isTerminalDownloadError(err error) bool {
 
 // CleanUp is a thread-safe wrapper around cleanUpStatusUnsafe that locks
 // the mutex before calling the unsafe version to remove a census status from
-// the internal tracking map based on the given census root.
-func (cd *CensusDownloader) CleanUp(census *types.Census) {
+// the internal tracking map based on the given census identity.
+func (cd *CensusDownloader) CleanUp(chainID uint64, census *types.Census) {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
-	cd.cleanUpStatusUnsafe(census)
+	cd.cleanUpStatusUnsafe(chainID, census)
 }
 
 // cleanUpStatusUnsafe removes a census status from the internal tracking
 // map based on the given census root. The caller should ensure that holds
 // the mutex lock before calling this function to avoid data races.
-func (cd *CensusDownloader) cleanUpStatusUnsafe(census *types.Census) {
-	delete(cd.censusStatus, censusKey(census))
+func (cd *CensusDownloader) cleanUpStatusUnsafe(chainID uint64, census *types.Census) {
+	delete(cd.censusStatus, censusKey(census, chainID))
 }
 
 // censusKey generates the identity key used to track census downloads. Most
 // censuses are identified by their root hash, while on-chain dynamic censuses
-// are identified by their contract address so root refreshes do not create
-// separate pending entries for the same contract.
-func censusKey(census *types.Census) string {
+// are identified by their chain-scoped contract address so root refreshes do
+// not create separate pending entries for the same contract on the same chain.
+func censusKey(census *types.Census, chainID uint64) string {
 	if census == nil {
 		return ""
 	}
 	if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-		return census.ContractAddress.String()
+		return dynamicOnchainCensusKey(chainID, census.ContractAddress)
 	}
 	return census.CensusRoot.String()
+}
+
+func (cd *CensusDownloader) chainIDForCensus(processID types.ProcessID, census *types.Census) (uint64, error) {
+	if census == nil || census.CensusOrigin != types.CensusOriginMerkleTreeOnchainDynamicV1 {
+		return 0, nil
+	}
+
+	contracts, err := resolveContractsForCensusProcess(cd.contractsResolver, processID)
+	if err != nil {
+		return 0, err
+	}
+	return contracts.ChainID, nil
+}
+
+func dynamicOnchainCensusKey(chainID uint64, address common.Address) string {
+	var chainIDBytes [8]byte
+	binary.BigEndian.PutUint64(chainIDBytes[:], chainID)
+	return string(append(chainIDBytes[:], address.Bytes()...))
+}
+
+func resolveContractsForCensusProcess(resolver web3.ProcessContractsResolver, processID types.ProcessID) (*web3.Contracts, error) {
+	if resolver == nil {
+		return nil, fmt.Errorf("census contracts resolver is not configured")
+	}
+
+	contracts, err := resolver.ContractsForProcess(processID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve census contracts for process %s: %w", processID.String(), err)
+	}
+	if contracts == nil {
+		return nil, fmt.Errorf("resolve census contracts for process %s: nil contracts", processID.String())
+	}
+	return contracts, nil
 }

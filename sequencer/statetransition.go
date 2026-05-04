@@ -383,13 +383,17 @@ func (s *Sequencer) processCensusProofs(
 	case process.Census.CensusOrigin.IsMerkleTree():
 		// load the census from the storage
 		var censusRef *censusdb.CensusRef
+		var chainID uint64
 		if process.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-			censusRef, err = s.stg.CensusDB().LoadByAddress(process.Census.ContractAddress)
-		} else {
-			censusRef, err = s.stg.CensusDB().LoadByRoot(process.Census.CensusRoot)
+			contracts, err := s.contractsForProcess(processID)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to resolve contracts for process %s: %w", processID.String(), err)
+			}
+			chainID = contracts.ChainID
 		}
+		censusRef, err = s.stg.LoadCensus(chainID, process.Census)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to load census by root: %w", err)
+			return nil, nil, fmt.Errorf("failed to load census for process %s: %w", processID.String(), err)
 		}
 		// get the merkle tree and its root
 		censusTree := censusRef.Tree()

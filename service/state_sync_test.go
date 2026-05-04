@@ -42,7 +42,7 @@ func TestStateSync(t *testing.T) {
 	contracts := NewMockContracts()
 
 	// Setup census downloader
-	censusDownloader := NewCensusDownloader(contracts, store, CensusDownloaderConfig{
+	censusDownloader := NewCensusDownloader(nil, store, CensusDownloaderConfig{
 		CleanUpInterval:      5 * time.Second,
 		OnchainCheckInterval: time.Second * 5,
 		Cooldown:             5 * time.Second,

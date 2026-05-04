@@ -25,17 +25,24 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 	c.Run("success", func(c *qt.C) {
 		censusURI, err := testServer.GraphQLEndpoint()
 		c.Assert(err, qt.IsNil)
+		chainID := uint64(11155111)
+		contractAddress := testutil.RandomAddress()
 
 		_, err = gi.ImportCensus(
 			c.Context(),
 			censusDB,
+			chainID,
 			&types.Census{
-				ContractAddress: testutil.RandomAddress(),
+				ContractAddress: contractAddress,
 				CensusURI:       censusURI,
 				CensusRoot:      test.DefaultExpectedRoot,
 			},
 			0,
 		)
 		c.Assert(err, qt.IsNil)
+
+		ref, err := censusDB.LoadByScopedAddress(chainID, contractAddress)
+		c.Assert(err, qt.IsNil)
+		c.Assert(ref, qt.IsNotNil)
 	})
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/sequencer"
 	"github.com/vocdoni/davinci-node/storage"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
 const (
@@ -34,7 +35,7 @@ type SequencerService struct {
 // NewSequencer creates a new sequencer instance. It will verify new votes, aggregate them into batches,
 // and update the ongoing state with the new ones. The batchTimeWindow defines how long a batch can wait
 // until processed (either the batch becomes full of votes or the time window expires).
-func NewSequencer(stg *storage.Storage, resolver sequencer.ProcessContractsResolver, batchTimeWindow time.Duration, api *api.API) *SequencerService {
+func NewSequencer(stg *storage.Storage, resolver web3.ProcessContractsResolver, batchTimeWindow time.Duration, api *api.API) *SequencerService {
 	s, err := sequencer.New(stg, resolver, batchTimeWindow)
 	if err != nil {
 		log.Fatalf("failed to create sequencer: %v", err)

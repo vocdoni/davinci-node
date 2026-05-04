@@ -14,11 +14,11 @@ import (
 // must implement the following methods:
 //   - ValidURI: checks if the provided targetURI is valid for this plugin.
 //   - DownloadAndImportCensus: downloads and imports the census from the
-//     specified targetURI into the provided censusDB, verifying against the
-//     expectedRoot.
+//     specified targetURI into the provided censusDB, using the chainID when a
+//     dynamic on-chain census needs chain-scoped storage identity.
 type ImporterPlugin interface {
 	ValidURI(targetURI string) bool
-	ImportCensus(ctx context.Context, db *censusdb.CensusDB, census *types.Census, from int) (int, error)
+	ImportCensus(ctx context.Context, db *censusdb.CensusDB, chainID uint64, census *types.Census, from int) (int, error)
 }
 
 // CensusImporter is responsible for importing censuses from various origins.
@@ -40,11 +40,13 @@ func NewCensusImporter(stg *storage.Storage, plugins ...ImporterPlugin) *CensusI
 
 // ImportCensus downloads and imports the census from the given URI. It checks
 // the census origin to ensure that it is supported. Merkle Tree censuses are
-// downloaded and imported using the appropriate plugin based on the URI. CSP
-// censuses do not require downloading, as the census data is managed by the
-// CSP itself. Other census origins are not supported. It returns an error if
-// the download or import fails.
-func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census, processedElements int) (int, error) {
+// downloaded and imported using the appropriate plugin based on the URI. The
+// chainID is only required for dynamic on-chain censuses so they can be stored
+// under a chain-scoped contract identity. CSP censuses do not require
+// downloading, as the census data is managed by the CSP itself. Other census
+// origins are not supported. It returns an error if the download or import
+// fails.
+func (d *CensusImporter) ImportCensus(ctx context.Context, chainID uint64, census *types.Census, processedElements int) (int, error) {
 	if census == nil {
 		return 0, fmt.Errorf("census is nil")
 	}
@@ -53,8 +55,14 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census,
 	}
 	switch {
 	case census.CensusOrigin.IsMerkleTree():
-		// If the census already exists, skip the import
-		if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
+		if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 && chainID == 0 {
+			return 0, fmt.Errorf("chain ID is required for dynamic on-chain census import")
+		}
+		// If the census already exists, skip the import. Dynamic on-chain
+		// censuses are tracked by chain-scoped contract address instead of root,
+		// so they always continue into the importer plugin.
+		if census.CensusOrigin != types.CensusOriginMerkleTreeOnchainDynamicV1 &&
+			d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
 			log.Infow("census root already exists, skipping import",
 				"root", census.CensusRoot.String())
 			return processedElements, nil
@@ -65,6 +73,7 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, census *types.Census,
 				return plugin.ImportCensus(
 					ctx,
 					d.storage.CensusDB(),
+					chainID,
 					census,
 					processedElements,
 				)

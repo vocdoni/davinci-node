@@ -178,7 +178,12 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Retrieve the participant info
-	censusRef, err := a.storage.LoadCensus(process.Census)
+	runtime, err := a.runtimes.RuntimeForProcess(processID)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not resolve process runtime: %v", err).Write(w)
+		return
+	}
+	censusRef, err := a.storage.LoadCensus(runtime.Contracts.ChainID, process.Census)
 	if err != nil {
 		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
 		return

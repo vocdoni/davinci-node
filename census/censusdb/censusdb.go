@@ -2,6 +2,7 @@ package censusdb
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
@@ -29,11 +30,12 @@ const (
 	censusDBprefix           = "cs_"
 	censusDBWorkingOnQueries = "cw_" // Prefix for working/temporary censuses during query execution
 	censusDBRootPrefix       = "cr_" // Prefix for final censuses identified by their root
-	censusDBAddrPrefix       = "ca_" // Prefix for final censuses identified by their Ethereum address
+	censusDBAddrPrefix       = "ca_" // Prefix for final censuses identified by their chain-scoped Ethereum address
 	censusDBTreePrefix       = "ct_" // Prefix for tree data stored in the shared DB backend
 
-	// CensusKeyMaxLen is the maximum length for census keys (20 bytes for Ethereum addresses)
-	CensusKeyMaxLen = 20
+	// CensusKeyMaxLen is the maximum length for census keys. Chain-scoped
+	// addresses use 8 bytes for the chain ID plus 20 bytes for the address.
+	CensusKeyMaxLen = 28
 )
 
 var (
@@ -118,11 +120,11 @@ func (c *CensusDB) NewByRoot(root types.HexBytes) (*CensusRef, error) {
 	return c.newCensus(rootToCensusID(root), rootDBPrefix(root), nil)
 }
 
-// NewByAddress creates a new census identified by an Ethereum address. It
-// returns ErrCensusAlreadyExists if a census with the given address is already
-// present.
-func (c *CensusDB) NewByAddress(address common.Address) (*CensusRef, error) {
-	return c.newCensus(addressToCensusID(address), addressDBPrefix(address), nil)
+// NewByScopedAddress creates a new census identified by a chain-scoped
+// Ethereum address. It returns ErrCensusAlreadyExists if a census with the
+// given chain ID and address is already present.
+func (c *CensusDB) NewByScopedAddress(chainID uint64, address common.Address) (*CensusRef, error) {
+	return c.newCensus(scopedAddressToCensusID(chainID, address), scopedAddressDBPrefix(chainID, address), nil)
 }
 
 // newCensus is the internal method that creates a new census with the given parameters.
@@ -247,17 +249,17 @@ func (c *CensusDB) ExistsByRoot(root types.HexBytes) bool {
 	return err == nil
 }
 
-// ExistsByAddress returns true if a census with the given Ethereum address
-// exists in the local database.
-func (c *CensusDB) ExistsByAddress(address common.Address) bool {
-	censusID := addressToCensusID(address)
+// ExistsByScopedAddress returns true if a census with the given chain-scoped
+// Ethereum address exists in the local database.
+func (c *CensusDB) ExistsByScopedAddress(chainID uint64, address common.Address) bool {
+	censusID := scopedAddressToCensusID(chainID, address)
 	c.mu.RLock()
 	_, exists := c.loadedCensus[censusID]
 	c.mu.RUnlock()
 	if exists {
 		return true
 	}
-	key := addressDBPrefix(address)
+	key := scopedAddressDBPrefix(chainID, address)
 	_, err := c.db.Get(key)
 	return err == nil
 }
@@ -273,10 +275,10 @@ func (c *CensusDB) LoadByRoot(root types.HexBytes) (*CensusRef, error) {
 	return c.loadCensusRef(rootToCensusID(root), rootDBPrefix(root))
 }
 
-// LoadByAddress loads a census by its Ethereum address from memory or from the
-// persistent KV database.
-func (c *CensusDB) LoadByAddress(address common.Address) (*CensusRef, error) {
-	return c.loadCensusRef(addressToCensusID(address), addressDBPrefix(address))
+// LoadByScopedAddress loads a census by its chain-scoped Ethereum address from
+// memory or from the persistent KV database.
+func (c *CensusDB) LoadByScopedAddress(chainID uint64, address common.Address) (*CensusRef, error) {
+	return c.loadCensusRef(scopedAddressToCensusID(chainID, address), scopedAddressDBPrefix(chainID, address))
 }
 
 // loadCensusRef loads a census reference from memory or persistent DB using a
@@ -339,6 +341,16 @@ func (c *CensusDB) loadCensusRef(censusID uuid.UUID, key types.HexBytes) (*Censu
 // Del removes a census from the database and memory.
 func (c *CensusDB) Del(censusID uuid.UUID) error {
 	key := append([]byte(censusDBWorkingOnQueries), censusID[:]...)
+	return c.delCensus(censusID, key)
+}
+
+// DelByScopedAddress removes a chain-scoped address census from the database
+// and memory.
+func (c *CensusDB) DelByScopedAddress(chainID uint64, address common.Address) error {
+	return c.delCensus(scopedAddressToCensusID(chainID, address), scopedAddressDBPrefix(chainID, address))
+}
+
+func (c *CensusDB) delCensus(censusID uuid.UUID, key []byte) error {
 	wtx := c.db.WriteTx()
 	if err := wtx.Delete(key); err != nil {
 		wtx.Discard()
@@ -697,10 +709,10 @@ func rootToCensusID(root types.HexBytes) uuid.UUID {
 	return uuid.NewSHA1(uuid.NameSpaceOID, root.LeftTrim())
 }
 
-// addressToCensusID generates a deterministic UUID from the given address. It
-// uses SHA-1 hashing.
-func addressToCensusID(address common.Address) uuid.UUID {
-	return uuid.NewSHA1(uuid.NameSpaceOID, address.Bytes())
+// scopedAddressToCensusID generates a deterministic UUID from the given chain
+// ID and address. It uses SHA-1 hashing.
+func scopedAddressToCensusID(chainID uint64, address common.Address) uuid.UUID {
+	return uuid.NewSHA1(uuid.NameSpaceOID, scopedAddressKey(chainID, address))
 }
 
 // censusIDDBPrefix generates the database key prefix for a census identified
@@ -716,10 +728,20 @@ func rootDBPrefix(root types.HexBytes) []byte {
 	return append([]byte(censusDBRootPrefix), root.LeftTrim()...)
 }
 
-// addressDBPrefix generates the database key prefix for a census identified
-// by its Ethereum address.
-func addressDBPrefix(address common.Address) []byte {
-	return append([]byte(censusDBAddrPrefix), address.Bytes()...)
+// scopedAddressDBPrefix generates the database key prefix for a census
+// identified by its chain-scoped Ethereum address.
+func scopedAddressDBPrefix(chainID uint64, address common.Address) []byte {
+	return append([]byte(censusDBAddrPrefix), scopedAddressKey(chainID, address)...)
+}
+
+func scopedAddressKey(chainID uint64, address common.Address) []byte {
+	var chainIDBytes [8]byte
+	binary.BigEndian.PutUint64(chainIDBytes[:], chainID)
+
+	key := make([]byte, 0, len(chainIDBytes)+len(address.Bytes()))
+	key = append(key, chainIDBytes[:]...)
+	key = append(key, address.Bytes()...)
+	return key
 }
 
 // censusTreeDBPrefix generates the database key prefix for a census tree
@@ -781,6 +803,31 @@ func (c *CensusDB) Import(root types.HexBytes, reader io.Reader) (*CensusRef, er
 	return c.newCensus(censusID, rootDBPrefix(root), tree)
 }
 
+// ImportByScopedAddress imports a census from a JSON-encoded census dump read
+// from an io.Reader and stores it under the given chain-scoped address. If a
+// census already exists for that chain-scoped address, it is replaced.
+func (c *CensusDB) ImportByScopedAddress(chainID uint64, address common.Address, root types.HexBytes, reader io.Reader) (*CensusRef, error) {
+	if c.ExistsByScopedAddress(chainID, address) {
+		if err := c.DelByScopedAddress(chainID, address); err != nil {
+			return nil, fmt.Errorf("failed to replace scoped census: %w", err)
+		}
+	}
+
+	censusID := scopedAddressToCensusID(chainID, address)
+	treeDB := prefixeddb.NewPrefixedDatabase(c.db, censusTreeDBPrefix(censusID))
+	tree, err := census.NewCensusIMT(treeDB, censusHasher)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create census tree: %w", err)
+	}
+	if err := tree.Import(root.BigInt().MathBigInt(), reader); err != nil {
+		return nil, fmt.Errorf("failed to import census dump into tree: %w", err)
+	}
+	if err := tree.Sync(); err != nil {
+		return nil, fmt.Errorf("failed to sync census tree after import: %w", err)
+	}
+	return c.newCensus(censusID, scopedAddressDBPrefix(chainID, address), tree)
+}
+
 // ImportAll imports a census from a JSON-encoded census dump. It decodes the
 // dump, creates a new census tree, and populates it with the data from the
 // dump. Then, it creates a new CensusRef with the imported tree and adds it
@@ -813,6 +860,38 @@ func (c *CensusDB) ImportAll(data []byte) (*CensusRef, error) {
 	return c.newCensus(censusID, rootDBPrefix(dump.Root.Bytes()), tree)
 }
 
+// ImportAllByScopedAddress imports a JSON-encoded census dump and stores it
+// under the given chain-scoped address. If a census already exists for that
+// chain-scoped address, it is replaced.
+func (c *CensusDB) ImportAllByScopedAddress(chainID uint64, address common.Address, data []byte) (*CensusRef, error) {
+	var dump census.CensusDump
+	if err := json.Unmarshal(data, &dump); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal census dump: %w", err)
+	}
+	if dump.Root == nil {
+		return nil, fmt.Errorf("census dump root is nil")
+	}
+
+	if c.ExistsByScopedAddress(chainID, address) {
+		if err := c.DelByScopedAddress(chainID, address); err != nil {
+			return nil, fmt.Errorf("failed to replace scoped census: %w", err)
+		}
+	}
+
+	censusID := scopedAddressToCensusID(chainID, address)
+	tree, err := census.NewCensusIMTWithPebble(
+		censusPrefix(censusID),
+		censusHasher,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create census tree: %w", err)
+	}
+	if err := tree.ImportAll(&dump); err != nil {
+		return nil, fmt.Errorf("failed to import census dump into tree: %w", err)
+	}
+	return c.newCensus(censusID, scopedAddressDBPrefix(chainID, address), tree)
+}
+
 // ImportEvents imports a census from a list of census events. It creates a
 // new census tree by the root provided, applies the events checking against
 // the that root, and returns the CensusRef.
@@ -837,31 +916,26 @@ func (c *CensusDB) ImportEvents(root types.HexBytes, events []census.CensusEvent
 	return ref, nil
 }
 
-// ImportEventsByAddress imports a census from a list of census events,
-// identified by an Ethereum address. It creates a new census tree by the
-// address provided, applies the events checking against the expected root,
-// and returns the CensusRef.
-func (c *CensusDB) ImportEventsByAddress(
+// ImportEventsByScopedAddress imports a census from a list of census events,
+// identified by a chain-scoped Ethereum address. It creates a new census tree
+// by the chain ID and address provided, applies the events checking against
+// the expected root, and returns the CensusRef.
+func (c *CensusDB) ImportEventsByScopedAddress(
+	chainID uint64,
 	address common.Address,
 	expectedRoot types.HexBytes,
 	events []census.CensusEvent,
 ) (*CensusRef, error) {
-	// Create a new census tree by its address
-	ref, err := c.NewByAddress(address)
+	ref, err := c.NewByScopedAddress(chainID, address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create census tree: %w", err)
 	}
-
-	// Import the events into the tree
 	if err := ref.ApplyEvents(events); err != nil {
 		return nil, fmt.Errorf("failed to apply census events: %w", err)
 	}
-
-	// Check that the final root matches the expected root
 	if finalRoot := ref.Root(); !finalRoot.Equal(expectedRoot) {
 		return nil, fmt.Errorf("final root mismatch after applying events: expected %s, got %s",
-			expectedRoot.String(),
-			finalRoot.String())
+			expectedRoot.String(), finalRoot.String())
 	}
 	return ref, nil
 }

@@ -17,6 +17,12 @@ type BlobFetcher interface {
 	BlobsByTxHash(ctx context.Context, txHash common.Hash) ([]*types.BlobSidecar, error)
 }
 
+// ProcessContractsResolver resolves the contracts instance for a process-scoped
+// on-chain operation.
+type ProcessContractsResolver interface {
+	ContractsForProcess(processID types.ProcessID) (*Contracts, error)
+}
+
 // ProcessBlobFetcherResolver resolves a blob fetcher for process-scoped state
 // synchronization.
 type ProcessBlobFetcherResolver interface {
@@ -111,15 +117,25 @@ func (r *RuntimeRouter) RuntimeForVersion(version [4]byte) (*NetworkRuntime, boo
 	return runtime, ok
 }
 
-// ContractsForProcess resolves the contracts instance associated with the
-// provided process ID.
-func (r *RuntimeRouter) ContractsForProcess(processID types.ProcessID) (*Contracts, error) {
+// RuntimeForProcess resolves the runtime associated with the provided process
+// ID.
+func (r *RuntimeRouter) RuntimeForProcess(processID types.ProcessID) (*NetworkRuntime, error) {
 	if !processID.IsValid() {
 		return nil, fmt.Errorf("invalid process ID")
 	}
 	runtime, ok := r.RuntimeForVersion(processID.Version())
 	if !ok {
 		return nil, fmt.Errorf("runtime not found for process version %x", processID.Version())
+	}
+	return runtime, nil
+}
+
+// ContractsForProcess resolves the contracts instance associated with the
+// provided process ID.
+func (r *RuntimeRouter) ContractsForProcess(processID types.ProcessID) (*Contracts, error) {
+	runtime, err := r.RuntimeForProcess(processID)
+	if err != nil {
+		return nil, err
 	}
 	return runtime.Contracts, nil
 }
