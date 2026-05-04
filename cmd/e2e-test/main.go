@@ -298,6 +298,14 @@ type localService struct {
 func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, network string) error {
 	// Create storage with a in-memory database
 	s.storage = storage.New(memdb.New())
+	apiRuntime, err := web3.NewNetworkRuntime(network, contracts, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create runtime: %w", err)
+	}
+	runtimeRouter, err := web3.NewRuntimeRouter(apiRuntime)
+	if err != nil {
+		return fmt.Errorf("failed to create runtime router: %w", err)
+	}
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
 	// Start census downloader
@@ -316,20 +324,12 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
 	// Start sequencer service
-	s.sequencer = service.NewSequencer(s.storage, contracts, time.Second*30, nil)
+	s.sequencer = service.NewSequencer(s.storage, runtimeRouter, time.Second*30, nil)
 	if err := s.sequencer.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Start API service
-	apiRuntime, err := web3.NewNetworkRuntime(network, contracts, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create API runtime: %w", err)
-	}
-	apiRuntimes, err := web3.NewRuntimeRouter(apiRuntime)
-	if err != nil {
-		return fmt.Errorf("failed to create API runtime router: %w", err)
-	}
-	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, apiRuntimes, metadata.PinataMetadataProviderConfig{}, false)
+	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, runtimeRouter, metadata.PinataMetadataProviderConfig{}, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}

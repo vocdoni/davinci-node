@@ -255,7 +255,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API runtime: %w", err)
 	}
-	apiRuntimes, err := web3.NewRuntimeRouter(apiRuntime)
+	runtimeRouter, err := web3.NewRuntimeRouter(apiRuntime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API runtime router: %w", err)
 	}
@@ -264,7 +264,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		services.Storage,
 		cfg.API.Host,
 		cfg.API.Port,
-		apiRuntimes,
+		runtimeRouter,
 		metadata.PinataMetadataProviderConfig{
 			HostnameURL:  cfg.Metadata.PinataHostnameURL,
 			HostnameJWT:  cfg.Metadata.PinataHostnameJWT,
@@ -293,7 +293,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 
 	// Start sequencer service
 	log.Infow("starting sequencer service", "batchTimeWindow", cfg.Batch.Time.String())
-	services.Sequencer = service.NewSequencer(services.Storage, services.Contracts, cfg.Batch.Time, services.API.API)
+	services.Sequencer = service.NewSequencer(services.Storage, runtimeRouter, cfg.Batch.Time, services.API.API)
 	if err := services.Sequencer.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start sequencer service: %w", err)
 	}
