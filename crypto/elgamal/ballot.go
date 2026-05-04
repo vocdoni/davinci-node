@@ -100,9 +100,6 @@ func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, 
 	if err != nil {
 		return nil, nil, err
 	}
-	if z.IsZero() {
-		return z, reencryptionK, nil
-	}
 	// Use the same curve type as the original ballot to avoid type mismatches
 	// between different BJJ implementations (bjj_gnark vs bjj_iden3).
 	// Convert the public key coordinates to the ballot's curve type.
@@ -119,10 +116,16 @@ func (z *Ballot) Reencrypt(publicKey ecc.Point, k *big.Int) (*Ballot, *big.Int, 
 // zero point using the provided encryption key and k.
 func (z *Ballot) EncryptedZero(publicKey ecc.Point, k *big.Int) (*Ballot, error) {
 	encZero := NewBallot(publicKey)
+	lastK := new(big.Int).Set(k)
 	for i := range encZero.Ciphertexts {
-		c1, c2 := EncryptedZero(publicKey, k)
+		c1, c2 := EncryptedZero(publicKey, lastK)
 		encZero.Ciphertexts[i].C1 = c1
 		encZero.Ciphertexts[i].C2 = c2
+		var err error
+		lastK, err = poseidon.MultiPoseidon(lastK)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return encZero, nil
 }
@@ -155,6 +158,18 @@ func EncryptedZero(publicKey ecc.Point, k *big.Int) (ecc.Point, ecc.Point) {
 func (z *Ballot) Add(x, y *Ballot) *Ballot {
 	for i := range z.Ciphertexts {
 		z.Ciphertexts[i].Add(x.Ciphertexts[i], y.Ciphertexts[i])
+	}
+	return z
+}
+
+// Neg sets z to the negation of x and returns z.
+func (z *Ballot) Neg(x *Ballot) *Ballot {
+	if x == nil {
+		return z
+	}
+	for i := range z.Ciphertexts {
+		z.Ciphertexts[i].C1.Neg(x.Ciphertexts[i].C1)
+		z.Ciphertexts[i].C2.Neg(x.Ciphertexts[i].C2)
 	}
 	return z
 }

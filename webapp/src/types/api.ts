@@ -13,10 +13,6 @@ export interface InfoResponse {
   provingKeyHash: string
   verificationKeyUrl: string
   verificationKeyHash: string
-  ballotProofWasmHelperUrl: string
-  ballotProofWasmHelperHash: string
-  ballotProofWasmHelperExecJsUrl: string
-  ballotProofWasmHelperExecJsHash: string
   contracts: ContractAddresses
 }
 
@@ -59,7 +55,6 @@ export interface BallotMode {
   maxValue: string
   minValue: string
   uniqueValues: boolean
-  costFromWeight: boolean
   costExponent: number
   maxValueSum: string
   minValueSum: string

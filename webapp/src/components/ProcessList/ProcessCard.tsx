@@ -32,6 +32,7 @@ import {
   FaClock,
   FaCalendarAlt,
   FaUsers,
+  FaBalanceScale,
   FaVoteYea,
   FaLink,
   FaKey,
@@ -290,24 +291,13 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
           <GridItem>
             <VStack align="start" spacing={2}>
               <HStack>
-                <Icon as={FaUsers} color="purple.500" boxSize={4} />
-                <Text fontSize="xs" fontWeight="medium">Vote Weight</Text>
+                <Icon as={FaBalanceScale} color="purple.500" boxSize={4} />
+                <Text fontSize="xs" fontWeight="medium">Budget Constraints</Text>
               </HStack>
               <Box pl={6}>
-                {mode.costFromWeight ? (
-                  <>
-                    <Text fontSize="xs">Based on census weight</Text>
-                    {mode.costExponent > 1 && (
-                      <Text fontSize="xs">Exponent: {mode.costExponent}</Text>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Text fontSize="xs">Total budget: {mode.maxValueSum}</Text>
-                    {mode.minValueSum !== '0' && (
-                      <Text fontSize="xs">Min required: {mode.minValueSum}</Text>
-                    )}
-                  </>
+                <Text fontSize="xs">Total budget: {mode.maxValueSum}</Text>
+                {mode.minValueSum !== '0' && (
+                  <Text fontSize="xs">Min required: {mode.minValueSum}</Text>
                 )}
               </Box>
             </VStack>

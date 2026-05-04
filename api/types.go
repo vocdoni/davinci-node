@@ -35,19 +35,15 @@ type ContractAddresses struct {
 
 // SequencerInfo contains any relevant information about the current sequencer for a client.
 type SequencerInfo struct {
-	CircuitURL           string            `json:"circuitUrl"`
-	CircuitHash          string            `json:"circuitHash"`
-	WASMhelperURL        string            `json:"ballotProofWasmHelperUrl"`
-	WASMhelperHash       string            `json:"ballotProofWasmHelperHash"`
-	WASMhelperExecJsURL  string            `json:"ballotProofWasmHelperExecJsUrl"`
-	WASMhelperExecJsHash string            `json:"ballotProofWasmHelperExecJsHash"`
-	ProvingKeyURL        string            `json:"provingKeyUrl"`
-	ProvingKeyHash       string            `json:"provingKeyHash"`
-	VerificationKeyURL   string            `json:"verificationKeyUrl"`
-	VerificationKeyHash  string            `json:"verificationKeyHash"`
-	Contracts            ContractAddresses `json:"contracts"`
-	Network              map[string]uint32 `json:"network,omitempty"`
-	SequencerAddress     types.HexBytes    `json:"sequencerAddress"`
+	CircuitURL          string            `json:"circuitUrl"`
+	CircuitHash         string            `json:"circuitHash"`
+	ProvingKeyURL       string            `json:"provingKeyUrl"`
+	ProvingKeyHash      string            `json:"provingKeyHash"`
+	VerificationKeyURL  string            `json:"verificationKeyUrl"`
+	VerificationKeyHash string            `json:"verificationKeyHash"`
+	Contracts           ContractAddresses `json:"contracts"`
+	Network             map[string]uint32 `json:"network,omitempty"`
+	SequencerAddress    types.HexBytes    `json:"sequencerAddress"`
 }
 
 // VoteResponse is the response returned by the vote submission endpoint.

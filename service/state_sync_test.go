@@ -74,15 +74,14 @@ func TestStateSync(t *testing.T) {
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode: spec.BallotMode{
-			NumFields:      2,
-			GroupSize:      2,
-			MaxValue:       100,
-			MinValue:       0,
-			MaxValueSum:    0,
-			MinValueSum:    0,
-			CostExponent:   0,
-			UniqueValues:   false,
-			CostFromWeight: false,
+			NumFields:    2,
+			GroupSize:    2,
+			MaxValue:     100,
+			MinValue:     0,
+			MaxValueSum:  0,
+			MinValueSum:  0,
+			CostExponent: 0,
+			UniqueValues: false,
 		},
 		Census: &types.Census{
 			CensusRoot:   make([]byte, 32),
@@ -125,15 +124,14 @@ func TestStateSync(t *testing.T) {
 
 	// Initialize state with process parameters
 	ballotMode := spec.BallotMode{
-		NumFields:      3,
-		GroupSize:      3,
-		MaxValue:       100,
-		MinValue:       0,
-		MaxValueSum:    1000,
-		MinValueSum:    0,
-		CostExponent:   1,
-		UniqueValues:   false,
-		CostFromWeight: false,
+		NumFields:    3,
+		GroupSize:    3,
+		MaxValue:     100,
+		MinValue:     0,
+		MaxValueSum:  1000,
+		MinValueSum:  0,
+		CostExponent: 1,
+		UniqueValues: false,
 	}
 	ballotModeCircuit, err := ballotMode.Pack()
 	c.Assert(err, qt.IsNil)

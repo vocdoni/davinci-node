@@ -9,8 +9,6 @@ import (
 const (
 	// FieldsPerBallot is the number of fields in a ballot.
 	FieldsPerBallot = 8
-	// MaxValuePerBallotField is the maximum value per field in a ballot.
-	MaxValuePerBallotField = 2 << 16
 	// VotesPerBatch is the number of votes per zkSnark batch.
 	VotesPerBatch = 60
 	// StateTreeMaxLevels is the maximum number of levels in the state merkle tree.
@@ -34,8 +32,7 @@ const (
 	StateKeyCensusOrigin  uint64 = 0x06
 	StateKeyBallotMode    uint64 = 0x02
 	StateKeyEncryptionKey uint64 = 0x03
-	StateKeyResultsAdd    uint64 = 0x04
-	StateKeyResultsSub    uint64 = 0x05
+	StateKeyResults       uint64 = 0x04
 )
 
 // State Namespaces

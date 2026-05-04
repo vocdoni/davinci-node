@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 
-	gecc "github.com/consensys/gnark-crypto/ecc"
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/vocdoni/davinci-node/crypto"
@@ -53,8 +52,8 @@ func (sig *ECDSASignature) Valid() bool {
 
 // Bytes returns the bytes of the binary representation of the signature, which
 // is built by appending the R and S values as byte slices and the recovery byte.
-// The recovery byte is adjusted to the Ethereum standard format (27-30) for compatibility
-// with ethcrypto.SigToPub().
+// The recovery byte is preserved as-is in Ethereum's low form (0-3), which is
+// compatible with ethcrypto.SigToPub().
 func (sig *ECDSASignature) Bytes() []byte {
 	rBytes := sig.R.Bytes()
 	sBytes := sig.S.Bytes()
@@ -65,12 +64,9 @@ func (sig *ECDSASignature) Bytes() []byte {
 	copy(r[32-len(rBytes):], rBytes)
 	copy(s[32-len(sBytes):], sBytes)
 
-	// Subtract 27 from the recovery value to match Ethereum standard
-	// Internal representation is 0-3, but Ethereum expects 27-30
+	// Preserve the recovery byte so SetBytes(Bytes(sig)) is lossless.
+	// ethcrypto.SigToPub accepts the low Ethereum recovery form (0-3).
 	v := sig.recovery
-	if v > 1 {
-		v -= 27
-	}
 
 	return append(r, append(s, v)...)
 }
@@ -81,12 +77,16 @@ func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
 	if len(signature) < SignatureLength-1 {
 		return nil
 	}
-	//var sigStruct gecdsa.Signature
-	//if _, err := sigStruct.SetBytes(signature[:64]); err != nil {
-	//	return nil
-	//}
 	sig.R = new(big.Int).SetBytes(signature[:32])
 	sig.S = new(big.Int).SetBytes(signature[32:64])
+
+	// Reject high-S signatures to prevent malleability (R-01)
+	// S must be in [1, n/2]
+	n := ethcrypto.S256().Params().N
+	halfOrder := new(big.Int).Rsh(n, 1)
+	if sig.S.Cmp(halfOrder) > 0 {
+		return nil
+	}
 
 	if len(signature) == SignatureLength {
 		// Make a copy of the recovery byte to avoid modifying the input array
@@ -107,15 +107,6 @@ func (sig *ECDSASignature) SetBytes(signature []byte) *ECDSASignature {
 	return sig
 }
 
-// VerifyBLS12377 checks if the signature is valid for the given input and
-// public key. The public key should be an ecdsa address. The input should be
-// a big integer that will be converted in a byte slice ensuring that the final
-// value is in the expected scalar field (BLS12_377) and has the expected size.
-func (sig *ECDSASignature) VerifyBLS12377(signedInput *big.Int, expectedAddress common.Address) (bool, []byte) {
-	ffInput := crypto.BigIntToFFToSign(signedInput, gecc.BLS12_377.ScalarField())
-	return sig.Verify(ffInput, expectedAddress)
-}
-
 // VerifyVoteID checks if the signature is valid for the given voteID.
 // This method also checks that the public key matches the passed expectedAddress
 func (sig *ECDSASignature) VerifyVoteID(voteID types.VoteID, expectedAddress common.Address) (bool, []byte) {
@@ -134,7 +125,10 @@ func (sig *ECDSASignature) Verify(signedInput []byte, expectedAddress common.Add
 		return false, nil
 	}
 	// Check if the public key matches the expected address
-	return bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes()), ethcrypto.FromECDSAPub(pubKey)
+	if !bytes.Equal(ethcrypto.PubkeyToAddress(*pubKey).Bytes(), expectedAddress.Bytes()) {
+		return false, nil
+	}
+	return true, ethcrypto.FromECDSAPub(pubKey)
 }
 
 // String returns a string representation of the ECDSASignature, including

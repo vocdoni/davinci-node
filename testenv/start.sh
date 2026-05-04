@@ -77,7 +77,7 @@ print_info "Configuration:"
 echo -e "  ${PURPLE}Anvil Port:${NC} ${ANVIL_PORT:-8545}"
 echo -e "  ${PURPLE}Deployer Port:${NC} ${DEPLOYER_PORT:-8000}"
 echo -e "  ${PURPLE}Sequencer Port:${NC} ${SEQUENCER_PORT:-9090}"
-echo -e "  ${PURPLE}Contracts Branch:${NC} ${CONTRACTS_BRANCH:-main}"
+echo -e "  ${PURPLE}Contracts Branch:${NC} ${SEQUENCER_CONTRACTS_BRANCH:-main}"
 echo -e "  ${PURPLE}Node Tag:${NC} ${DAVINCI_NODE_TAG:-main}"
 
 if [ -n "${STOP_AFTER_FETCH:-}" ]; then

@@ -7,15 +7,14 @@ import (
 
 func TestBallotModePackFields(t *testing.T) {
 	bm := BallotMode{
-		NumFields:      5,
-		GroupSize:      3,
-		UniqueValues:   true,
-		CostFromWeight: false,
-		CostExponent:   7,
-		MaxValue:       0x123456789a,
-		MinValue:       0x2233,
-		MaxValueSum:    (1 << 62) + 123,
-		MinValueSum:    0x1abc,
+		NumFields:    5,
+		GroupSize:    3,
+		UniqueValues: true,
+		CostExponent: 7,
+		MaxValue:     0x123456789a,
+		MinValue:     0x2233,
+		MaxValueSum:  (1 << 62) + 123,
+		MinValueSum:  0x1abc,
 	}
 
 	packed, err := bm.Pack()
@@ -26,12 +25,11 @@ func TestBallotModePackFields(t *testing.T) {
 	assertField(t, packed, 0, 8, 5)
 	assertField(t, packed, 8, 8, 3)
 	assertField(t, packed, 16, 1, 1)
-	assertField(t, packed, 17, 1, 0)
-	assertField(t, packed, 18, 8, 7)
-	assertField(t, packed, 26, 48, 0x123456789a)
-	assertField(t, packed, 74, 48, 0x2233)
-	assertField(t, packed, 122, 63, (1<<62)+123)
-	assertField(t, packed, 185, 63, 0x1abc)
+	assertField(t, packed, 17, 8, 7)
+	assertField(t, packed, 25, 48, 0x123456789a)
+	assertField(t, packed, 73, 48, 0x2233)
+	assertField(t, packed, 121, 63, (1<<62)+123)
+	assertField(t, packed, 184, 63, 0x1abc)
 }
 
 func TestBallotModePackErrors(t *testing.T) {

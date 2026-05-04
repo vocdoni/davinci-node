@@ -28,8 +28,8 @@ func Encrypt(publicKey ecc.Point, msg *big.Int) (ecc.Point, ecc.Point, *big.Int,
 // points that represent the encrypted message.
 func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point) {
 	order := pubKey.Order()
-	// ensure the message is within the field
-	msg.Mod(msg, order)
+	// ensure the message is within the field without mutating the caller's value
+	m := new(big.Int).Mod(msg, order)
 	// compute C1 = k * G
 	c1 := pubKey.New()
 	c1.ScalarBaseMult(k)
@@ -37,11 +37,11 @@ func EncryptWithK(pubKey ecc.Point, msg, k *big.Int) (ecc.Point, ecc.Point) {
 	s := pubKey.New()
 	s.ScalarMult(pubKey, k)
 	// encode message as point M = message * G
-	m := pubKey.New()
-	m.ScalarBaseMult(msg)
+	mPoint := pubKey.New()
+	mPoint.ScalarBaseMult(m)
 	// compute C2 = M + s
 	c2 := pubKey.New()
-	c2.Add(m, s)
+	c2.Add(mPoint, s)
 	return c1, c2
 }
 
@@ -75,9 +75,6 @@ func Decrypt(
 	if privateKey == nil || privateKey.Sign() <= 0 {
 		return nil, nil, fmt.Errorf("Decrypt: empty or negative private key")
 	}
-	if maxMessage == 0 {
-		return nil, nil, fmt.Errorf("Decrypt: maxMessage == 0")
-	}
 
 	// recover the plaintext point
 
@@ -107,6 +104,15 @@ func Decrypt(
 // compressed point encoding as hash‑map key to remove an O(1) string
 // allocation at every iteration present in the original version.
 func BabyStepGiantStepECC(beta, alpha ecc.Point, max uint64) (*big.Int, error) {
+	if max == 0 {
+		zero := beta.New()
+		zero.SetZero()
+		if beta.Equal(zero) {
+			return big.NewInt(0), nil
+		}
+		return nil, fmt.Errorf("bsgs: discrete log not found in interval")
+	}
+
 	// compute m = ⌈sqrt(max)⌉ using integer arithmetic only
 	m := new(big.Int).Sqrt(new(big.Int).SetUint64(max))
 	if new(big.Int).Mul(m, m).Cmp(new(big.Int).SetUint64(max)) < 0 {

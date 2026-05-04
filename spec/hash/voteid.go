@@ -15,9 +15,9 @@ func VoteID(processID, address, k *big.Int) (*big.Int, error) {
 	}
 	baseField := params.BallotProofCurve.ScalarField()
 	h, err := PoseidonHash(
-		bigToFF(baseField, processID),
-		bigToFF(baseField, address),
-		bigToFF(baseField, k),
+		new(big.Int).Mod(processID, baseField),
+		new(big.Int).Mod(address, baseField),
+		new(big.Int).Mod(k, baseField),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate vote ID: %w", err)
@@ -31,14 +31,4 @@ func TruncateToLowerBits(input *big.Int, bits uint) *big.Int {
 	mask := new(big.Int).Lsh(big.NewInt(1), bits) // 1 << bits
 	mask.Sub(mask, big.NewInt(1))                 // (1 << bits) - 1
 	return new(big.Int).And(input, mask)          // input & ((1 << bits) - 1)
-}
-
-func bigToFF(field, value *big.Int) *big.Int {
-	z := big.NewInt(0)
-	if c := value.Cmp(field); c == 0 {
-		return z
-	} else if c != 1 && value.Cmp(z) != -1 {
-		return value
-	}
-	return z.Mod(value, field)
 }

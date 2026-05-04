@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -82,4 +83,36 @@ func TestStateKeyJSONRangeValidation(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	err = ballotIndex.UnmarshalJSON(aboveBallotMaxJSON)
 	c.Assert(err, qt.ErrorMatches, ".*BallotIndex.*out of range.*")
+}
+
+func TestVoterIndexJSON(t *testing.T) {
+	c := qt.New(t)
+
+	voterIndex := VoterIndex(1 << 60)
+	data, err := json.Marshal(voterIndex)
+	c.Assert(err, qt.IsNil)
+	c.Assert(string(data), qt.Equals, `"1152921504606846976"`)
+
+	var got VoterIndex
+	err = json.Unmarshal(data, &got)
+	c.Assert(err, qt.IsNil)
+	c.Assert(got, qt.Equals, voterIndex)
+
+	err = json.Unmarshal([]byte(`""`), &got)
+	c.Assert(err, qt.ErrorMatches, ".*VoterIndex.*empty.*")
+
+	err = json.Unmarshal([]byte(`"18446744073709551616"`), &got)
+	c.Assert(err, qt.ErrorMatches, ".*VoterIndex.*out of range.*")
+}
+
+func TestCensusProofVoterIndexJSON(t *testing.T) {
+	c := qt.New(t)
+
+	proof := CensusProof{
+		VoterIndex: VoterIndex(0),
+	}
+
+	data, err := json.Marshal(proof)
+	c.Assert(err, qt.IsNil)
+	c.Assert(string(data), qt.Contains, `"voterIndex":"0"`)
 }

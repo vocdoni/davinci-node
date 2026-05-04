@@ -21,6 +21,61 @@ var (
 	ErrKeyNotFound = fmt.Errorf("not found")
 )
 
+const ballotTreeLeafBallotValueCount = params.FieldsPerBallot * 4
+
+// TreeLeafValues returns the ballot leaf values in this order:
+// ballot coordinates, address, weight.
+func (v *Vote) TreeLeafValues() []*big.Int {
+	values := append([]*big.Int{}, v.ReencryptedBallot.BigInts()...)
+	address := v.Address
+	if address == nil {
+		address = big.NewInt(0)
+	}
+	weight := v.Weight
+	if weight == nil {
+		weight = big.NewInt(0)
+	}
+	values = append(values, address)
+	return append(values, weight)
+}
+
+func ballotFromTreeLeafValues(values []*big.Int) (*elgamal.Ballot, error) {
+	leaf, err := ballotLeafFromTreeLeafValues(values)
+	if err != nil {
+		return nil, err
+	}
+	return leaf.Ballot, nil
+}
+
+type BallotLeaf struct {
+	Ballot  *elgamal.Ballot
+	Address *big.Int
+	Weight  *big.Int
+}
+
+func ballotLeafFromTreeLeafValues(values []*big.Int) (*BallotLeaf, error) {
+	if len(values) < ballotTreeLeafBallotValueCount {
+		return nil, fmt.Errorf("expected at least %d ballot values, got %d", ballotTreeLeafBallotValueCount, len(values))
+	}
+	ballot, err := elgamal.NewBallot(Curve).SetBigInts(values[:ballotTreeLeafBallotValueCount])
+	if err != nil {
+		return nil, err
+	}
+	address := big.NewInt(0)
+	if len(values) > ballotTreeLeafBallotValueCount {
+		address = values[ballotTreeLeafBallotValueCount]
+	}
+	weight := big.NewInt(0)
+	if len(values) > ballotTreeLeafBallotValueCount+1 {
+		weight = values[ballotTreeLeafBallotValueCount+1]
+	}
+	return &BallotLeaf{
+		Ballot:  ballot,
+		Address: address,
+		Weight:  weight,
+	}, nil
+}
+
 // Vote describes a vote with homomorphic ballot
 type Vote struct {
 	Address           *big.Int
@@ -43,11 +98,14 @@ func (o *State) addVote(v *Vote) error {
 		return fmt.Errorf("too many votes for this batch")
 	}
 	// if address exists, it's a vote overwrite, need to count the overwritten
-	// vote so it's later added to circuit.ResultsSub
-	if oldVote, err := o.EncryptedBallot(v.BallotIndex); err == nil {
-		o.overwrittenSum.Add(o.overwrittenSum, oldVote)
+	// vote so it's later subtracted from circuit.Results.
+	if oldLeaf, err := o.BallotLeaf(v.BallotIndex); err == nil {
+		if oldLeaf.Address.Cmp(v.Address) != 0 || oldLeaf.Weight.Cmp(v.Weight) != 0 {
+			return fmt.Errorf("stored ballot leaf metadata mismatch for ballot index %s", v.BallotIndex.String())
+		}
+		o.overwrittenSum.Add(o.overwrittenSum, oldLeaf.Ballot)
 		o.overwrittenVotesCount++
-		v.OverwrittenBallot = oldVote
+		v.OverwrittenBallot = oldLeaf.Ballot
 	} else {
 		v.OverwrittenBallot = elgamal.NewBallot(Curve)
 	}
@@ -68,11 +126,23 @@ func (o *State) EncryptedBallot(ballotIndex types.BallotIndex) (*elgamal.Ballot,
 		}
 		return nil, err
 	}
-	ballot, err := elgamal.NewBallot(Curve).SetBigInts(value)
+	ballot, err := ballotFromTreeLeafValues(value)
 	if err != nil {
 		return nil, err
 	}
 	return ballot, nil
+}
+
+// BallotLeaf returns the stored ballot leaf associated with a ballot index.
+func (o *State) BallotLeaf(ballotIndex types.BallotIndex) (*BallotLeaf, error) {
+	_, value, err := o.tree.GetBigInt(ballotIndex.BigInt())
+	if err != nil {
+		if errors.Is(err, arbo.ErrKeyNotFound) {
+			return nil, ErrKeyNotFound
+		}
+		return nil, err
+	}
+	return ballotLeafFromTreeLeafValues(value)
 }
 
 // ContainsVoteID checks if the state contains a vote ID

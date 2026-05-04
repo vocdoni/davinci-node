@@ -3,6 +3,7 @@ package sequencer
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -19,7 +20,14 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
-const maxValue = 2 << 24 // 2^24
+// maxPossibleResultCap bounds the BSGS discrete-log search used to decrypt
+// accumulated results. It is an operational guardrail against too-expensive
+// decryption, and it also matches the onchain business cap
+// `maxVoters * maxValue < 1_000_000_000_000`. The runtime still narrows each
+// search further to `process.BallotMode.MaxValue * process.VotersCount`.
+const maxPossibleResultCap = 1_000_000_000_000
+
+var ErrProcessEncryptionKeysMissing = errors.New("process encryption keys missing")
 
 // finalizer is responsible for finalizing processes.
 type finalizer struct {
@@ -33,6 +41,35 @@ type finalizer struct {
 	cancel           context.CancelFunc
 	lock             sync.Mutex                                   // Mutex to ensure that only one process results calculation is running at a time
 	getStateRoot     func(types.ProcessID) (*types.BigInt, error) // Function to get state root from contract
+}
+
+// maxPossibleResult returns the maximum possible accumulated result for a
+// process, computed as VotersCount * BallotMode.MaxValue, capped by the
+// operational search limit (maxPossibleResultCap). A nil VotersCount is
+// treated as zero counted voters.
+func maxPossibleResult(process *types.Process) uint64 {
+	if process == nil {
+		return maxPossibleResultCap
+	}
+	if process.VotersCount == nil {
+		return 0
+	}
+
+	votersCount := process.VotersCount.MathBigInt()
+	if !votersCount.IsUint64() {
+		return maxPossibleResultCap
+	}
+
+	count := votersCount.Uint64()
+	maxValue := process.BallotMode.MaxValue
+	if count == 0 || maxValue == 0 {
+		return 0
+	}
+	if maxValue > maxPossibleResultCap/count {
+		return maxPossibleResultCap
+	}
+
+	return maxValue * count
 }
 
 // New creates a new Finalizer instance.
@@ -65,6 +102,10 @@ func (f *finalizer) Start(ctx context.Context, monitorInterval time.Duration) {
 					// Check if process is marked as invalid (thread-safe)
 					if _, isInvalid := f.invalidProcesses.Load(processID); !isInvalid {
 						if err := f.finalize(processID); err != nil {
+							if errors.Is(err, ErrProcessEncryptionKeysMissing) {
+								log.Infow(err.Error(), "processID", processID.String())
+								return
+							}
 							log.Errorw(err, fmt.Sprintf("finalizing process %s", processID.String()))
 						}
 					}
@@ -244,11 +285,10 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 	encryptionPubKey, encryptionPrivKey, err := f.stg.ProcessEncryptionKeys(processID)
 	if err != nil || encryptionPubKey == nil || encryptionPrivKey == nil {
 		setProcessInvalid()
-		finalErr := fmt.Errorf("encryption keys are nil for process %s", processID.String())
 		if err != nil {
-			finalErr = fmt.Errorf("%w: %w", finalErr, err)
+			return fmt.Errorf("process %s: %w: %w", processID.String(), ErrProcessEncryptionKeysMissing, err)
 		}
-		return finalErr
+		return fmt.Errorf("process %s: %w", processID.String(), ErrProcessEncryptionKeysMissing)
 	}
 
 	// Open the state for the process
@@ -271,79 +311,45 @@ func (f *finalizer) finalize(processID types.ProcessID) error {
 			processID.String(), processStateRoot, stateRoot)
 	}
 
-	// Fetch the encrypted accumulators
-	encryptedAddAccumulator, ok := st.ResultsAdd()
-	if !ok {
+	// Fetch the encrypted results accumulator
+	encryptedResultsAccumulator, err := st.Results()
+	if err != nil {
 		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encrypted add accumulator for process %s", processID.String())
-	}
-	encryptedSubAccumulator, ok := st.ResultsSub()
-	if !ok {
-		setProcessInvalid()
-		return fmt.Errorf("could not retrieve encrypted sub accumulator for process %s", processID.String())
+		return fmt.Errorf("could not retrieve encrypted results accumulator for process %s: %w", processID.String(), err)
 	}
 
-	// Decrypt the accumulators
+	// Decrypt the accumulator
 	startTime := time.Now()
-	addAccumulator := [params.FieldsPerBallot]*big.Int{}
-	addAccumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
-	addDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
-	for i, ct := range encryptedAddAccumulator.Ciphertexts {
-		if ct.C1 == nil || ct.C2 == nil {
-			setProcessInvalid()
-			return fmt.Errorf("invalid ciphertext for process %s: %v", processID.String(), ct)
-		}
-		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
-		if err != nil {
-			setProcessInvalid()
-			return fmt.Errorf("could not decrypt add accumulator for process %s: %w", processID.String(), err)
-		}
-		addAccumulator[i] = result
-		addAccumulatorsEncrypted[i] = *ct
-		addDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
-		if err != nil {
-			setProcessInvalid()
-			return fmt.Errorf("could not build decryption proof for add accumulator for process %s: %w", processID.String(), err)
-		}
-	}
-	log.Debugw("decrypted add accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", addAccumulator)
-
-	startTime = time.Now()
 	resultsAccumulator := [params.FieldsPerBallot]*big.Int{}
-	subAccumulator := [params.FieldsPerBallot]*big.Int{}
-	subAccumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
-	subDecryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
-	for i, ct := range encryptedSubAccumulator.Ciphertexts {
+	accumulatorsEncrypted := [params.FieldsPerBallot]elgamal.Ciphertext{}
+	decryptionProofs := [params.FieldsPerBallot]*elgamal.DecryptionProof{}
+	maxResult := maxPossibleResult(process)
+	for i, ct := range encryptedResultsAccumulator.Ciphertexts {
 		if ct.C1 == nil || ct.C2 == nil {
 			setProcessInvalid()
 			return fmt.Errorf("invalid ciphertext for process %s: %v", processID.String(), ct)
 		}
-		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxValue)
+		_, result, err := elgamal.Decrypt(encryptionPubKey, encryptionPrivKey, ct.C1, ct.C2, maxResult)
 		if err != nil {
 			setProcessInvalid()
-			return fmt.Errorf("could not decrypt sub accumulator for process %s: %w", processID.String(), err)
+			return fmt.Errorf("could not decrypt results accumulator for process %s: %w", processID.String(), err)
 		}
-		subAccumulator[i] = result
-		subAccumulatorsEncrypted[i] = *ct
-		subDecryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
+		resultsAccumulator[i] = result
+		accumulatorsEncrypted[i] = *ct
+		decryptionProofs[i], err = elgamal.BuildDecryptionProof(encryptionPrivKey, encryptionPubKey, ct.C1, ct.C2, result)
 		if err != nil {
 			setProcessInvalid()
-			return fmt.Errorf("could not build decryption proof for sub accumulator for process %s: %w", processID.String(), err)
+			return fmt.Errorf("could not build decryption proof for results accumulator for process %s: %w", processID.String(), err)
 		}
-		resultsAccumulator[i] = new(big.Int).Sub(addAccumulator[i], subAccumulator[i])
 	}
-	log.Debugw("decrypted sub accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", subAccumulator)
+	log.Debugw("decrypted results accumulator", "processID", processID.String(), "duration", time.Since(startTime).String(), "result", resultsAccumulator)
 
 	// Build the circuit assignment.
 	resultsVerifierAssignment, err := results.GenerateAssignment(
 		st,
 		resultsAccumulator,
-		addAccumulator,
-		subAccumulator,
-		addAccumulatorsEncrypted,
-		subAccumulatorsEncrypted,
-		addDecryptionProofs,
-		subDecryptionProofs,
+		accumulatorsEncrypted,
+		decryptionProofs,
 	)
 	if err != nil {
 		setProcessInvalid()

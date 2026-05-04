@@ -162,19 +162,13 @@ func (i *BigInt) LessThanOrEqual(j *BigInt) bool {
 }
 
 func (i *BigInt) ToFF(field *big.Int) *BigInt {
-	iv := i.MathBigInt()
-	z := big.NewInt(0)
-	if c := iv.Cmp(field); c == 0 {
-		return (*BigInt)(z)
-	} else if c != 1 && iv.Cmp(z) != -1 {
-		return (*BigInt)(iv)
-	}
-	return (*BigInt)(z.Mod(iv, field))
+	return (*BigInt)(new(big.Int).Mod(i.MathBigInt(), field))
 }
 
 func (i *BigInt) IsInField(field *big.Int) bool {
 	if i == nil {
 		return false
 	}
-	return i.MathBigInt().Cmp(field) < 0
+	iv := i.MathBigInt()
+	return iv.Sign() >= 0 && iv.Cmp(field) < 0
 }

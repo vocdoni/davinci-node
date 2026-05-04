@@ -185,7 +185,7 @@ func (cr *CensusRef) GenProof(key types.HexBytes) (*types.CensusProof, error) {
 		Value:      packedValue.Bytes(),
 		Siblings:   packSiblings(proof.Siblings),
 		Weight:     (*types.BigInt)(proof.Weight),
-		VoterIndex: proof.AddressIndex,
+		VoterIndex: types.VoterIndex(proof.AddressIndex),
 		PathBits:   proof.PathBits,
 	}, nil
 }

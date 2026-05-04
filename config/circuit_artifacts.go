@@ -13,28 +13,25 @@ const (
 
 // Hashes of each circuit artifacts
 const (
-	BallotProofCircuitHash         = "e287dbc72dbdb4a938db90b61637a0249b5d4f8c294fbcf55e4f08881883112a"
-	BallotProofProvingKeyHash      = "982f1a850bc12325001e0c91d5238ae69b6b7ea20b3d5c1c18319d70a5dd2d65"
-	BallotProofVerificationKeyHash = "1675949c5628cfd347e93cfe5187805d28b5e8cb58591085b58eaa1953371991"
+	BallotProofCircuitHash         = "fb0856e46cb630114f7068010f1ab4edcb43a2a491e56518dba0102cfd6926be"
+	BallotProofProvingKeyHash      = "f5809dd04a10a1546a1a80276ed27881ebc9bfb0272c2cac6a03abf11b5543d4"
+	BallotProofVerificationKeyHash = "d45aa6c83b8df847e9c7bbd0cce299c791ce18a2203473e9a1a89e73818e85c6"
 
-	VoteVerifierCircuitHash         = "453a747ed632925caf3562387a9cfe35ab1eb614cf94c0381766e64a64574140"
-	VoteVerifierProvingKeyHash      = "ef6fc1faeb8127daa764a450f3670d4868c3b04b0f7dbdfb7e11fcffd8880d90"
-	VoteVerifierVerificationKeyHash = "474eaefe526cf7a14cff5abca84f977d37bc8f81792fec38c665c5c13cff75af"
+	VoteVerifierCircuitHash         = "28f60015e6f5da5f54b5bda40f7bc47b50d3299926a06cc48296e52baf4cfad0"
+	VoteVerifierProvingKeyHash      = "258a94202aefdfa42ec8a89840faf5b8ce881d7192685fafd7b66c57cbc2bbdc"
+	VoteVerifierVerificationKeyHash = "2cd6f8735ea6fdfed83f1c5b50c0d13fb7f6569a15682fd055f49cdd37dfadf9"
 
-	AggregatorCircuitHash         = "71cfaed635c49d2908f19335ec8d655355c588f044dbb119e8d270174b5d76a4"
-	AggregatorProvingKeyHash      = "60389f873fae3930766c61e040cb7914f13dab9ff18ba92d96a268744fca053c"
-	AggregatorVerificationKeyHash = "28ade332befee56a517c3690e8ec715b4a4ad0ae4a5c50efe7b895848d1a5167"
+	AggregatorCircuitHash         = "a771f36ddd9e5d7dbc09d5f833b74d123b155e1b933153bc8f1ed3f1e5dde328"
+	AggregatorProvingKeyHash      = "153d3996986e41025edc33529125fd6d2ecfa3b996afab3c8ec06c7e62240076"
+	AggregatorVerificationKeyHash = "29370fb5da5ee891108e157095d548087fa1c1651fb38ef9915fadcd1045368b"
 
-	StateTransitionCircuitHash         = "918f0c6dc2f6be872039a299c887d9a39ba50fc0569b20650ad05d37ae93f754"
-	StateTransitionProvingKeyHash      = "95915e101554e1c339152a833111e1d224aef59d00f36a5ea9a38738b40c53bb"
-	StateTransitionVerificationKeyHash = "5f2eb7751d003626925c10365bc26841862485b454bc58632c5ca42c882004b1"
+	StateTransitionCircuitHash         = "9e61d748e6ac9a23d587a504e90525272fc4cce41a90540a791ef1f2e494cef4"
+	StateTransitionProvingKeyHash      = "e70fcbf84608071f91bac819c5012e5665c2b3ea82fce1f0bcea9b0080ef8cd8"
+	StateTransitionVerificationKeyHash = "a25175843ab6acff863eac1c41d72dad0d00cf431cfe464e989bcf3e012cd459"
 
-	ResultsVerifierCircuitHash         = "b8d22a63d7abce00c7288310ccfebcdd032842661296bc3464d42ebfec1f4079"
-	ResultsVerifierProvingKeyHash      = "b69c1febc85c14c4b6200fb390d89e92e0f85d9177d2954d7dfa47005d91b5a8"
-	ResultsVerifierVerificationKeyHash = "9c7f7cf4bcffa4d30cef5d94be0a3401de8bb461d0f76b0f959a17f5e99694fe"
-
-	BallotProofWasmHelperHash = "9ea8f6989eab0c8e848902ee4289d6b6acb076056f0391e483befbe8348bc6c8"
-	BallotProofWasmExecJsHash = "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+	ResultsVerifierCircuitHash         = "386646c4ab455b71afa2bd8a8f03e3ad1913e81972c8eb4a14455393846c00a3"
+	ResultsVerifierProvingKeyHash      = "448592882f39f7e5ef17ad70cdee5a23f95b1337ec72ae1ac36266a306cc6bea"
+	ResultsVerifierVerificationKeyHash = "a3ff300fe0143bc8238fac0c8db5be74aca3ec8fa00f6701b81c365fc447551e"
 )
 
 var (
@@ -72,9 +69,4 @@ var (
 	ResultsVerifierProvingKeyURL = fmt.Sprintf("%s/%s/%s", DefaultArtifactsBaseURL, DefaultArtifactsRelease, ResultsVerifierProvingKeyHash)
 	// ResultsVerifierVerificationKeyURL is the URL for the resultsverifier verification key
 	ResultsVerifierVerificationKeyURL = fmt.Sprintf("%s/%s/%s", DefaultArtifactsBaseURL, DefaultArtifactsRelease, ResultsVerifierVerificationKeyHash)
-
-	// BallotProofWasmHelperURL is the default URL for the WASM helper
-	BallotProofWasmHelperURL = fmt.Sprintf("%s/%s/davinci_crypto_%s", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofWasmHelperHash[len(BallotProofWasmHelperHash)-4:])
-	// BallotProofWasmExecJsURL is the default URL for the WASM exec JS
-	BallotProofWasmExecJsURL = fmt.Sprintf("%s/%s/wasm_exec_%s", DefaultArtifactsBaseURL, DefaultArtifactsRelease, BallotProofWasmExecJsHash[len(BallotProofWasmExecJsHash)-4:])
 )

@@ -554,12 +554,33 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 		return fmt.Errorf("delete state transition batch: %w", err)
 	}
 
-	// Release the ballot batch reservation, so the batch can be processed again
-	if err := s.releaseAggregatorBatchReservation(stb.BatchID); err != nil {
-		log.Warnw("failed to release ballot batch reservation after marking state transition batch as outdated",
-			"error", err.Error(),
-			"batchID", fmt.Sprintf("%x", stb.BatchID),
-		)
+	if stb.ProcessID.IsValid() {
+		if err := s.prunePendingTx(StateTransitionTx, stb.ProcessID); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("prune pending state transition tx: %w", err)
+		}
+
+		pendingBatch, err := s.pendingAggregatorBatch(stb.ProcessID)
+		switch {
+		case err == nil:
+			if err := s.releasePendingAggregatorBatch(stb.ProcessID); err != nil && !errors.Is(err, db.ErrKeyNotFound) {
+				return fmt.Errorf("release pending aggregator batch: %w", err)
+			}
+			if err := s.pushAggregatorBatch(pendingBatch); err != nil && !errors.Is(err, ErrKeyAlreadyExists) {
+				return fmt.Errorf("requeue pending aggregator batch: %w", err)
+			}
+		case !errors.Is(err, ErrNotFound):
+			return fmt.Errorf("get pending aggregator batch: %w", err)
+		}
+	}
+
+	// Release the ballot batch reservation, so the batch can be processed again.
+	if len(stb.BatchID) > 0 {
+		if err := s.releaseAggregatorBatchReservation(stb.BatchID); err != nil {
+			log.Warnw("failed to release ballot batch reservation after marking state transition batch as outdated",
+				"error", err.Error(),
+				"batchID", fmt.Sprintf("%x", stb.BatchID),
+			)
+		}
 	}
 
 	return nil

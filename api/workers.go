@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -11,12 +12,15 @@ import (
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/workers"
 )
+
+const uuidTextLen = 36
 
 // startWorkersAPI method checks if the workers API should be started. If so,
 // it generates the sequencer signer and uuid using the seed defined in the
@@ -56,7 +60,7 @@ func (a *API) startWorkersAPI(conf APIConfig) error {
 		log.Infow("register handler", "endpoint", WorkerJobEndpoint, "method", "POST")
 		a.router.Post(WorkerJobEndpoint, a.workersSubmitJob)
 
-		log.Infow("worker API enabled",
+		log.Debugw("worker API enabled",
 			"sequencerUUID", a.sequencerUUID.String(),
 			"sequencerAddr", a.sequencerSigner.Address().Hex(),
 			"workersEndpoint", EndpointWithParam(WorkersEndpoint, SequencerUUIDURLParam, a.sequencerUUID.String()))
@@ -103,7 +107,7 @@ func (a *API) authWorkerFromRequest(r *http.Request) (common.Address, *Error) {
 	// Extract the sequencer UUID from the url and compare with UUID of the
 	// current sequencer API.
 	sequencerUUID := chi.URLParam(r, "uuid")
-	if a.sequencerUUID.String() != sequencerUUID {
+	if !a.matchesSequencerUUID(sequencerUUID) {
 		return common.Address{}, &ErrResourceNotFound
 	}
 
@@ -148,6 +152,22 @@ func (a *API) authWorkerFromRequest(r *http.Request) (common.Address, *Error) {
 	// updated
 	a.jobsManager.WorkerManager.AddWorker(strWorkerAddress, workerName)
 	return common.HexToAddress(strWorkerAddress), nil
+}
+
+func (a *API) matchesSequencerUUID(sequencerUUID string) bool {
+	if a == nil || a.sequencerUUID == nil {
+		return false
+	}
+	if len(sequencerUUID) != uuidTextLen {
+		return false
+	}
+
+	parsedUUID, err := uuid.Parse(sequencerUUID)
+	if err != nil {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare(parsedUUID[:], a.sequencerUUID[:]) == 1
 }
 
 // workersList handles GET /workers
@@ -275,9 +295,15 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Decode verified ballot
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB limit for worker submissions
 	var workerVerifiedBallot storage.VerifiedBallot
 	body, err := io.ReadAll(r.Body) // Read the body to ensure it's consumed
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			ErrRequestBodyTooLarge.Write(w)
+			return
+		}
 		log.Warnw("failed to read request body",
 			"error", err.Error())
 		ErrMalformedBody.WithErr(err).Write(w)
@@ -325,18 +351,8 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	// Verify the worker proof
 	if err := a.voteVerifier.Verify(workerVerifiedBallot.Proof, assignment); err != nil {
-		ErrGenericInternalServerError.WithErr(
-			fmt.Errorf("failed to verify worker proof, ballotHash: %v, proof: %v, err: %s",
-				assignment.BallotHash, workerVerifiedBallot.Proof, err.Error())).Write(w)
-		return
-	}
-
-	// Set job as completed
-	job := a.jobsManager.CompleteJob(ballot.VoteID, true)
-	if job == nil {
-		log.Warnw("job not found or expired",
-			"voteID", ballot.VoteID.String())
-		ErrResourceNotFound.Withf("job not found or expired").Write(w)
+		log.Errorw(err, fmt.Sprintf("failed to verify worker proof, ballotHash: %v, proof: %v", assignment.BallotHash, workerVerifiedBallot.Proof))
+		ErrGenericInternalServerError.Write(w)
 		return
 	}
 
@@ -357,6 +373,15 @@ func (a *API) workersSubmitJob(w http.ResponseWriter, r *http.Request) {
 			"error", err.Error(),
 			"voteID", ballot.VoteID.String())
 		ErrGenericInternalServerError.WithErr(err).Write(w)
+		return
+	}
+
+	// Mark the job as completed only after the verified ballot has been stored.
+	job := a.jobsManager.CompleteJob(ballot.VoteID, true)
+	if job == nil {
+		log.Warnw("job not found or expired after ballot verification was stored",
+			"voteID", ballot.VoteID.String())
+		ErrResourceNotFound.Withf("job not found or expired").Write(w)
 		return
 	}
 

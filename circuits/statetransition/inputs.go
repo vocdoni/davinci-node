@@ -96,21 +96,14 @@ func GenerateAssignment(
 			return nil, nil, fmt.Errorf("could not get VoteID proof for index %d: %w", i, err)
 		}
 	}
-	// update ResultsAdd
-	assignment.ResultsProofs.ResultsAdd, err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().ResultsAdd)
+	// update Results
+	assignment.ResultsProofs.Results, err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().Results)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not get ResultsAdd proof: %w", err)
-	}
-	// update ResultsSub
-	assignment.ResultsProofs.ResultsSub, err = merkleproof.MerkleTransitionFromArboTransition(o.VotesProofs().ResultsSub)
-	if err != nil {
-		return nil, nil, fmt.Errorf("could not get ResultsSub proof: %w", err)
+		return nil, nil, fmt.Errorf("could not get Results proof: %w", err)
 	}
 	assignment.Results = Results{
-		OldResultsAdd: *o.OldResultsAdd().ToGnark(),
-		OldResultsSub: *o.OldResultsSub().ToGnark(),
-		NewResultsAdd: *o.NewResultsAdd().ToGnark(),
-		NewResultsSub: *o.NewResultsSub().ToGnark(),
+		OldResults: *o.OldResults().ToGnark(),
+		NewResults: *o.NewResults().ToGnark(),
 	}
 	// RootHashAfter
 	assignment.RootHashAfter, err = o.RootAsBigInt()

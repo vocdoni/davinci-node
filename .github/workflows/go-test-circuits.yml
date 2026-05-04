@@ -4,9 +4,11 @@ on:
   pull_request:
     paths:
       - 'circuits/**'
+      - 'go.mod'
   push:
     paths:
       - 'circuits/**'
+      - 'go.mod'
     branches:
       - dev
       - stage
@@ -34,12 +36,14 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Run circuit tests
         env:
           RUN_CIRCUIT_TESTS: true
         run: |
           go test -v ./circuits/... \
+            -p 1 \
             -failfast \
             -vet=off \
             -timeout=1h
