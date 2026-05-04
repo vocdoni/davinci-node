@@ -142,6 +142,14 @@ jobs:
           name: gocoverage-unit
           path: gocoverage-unit/
 
+      - name: Run spec unit tests
+        working-directory: spec
+        run: |
+          go test -v ./... \
+            -p 1 \
+            -failfast \
+            -vet=off
+
       - name: Compile circuit artifacts
         run: go run ./cmd/circuit-compile --update-config
 
