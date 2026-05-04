@@ -14,14 +14,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
-	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/circuits"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/metadata"
 	stg "github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
@@ -36,11 +34,10 @@ var webappFileServer = http.StripPrefix(appRouteRoot+"/", http.FileServer(http.F
 // APIConfig type represents the configuration for the API HTTP server.
 // It includes the host, port and optionally an existing storage instance.
 type APIConfig struct {
-	Host       string
-	Port       int
-	Storage    *stg.Storage // Optional: use existing storage instance
-	Network    string       // Optional: web3 network shortname
-	Web3Config config.DavinciWeb3Config
+	Host     string
+	Port     int
+	Storage  *stg.Storage // Optional: use existing storage instance
+	Runtimes *web3.RuntimeRouter
 	// Worker configuration
 	SequencerWorkersSeed       string                  // Seed for workers authentication over current sequencer
 	WorkersAuthtokenExpiration time.Duration           // Expiration time for worker authentication tokens
@@ -52,12 +49,12 @@ type APIConfig struct {
 
 // API type represents the API HTTP server with JWT authentication capabilities.
 type API struct {
-	router            *chi.Mux
-	storage           *stg.Storage
-	metadata          *metadata.MetadataStorage
-	network           string
-	web3Config        config.DavinciWeb3Config
-	processIDsVersion [4]byte // Current process ID version
+	router          *chi.Mux
+	storage         *stg.Storage
+	metadata        *metadata.MetadataStorage
+	runtimes        *web3.RuntimeRouter
+	runtimeInfos    map[uint64]SequencerRuntimeInfo
+	allowedVersions map[[4]byte]struct{}
 	// Workers API stuff
 	sequencerSigner            *ethereum.Signer         // Signer for workers authentication
 	sequencerUUID              *uuid.UUID               // UUID to keep the workers endpoints hidden
@@ -78,6 +75,14 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	if conf.Storage == nil {
 		return nil, fmt.Errorf("missing storage instance")
 	}
+	if conf.Runtimes == nil {
+		return nil, fmt.Errorf("missing runtime router")
+	}
+
+	allowedVersions, runtimeInfos, err := apiRuntimeData(conf.Runtimes)
+	if err != nil {
+		return nil, fmt.Errorf("invalid runtime router: %w", err)
+	}
 
 	// By default, use the local metadata provider
 	metadataProviders := []metadata.MetadataProvider{
@@ -93,19 +98,13 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 	a := &API{
 		storage:                    conf.Storage,
 		metadata:                   metadata.New(metadata.CID, metadataProviders...),
-		network:                    conf.Network,
-		web3Config:                 conf.Web3Config,
+		runtimes:                   conf.Runtimes,
+		runtimeInfos:               runtimeInfos,
+		allowedVersions:            allowedVersions,
 		workersJobTimeout:          conf.WorkerJobTimeout,
 		workersAuthtokenExpiration: conf.WorkersAuthtokenExpiration,
 		parentCtx:                  ctx,
 	}
-
-	// Set the supported process ID versions
-	currentProcessIDVersion, err := a.ProcessIDVersion()
-	if err != nil {
-		return nil, fmt.Errorf("could not determine current process ID version: %w", err)
-	}
-	a.processIDsVersion = currentProcessIDVersion
 
 	// If no ban rules for workers are provided, use default rules
 	if conf.WorkerBanRules != nil {
@@ -202,7 +201,7 @@ func (a *API) initRouter() {
 	a.router.Use(middleware.ThrottleBacklog(5000, 40000, 60*time.Second))
 	a.router.Use(middleware.Timeout(45 * time.Second))
 	// Add middleware to skip unknown process ID versions
-	a.router.Use(skipUnknownProcessIDMiddleware(a.processIDsVersion))
+	a.router.Use(skipUnknownProcessIDMiddleware(a.allowedVersions))
 
 	a.registerHandlers()
 }
@@ -251,13 +250,84 @@ func staticHandler(w http.ResponseWriter, r *http.Request) {
 	webappFileServer.ServeHTTP(w, r)
 }
 
-// ProcessIDVersion returns the expected ProcessID version for the current
-// network and contract address. It can be used to validate ProcessIDs.
-func (a *API) ProcessIDVersion() ([4]byte, error) {
-	chainID, ok := npbindings.AvailableNetworksByName[a.network]
-	if !ok {
-		return [4]byte{}, fmt.Errorf("unknown network: %s", a.network)
+func apiRuntimeData(router *web3.RuntimeRouter) (map[[4]byte]struct{}, map[uint64]SequencerRuntimeInfo, error) {
+	runtimes := router.Runtimes()
+	if len(runtimes) == 0 {
+		return nil, nil, fmt.Errorf("no runtimes configured")
 	}
-	contractAddr := common.HexToAddress(a.web3Config.ProcessRegistrySmartContract)
-	return types.ProcessIDVersion(chainID, contractAddr), nil
+
+	allowedVersions := make(map[[4]byte]struct{}, len(runtimes))
+	runtimeInfos := make(map[uint64]SequencerRuntimeInfo, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			return nil, nil, fmt.Errorf("nil runtime")
+		}
+		if runtime.Contracts == nil {
+			return nil, nil, fmt.Errorf("runtime %q has nil contracts", runtime.Network)
+		}
+		if runtime.Contracts.ContractsAddresses == nil {
+			return nil, nil, fmt.Errorf("runtime %q has nil contract addresses", runtime.Network)
+		}
+
+		chainID := runtime.Contracts.ChainID
+		if _, exists := runtimeInfos[chainID]; exists {
+			return nil, nil, fmt.Errorf("duplicate runtime chain ID %d", chainID)
+		}
+
+		contractsInfo, err := apiContractAddresses(runtime.Contracts)
+		if err != nil {
+			return nil, nil, fmt.Errorf("runtime %q: %w", runtime.Network, err)
+		}
+
+		allowedVersions[runtime.ProcessIDVersion] = struct{}{}
+		runtimeInfos[chainID] = SequencerRuntimeInfo{
+			Network:   runtime.Network,
+			Contracts: contractsInfo,
+		}
+	}
+	return allowedVersions, runtimeInfos, nil
+}
+
+func apiContractAddresses(contracts *web3.Contracts) (ContractAddresses, error) {
+	if contracts == nil {
+		return ContractAddresses{}, fmt.Errorf("nil contracts")
+	}
+	if contracts.ContractsAddresses == nil {
+		return ContractAddresses{}, fmt.Errorf("nil contract addresses")
+	}
+
+	processRegistry := contracts.ContractsAddresses.ProcessRegistry
+	if processRegistry == (common.Address{}) {
+		return ContractAddresses{}, fmt.Errorf("process registry address is required")
+	}
+
+	stateTransition := contracts.ContractsAddresses.StateTransitionZKVerifier
+	if stateTransition == (common.Address{}) {
+		addr, err := contracts.StateTransitionVerifierAddress()
+		if err != nil {
+			return ContractAddresses{}, fmt.Errorf("resolve state transition verifier address: %w", err)
+		}
+		stateTransition = common.HexToAddress(addr)
+	}
+	if stateTransition == (common.Address{}) {
+		return ContractAddresses{}, fmt.Errorf("state transition verifier address is required")
+	}
+
+	results := contracts.ContractsAddresses.ResultsZKVerifier
+	if results == (common.Address{}) {
+		addr, err := contracts.ResultsVerifierAddress()
+		if err != nil {
+			return ContractAddresses{}, fmt.Errorf("resolve results verifier address: %w", err)
+		}
+		results = common.HexToAddress(addr)
+	}
+	if results == (common.Address{}) {
+		return ContractAddresses{}, fmt.Errorf("results verifier address is required")
+	}
+
+	return ContractAddresses{
+		ProcessRegistry:           processRegistry.String(),
+		StateTransitionZKVerifier: stateTransition.String(),
+		ResultsZKVerifier:         results.String(),
+	}, nil
 }

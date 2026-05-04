@@ -147,11 +147,11 @@ func loggingMiddlewareWithConfig(config LoggingConfig) func(http.Handler) http.H
 }
 
 // skipUnknownProcessIDMiddleware allows to skip requests with unknown
-// ProcessID versions. It checks the "processID" URL parameter and compares
-// its version against the provided currentVersion. If they don't match, it
-// responds with 404 Not Found. If the path does not contain a processID
+// ProcessID versions. It checks the "processId" URL parameter and compares
+// its version against the provided allowedVersions. If there is no match, it
+// responds with 404 Not Found. If the route does not contain a processID
 // parameter, it simply calls the next handler.
-func skipUnknownProcessIDMiddleware(currentVersion [4]byte) func(http.Handler) http.Handler {
+func skipUnknownProcessIDMiddleware(allowedVersions map[[4]byte]struct{}) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if the route contains a process id
@@ -172,8 +172,8 @@ func skipUnknownProcessIDMiddleware(currentVersion [4]byte) func(http.Handler) h
 				ErrMalformedProcessID.Withf("invalid process ID: %s", processIDStr).Write(w)
 				return
 			}
-			// Check if the version matches the current expected version
-			if processID.Version() != currentVersion {
+			// Check if the version matches one of the allowed versions
+			if _, ok := allowedVersions[processID.Version()]; !ok {
 				http.NotFound(w, r)
 				return
 			}

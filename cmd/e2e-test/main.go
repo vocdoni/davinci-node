@@ -19,7 +19,6 @@ import (
 	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
@@ -322,17 +321,15 @@ func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, net
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Start API service
-	_, ok := npbindings.AvailableNetworksByName[network]
-	if !ok {
-		return fmt.Errorf("invalid network configuration for %s", network)
+	apiRuntime, err := web3.NewNetworkRuntime(network, contracts, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create API runtime: %w", err)
 	}
-	c := npbindings.GetAllContractAddresses(network)
-	web3Conf := config.DavinciWeb3Config{
-		ProcessRegistrySmartContract: c[npbindings.ProcessRegistryContract],
-		ResultsZKVerifier:            c[npbindings.ResultsVerifierGroth16Contract],
-		StateTransitionZKVerifier:    c[npbindings.StateTransitionVerifierGroth16Contract],
+	apiRuntimes, err := web3.NewRuntimeRouter(apiRuntime)
+	if err != nil {
+		return fmt.Errorf("failed to create API runtime router: %w", err)
 	}
-	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, network, web3Conf, metadata.PinataMetadataProviderConfig{}, false)
+	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, apiRuntimes, metadata.PinataMetadataProviderConfig{}, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}

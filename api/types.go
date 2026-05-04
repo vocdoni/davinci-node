@@ -33,17 +33,22 @@ type ContractAddresses struct {
 	ResultsZKVerifier         string `json:"resultsVerifier"`
 }
 
+// SequencerRuntimeInfo contains the network label and contract addresses for a runtime.
+type SequencerRuntimeInfo struct {
+	Network   string            `json:"network"`
+	Contracts ContractAddresses `json:"contracts"`
+}
+
 // SequencerInfo contains any relevant information about the current sequencer for a client.
 type SequencerInfo struct {
-	CircuitURL          string            `json:"circuitUrl"`
-	CircuitHash         string            `json:"circuitHash"`
-	ProvingKeyURL       string            `json:"provingKeyUrl"`
-	ProvingKeyHash      string            `json:"provingKeyHash"`
-	VerificationKeyURL  string            `json:"verificationKeyUrl"`
-	VerificationKeyHash string            `json:"verificationKeyHash"`
-	Contracts           ContractAddresses `json:"contracts"`
-	Network             map[string]uint32 `json:"network,omitempty"`
-	SequencerAddress    types.HexBytes    `json:"sequencerAddress"`
+	CircuitURL          string                          `json:"circuitUrl"`
+	CircuitHash         string                          `json:"circuitHash"`
+	ProvingKeyURL       string                          `json:"provingKeyUrl"`
+	ProvingKeyHash      string                          `json:"provingKeyHash"`
+	VerificationKeyURL  string                          `json:"verificationKeyUrl"`
+	VerificationKeyHash string                          `json:"verificationKeyHash"`
+	Runtimes            map[uint64]SequencerRuntimeInfo `json:"runtimes"`
+	SequencerAddress    types.HexBytes                  `json:"sequencerAddress"`
 }
 
 // VoteResponse is the response returned by the vote submission endpoint.

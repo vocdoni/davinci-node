@@ -7,140 +7,135 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+	qt "github.com/frankban/quicktest"
+	"github.com/go-chi/chi/v5"
+	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
+func TestSkipUnknownProcessIDMiddleware(t *testing.T) {
+	versionSepolia := [4]byte{0x01, 0x02, 0x03, 0x04}
+	versionArbitrum := [4]byte{0x05, 0x06, 0x07, 0x08}
+	versionUnknown := [4]byte{0x09, 0x0a, 0x0b, 0x0c}
+
+	router := chi.NewRouter()
+	router.With(skipUnknownProcessIDMiddleware(map[[4]byte]struct{}{
+		versionSepolia:  {},
+		versionArbitrum: {},
+	})).Get(ProcessEndpoint, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	testCases := []struct {
+		name      string
+		processID types.ProcessID
+		wantCode  int
+	}{
+		{
+			name:      "accepted first version",
+			processID: types.NewProcessID(common.HexToAddress("0x0000000000000000000000000000000000000004"), versionSepolia, 1),
+			wantCode:  http.StatusOK,
+		},
+		{
+			name:      "accepted second version",
+			processID: types.NewProcessID(common.HexToAddress("0x0000000000000000000000000000000000000005"), versionArbitrum, 2),
+			wantCode:  http.StatusOK,
+		},
+		{
+			name:      "rejected unknown version",
+			processID: types.NewProcessID(common.HexToAddress("0x0000000000000000000000000000000000000006"), versionUnknown, 3),
+			wantCode:  http.StatusNotFound,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := qt.New(t)
+			req := httptest.NewRequest(http.MethodGet, "/processes/"+tc.processID.String(), nil)
+			rr := httptest.NewRecorder()
+
+			router.ServeHTTP(rr, req)
+
+			c.Assert(rr.Code, qt.Equals, tc.wantCode)
+		})
+	}
+}
+
 func TestLoggingMiddleware(t *testing.T) {
-	// Create a simple handler that echoes the body
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(body)
 	})
 
-	// Wrap with logging middleware
-	middleware := loggingMiddleware(100)
-	wrappedHandler := middleware(handler)
+	wrappedHandler := loggingMiddleware(100)(handler)
 
-	tests := []struct {
-		name        string
-		body        string
-		shouldLog   bool
-		description string
+	testCases := []struct {
+		name string
+		body string
 	}{
-		{
-			name:        "JSON object",
-			body:        `{"key": "value"}`,
-			shouldLog:   true,
-			description: "Should log JSON objects",
-		},
-		{
-			name:        "JSON array",
-			body:        `[1, 2, 3]`,
-			shouldLog:   true,
-			description: "Should log JSON arrays",
-		},
-		{
-			name:        "JSON with whitespace",
-			body:        `  {"key": "value"}`,
-			shouldLog:   true,
-			description: "Should log JSON with leading whitespace",
-		},
-		{
-			name:        "Binary data",
-			body:        "\x00\x01\x02\x03\x04",
-			shouldLog:   false,
-			description: "Should not log binary data",
-		},
-		{
-			name:        "Plain text",
-			body:        "Hello, World!",
-			shouldLog:   false,
-			description: "Should not log plain text",
-		},
-		{
-			name:        "Empty body",
-			body:        "",
-			shouldLog:   false,
-			description: "Should handle empty body",
-		},
+		{name: "json object", body: `{"key":"value"}`},
+		{name: "json array", body: `[1,2,3]`},
+		{name: "json with whitespace", body: `  {"key":"value"}`},
+		{name: "binary data", body: "\x00\x01\x02\x03\x04"},
+		{name: "plain text", body: "Hello, World!"},
+		{name: "empty body", body: ""},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create request
-			req := httptest.NewRequest("POST", "/test", bytes.NewBufferString(tt.body))
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := qt.New(t)
+			req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(tc.body))
 			rec := httptest.NewRecorder()
 
-			// Execute
 			wrappedHandler.ServeHTTP(rec, req)
 
-			// Check response
-			if rec.Code != http.StatusOK {
-				t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
-			}
-
-			// Check body was preserved
-			respBody, _ := io.ReadAll(rec.Body)
-			if string(respBody) != tt.body {
-				t.Errorf("Body was modified: expected %q, got %q", tt.body, string(respBody))
-			}
+			c.Assert(rec.Code, qt.Equals, http.StatusOK)
+			respBody, err := io.ReadAll(rec.Body)
+			c.Assert(err, qt.IsNil)
+			c.Assert(string(respBody), qt.Equals, tc.body)
 		})
 	}
 }
 
 func TestLoggingMiddlewareExclusions(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	wrappedHandler := loggingMiddleware(100)(handler)
 
-	tests := []struct {
-		name        string
-		path        string
-		shouldSkip  bool
-		description string
+	testCases := []struct {
+		name string
+		path string
 	}{
-		{
-			name:        "Ping endpoint",
-			path:        "/ping",
-			shouldSkip:  true,
-			description: "Should skip ping endpoint",
-		},
-		{
-			name:        "Workers endpoint",
-			path:        "/workers/123/job",
-			shouldSkip:  true,
-			description: "Should skip workers endpoints",
-		},
-		{
-			name:        "Regular endpoint",
-			path:        "/votes",
-			shouldSkip:  false,
-			description: "Should not skip regular endpoints",
-		},
+		{name: "ping endpoint", path: "/ping"},
+		{name: "workers endpoint", path: "/workers/123/job"},
+		{name: "regular endpoint", path: "/votes"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			middleware := loggingMiddleware(100)
-			wrappedHandler := middleware(handler)
-
-			req := httptest.NewRequest("GET", tt.path, nil)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := qt.New(t)
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			rec := httptest.NewRecorder()
 
 			wrappedHandler.ServeHTTP(rec, req)
 
-			if rec.Code != http.StatusOK {
-				t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
-			}
+			c.Assert(rec.Code, qt.Equals, http.StatusOK)
 		})
 	}
 }
 
 func TestLoggingConfigCustomExclusions(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-
 	config := LoggingConfig{
 		MaxBodyLog: 100,
 		ExcludedPrefixes: []string{
@@ -149,47 +144,42 @@ func TestLoggingConfigCustomExclusions(t *testing.T) {
 			"/metrics",
 		},
 	}
+	wrappedHandler := loggingMiddlewareWithConfig(config)(handler)
 
-	middleware := loggingMiddlewareWithConfig(config)
-	wrappedHandler := middleware(handler)
-
-	tests := []struct {
-		path       string
-		shouldSkip bool
+	testCases := []struct {
+		path string
 	}{
-		{"/api/v1/users", true},
-		{"/api/v1/posts/123", true},
-		{"/health", true},
-		{"/healthcheck", true}, // prefix match
-		{"/metrics/prometheus", true},
-		{"/api/v2/users", false},
-		{"/users", false},
+		{path: "/api/v1/users"},
+		{path: "/api/v1/posts/123"},
+		{path: "/health"},
+		{path: "/healthcheck"},
+		{path: "/metrics/prometheus"},
+		{path: "/api/v2/users"},
+		{path: "/users"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			req := httptest.NewRequest("GET", tt.path, nil)
+	for _, tc := range testCases {
+		t.Run(tc.path, func(t *testing.T) {
+			c := qt.New(t)
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			rec := httptest.NewRecorder()
 
 			wrappedHandler.ServeHTTP(rec, req)
 
-			if rec.Code != http.StatusOK {
-				t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
-			}
+			c.Assert(rec.Code, qt.Equals, http.StatusOK)
 		})
 	}
 }
 
 func TestResponseWriterCapture(t *testing.T) {
-	// Test that responseWriter correctly captures status codes
-	tests := []struct {
+	testCases := []struct {
 		name           string
 		handlerFunc    func(w http.ResponseWriter, r *http.Request)
 		expectedStatus int
 	}{
 		{
 			name: "WriteHeader before Write",
-			handlerFunc: func(w http.ResponseWriter, r *http.Request) {
+			handlerFunc: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusCreated)
 				_, _ = w.Write([]byte("test"))
 			},
@@ -197,52 +187,75 @@ func TestResponseWriterCapture(t *testing.T) {
 		},
 		{
 			name: "Write without WriteHeader",
-			handlerFunc: func(w http.ResponseWriter, r *http.Request) {
+			handlerFunc: func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("test"))
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name: "Multiple WriteHeader calls",
-			handlerFunc: func(w http.ResponseWriter, r *http.Request) {
+			handlerFunc: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusCreated)
-				w.WriteHeader(http.StatusAccepted) // Should be ignored
+				w.WriteHeader(http.StatusAccepted)
 			},
 			expectedStatus: http.StatusCreated,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := qt.New(t)
 			rec := httptest.NewRecorder()
 			rw := &responseWriter{
 				ResponseWriter: rec,
 				statusCode:     0,
 			}
 
-			req := httptest.NewRequest("GET", "/", nil)
-			tt.handlerFunc(rw, req)
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			tc.handlerFunc(rw, req)
 
-			if rw.statusCode != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tt.expectedStatus, rw.statusCode)
-			}
+			c.Assert(rw.statusCode, qt.Equals, tc.expectedStatus)
 		})
 	}
 }
 
+func TestAPIRuntimeDataResolvesMissingVerifierAddresses(t *testing.T) {
+	c := qt.New(t)
+
+	contracts := &web3.Contracts{
+		ChainID: 11155111,
+		ContractsAddresses: &web3.Addresses{
+			ProcessRegistry: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+		},
+	}
+	runtime, err := web3.NewNetworkRuntime("sepolia", contracts, nil)
+	c.Assert(err, qt.IsNil)
+	router, err := web3.NewRuntimeRouter(runtime)
+	c.Assert(err, qt.IsNil)
+
+	allowedVersions, runtimeInfos, err := apiRuntimeData(router)
+	c.Assert(err, qt.IsNil)
+	c.Assert(allowedVersions, qt.HasLen, 1)
+
+	info, ok := runtimeInfos[11155111]
+	c.Assert(ok, qt.IsTrue)
+	c.Assert(info.Network, qt.Equals, "sepolia")
+	c.Assert(info.Contracts.ProcessRegistry, qt.Equals, "0x1111111111111111111111111111111111111111")
+	c.Assert(info.Contracts.StateTransitionZKVerifier, qt.Not(qt.Equals), common.Address{}.String())
+	c.Assert(info.Contracts.ResultsZKVerifier, qt.Not(qt.Equals), common.Address{}.String())
+}
+
 func BenchmarkLoggingMiddleware(b *testing.B) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := loggingMiddleware(512)
-	wrappedHandler := middleware(handler)
-
+	wrappedHandler := loggingMiddleware(512)(handler)
 	jsonBody := `{"key": "value", "number": 123, "array": [1, 2, 3]}`
 
 	b.Run("JSON body", func(b *testing.B) {
 		for b.Loop() {
-			req := httptest.NewRequest("POST", "/test", strings.NewReader(jsonBody))
+			req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(jsonBody))
 			rec := httptest.NewRecorder()
 			wrappedHandler.ServeHTTP(rec, req)
 		}
@@ -251,7 +264,7 @@ func BenchmarkLoggingMiddleware(b *testing.B) {
 	b.Run("Binary body", func(b *testing.B) {
 		binaryBody := bytes.Repeat([]byte{0x00, 0x01, 0x02, 0x03}, 100)
 		for b.Loop() {
-			req := httptest.NewRequest("POST", "/test", bytes.NewReader(binaryBody))
+			req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewReader(binaryBody))
 			rec := httptest.NewRecorder()
 			wrappedHandler.ServeHTTP(rec, req)
 		}
@@ -259,7 +272,7 @@ func BenchmarkLoggingMiddleware(b *testing.B) {
 
 	b.Run("No body", func(b *testing.B) {
 		for b.Loop() {
-			req := httptest.NewRequest("GET", "/test", nil)
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			rec := httptest.NewRecorder()
 			wrappedHandler.ServeHTTP(rec, req)
 		}

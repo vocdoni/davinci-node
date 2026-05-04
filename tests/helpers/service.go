@@ -18,7 +18,6 @@ import (
 	c3config "github.com/vocdoni/census3-bigquery/config"
 	c3service "github.com/vocdoni/census3-bigquery/service"
 	"github.com/vocdoni/davinci-node/api/client"
-	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/log"
@@ -123,12 +122,7 @@ func NewTestServices(
 		return nil, nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}
 	// Start API service
-	web3Conf := config.DavinciWeb3Config{
-		ProcessRegistrySmartContract: contracts.ContractsAddresses.ProcessRegistry.String(),
-		ResultsZKVerifier:            contracts.ContractsAddresses.ResultsZKVerifier.String(),
-		StateTransitionZKVerifier:    contracts.ContractsAddresses.StateTransitionZKVerifier.String(),
-	}
-	api, err := setupAPI(ctx, stg, workerSecret, workerTokenExpiration, workerTimeout, banRules, web3Conf)
+	api, err := setupAPI(ctx, stg, contracts, workerSecret, workerTokenExpiration, workerTimeout, banRules)
 	if err != nil {
 		pm.Stop()
 		cd.Stop()
@@ -174,15 +168,23 @@ func httpClient(port int) (*client.HTTPclient, error) {
 func setupAPI(
 	ctx context.Context,
 	db *storage.Storage,
+	contracts *web3.Contracts,
 	workerSeed string,
 	workerTokenExpiration time.Duration,
 	workerTimeout time.Duration,
 	banRules *workers.WorkerBanRules,
-	web3Conf config.DavinciWeb3Config,
 ) (*service.APIService, error) {
-	api := service.NewAPI(db, "127.0.0.1", DefaultAPIPort, "test", web3Conf, metadata.PinataMetadataProviderConfig{}, false)
+	apiRuntime, err := web3.NewNetworkRuntime("test", contracts, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create API runtime: %w", err)
+	}
+	apiRuntimes, err := web3.NewRuntimeRouter(apiRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create API runtime router: %w", err)
+	}
+	api := service.NewAPI(db, "127.0.0.1", DefaultAPIPort, apiRuntimes, metadata.PinataMetadataProviderConfig{}, false)
 	api.SetWorkerConfig(workerSeed, workerTokenExpiration, workerTimeout, banRules)
-	if err := api.Start(ctx); err != nil {
+	if err = api.Start(ctx); err != nil {
 		return nil, err
 	}
 
