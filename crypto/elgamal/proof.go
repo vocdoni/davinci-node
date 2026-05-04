@@ -107,9 +107,9 @@ func BuildDecryptionProof(
 	A2.ScalarMult(c1, r) // r·C1
 
 	// 3. Compute D = C2 – M·G  (shared secret part)
-	msg.Mod(msg, order)
+	m := new(big.Int).Mod(msg, order)
 	M := publicKey.New()
-	M.ScalarBaseMult(msg) // M·G
+	M.ScalarBaseMult(m) // M·G
 
 	D := publicKey.New()
 	D.Set(c2)
@@ -148,9 +148,9 @@ func VerifyDecryptionProof(
 	order := publicKey.Order()
 
 	// Recompute D = C2 – M·G
-	msg.Mod(msg, order)
+	m := new(big.Int).Mod(msg, order)
 	M := publicKey.New()
-	M.ScalarBaseMult(msg)
+	M.ScalarBaseMult(m)
 
 	D := publicKey.New()
 	D.Set(c2)

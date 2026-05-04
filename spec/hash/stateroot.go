@@ -16,13 +16,11 @@ import (
 //	]
 const ZeroBallotHashHex = "2c66ee3d8ff0f86c2251e885d4c207e5162c05d0b458c773106cd5579c58bf36"
 
-// Results leaves are constants derived from ZERO_BALLOT_HASH:
+// Results leaf is a constant derived from ZERO_BALLOT_HASH:
 //
-//	leafResultsAdd = H_3(KEY_RESULTS_ADD, ZERO_BALLOT_HASH, LEAF_DOMAIN)
-//	leafResultsSub = H_3(KEY_RESULTS_SUB, ZERO_BALLOT_HASH, LEAF_DOMAIN)
+//	leafResults = H_3(KEY_RESULTS, ZERO_BALLOT_HASH, LEAF_DOMAIN)
 const (
-	LeafResultsAddHex = "1f72c52b6e5dedca4f99ecfa24f2776732431e8d544e14c6f78f5042727c4657"
-	LeafResultsSubHex = "2b853c511fba705a6030f80ce83d6ee8cbf4a1273724368728c11682eae4c51a"
+	LeafResultsHex = "1f72c52b6e5dedca4f99ecfa24f2776732431e8d544e14c6f78f5042727c4657"
 )
 
 // StateRoot computes the state root hash for the process parameters.
@@ -38,7 +36,7 @@ func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, ballotMode *big.Int) (
 	keyCensusOrigin := bigFromUint64(params.StateKeyCensusOrigin)
 
 	leafProcess, err := PoseidonHash(keyProcessID,
-		bigToFF(params.StateTransitionCurve.ScalarField(), processID), leafDomain)
+		new(big.Int).Mod(processID, params.StateTransitionCurve.ScalarField()), leafDomain)
 	if err != nil {
 		return nil, fmt.Errorf("state root: leaf process: %w", err)
 	}
@@ -59,10 +57,9 @@ func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, ballotMode *big.Int) (
 		return nil, fmt.Errorf("state root: leaf census origin: %w", err)
 	}
 
-	leafResultsAdd := leafResultsAddBig()
-	leafResultsSub := leafResultsSubBig()
+	leafResults := leafResultsBig()
 
-	nodeA0, err := PoseidonHash(leafProcess, leafResultsAdd)
+	nodeA0, err := PoseidonHash(leafProcess, leafResults)
 	if err != nil {
 		return nil, fmt.Errorf("state root: nodeA0: %w", err)
 	}
@@ -74,29 +71,17 @@ func StateRoot(processID, censusOrigin, pubKeyX, pubKeyY, ballotMode *big.Int) (
 	if err != nil {
 		return nil, fmt.Errorf("state root: nodeA: %w", err)
 	}
-	nodeB, err := PoseidonHash(leafResultsSub, leafEncKey)
-	if err != nil {
-		return nil, fmt.Errorf("state root: nodeB: %w", err)
-	}
-	root, err := PoseidonHash(nodeA, nodeB)
+	root, err := PoseidonHash(nodeA, leafEncKey)
 	if err != nil {
 		return nil, fmt.Errorf("state root: root: %w", err)
 	}
 	return root, nil
 }
 
-func leafResultsAddBig() *big.Int {
-	value, ok := new(big.Int).SetString(LeafResultsAddHex, 16)
+func leafResultsBig() *big.Int {
+	value, ok := new(big.Int).SetString(LeafResultsHex, 16)
 	if !ok {
-		panic("state root: invalid LeafResultsAddHex")
-	}
-	return value
-}
-
-func leafResultsSubBig() *big.Int {
-	value, ok := new(big.Int).SetString(LeafResultsSubHex, 16)
-	if !ok {
-		panic("state root: invalid LeafResultsSubHex")
+		panic("state root: invalid LeafResultsHex")
 	}
 	return value
 }

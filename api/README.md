@@ -94,10 +94,6 @@ Returns information needed by the client to generate a ballot zkSNARK proof, inc
   "provingKeyHash": "hexString",
   "verificationKeyUrl": "string",
   "verificationKeyHash": "hexString",
-  "ballotProofWasmHelperUrl": "string",
-  "ballotProofWasmHelperHash": "hexString",
-  "ballotProofWasmHelperExecJsUrl": "string",
-  "ballotProofWasmHelperExecJsHash": "hexString",
   "contracts": {
     "process": "address",
     "stateTransitionVerifier": "address",
@@ -259,7 +255,6 @@ Gets information about an existing voting process. It must exist in the smart co
     "maxValue": "bigintStr",
     "minValue": "bigintStr",
     "uniqueValues": "boolean",
-    "costFromWeight": "boolean",
     "costExponent": "number",
     "maxValueSum": "bigintStr",
     "minValueSum": "bigintStr"

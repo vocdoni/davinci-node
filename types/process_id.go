@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/util"
 )
 
@@ -130,7 +129,7 @@ func (p *ProcessID) UnmarshalJSON(data []byte) error {
 // ToFF returns the finite field representation of the ProcessID.
 // It uses the curve scalar field to represent the ProcessID.
 func (p *ProcessID) ToFF(field *big.Int) ProcessID {
-	bi := crypto.BigToFF(field, p.MathBigInt())
+	bi := new(big.Int).Mod(p.MathBigInt(), field)
 	var processID ProcessID
 	bi.FillBytes(processID[:])
 	return processID

@@ -3,7 +3,16 @@ package circomgnark
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 )
+
+type circomVerificationKeyCacheEntry struct {
+	once sync.Once
+	vk   *CircomVerificationKey
+	err  error
+}
+
+var circomVerificationKeyCache sync.Map
 
 // UnmarshalCircom function unmarshals a circom proof and public signals from
 // their string representations. It returns the CircomProof and a slice of
@@ -33,12 +42,22 @@ func UnmarshalCircomProofJSON(data []byte) (*CircomProof, error) {
 
 // UnmarshalCircomVerificationKeyJSON parses the JSON-encoded verification key data into a SnarkJSVerificationKey struct.
 func UnmarshalCircomVerificationKeyJSON(data []byte) (*CircomVerificationKey, error) {
-	var vk CircomVerificationKey
-	err := json.Unmarshal(data, &vk)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse verification key JSON: %v", err)
+	cacheKey := string(data)
+	entryValue, _ := circomVerificationKeyCache.LoadOrStore(cacheKey, &circomVerificationKeyCacheEntry{})
+	entry := entryValue.(*circomVerificationKeyCacheEntry)
+	entry.once.Do(func() {
+		var vk CircomVerificationKey
+		if err := json.Unmarshal(data, &vk); err != nil {
+			entry.err = fmt.Errorf("failed to parse verification key JSON: %v", err)
+			return
+		}
+		entry.vk = &vk
+	})
+	if entry.err != nil {
+		circomVerificationKeyCache.Delete(cacheKey)
+		return nil, entry.err
 	}
-	return &vk, nil
+	return entry.vk, nil
 }
 
 // UnmarshalCircomPublicSignalsJSON parses the JSON-encoded public signals data into a slice of strings.

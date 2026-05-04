@@ -2,11 +2,20 @@ package circomgnark
 
 import (
 	"fmt"
+	"sync"
 
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 	bn254fr "github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 )
+
+type gnarkVerificationKeyCacheEntry struct {
+	once sync.Once
+	vk   *groth16_bn254.VerifyingKey
+	err  error
+}
+
+var gnarkVerificationKeyCache sync.Map
 
 // ConvertCircomToGnark converts a Circom proof, verification key, and public
 // signals to the Gnark proof format. The proof can be verified using the
@@ -81,6 +90,19 @@ func (circomProof *CircomProof) ToGnark() (*groth16_bn254.Proof, error) {
 // ToGnark converts a CircomVerificationKey into a Gnark-compatible
 // VerifyingKey structure.
 func (circomVerificationKey *CircomVerificationKey) ToGnark() (*groth16_bn254.VerifyingKey, error) {
+	if circomVerificationKey == nil {
+		return nil, fmt.Errorf("verification key is nil")
+	}
+
+	entryValue, _ := gnarkVerificationKeyCache.LoadOrStore(circomVerificationKey, &gnarkVerificationKeyCacheEntry{})
+	entry := entryValue.(*gnarkVerificationKeyCacheEntry)
+	entry.once.Do(func() {
+		entry.vk, entry.err = circomVerificationKey.toGnarkUncached()
+	})
+	return entry.vk, entry.err
+}
+
+func (circomVerificationKey *CircomVerificationKey) toGnarkUncached() (*groth16_bn254.VerifyingKey, error) {
 	// Parse vk_alpha_1 (G1 point)
 	alphaG1, err := stringToG1(circomVerificationKey.VkAlpha1)
 	if err != nil {

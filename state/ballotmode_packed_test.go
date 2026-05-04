@@ -21,15 +21,14 @@ func TestStateStoresPackedBallotMode(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 
 	bm := spec.BallotMode{
-		NumFields:      3,
-		GroupSize:      2,
-		UniqueValues:   true,
-		CostFromWeight: false,
-		CostExponent:   1,
-		MaxValue:       10,
-		MinValue:       0,
-		MaxValueSum:    20,
-		MinValueSum:    0,
+		NumFields:    3,
+		GroupSize:    2,
+		UniqueValues: true,
+		CostExponent: 1,
+		MaxValue:     10,
+		MinValue:     0,
+		MaxValueSum:  20,
+		MinValueSum:  0,
 	}
 	packed, err := bm.Pack()
 	c.Assert(err, qt.IsNil)

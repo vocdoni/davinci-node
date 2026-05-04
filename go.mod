@@ -2,6 +2,8 @@ module github.com/vocdoni/davinci-node
 
 go 1.25.5
 
+replace github.com/vocdoni/davinci-node/spec => ./spec
+
 require (
 	github.com/attestantio/go-eth2-client v0.28.0
 	github.com/aws/aws-sdk-go-v2 v1.36.3
@@ -31,14 +33,15 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
+	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
 	github.com/vocdoni/arbo v0.0.0-20260224125436-30808c99dfb2
 	github.com/vocdoni/census3-bigquery v0.0.2
-	github.com/vocdoni/davinci-circom v0.1.0
-	github.com/vocdoni/davinci-contracts v0.0.41-rc1
-	github.com/vocdoni/davinci-node/spec v0.0.0-20260305103337-7a52760babbc
-	github.com/vocdoni/gnark-crypto-primitives v0.0.3
-	github.com/vocdoni/lean-imt-go v0.0.2
+	github.com/vocdoni/davinci-circom v0.1.1-0.20260424075126-6b7e6be69f1d
+	github.com/vocdoni/davinci-contracts v0.0.45
+	github.com/vocdoni/davinci-node/spec v0.0.3
+	github.com/vocdoni/gnark-crypto-primitives v0.0.6
+	github.com/vocdoni/lean-imt-go v0.0.4-rc1
 	github.com/vocdoni/poseidon377 v0.0.0-20260107010505-905fd2aadb69
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/mod v0.33.0
@@ -284,7 +287,6 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/supranational/blst v0.3.16 // indirect
-	github.com/testcontainers/testcontainers-go v0.40.0 // indirect
 	github.com/theupdateframework/notary v0.7.0 // indirect
 	github.com/tilt-dev/fsnotify v1.4.8-0.20220602155310-fff9c274a375 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect

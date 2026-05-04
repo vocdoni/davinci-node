@@ -111,6 +111,23 @@ func TestECDSASignature_Bytes(t *testing.T) {
 	c.Assert(recoveredSig.recovery, qt.Equals, sig.recovery)
 }
 
+func TestECDSASignature_BytesPreservesRecovery(t *testing.T) {
+	c := qt.New(t)
+
+	sig := &ECDSASignature{
+		R:        big.NewInt(123),
+		S:        big.NewInt(456),
+		recovery: 3,
+	}
+
+	bytes := sig.Bytes()
+	c.Assert(bytes[64], qt.Equals, sig.recovery)
+
+	recoveredSig, err := BytesToSignature(bytes)
+	c.Assert(err, qt.IsNil)
+	c.Assert(recoveredSig.recovery, qt.Equals, sig.recovery)
+}
+
 func TestECDSASignature_Verify(t *testing.T) {
 	c := qt.New(t)
 

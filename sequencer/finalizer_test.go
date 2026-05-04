@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"errors"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -14,12 +15,59 @@ import (
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/spec/params"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
+
+func TestMaxPossibleResult(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		process *types.Process
+		want    uint64
+	}{
+		{
+			name: "returns zero when no votes can contribute",
+			process: &types.Process{
+				BallotMode:  spec.BallotMode{MaxValue: 16},
+				VotersCount: types.BigIntConverter(big.NewInt(0)),
+			},
+			want: 0,
+		},
+		{
+			name: "uses maxValue times votersCount",
+			process: &types.Process{
+				BallotMode:  spec.BallotMode{MaxValue: 16},
+				VotersCount: types.BigIntConverter(big.NewInt(3)),
+			},
+			want: 48,
+		},
+		{
+			name: "caps at fallback maximum",
+			process: &types.Process{
+				BallotMode:  spec.BallotMode{MaxValue: 1_000_000_000_000},
+				VotersCount: types.BigIntConverter(big.NewInt(2)),
+			},
+			want: maxPossibleResultCap,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := maxPossibleResult(tc.process); got != tc.want {
+				t.Fatalf("maxPossibleResult() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
 
 func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
 	t.Helper()
@@ -36,7 +84,7 @@ func TestFinalize(t *testing.T) {
 	c := qt.New(t)
 
 	// Setup test environment
-	stg, stateDB, procesSID, _, _, _, cleanup := setupTestEnvironment(t, 10000, 5000)
+	stg, stateDB, processID, _, _, cleanup := setupTestEnvironment(t, 5000)
 	defer cleanup()
 
 	// Create a finalizer
@@ -44,12 +92,12 @@ func TestFinalize(t *testing.T) {
 	f.Start(t.Context(), 0)
 
 	// Test finalize
-	f.OndemandCh <- procesSID
-	_, err := f.WaitUntilResults(t.Context(), procesSID)
+	f.OndemandCh <- processID
+	_, err := f.WaitUntilResults(t.Context(), processID)
 	c.Assert(err, qt.IsNil, qt.Commentf("finalize failed: %v", err))
 
 	// Check that the process has been updated with the result
-	process, err := stg.Process(procesSID)
+	process, err := stg.Process(processID)
 	c.Assert(err, qt.IsNil)
 	c.Assert(process.Result, qt.Not(qt.IsNil))
 
@@ -60,14 +108,26 @@ func TestFinalize(t *testing.T) {
 		qt.Commentf("Expected first result to be 500, got %s", process.Result[0].String()))
 }
 
+func TestFinalizeMissingEncryptionKeysReturnsSequencerSentinel(t *testing.T) {
+	c := qt.New(t)
+
+	stg, stateDB, processID, _, _, cleanup := setupTestEnvironment(t, 5000)
+	defer cleanup()
+
+	f := newFinalizer(stg, stateDB, nil, nil)
+
+	err := f.finalize(processID)
+	c.Assert(err, qt.IsNotNil)
+	c.Assert(errors.Is(err, ErrProcessEncryptionKeysMissing), qt.IsTrue)
+}
+
 // setupTestEnvironment creates a test environment with necessary objects
-func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
+func setupTestEnvironment(t *testing.T, resultValue int64) (
 	*storage.Storage,
 	db.Database,
 	types.ProcessID,
 	ecc.Point,
 	ecc.Point,
-	*big.Int,
 	func(),
 ) {
 	// Create temporary directory
@@ -91,13 +151,13 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 
 	// Create encryption keys
 	curve := curves.New(bjj.CurveType)
-	pubKey, privKey, err := elgamal.GenerateKey(curve)
+	pubKey, _, err := elgamal.GenerateKey(curve)
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
 	}
 
 	// Store the keys in storage
-	t.Log("TODO: fix SetEncryptionKeys", processID, pubKey, privKey)
+	t.Log("TODO: fix SetEncryptionKeys", processID, pubKey)
 	// err = stg.SetEncryptionKeys(processID, pubKey, privKey)
 	// if err != nil {
 	// 	t.Fatalf("failed to store encryption keys: %v", err)
@@ -115,7 +175,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 	}
 
 	// Setup state with test data
-	process.StateRoot = setupTestState(t, stateDB, processID, pubKey, process.StateRoot.MathBigInt(), addValue, subValue)
+	process.StateRoot = setupTestState(t, stateDB, processID, pubKey, process.StateRoot.MathBigInt(), resultValue)
 	err = stg.UpdateProcess(processID, func(p *types.Process) error {
 		p.StateRoot = process.StateRoot
 		return nil
@@ -129,7 +189,7 @@ func setupTestEnvironment(t *testing.T, addValue, subValue int64) (
 		stg.Close()
 	}
 
-	return stg, stateDB, processID, curve, pubKey, privKey, cleanup
+	return stg, stateDB, processID, curve, pubKey, cleanup
 }
 
 // setupTestState initializes the state with encrypted test data
@@ -139,7 +199,7 @@ func setupTestState(
 	processID types.ProcessID,
 	pubKey ecc.Point,
 	stateRoot *big.Int,
-	addValue, subValue int64,
+	resultValue int64,
 ) *types.BigInt {
 	// Load the initial state
 	st, err := state.LoadOnRoot(stateDB, processID, stateRoot)
@@ -147,46 +207,24 @@ func setupTestState(
 		t.Fatalf("failed to load state: %v", err)
 	}
 
-	// Create encrypted accumulators with known values
+	// Create an encrypted results accumulator with a known value
 	curve := pubKey.New()
-
-	// Add accumulator with a known value
-	addAccumulator := elgamal.NewBallot(curve)
-	addValues := [params.FieldsPerBallot]*big.Int{}
-	// Set values for testing
+	resultsAccumulator := elgamal.NewBallot(curve)
+	resultsValues := [params.FieldsPerBallot]*big.Int{}
 	for i := range params.FieldsPerBallot {
-		addValues[i] = big.NewInt(addValue)
+		resultsValues[i] = big.NewInt(resultValue)
 	}
-	// Encrypt the values
 	k1, err := specutil.RandomK()
 	if err != nil {
 		t.Fatalf("failed to generate k1: %v", err)
 	}
-	encryptedAdd, err := addAccumulator.Encrypt(addValues, pubKey, k1)
+	encryptedResults, err := resultsAccumulator.Encrypt(resultsValues, pubKey, k1)
 	if err != nil {
-		t.Fatalf("failed to encrypt add accumulator: %v", err)
+		t.Fatalf("failed to encrypt results accumulator: %v", err)
 	}
 
-	// Sub accumulator with a known value
-	subAccumulator := elgamal.NewBallot(curve)
-	subValues := [params.FieldsPerBallot]*big.Int{}
-	// Set values for testing
-	for i := range params.FieldsPerBallot {
-		subValues[i] = big.NewInt(subValue)
-	}
-	// Encrypt the values
-	k2, err := specutil.RandomK()
-	if err != nil {
-		t.Fatalf("failed to generate k2: %v", err)
-	}
-	encryptedSub, err := subAccumulator.Encrypt(subValues, pubKey, k2)
-	if err != nil {
-		t.Fatalf("failed to encrypt sub accumulator: %v", err)
-	}
-
-	// Store the encrypted accumulators in the state
-	st.SetResultsAdd(encryptedAdd)
-	st.SetResultsSub(encryptedSub)
+	// Store the encrypted results in the state
+	st.SetResults(encryptedResults)
 
 	stateRoot, err = st.RootAsBigInt()
 	if err != nil {

@@ -62,15 +62,14 @@ type CallResult struct {
 // contractProcess2Process converts a contractProcess to a types.Process
 func contractProcess2Process(p npbindings.DAVINCITypesProcess) (*types.Process, error) {
 	ballotMode := spec.BallotMode{
-		UniqueValues:   p.BallotMode.UniqueValues,
-		CostFromWeight: p.BallotMode.CostFromWeight,
-		NumFields:      p.BallotMode.NumFields,
-		GroupSize:      p.BallotMode.GroupSize,
-		CostExponent:   p.BallotMode.CostExponent,
-		MaxValue:       p.BallotMode.MaxValue.Uint64(),
-		MinValue:       p.BallotMode.MinValue.Uint64(),
-		MaxValueSum:    p.BallotMode.MaxValueSum.Uint64(),
-		MinValueSum:    p.BallotMode.MinValueSum.Uint64(),
+		UniqueValues: p.BallotMode.UniqueValues,
+		NumFields:    p.BallotMode.NumFields,
+		GroupSize:    p.BallotMode.GroupSize,
+		CostExponent: p.BallotMode.CostExponent,
+		MaxValue:     p.BallotMode.MaxValue.Uint64(),
+		MinValue:     p.BallotMode.MinValue.Uint64(),
+		MaxValueSum:  p.BallotMode.MaxValueSum.Uint64(),
+		MinValueSum:  p.BallotMode.MinValueSum.Uint64(),
 	}
 
 	// Validate the census origin
@@ -129,15 +128,14 @@ func process2ContractProcess(p *types.Process) npbindings.DAVINCITypesProcess {
 	prp.MetadataURI = p.MetadataURI
 
 	prp.BallotMode = npbindings.DAVINCITypesBallotMode{
-		CostFromWeight: p.BallotMode.CostFromWeight,
-		UniqueValues:   p.BallotMode.UniqueValues,
-		NumFields:      p.BallotMode.NumFields,
-		GroupSize:      p.BallotMode.GroupSize,
-		CostExponent:   p.BallotMode.CostExponent,
-		MaxValue:       new(big.Int).SetUint64(p.BallotMode.MaxValue),
-		MinValue:       new(big.Int).SetUint64(p.BallotMode.MinValue),
-		MaxValueSum:    new(big.Int).SetUint64(p.BallotMode.MaxValueSum),
-		MinValueSum:    new(big.Int).SetUint64(p.BallotMode.MinValueSum),
+		UniqueValues: p.BallotMode.UniqueValues,
+		NumFields:    p.BallotMode.NumFields,
+		GroupSize:    p.BallotMode.GroupSize,
+		CostExponent: p.BallotMode.CostExponent,
+		MaxValue:     new(big.Int).SetUint64(p.BallotMode.MaxValue),
+		MinValue:     new(big.Int).SetUint64(p.BallotMode.MinValue),
+		MaxValueSum:  new(big.Int).SetUint64(p.BallotMode.MaxValueSum),
+		MinValueSum:  new(big.Int).SetUint64(p.BallotMode.MinValueSum),
 	}
 
 	// Set census stuff

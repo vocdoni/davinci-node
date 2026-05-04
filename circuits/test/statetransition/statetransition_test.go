@@ -376,6 +376,7 @@ func (circuit CircuitCalculateAggregatorWitness) Define(api frontend.API) error 
 	_, err := circuit.CalculateAggregatorWitness(api, isRealVote)
 	if err != nil {
 		circuits.FrontendError(api, "failed to create bw6761 witness: ", err)
+		return nil
 	}
 	return nil
 }
@@ -600,8 +601,7 @@ func debugLog(t *testing.T, assignment *statetransition.StateTransitionCircuit) 
 	}
 
 	for name, mt := range map[string]merkleproof.MerkleTransition{
-		"ResultsAdd": assignment.ResultsProofs.ResultsAdd,
-		"ResultsSub": assignment.ResultsProofs.ResultsSub,
+		"Results": assignment.ResultsProofs.Results,
 	} {
 		t.Log(name, "transitioned", "(root", util.PrettyHex(mt.OldRoot), "->", util.PrettyHex(mt.NewRoot), ")",
 			"value", util.PrettyHex(mt.OldLeafHash), "->", util.PrettyHex(mt.NewLeafHash),

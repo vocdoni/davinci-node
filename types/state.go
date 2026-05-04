@@ -46,8 +46,8 @@ func BigIntToVoteID(x *big.Int) (VoteID, error) {
 // between BallotMin and BallotMax.
 //
 //	BallotIndex = BallotMin + voterIndex
-func CalculateBallotIndex(voterIndex uint64) BallotIndex {
-	ballotIndex, err := spec.BallotIndex(voterIndex)
+func CalculateBallotIndex(voterIndex VoterIndex) BallotIndex {
+	ballotIndex, err := spec.BallotIndex(voterIndex.Uint64())
 	if err != nil {
 		panic(err)
 	}

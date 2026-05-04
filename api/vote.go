@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -15,11 +16,9 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec/params"
 	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
-	"github.com/vocdoni/davinci-node/util/circomgnark"
 )
 
 // voteStatus returns the status of a vote for a given processID and voteID
@@ -114,7 +113,7 @@ func (a *API) voteByAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Calculate the ballot index
-	ballotIndex := types.CalculateBallotIndex(proof.AddressIndex)
+	ballotIndex := types.CalculateBallotIndex(types.VoterIndex(proof.AddressIndex))
 
 	// Open the state for the process
 	s, err := state.LoadOnRoot(a.storage.StateDB(), *process.ID, process.StateRoot.MathBigInt())
@@ -190,9 +189,15 @@ func (a *API) ballotByIndex(w http.ResponseWriter, r *http.Request) {
 // POST /votes
 func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// decode the vote
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB limit for /votes
 	vote := &Vote{}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			ErrRequestBodyTooLarge.Write(w)
+			return
+		}
 		ErrMalformedBody.Withf("could not decode request body: %v", err).Write(w)
 		return
 	}
@@ -213,10 +218,16 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrMalformedBody.Withf("missing required fields").Write(w)
 		return
 	}
+	if len(vote.Address) != common.AddressLength {
+		ErrMalformedBody.Withf("address must be %d bytes", common.AddressLength).Write(w)
+		return
+	}
 	if !vote.Ballot.Valid() {
 		ErrMalformedBody.Withf("invalid ballot").Write(w)
 		return
 	}
+	canonicalAddress := common.BytesToAddress(vote.Address).Bytes()
+	vote.Address = types.HexBytes(canonicalAddress)
 	// get the process from the storage
 	process, err := a.storage.Process(vote.ProcessID)
 	if err != nil {
@@ -270,7 +281,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			ErrInvalidCensusProof.Withf("address not in census").Write(w)
 			return
 		}
-		vote.CensusProof.VoterIndex = proof.AddressIndex
+		vote.CensusProof.VoterIndex = types.VoterIndex(proof.AddressIndex)
 		voterWeight = new(types.BigInt).SetBigInt(proof.Weight)
 	case process.Census.CensusOrigin.IsCSP():
 		if err := csp.VerifyCensusProof(&vote.CensusProof); err != nil {
@@ -299,6 +310,18 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// verify the signature of the vote early (cheap check before expensive proof verification)
+	signature := new(ethereum.ECDSASignature).SetBytes(vote.Signature)
+	if signature == nil {
+		ErrMalformedBody.Withf("could not decode signature").Write(w)
+		return
+	}
+	signatureOk, pubkey := signature.VerifyVoteID(vote.VoteID, common.BytesToAddress(vote.Address))
+	if !signatureOk {
+		ErrInvalidSignature.Write(w)
+		return
+	}
+
 	// calculate the ballot inputs hash
 	ballotInputsHash, err := ballotproof.BallotInputsHashIden3(
 		vote.ProcessID,
@@ -317,36 +340,15 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		ErrInvalidBallotInputsHash.Withf("ballot inputs hash mismatch").Write(w)
 		return
 	}
-	rawBallotProofVK, err := ballotproof.Artifacts.RawVerifyingKey()
-	if err != nil {
-		ErrGenericInternalServerError.Withf("could not load ballot proof verification key: %v", err).Write(w)
-		return
-	}
-	// convert the circom proof to gnark proof and verify it
-	ballotProofAddress := vote.Address.BigInt().ToFF(params.BallotProofCurve.ScalarField())
-	ballotProofVoteID := vote.VoteID.BigInt() // ToFF unneeded since VoteID is a uint64
-	proof, err := circomgnark.VerifyAndConvertToRecursion(
-		rawBallotProofVK,
+	proof, err := defaultBallotProofVerifier.VerifyBallotProof(
+		vote.Address,
+		vote.VoteID,
+		vote.BallotInputsHash,
 		vote.BallotProof,
-		[]string{
-			ballotProofAddress.String(),
-			ballotProofVoteID.String(),
-			vote.BallotInputsHash.String(),
-		},
 	)
 	if err != nil {
-		ErrInvalidBallotProof.Withf("could not verify and convert proof: %v", err).Write(w)
-		return
-	}
-	// verify the signature of the vote
-	signature := new(ethereum.ECDSASignature).SetBytes(vote.Signature)
-	if signature == nil {
-		ErrMalformedBody.Withf("could not decode signature: %v", err).Write(w)
-		return
-	}
-	signatureOk, pubkey := signature.VerifyVoteID(vote.VoteID, common.BytesToAddress(vote.Address))
-	if !signatureOk {
-		ErrInvalidSignature.Write(w)
+		log.Errorw(err, fmt.Sprintf("failed to verify and convert ballot proof for address %s", vote.Address))
+		ErrInvalidBallotProof.Write(w)
 		return
 	}
 	// Create the ballot object

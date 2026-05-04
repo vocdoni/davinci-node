@@ -99,8 +99,10 @@ func (b *BlobEvalData) TxSidecar() *types.BlobTxSidecar {
 }
 
 // ComputeEvaluationPoint computes evaluation point z using Poseidon hash.
-// z = Poseidon(processID | rootHashBefore | C | blob)
+// z = Poseidon(processID | rootHashBefore | C)
 // where C is the KZG commitment split into 3 × 16-byte limbs.
+// Note: the blob itself is not hashed because the commitment C is binding to it
+// under the KZG scheme.
 func ComputeEvaluationPoint(processID, rootHashBefore *big.Int, commitment types.KZGCommitment) (*big.Int, error) {
 	// Split 48-byte commitment into 3 × 16-byte limbs
 	limbs := commitment.ToLimbs()

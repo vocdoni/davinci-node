@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/consensys/gnark/logger"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
+	"github.com/testcontainers/testcontainers-go"
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
 	c3config "github.com/vocdoni/census3-bigquery/config"
 	c3service "github.com/vocdoni/census3-bigquery/service"
@@ -247,6 +249,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		}
 	}
 
+	var deployerContainer *testcontainers.DockerContainer
 	var deployerUrl string
 	if localEnv {
 		// Generate a random port for geth HTTP RPC
@@ -325,7 +328,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		deployerCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 		defer cancel()
 		// Get the enpoint of the deployer service
-		deployerContainer, err := compose.ServiceContainer(deployerCtx, "deployer")
+		deployerContainer, err = compose.ServiceContainer(deployerCtx, "deployer")
 		if err != nil {
 			cleanup() // Clean up what we've done so far
 			return nil, nil, fmt.Errorf("failed to get deployer container: %w", err)
@@ -368,6 +371,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		for contractsAddresses == nil {
 			select {
 			case <-contractsCtx.Done():
+				printLogs(ctx, deployerContainer)
 				cleanup() // Clean up what we've done so far
 				return nil, nil, fmt.Errorf("timeout waiting for contracts to be deployed")
 			case <-time.After(5 * time.Second):
@@ -468,4 +472,32 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 	}
 	// Return the contracts object and cleanup function
 	return contracts, cleanup, nil
+}
+
+// printLogs is a helper function that will print the logs of a Docker container
+func printLogs(ctx context.Context, c *testcontainers.DockerContainer) {
+	logsCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	reader, err := c.Logs(logsCtx)
+	if err != nil {
+		log.Errorw(err, "failed accessing container logs")
+		return
+	}
+	defer func() {
+		if err := reader.Close(); err != nil {
+			log.Warnw("failed to close container log reader", "error", err)
+		}
+	}()
+
+	b, err := io.ReadAll(reader)
+	if err != nil {
+		log.Errorw(err, "failed reading container logs")
+		if len(b) > 0 {
+			log.Debugf("partial container logs:\n%s", b)
+		}
+		return
+	}
+
+	log.Debugf("container logs:\n%s", b)
 }
