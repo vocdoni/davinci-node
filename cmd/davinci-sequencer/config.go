@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -54,12 +53,13 @@ type Web3Config struct {
 	Networks web3NetworksConfig `mapstructure:"networks"` // Structured network configuration
 
 	// Legacy fields
-	Network          string   `mapstructure:"network"`       // Network shortname
-	Rpc              []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
-	Capi             string   `mapstructure:"capi"`          // Consensus API URL
-	ProcessAddr      string   `mapstructure:"process"`       // Custom contract addresses, overrides network defaults
-	GasMultiplier    float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
-	legacyConfigured bool     `mapstructure:"-"`
+	Network             string   `mapstructure:"network"`       // Network shortname
+	Rpc                 []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
+	Capi                string   `mapstructure:"capi"`          // Consensus API URL
+	ProcessAddr         string   `mapstructure:"process"`       // Custom contract addresses, overrides network defaults
+	GasMultiplier       float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
+	legacyConfigured    bool     `mapstructure:"-"`
+	legacyRPCConfigured bool     `mapstructure:"-"`
 }
 
 // APIConfig holds the API-specific configuration
@@ -195,15 +195,20 @@ func loadConfig() (*Config, error) {
 		}
 		cfg.Web3.Networks = networks
 	}
+	legacyNetworkSet := legacyWeb3NetworkExplicitlySet()
 	legacyConfigured, err := shouldIncludeLegacyWeb3Network(
 		len(cfg.Web3.Networks) > 0,
-		legacyWeb3ConfigExplicitlySet(),
-		legacyWeb3NetworkExplicitlySet(),
+		legacyNetworkSet,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("invalid mixed web3 configuration: %w", err)
 	}
 	cfg.Web3.legacyConfigured = legacyConfigured
+	// When structured networks are present and no legacy network is defined,
+	// a standalone DAVINCI_WEB3_RPC list is treated as supplemental — it will
+	// be grouped by chainID and merged into the structured networks during
+	// normalization. Track it here so normalizedNetworks knows to consume it.
+	cfg.Web3.legacyRPCConfigured = len(cfg.Web3.Rpc) > 0 && !legacyNetworkSet
 
 	return cfg, nil
 }
@@ -230,40 +235,20 @@ func validateConfig(cfg *Config) error {
 	return nil
 }
 
-func legacyWeb3ConfigExplicitlySet() bool {
-	if slices.ContainsFunc([]string{"web3.network", "web3.rpc", "web3.capi", "web3.process"}, flag.CommandLine.Changed) {
-		return true
-	}
-	for _, key := range []string{
-		"DAVINCI_WEB3_NETWORK",
-		"DAVINCI_WEB3_RPC",
-		"DAVINCI_WEB3_CAPI",
-		"DAVINCI_WEB3_PROCESS",
-	} {
-		if _, ok := os.LookupEnv(key); ok {
-			return true
-		}
-	}
-	return false
-}
-
 func legacyWeb3NetworkExplicitlySet() bool {
 	if flag.CommandLine.Changed("web3.network") {
 		return true
 	}
-	_, ok := os.LookupEnv("DAVINCI_WEB3_NETWORK")
-	return ok
+	val, ok := os.LookupEnv("DAVINCI_WEB3_NETWORK")
+	return ok && strings.TrimSpace(val) != ""
 }
 
-func shouldIncludeLegacyWeb3Network(hasStructuredNetworks, legacyConfigured, legacyNetworkExplicit bool) (bool, error) {
+func shouldIncludeLegacyWeb3Network(hasStructuredNetworks, legacyNetworkExplicit bool) (bool, error) {
 	if !hasStructuredNetworks {
 		return true, nil
 	}
-	if !legacyConfigured {
-		return false, nil
-	}
 	if !legacyNetworkExplicit {
-		return false, fmt.Errorf("when combining web3.networks with legacy web3 flags, web3.network must be explicitly set")
+		return false, nil
 	}
 	return true, nil
 }

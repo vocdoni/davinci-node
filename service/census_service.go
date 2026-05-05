@@ -467,8 +467,9 @@ func (cd *CensusDownloader) updateInternalStatus(icensus internalCensus, err err
 	}
 }
 
-// checkOnchainCensuses re-try to download on-chain dynamic Merkle Tree censuses
-// looking for apply any updates that may have occurred on-chain.
+// checkOnchainCensuses periodically re-checks on-chain dynamic Merkle Tree
+// censuses for root updates. When the on-chain root changes, the previous
+// Complete status is cleaned up so the new root can be re-queued.
 func (cd *CensusDownloader) checkOnchainCensuses() {
 	runCtx, err := cd.downloaderContext()
 	if err != nil {
@@ -480,15 +481,30 @@ func (cd *CensusDownloader) checkOnchainCensuses() {
 		if !ok {
 			return true
 		}
-		// Skip those that are already downloading and not complete
+		// Skip censuses that are currently being downloaded (in progress)
 		if status, exists := cd.DownloadCensusStatus(icensus.ProcessID, icensus.Census); exists && !status.Complete {
 			return true
 		}
-		// Add on-chain census to the on-chain census map if applicable
-		if icensus, err = cd.addOnchainCensus(icensus); err != nil {
-			log.Warnw("failed to add on-chain census", "address", icensus.ContractAddress.Hex(), "error", err)
+
+		// Save the old root before re-fetching
+		oldRoot := icensus.CensusRoot
+
+		// Re-fetch the on-chain root to check for updates
+		icensus, err = cd.addOnchainCensus(icensus)
+		if err != nil {
+			log.Warnw("failed to check on-chain census", "address", icensus.ContractAddress.Hex(), "error", err)
 			return true
 		}
+
+		// Only re-queue when the root actually changed
+		if icensus.CensusRoot.Equal(oldRoot) {
+			return true
+		}
+
+		// Clean up the previous Complete status so addPendingCensus accepts
+		// the new root under the same chain+contract key.
+		cd.CleanUp(icensus.ChainID, icensus.Census)
+
 		select {
 		case <-runCtx.Done():
 			return false

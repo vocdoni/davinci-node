@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	web3rpc "github.com/vocdoni/davinci-node/web3/rpc"
+
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 )
 
@@ -36,6 +38,25 @@ func (cfg Web3Config) normalizedNetworks() ([]web3NetworkConfig, error) {
 			return nil, err
 		}
 		networks = append(networks, legacyNetwork)
+	}
+
+	// Merge flat (agnostic) RPC endpoints into networks that have no RPCs.
+	// This supports DAVINCI_WEB3_RPC alongside structured networks without
+	// requiring DAVINCI_WEB3_NETWORK to be set. The RPCs are grouped by
+	// chainID so endpoints are assigned to the correct network runtime.
+	if cfg.legacyRPCConfigured && len(cfg.Rpc) > 0 {
+		grouped, err := web3rpc.GroupEndpointsByChainID(cfg.Rpc)
+		if err != nil {
+			return nil, fmt.Errorf("group flat RPC endpoints: %w", err)
+		}
+		for i, network := range networks {
+			if len(network.RPC) > 0 {
+				continue // already has per-network RPCs
+			}
+			if endpoints, ok := grouped[network.ChainID]; ok {
+				networks[i].RPC = endpoints
+			}
+		}
 	}
 
 	if len(networks) == 0 {
@@ -176,17 +197,12 @@ func normalizeLegacyWeb3Network(cfg Web3Config) (web3NetworkConfig, error) {
 }
 
 func validateNormalizedWeb3Networks(networks []web3NetworkConfig) error {
-	seenChainIDs := make(map[uint64]string, len(networks))
 	seenNetworks := make(map[string]uint64, len(networks))
 
 	for _, network := range networks {
-		if existing, ok := seenChainIDs[network.ChainID]; ok {
-			return fmt.Errorf("duplicate chainId %d for networks %q and %q", network.ChainID, existing, network.Network)
-		}
 		if existing, ok := seenNetworks[network.Network]; ok {
 			return fmt.Errorf("duplicate network %q for chainIds %d and %d", network.Network, existing, network.ChainID)
 		}
-		seenChainIDs[network.ChainID] = network.Network
 		seenNetworks[network.Network] = network.ChainID
 	}
 	return nil

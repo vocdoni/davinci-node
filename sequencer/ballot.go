@@ -78,7 +78,10 @@ func (s *Sequencer) processAvailableBallots() bool {
 			return processed
 		}
 		if !s.contractsResolver.SupportsProcess(ballot.ProcessID) {
-			log.Debugw("skipping ballot, process not supported", "processID", ballot.ProcessID.String())
+			log.Debugw("removing ballot, process not supported", "processID", ballot.ProcessID.String())
+			if err := s.stg.RemovePendingBallotsByProcess(ballot.ProcessID); err != nil {
+				log.Warnw("failed to remove ballots", "error", err.Error())
+			}
 			continue
 		}
 

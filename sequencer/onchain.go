@@ -251,6 +251,12 @@ func (s *Sequencer) processResultsOnChain() {
 		}
 		if !s.contractsResolver.SupportsProcess(res.ProcessID) {
 			log.Debugw("process not supported", "processID", res.ProcessID.String())
+			// Mark as done to avoid repeatedly selecting the same unsupported
+			// result and starving later verified results.
+			if err := s.stg.MarkVerifiedResultsDone(res.ProcessID); err != nil {
+				log.Errorw(err, "failed to mark unsupported verified results as done")
+				break
+			}
 			continue
 		}
 		// Transform the gnark proof to a solidity proof and upload it to the

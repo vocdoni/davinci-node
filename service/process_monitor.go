@@ -442,6 +442,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 				}
 				go func(censusInfo *types.Census, pid types.ProcessID, newRoot types.HexBytes, newURI string) {
 					// download and import the new census
+					var err error
 					censusInfo.CensusRoot, err = pm.censusDownloader.DownloadCensus(pid, censusInfo)
 					if err != nil {
 						log.Warnw("failed to start download of updated census for process",

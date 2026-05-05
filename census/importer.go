@@ -58,11 +58,8 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, chainID uint64, censu
 		if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 && chainID == 0 {
 			return 0, fmt.Errorf("chain ID is required for dynamic on-chain census import")
 		}
-		// If the census already exists, skip the import. Dynamic on-chain
-		// censuses are tracked by chain-scoped contract address instead of root,
-		// so they always continue into the importer plugin.
-		if census.CensusOrigin != types.CensusOriginMerkleTreeOnchainDynamicV1 &&
-			d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
+		// If the census already exists, skip the import.
+		if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
 			log.Infow("census root already exists, skipping import",
 				"root", census.CensusRoot.String())
 			return processedElements, nil

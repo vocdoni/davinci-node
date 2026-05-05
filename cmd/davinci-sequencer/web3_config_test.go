@@ -144,7 +144,21 @@ func TestNormalizedNetworksMergesStructuredAndExplicitLegacyConfig(t *testing.T)
 	})
 }
 
-func TestNormalizedNetworksRejectsDuplicateChainID(t *testing.T) {
+func TestValidateNormalizedNetworksAllowsSameChainID(t *testing.T) {
+	c := qt.New(t)
+
+	// Same chainID with different process registries is valid — the runtime
+	// router distinguishes them via ProcessIDVersion (chainID || registry addr).
+	networks := []web3NetworkConfig{
+		{Network: "sepolia-v1", ChainID: 11155111, ProcessAddr: "0xold"},
+		{Network: "sepolia-v2", ChainID: 11155111, ProcessAddr: "0xnew"},
+	}
+
+	err := validateNormalizedWeb3Networks(networks)
+	c.Assert(err, qt.IsNil)
+}
+
+func TestNormalizedNetworksRejectsDuplicateNetworkName(t *testing.T) {
 	c := qt.New(t)
 
 	cfg := Web3Config{
@@ -164,7 +178,7 @@ func TestNormalizedNetworksRejectsDuplicateChainID(t *testing.T) {
 
 	c.Assert(networks, qt.IsNil)
 	c.Assert(err, qt.Not(qt.IsNil))
-	c.Assert(err.Error(), qt.Contains, "duplicate chainId 11155111")
+	c.Assert(err.Error(), qt.Contains, "duplicate network")
 }
 
 func TestNormalizedNetworksRejectsMismatchedStructuredNetwork(t *testing.T) {
@@ -224,36 +238,24 @@ func TestShouldIncludeLegacyWeb3Network(t *testing.T) {
 	testCases := []struct {
 		name                 string
 		hasStructuredNetwork bool
-		legacyConfigured     bool
 		legacyNetworkSet     bool
 		wantConfigured       bool
-		wantErr              string
 	}{
 		{
 			name:                 "single network mode always includes legacy config",
 			hasStructuredNetwork: false,
-			legacyConfigured:     false,
 			legacyNetworkSet:     false,
 			wantConfigured:       true,
 		},
 		{
-			name:                 "structured networks without legacy flags",
+			name:                 "structured networks without legacy network",
 			hasStructuredNetwork: true,
-			legacyConfigured:     false,
 			legacyNetworkSet:     false,
 			wantConfigured:       false,
 		},
 		{
-			name:                 "mixed mode requires explicit legacy network",
+			name:                 "structured networks with explicit legacy network",
 			hasStructuredNetwork: true,
-			legacyConfigured:     true,
-			legacyNetworkSet:     false,
-			wantErr:              "web3.network must be explicitly set",
-		},
-		{
-			name:                 "mixed mode accepts explicit legacy network",
-			hasStructuredNetwork: true,
-			legacyConfigured:     true,
 			legacyNetworkSet:     true,
 			wantConfigured:       true,
 		},
@@ -265,15 +267,8 @@ func TestShouldIncludeLegacyWeb3Network(t *testing.T) {
 
 			configured, err := shouldIncludeLegacyWeb3Network(
 				tc.hasStructuredNetwork,
-				tc.legacyConfigured,
 				tc.legacyNetworkSet,
 			)
-
-			if tc.wantErr != "" {
-				c.Assert(err, qt.Not(qt.IsNil))
-				c.Assert(err.Error(), qt.Contains, tc.wantErr)
-				return
-			}
 
 			c.Assert(err, qt.IsNil)
 			c.Assert(configured, qt.Equals, tc.wantConfigured)
