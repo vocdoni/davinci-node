@@ -254,7 +254,7 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 
 	// Start process monitor
 	log.Info("starting process monitor")
-	services.ProcessMon = service.NewProcessMonitor(services.Contracts, services.Storage, services.CensusDownloader, stateSync, monitorInterval)
+	services.ProcessMon = service.NewProcessMonitor(services.Contracts, runtime.ProcessIDVersion, services.Storage, services.CensusDownloader, stateSync, monitorInterval)
 	if err := services.ProcessMon.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}

@@ -58,7 +58,7 @@ func TestStateSync(t *testing.T) {
 	defer stateSync.Stop()
 
 	// Create process monitor
-	monitor := NewProcessMonitor(contracts, store, censusDownloader, stateSync, time.Second)
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, censusDownloader, stateSync, time.Second)
 
 	// Start monitoring in background
 	c.Assert(monitor.Start(ctx), qt.IsNil)

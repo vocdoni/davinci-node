@@ -17,6 +17,7 @@ import (
 // updates and update them in the local storage.
 type ProcessMonitor struct {
 	contracts        ContractsService
+	processIDVersion [4]byte
 	storage          *storage.Storage
 	censusDownloader *CensusDownloader
 	statesync        *StateSync
@@ -38,8 +39,9 @@ type ContractsService interface {
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
 }
 
-// NewProcessMonitor creates a new ProcessMonitor service. If storage is nil, it uses a memory storage.
-func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, censusDownloader *CensusDownloader, stateSync *StateSync, interval time.Duration,
+// NewProcessMonitor creates a new ProcessMonitor service for one process ID
+// version. If storage is nil, it uses a memory storage.
+func NewProcessMonitor(contracts ContractsService, processIDVersion [4]byte, stg *storage.Storage, censusDownloader *CensusDownloader, stateSync *StateSync, interval time.Duration,
 ) *ProcessMonitor {
 	if stg == nil {
 		kv := memdb.New()
@@ -47,6 +49,7 @@ func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, censusD
 	}
 	return &ProcessMonitor{
 		contracts:        contracts,
+		processIDVersion: processIDVersion,
 		storage:          stg,
 		censusDownloader: censusDownloader,
 		statesync:        stateSync,
@@ -112,11 +115,21 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 	}
 
 	// Register each process ID in the contracts' knownProcesses map
+	registeredCount := 0
+	skippedCount := 0
 	for _, processID := range processIDs {
+		if !pm.ownsProcess(processID) {
+			skippedCount++
+			continue
+		}
 		pm.contracts.RegisterKnownProcess(processID)
+		registeredCount++
 	}
 
-	log.Infow("initialized known processes from storage", "count", len(processIDs))
+	log.Infow("initialized known processes from storage",
+		"registeredProcesses", registeredCount,
+		"skippedProcesses", skippedCount,
+		"processIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
 
 	// Sync active processes from blockchain to catch up on missed state transitions
 	if err := pm.syncActiveProcessesFromBlockchain(); err != nil {
@@ -137,7 +150,12 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 	}
 
 	syncCount := 0
+	skippedCount := 0
 	for _, processID := range processIDs {
+		if !pm.ownsProcess(processID) {
+			skippedCount++
+			continue
+		}
 		// Check if process is accepting votes
 		isAccepting, err := pm.storage.ProcessIsAcceptingVotes(processID)
 		if err != nil || !isAccepting {
@@ -189,9 +207,14 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 	if syncCount > 0 {
 		log.Infow("blockchain sync completed",
 			"syncedProcesses", syncCount,
+			"skippedProcesses", skippedCount,
 			"totalProcesses", len(processIDs))
 	}
 	return nil
+}
+
+func (pm *ProcessMonitor) ownsProcess(processID types.ProcessID) bool {
+	return processID.IsValid() && processID.Version() == pm.processIDVersion
 }
 
 func (pm *ProcessMonitor) monitorProcesses(
@@ -207,6 +230,17 @@ func (pm *ProcessMonitor) monitorProcesses(
 			if !ok {
 				log.Warnw("process creation channel closed")
 				return
+			}
+			if process == nil || process.ID == nil {
+				log.Warnw("received process creation event without process ID")
+				continue
+			}
+			if !pm.ownsProcess(*process.ID) {
+				log.Warnw("ignoring process creation for foreign runtime",
+					"processID", process.ID.String(),
+					"processIDVersion", fmt.Sprintf("%x", process.ID.Version()),
+					"monitorProcessIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
+				continue
 			}
 			// Skip if the process already exists
 			if _, err := pm.storage.Process(*process.ID); err == nil {
@@ -275,6 +309,17 @@ func (pm *ProcessMonitor) monitorProcesses(
 			if !ok {
 				log.Warnw("process updates channel closed")
 				return
+			}
+			if update == nil {
+				log.Warnw("received nil process update event")
+				continue
+			}
+			if !pm.ownsProcess(update.ProcessID) {
+				log.Warnw("ignoring process update for foreign runtime",
+					"processID", update.ProcessID.String(),
+					"processIDVersion", fmt.Sprintf("%x", update.ProcessID.Version()),
+					"monitorProcessIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
+				continue
 			}
 			// determine the type of update
 			switch {

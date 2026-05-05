@@ -127,7 +127,7 @@ func NewTestServices(
 	}
 
 	// Start process monitor
-	pm := service.NewProcessMonitor(contracts, stg, cd, stateSync, time.Second*2)
+	pm := service.NewProcessMonitor(contracts, apiRuntime.ProcessIDVersion, stg, cd, stateSync, time.Second*2)
 	if err := pm.Start(ctx); err != nil {
 		cd.Stop()
 		vp.Stop()

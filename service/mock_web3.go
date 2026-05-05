@@ -16,14 +16,18 @@ var (
 	_ ContractsService                = &MockContracts{}
 	_ web3.BlobFetcher                = &MockContracts{}
 	_ web3.ProcessBlobFetcherResolver = &MockContracts{}
+
+	defaultMockProcessIDVersion = [4]byte{0x00, 0x00, 0x00, 0x01}
 )
 
 // MockContracts implements a mock version of web3.Contracts for testing
 type MockContracts struct {
-	processes []*types.Process
-	blobs     map[common.Hash]*types.Blob
-	chanPWC   chan *types.ProcessWithChanges
-	mu        sync.Mutex
+	processes          []*types.Process
+	blobs              map[common.Hash]*types.Blob
+	registeredKnownIDs []types.ProcessID
+	processLookups     []types.ProcessID
+	chanPWC            chan *types.ProcessWithChanges
+	mu                 sync.Mutex
 }
 
 func NewMockContracts() *MockContracts {
@@ -76,7 +80,7 @@ func (m *MockContracts) CreateProcess(process *types.Process) (types.ProcessID, 
 
 	processID := types.NewProcessID(
 		process.OrganizationID,
-		[4]byte{0x00, 0x00, 0x00, 0x01},
+		defaultMockProcessIDVersion,
 		uint64(len(m.processes)),
 	)
 	process.ID = &processID
@@ -101,6 +105,7 @@ func (m *MockContracts) Process(processID types.ProcessID) (*types.Process, erro
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	m.processLookups = append(m.processLookups, processID)
 	for _, proc := range m.processes {
 		if *proc.ID == processID {
 			return proc, nil
@@ -110,7 +115,10 @@ func (m *MockContracts) Process(processID types.ProcessID) (*types.Process, erro
 }
 
 func (m *MockContracts) RegisterKnownProcess(processID types.ProcessID) {
-	// No-op for mock
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.registeredKnownIDs = append(m.registeredKnownIDs, processID)
 }
 
 func (m *MockContracts) BlobsByTxHash(ctx context.Context, txHash common.Hash,

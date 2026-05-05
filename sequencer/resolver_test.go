@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	qt "github.com/frankban/quicktest"
 	"github.com/ethereum/go-ethereum/common"
+	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
 )
