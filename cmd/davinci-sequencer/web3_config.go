@@ -71,10 +71,6 @@ func (cfg *web3NetworksConfig) Type() string {
 	return "json"
 }
 
-func (cfg *web3NetworksConfig) UnmarshalText(text []byte) error {
-	return cfg.Set(string(text))
-}
-
 func (cfg web3NetworksConfig) normalized() ([]web3NetworkConfig, error) {
 	if len(cfg) == 0 {
 		return nil, fmt.Errorf("web3.networks cannot be empty")
@@ -151,10 +147,6 @@ func normalizeConfiguredWeb3Network(cfg web3NetworkConfig) (web3NetworkConfig, e
 		}
 	}
 
-	if len(rpcs) == 0 {
-		return web3NetworkConfig{}, fmt.Errorf("at least one rpc endpoint is required")
-	}
-
 	return web3NetworkConfig{
 		Network:     networkName,
 		ChainID:     cfg.ChainID,
@@ -174,15 +166,10 @@ func normalizeLegacyWeb3Network(cfg Web3Config) (web3NetworkConfig, error) {
 		return web3NetworkConfig{}, fmt.Errorf("invalid network %s, available networks: %v", cfg.Network, npbindings.AvailableNetworksByName)
 	}
 
-	rpcs := cleanRPCs(cfg.Rpc)
-	if len(rpcs) == 0 {
-		return web3NetworkConfig{}, fmt.Errorf("legacy web3.rpc requires at least one endpoint")
-	}
-
 	return web3NetworkConfig{
 		Network:     networkName,
 		ChainID:     chainID,
-		RPC:         rpcs,
+		RPC:         cleanRPCs(cfg.Rpc),
 		CAPI:        strings.TrimSpace(cfg.Capi),
 		ProcessAddr: strings.TrimSpace(cfg.ProcessAddr),
 	}, nil

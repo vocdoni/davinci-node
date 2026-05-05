@@ -30,6 +30,25 @@ func TestNormalizedNetworksFromLegacyConfig(t *testing.T) {
 	})
 }
 
+func TestNormalizedNetworksFromLegacyConfigWithoutRPC(t *testing.T) {
+	c := qt.New(t)
+
+	cfg := Web3Config{
+		Network:          "sepolia",
+		legacyConfigured: true,
+	}
+
+	networks, err := cfg.normalizedNetworks()
+
+	c.Assert(err, qt.IsNil)
+	c.Assert(networks, qt.HasLen, 1)
+	c.Assert(networks[0], qt.DeepEquals, web3NetworkConfig{
+		Network: "sepolia",
+		ChainID: 11155111,
+		RPC:     []string{},
+	})
+}
+
 func TestNormalizedNetworksFromStructuredConfig(t *testing.T) {
 	c := qt.New(t)
 
@@ -64,6 +83,30 @@ func TestNormalizedNetworksFromStructuredConfig(t *testing.T) {
 			ChainID:     42220,
 			RPC:         []string{"https://rpc.celo.example"},
 			ProcessAddr: "0xabcd",
+		},
+	})
+}
+
+func TestNormalizedNetworksFromStructuredConfigWithoutRPC(t *testing.T) {
+	c := qt.New(t)
+
+	cfg := Web3Config{
+		Networks: web3NetworksConfig{
+			{
+				Network: "sepolia",
+				ChainID: 11155111,
+			},
+		},
+	}
+
+	networks, err := cfg.normalizedNetworks()
+
+	c.Assert(err, qt.IsNil)
+	c.Assert(networks, qt.DeepEquals, []web3NetworkConfig{
+		{
+			Network: "sepolia",
+			ChainID: 11155111,
+			RPC:     []string{},
 		},
 	})
 }
