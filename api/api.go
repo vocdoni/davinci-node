@@ -49,12 +49,11 @@ type APIConfig struct {
 
 // API type represents the API HTTP server with JWT authentication capabilities.
 type API struct {
-	router          *chi.Mux
-	storage         *stg.Storage
-	metadata        *metadata.MetadataStorage
-	runtimes        *web3.RuntimeRouter
-	runtimeInfos    map[uint64]SequencerRuntimeInfo
-	allowedVersions map[[4]byte]struct{}
+	router       *chi.Mux
+	storage      *stg.Storage
+	metadata     *metadata.MetadataStorage
+	runtimes     *web3.RuntimeRouter
+	runtimeInfos map[uint64]SequencerRuntimeInfo
 	// Workers API stuff
 	sequencerSigner            *ethereum.Signer         // Signer for workers authentication
 	sequencerUUID              *uuid.UUID               // UUID to keep the workers endpoints hidden
@@ -79,7 +78,7 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 		return nil, fmt.Errorf("missing runtime router")
 	}
 
-	allowedVersions, runtimeInfos, err := apiRuntimeData(conf.Runtimes)
+	runtimeInfos, err := apiRuntimeData(conf.Runtimes)
 	if err != nil {
 		return nil, fmt.Errorf("invalid runtime router: %w", err)
 	}
@@ -100,7 +99,6 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 		metadata:                   metadata.New(metadata.CID, metadataProviders...),
 		runtimes:                   conf.Runtimes,
 		runtimeInfos:               runtimeInfos,
-		allowedVersions:            allowedVersions,
 		workersJobTimeout:          conf.WorkerJobTimeout,
 		workersAuthtokenExpiration: conf.WorkersAuthtokenExpiration,
 		parentCtx:                  ctx,
@@ -201,7 +199,7 @@ func (a *API) initRouter() {
 	a.router.Use(middleware.ThrottleBacklog(5000, 40000, 60*time.Second))
 	a.router.Use(middleware.Timeout(45 * time.Second))
 	// Add middleware to skip unknown process ID versions
-	a.router.Use(skipUnknownProcessIDMiddleware(a.allowedVersions))
+	a.router.Use(skipUnknownProcessIDMiddleware(a.runtimes))
 
 	a.registerHandlers()
 }
@@ -250,42 +248,40 @@ func staticHandler(w http.ResponseWriter, r *http.Request) {
 	webappFileServer.ServeHTTP(w, r)
 }
 
-func apiRuntimeData(router *web3.RuntimeRouter) (map[[4]byte]struct{}, map[uint64]SequencerRuntimeInfo, error) {
+func apiRuntimeData(router *web3.RuntimeRouter) (map[uint64]SequencerRuntimeInfo, error) {
 	runtimes := router.Runtimes()
 	if len(runtimes) == 0 {
-		return nil, nil, fmt.Errorf("no runtimes configured")
+		return nil, fmt.Errorf("no runtimes configured")
 	}
 
-	allowedVersions := make(map[[4]byte]struct{}, len(runtimes))
 	runtimeInfos := make(map[uint64]SequencerRuntimeInfo, len(runtimes))
 	for _, runtime := range runtimes {
 		if runtime == nil {
-			return nil, nil, fmt.Errorf("nil runtime")
+			return nil, fmt.Errorf("nil runtime")
 		}
 		if runtime.Contracts == nil {
-			return nil, nil, fmt.Errorf("runtime %q has nil contracts", runtime.Network)
+			return nil, fmt.Errorf("runtime %q has nil contracts", runtime.Network)
 		}
 		if runtime.Contracts.ContractsAddresses == nil {
-			return nil, nil, fmt.Errorf("runtime %q has nil contract addresses", runtime.Network)
+			return nil, fmt.Errorf("runtime %q has nil contract addresses", runtime.Network)
 		}
 
 		chainID := runtime.Contracts.ChainID
 		if _, exists := runtimeInfos[chainID]; exists {
-			return nil, nil, fmt.Errorf("duplicate runtime chain ID %d", chainID)
+			return nil, fmt.Errorf("duplicate runtime chain ID %d", chainID)
 		}
 
 		contractsInfo, err := apiContractAddresses(runtime.Contracts)
 		if err != nil {
-			return nil, nil, fmt.Errorf("runtime %q: %w", runtime.Network, err)
+			return nil, fmt.Errorf("runtime %q: %w", runtime.Network, err)
 		}
 
-		allowedVersions[runtime.ProcessIDVersion] = struct{}{}
 		runtimeInfos[chainID] = SequencerRuntimeInfo{
 			Network:   runtime.Network,
 			Contracts: contractsInfo,
 		}
 	}
-	return allowedVersions, runtimeInfos, nil
+	return runtimeInfos, nil
 }
 
 func apiContractAddresses(contracts *web3.Contracts) (ContractAddresses, error) {

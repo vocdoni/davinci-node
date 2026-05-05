@@ -219,3 +219,64 @@ func TestWeb3NetworksConfigStringRoundTrip(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(decoded, qt.DeepEquals, original)
 }
+
+func TestShouldIncludeLegacyWeb3Network(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		hasStructuredNetwork bool
+		legacyConfigured     bool
+		legacyNetworkSet     bool
+		wantConfigured       bool
+		wantErr              string
+	}{
+		{
+			name:                 "single network mode always includes legacy config",
+			hasStructuredNetwork: false,
+			legacyConfigured:     false,
+			legacyNetworkSet:     false,
+			wantConfigured:       true,
+		},
+		{
+			name:                 "structured networks without legacy flags",
+			hasStructuredNetwork: true,
+			legacyConfigured:     false,
+			legacyNetworkSet:     false,
+			wantConfigured:       false,
+		},
+		{
+			name:                 "mixed mode requires explicit legacy network",
+			hasStructuredNetwork: true,
+			legacyConfigured:     true,
+			legacyNetworkSet:     false,
+			wantErr:              "web3.network must be explicitly set",
+		},
+		{
+			name:                 "mixed mode accepts explicit legacy network",
+			hasStructuredNetwork: true,
+			legacyConfigured:     true,
+			legacyNetworkSet:     true,
+			wantConfigured:       true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := qt.New(t)
+
+			configured, err := shouldIncludeLegacyWeb3Network(
+				tc.hasStructuredNetwork,
+				tc.legacyConfigured,
+				tc.legacyNetworkSet,
+			)
+
+			if tc.wantErr != "" {
+				c.Assert(err, qt.Not(qt.IsNil))
+				c.Assert(err.Error(), qt.Contains, tc.wantErr)
+				return
+			}
+
+			c.Assert(err, qt.IsNil)
+			c.Assert(configured, qt.Equals, tc.wantConfigured)
+		})
+	}
+}

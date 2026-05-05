@@ -347,9 +347,9 @@ func resolveRuntimeRPCs(networkCfg web3NetworkConfig) ([]string, error) {
 	log.Infow("no web3 RPC endpoints configured, resolving via chainlist.org",
 		"network", networkCfg.Network,
 		"chainID", networkCfg.ChainID)
-	endpoints, err := chainlist.EndpointList(networkCfg.Network, 10)
+	endpoints, err := chainlist.EndpointListByChainID(networkCfg.ChainID, 10)
 	if err != nil {
-		return nil, fmt.Errorf("resolve chainlist endpoints for %s: %w", networkCfg.Network, err)
+		return nil, fmt.Errorf("resolve chainlist endpoints for chain ID %d: %w", networkCfg.ChainID, err)
 	}
 	resolvedEndpoints, err := web3rpc.EndpointsForChainID(endpoints, networkCfg.ChainID)
 	if err != nil {

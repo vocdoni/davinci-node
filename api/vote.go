@@ -233,6 +233,14 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	}
 	canonicalAddress := common.BytesToAddress(vote.Address).Bytes()
 	vote.Address = types.HexBytes(canonicalAddress)
+	if !vote.ProcessID.IsValid() {
+		ErrMalformedProcessID.Withf("invalid process ID").Write(w)
+		return
+	}
+	if !a.runtimes.SupportsProcess(vote.ProcessID) {
+		http.NotFound(w, r)
+		return
+	}
 	// get the process from the storage
 	process, err := a.storage.Process(vote.ProcessID)
 	if err != nil {

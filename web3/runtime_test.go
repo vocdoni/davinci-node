@@ -93,7 +93,7 @@ func TestNewRuntimeRouter(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(router.Runtimes(), qt.HasLen, 2)
 
-	runtime, ok := router.RuntimeForVersion(sepoliaRuntime.ProcessIDVersion)
+	runtime, ok := router.runtimeForVersion(sepoliaRuntime.ProcessIDVersion)
 	c.Assert(ok, qt.IsTrue)
 	c.Assert(runtime, qt.Equals, sepoliaRuntime)
 
@@ -102,6 +102,7 @@ func TestNewRuntimeRouter(t *testing.T) {
 		celoRuntime.ProcessIDVersion,
 		7,
 	)
+	c.Assert(router.SupportsProcess(processID), qt.IsTrue)
 	runtime, err = router.RuntimeForProcess(processID)
 	c.Assert(err, qt.IsNil)
 	c.Assert(runtime, qt.Equals, celoRuntime)
@@ -145,6 +146,8 @@ func TestRuntimeRouterProcessResolutionErrors(t *testing.T) {
 		[4]byte{0xde, 0xad, 0xbe, 0xef},
 		1,
 	)
+	c.Assert(router.SupportsProcess(types.ProcessID{}), qt.IsFalse)
+	c.Assert(router.SupportsProcess(unknownProcess), qt.IsFalse)
 	runtime, err = router.RuntimeForProcess(unknownProcess)
 	c.Assert(runtime, qt.IsNil)
 	c.Assert(err, qt.Not(qt.IsNil))

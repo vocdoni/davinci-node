@@ -195,7 +195,15 @@ func loadConfig() (*Config, error) {
 		}
 		cfg.Web3.Networks = networks
 	}
-	cfg.Web3.legacyConfigured = len(cfg.Web3.Networks) == 0 || legacyWeb3ConfigExplicitlySet()
+	legacyConfigured, err := shouldIncludeLegacyWeb3Network(
+		len(cfg.Web3.Networks) > 0,
+		legacyWeb3ConfigExplicitlySet(),
+		legacyWeb3NetworkExplicitlySet(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("invalid mixed web3 configuration: %w", err)
+	}
+	cfg.Web3.legacyConfigured = legacyConfigured
 
 	return cfg, nil
 }
@@ -237,4 +245,25 @@ func legacyWeb3ConfigExplicitlySet() bool {
 		}
 	}
 	return false
+}
+
+func legacyWeb3NetworkExplicitlySet() bool {
+	if flag.CommandLine.Changed("web3.network") {
+		return true
+	}
+	_, ok := os.LookupEnv("DAVINCI_WEB3_NETWORK")
+	return ok
+}
+
+func shouldIncludeLegacyWeb3Network(hasStructuredNetworks, legacyConfigured, legacyNetworkExplicit bool) (bool, error) {
+	if !hasStructuredNetworks {
+		return true, nil
+	}
+	if !legacyConfigured {
+		return false, nil
+	}
+	if !legacyNetworkExplicit {
+		return false, fmt.Errorf("when combining web3.networks with legacy web3 flags, web3.network must be explicitly set")
+	}
+	return true, nil
 }

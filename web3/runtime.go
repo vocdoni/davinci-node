@@ -107,14 +107,24 @@ func NewRuntimeRouter(runtimes ...*NetworkRuntime) (*RuntimeRouter, error) {
 	return router, nil
 }
 
-// RuntimeForVersion returns the runtime associated with the provided
+// runtimeForVersion returns the runtime associated with the provided
 // ProcessIDVersion.
-func (r *RuntimeRouter) RuntimeForVersion(version [4]byte) (*NetworkRuntime, bool) {
+func (r *RuntimeRouter) runtimeForVersion(version [4]byte) (*NetworkRuntime, bool) {
 	if r == nil {
 		return nil, false
 	}
 	runtime, ok := r.runtimeByVersion[version]
 	return runtime, ok
+}
+
+// SupportsProcess reports whether the provided process ID belongs to one of
+// the configured runtimes.
+func (r *RuntimeRouter) SupportsProcess(processID types.ProcessID) bool {
+	if !processID.IsValid() {
+		return false
+	}
+	_, ok := r.runtimeForVersion(processID.Version())
+	return ok
 }
 
 // RuntimeForProcess resolves the runtime associated with the provided process
@@ -123,7 +133,7 @@ func (r *RuntimeRouter) RuntimeForProcess(processID types.ProcessID) (*NetworkRu
 	if !processID.IsValid() {
 		return nil, fmt.Errorf("invalid process ID")
 	}
-	runtime, ok := r.RuntimeForVersion(processID.Version())
+	runtime, ok := r.runtimeForVersion(processID.Version())
 	if !ok {
 		return nil, fmt.Errorf("runtime not found for process version %x", processID.Version())
 	}

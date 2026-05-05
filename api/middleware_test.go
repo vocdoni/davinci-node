@@ -16,36 +16,44 @@ import (
 )
 
 func TestSkipUnknownProcessIDMiddleware(t *testing.T) {
-	versionSepolia := [4]byte{0x01, 0x02, 0x03, 0x04}
-	versionArbitrum := [4]byte{0x05, 0x06, 0x07, 0x08}
+	c := qt.New(t)
+
+	sepoliaRuntime := testAPIRuntime(c, "sepolia", 11155111, common.HexToAddress("0x0000000000000000000000000000000000000001"))
+	arbitrumRuntime := testAPIRuntime(c, "arbitrum", 42161, common.HexToAddress("0x0000000000000000000000000000000000000002"))
 	versionUnknown := [4]byte{0x09, 0x0a, 0x0b, 0x0c}
+	routerRuntime, err := web3.NewRuntimeRouter(
+		sepoliaRuntime,
+		arbitrumRuntime,
+	)
+	c.Assert(err, qt.IsNil)
 
 	router := chi.NewRouter()
-	router.With(skipUnknownProcessIDMiddleware(map[[4]byte]struct{}{
-		versionSepolia:  {},
-		versionArbitrum: {},
-	})).Get(ProcessEndpoint, func(w http.ResponseWriter, _ *http.Request) {
+	router.With(skipUnknownProcessIDMiddleware(routerRuntime)).Get(ProcessEndpoint, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
 	testCases := []struct {
 		name      string
 		processID types.ProcessID
+		supported bool
 		wantCode  int
 	}{
 		{
 			name:      "accepted first version",
-			processID: types.NewProcessID(common.HexToAddress("0x0000000000000000000000000000000000000004"), versionSepolia, 1),
+			processID: types.NewProcessID(common.HexToAddress("0x0000000000000000000000000000000000000004"), sepoliaRuntime.ProcessIDVersion, 1),
+			supported: true,
 			wantCode:  http.StatusOK,
 		},
 		{
 			name:      "accepted second version",
-			processID: types.NewProcessID(common.HexToAddress("0x0000000000000000000000000000000000000005"), versionArbitrum, 2),
+			processID: types.NewProcessID(common.HexToAddress("0x0000000000000000000000000000000000000005"), arbitrumRuntime.ProcessIDVersion, 2),
+			supported: true,
 			wantCode:  http.StatusOK,
 		},
 		{
 			name:      "rejected unknown version",
 			processID: types.NewProcessID(common.HexToAddress("0x0000000000000000000000000000000000000006"), versionUnknown, 3),
+			supported: false,
 			wantCode:  http.StatusNotFound,
 		},
 	}
@@ -53,6 +61,7 @@ func TestSkipUnknownProcessIDMiddleware(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := qt.New(t)
+			c.Assert(routerRuntime.SupportsProcess(tc.processID), qt.Equals, tc.supported)
 			req := httptest.NewRequest(http.MethodGet, "/processes/"+tc.processID.String(), nil)
 			rr := httptest.NewRecorder()
 
@@ -233,9 +242,8 @@ func TestAPIRuntimeDataResolvesMissingVerifierAddresses(t *testing.T) {
 	router, err := web3.NewRuntimeRouter(runtime)
 	c.Assert(err, qt.IsNil)
 
-	allowedVersions, runtimeInfos, err := apiRuntimeData(router)
+	runtimeInfos, err := apiRuntimeData(router)
 	c.Assert(err, qt.IsNil)
-	c.Assert(allowedVersions, qt.HasLen, 1)
 
 	info, ok := runtimeInfos[11155111]
 	c.Assert(ok, qt.IsTrue)
@@ -243,6 +251,17 @@ func TestAPIRuntimeDataResolvesMissingVerifierAddresses(t *testing.T) {
 	c.Assert(info.Contracts.ProcessRegistry, qt.Equals, "0x1111111111111111111111111111111111111111")
 	c.Assert(info.Contracts.StateTransitionZKVerifier, qt.Not(qt.Equals), common.Address{}.String())
 	c.Assert(info.Contracts.ResultsZKVerifier, qt.Not(qt.Equals), common.Address{}.String())
+}
+
+func testAPIRuntime(c *qt.C, network string, chainID uint64, processRegistry common.Address) *web3.NetworkRuntime {
+	runtime, err := web3.NewNetworkRuntime(network, &web3.Contracts{
+		ChainID: chainID,
+		ContractsAddresses: &web3.Addresses{
+			ProcessRegistry: processRegistry,
+		},
+	}, nil)
+	c.Assert(err, qt.IsNil)
+	return runtime
 }
 
 func BenchmarkLoggingMiddleware(b *testing.B) {
