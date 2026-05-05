@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,12 +50,16 @@ type Config struct {
 
 // Web3Config holds Ethereum-related configuration
 type Web3Config struct {
-	PrivKey       string   `mapstructure:"privkey"`       // Private key for the Ethereum account
-	Network       string   `mapstructure:"network"`       // Network shortname
-	Rpc           []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
-	Capi          string   `mapstructure:"capi"`          // Consensus API URL
-	ProcessAddr   string   `mapstructure:"process"`       // Custom contract addresses, overrides network defaults
-	GasMultiplier float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
+	PrivKey  string             `mapstructure:"privkey"`  // Private key for the Ethereum account
+	Networks web3NetworksConfig `mapstructure:"networks"` // Structured network configuration
+
+	// Legacy fields
+	Network          string   `mapstructure:"network"`       // Network shortname
+	Rpc              []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
+	Capi             string   `mapstructure:"capi"`          // Consensus API URL
+	ProcessAddr      string   `mapstructure:"process"`       // Custom contract addresses, overrides network defaults
+	GasMultiplier    float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
+	legacyConfigured bool     `mapstructure:"-"`
 }
 
 // APIConfig holds the API-specific configuration
@@ -111,12 +117,12 @@ func loadConfig() (*Config, error) {
 	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
 	flag.StringSliceP("web3.rpc", "r", nil, "web3 rpc endpoint(s), comma-separated")
 	flag.StringP("web3.capi", "c", defaultCAPI, "consensus api url")
+	flag.Var(&cfg.Web3.Networks, "web3.networks", "JSON array of network config objects for multinetwork mode")
 	flag.Float64("web3.gasMultiplier", defaultGasMultiplier, "gas price multiplier for transactions (1.0 = default, 2.0 = double gas prices)")
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
 	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")
 	flag.String("web3.process", "", "custom process registry contract address (overrides network default)")
-	flag.String("web3.results", "", "custom results registry contract address (overrides network default)")
 	flag.StringP("log.level", "l", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
 	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
 	flag.Bool("log.disableAPI", defaultLogDisableAPI, "disable API logging middleware")
@@ -153,8 +159,16 @@ func loadConfig() (*Config, error) {
 		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123...\n\n")
 		fmt.Fprintf(os.Stderr, "  # Start with custom RPC endpoints\n")
 		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.rpc=https://rpc1.com,https://rpc2.com\n\n")
-		fmt.Fprintf(os.Stderr, "  # Start with custom contract addresses\n")
-		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.process_registry=0x456... --web3.org_registry=0x789...\n")
+		fmt.Fprintf(os.Stderr, "  # Start in multinetwork mode with structured runtime configs\n")
+		exampleNetworks, _ := json.Marshal([]map[string]any{
+			{
+				"network": "sepolia",
+				"chainId": 11155111,
+				"rpc":     []string{"https://rpc.sepolia.example"},
+				"capi":    defaultCAPI,
+			},
+		})
+		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.networks='%s'\n", exampleNetworks)
 	}
 
 	// Parse flags
@@ -174,6 +188,14 @@ func loadConfig() (*Config, error) {
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
+	if raw := viper.Get("web3.networks"); raw != nil {
+		networks, err := parseStructuredWeb3NetworksValue(raw)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing web3.networks: %w", err)
+		}
+		cfg.Web3.Networks = networks
+	}
+	cfg.Web3.legacyConfigured = len(cfg.Web3.Networks) == 0 || legacyWeb3ConfigExplicitlySet()
 
 	return cfg, nil
 }
@@ -185,16 +207,8 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("private key is required (use --privkey flag or DAVINCI_WEB3_PRIVKEY environment variable)")
 	}
 
-	// Validate network
-	validNetwork := false
-	for n := range npbindings.AvailableNetworksByName {
-		if cfg.Web3.Network == n {
-			validNetwork = true
-			break
-		}
-	}
-	if !validNetwork {
-		return fmt.Errorf("invalid network %s, available networks: %v", cfg.Web3.Network, npbindings.AvailableNetworksByName)
+	if _, err := cfg.Web3.normalizedNetworks(); err != nil {
+		return fmt.Errorf("invalid web3 network configuration: %w", err)
 	}
 
 	// Validate gas multiplier
@@ -206,4 +220,21 @@ func validateConfig(cfg *Config) error {
 	}
 
 	return nil
+}
+
+func legacyWeb3ConfigExplicitlySet() bool {
+	if slices.ContainsFunc([]string{"web3.network", "web3.rpc", "web3.capi", "web3.process"}, flag.CommandLine.Changed) {
+		return true
+	}
+	for _, key := range []string{
+		"DAVINCI_WEB3_NETWORK",
+		"DAVINCI_WEB3_RPC",
+		"DAVINCI_WEB3_CAPI",
+		"DAVINCI_WEB3_PROCESS",
+	} {
+		if _, ok := os.LookupEnv(key); ok {
+			return true
+		}
+	}
+	return false
 }
