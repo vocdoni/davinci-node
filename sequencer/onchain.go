@@ -62,6 +62,11 @@ func (s *Sequencer) startOnchainProcessor() error {
 func (s *Sequencer) processTransitionOnChain() {
 	// process each registered process ID
 	s.processIDs.ForEach(func(processID types.ProcessID, _ time.Time) bool {
+		if !s.contractsResolver.SupportsProcess(processID) {
+			log.Debugw("process not supported", "processID", processID.String())
+			return true // Continue to next process ID
+		}
+
 		contracts, err := s.contractsForProcess(processID)
 		if err != nil {
 			log.Errorw(err, "failed to resolve contracts for process")
@@ -243,6 +248,10 @@ func (s *Sequencer) processResultsOnChain() {
 				log.Errorw(err, "failed to pull verified results")
 			}
 			break
+		}
+		if !s.contractsResolver.SupportsProcess(res.ProcessID) {
+			log.Debugw("process not supported", "processID", res.ProcessID.String())
+			continue
 		}
 		// Transform the gnark proof to a solidity proof and upload it to the
 		// contract.

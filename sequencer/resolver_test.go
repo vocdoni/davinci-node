@@ -22,6 +22,11 @@ func (r *testContractsResolver) ContractsForProcess(processID types.ProcessID) (
 	return r.contractsByProcess[processID], nil
 }
 
+func (r *testContractsResolver) SupportsProcess(processID types.ProcessID) bool {
+	_, ok := r.contractsByProcess[processID]
+	return ok
+}
+
 func TestResolveContractsForProcess(t *testing.T) {
 	c := qt.New(t)
 

@@ -114,6 +114,10 @@ func (m *MockContracts) Process(processID types.ProcessID) (*types.Process, erro
 	return nil, fmt.Errorf("process not found")
 }
 
+func (m *MockContracts) ValidVersion(processID types.ProcessID) bool {
+	return true
+}
+
 func (m *MockContracts) RegisterKnownProcess(processID types.ProcessID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

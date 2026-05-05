@@ -21,6 +21,7 @@ type BlobFetcher interface {
 // on-chain operation.
 type ProcessContractsResolver interface {
 	ContractsForProcess(processID types.ProcessID) (*Contracts, error)
+	SupportsProcess(processID types.ProcessID) bool
 }
 
 // ProcessBlobFetcherResolver resolves a blob fetcher for process-scoped state

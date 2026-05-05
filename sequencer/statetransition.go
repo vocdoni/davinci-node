@@ -49,6 +49,10 @@ func (s *Sequencer) startStateTransitionProcessor() error {
 func (s *Sequencer) processPendingTransitions() {
 	// Process each registered process ID
 	s.processIDs.ForEach(func(processID types.ProcessID, _ time.Time) bool {
+		if !s.contractsResolver.SupportsProcess(processID) {
+			log.Debugw("process not supported", "processID", processID.String())
+			return true // Continue to next process ID
+		}
 		// Check if there is a batch ready for processing
 		batch, batchID, err := s.stg.NextAggregatorBatch(processID)
 		if err != nil {

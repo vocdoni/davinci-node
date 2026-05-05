@@ -450,6 +450,9 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	if !processID.IsValid() {
 		return fmt.Errorf("invalid process ID")
 	}
+	if !s.contractsResolver.SupportsProcess(processID) {
+		return fmt.Errorf("process not supported: %s", processID.String())
+	}
 
 	// Ensure the process is accepting votes
 	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(processID); err != nil {

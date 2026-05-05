@@ -33,6 +33,7 @@ type ContractsService interface {
 	MonitorProcessChanges(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
 	CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error)
 	Process(processID types.ProcessID) (*types.Process, error)
+	ValidVersion(processID types.ProcessID) bool
 	RegisterKnownProcess(processID types.ProcessID)
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
@@ -118,6 +119,11 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 	registeredCount := 0
 	skippedCount := 0
 	for _, processID := range processIDs {
+		if !pm.contracts.ValidVersion(processID) {
+			log.Warnw("unsupported process detected", "processID", processID.String())
+			skippedCount++
+			continue
+		}
 		if !pm.ownsProcess(processID) {
 			skippedCount++
 			continue
@@ -152,6 +158,11 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 	syncCount := 0
 	skippedCount := 0
 	for _, processID := range processIDs {
+		if !pm.contracts.ValidVersion(processID) {
+			log.Warnw("unsupported process detected", "processID", processID.String())
+			skippedCount++
+			continue
+		}
 		if !pm.ownsProcess(processID) {
 			skippedCount++
 			continue
@@ -228,11 +239,15 @@ func (pm *ProcessMonitor) monitorProcesses(
 			return
 		case process, ok := <-newProcChan:
 			if !ok {
-				log.Warnw("process creation channel closed")
+				log.Warn("process creation channel closed")
 				return
 			}
 			if process == nil || process.ID == nil {
-				log.Warnw("received process creation event without process ID")
+				log.Warn("received process creation event without process ID")
+				continue
+			}
+			if !pm.contracts.ValidVersion(*process.ID) {
+				log.Warn("received process creation event with invalid process ID (version mismatch)")
 				continue
 			}
 			if !pm.ownsProcess(*process.ID) {
@@ -307,11 +322,15 @@ func (pm *ProcessMonitor) monitorProcesses(
 			}
 		case update, ok := <-updatedProcChan:
 			if !ok {
-				log.Warnw("process updates channel closed")
+				log.Warn("process updates channel closed")
 				return
 			}
 			if update == nil {
-				log.Warnw("received nil process update event")
+				log.Warn("received nil process update event")
+				continue
+			}
+			if !pm.contracts.ValidVersion(update.ProcessID) {
+				log.Warn("received process update event with invalid process ID (version mismatch)")
 				continue
 			}
 			if !pm.ownsProcess(update.ProcessID) {

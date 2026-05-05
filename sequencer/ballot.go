@@ -77,6 +77,10 @@ func (s *Sequencer) processAvailableBallots() bool {
 			}
 			return processed
 		}
+		if !s.contractsResolver.SupportsProcess(ballot.ProcessID) {
+			log.Debugw("skipping ballot, process not supported", "processID", ballot.ProcessID.String())
+			continue
+		}
 
 		// Skip processing if the process is not registered
 		if !s.ExistsProcessID(ballot.ProcessID) {
