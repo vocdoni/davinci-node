@@ -48,6 +48,7 @@ var (
 	ErrProcessMaxVotersReached  = Error{Code: 40029, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("process has reached the maximum number of voters allowed")}
 	ErrInvalidCurveType         = Error{Code: 40030, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("invalid curve type")}
 	ErrRequestBodyTooLarge      = Error{Code: 40031, HTTPstatus: http.StatusRequestEntityTooLarge, Err: fmt.Errorf("request body too large")}
+	ErrInvalidChainID           = Error{Code: 40032, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("chain ID not supported or invalid")}
 	// Worker errors
 	ErrWorkerNotAvailable     = Error{Code: 40022, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("worker not available")}
 	ErrMalformedWorkerInfo    = Error{Code: 40023, HTTPstatus: http.StatusBadRequest, Err: fmt.Errorf("malformed worker info")}

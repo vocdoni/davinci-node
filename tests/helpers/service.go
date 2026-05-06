@@ -74,11 +74,25 @@ func NewTestServices(
 		Storage:   stg,
 		Contracts: contracts,
 	}
+	apiRuntime, err := web3.NewNetworkRuntime(contracts, nil)
+	if err != nil {
+		stg.Close()
+		web3Cleanup()
+		c3cleanup()
+		return nil, nil, fmt.Errorf("failed to create runtime: %w", err)
+	}
+	runtimeRouter, err := web3.NewRuntimeRouter(apiRuntime)
+	if err != nil {
+		stg.Close()
+		web3Cleanup()
+		c3cleanup()
+		return nil, nil, fmt.Errorf("failed to create runtime router: %w", err)
+	}
 
 	// Start sequencer service
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
-	vp := service.NewSequencer(stg, contracts, DefaultBatchTimeWindow, nil)
+	vp := service.NewSequencer(stg, runtimeRouter, DefaultBatchTimeWindow, nil)
 	seqCtx, seqCancel := context.WithCancel(ctx)
 	if err := vp.Start(seqCtx); err != nil {
 		seqCancel()
@@ -93,7 +107,7 @@ func NewTestServices(
 	}
 
 	// Start census downloader
-	cd := service.NewCensusDownloader(contracts, services.Storage, service.DefaultCensusDownloaderConfig)
+	cd := service.NewCensusDownloader(runtimeRouter, services.Storage, service.DefaultCensusDownloaderConfig)
 	if err := cd.Start(ctx); err != nil {
 		vp.Stop()
 		seqCancel()
@@ -103,7 +117,7 @@ func NewTestServices(
 	services.CensusDownloader = cd
 
 	// Start StateSync
-	stateSync := service.NewStateSync(contracts, stg)
+	stateSync := service.NewStateSync(runtimeRouter, stg)
 	if err := stateSync.Start(ctx); err != nil {
 		cd.Stop()
 		vp.Stop()
@@ -113,7 +127,7 @@ func NewTestServices(
 	}
 
 	// Start process monitor
-	pm := service.NewProcessMonitor(contracts, stg, cd, stateSync, time.Second*2)
+	pm := service.NewProcessMonitor(contracts, apiRuntime.ProcessIDVersion, stg, cd, stateSync, time.Second*2)
 	if err := pm.Start(ctx); err != nil {
 		cd.Stop()
 		vp.Stop()
@@ -122,7 +136,7 @@ func NewTestServices(
 		return nil, nil, fmt.Errorf("failed to start process monitor: %w", err)
 	}
 	// Start API service
-	api, err := setupAPI(ctx, stg, contracts, workerSecret, workerTokenExpiration, workerTimeout, banRules)
+	api, err := setupAPI(ctx, stg, runtimeRouter, workerSecret, workerTokenExpiration, workerTimeout, banRules)
 	if err != nil {
 		pm.Stop()
 		cd.Stop()
@@ -168,23 +182,15 @@ func httpClient(port int) (*client.HTTPclient, error) {
 func setupAPI(
 	ctx context.Context,
 	db *storage.Storage,
-	contracts *web3.Contracts,
+	runtimes *web3.RuntimeRouter,
 	workerSeed string,
 	workerTokenExpiration time.Duration,
 	workerTimeout time.Duration,
 	banRules *workers.WorkerBanRules,
 ) (*service.APIService, error) {
-	apiRuntime, err := web3.NewNetworkRuntime("test", contracts, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create API runtime: %w", err)
-	}
-	apiRuntimes, err := web3.NewRuntimeRouter(apiRuntime)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create API runtime router: %w", err)
-	}
-	api := service.NewAPI(db, "127.0.0.1", DefaultAPIPort, apiRuntimes, metadata.PinataMetadataProviderConfig{}, false)
+	api := service.NewAPI(db, "127.0.0.1", DefaultAPIPort, runtimes, metadata.PinataMetadataProviderConfig{}, false)
 	api.SetWorkerConfig(workerSeed, workerTokenExpiration, workerTimeout, banRules)
-	if err = api.Start(ctx); err != nil {
+	if err := api.Start(ctx); err != nil {
 		return nil, err
 	}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
 // DisabledLogging is a global flag to disable logging middleware
@@ -147,11 +148,10 @@ func loggingMiddlewareWithConfig(config LoggingConfig) func(http.Handler) http.H
 }
 
 // skipUnknownProcessIDMiddleware allows to skip requests with unknown
-// ProcessID versions. It checks the "processId" URL parameter and compares
-// its version against the provided allowedVersions. If there is no match, it
-// responds with 404 Not Found. If the route does not contain a processID
-// parameter, it simply calls the next handler.
-func skipUnknownProcessIDMiddleware(allowedVersions map[[4]byte]struct{}) func(http.Handler) http.Handler {
+// ProcessID versions. It checks the "processId" URL parameter and returns 404
+// Not Found when the resolved process ID is not served by the runtime router.
+// If the route does not contain a process ID, it simply calls the next handler.
+func skipUnknownProcessIDMiddleware(runtimes *web3.RuntimeRouter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if the route contains a process id
@@ -172,8 +172,7 @@ func skipUnknownProcessIDMiddleware(allowedVersions map[[4]byte]struct{}) func(h
 				ErrMalformedProcessID.Withf("invalid process ID: %s", processIDStr).Write(w)
 				return
 			}
-			// Check if the version matches one of the allowed versions
-			if _, ok := allowedVersions[processID.Version()]; !ok {
+			if runtimes == nil || !runtimes.SupportsProcess(processID) {
 				http.NotFound(w, r)
 				return
 			}

@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/solidity"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
 const (
@@ -61,6 +62,17 @@ func (s *Sequencer) startOnchainProcessor() error {
 func (s *Sequencer) processTransitionOnChain() {
 	// process each registered process ID
 	s.processIDs.ForEach(func(processID types.ProcessID, _ time.Time) bool {
+		if !s.contractsResolver.SupportsProcess(processID) {
+			log.Debugw("process not supported", "processID", processID.String())
+			return true // Continue to next process ID
+		}
+
+		contracts, err := s.contractsForProcess(processID)
+		if err != nil {
+			log.Errorw(err, "failed to resolve contracts for process")
+			return true // Continue to next process ID
+		}
+
 		// get a batch ready for uploading on-chain
 		batch, batchID, err := s.stg.NextStateTransitionBatch(processID)
 		if err != nil {
@@ -74,7 +86,7 @@ func (s *Sequencer) processTransitionOnChain() {
 			"batchID", fmt.Sprintf("%x", batchID))
 
 		// check the remote state root matches the local one
-		remoteStateRoot, err := s.contracts.StateRoot(processID)
+		remoteStateRoot, err := contracts.StateRoot(processID)
 		if err != nil || remoteStateRoot == nil {
 			log.Errorw(err, "failed to get remote state root for: "+processID.String())
 			return true // Continue to next process ID
@@ -100,7 +112,7 @@ func (s *Sequencer) processTransitionOnChain() {
 		}
 
 		// send the proof to the contract with the public witness
-		if err := s.pushTransitionToContract(processID, batchID, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
+		if err := s.pushTransitionToContract(contracts, processID, batchID, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
 			log.Errorw(err, "failed to push to contract")
 			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
 				log.Errorw(err, "failed to mark state transition batch as failed")
@@ -119,6 +131,7 @@ func (s *Sequencer) processTransitionOnChain() {
 // pushTransitionToContract pushes the given state transition proof and inputs
 // to the smart contract for the given process ID.
 func (s *Sequencer) pushTransitionToContract(
+	contracts *web3.Contracts,
 	processID types.ProcessID,
 	batchID []byte,
 	proof *solidity.Groth16CommitmentProof,
@@ -144,7 +157,7 @@ func (s *Sequencer) pushTransitionToContract(
 	// If the current contracts support blob transactions, verify the sidecar
 	// Note: With EIP-7594 (Fusaka), we use Version 1 sidecars with cell proofs.
 	// Cell proofs are verified during their generation in ComputeCellsAndKZGProofs.
-	if s.contracts.SupportBlobTxs() {
+	if contracts.SupportBlobTxs() {
 		// Verify sidecar version and structure
 		if blobSidecar.Version != types.BlobTxSidecarVersion1 {
 			return fmt.Errorf("unexpected blob sidecar version: got %d, expected %d",
@@ -163,7 +176,7 @@ func (s *Sequencer) pushTransitionToContract(
 	}
 
 	// Simulate tx to the contract to check if it will fail
-	if err := s.contracts.SimulateProcessTransition(s.ctx, processID, abiProof, abiInputs, blobSidecar); err != nil {
+	if err := contracts.SimulateProcessTransition(s.ctx, processID, abiProof, abiInputs, blobSidecar); err != nil {
 		log.Warnw("process state transition simulation failed",
 			"processID", processID.String(),
 			"error", err)
@@ -174,7 +187,7 @@ func (s *Sequencer) pushTransitionToContract(
 		"processID", processID.String())
 	// Create a callback for the state transition
 	callback := s.pushStateTransitionCallback(processID, batchID)
-	if err := s.contracts.SetProcessTransition(
+	if err := contracts.SetProcessTransition(
 		processID,
 		abiProof,
 		abiInputs,
@@ -236,6 +249,16 @@ func (s *Sequencer) processResultsOnChain() {
 			}
 			break
 		}
+		if !s.contractsResolver.SupportsProcess(res.ProcessID) {
+			log.Debugw("process not supported", "processID", res.ProcessID.String())
+			// Mark as done to avoid repeatedly selecting the same unsupported
+			// result and starving later verified results.
+			if err := s.stg.MarkVerifiedResultsDone(res.ProcessID); err != nil {
+				log.Errorw(err, "failed to mark unsupported verified results as done")
+				break
+			}
+			continue
+		}
 		// Transform the gnark proof to a solidity proof and upload it to the
 		// contract.
 		solidityProof := new(solidity.Groth16CommitmentProof)
@@ -271,9 +294,16 @@ func (s *Sequencer) processResultsOnChain() {
 			"abiInputs", fmt.Sprintf("%x", abiInputs),
 			"strProof", solidityProof.String(),
 			"strInputs", res.Inputs.String())
+
+		contracts, err := s.contractsForProcess(res.ProcessID)
+		if err != nil {
+			log.Errorw(err, "failed to resolve contracts for process")
+			continue
+		}
+
 		// Simulate tx to the contract to check if it will fail and get the root
 		// cause of the failure if it does
-		if err := s.contracts.SimulateProcessResults(s.ctx, res.ProcessID, abiProof, abiInputs); err != nil {
+		if err := contracts.SimulateProcessResults(s.ctx, res.ProcessID, abiProof, abiInputs); err != nil {
 			log.Warnw("failed to simulate verified results upload",
 				"error", err,
 				"processID", res.ProcessID.String())
@@ -293,7 +323,7 @@ func (s *Sequencer) processResultsOnChain() {
 
 			// submit the proof to the contract and wait for the transaction to
 			// be mined
-			err := s.contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs, resultsOnChainTimeout)
+			err := contracts.SetProcessResults(res.ProcessID, abiProof, abiInputs, resultsOnChainTimeout)
 			if err != nil {
 				lastErr = err
 				log.Warnw("failed to upload verified results",

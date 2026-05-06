@@ -6,9 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"slices"
 	"syscall"
-
-	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
@@ -18,19 +17,18 @@ import (
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/web3"
-	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
 // Services holds all the running services
 type Services struct {
-	Contracts        *web3.Contracts
-	TxManager        *txmanager.TxManager
+	TxManagers       []*txmanager.TxManager
 	Storage          *storage.Storage
 	StateSync        *service.StateSync
 	CensusDownloader *service.CensusDownloader
-	ProcessMon       *service.ProcessMonitor
+	ProcessMons      []*service.ProcessMonitor
 	API              *service.APIService
 	Sequencer        *service.SequencerService
 }
@@ -147,8 +145,13 @@ func runWorkerMode(cfg *Config) {
 }
 
 // setupServices initializes and starts all required services
-func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
-	services := &Services{}
+func setupServices(ctx context.Context, cfg *Config) (services *Services, err error) {
+	services = &Services{}
+	defer func() {
+		if err != nil {
+			shutdownServices(services)
+		}
+	}()
 
 	// Download circuit artifacts
 	artifactsDir := path.Join(cfg.Datadir, "artifacts")
@@ -176,95 +179,56 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 		log.Info("force cleanup completed successfully")
 	}
 
-	// Initialize web3 contracts
-	log.Info("initializing web3 contracts")
-
-	// Default RPC endpoints by network if not provided by user
-	w3rpc := cfg.Web3.Rpc
-	if len(w3rpc) == 0 {
-		log.Infow("no RPC endpoints provided, using chainlist.org", "network", cfg.Web3.Network)
-		list, err := chainlist.ChainList()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get chain list: %w", err)
-		}
-		id, ok := list[cfg.Web3.Network]
-		if !ok {
-			return nil, fmt.Errorf("network %s not found in chain list", cfg.Web3.Network)
-		}
-		endpoints, err := chainlist.EndpointList(cfg.Web3.Network, 10)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get endpoints for network %s: %w", cfg.Web3.Network, err)
-		}
-		log.Infow("using endpoints from chain list", "chainID", id, "network", cfg.Web3.Network, "endpoints", endpoints)
-		w3rpc = endpoints
-	}
-
-	// Initialize web3 contracts
-	services.Contracts, err = web3.New(w3rpc, cfg.Web3.Capi, cfg.Web3.GasMultiplier)
+	runtimes, err := initializeRuntimes(ctx, cfg.Web3)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize web3 client: %w", err)
+		return nil, fmt.Errorf("failed to initialize runtimes: %w", err)
 	}
 
-	// Load contract bindings
-	if err := services.Contracts.LoadContracts(&web3.Addresses{
-		ProcessRegistry: common.HexToAddress(cfg.Web3.ProcessAddr),
-	}); err != nil {
-		return nil, fmt.Errorf("failed to initialize contracts: %w", err)
-	}
-
-	// Set account private key
-	if err := services.Contracts.SetAccountPrivateKey(cfg.Web3.PrivKey); err != nil {
-		return nil, fmt.Errorf("failed to set account private key: %w", err)
-	}
-
-	// Init transaction manager
-	services.TxManager, err = txmanager.New(ctx, services.Contracts.Web3Pool(), services.Contracts.Client(), services.Contracts.Signer(), txmanager.DefaultConfig(services.Contracts.ChainID))
+	log.Infow("initializing web3 runtimes", "numNetworks", len(runtimes))
+	runtimeRouter, err := web3.NewRuntimeRouter(runtimes...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create transaction manager: %w", err)
+		return nil, fmt.Errorf("failed to create runtime router: %w", err)
 	}
-	services.TxManager.Start(ctx)
-	services.Contracts.SetTxManager(services.TxManager)
-
-	log.Infow("contracts initialized",
-		"chainId", services.Contracts.ChainID,
-		"account", services.Contracts.AccountAddress().Hex(),
-		"gasMultiplier", services.Contracts.GasMultiplier)
 
 	// Start census downloader
 	log.Info("starting census downloader")
-	services.CensusDownloader = service.NewCensusDownloader(services.Contracts, services.Storage, service.DefaultCensusDownloaderConfig)
+	services.CensusDownloader = service.NewCensusDownloader(runtimeRouter, services.Storage, service.DefaultCensusDownloaderConfig)
 	if err := services.CensusDownloader.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start census downloader: %w", err)
 	}
 
 	// Start StateSync
-	stateSync := service.NewStateSync(services.Contracts, services.Storage)
-	if err := stateSync.Start(ctx); err != nil {
+	services.StateSync = service.NewStateSync(runtimeRouter, services.Storage)
+	if err := services.StateSync.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start state sync: %v", err)
 	}
 
-	// Start process monitor
-	log.Info("starting process monitor")
-	services.ProcessMon = service.NewProcessMonitor(services.Contracts, services.Storage, services.CensusDownloader, stateSync, monitorInterval)
-	if err := services.ProcessMon.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start process monitor: %w", err)
+	// Start process monitors and transaction managers
+	services.TxManagers = make([]*txmanager.TxManager, 0, len(runtimes))
+	services.ProcessMons = make([]*service.ProcessMonitor, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		log.Infow("starting process monitor", "chainID", runtime.ChainID)
+		processMon := service.NewProcessMonitor(
+			runtime.Contracts,
+			runtime.ProcessIDVersion,
+			services.Storage,
+			services.CensusDownloader,
+			services.StateSync,
+			monitorInterval,
+		)
+		if err := processMon.Start(ctx); err != nil {
+			return nil, fmt.Errorf("failed to start process monitor for %d: %w", runtime.ChainID, err)
+		}
+		services.TxManagers = append(services.TxManagers, runtime.TxManager)
+		services.ProcessMons = append(services.ProcessMons, processMon)
 	}
 
-	// Start API service
-	apiRuntime, err := web3.NewNetworkRuntime(cfg.Web3.Network, services.Contracts, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create API runtime: %w", err)
-	}
-	apiRuntimes, err := web3.NewRuntimeRouter(apiRuntime)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create API runtime router: %w", err)
-	}
 	log.Infow("starting API service", "host", cfg.API.Host, "port", cfg.API.Port)
 	services.API = service.NewAPI(
 		services.Storage,
 		cfg.API.Host,
 		cfg.API.Port,
-		apiRuntimes,
+		runtimeRouter,
 		metadata.PinataMetadataProviderConfig{
 			HostnameURL:  cfg.Metadata.PinataHostnameURL,
 			HostnameJWT:  cfg.Metadata.PinataHostnameJWT,
@@ -293,13 +257,83 @@ func setupServices(ctx context.Context, cfg *Config) (*Services, error) {
 
 	// Start sequencer service
 	log.Infow("starting sequencer service", "batchTimeWindow", cfg.Batch.Time.String())
-	services.Sequencer = service.NewSequencer(services.Storage, services.Contracts, cfg.Batch.Time, services.API.API)
+	services.Sequencer = service.NewSequencer(services.Storage, runtimeRouter, cfg.Batch.Time, services.API.API)
 	if err := services.Sequencer.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start sequencer service: %w", err)
 	}
 
 	log.Info("davinci-node is running, ready to process votes!")
 	return services, nil
+}
+
+func initializeRuntimes(ctx context.Context, web3Cfg Web3Config) ([]*web3.NetworkRuntime, error) {
+	// Group RPC endpoints by chain ID
+	rpcsMap, err := rpc.GroupEndpointsByChainID(web3Cfg.RPCs)
+	if err != nil {
+		return nil, fmt.Errorf("resolve RPC endpoints: %w", err)
+	}
+	// Group beacon API endpoints by chain ID
+	beaconAPIsMap, err := rpc.GroupBeaconEndpointsByChainID(ctx, web3Cfg.BeaconAPIs)
+	if err != nil {
+		return nil, fmt.Errorf("resolve beacon API endpoints: %w", err)
+	}
+	limitedNetworks := len(web3Cfg.ChainIDs) > 0
+	// Iterate over available networks to initialize web3 runtimes
+	var runtimes []*web3.NetworkRuntime
+	for chainID, rpcs := range rpcsMap {
+		// Skip networks that are not configured, if any is configured
+		if limitedNetworks && !slices.Contains(web3Cfg.ChainIDs, uint(chainID)) {
+			continue
+		}
+		// Try to find a beacon API for this network
+		var beaconAPI string
+		if beaconAPIs, ok := beaconAPIsMap[chainID]; ok && len(beaconAPIs) > 0 {
+			beaconAPI = beaconAPIs[0]
+		}
+		// Load contracts for this network
+		contracts, err := web3.New(rpcs, beaconAPI, web3Cfg.GasMultiplier)
+		if err != nil {
+			return nil, fmt.Errorf("initialize web3 client: %w", err)
+		}
+
+		if err := contracts.LoadContracts(nil); err != nil {
+			return nil, fmt.Errorf("initialize contracts: %w", err)
+		}
+		if err := contracts.SetAccountPrivateKey(web3Cfg.PrivKey); err != nil {
+			return nil, fmt.Errorf("set account private key: %w", err)
+		}
+
+		txManager, err := txmanager.New(
+			ctx,
+			contracts.Web3Pool(),
+			contracts.Client(),
+			contracts.Signer(),
+			txmanager.DefaultConfig(contracts.ChainID),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create transaction manager: %w", err)
+		}
+		txManager.Start(ctx)
+		contracts.SetTxManager(txManager)
+
+		runtime, err := web3.NewNetworkRuntime(contracts, txManager)
+		if err != nil {
+			txManager.Stop()
+			return nil, fmt.Errorf("create runtime: %w", err)
+		}
+
+		log.Infow("web3 runtime initialized",
+			"chainID", runtime.ChainID,
+			"account", runtime.Contracts.AccountAddress().Hex(),
+			"gasMultiplier", runtime.Contracts.GasMultiplier,
+			"numEndpoints", len(rpcs),
+			"processRegistry", runtime.Contracts.ContractsAddresses.ProcessRegistry.Hex(),
+			"consensusAPI", runtime.Contracts.Web3ConsensusAPIEndpoint,
+		)
+
+		runtimes = append(runtimes, runtime)
+	}
+	return runtimes, nil
 }
 
 // shutdownServices gracefully shuts down all services
@@ -314,12 +348,23 @@ func shutdownServices(services *Services) {
 	if services.API != nil {
 		services.API.Stop()
 	}
+	for _, processMon := range services.ProcessMons {
+		if processMon != nil {
+			processMon.Stop()
+		}
+	}
+	if services.StateSync != nil {
+		services.StateSync.Stop()
+	}
 	if services.CensusDownloader != nil {
 		services.CensusDownloader.Stop()
 	}
-	if services.ProcessMon != nil {
-		services.ProcessMon.Stop()
+	for _, txManager := range services.TxManagers {
+		if txManager != nil {
+			txManager.Stop()
+		}
 	}
-	services.TxManager.Stop() // Stop transaction manager
-	services.Storage.Close()  // Close storage last
+	if services.Storage != nil {
+		services.Storage.Close()
+	}
 }

@@ -85,7 +85,7 @@ Simple health check endpoint to verify the API server is running.
 
 Returns the static proving artifacts plus the set of chain runtimes currently served by the sequencer.
 
-`runtimes` is a JSON object keyed by chain ID. Because JSON object keys are strings, a chain ID such as `11155111` is encoded as `"11155111"` in the response body.
+`networks` is a JSON object keyed by chain ID. Because JSON object keys are strings, a chain ID such as `11155111` is encoded as `"11155111"` in the response body.
 
 **Response Body**:
 ```json
@@ -96,22 +96,16 @@ Returns the static proving artifacts plus the set of chain runtimes currently se
   "provingKeyHash": "hexString",
   "verificationKeyUrl": "string",
   "verificationKeyHash": "hexString",
-  "runtimes": {
+  "networks": {
     "11155111": {
-      "network": "sepolia",
-      "contracts": {
-        "process": "address",
-        "stateTransitionVerifier": "address",
-        "resultsVerifier": "address"
-      }
+      "chainID": 11155111,
+      "shortName": "sepolia",
+      "processRegistryContract": "address",
     },
     "42161": {
-      "network": "arbitrum",
-      "contracts": {
-        "process": "address",
-        "stateTransitionVerifier": "address",
-        "resultsVerifier": "address"
-      }
+      "chainID": 42161,
+      "shortName": "arbitrum",
+      "processRegistryContract": "address",
     }
   },
   "sequencerAddress": "hexString"
@@ -142,92 +136,11 @@ Returns a new encryption keys.
 **Errors**:
 - 50002: Internal server error
 
-### Metadata Management
-
-#### POST /metadata
-
-Sets metadata for a voting process.
-
-**Request Body**:
-```json
-{
-  "title": {
-    "languageCode": "string" // Language code as key, text as value. Example: {"en": "Election", "es": "Elección"}
-  },
-  "description": {
-    "languageCode": "string" // Language code as key, text as value
-  },
-  "media": {
-    "header": "string", // URL to header image
-    "logo": "string"    // URL to logo image
-  },
-  "questions": [
-    {
-      "title": {
-        "languageCode": "string" // Language code as key, text as value
-      },
-      "description": {
-        "languageCode": "string" // Language code as key, text as value
-      },
-      "choices": [
-        {
-          "title": {
-            "languageCode": "string" // Language code as key, text as value
-          },
-          "value": "number",
-          "meta": {
-            "key": "string" // Free-form key-value pairs, can contain any valid JSON
-          }
-        }
-      ],
-      "meta": {
-        "key": "string" // Free-form key-value pairs, can contain any valid JSON
-      }
-    }
-  ],
-  "type": {
-    "name": "string",
-    "properties": {
-      "key": "string" // Free-form key-value pairs, can contain any valid JSON
-    }
-  },
-  "version": "string",
-  "meta": {
-    "key": "string" // Free-form key-value pairs, can contain any valid JSON
-  }
-}
-```
-
-**Response Body**:
-```json
-{
-  "hash": "hexBytes"
-}
-```
-
-**Errors**:
-- 40004: Malformed JSON body
-- 50001: Marshaling server JSON failed
-- 50002: Internal server error
-
-#### GET /metadata/{metadataHash}
-
-Retrieves metadata by its hash.
-
-**URL Parameters**:
-- metadataHash: Metadata hash in hexadecimal format
-
-**Response Body**:
-Returns the complete metadata object as per the POST request format.
-
-**Errors**:
-- 40001: Resource not found
-- 40004: Malformed parameter
-- 50002: Internal server error
-
 #### GET /processes
 
-Lists all available voting process IDs.
+Lists all available voting process IDs. 
+
+It also support `chainId` query param to filter processes by chainID. It should be a valid number, if not it will be discarded. It the provided `chainId` is not supported (does not match with any supported network), it returns an error.
 
 **Response Body**:
 ```json
@@ -241,6 +154,7 @@ Lists all available voting process IDs.
 ```
 
 **Errors**:
+- 40032: chain ID not supported or invalid
 - 50002: Internal server error
 
 #### GET /processes/{processId}
@@ -327,6 +241,89 @@ Gets information about a census member of a process.
 - 40004: Malformed parameter
 - 40006: Malformed process ID
 - 40007: Process not found
+- 50002: Internal server error
+
+### Metadata Management
+
+#### POST /metadata
+
+Sets metadata for a voting process.
+
+**Request Body**:
+```json
+{
+  "title": {
+    "languageCode": "string" // Language code as key, text as value. Example: {"en": "Election", "es": "Elección"}
+  },
+  "description": {
+    "languageCode": "string" // Language code as key, text as value
+  },
+  "media": {
+    "header": "string", // URL to header image
+    "logo": "string"    // URL to logo image
+  },
+  "questions": [
+    {
+      "title": {
+        "languageCode": "string" // Language code as key, text as value
+      },
+      "description": {
+        "languageCode": "string" // Language code as key, text as value
+      },
+      "choices": [
+        {
+          "title": {
+            "languageCode": "string" // Language code as key, text as value
+          },
+          "value": "number",
+          "meta": {
+            "key": "string" // Free-form key-value pairs, can contain any valid JSON
+          }
+        }
+      ],
+      "meta": {
+        "key": "string" // Free-form key-value pairs, can contain any valid JSON
+      }
+    }
+  ],
+  "type": {
+    "name": "string",
+    "properties": {
+      "key": "string" // Free-form key-value pairs, can contain any valid JSON
+    }
+  },
+  "version": "string",
+  "meta": {
+    "key": "string" // Free-form key-value pairs, can contain any valid JSON
+  }
+}
+```
+
+**Response Body**:
+```json
+{
+  "hash": "hexBytes"
+}
+```
+
+**Errors**:
+- 40004: Malformed JSON body
+- 50001: Marshaling server JSON failed
+- 50002: Internal server error
+
+#### GET /metadata/{metadataHash}
+
+Retrieves metadata by its hash.
+
+**URL Parameters**:
+- metadataHash: Metadata hash in hexadecimal format
+
+**Response Body**:
+Returns the complete metadata object as per the POST request format.
+
+**Errors**:
+- 40001: Resource not found
+- 40004: Malformed parameter
 - 50002: Internal server error
 
 ### Vote Management

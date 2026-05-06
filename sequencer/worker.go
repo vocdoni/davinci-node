@@ -80,15 +80,15 @@ func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, w
 
 	startTime := time.Now()
 	s := &Sequencer{
-		stg:             stg,
-		contracts:       nil,               // Workers don't need web3 contracts
-		batchTimeWindow: 0,                 // Workers don't use batch processing
-		processIDs:      NewProcessIDMap(), // Still needed for ExistsProcessID check
-		sequencerURL:    sequencerURL,
-		sequencerUUID:   sequencerUUID,
-		workerAddress:   wAddr,
-		workerName:      workerName,
-		workerAuthtoken: workerToken,
+		stg:               stg,
+		contractsResolver: nil,               // Workers don't need web3 contracts
+		batchTimeWindow:   0,                 // Workers don't use batch processing
+		processIDs:        NewProcessIDMap(), // Still needed for ExistsProcessID check
+		sequencerURL:      sequencerURL,
+		sequencerUUID:     sequencerUUID,
+		workerAddress:     wAddr,
+		workerName:        workerName,
+		workerAuthtoken:   workerToken,
 	}
 
 	s.internalCircuits = new(internalCircuits)

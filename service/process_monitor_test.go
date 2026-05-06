@@ -32,7 +32,7 @@ func TestProcessMonitor(t *testing.T) {
 	contracts := NewMockContracts()
 
 	// Setup census downloader
-	censusDownloader := NewCensusDownloader(contracts, store, CensusDownloaderConfig{
+	censusDownloader := NewCensusDownloader(nil, store, CensusDownloaderConfig{
 		CleanUpInterval:      5 * time.Second,
 		OnchainCheckInterval: time.Second * 5,
 		Cooldown:             5 * time.Second,
@@ -48,7 +48,7 @@ func TestProcessMonitor(t *testing.T) {
 	defer stateSync.Stop()
 
 	// Create process monitor
-	monitor := NewProcessMonitor(contracts, store, censusDownloader, stateSync, time.Second*2)
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, censusDownloader, stateSync, time.Second*2)
 
 	// Start monitoring in background
 	c.Assert(monitor.Start(ctx), qt.IsNil)
@@ -95,7 +95,7 @@ func TestProcessMonitor(t *testing.T) {
 	censusDownloaded := make(chan struct{})
 
 	// Register a callback for when the census is downloaded
-	censusDownloader.OnCensusDownloaded(census, ctx, func(_ error) {
+	censusDownloader.OnCensusDownloaded(processID, census, ctx, func(_ error) {
 		// Discard here error if any (csp censuses will not be downloaded, even in the pending downloads list)
 		close(censusDownloaded)
 	})
@@ -133,7 +133,7 @@ func TestProcessMonitorDoesNotCreateProcessWhenInitialCensusDownloadFails(t *tes
 	c.Assert(censusDownloader.Start(ctx), qt.IsNil)
 	c.Cleanup(censusDownloader.Stop)
 
-	monitor := NewProcessMonitor(contracts, store, censusDownloader, nil, 10*time.Millisecond)
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, censusDownloader, nil, 10*time.Millisecond)
 	c.Assert(monitor.Start(ctx), qt.IsNil)
 	c.Cleanup(monitor.Stop)
 
@@ -155,4 +155,132 @@ func TestProcessMonitorDoesNotCreateProcessWhenInitialCensusDownloadFails(t *tes
 
 	_, err = store.Process(processID)
 	c.Assert(err, qt.Equals, storage.ErrNotFound)
+}
+
+func TestProcessMonitorInitializeKnownProcessesRegistersOnlyMatchingVersion(t *testing.T) {
+	c := qt.New(t)
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+	matchingProcessID := testMonitorProcessID(defaultMockProcessIDVersion, 1)
+	foreignProcessID := testMonitorProcessID([4]byte{0xaa, 0xbb, 0xcc, 0xdd}, 2)
+
+	matchingProcess := testutil.RandomProcess(matchingProcessID)
+	matchingProcess.Status = types.ProcessStatusResults
+	c.Assert(store.NewProcess(matchingProcess), qt.IsNil)
+
+	foreignProcess := testutil.RandomProcess(foreignProcessID)
+	foreignProcess.Status = types.ProcessStatusResults
+	c.Assert(store.NewProcess(foreignProcess), qt.IsNil)
+
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
+
+	c.Assert(monitor.initializeKnownProcesses(), qt.IsNil)
+	c.Assert(contracts.registeredKnownIDs, qt.DeepEquals, []types.ProcessID{matchingProcessID})
+	c.Assert(contracts.processLookups, qt.HasLen, 0)
+}
+
+func TestProcessMonitorSyncActiveProcessesSkipsForeignVersion(t *testing.T) {
+	c := qt.New(t)
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+	matchingProcessID := testMonitorProcessID(defaultMockProcessIDVersion, 3)
+	foreignProcessID := testMonitorProcessID([4]byte{0xde, 0xad, 0xbe, 0xef}, 4)
+
+	localMatchingProcess := testutil.RandomProcess(matchingProcessID)
+	localMatchingProcess.VotersCount = types.NewInt(1)
+	localMatchingProcess.OverwrittenVotesCount = types.NewInt(0)
+	c.Assert(store.NewProcess(localMatchingProcess), qt.IsNil)
+
+	remoteMatchingProcess := testutil.RandomProcess(matchingProcessID)
+	remoteMatchingProcess.StateRoot = testutil.DeterministicStateRoot(20)
+	remoteMatchingProcess.VotersCount = types.NewInt(5)
+	remoteMatchingProcess.OverwrittenVotesCount = types.NewInt(2)
+	contracts.processes = []*types.Process{remoteMatchingProcess}
+
+	foreignProcess := testutil.RandomProcess(foreignProcessID)
+	foreignProcess.VotersCount = types.NewInt(7)
+	foreignProcess.OverwrittenVotesCount = types.NewInt(1)
+	c.Assert(store.NewProcess(foreignProcess), qt.IsNil)
+
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
+
+	c.Assert(monitor.syncActiveProcessesFromBlockchain(), qt.IsNil)
+	c.Assert(contracts.processLookups, qt.DeepEquals, []types.ProcessID{matchingProcessID})
+
+	updatedMatchingProcess, err := store.Process(matchingProcessID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(updatedMatchingProcess.StateRoot, qt.DeepEquals, remoteMatchingProcess.StateRoot)
+	c.Assert(updatedMatchingProcess.VotersCount, qt.DeepEquals, remoteMatchingProcess.VotersCount)
+	c.Assert(updatedMatchingProcess.OverwrittenVotesCount, qt.DeepEquals, remoteMatchingProcess.OverwrittenVotesCount)
+
+	storedForeignProcess, err := store.Process(foreignProcessID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(storedForeignProcess.StateRoot, qt.DeepEquals, foreignProcess.StateRoot)
+	c.Assert(storedForeignProcess.VotersCount, qt.DeepEquals, foreignProcess.VotersCount)
+	c.Assert(storedForeignProcess.OverwrittenVotesCount, qt.DeepEquals, foreignProcess.OverwrittenVotesCount)
+}
+
+func TestProcessMonitorIgnoresForeignRuntimeEvents(t *testing.T) {
+	c := qt.New(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
+
+	existingForeignProcessID := testMonitorProcessID([4]byte{0xde, 0xad, 0xbe, 0xef}, 5)
+	existingForeignProcess := testutil.RandomProcess(existingForeignProcessID)
+	existingForeignProcess.VotersCount = types.NewInt(3)
+	existingForeignProcess.OverwrittenVotesCount = types.NewInt(1)
+	c.Assert(store.NewProcess(existingForeignProcess), qt.IsNil)
+
+	newForeignProcessID := testMonitorProcessID([4]byte{0xaa, 0xbb, 0xcc, 0xdd}, 6)
+	newForeignProcess := testutil.RandomProcess(newForeignProcessID)
+
+	newProcChan := make(chan *types.Process, 1)
+	updatedProcChan := make(chan *types.ProcessWithChanges, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		monitor.monitorProcesses(ctx, newProcChan, updatedProcChan)
+	}()
+
+	newProcChan <- newForeignProcess
+	updatedProcChan <- &types.ProcessWithChanges{
+		ProcessID: existingForeignProcessID,
+		StateRootChange: &types.StateRootChange{
+			NewStateRoot:             testutil.DeterministicStateRoot(99),
+			NewVotersCount:           types.NewInt(9),
+			NewOverwrittenVotesCount: types.NewInt(4),
+		},
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	close(newProcChan)
+	close(updatedProcChan)
+	<-done
+
+	_, err := store.Process(newForeignProcessID)
+	c.Assert(err, qt.Equals, storage.ErrNotFound)
+
+	storedForeignProcess, err := store.Process(existingForeignProcessID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(storedForeignProcess.StateRoot, qt.DeepEquals, existingForeignProcess.StateRoot)
+	c.Assert(storedForeignProcess.VotersCount, qt.DeepEquals, existingForeignProcess.VotersCount)
+	c.Assert(storedForeignProcess.OverwrittenVotesCount, qt.DeepEquals, existingForeignProcess.OverwrittenVotesCount)
+}
+
+func testMonitorProcessID(version [4]byte, nonce uint64) types.ProcessID {
+	return types.NewProcessID(testutil.DeterministicAddress(nonce), version, nonce)
 }

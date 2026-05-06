@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -118,6 +117,28 @@ func TestEndpointList(t *testing.T) {
 		}
 	})
 
+	t.Run("Get by chain ID", func(t *testing.T) {
+		endpoints, err := EndpointListByChainID(42161, 10)
+		if err != nil {
+			t.Fatalf("EndpointListByChainID failed: %v", err)
+		}
+
+		if len(endpoints) != 2 {
+			t.Errorf("Expected 2 endpoints, got %d", len(endpoints))
+		}
+
+		expectURLs := map[string]bool{
+			"https://arb-rpc-1.example.com": true,
+			"https://arb-rpc-2.example.com": true,
+		}
+		for _, url := range endpoints {
+			if !expectURLs[url] {
+				t.Errorf("Unexpected endpoint URL: %s", url)
+			}
+			expectURLs[url] = false
+		}
+	})
+
 	// Test limiting the number of endpoints
 	t.Run("Limit number of endpoints", func(t *testing.T) {
 		endpoints, err := EndpointList("eth", 2)
@@ -127,42 +148,6 @@ func TestEndpointList(t *testing.T) {
 
 		if len(endpoints) != 2 {
 			t.Errorf("Expected 2 endpoints, got %d", len(endpoints))
-		}
-	})
-}
-
-// TestGetChainList tests the GetChainList function
-func TestGetChainList(t *testing.T) {
-	// Create mock chains for testing
-	mockChains := []Chain{
-		{
-			ShortName: "eth",
-			ChainID:   1,
-		},
-		{
-			ShortName: "arb1",
-			ChainID:   42161,
-		},
-	}
-
-	// Setup mock server and cleanup
-	cleanup := mockChainList(t, mockChains)
-	defer cleanup()
-
-	// Test getting the chain list
-	t.Run("Get chain list", func(t *testing.T) {
-		chainList, err := ChainList()
-		if err != nil {
-			t.Fatalf("GetChainList failed: %v", err)
-		}
-
-		expectedList := map[string]uint64{
-			"eth":  1,
-			"arb1": 42161,
-		}
-
-		if !reflect.DeepEqual(chainList, expectedList) {
-			t.Errorf("Expected chain list %v, got %v", expectedList, chainList)
 		}
 	})
 }

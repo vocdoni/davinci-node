@@ -44,7 +44,6 @@ The Sequencer is a specialized component designed to handle the voting process u
 3. **Configure the environment variables** in the `.env` file:
    ```bash
    DAVINCI_WEB3_PRIVKEY=<hex private key with funds> # currently Sepolia ETH
-   DAVINCI_WEB3_NETWORK=sepolia # for Sepolia
    DAVINCI_API_WORKERSEED=someRandomSeed # just provide some entropy to generate a UUID
    ```
 

@@ -17,6 +17,7 @@ import (
 // updates and update them in the local storage.
 type ProcessMonitor struct {
 	contracts        ContractsService
+	processIDVersion [4]byte
 	storage          *storage.Storage
 	censusDownloader *CensusDownloader
 	statesync        *StateSync
@@ -27,21 +28,21 @@ type ProcessMonitor struct {
 
 // ContractsService defines the interface for web3 contract operations.
 type ContractsService interface {
-	OnchainCensusFetcher
 	MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
 	ProcessChangesFilters() []types.Web3FilterFn
 	MonitorProcessChanges(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
 	CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error)
 	Process(processID types.ProcessID) (*types.Process, error)
+	ValidVersion(processID types.ProcessID) bool
 	RegisterKnownProcess(processID types.ProcessID)
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
-	BlobsByTxHash(ctx context.Context, txHash common.Hash) ([]*types.BlobSidecar, error)
 }
 
-// NewProcessMonitor creates a new ProcessMonitor service. If storage is nil, it uses a memory storage.
-func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, censusDownloader *CensusDownloader, stateSync *StateSync, interval time.Duration,
+// NewProcessMonitor creates a new ProcessMonitor service for one process ID
+// version. If storage is nil, it uses a memory storage.
+func NewProcessMonitor(contracts ContractsService, processIDVersion [4]byte, stg *storage.Storage, censusDownloader *CensusDownloader, stateSync *StateSync, interval time.Duration,
 ) *ProcessMonitor {
 	if stg == nil {
 		kv := memdb.New()
@@ -49,6 +50,7 @@ func NewProcessMonitor(contracts ContractsService, stg *storage.Storage, censusD
 	}
 	return &ProcessMonitor{
 		contracts:        contracts,
+		processIDVersion: processIDVersion,
 		storage:          stg,
 		censusDownloader: censusDownloader,
 		statesync:        stateSync,
@@ -114,11 +116,26 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 	}
 
 	// Register each process ID in the contracts' knownProcesses map
+	registeredCount := 0
+	skippedCount := 0
 	for _, processID := range processIDs {
+		if !pm.contracts.ValidVersion(processID) {
+			log.Warnw("unsupported process detected", "processID", processID.String())
+			skippedCount++
+			continue
+		}
+		if !pm.ownsProcess(processID) {
+			skippedCount++
+			continue
+		}
 		pm.contracts.RegisterKnownProcess(processID)
+		registeredCount++
 	}
 
-	log.Infow("initialized known processes from storage", "count", len(processIDs))
+	log.Infow("initialized known processes from storage",
+		"registeredProcesses", registeredCount,
+		"skippedProcesses", skippedCount,
+		"processIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
 
 	// Sync active processes from blockchain to catch up on missed state transitions
 	if err := pm.syncActiveProcessesFromBlockchain(); err != nil {
@@ -139,7 +156,17 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 	}
 
 	syncCount := 0
+	skippedCount := 0
 	for _, processID := range processIDs {
+		if !pm.contracts.ValidVersion(processID) {
+			log.Warnw("unsupported process detected", "processID", processID.String())
+			skippedCount++
+			continue
+		}
+		if !pm.ownsProcess(processID) {
+			skippedCount++
+			continue
+		}
 		// Check if process is accepting votes
 		isAccepting, err := pm.storage.ProcessIsAcceptingVotes(processID)
 		if err != nil || !isAccepting {
@@ -191,9 +218,14 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 	if syncCount > 0 {
 		log.Infow("blockchain sync completed",
 			"syncedProcesses", syncCount,
+			"skippedProcesses", skippedCount,
 			"totalProcesses", len(processIDs))
 	}
 	return nil
+}
+
+func (pm *ProcessMonitor) ownsProcess(processID types.ProcessID) bool {
+	return processID.IsValid() && processID.Version() == pm.processIDVersion
 }
 
 func (pm *ProcessMonitor) monitorProcesses(
@@ -207,8 +239,23 @@ func (pm *ProcessMonitor) monitorProcesses(
 			return
 		case process, ok := <-newProcChan:
 			if !ok {
-				log.Warnw("process creation channel closed")
+				log.Warn("process creation channel closed")
 				return
+			}
+			if process == nil || process.ID == nil {
+				log.Warn("received process creation event without process ID")
+				continue
+			}
+			if !pm.contracts.ValidVersion(*process.ID) {
+				log.Warn("received process creation event with invalid process ID (version mismatch)")
+				continue
+			}
+			if !pm.ownsProcess(*process.ID) {
+				log.Warnw("ignoring process creation for foreign runtime",
+					"processID", process.ID.String(),
+					"processIDVersion", fmt.Sprintf("%x", process.ID.Version()),
+					"monitorProcessIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
+				continue
 			}
 			// Skip if the process already exists
 			if _, err := pm.storage.Process(*process.ID); err == nil {
@@ -242,7 +289,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					processCensus := process.Census.Clone()
 
 					// Download and import the process census if needed
-					resolvedRoot, err := pm.censusDownloader.DownloadCensus(queuedCensus)
+					resolvedRoot, err := pm.censusDownloader.DownloadCensus(*process.ID, queuedCensus)
 					if err != nil {
 						log.Warnw("failed to start census download for new process",
 							"processID", process.ID.String(),
@@ -253,7 +300,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					processCensus.CensusRoot = resolvedRoot
 					// After census is downloaded and imported, store the new process
 					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
-					pm.censusDownloader.OnCensusDownloaded(processCensus, downloadCtx, func(err error) {
+					pm.censusDownloader.OnCensusDownloaded(*process.ID, processCensus, downloadCtx, func(err error) {
 						defer downloadCtxCancel()
 						// If no error, just proceed to store the process.
 						if err == nil {
@@ -275,8 +322,23 @@ func (pm *ProcessMonitor) monitorProcesses(
 			}
 		case update, ok := <-updatedProcChan:
 			if !ok {
-				log.Warnw("process updates channel closed")
+				log.Warn("process updates channel closed")
 				return
+			}
+			if update == nil {
+				log.Warn("received nil process update event")
+				continue
+			}
+			if !pm.contracts.ValidVersion(update.ProcessID) {
+				log.Warn("received process update event with invalid process ID (version mismatch)")
+				continue
+			}
+			if !pm.ownsProcess(update.ProcessID) {
+				log.Warnw("ignoring process update for foreign runtime",
+					"processID", update.ProcessID.String(),
+					"processIDVersion", fmt.Sprintf("%x", update.ProcessID.Version()),
+					"monitorProcessIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
+				continue
 			}
 			// determine the type of update
 			switch {
@@ -380,7 +442,8 @@ func (pm *ProcessMonitor) monitorProcesses(
 				}
 				go func(censusInfo *types.Census, pid types.ProcessID, newRoot types.HexBytes, newURI string) {
 					// download and import the new census
-					censusInfo.CensusRoot, err = pm.censusDownloader.DownloadCensus(censusInfo)
+					var err error
+					censusInfo.CensusRoot, err = pm.censusDownloader.DownloadCensus(pid, censusInfo)
 					if err != nil {
 						log.Warnw("failed to start download of updated census for process",
 							"processID", pid.String(),
@@ -391,7 +454,7 @@ func (pm *ProcessMonitor) monitorProcesses(
 					// wait for census to be downloaded and imported, then update
 					// process census info
 					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
-					pm.censusDownloader.OnCensusDownloaded(censusInfo, downloadCtx, func(err error) {
+					pm.censusDownloader.OnCensusDownloaded(pid, censusInfo, downloadCtx, func(err error) {
 						defer downloadCtxCancel()
 						if err != nil {
 							log.Warnw("failed to download updated census for process",

@@ -49,11 +49,12 @@ func TestCensusDBNewByRoot(t *testing.T) {
 	}()
 }
 
-func TestCensusDBNewByAddress(t *testing.T) {
+func TestCensusDBNewByScopedAddress(t *testing.T) {
 	censusDB := NewCensusDB(newDatabase(t))
 	address := testutil.RandomAddress()
+	chainID := uint64(11155111)
 
-	censusRef, err := censusDB.NewByAddress(address)
+	censusRef, err := censusDB.NewByScopedAddress(chainID, address)
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, censusRef, qt.IsNotNil)
 	qt.Assert(t, censusRef.Tree(), qt.IsNotNil)
@@ -106,16 +107,17 @@ func TestCensusDBExistsByRoot(t *testing.T) {
 	qt.Assert(t, existsAfter, qt.IsTrue)
 }
 
-func TestCensusDBExistsByAddress(t *testing.T) {
+func TestCensusDBExistsByScopedAddress(t *testing.T) {
 	censusDB := NewCensusDB(newDatabase(t))
 	address := testutil.RandomAddress()
+	chainID := uint64(11155111)
 
 	// Before creation.
-	existsBefore := censusDB.ExistsByAddress(address)
+	existsBefore := censusDB.ExistsByScopedAddress(chainID, address)
 	qt.Assert(t, existsBefore, qt.IsFalse)
 
 	// Create a new census.
-	ref, err := censusDB.NewByAddress(address)
+	ref, err := censusDB.NewByScopedAddress(chainID, address)
 	qt.Assert(t, err, qt.IsNil)
 
 	// Cleanup
@@ -125,8 +127,38 @@ func TestCensusDBExistsByAddress(t *testing.T) {
 		}
 	}()
 
-	existsAfter := censusDB.ExistsByAddress(address)
+	existsAfter := censusDB.ExistsByScopedAddress(chainID, address)
 	qt.Assert(t, existsAfter, qt.IsTrue)
+}
+
+func TestCensusDBScopedAddressDoesNotCollideAcrossChains(t *testing.T) {
+	censusDB := NewCensusDB(newDatabase(t))
+	address := testutil.RandomAddress()
+	firstChainID := uint64(11155111)
+	secondChainID := uint64(42220)
+
+	ref1, err := censusDB.NewByScopedAddress(firstChainID, address)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, ref1, qt.IsNotNil)
+	defer func() {
+		if ref1.tree != nil {
+			_ = ref1.tree.Close()
+		}
+	}()
+
+	qt.Assert(t, censusDB.ExistsByScopedAddress(firstChainID, address), qt.IsTrue)
+	qt.Assert(t, censusDB.ExistsByScopedAddress(secondChainID, address), qt.IsFalse)
+
+	ref2, err := censusDB.NewByScopedAddress(secondChainID, address)
+	qt.Assert(t, err, qt.IsNil)
+	qt.Assert(t, ref2, qt.IsNotNil)
+	defer func() {
+		if ref2.tree != nil {
+			_ = ref2.tree.Close()
+		}
+	}()
+
+	qt.Assert(t, censusDB.ExistsByScopedAddress(secondChainID, address), qt.IsTrue)
 }
 
 func TestCensusDBDel(t *testing.T) {
@@ -181,11 +213,12 @@ func TestLoadNonExistingCensusByRoot(t *testing.T) {
 	qt.Assert(t, err.Error(), qt.Contains, "census not found")
 }
 
-func TestLoadNonExistingCensusByAddress(t *testing.T) {
+func TestLoadNonExistingCensusByScopedAddress(t *testing.T) {
 	censusDB := NewCensusDB(newDatabase(t))
 	address := testutil.RandomAddress()
+	chainID := uint64(11155111)
 
-	ref, err := censusDB.LoadByAddress(address)
+	ref, err := censusDB.LoadByScopedAddress(chainID, address)
 	qt.Assert(t, ref, qt.IsNil)
 	qt.Assert(t, err, qt.Not(qt.IsNil))
 	qt.Assert(t, err.Error(), qt.Contains, "census not found")
@@ -219,12 +252,13 @@ func TestPersistenceAcrossCensusDBInstances(t *testing.T) {
 	}()
 }
 
-func TestLoadByAddressAcrossInstances(t *testing.T) {
+func TestLoadByScopedAddressAcrossInstances(t *testing.T) {
 	db := newDatabase(t)
 	censusDB1 := NewCensusDB(db)
 	address := testutil.RandomAddress()
+	chainID := uint64(11155111)
 
-	ref1, err := censusDB1.NewByAddress(address)
+	ref1, err := censusDB1.NewByScopedAddress(chainID, address)
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, ref1, qt.IsNotNil)
 
@@ -232,10 +266,10 @@ func TestLoadByAddressAcrossInstances(t *testing.T) {
 	_ = ref1.tree.Close()
 
 	censusDB2 := NewCensusDB(db)
-	exists := censusDB2.ExistsByAddress(address)
+	exists := censusDB2.ExistsByScopedAddress(chainID, address)
 	qt.Assert(t, exists, qt.IsTrue)
 
-	ref2, err := censusDB2.LoadByAddress(address)
+	ref2, err := censusDB2.LoadByScopedAddress(chainID, address)
 	qt.Assert(t, err, qt.IsNil)
 	qt.Assert(t, ref2, qt.IsNotNil)
 

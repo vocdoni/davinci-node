@@ -298,38 +298,38 @@ type localService struct {
 func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, network string) error {
 	// Create storage with a in-memory database
 	s.storage = storage.New(memdb.New())
+	apiRuntime, err := web3.NewNetworkRuntime(contracts, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create runtime: %w", err)
+	}
+	runtimeRouter, err := web3.NewRuntimeRouter(apiRuntime)
+	if err != nil {
+		return fmt.Errorf("failed to create runtime router: %w", err)
+	}
 	sequencer.AggregatorTickerInterval = time.Second * 2
 	sequencer.NewProcessMonitorInterval = time.Second * 5
 	// Start census downloader
-	s.censusDownloader = service.NewCensusDownloader(contracts, s.storage, service.DefaultCensusDownloaderConfig)
+	s.censusDownloader = service.NewCensusDownloader(runtimeRouter, s.storage, service.DefaultCensusDownloaderConfig)
 	if err := s.censusDownloader.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start census downloader: %w", err)
 	}
 	// Start StateSync
-	stateSync := service.NewStateSync(contracts, s.storage)
+	stateSync := service.NewStateSync(runtimeRouter, s.storage)
 	if err := stateSync.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start state sync: %v", err)
 	}
 	// Monitor new processes from the contracts
-	s.processMonitor = service.NewProcessMonitor(contracts, s.storage, s.censusDownloader, stateSync, time.Second*2)
+	s.processMonitor = service.NewProcessMonitor(contracts, apiRuntime.ProcessIDVersion, s.storage, s.censusDownloader, stateSync, time.Second*2)
 	if err := s.processMonitor.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start process monitor: %v", err)
 	}
 	// Start sequencer service
-	s.sequencer = service.NewSequencer(s.storage, contracts, time.Second*30, nil)
+	s.sequencer = service.NewSequencer(s.storage, runtimeRouter, time.Second*30, nil)
 	if err := s.sequencer.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start sequencer: %v", err)
 	}
 	// Start API service
-	apiRuntime, err := web3.NewNetworkRuntime(network, contracts, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create API runtime: %w", err)
-	}
-	apiRuntimes, err := web3.NewRuntimeRouter(apiRuntime)
-	if err != nil {
-		return fmt.Errorf("failed to create API runtime router: %w", err)
-	}
-	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, apiRuntimes, metadata.PinataMetadataProviderConfig{}, false)
+	s.api = service.NewAPI(s.storage, localSequencerHost, localSequencerPort, runtimeRouter, metadata.PinataMetadataProviderConfig{}, false)
 	if err := s.api.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start API: %v", err)
 	}

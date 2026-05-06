@@ -36,7 +36,7 @@ type Sequencer struct {
 	*internalCircuits                   // Internal circuit artifacts for proof generation and verification
 	finalizer          *finalizer       // Finalizer for handling process finalization
 	stg                *storage.Storage // Storage instance for accessing ballots and other data
-	contracts          *web3.Contracts  // web3 contracts for on-chain interaction
+	contractsResolver  web3.ProcessContractsResolver
 	ctx                context.Context
 	cancel             context.CancelFunc
 	processIDs         *ProcessIDMap // Maps process IDs to their last update time
@@ -58,11 +58,11 @@ type Sequencer struct {
 //
 // Parameters:
 //   - stg: Storage instance for accessing ballots and other data
-//   - contracts: Web3 contracts for on-chain interaction
+//   - resolver: Contracts resolver for process-scoped on-chain interaction
 //   - batchTimeWindow: Maximum time to wait before processing a batch even if not full
 //
 // Returns a configured Sequencer instance or an error if initialization fails.
-func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.Duration) (*Sequencer, error) {
+func New(stg *storage.Storage, resolver web3.ProcessContractsResolver, batchTimeWindow time.Duration) (*Sequencer, error) {
 	if stg == nil {
 		return nil, fmt.Errorf("storage cannot be nil")
 	}
@@ -74,23 +74,50 @@ func New(stg *storage.Storage, contracts *web3.Contracts, batchTimeWindow time.D
 
 	// Create a new Sequencer instance
 	s := &Sequencer{
-		stg:             stg,
-		contracts:       contracts,
-		batchTimeWindow: batchTimeWindow,
-		processIDs:      NewProcessIDMap(),
+		stg:               stg,
+		contractsResolver: resolver,
+		batchTimeWindow:   batchTimeWindow,
+		processIDs:        NewProcessIDMap(),
 	}
 	// Load the internal circuits
 	if err := s.loadInternalCircuitArtifacts(); err != nil {
 		return nil, fmt.Errorf("failed to load internal circuit artifacts: %w", err)
 	}
-	// Initialize the finalizer with state root getter
-	var getStateRootFn func(types.ProcessID) (*types.BigInt, error)
-	if contracts != nil {
-		getStateRootFn = contracts.StateRoot
-	}
-	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, getStateRootFn)
+	s.finalizer = newFinalizer(stg, stg.StateDB(), s.internalCircuits, stateRootGetter(resolver))
 	log.InfoTime("sequencer initialized", startTime, "batchTimeWindow", batchTimeWindow.String())
 	return s, nil
+}
+
+func resolveContractsForProcess(resolver web3.ProcessContractsResolver, processID types.ProcessID) (*web3.Contracts, error) {
+	if resolver == nil {
+		return nil, fmt.Errorf("contracts resolver is not configured")
+	}
+
+	contracts, err := resolver.ContractsForProcess(processID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve contracts for process %s: %w", processID.String(), err)
+	}
+	if contracts == nil {
+		return nil, fmt.Errorf("resolve contracts for process %s: nil contracts", processID.String())
+	}
+	return contracts, nil
+}
+
+func stateRootGetter(resolver web3.ProcessContractsResolver) func(types.ProcessID) (*types.BigInt, error) {
+	if resolver == nil {
+		return nil
+	}
+	return func(processID types.ProcessID) (*types.BigInt, error) {
+		contracts, err := resolveContractsForProcess(resolver, processID)
+		if err != nil {
+			return nil, err
+		}
+		return contracts.StateRoot(processID)
+	}
+}
+
+func (s *Sequencer) contractsForProcess(processID types.ProcessID) (*web3.Contracts, error) {
+	return resolveContractsForProcess(s.contractsResolver, processID)
 }
 
 // Start begins the ballot processing and aggregation routines.

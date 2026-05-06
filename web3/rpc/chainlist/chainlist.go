@@ -349,6 +349,52 @@ func EndpointList(chainName string, numEndpoints int) ([]string, error) {
 		return nil, fmt.Errorf("chain with short name %q not found", chainName)
 	}
 
+	return healthyEndpointsForChain(chain, numEndpoints), nil
+}
+
+// EndpointListByChainID returns the healthy RPC endpoints for the given chain
+// ID.
+func EndpointListByChainID(chainID uint64, numEndpoints int) ([]string, error) {
+	chainListInfo.Do(func() {
+		initErr = initialize()
+	})
+
+	if initErr != nil {
+		return nil, fmt.Errorf("failed to initialize chain list: %w", initErr)
+	}
+
+	chainMutex.RLock()
+	defer chainMutex.RUnlock()
+
+	chain, ok := chainsByID[chainID]
+	if !ok {
+		return nil, fmt.Errorf("chain with ID %d not found", chainID)
+	}
+
+	return healthyEndpointsForChain(chain, numEndpoints), nil
+}
+
+// ShortNameByChainID returns the short name of the chain with the given ID
+// or an empty string if the chain is not found.
+func ShortNameByChainID(chainID uint64) string {
+	chainListInfo.Do(func() {
+		initErr = initialize()
+	})
+
+	if initErr != nil {
+		return ""
+	}
+
+	chainMutex.RLock()
+	defer chainMutex.RUnlock()
+	chain, ok := chainsByID[chainID]
+	if !ok {
+		return ""
+	}
+	return chain.ShortName
+}
+
+func healthyEndpointsForChain(chain *Chain, numEndpoints int) []string {
 	// Extract HTTP URLs
 	urls := make([]string, 0, len(chain.RPC))
 	for _, rpc := range chain.RPC {
@@ -406,30 +452,7 @@ func EndpointList(chainName string, numEndpoints int) ([]string, error) {
 		}
 	}
 
-	return healthyURLs, nil
-}
-
-// ChainList returns a map of chain short names to their respective chain IDs.
-// This allows users to discover available chains and their identifiers.
-func ChainList() (map[string]uint64, error) {
-	// Ensure we've fetched the data
-	chainListInfo.Do(func() {
-		initErr = initialize()
-	})
-
-	if initErr != nil {
-		return nil, fmt.Errorf("failed to initialize chain list: %w", initErr)
-	}
-
-	chainMutex.RLock()
-	defer chainMutex.RUnlock()
-
-	result := make(map[string]uint64, len(chainsByShortName))
-	for shortName, chain := range chainsByShortName {
-		result[chainListNetworkName(shortName)] = chain.ChainID
-	}
-
-	return result, nil
+	return healthyURLs
 }
 
 func chainListNetworkName(name string) string {

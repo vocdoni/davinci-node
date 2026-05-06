@@ -1,20 +1,41 @@
 package web3
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
 // Since ProcessIDVersion is a uint32, we limit the chain ID to 32 bits
 const maxProcessIDChainID = uint64(^uint32(0))
 
+// BlobFetcher fetches blob sidecars from a state transition transaction.
+type BlobFetcher interface {
+	BlobsByTxHash(ctx context.Context, txHash common.Hash) ([]*types.BlobSidecar, error)
+}
+
+// ProcessContractsResolver resolves the contracts instance for a process-scoped
+// on-chain operation.
+type ProcessContractsResolver interface {
+	ContractsForProcess(processID types.ProcessID) (*Contracts, error)
+	SupportsProcess(processID types.ProcessID) bool
+}
+
+// ProcessBlobFetcherResolver resolves a blob fetcher for process-scoped state
+// synchronization.
+type ProcessBlobFetcherResolver interface {
+	BlobFetcherForProcess(processID types.ProcessID) (BlobFetcher, error)
+}
+
 // NetworkRuntime groups all chain-specific runtime state needed by the
 // sequencer for one enabled network.
 type NetworkRuntime struct {
-	Network          string
+	ChainID          uint64
+	ShortName        string
 	ProcessIDVersion [4]byte
 	Contracts        *Contracts
 	TxManager        *txmanager.TxManager
@@ -23,13 +44,9 @@ type NetworkRuntime struct {
 // NewNetworkRuntime builds a network runtime and computes its ProcessIDVersion
 // from the contracts chain ID and ProcessRegistry address.
 func NewNetworkRuntime(
-	network string,
 	contracts *Contracts,
 	txManager *txmanager.TxManager,
 ) (*NetworkRuntime, error) {
-	if network == "" {
-		return nil, fmt.Errorf("network is required")
-	}
 	if contracts == nil {
 		return nil, fmt.Errorf("contracts is required")
 	}
@@ -46,7 +63,8 @@ func NewNetworkRuntime(
 	}
 
 	return &NetworkRuntime{
-		Network:          network,
+		ChainID:          contracts.ChainID,
+		ShortName:        chainlist.ShortNameByChainID(contracts.ChainID),
 		ProcessIDVersion: types.ProcessIDVersion(uint32(contracts.ChainID), processRegistry),
 		Contracts:        contracts,
 		TxManager:        txManager,
@@ -76,10 +94,10 @@ func NewRuntimeRouter(runtimes ...*NetworkRuntime) (*RuntimeRouter, error) {
 		}
 		if existing, ok := router.runtimeByVersion[runtime.ProcessIDVersion]; ok {
 			return nil, fmt.Errorf(
-				"duplicate ProcessIDVersion %x for networks %s and %s",
+				"duplicate ProcessIDVersion %x for networks %d and %d",
 				runtime.ProcessIDVersion,
-				existing.Network,
-				runtime.Network,
+				existing.ChainID,
+				runtime.ChainID,
 			)
 		}
 		router.runtimes = append(router.runtimes, runtime)
@@ -89,9 +107,9 @@ func NewRuntimeRouter(runtimes ...*NetworkRuntime) (*RuntimeRouter, error) {
 	return router, nil
 }
 
-// RuntimeForVersion returns the runtime associated with the provided
+// runtimeForVersion returns the runtime associated with the provided
 // ProcessIDVersion.
-func (r *RuntimeRouter) RuntimeForVersion(version [4]byte) (*NetworkRuntime, bool) {
+func (r *RuntimeRouter) runtimeForVersion(version [4]byte) (*NetworkRuntime, bool) {
 	if r == nil {
 		return nil, false
 	}
@@ -99,17 +117,58 @@ func (r *RuntimeRouter) RuntimeForVersion(version [4]byte) (*NetworkRuntime, boo
 	return runtime, ok
 }
 
-// ContractsForProcess resolves the contracts instance associated with the
-// provided process ID.
-func (r *RuntimeRouter) ContractsForProcess(processID types.ProcessID) (*Contracts, error) {
+// SupportsProcess reports whether the provided process ID belongs to one of
+// the configured runtimes.
+func (r *RuntimeRouter) SupportsProcess(processID types.ProcessID) bool {
+	if !processID.IsValid() {
+		return false
+	}
+	_, ok := r.runtimeForVersion(processID.Version())
+	return ok
+}
+
+// RuntimeForProcess resolves the runtime associated with the provided process
+// ID.
+func (r *RuntimeRouter) RuntimeForProcess(processID types.ProcessID) (*NetworkRuntime, error) {
 	if !processID.IsValid() {
 		return nil, fmt.Errorf("invalid process ID")
 	}
-	runtime, ok := r.RuntimeForVersion(processID.Version())
+	runtime, ok := r.runtimeForVersion(processID.Version())
 	if !ok {
 		return nil, fmt.Errorf("runtime not found for process version %x", processID.Version())
 	}
+	return runtime, nil
+}
+
+// ContractsForProcess resolves the contracts instance associated with the
+// provided process ID.
+func (r *RuntimeRouter) ContractsForProcess(processID types.ProcessID) (*Contracts, error) {
+	runtime, err := r.RuntimeForProcess(processID)
+	if err != nil {
+		return nil, err
+	}
 	return runtime.Contracts, nil
+}
+
+// BlobFetcherForProcess resolves the blob fetcher associated with the provided
+// process ID.
+func (r *RuntimeRouter) BlobFetcherForProcess(processID types.ProcessID) (BlobFetcher, error) {
+	contracts, err := r.ContractsForProcess(processID)
+	if err != nil {
+		return nil, err
+	}
+	return contracts, nil
+}
+
+// VersionForChainID returns the ProcessIDVersion for the provided chain ID
+// based on the currently configured runtimes and contracts.
+func (r *RuntimeRouter) VersionForChainID(chainID uint64) ([4]byte, bool) {
+	for _, runtime := range r.runtimes {
+		if runtime.ChainID == chainID {
+			return runtime.ProcessIDVersion, true
+		}
+	}
+	return [4]byte{}, false
 }
 
 // Runtimes returns the configured runtimes in registration order.

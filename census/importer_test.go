@@ -9,6 +9,7 @@ import (
 	"github.com/vocdoni/davinci-node/census/censusdb"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
@@ -25,6 +26,7 @@ type testImporterPlugin struct {
 	err     error
 
 	calls        int
+	lastChainID  uint64
 	lastCensusDB *censusdb.CensusDB
 	lastURI      string
 	lastRoot     types.HexBytes
@@ -37,8 +39,9 @@ func (p *testImporterPlugin) ValidURI(targetURI string) bool {
 	return p.validFn(targetURI)
 }
 
-func (p *testImporterPlugin) ImportCensus(_ context.Context, censusDB *censusdb.CensusDB, census *types.Census, _ int) (int, error) {
+func (p *testImporterPlugin) ImportCensus(_ context.Context, censusDB *censusdb.CensusDB, chainID uint64, census *types.Census, _ int) (int, error) {
 	p.calls++
+	p.lastChainID = chainID
 	p.lastCensusDB = censusDB
 	p.lastURI = census.CensusURI
 	p.lastRoot = census.CensusRoot
@@ -61,14 +64,14 @@ func TestCensusImporter(t *testing.T) {
 	c.Run("Validation", func(c *qt.C) {
 		c.Run("NilCensus", func(c *qt.C) {
 			importer := NewCensusImporter(nil)
-			_, err := importer.ImportCensus(c.Context(), nil, 0)
+			_, err := importer.ImportCensus(c.Context(), 0, nil, 0)
 			c.Assert(err, qt.Not(qt.IsNil))
 			c.Assert(err.Error(), qt.Equals, "census is nil")
 		})
 
 		c.Run("InvalidOrigin", func(c *qt.C) {
 			importer := NewCensusImporter(nil)
-			_, err := importer.ImportCensus(c.Context(), &types.Census{
+			_, err := importer.ImportCensus(c.Context(), 0, &types.Census{
 				CensusOrigin: types.CensusOriginUnknown,
 				CensusURI:    "https://example.invalid/dump",
 				CensusRoot:   types.HexBytes{0x01},
@@ -79,6 +82,23 @@ func TestCensusImporter(t *testing.T) {
 	})
 
 	c.Run("MerkleTree", func(c *qt.C) {
+		c.Run("DynamicOnchainRequiresChainID", func(c *qt.C) {
+			plugin := &testImporterPlugin{
+				validFn: func(string) bool { return true },
+			}
+
+			importer := NewCensusImporter(stg, plugin)
+			_, err := importer.ImportCensus(c.Context(), 0, &types.Census{
+				CensusOrigin:    types.CensusOriginMerkleTreeOnchainDynamicV1,
+				CensusURI:       "graphql://example.invalid/subgraph",
+				CensusRoot:      types.HexBytes{0x01},
+				ContractAddress: testutil.RandomAddress(),
+			}, 0)
+			c.Assert(err, qt.Not(qt.IsNil))
+			c.Assert(err.Error(), qt.Contains, "chain ID is required")
+			c.Assert(plugin.calls, qt.Equals, 0)
+		})
+
 		c.Run("SelectsFirstMatchingPlugin", func(c *qt.C) {
 			plugin1 := &testImporterPlugin{
 				validFn: func(string) bool { return false },
@@ -94,13 +114,14 @@ func TestCensusImporter(t *testing.T) {
 				CensusRoot:   types.HexBytes{0xaa, 0xbb},
 			}
 
-			_, err := importer.ImportCensus(c.Context(), census, 0)
+			_, err := importer.ImportCensus(c.Context(), 0, census, 0)
 			c.Assert(err, qt.IsNil)
 
 			c.Assert(plugin1.calls, qt.Equals, 0)
 			c.Assert(plugin2.calls, qt.Equals, 1)
 			c.Assert(plugin2.lastCensusDB, qt.Not(qt.IsNil))
 			c.Assert(plugin2.lastCensusDB, qt.Equals, stg.CensusDB())
+			c.Assert(plugin2.lastChainID, qt.Equals, uint64(0))
 			c.Assert(plugin2.lastURI, qt.Equals, census.CensusURI)
 			c.Assert(plugin2.lastRoot, qt.DeepEquals, census.CensusRoot)
 		})
@@ -113,7 +134,7 @@ func TestCensusImporter(t *testing.T) {
 			}
 
 			importer := NewCensusImporter(stg, plugin)
-			_, err := importer.ImportCensus(c.Context(), &types.Census{
+			_, err := importer.ImportCensus(c.Context(), 0, &types.Census{
 				CensusOrigin: types.CensusOriginMerkleTreeOffchainDynamicV1,
 				CensusURI:    "https://example.invalid/dump",
 				CensusRoot:   types.HexBytes{0x01},
@@ -127,7 +148,7 @@ func TestCensusImporter(t *testing.T) {
 				validFn: func(string) bool { return false },
 			}
 			importer := NewCensusImporter(stg, plugin)
-			_, err := importer.ImportCensus(c.Context(), &types.Census{
+			_, err := importer.ImportCensus(c.Context(), 0, &types.Census{
 				CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
 				CensusURI:    "https://example.invalid/dump",
 				CensusRoot:   types.HexBytes{0x01},
@@ -144,7 +165,7 @@ func TestCensusImporter(t *testing.T) {
 				validFn: func(string) bool { return true },
 			}
 			importer := NewCensusImporter(stg, plugin)
-			_, err := importer.ImportCensus(c.Context(), &types.Census{
+			_, err := importer.ImportCensus(c.Context(), 0, &types.Census{
 				CensusOrigin: types.CensusOriginCSPEdDSABabyJubJubV1,
 				CensusURI:    "https://example.invalid/csp",
 				CensusRoot:   types.HexBytes{0x01},

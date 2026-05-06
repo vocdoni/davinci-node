@@ -30,7 +30,7 @@ func TestAPIService(t *testing.T) {
 			ResultsZKVerifier:         common.HexToAddress(config.TestConfig.ResultsZKVerifier),
 		},
 	}
-	runtime, err := web3.NewNetworkRuntime("test", contracts, nil)
+	runtime, err := web3.NewNetworkRuntime(contracts, nil)
 	c.Assert(err, qt.IsNil)
 	runtimes, err := web3.NewRuntimeRouter(runtime)
 	c.Assert(err, qt.IsNil)

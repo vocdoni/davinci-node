@@ -275,7 +275,7 @@ func TestImportJSONDump(t *testing.T) {
 
 	c.Run("UnknownFormat", func(c *qt.C) {
 		expectedRoot := types.HexBytes{0x01, 0x02}
-		_, err := importJSONDump(nil, UnknownJSON, expectedRoot, strings.NewReader(""))
+		_, err := importJSONDump(nil, UnknownJSON, 0, &types.Census{CensusRoot: expectedRoot}, strings.NewReader(""))
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "unknown JSON format: unknown")
 	})
@@ -283,7 +283,7 @@ func TestImportJSONDump(t *testing.T) {
 	c.Run("JSONArrayReadError", func(c *qt.C) {
 		expectedRoot := types.HexBytes{0x01}
 		readErr := fmt.Errorf("read failure")
-		_, err := importJSONDump(nil, JSONArray, expectedRoot, &testErrReader{err: readErr})
+		_, err := importJSONDump(nil, JSONArray, 0, &types.Census{CensusRoot: expectedRoot}, &testErrReader{err: readErr})
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "failed to read json census dump")
 		c.Assert(err.Error(), qt.Contains, expectedRoot.String())
@@ -294,7 +294,7 @@ func TestImportJSONDump(t *testing.T) {
 		censusDB := testNewCensusDB(c)
 		reader, expectedRoot := testMakeImportJSONL(c)
 
-		_, err := importJSONDump(censusDB, JSONL, expectedRoot, reader)
+		_, err := importJSONDump(censusDB, JSONL, 0, &types.Census{CensusRoot: expectedRoot}, reader)
 		c.Assert(err, qt.IsNil)
 	})
 
@@ -302,14 +302,14 @@ func TestImportJSONDump(t *testing.T) {
 		censusDB := testNewCensusDB(c)
 		dumpJSON, expectedRoot := testMakeImportAllDumpJSON(c)
 
-		_, err := importJSONDump(censusDB, JSONArray, expectedRoot, bytes.NewReader(dumpJSON))
+		_, err := importJSONDump(censusDB, JSONArray, 0, &types.Census{CensusRoot: expectedRoot}, bytes.NewReader(dumpJSON))
 		c.Assert(err, qt.IsNil)
 	})
 
 	c.Run("JSONLImportError", func(c *qt.C) {
 		censusDB := testNewCensusDB(c)
 		expectedRoot := types.HexBytes{0x01}
-		_, err := importJSONDump(censusDB, JSONL, expectedRoot, strings.NewReader("not json\n"))
+		_, err := importJSONDump(censusDB, JSONL, 0, &types.Census{CensusRoot: expectedRoot}, strings.NewReader("not json\n"))
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "failed to import jsonl census dump")
 		c.Assert(err.Error(), qt.Contains, expectedRoot.String())
@@ -318,7 +318,7 @@ func TestImportJSONDump(t *testing.T) {
 	c.Run("JSONArrayImportError", func(c *qt.C) {
 		censusDB := testNewCensusDB(c)
 		expectedRoot := types.HexBytes{0x01}
-		_, err := importJSONDump(censusDB, JSONArray, expectedRoot, strings.NewReader("{not-json"))
+		_, err := importJSONDump(censusDB, JSONArray, 0, &types.Census{CensusRoot: expectedRoot}, strings.NewReader("{not-json"))
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "failed to import json census dump")
 		c.Assert(err.Error(), qt.Contains, expectedRoot.String())
@@ -332,7 +332,7 @@ func TestImportJSONDump(t *testing.T) {
 		copy(mismatchedRoot, expectedRoot)
 		mismatchedRoot[0] ^= 0xff
 
-		_, err := importJSONDump(censusDB, JSONArray, mismatchedRoot, bytes.NewReader(dumpJSON))
+		_, err := importJSONDump(censusDB, JSONArray, 0, &types.Census{CensusRoot: mismatchedRoot}, bytes.NewReader(dumpJSON))
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "imported census root mismatch")
 	})
@@ -362,7 +362,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		})
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
-		_, err := ji.ImportCensus(c.Context(), censusDB, &types.Census{
+		_, err := ji.ImportCensus(c.Context(), censusDB, 0, &types.Census{
 			CensusURI:  "https://example.invalid/dump.json",
 			CensusRoot: expectedRoot,
 		}, 0)
@@ -381,7 +381,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		})
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
-		_, err := ji.ImportCensus(c.Context(), censusDB, &types.Census{
+		_, err := ji.ImportCensus(c.Context(), censusDB, 0, &types.Census{
 			CensusURI:  "https://example.invalid/dump",
 			CensusRoot: expectedRoot,
 		}, 0)
@@ -401,7 +401,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		})
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
-		_, err := ji.ImportCensus(c.Context(), censusDB, &types.Census{
+		_, err := ji.ImportCensus(c.Context(), censusDB, 0, &types.Census{
 			CensusURI:  "https://example.invalid/dump",
 			CensusRoot: expectedRoot,
 		}, 0)
@@ -421,11 +421,39 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		})
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
-		_, err := ji.ImportCensus(c.Context(), censusDB, &types.Census{
+		_, err := ji.ImportCensus(c.Context(), censusDB, 0, &types.Census{
 			CensusURI:  "https://example.invalid/dump.jsonl",
 			CensusRoot: expectedRoot,
 		}, 0)
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "failed to import census merkle tree")
+	})
+
+	c.Run("DynamicOnchainUsesScopedAddress", func(c *qt.C) {
+		dumpJSON, expectedRoot := testMakeImportAllDumpJSON(c)
+		oldTransport := http.DefaultTransport
+		http.DefaultTransport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(bytes.NewReader(dumpJSON)),
+				Request:    r,
+			}, nil
+		})
+		c.Cleanup(func() { http.DefaultTransport = oldTransport })
+
+		chainID := uint64(11155111)
+		contractAddress := testutil.RandomAddress()
+		_, err := ji.ImportCensus(c.Context(), censusDB, chainID, &types.Census{
+			CensusOrigin:    types.CensusOriginMerkleTreeOnchainDynamicV1,
+			ContractAddress: contractAddress,
+			CensusURI:       "https://example.invalid/dynamic.json",
+			CensusRoot:      expectedRoot,
+		}, 0)
+		c.Assert(err, qt.IsNil)
+
+		ref, err := censusDB.LoadByScopedAddress(chainID, contractAddress)
+		c.Assert(err, qt.IsNil)
+		c.Assert(ref, qt.IsNotNil)
 	})
 }

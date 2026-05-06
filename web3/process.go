@@ -71,6 +71,13 @@ func (c *Contracts) Process(processID types.ProcessID) (*types.Process, error) {
 	return process, nil
 }
 
+// ValidVersion returns true if the process ID is a valid version for the
+// current contract chain ID and address.
+func (c *Contracts) ValidVersion(processID types.ProcessID) bool {
+	version := types.ProcessIDVersion(uint32(c.ChainID), c.ContractsAddresses.ProcessRegistry)
+	return processID.Version() == version
+}
+
 // NextProcessID returns the next process ID that will be created in the
 // ProcessRegistry contract for the given address.
 func (c *Contracts) NextProcessID(address common.Address) (types.ProcessID, error) {

@@ -14,22 +14,14 @@ func TestInfo(t *testing.T) {
 	c := qt.New(t)
 
 	api := &API{
-		runtimeInfos: map[uint64]SequencerRuntimeInfo{
+		networksInfo: map[uint64]SequencerNetworkInfo{
 			11155111: {
-				Network: "sepolia",
-				Contracts: ContractAddresses{
-					ProcessRegistry:           "0x1111111111111111111111111111111111111111",
-					StateTransitionZKVerifier: "0x2222222222222222222222222222222222222222",
-					ResultsZKVerifier:         "0x3333333333333333333333333333333333333333",
-				},
+				ChainID:                 11155111,
+				ProcessRegistryContract: "0x1111111111111111111111111111111111111111",
 			},
 			42161: {
-				Network: "arbitrum",
-				Contracts: ContractAddresses{
-					ProcessRegistry:           "0x4444444444444444444444444444444444444444",
-					StateTransitionZKVerifier: "0x5555555555555555555555555555555555555555",
-					ResultsZKVerifier:         "0x6666666666666666666666666666666666666666",
-				},
+				ChainID:                 42161,
+				ProcessRegistryContract: "0x4444444444444444444444444444444444444444",
 			},
 		},
 	}
@@ -52,9 +44,9 @@ func TestInfo(t *testing.T) {
 	c.Assert(response.ProvingKeyHash, qt.Equals, config.BallotProofProvingKeyHash)
 	c.Assert(response.VerificationKeyURL, qt.Equals, config.BallotProofVerificationKeyURL)
 	c.Assert(response.VerificationKeyHash, qt.Equals, config.BallotProofVerificationKeyHash)
-	c.Assert(response.Runtimes, qt.HasLen, 2)
-	c.Assert(response.Runtimes[11155111].Network, qt.Equals, "sepolia")
-	c.Assert(response.Runtimes[11155111].Contracts.ProcessRegistry, qt.Equals, "0x1111111111111111111111111111111111111111")
-	c.Assert(response.Runtimes[42161].Network, qt.Equals, "arbitrum")
-	c.Assert(response.Runtimes[42161].Contracts.ResultsZKVerifier, qt.Equals, "0x6666666666666666666666666666666666666666")
+	c.Assert(response.Networks, qt.HasLen, 2)
+	c.Assert(response.Networks[11155111].ChainID, qt.Equals, uint64(11155111))
+	c.Assert(response.Networks[11155111].ProcessRegistryContract, qt.Equals, "0x1111111111111111111111111111111111111111")
+	c.Assert(response.Networks[42161].ChainID, qt.Equals, uint64(42161))
+	c.Assert(response.Networks[42161].ProcessRegistryContract, qt.Equals, "0x4444444444444444444444444444444444444444")
 }
