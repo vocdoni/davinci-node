@@ -374,6 +374,26 @@ func EndpointListByChainID(chainID uint64, numEndpoints int) ([]string, error) {
 	return healthyEndpointsForChain(chain, numEndpoints), nil
 }
 
+// ShortNameByChainID returns the short name of the chain with the given ID
+// or an empty string if the chain is not found.
+func ShortNameByChainID(chainID uint64) string {
+	chainListInfo.Do(func() {
+		initErr = initialize()
+	})
+
+	if initErr != nil {
+		return ""
+	}
+
+	chainMutex.RLock()
+	defer chainMutex.RUnlock()
+	chain, ok := chainsByID[chainID]
+	if !ok {
+		return ""
+	}
+	return chain.ShortName
+}
+
 func healthyEndpointsForChain(chain *Chain, numEndpoints int) []string {
 	// Extract HTTP URLs
 	urls := make([]string, 0, len(chain.RPC))

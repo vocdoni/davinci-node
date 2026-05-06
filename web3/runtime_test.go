@@ -18,10 +18,10 @@ func TestNewNetworkRuntime(t *testing.T) {
 		},
 	}
 
-	runtime, err := NewNetworkRuntime("sepolia", contracts, nil)
+	runtime, err := NewNetworkRuntime(contracts, nil)
 
 	c.Assert(err, qt.IsNil)
-	c.Assert(runtime.Network, qt.Equals, "sepolia")
+	c.Assert(runtime.ChainID, qt.Equals, uint64(11155111))
 	c.Assert(runtime.Contracts, qt.Equals, contracts)
 	c.Assert(runtime.TxManager, qt.IsNil)
 	c.Assert(runtime.ProcessIDVersion, qt.DeepEquals,
@@ -31,36 +31,22 @@ func TestNewNetworkRuntime(t *testing.T) {
 func TestNewNetworkRuntimeErrors(t *testing.T) {
 	c := qt.New(t)
 
-	validContracts := &Contracts{
-		ChainID: 1,
-		ContractsAddresses: &Addresses{
-			ProcessRegistry: common.HexToAddress("0x0000000000000000000000000000000000000001"),
-		},
-	}
-
-	c.Run("missing network", func(c *qt.C) {
-		runtime, err := NewNetworkRuntime("", validContracts, nil)
-		c.Assert(runtime, qt.IsNil)
-		c.Assert(err, qt.Not(qt.IsNil))
-		c.Assert(err.Error(), qt.Contains, "network is required")
-	})
-
 	c.Run("missing contracts", func(c *qt.C) {
-		runtime, err := NewNetworkRuntime("mainnet", nil, nil)
+		runtime, err := NewNetworkRuntime(nil, nil)
 		c.Assert(runtime, qt.IsNil)
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "contracts is required")
 	})
 
 	c.Run("missing addresses", func(c *qt.C) {
-		runtime, err := NewNetworkRuntime("mainnet", &Contracts{ChainID: 1}, nil)
+		runtime, err := NewNetworkRuntime(&Contracts{ChainID: 1}, nil)
 		c.Assert(runtime, qt.IsNil)
 		c.Assert(err, qt.Not(qt.IsNil))
 		c.Assert(err.Error(), qt.Contains, "contracts addresses are required")
 	})
 
 	c.Run("missing process registry", func(c *qt.C) {
-		runtime, err := NewNetworkRuntime("mainnet", &Contracts{
+		runtime, err := NewNetworkRuntime(&Contracts{
 			ChainID:            1,
 			ContractsAddresses: &Addresses{},
 		}, nil)
@@ -70,7 +56,7 @@ func TestNewNetworkRuntimeErrors(t *testing.T) {
 	})
 
 	c.Run("chain ID exceeds version limit", func(c *qt.C) {
-		runtime, err := NewNetworkRuntime("oversized", &Contracts{
+		runtime, err := NewNetworkRuntime(&Contracts{
 			ChainID: maxProcessIDChainID + 1,
 			ContractsAddresses: &Addresses{
 				ProcessRegistry: common.HexToAddress("0x0000000000000000000000000000000000000001"),
@@ -85,8 +71,8 @@ func TestNewNetworkRuntimeErrors(t *testing.T) {
 func TestNewRuntimeRouter(t *testing.T) {
 	c := qt.New(t)
 
-	sepoliaRuntime := testRuntime(c, "sepolia", 11155111, "0x015eac820688da203a0bd730a8a7a4cdb97e1a02")
-	celoRuntime := testRuntime(c, "celo", 42220, "0x68dac70af68aa0bed8cef36c523243941d7d7876")
+	sepoliaRuntime := testRuntime(c, 11155111, "0x015eac820688da203a0bd730a8a7a4cdb97e1a02")
+	celoRuntime := testRuntime(c, 42220, "0x68dac70af68aa0bed8cef36c523243941d7d7876")
 
 	router, err := NewRuntimeRouter(sepoliaRuntime, celoRuntime)
 
@@ -120,8 +106,8 @@ func TestNewRuntimeRouterRejectsDuplicateVersions(t *testing.T) {
 	c := qt.New(t)
 
 	processRegistry := "0x015eac820688da203a0bd730a8a7a4cdb97e1a02"
-	runtimeA := testRuntime(c, "sepolia-a", 11155111, processRegistry)
-	runtimeB := testRuntime(c, "sepolia-b", 11155111, processRegistry)
+	runtimeA := testRuntime(c, 11155111, processRegistry)
+	runtimeB := testRuntime(c, 11155111, processRegistry)
 
 	router, err := NewRuntimeRouter(runtimeA, runtimeB)
 
@@ -133,7 +119,7 @@ func TestNewRuntimeRouterRejectsDuplicateVersions(t *testing.T) {
 func TestRuntimeRouterProcessResolutionErrors(t *testing.T) {
 	c := qt.New(t)
 
-	router, err := NewRuntimeRouter(testRuntime(c, "sepolia", 11155111, "0x015eac820688da203a0bd730a8a7a4cdb97e1a02"))
+	router, err := NewRuntimeRouter(testRuntime(c, 11155111, "0x015eac820688da203a0bd730a8a7a4cdb97e1a02"))
 	c.Assert(err, qt.IsNil)
 
 	runtime, err := router.RuntimeForProcess(types.ProcessID{})
@@ -159,14 +145,14 @@ func TestRuntimeRouterProcessResolutionErrors(t *testing.T) {
 	c.Assert(err.Error(), qt.Contains, "runtime not found")
 }
 
-func testRuntime(c *qt.C, network string, chainID uint64, processRegistry string) *NetworkRuntime {
+func testRuntime(c *qt.C, chainID uint64, processRegistry string) *NetworkRuntime {
 	contracts := &Contracts{
 		ChainID: chainID,
 		ContractsAddresses: &Addresses{
 			ProcessRegistry: common.HexToAddress(processRegistry),
 		},
 	}
-	runtime, err := NewNetworkRuntime(network, contracts, nil)
+	runtime, err := NewNetworkRuntime(contracts, nil)
 	c.Assert(err, qt.IsNil)
 	return runtime
 }

@@ -298,7 +298,7 @@ type localService struct {
 func (s *localService) Start(ctx context.Context, contracts *web3.Contracts, network string) error {
 	// Create storage with a in-memory database
 	s.storage = storage.New(memdb.New())
-	apiRuntime, err := web3.NewNetworkRuntime(network, contracts, nil)
+	apiRuntime, err := web3.NewNetworkRuntime(contracts, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create runtime: %w", err)
 	}

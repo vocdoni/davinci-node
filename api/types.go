@@ -33,10 +33,11 @@ type ContractAddresses struct {
 	ResultsZKVerifier         string `json:"resultsVerifier"`
 }
 
-// SequencerRuntimeInfo contains the network label and contract addresses for a runtime.
-type SequencerRuntimeInfo struct {
-	Network   string            `json:"network"`
-	Contracts ContractAddresses `json:"contracts"`
+// SequencerNetworkInfo contains the network label and contract addresses for a runtime.
+type SequencerNetworkInfo struct {
+	ChainID                 uint64 `json:"chainID"`
+	ShortName               string `json:"shortName"`
+	ProcessRegistryContract string `json:"processRegistryContract"`
 }
 
 // SequencerInfo contains any relevant information about the current sequencer for a client.
@@ -47,7 +48,7 @@ type SequencerInfo struct {
 	ProvingKeyHash      string                          `json:"provingKeyHash"`
 	VerificationKeyURL  string                          `json:"verificationKeyUrl"`
 	VerificationKeyHash string                          `json:"verificationKeyHash"`
-	Runtimes            map[uint64]SequencerRuntimeInfo `json:"runtimes"`
+	Networks            map[uint64]SequencerNetworkInfo `json:"networks"`
 	SequencerAddress    types.HexBytes                  `json:"sequencerAddress"`
 }
 

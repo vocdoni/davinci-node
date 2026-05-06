@@ -85,7 +85,7 @@ Simple health check endpoint to verify the API server is running.
 
 Returns the static proving artifacts plus the set of chain runtimes currently served by the sequencer.
 
-`runtimes` is a JSON object keyed by chain ID. Because JSON object keys are strings, a chain ID such as `11155111` is encoded as `"11155111"` in the response body.
+`networks` is a JSON object keyed by chain ID. Because JSON object keys are strings, a chain ID such as `11155111` is encoded as `"11155111"` in the response body.
 
 **Response Body**:
 ```json
@@ -96,22 +96,16 @@ Returns the static proving artifacts plus the set of chain runtimes currently se
   "provingKeyHash": "hexString",
   "verificationKeyUrl": "string",
   "verificationKeyHash": "hexString",
-  "runtimes": {
+  "networks": {
     "11155111": {
-      "network": "sepolia",
-      "contracts": {
-        "process": "address",
-        "stateTransitionVerifier": "address",
-        "resultsVerifier": "address"
-      }
+      "chainID": 11155111,
+      "shortName": "sepolia",
+      "processRegistryContract": "address",
     },
     "42161": {
-      "network": "arbitrum",
-      "contracts": {
-        "process": "address",
-        "stateTransitionVerifier": "address",
-        "resultsVerifier": "address"
-      }
+      "chainID": 42161,
+      "shortName": "arbitrum",
+      "processRegistryContract": "address",
     }
   },
   "sequencerAddress": "hexString"

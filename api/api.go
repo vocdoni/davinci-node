@@ -53,7 +53,7 @@ type API struct {
 	storage      *stg.Storage
 	metadata     *metadata.MetadataStorage
 	runtimes     *web3.RuntimeRouter
-	runtimeInfos map[uint64]SequencerRuntimeInfo
+	networksInfo map[uint64]SequencerNetworkInfo
 	// Workers API stuff
 	sequencerSigner            *ethereum.Signer         // Signer for workers authentication
 	sequencerUUID              *uuid.UUID               // UUID to keep the workers endpoints hidden
@@ -98,7 +98,7 @@ func New(ctx context.Context, conf *APIConfig) (*API, error) {
 		storage:                    conf.Storage,
 		metadata:                   metadata.New(metadata.CID, metadataProviders...),
 		runtimes:                   conf.Runtimes,
-		runtimeInfos:               runtimeInfos,
+		networksInfo:               runtimeInfos,
 		workersJobTimeout:          conf.WorkerJobTimeout,
 		workersAuthtokenExpiration: conf.WorkersAuthtokenExpiration,
 		parentCtx:                  ctx,
@@ -248,37 +248,37 @@ func staticHandler(w http.ResponseWriter, r *http.Request) {
 	webappFileServer.ServeHTTP(w, r)
 }
 
-func apiRuntimeData(router *web3.RuntimeRouter) (map[uint64]SequencerRuntimeInfo, error) {
+func apiRuntimeData(router *web3.RuntimeRouter) (map[uint64]SequencerNetworkInfo, error) {
 	runtimes := router.Runtimes()
 	if len(runtimes) == 0 {
 		return nil, fmt.Errorf("no runtimes configured")
 	}
 
-	runtimeInfos := make(map[uint64]SequencerRuntimeInfo, len(runtimes))
+	runtimeInfos := make(map[uint64]SequencerNetworkInfo, len(runtimes))
 	for _, runtime := range runtimes {
 		if runtime == nil {
 			return nil, fmt.Errorf("nil runtime")
 		}
 		if runtime.Contracts == nil {
-			return nil, fmt.Errorf("runtime %q has nil contracts", runtime.Network)
+			return nil, fmt.Errorf("runtime for chainID %d has nil contracts", runtime.ChainID)
 		}
 		if runtime.Contracts.ContractsAddresses == nil {
-			return nil, fmt.Errorf("runtime %q has nil contract addresses", runtime.Network)
+			return nil, fmt.Errorf("runtime for chainID  %d has nil contract addresses", runtime.ChainID)
 		}
 
-		chainID := runtime.Contracts.ChainID
-		if _, exists := runtimeInfos[chainID]; exists {
-			return nil, fmt.Errorf("duplicate runtime chain ID %d", chainID)
+		if _, exists := runtimeInfos[runtime.ChainID]; exists {
+			return nil, fmt.Errorf("duplicate runtime chain ID %d", runtime.ChainID)
 		}
 
 		contractsInfo, err := apiContractAddresses(runtime.Contracts)
 		if err != nil {
-			return nil, fmt.Errorf("runtime %q: %w", runtime.Network, err)
+			return nil, fmt.Errorf("runtime for chainID  %d: %w", runtime.ChainID, err)
 		}
 
-		runtimeInfos[chainID] = SequencerRuntimeInfo{
-			Network:   runtime.Network,
-			Contracts: contractsInfo,
+		runtimeInfos[runtime.ChainID] = SequencerNetworkInfo{
+			ChainID:                 runtime.ChainID,
+			ShortName:               runtime.ShortName,
+			ProcessRegistryContract: contractsInfo.ProcessRegistry,
 		}
 	}
 	return runtimeInfos, nil

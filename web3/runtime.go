@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
@@ -33,7 +34,8 @@ type ProcessBlobFetcherResolver interface {
 // NetworkRuntime groups all chain-specific runtime state needed by the
 // sequencer for one enabled network.
 type NetworkRuntime struct {
-	Network          string
+	ChainID          uint64
+	ShortName        string
 	ProcessIDVersion [4]byte
 	Contracts        *Contracts
 	TxManager        *txmanager.TxManager
@@ -42,13 +44,9 @@ type NetworkRuntime struct {
 // NewNetworkRuntime builds a network runtime and computes its ProcessIDVersion
 // from the contracts chain ID and ProcessRegistry address.
 func NewNetworkRuntime(
-	network string,
 	contracts *Contracts,
 	txManager *txmanager.TxManager,
 ) (*NetworkRuntime, error) {
-	if network == "" {
-		return nil, fmt.Errorf("network is required")
-	}
 	if contracts == nil {
 		return nil, fmt.Errorf("contracts is required")
 	}
@@ -65,7 +63,8 @@ func NewNetworkRuntime(
 	}
 
 	return &NetworkRuntime{
-		Network:          network,
+		ChainID:          contracts.ChainID,
+		ShortName:        chainlist.ShortNameByChainID(contracts.ChainID),
 		ProcessIDVersion: types.ProcessIDVersion(uint32(contracts.ChainID), processRegistry),
 		Contracts:        contracts,
 		TxManager:        txManager,
@@ -95,10 +94,10 @@ func NewRuntimeRouter(runtimes ...*NetworkRuntime) (*RuntimeRouter, error) {
 		}
 		if existing, ok := router.runtimeByVersion[runtime.ProcessIDVersion]; ok {
 			return nil, fmt.Errorf(
-				"duplicate ProcessIDVersion %x for networks %s and %s",
+				"duplicate ProcessIDVersion %x for networks %d and %d",
 				runtime.ProcessIDVersion,
-				existing.Network,
-				runtime.Network,
+				existing.ChainID,
+				runtime.ChainID,
 			)
 		}
 		router.runtimes = append(router.runtimes, runtime)

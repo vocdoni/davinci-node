@@ -74,7 +74,7 @@ func NewTestServices(
 		Storage:   stg,
 		Contracts: contracts,
 	}
-	apiRuntime, err := web3.NewNetworkRuntime("test", contracts, nil)
+	apiRuntime, err := web3.NewNetworkRuntime(contracts, nil)
 	if err != nil {
 		stg.Close()
 		web3Cleanup()

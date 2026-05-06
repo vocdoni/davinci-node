@@ -18,8 +18,8 @@ import (
 func TestSkipUnknownProcessIDMiddleware(t *testing.T) {
 	c := qt.New(t)
 
-	sepoliaRuntime := testAPIRuntime(c, "sepolia", 11155111, common.HexToAddress("0x0000000000000000000000000000000000000001"))
-	arbitrumRuntime := testAPIRuntime(c, "arbitrum", 42161, common.HexToAddress("0x0000000000000000000000000000000000000002"))
+	sepoliaRuntime := testAPIRuntime(c, 11155111, common.HexToAddress("0x0000000000000000000000000000000000000001"))
+	arbitrumRuntime := testAPIRuntime(c, 42161, common.HexToAddress("0x0000000000000000000000000000000000000002"))
 	versionUnknown := [4]byte{0x09, 0x0a, 0x0b, 0x0c}
 	routerRuntime, err := web3.NewRuntimeRouter(
 		sepoliaRuntime,
@@ -237,7 +237,7 @@ func TestAPIRuntimeDataResolvesMissingVerifierAddresses(t *testing.T) {
 			ProcessRegistry: common.HexToAddress("0x1111111111111111111111111111111111111111"),
 		},
 	}
-	runtime, err := web3.NewNetworkRuntime("sepolia", contracts, nil)
+	runtime, err := web3.NewNetworkRuntime(contracts, nil)
 	c.Assert(err, qt.IsNil)
 	router, err := web3.NewRuntimeRouter(runtime)
 	c.Assert(err, qt.IsNil)
@@ -247,14 +247,12 @@ func TestAPIRuntimeDataResolvesMissingVerifierAddresses(t *testing.T) {
 
 	info, ok := runtimeInfos[11155111]
 	c.Assert(ok, qt.IsTrue)
-	c.Assert(info.Network, qt.Equals, "sepolia")
-	c.Assert(info.Contracts.ProcessRegistry, qt.Equals, "0x1111111111111111111111111111111111111111")
-	c.Assert(info.Contracts.StateTransitionZKVerifier, qt.Not(qt.Equals), common.Address{}.String())
-	c.Assert(info.Contracts.ResultsZKVerifier, qt.Not(qt.Equals), common.Address{}.String())
+	c.Assert(info.ChainID, qt.Equals, uint64(11155111))
+	c.Assert(info.ProcessRegistryContract, qt.Equals, "0x1111111111111111111111111111111111111111")
 }
 
-func testAPIRuntime(c *qt.C, network string, chainID uint64, processRegistry common.Address) *web3.NetworkRuntime {
-	runtime, err := web3.NewNetworkRuntime(network, &web3.Contracts{
+func testAPIRuntime(c *qt.C, chainID uint64, processRegistry common.Address) *web3.NetworkRuntime {
+	runtime, err := web3.NewNetworkRuntime(&web3.Contracts{
 		ChainID: chainID,
 		ContractsAddresses: &web3.Addresses{
 			ProcessRegistry: processRegistry,

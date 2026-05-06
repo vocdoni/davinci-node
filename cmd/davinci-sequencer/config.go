@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,13 +9,12 @@ import (
 
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/internal"
 )
 
 const (
-	defaultNetwork                    = "sepolia"
-	defaultCAPI                       = "https://ethereum-sepolia-beacon-api.publicnode.com"
+	defaultRPC                        = "https://ethereum-sepolia-rpc.publicnode.com"
+	defaultConsensusAPI               = "https://ethereum-sepolia-beacon-api.publicnode.com"
 	defaultAPIHost                    = "0.0.0.0"
 	defaultAPIPort                    = 9090
 	defaultBatchTime                  = 300 * time.Second
@@ -49,17 +47,11 @@ type Config struct {
 
 // Web3Config holds Ethereum-related configuration
 type Web3Config struct {
-	PrivKey  string             `mapstructure:"privkey"`  // Private key for the Ethereum account
-	Networks web3NetworksConfig `mapstructure:"networks"` // Structured network configuration
-
-	// Legacy fields
-	Network             string   `mapstructure:"network"`       // Network shortname
-	Rpc                 []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
-	Capi                string   `mapstructure:"capi"`          // Consensus API URL
-	ProcessAddr         string   `mapstructure:"process"`       // Custom contract addresses, overrides network defaults
-	GasMultiplier       float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
-	legacyConfigured    bool     `mapstructure:"-"`
-	legacyRPCConfigured bool     `mapstructure:"-"`
+	PrivKey       string   `mapstructure:"privkey"`       // Private key for the Ethereum account
+	ChainIDs      []uint   `mapstructure:"chainIDs"`      // Chain IDs to use, if defined, limits RPCs and BeaconAPIs, if empty, use all
+	RPCs          []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
+	BeaconAPIs    []string `mapstructure:"bapi"`          // Web3 Consensus Beacon API endpoints, can be multiple
+	GasMultiplier float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
 }
 
 // APIConfig holds the API-specific configuration
@@ -113,32 +105,34 @@ func loadConfig() (*Config, error) {
 	defaultDatadirPath := filepath.Join(userHomeDir, defaultDatadir)
 
 	// Configure flags
-	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account (required)")
-	flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
-	flag.StringSliceP("web3.rpc", "r", nil, "web3 rpc endpoint(s), comma-separated")
-	flag.StringP("web3.capi", "c", defaultCAPI, "consensus api url")
-	flag.Var(&cfg.Web3.Networks, "web3.networks", "JSON array of network config objects for multinetwork mode")
+
+	// web3 config
+	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account, should have funds for each available network (required)")
+	flag.UintSlice("web3.chainIDs", nil, "chainIDs to limit RPCs and BeaconAPIs, comma-separated, empty for all")
+	flag.StringSliceP("web3.rpc", "r", []string{defaultRPC}, "web3 rpc endpoint(s), comma-separated")
+	flag.StringSliceP("web3.capi", "c", []string{defaultConsensusAPI}, "consensus api endpoints(s), comma-separated")
 	flag.Float64("web3.gasMultiplier", defaultGasMultiplier, "gas price multiplier for transactions (1.0 = default, 2.0 = double gas prices)")
+	flag.String("web3.processRegistryAddress", "", "Address of the process registry contract to be used by the sequencer (overrides network default)")
+	// sequencer API
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
 	flag.DurationP("batch.time", "b", defaultBatchTime, "sequencer batch max time window (i.e 10m or 1h)")
-	flag.String("web3.process", "", "custom process registry contract address (overrides network default)")
 	flag.StringP("log.level", "l", defaultLogLevel, "log level (debug, info, warn, error, fatal)")
 	flag.StringP("log.output", "o", defaultLogOutput, "log output (stdout, stderr or filepath)")
 	flag.Bool("log.disableAPI", defaultLogDisableAPI, "disable API logging middleware")
 	flag.StringP("datadir", "d", defaultDatadirPath, "data directory for database and storage files")
 	flag.Bool("forceCleanup", false, "force cleanup of all pending verified votes, aggregated batches and state transitions at startup")
+	// sequencer workers api flags
+	flag.String("api.workersSeed", "", "enable master worker endpoint with URL seed for authentication")
+	flag.Duration("api.workersBanTimeout", defaultWorkersBanTimeout, "timeout for worker ban in seconds")
+	flag.Duration("api.workersAuthtokenExpiration", defaultWorkersAuthtokenExpiration, "timeout for worker authentication token expiration")
+	flag.Int("api.workersFailuresToGetBanned", defaultWorkerBanFailures, "number of failed jobs to get banned")
 	// worker mode flags
 	flag.Duration("worker.timeout", 1*time.Minute, "worker job timeout duration")
 	flag.StringP("worker.address", "a", "", "worker Ethereum address")
 	flag.String("worker.name", "", "worker name for identification")
 	flag.StringP("worker.authtoken", "t", "", "worker authentication token (required for running in worker mode)")
 	flag.StringP("worker.sequencerURL", "w", "", "sequencer URL (required for running in worker mode)")
-	// sequencer workers api flags
-	flag.String("api.workersSeed", "", "enable master worker endpoint with URL seed for authentication")
-	flag.Duration("api.workersBanTimeout", defaultWorkersBanTimeout, "timeout for worker ban in seconds")
-	flag.Duration("api.workersAuthtokenExpiration", defaultWorkersAuthtokenExpiration, "timeout for worker authentication token expiration")
-	flag.Int("api.workersFailuresToGetBanned", defaultWorkerBanFailures, "number of failed jobs to get banned")
 	// metadata config
 	flag.String("metadata.pinataHostnameURL", "https://uploads.pinata.cloud/v3/files", "pinata hostname URL")
 	flag.String("metadata.pinataHostnameJWT", "", "pinata hostname JWT")
@@ -160,15 +154,7 @@ func loadConfig() (*Config, error) {
 		fmt.Fprintf(os.Stderr, "  # Start with custom RPC endpoints\n")
 		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.rpc=https://rpc1.com,https://rpc2.com\n\n")
 		fmt.Fprintf(os.Stderr, "  # Start in multinetwork mode with structured runtime configs\n")
-		exampleNetworks, _ := json.Marshal([]map[string]any{
-			{
-				"network": "sepolia",
-				"chainId": 11155111,
-				"rpc":     []string{"https://rpc.sepolia.example"},
-				"capi":    defaultCAPI,
-			},
-		})
-		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.networks='%s'\n", exampleNetworks)
+		fmt.Fprintf(os.Stderr, "  davinci-sequencer --web3.privkey=0x123... --web3.rpc=https://network1.rpc.com,https://network2.rpc.com --web3.capi=https://network1.beaconapi.com,https://network2.beaconapi.com\n\n\n")
 	}
 
 	// Parse flags
@@ -188,27 +174,6 @@ func loadConfig() (*Config, error) {
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
-	if raw := viper.Get("web3.networks"); raw != nil {
-		networks, err := parseStructuredWeb3NetworksValue(raw)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing web3.networks: %w", err)
-		}
-		cfg.Web3.Networks = networks
-	}
-	legacyNetworkSet := legacyWeb3NetworkExplicitlySet()
-	legacyConfigured, err := shouldIncludeLegacyWeb3Network(
-		len(cfg.Web3.Networks) > 0,
-		legacyNetworkSet,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("invalid mixed web3 configuration: %w", err)
-	}
-	cfg.Web3.legacyConfigured = legacyConfigured
-	// When structured networks are present and no legacy network is defined,
-	// a standalone DAVINCI_WEB3_RPC list is treated as supplemental — it will
-	// be grouped by chainID and merged into the structured networks during
-	// normalization. Track it here so normalizedNetworks knows to consume it.
-	cfg.Web3.legacyRPCConfigured = len(cfg.Web3.Rpc) > 0 && !legacyNetworkSet
 
 	return cfg, nil
 }
@@ -220,10 +185,6 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("private key is required (use --privkey flag or DAVINCI_WEB3_PRIVKEY environment variable)")
 	}
 
-	if _, err := cfg.Web3.normalizedNetworks(); err != nil {
-		return fmt.Errorf("invalid web3 network configuration: %w", err)
-	}
-
 	// Validate gas multiplier
 	if cfg.Web3.GasMultiplier <= 0 {
 		return fmt.Errorf("gas multiplier must be greater than 0, got: %f", cfg.Web3.GasMultiplier)
@@ -233,22 +194,4 @@ func validateConfig(cfg *Config) error {
 	}
 
 	return nil
-}
-
-func legacyWeb3NetworkExplicitlySet() bool {
-	if flag.CommandLine.Changed("web3.network") {
-		return true
-	}
-	val, ok := os.LookupEnv("DAVINCI_WEB3_NETWORK")
-	return ok && strings.TrimSpace(val) != ""
-}
-
-func shouldIncludeLegacyWeb3Network(hasStructuredNetworks, legacyNetworkExplicit bool) (bool, error) {
-	if !hasStructuredNetworks {
-		return true, nil
-	}
-	if !legacyNetworkExplicit {
-		return false, nil
-	}
-	return true, nil
 }

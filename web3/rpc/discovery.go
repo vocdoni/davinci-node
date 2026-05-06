@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"fmt"
 	"slices"
 )
@@ -57,4 +58,21 @@ func EndpointsForChainID(rpcs []string, chainID uint64) ([]string, error) {
 	}
 
 	return matching, nil
+}
+
+// GroupBeaconEndpointsByChainID groups the provided beacon endpoints by the
+// chain ID
+func GroupBeaconEndpointsByChainID(ctx context.Context, beaconEndpoints []string) (map[uint64][]string, error) {
+	mapChainIDs := make(map[uint64][]string)
+	for _, endpoint := range beaconEndpoints {
+		chainID, err := BeaconChainID(ctx, endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("resolve chain ID for endpoint %s: %w", endpoint, err)
+		}
+		if _, ok := mapChainIDs[chainID]; !ok {
+			mapChainIDs[chainID] = []string{}
+		}
+		mapChainIDs[chainID] = append(mapChainIDs[chainID], endpoint)
+	}
+	return mapChainIDs, nil
 }
