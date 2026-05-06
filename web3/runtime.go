@@ -160,6 +160,17 @@ func (r *RuntimeRouter) BlobFetcherForProcess(processID types.ProcessID) (BlobFe
 	return contracts, nil
 }
 
+// VersionForChainID returns the ProcessIDVersion for the provided chain ID
+// based on the currently configured runtimes and contracts.
+func (r *RuntimeRouter) VersionForChainID(chainID uint64) ([4]byte, bool) {
+	for _, runtime := range r.runtimes {
+		if runtime.ChainID == chainID {
+			return runtime.ProcessIDVersion, true
+		}
+	}
+	return [4]byte{}, false
+}
+
 // Runtimes returns the configured runtimes in registration order.
 func (r *RuntimeRouter) Runtimes() []*NetworkRuntime {
 	if r == nil {

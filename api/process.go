@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-chi/chi/v5"
@@ -79,8 +80,27 @@ func (a *API) processList(w http.ResponseWriter, r *http.Request) {
 		ErrGenericInternalServerError.Withf("could not retrieve processes: %v", err).Write(w)
 		return
 	}
-	// Write the response
-	httpWriteJSON(w, &ProcessList{Processes: processes})
+	// Try to get the chainID from the request query in an uint64
+	chainID, _ := strconv.ParseUint(r.URL.Query().Get("chainId"), 10, 64)
+	if chainID == 0 {
+		// If no chainID is specified, write the response with all processes
+		httpWriteJSON(w, &ProcessList{Processes: processes})
+		return
+	}
+	// If a chain ID is specified, get the version for that chain ID
+	version, ok := a.runtimes.VersionForChainID(chainID)
+	if !ok {
+		ErrInvalidChainID.Write(w)
+		return
+	}
+	var filteredProcesses []types.ProcessID
+	for _, p := range processes {
+		if p.Version() == version {
+			filteredProcesses = append(filteredProcesses, p)
+		}
+	}
+	// Write the response with the filtered processes
+	httpWriteJSON(w, &ProcessList{Processes: filteredProcesses})
 }
 
 // setMetadata sets the metadata for a voting process
