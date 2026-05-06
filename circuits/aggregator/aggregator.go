@@ -93,16 +93,19 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 		circuits.FrontendError(api, "failed to create BLS12-377 verifier", err)
 		return
 	}
+	isRealVote := c.VoteMask(api)
+
 	// verify each proof with the provided public inputs and the fixed
 	// verification key
 	witnesses := c.calculateWitnesses(api)
 	for i := range len(c.Proofs) {
-		// verify the proof
-		if err := verifier.AssertProof(c.VerificationKey, c.Proofs[i], witnesses[i],
-			groth16.WithCompleteArithmetic(), groth16.WithSubgroupCheck()); err != nil {
+		isValid, err := verifier.IsValidProof(c.VerificationKey, c.Proofs[i], witnesses[i],
+			groth16.WithCompleteArithmetic(), groth16.WithSubgroupCheck())
+		if err != nil {
 			circuits.FrontendError(api, "failed to verify proof", err)
 			return
 		}
+		circuits.AssertTrueIf(api, isRealVote[i], isValid)
 	}
 }
 

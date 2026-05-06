@@ -1,11 +1,10 @@
 package solidity
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/big"
-
-	"github.com/ethereum/go-ethereum/accounts/abi"
 
 	"github.com/consensys/gnark/backend/groth16"
 	groth16_bn254 "github.com/consensys/gnark/backend/groth16/bn254"
@@ -80,37 +79,35 @@ func (p *Groth16CommitmentProof) String() string {
 	return string(jsonProof)
 }
 
-// ABIEncode encodes the Groth16CommitmentProof to an ABI-encoded byte slice
-// matching Solidity’s (uint256[8],uint256[2],uint256[2]) layout.
+// ABIEncode returns the raw proof bytes expected by the Solidity verifier.
 func (p *Groth16CommitmentProof) ABIEncode() ([]byte, error) {
-	proofArr := [8]*big.Int{
-		p.Proof.Ar[0],
-		p.Proof.Ar[1],
-		p.Proof.Bs[0][0],
-		p.Proof.Bs[0][1],
-		p.Proof.Bs[1][0],
-		p.Proof.Bs[1][1],
-		p.Proof.Krs[0],
-		p.Proof.Krs[1],
+	return p.MarshalSolidity(), nil
+}
+
+// MarshalSolidity returns the proof as the byte layout expected by gnark's
+// Solidity verifier: proof points followed by commitments and proof of
+// knowledge.
+func (p *Groth16CommitmentProof) MarshalSolidity() []byte {
+	var buf bytes.Buffer
+	appendUint256 := func(x *big.Int) {
+		b := x.Bytes()
+		padded := make([]byte, 32)
+		copy(padded[32-len(b):], b)
+		buf.Write(padded)
 	}
 
-	proofType, err := abi.NewType("uint256[8]", "", nil)
-	if err != nil {
-		return nil, err
-	}
-	commType, err := abi.NewType("uint256[2]", "", nil)
-	if err != nil {
-		return nil, err
-	}
+	appendUint256(p.Proof.Ar[0])
+	appendUint256(p.Proof.Ar[1])
+	appendUint256(p.Proof.Bs[0][0])
+	appendUint256(p.Proof.Bs[0][1])
+	appendUint256(p.Proof.Bs[1][0])
+	appendUint256(p.Proof.Bs[1][1])
+	appendUint256(p.Proof.Krs[0])
+	appendUint256(p.Proof.Krs[1])
+	appendUint256(p.Commitments[0])
+	appendUint256(p.Commitments[1])
+	appendUint256(p.CommitmentPok[0])
+	appendUint256(p.CommitmentPok[1])
 
-	arguments := abi.Arguments{
-		{Type: proofType},
-		{Type: commType},
-		{Type: commType},
-	}
-	return arguments.Pack(
-		proofArr,
-		p.Commitments,
-		p.CommitmentPok,
-	)
+	return buf.Bytes()
 }

@@ -17,21 +17,21 @@ const (
 	BallotProofProvingKeyHash      = "f5809dd04a10a1546a1a80276ed27881ebc9bfb0272c2cac6a03abf11b5543d4"
 	BallotProofVerificationKeyHash = "d45aa6c83b8df847e9c7bbd0cce299c791ce18a2203473e9a1a89e73818e85c6"
 
-	VoteVerifierCircuitHash         = "28f60015e6f5da5f54b5bda40f7bc47b50d3299926a06cc48296e52baf4cfad0"
-	VoteVerifierProvingKeyHash      = "258a94202aefdfa42ec8a89840faf5b8ce881d7192685fafd7b66c57cbc2bbdc"
-	VoteVerifierVerificationKeyHash = "2cd6f8735ea6fdfed83f1c5b50c0d13fb7f6569a15682fd055f49cdd37dfadf9"
+	VoteVerifierCircuitHash         = "28b1f64ef1829d923c64d2eb6691452432f93051b525dc60f9b6b790ebe0ee4a"
+	VoteVerifierProvingKeyHash      = "3b4fc020f93dcaf2ae21516e7fa99f0694ada2f399454d051cb1b5b1e8cd0b41"
+	VoteVerifierVerificationKeyHash = "4e92f69599a1989e206528009685c6dfb6383f5901ed076ed49cca1f7c08b1d8"
 
-	AggregatorCircuitHash         = "a771f36ddd9e5d7dbc09d5f833b74d123b155e1b933153bc8f1ed3f1e5dde328"
-	AggregatorProvingKeyHash      = "153d3996986e41025edc33529125fd6d2ecfa3b996afab3c8ec06c7e62240076"
-	AggregatorVerificationKeyHash = "29370fb5da5ee891108e157095d548087fa1c1651fb38ef9915fadcd1045368b"
+	AggregatorCircuitHash         = "78b5a17118844ad62f6c0e8ebcfb9e97e023ada045bc134b82b6bfc209e5294b"
+	AggregatorProvingKeyHash      = "5b82085bfb5ace8445b26bc5a36261f5d2acd5e40eec6daa1073a6ac67699fc5"
+	AggregatorVerificationKeyHash = "0ceb6c195ff0689aa203e66c0346d16e22bdc7dab2d9b6d663a2f56e465c1037"
 
-	StateTransitionCircuitHash         = "9e61d748e6ac9a23d587a504e90525272fc4cce41a90540a791ef1f2e494cef4"
-	StateTransitionProvingKeyHash      = "e70fcbf84608071f91bac819c5012e5665c2b3ea82fce1f0bcea9b0080ef8cd8"
-	StateTransitionVerificationKeyHash = "a25175843ab6acff863eac1c41d72dad0d00cf431cfe464e989bcf3e012cd459"
+	StateTransitionCircuitHash         = "5ea7ae0a06de6d2cac5b798d52df2f8f162cb15eaf5cc00a088484ae47805185"
+	StateTransitionProvingKeyHash      = "d429a8d4d8eeea800cfca60a1adc27f4f14e30dd693a067f8e0f4cb22f64a60a"
+	StateTransitionVerificationKeyHash = "045817c9eb387f829c133ec7156a86c26e8ce0cb9194722057e6efc771561ee8"
 
-	ResultsVerifierCircuitHash         = "386646c4ab455b71afa2bd8a8f03e3ad1913e81972c8eb4a14455393846c00a3"
-	ResultsVerifierProvingKeyHash      = "448592882f39f7e5ef17ad70cdee5a23f95b1337ec72ae1ac36266a306cc6bea"
-	ResultsVerifierVerificationKeyHash = "a3ff300fe0143bc8238fac0c8db5be74aca3ec8fa00f6701b81c365fc447551e"
+	ResultsVerifierCircuitHash         = "6ac4cd0f7a15a105ff9fb80a5698cb6fd4b8c0e5a882851e28db91373aba6a35"
+	ResultsVerifierProvingKeyHash      = "6323dadb3595fca48b4cb35b1e77229d79a128a4786115f33847cddcdc941ab4"
+	ResultsVerifierVerificationKeyHash = "c4dec16c9cb19fc8e251a97743a7870d3d0a7aae2f375a8acb9b12997b8aac24"
 )
 
 var (
