@@ -330,19 +330,8 @@ func verifySolidityProof(c *qt.C, buildDir string, proof *davinci_solidity.Groth
 
 	c.Logf("  Contract deployed at: %s (tx: %s)", address.Hex(), tx.Hash().Hex())
 
-	// Prepare proof array for Solidity call
-	var proofArray [8]*big.Int
-	proofArray[0] = proof.Proof.Ar[0]
-	proofArray[1] = proof.Proof.Ar[1]
-	proofArray[2] = proof.Proof.Bs[0][0]
-	proofArray[3] = proof.Proof.Bs[0][1]
-	proofArray[4] = proof.Proof.Bs[1][0]
-	proofArray[5] = proof.Proof.Bs[1][1]
-	proofArray[6] = proof.Proof.Krs[0]
-	proofArray[7] = proof.Proof.Krs[1]
-
-	// Pack the call data for verifyProof
-	callData, err := parsed.Pack("verifyProof", proofArray, proof.Commitments, proof.CommitmentPok, inputs)
+	// Pack the call data for verifyProof.
+	callData, err := parsed.Pack("verifyProof", proof.MarshalSolidity(), inputs)
 	if err != nil {
 		c.Logf("Failed to pack call data: %v", err)
 		return false
