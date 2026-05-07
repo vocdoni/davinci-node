@@ -163,6 +163,10 @@ func (s *Storage) processIsAcceptingVotes(processID types.ProcessID, stgProcess 
 	if stgProcess.Status != types.ProcessStatusReady {
 		return false, fmt.Errorf("process %s status: %s", processID.String(), stgProcess.Status)
 	}
+	// Check if process is registered for sequencing
+	if !stgProcess.RegisteredForSequencing {
+		return false, fmt.Errorf("process %s is not registered for sequencing", processID.String())
+	}
 	return true, nil
 }
 
