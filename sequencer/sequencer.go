@@ -275,6 +275,11 @@ func (s *Sequencer) AddProcessID(processID types.ProcessID) {
 // DelProcessID unregisters a process ID from the sequencer.
 // If the process ID is not registered, this operation has no effect.
 func (s *Sequencer) DelProcessID(processID types.ProcessID) {
+	// Check if the process ID is registered, if not return
+	if !s.processIDs.Exists(processID) {
+		return
+	}
+	// If the process ID is registered, try to remove it
 	if s.processIDs.Remove(processID) {
 		// Update the process in storage by clearing the RegisteredForSequencing field.
 		// The rollback is in-memory only to avoid recursive loops.

@@ -149,7 +149,7 @@ func (s *Storage) ProcessIsOnChainAlive(processID types.ProcessID) (bool, error)
 }
 
 // ProcessIsAcceptingVotes checks if the process is ready to accept votes,
-// which requires the process to be on-chain alive AND registered for sequencing.
+// which requires the process to be on-chain alive and registered for sequencing.
 func (s *Storage) ProcessIsAcceptingVotes(processID types.ProcessID) (bool, error) {
 	// Get the process from storage
 	stgProcess, err := s.Process(processID)
