@@ -153,6 +153,36 @@ jobs:
       - name: Compile circuit artifacts
         run: go run ./cmd/circuit-compile --update-config
 
+      - name: Detect stale circuit artifacts
+        id: circuit_artifacts
+        run: |
+          if git diff --quiet -- config/circuit_artifacts.go; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "changed_files<<EOF"
+            git diff --name-only -- config/circuit_artifacts.go
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        if: steps.circuit_artifacts.outputs.changed == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const body =
+              `Circuit sources changed in this PR, so the artifacts hashes in config are stale.\n\n` +
+              `Apply the \`trigger-upload-circuits\` label to run the circuit upload workflow and obtain fresh hashes.\n`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
+
       - name: Run integration tests
         env:
           RUN_INTEGRATION_TESTS: true
