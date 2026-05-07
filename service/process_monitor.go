@@ -166,9 +166,11 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 			skippedCount++
 			continue
 		}
-		// Check if process is accepting votes
-		isAccepting, err := pm.storage.ProcessIsAcceptingVotes(processID)
-		if err != nil || !isAccepting {
+		// Check if process is alive on-chain (has state root, not expired, Ready status)
+		// This does NOT check RegisteredForSequencing — the sync runs at startup
+		// before the sequencer registers any processes.
+		isAlive, err := pm.storage.ProcessIsOnChainAlive(processID)
+		if err != nil || !isAlive {
 			continue
 		}
 
