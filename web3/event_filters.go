@@ -5,10 +5,11 @@ import (
 	"fmt"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
+	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-// ProcessChangesFilters returns the list of filters to monitor process changes.
+// ProcessUpdatesFilters returns the list of filters to monitor process changes.
 func (c *Contracts) ProcessUpdatesFilters() []types.Web3FilterFn {
 	return []types.Web3FilterFn{
 		c.NewProcessFilter,
@@ -19,17 +20,26 @@ func (c *Contracts) ProcessUpdatesFilters() []types.Web3FilterFn {
 	}
 }
 
+// NewProcessFilter monitors the creation of new processes.
 func (c *Contracts) NewProcessFilter(ctx context.Context, start, end uint64, ch chan<- *types.ProcessWithChanges) error {
 	iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, nil, nil)
 	if err != nil || iter == nil {
 		return fmt.Errorf("failed to filter process created events: %w", err)
 	}
 	for iter.Next() {
+		// Get the process info from the contract
 		process, err := c.Process(iter.Event.ProcessId)
 		if err != nil {
-			return fmt.Errorf("failed to get process: %w", err)
+			log.Warnw("error getting new process info",
+				"processID", types.HexBytes(iter.Event.ProcessId[:]).String(),
+				"error", err.Error())
+			continue
 		}
-
+		// Try to add the process ID to the known list. If it already exists, skip.
+		if c.RegisterUnknownProcess(iter.Event.ProcessId) {
+			continue
+		}
+		// Emit the new process event
 		ch <- &types.ProcessWithChanges{
 			ProcessID: iter.Event.ProcessId,
 			NewProcess: &types.NewProcess{
