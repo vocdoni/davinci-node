@@ -376,19 +376,30 @@ func (c *Contracts) MonitorProcessUpdates(
 					continue
 				}
 				// Iterate over each filter function
+				var filterErr error
 				for _, filter := range filters {
 					// Retry the filter function up to the specified number of retries
 					for range retries {
 						// Call the filter function with a new context
 						ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-						err := filter(ctxQuery, start, end, updatedProcChan)
+						filterErr = filter(ctxQuery, start, end, updatedProcChan)
 						cancel()
 						// If the filter function succeeds, break out of the retry loop
-						if err == nil {
+						if filterErr == nil {
 							break
 						}
-
 					}
+					// If any filter function fails after retries, break out of the
+					// loop
+					if filterErr != nil {
+						log.Warnw("process updates filter fails", "error", filterErr)
+						break
+					}
+				}
+				// If any filter function fails, do not advance the last
+				// processed block
+				if filterErr != nil {
+					continue
 				}
 				// Update the last processed block after processing all filters
 				c.watchBlockMutex.Lock()

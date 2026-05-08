@@ -36,7 +36,7 @@ func (c *Contracts) NewProcessFilter(ctx context.Context, start, end uint64, ch 
 			continue
 		}
 		// Try to add the process ID to the known list. If it already exists, skip.
-		if c.RegisterUnknownProcess(iter.Event.ProcessId) {
+		if !c.RegisterUnknownProcess(iter.Event.ProcessId) {
 			continue
 		}
 		// Emit the new process event
