@@ -169,6 +169,9 @@ func newTestSequencer(t *testing.T, proc *types.Process) (*storage.Storage, *Seq
 		t.Fatalf("metadb.New: %v", err)
 	}
 	stg := storage.New(testdb)
+	t.Cleanup(func() {
+		stg.Close()
+	})
 
 	if proc != nil {
 		if err := stg.NewProcess(proc); err != nil {

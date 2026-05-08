@@ -19,6 +19,7 @@ func TestProcess(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	st := New(db)
+	defer st.Close()
 
 	// Create a test process ID
 	processID := testutil.DeterministicProcessID(42)

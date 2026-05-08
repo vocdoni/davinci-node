@@ -180,8 +180,6 @@ func (s *Storage) ProcessIsAcceptingVotes(processID types.ProcessID) (bool, erro
 	return s.processIsAcceptingVotes(processID, stgProcess)
 }
 
-// processIsAcceptingVotes checks if the process is ready to accept votes
-// without acquiring the globalLock. It assumes the caller already holds the lock.
 // processIsOnChainAlive checks whether the process is considered alive by
 // on-chain criteria: it has a state root, is not expired, and is in the Ready
 // state. This is the core validity check used by the process monitor during
@@ -203,8 +201,9 @@ func (s *Storage) processIsOnChainAlive(processID types.ProcessID, stgProcess *t
 	return true, nil
 }
 
-// processIsAcceptingVotes checks if the process is ready to accept votes
-// without acquiring the globalLock. It assumes the caller already holds the lock.
+// processIsAcceptingVotes checks if the provided process data is ready to
+// accept votes. It only evaluates the supplied stgProcess and does not acquire
+// or require holding globalLock.
 func (s *Storage) processIsAcceptingVotes(processID types.ProcessID, stgProcess *types.Process) (bool, error) {
 	if ok, err := s.processIsOnChainAlive(processID, stgProcess); !ok {
 		return ok, err

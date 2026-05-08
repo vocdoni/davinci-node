@@ -256,25 +256,26 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 // Only ballots belonging to registered process IDs will be processed.
 // If the process ID is already registered, this operation has no effect.
 func (s *Sequencer) AddProcessID(processID types.ProcessID) {
-	// Check if there is a process with the given ID in storage
-	if isStored, err := s.stg.ProcessExists(processID); err != nil || !isStored {
+	if s.ExistsProcessID(processID) {
 		return
 	}
-	// If so, try to register it in the processIDs map
-	if s.processIDs.Add(processID) {
+	// Check if there is a process with the given ID in storage
+	if isStored, _ := s.stg.ProcessExists(processID); isStored {
 		// Update the process in storage by setting the RegisteredForSequencing field.
-		// The rollback is in-memory only to avoid recursive loops.
 		if err := s.stg.UpdateProcess(processID, func(p *types.Process) error {
 			p.RegisteredForSequencing = true
 			return nil
 		}); err != nil {
-			s.processIDs.Remove(processID) // in-memory rollback only
 			log.Warnw("failed to persist RegisteredForSequencing",
 				"processID", processID.String(), "error", err)
 			return
 		}
-		log.Infow("process ID registered for sequencing", "processID", processID.String())
 	}
+	// Try to register it in the processIDs map
+	if !s.processIDs.Add(processID) {
+		return
+	}
+	log.Infow("process ID registered for sequencing", "processID", processID.String())
 }
 
 // DelProcessID unregisters a process ID from the sequencer.
@@ -284,21 +285,22 @@ func (s *Sequencer) DelProcessID(processID types.ProcessID) {
 	if !s.processIDs.Exists(processID) {
 		return
 	}
-	// If the process ID is registered, try to remove it
-	if s.processIDs.Remove(processID) {
+	if exists, _ := s.stg.ProcessExists(processID); exists {
 		// Update the process in storage by clearing the RegisteredForSequencing field.
-		// The rollback is in-memory only to avoid recursive loops.
 		if err := s.stg.UpdateProcess(processID, func(p *types.Process) error {
 			p.RegisteredForSequencing = false
 			return nil
 		}); err != nil {
-			s.processIDs.Add(processID) // in-memory rollback only
 			log.Warnw("failed to persist RegisteredForSequencing for unregistered process",
 				"processID", processID.String(), "error", err)
 			return
 		}
-		log.Infow("process ID unregistered from sequencing", "processID", processID.String())
 	}
+	// If the process ID is registered, try to remove it
+	if !s.processIDs.Remove(processID) {
+		return
+	}
+	log.Infow("process ID unregistered from sequencing", "processID", processID.String())
 }
 
 // ExistsProcessID checks if a process ID is registered with the sequencer.

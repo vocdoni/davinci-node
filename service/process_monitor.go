@@ -146,7 +146,7 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 }
 
 // syncActiveProcessesFromBlockchain fetches current state from blockchain for
-// all processes that are accepting votes. This ensures that after a restart,
+// all processes that are alive on-chain. This ensures that after a restart,
 // any missed state transitions are reflected in local storage.
 func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 	processIDs, err := pm.storage.ListProcesses()
