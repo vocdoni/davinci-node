@@ -256,6 +256,11 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 // Only ballots belonging to registered process IDs will be processed.
 // If the process ID is already registered, this operation has no effect.
 func (s *Sequencer) AddProcessID(processID types.ProcessID) {
+	// Check if there is a process with the given ID in storage
+	if isStored, err := s.stg.ProcessExists(processID); err != nil || !isStored {
+		return
+	}
+	// If so, try to register it in the processIDs map
 	if s.processIDs.Add(processID) {
 		// Update the process in storage by setting the RegisteredForSequencing field.
 		// The rollback is in-memory only to avoid recursive loops.

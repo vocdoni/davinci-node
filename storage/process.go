@@ -28,6 +28,27 @@ func (s *Storage) process(processID types.ProcessID) (*types.Process, error) {
 	return p, nil
 }
 
+// ProcessExists checks if a process exists in the storage. It returns false if
+// the process is not found. If an error occurs, it returns the error.
+func (s *Storage) ProcessExists(processID types.ProcessID) (bool, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.processExists(processID)
+}
+
+// processExists checks if a process exists in the storage without acquiring
+// the globalLock. It assumes the caller already holds the lock.
+func (s *Storage) processExists(processID types.ProcessID) (bool, error) {
+	p := &types.Process{}
+	if err := s.getArtifact(processPrefix, processID.Bytes(), p); err != nil {
+		if err == ErrNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // NewProcess stores a new process and its metadata into the storage.
 // It checks that the process doesn't already exist to prevent accidental overwrites.
 // For updating existing processes, use UpdateProcess instead to avoid race conditions.

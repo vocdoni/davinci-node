@@ -19,7 +19,6 @@ func TestProcess(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 
 	st := New(db)
-	defer st.Close()
 
 	// Create a test process ID
 	processID := testutil.DeterministicProcessID(42)
@@ -28,6 +27,11 @@ func TestProcess(t *testing.T) {
 	metadata, err := st.Process(processID)
 	c.Assert(err, qt.Equals, ErrNotFound)
 	c.Assert(metadata, qt.IsNil)
+
+	// Test 2: Check if the process exists
+	exists, err := st.ProcessExists(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(exists, qt.IsFalse)
 
 	testProcess := testutil.RandomProcess(processID)
 
@@ -57,4 +61,9 @@ func TestProcess(t *testing.T) {
 	processes, err = st.ListProcesses()
 	c.Assert(err, qt.IsNil)
 	c.Assert(len(processes), qt.Equals, 2)
+
+	// Close the db and try to check if an existing process exists
+	st.Close()
+	_, err = st.ProcessExists(processID)
+	c.Assert(err, qt.IsNotNil)
 }
