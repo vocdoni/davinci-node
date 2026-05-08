@@ -246,16 +246,19 @@ func TestProcessMonitorIgnoresForeignRuntimeEvents(t *testing.T) {
 
 	newForeignProcessID := testMonitorProcessID([4]byte{0xaa, 0xbb, 0xcc, 0xdd}, 6)
 	newForeignProcess := testutil.RandomProcess(newForeignProcessID)
-
-	newProcChan := make(chan *types.Process, 1)
 	updatedProcChan := make(chan *types.ProcessWithChanges, 1)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		monitor.monitorProcesses(ctx, newProcChan, updatedProcChan)
+		monitor.monitorProcesses(ctx, updatedProcChan)
 	}()
 
-	newProcChan <- newForeignProcess
+	updatedProcChan <- &types.ProcessWithChanges{
+		ProcessID: newForeignProcessID,
+		NewProcess: &types.NewProcess{
+			Process: newForeignProcess,
+		},
+	}
 	updatedProcChan <- &types.ProcessWithChanges{
 		ProcessID: existingForeignProcessID,
 		StateRootChange: &types.StateRootChange{
@@ -267,7 +270,6 @@ func TestProcessMonitorIgnoresForeignRuntimeEvents(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	close(newProcChan)
 	close(updatedProcChan)
 	<-done
 

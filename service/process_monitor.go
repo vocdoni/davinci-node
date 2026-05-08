@@ -28,9 +28,8 @@ type ProcessMonitor struct {
 
 // ContractsService defines the interface for web3 contract operations.
 type ContractsService interface {
-	MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error)
-	ProcessChangesFilters() []types.Web3FilterFn
-	MonitorProcessChanges(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
+	MonitorProcessUpdates(ctx context.Context, interval time.Duration, retries int, filters ...types.Web3FilterFn) (<-chan *types.ProcessWithChanges, error)
+	ProcessUpdatesFilters() []types.Web3FilterFn
 	CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error)
 	Process(processID types.ProcessID) (*types.Process, error)
 	ValidVersion(processID types.ProcessID) bool
@@ -42,7 +41,13 @@ type ContractsService interface {
 
 // NewProcessMonitor creates a new ProcessMonitor service for one process ID
 // version. If storage is nil, it uses a memory storage.
-func NewProcessMonitor(contracts ContractsService, processIDVersion [4]byte, stg *storage.Storage, censusDownloader *CensusDownloader, stateSync *StateSync, interval time.Duration,
+func NewProcessMonitor(
+	contracts ContractsService,
+	processIDVersion [4]byte,
+	stg *storage.Storage,
+	censusDownloader *CensusDownloader,
+	stateSync *StateSync,
+	interval time.Duration,
 ) *ProcessMonitor {
 	if stg == nil {
 		kv := memdb.New()
@@ -76,19 +81,13 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	pm.cancel = cancel
 
-	newProcChan, err := pm.contracts.MonitorProcessCreation(ctx, pm.interval)
-	if err != nil {
-		pm.cancel = nil
-		return fmt.Errorf("failed to start monitor of process creation: %w", err)
-	}
-
-	updatedProcChan, err := pm.contracts.MonitorProcessChanges(ctx, pm.interval, 3, pm.contracts.ProcessChangesFilters()...)
+	updatedProcChan, err := pm.contracts.MonitorProcessUpdates(ctx, pm.interval, 3, pm.contracts.ProcessUpdatesFilters()...)
 	if err != nil {
 		pm.cancel = nil
 		return fmt.Errorf("failed to start monitor of process updates: %w", err)
 	}
 
-	go pm.monitorProcesses(ctx, newProcChan, updatedProcChan)
+	go pm.monitorProcesses(ctx, updatedProcChan)
 	return nil
 }
 
@@ -230,96 +229,12 @@ func (pm *ProcessMonitor) ownsProcess(processID types.ProcessID) bool {
 
 func (pm *ProcessMonitor) monitorProcesses(
 	ctx context.Context,
-	newProcChan <-chan *types.Process,
 	updatedProcChan <-chan *types.ProcessWithChanges,
 ) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case process, ok := <-newProcChan:
-			if !ok {
-				log.Warn("process creation channel closed")
-				return
-			}
-			if process == nil || process.ID == nil {
-				log.Warn("received process creation event without process ID")
-				continue
-			}
-			if !pm.contracts.ValidVersion(*process.ID) {
-				log.Warn("received process creation event with invalid process ID (version mismatch)")
-				continue
-			}
-			if !pm.ownsProcess(*process.ID) {
-				log.Warnw("ignoring process creation for foreign runtime",
-					"processID", process.ID.String(),
-					"processIDVersion", fmt.Sprintf("%x", process.ID.Version()),
-					"monitorProcessIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
-				continue
-			}
-			// Skip if the process already exists
-			if _, err := pm.storage.Process(*process.ID); err == nil {
-				continue
-			}
-			log.Debugw("new process found",
-				"processID", process.ID.String(),
-				"stateRoot", process.StateRoot.HexBytes().String())
-
-			// Create a function to store the new process
-			processSetup := func(p *types.Process) {
-				if err := pm.storage.NewProcess(p); err != nil {
-					log.Errorw(err, fmt.Sprintf("failed to store new process %s", p.ID.String()))
-					return
-				}
-				log.Debugw("process created",
-					"processID", p.ID.String(),
-					"stateRoot", p.StateRoot.HexBytes().String(),
-					"censusRoot", p.Census.CensusRoot.String())
-			}
-
-			// If the process is ready and has a census, download and import it
-			// first, then store the process. If not, just store the process
-			// directly.
-			if process.Status == types.ProcessStatusReady && process.Census != nil {
-				go func(process *types.Process) {
-					// Keep one census copy for the async downloader queue and a
-					// separate one for process state updates so the monitor does
-					// not race with worker goroutines over the same struct.
-					queuedCensus := process.Census.Clone()
-					processCensus := process.Census.Clone()
-
-					// Download and import the process census if needed
-					resolvedRoot, err := pm.censusDownloader.DownloadCensus(*process.ID, queuedCensus)
-					if err != nil {
-						log.Warnw("failed to start census download for new process",
-							"processID", process.ID.String(),
-							"censusRoot", processCensus.CensusRoot.String(),
-							"error", err.Error())
-						return
-					}
-					processCensus.CensusRoot = resolvedRoot
-					// After census is downloaded and imported, store the new process
-					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
-					pm.censusDownloader.OnCensusDownloaded(*process.ID, processCensus, downloadCtx, func(err error) {
-						defer downloadCtxCancel()
-						// If no error, just proceed to store the process.
-						if err == nil {
-							process.Census = processCensus
-							processSetup(process)
-							return
-						}
-						// If the initial census download fails, skip process
-						// setup entirely. A process must not be created without
-						// a successful initial census import.
-						log.Warnw("failed to download census for new process",
-							"processID", process.ID.String(),
-							"censusRoot", processCensus.CensusRoot.String(),
-							"error", err.Error())
-					})
-				}(process)
-			} else {
-				processSetup(process)
-			}
 		case update, ok := <-updatedProcChan:
 			if !ok {
 				log.Warn("process updates channel closed")
@@ -342,147 +257,245 @@ func (pm *ProcessMonitor) monitorProcesses(
 			}
 			// determine the type of update
 			switch {
+			case update.NewProcess != nil:
+				pm.newProcessCallback(ctx, update)
 			case update.StatusChange != nil:
-				// process status change
-				log.Debugw("process changed status",
-					"processID", update.ProcessID.String(),
-					"old", update.OldStatus.String(),
-					"new", update.NewStatus.String())
-				if update.NewStatus == types.ProcessStatusResults {
-					// For finalization, first fetch and store results, then
-					// mark status as Results. Get the results from the
-					// contract.
-					process, err := pm.contracts.Process(update.ProcessID)
-					if err != nil {
-						log.Warnw("failed to fetch process from contract",
-							"processID", update.ProcessID.String(),
-							"error", err.Error())
-						continue
-					}
-					// Ensure that results are actually present before updating
-					// storage.
-					if len(process.Result) == 0 {
-						log.Warnw("process results not yet available; skipping finalization update",
-							"processID", update.ProcessID.String())
-						continue
-					}
-					if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackFinalization(process.Result)); err != nil {
-						log.Warnw("failed to update process results",
-							"processID", update.ProcessID.String(),
-							"error", err.Error())
-						continue
-					}
-					// Clean up any stale votes
-					if err := pm.storage.CleanProcessStaleVotes(update.ProcessID); err != nil {
-						log.Warnw("failed to clean stale votes after process finalization",
-							"processID", update.ProcessID.String(), "error", err.Error())
-					}
-				} else {
-					// Just update the status if is not results
-					if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
-						update.NewStatus,
-					)); err != nil {
-						log.Warnw("failed to update process status",
-							"processID", update.ProcessID.String(),
-							"error", err.Error())
-						continue
-					}
-				}
+				pm.statusChangeCallback(update)
 			case update.StateRootChange != nil:
-				// process state root change
-				log.Debugw("process state root changed",
-					"processID", update.ProcessID.String(),
-					"newStateRoot", update.NewStateRoot.String(),
-					"newVotersCount", update.NewVotersCount.String(),
-					"newOverwrittenVotesCount", update.NewOverwrittenVotesCount.String())
-				if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStateRoot(
-					update.NewStateRoot,
-					update.NewVotersCount,
-					update.NewOverwrittenVotesCount,
-				)); err != nil {
-					log.Errorw(err, fmt.Sprintf("failed to update process %s state root", update.ProcessID.String()))
-					continue
-				}
-				// Notify StateSync service for blob fetching and state reconstruction (non-blocking)
-				if pm.statesync != nil {
-					pm.statesync.Notify(update)
-				}
-
+				pm.stateRootChangeCallback(update)
 			case update.MaxVotersChange != nil:
-				// process max voters change
-				log.Debugw("process max voters changed",
-					"processID", update.ProcessID.String(),
-					"newMaxVoters", update.NewMaxVoters.String())
-				if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetMaxVoters(
-					update.NewMaxVoters,
-				)); err != nil {
-					log.Warnw("failed to update process max voters",
-						"processID", update.ProcessID.String(),
-						"error", err.Error())
-				}
+				pm.maxVotersChangeCallback(update)
 			case update.CensusRootChange != nil:
-				// fetch the process to get the current census info
-				process, err := pm.storage.Process(update.ProcessID)
-				if err != nil {
-					log.Warnw("received update for unknown process",
-						"processID", update.ProcessID.String(),
-						"error", err.Error())
-					continue
-				}
-				// process census root change
-				log.Debugw("process census root or/and URI changed",
-					"processID", update.ProcessID.String(),
-					"newCensusRoot", update.NewCensusRoot.String(),
-					"newCensusURI", update.NewCensusURI)
-				newCensus := &types.Census{
-					CensusOrigin:    process.Census.CensusOrigin,
-					CensusRoot:      update.NewCensusRoot,
-					CensusURI:       update.NewCensusURI,
-					ContractAddress: process.Census.ContractAddress,
-				}
-				go func(censusInfo *types.Census, pid types.ProcessID, newRoot types.HexBytes, newURI string) {
-					// download and import the new census
-					var err error
-					censusInfo.CensusRoot, err = pm.censusDownloader.DownloadCensus(pid, censusInfo)
-					if err != nil {
-						log.Warnw("failed to start download of updated census for process",
-							"processID", pid.String(),
-							"censusRoot", newRoot.String(),
-							"error", err.Error())
-						return
-					}
-					// wait for census to be downloaded and imported, then update
-					// process census info
-					downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
-					pm.censusDownloader.OnCensusDownloaded(pid, censusInfo, downloadCtx, func(err error) {
-						defer downloadCtxCancel()
-						if err != nil {
-							log.Warnw("failed to download updated census for process",
-								"processID", pid.String(),
-								"censusRoot", newRoot.String(),
-								"error", err.Error())
-							return
-						}
-						log.Debugw("new process census downloaded",
-							"processID", pid.String(),
-							"newCensusRoot", newRoot.String(),
-							"newCensusURI", newURI)
-						// update process census info in storage
-						if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetCensusRoot(
-							newRoot,
-							newURI,
-						)); err != nil {
-							log.Warnw("failed to update process census root",
-								"processID", pid.String(),
-								"error", err.Error())
-						}
-						log.Infow("process census updated",
-							"processID", pid.String(),
-							"censusRoot", newRoot.String(),
-							"censusURI", newURI)
-					})
-				}(newCensus, update.ProcessID, update.NewCensusRoot, update.NewCensusURI)
+				pm.censusRootChangeCallback(ctx, update)
 			}
 		}
 	}
+}
+
+func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.ProcessWithChanges) {
+	process := update.Process
+	if process == nil || process.ID == nil {
+		log.Warn("received process creation event without process ID")
+		return
+	}
+	if !pm.contracts.ValidVersion(*process.ID) {
+		log.Warn("received process creation event with invalid process ID (version mismatch)")
+		return
+	}
+	if !pm.ownsProcess(*process.ID) {
+		log.Warnw("ignoring process creation for foreign runtime",
+			"processID", process.ID.String(),
+			"processIDVersion", fmt.Sprintf("%x", process.ID.Version()),
+			"monitorProcessIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
+		return
+	}
+	// Skip if the process already exists
+	if _, err := pm.storage.Process(*process.ID); err == nil {
+		return
+	}
+	log.Debugw("new process found",
+		"processID", process.ID.String(),
+		"stateRoot", process.StateRoot.HexBytes().String())
+
+	// Create a function to store the new process
+	processSetup := func(p *types.Process) {
+		if err := pm.storage.NewProcess(p); err != nil {
+			log.Errorw(err, fmt.Sprintf("failed to store new process %s", p.ID.String()))
+			return
+		}
+		log.Debugw("process created",
+			"processID", p.ID.String(),
+			"stateRoot", p.StateRoot.HexBytes().String(),
+			"censusRoot", p.Census.CensusRoot.String())
+	}
+
+	// If the process is ready and has a census, download and import it
+	// first, then store the process. If not, just store the process
+	// directly.
+	if process.Status == types.ProcessStatusReady && process.Census != nil {
+		go func(process *types.Process) {
+			// Keep one census copy for the async downloader queue and a
+			// separate one for process state updates so the monitor does
+			// not race with worker goroutines over the same struct.
+			queuedCensus := process.Census.Clone()
+			processCensus := process.Census.Clone()
+
+			// Download and import the process census if needed
+			resolvedRoot, err := pm.censusDownloader.DownloadCensus(*process.ID, queuedCensus)
+			if err != nil {
+				log.Warnw("failed to start census download for new process",
+					"processID", process.ID.String(),
+					"censusRoot", processCensus.CensusRoot.String(),
+					"error", err.Error())
+				return
+			}
+			processCensus.CensusRoot = resolvedRoot
+			// After census is downloaded and imported, store the new process
+			downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
+			pm.censusDownloader.OnCensusDownloaded(*process.ID, processCensus, downloadCtx, func(err error) {
+				defer downloadCtxCancel()
+				// If no error, just proceed to store the process.
+				if err == nil {
+					process.Census = processCensus
+					processSetup(process)
+					return
+				}
+				// If the initial census download fails, skip process
+				// setup entirely. A process must not be created without
+				// a successful initial census import.
+				log.Warnw("failed to download census for new process",
+					"processID", process.ID.String(),
+					"censusRoot", processCensus.CensusRoot.String(),
+					"error", err.Error())
+			})
+		}(process)
+	} else {
+		processSetup(process)
+	}
+}
+
+func (pm *ProcessMonitor) statusChangeCallback(update *types.ProcessWithChanges) {
+	// process status change
+	log.Debugw("process changed status",
+		"processID", update.ProcessID.String(),
+		"old", update.OldStatus.String(),
+		"new", update.NewStatus.String())
+	if update.NewStatus == types.ProcessStatusResults {
+		// For finalization, first fetch and store results, then
+		// mark status as Results. Get the results from the
+		// contract.
+		process, err := pm.contracts.Process(update.ProcessID)
+		if err != nil {
+			log.Warnw("failed to fetch process from contract",
+				"processID", update.ProcessID.String(),
+				"error", err.Error())
+			return
+		}
+		// Ensure that results are actually present before updating
+		// storage.
+		if len(process.Result) == 0 {
+			log.Warnw("process results not yet available; skipping finalization update",
+				"processID", update.ProcessID.String())
+			return
+		}
+		if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackFinalization(process.Result)); err != nil {
+			log.Warnw("failed to update process results",
+				"processID", update.ProcessID.String(),
+				"error", err.Error())
+			return
+		}
+		// Clean up any stale votes
+		if err := pm.storage.CleanProcessStaleVotes(update.ProcessID); err != nil {
+			log.Warnw("failed to clean stale votes after process finalization",
+				"processID", update.ProcessID.String(), "error", err.Error())
+		}
+		return
+	}
+	// Just update the status if is not results
+	if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
+		update.NewStatus,
+	)); err != nil {
+		log.Warnw("failed to update process status",
+			"processID", update.ProcessID.String(),
+			"error", err.Error())
+	}
+}
+
+func (pm *ProcessMonitor) stateRootChangeCallback(update *types.ProcessWithChanges) {
+	// process state root change
+	log.Debugw("process state root changed",
+		"processID", update.ProcessID.String(),
+		"newStateRoot", update.NewStateRoot.String(),
+		"newVotersCount", update.NewVotersCount.String(),
+		"newOverwrittenVotesCount", update.NewOverwrittenVotesCount.String())
+	if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStateRoot(
+		update.NewStateRoot,
+		update.NewVotersCount,
+		update.NewOverwrittenVotesCount,
+	)); err != nil {
+		log.Errorw(err, fmt.Sprintf("failed to update process %s state root", update.ProcessID.String()))
+		return
+	}
+	// Notify StateSync service for blob fetching and state reconstruction (non-blocking)
+	if pm.statesync != nil {
+		pm.statesync.Notify(update)
+	}
+}
+
+func (pm *ProcessMonitor) maxVotersChangeCallback(update *types.ProcessWithChanges) {
+	// process max voters change
+	log.Debugw("process max voters changed",
+		"processID", update.ProcessID.String(),
+		"newMaxVoters", update.NewMaxVoters.String())
+	if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetMaxVoters(
+		update.NewMaxVoters,
+	)); err != nil {
+		log.Warnw("failed to update process max voters",
+			"processID", update.ProcessID.String(),
+			"error", err.Error())
+	}
+}
+
+func (pm *ProcessMonitor) censusRootChangeCallback(ctx context.Context, update *types.ProcessWithChanges) {
+	// fetch the process to get the current census info
+	process, err := pm.storage.Process(update.ProcessID)
+	if err != nil {
+		log.Warnw("received update for unknown process",
+			"processID", update.ProcessID.String(),
+			"error", err.Error())
+		return
+	}
+	// process census root change
+	log.Debugw("process census root or/and URI changed",
+		"processID", update.ProcessID.String(),
+		"newCensusRoot", update.NewCensusRoot.String(),
+		"newCensusURI", update.NewCensusURI)
+	newCensus := &types.Census{
+		CensusOrigin:    process.Census.CensusOrigin,
+		CensusRoot:      update.NewCensusRoot,
+		CensusURI:       update.NewCensusURI,
+		ContractAddress: process.Census.ContractAddress,
+	}
+	go func(censusInfo *types.Census, pid types.ProcessID, newRoot types.HexBytes, newURI string) {
+		// download and import the new census
+		var err error
+		censusInfo.CensusRoot, err = pm.censusDownloader.DownloadCensus(pid, censusInfo)
+		if err != nil {
+			log.Warnw("failed to start download of updated census for process",
+				"processID", pid.String(),
+				"censusRoot", newRoot.String(),
+				"error", err.Error())
+			return
+		}
+		// wait for census to be downloaded and imported, then update
+		// process census info
+		downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
+		pm.censusDownloader.OnCensusDownloaded(pid, censusInfo, downloadCtx, func(err error) {
+			defer downloadCtxCancel()
+			if err != nil {
+				log.Warnw("failed to download updated census for process",
+					"processID", pid.String(),
+					"censusRoot", newRoot.String(),
+					"error", err.Error())
+				return
+			}
+			log.Debugw("new process census downloaded",
+				"processID", pid.String(),
+				"newCensusRoot", newRoot.String(),
+				"newCensusURI", newURI)
+			// update process census info in storage
+			if err := pm.storage.UpdateProcess(pid, storage.ProcessUpdateCallbackSetCensusRoot(
+				newRoot,
+				newURI,
+			)); err != nil {
+				log.Warnw("failed to update process census root",
+					"processID", pid.String(),
+					"error", err.Error())
+			}
+			log.Infow("process census updated",
+				"processID", pid.String(),
+				"censusRoot", newRoot.String(),
+				"censusURI", newURI)
+		})
+	}(newCensus, update.ProcessID, update.NewCensusRoot, update.NewCensusURI)
 }

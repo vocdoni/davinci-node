@@ -38,34 +38,11 @@ func NewMockContracts() *MockContracts {
 	}
 }
 
-func (m *MockContracts) MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
-	ch := make(chan *types.Process)
-	go func() {
-		defer close(ch)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				m.mu.Lock()
-				for _, proc := range m.processes {
-					ch <- proc
-				}
-				m.processes = nil // Clear after sending
-				m.mu.Unlock()
-			}
-		}
-	}()
-	return ch, nil
-}
-
-func (m *MockContracts) ProcessChangesFilters() []types.Web3FilterFn {
+func (m *MockContracts) ProcessUpdatesFilters() []types.Web3FilterFn {
 	return []types.Web3FilterFn{}
 }
 
-func (m *MockContracts) MonitorProcessChanges(
+func (m *MockContracts) MonitorProcessUpdates(
 	ctx context.Context,
 	interval time.Duration,
 	retries int,

@@ -9,13 +9,35 @@ import (
 )
 
 // ProcessChangesFilters returns the list of filters to monitor process changes.
-func (c *Contracts) ProcessChangesFilters() []types.Web3FilterFn {
+func (c *Contracts) ProcessUpdatesFilters() []types.Web3FilterFn {
 	return []types.Web3FilterFn{
+		c.NewProcessFilter,
 		c.ProcessStatusFilter,
 		c.ProcessStateRootFilter,
 		c.ProcessMaxVotersFilter,
 		c.ProcessCensusRootFilter,
 	}
+}
+
+func (c *Contracts) NewProcessFilter(ctx context.Context, start, end uint64, ch chan<- *types.ProcessWithChanges) error {
+	iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, nil, nil)
+	if err != nil || iter == nil {
+		return fmt.Errorf("failed to filter process created events: %w", err)
+	}
+	for iter.Next() {
+		process, err := c.Process(iter.Event.ProcessId)
+		if err != nil {
+			return fmt.Errorf("failed to get process: %w", err)
+		}
+
+		ch <- &types.ProcessWithChanges{
+			ProcessID: iter.Event.ProcessId,
+			NewProcess: &types.NewProcess{
+				Process: process,
+			},
+		}
+	}
+	return nil
 }
 
 // ProcessStatusFilter monitors changes in process status.

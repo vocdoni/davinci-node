@@ -12,6 +12,11 @@ import (
 // an error if the filtering fails.
 type Web3FilterFn func(ctx context.Context, start, end uint64, ch chan<- *ProcessWithChanges) error
 
+// NewProcess represents a new process that has been created on the blockchain.
+type NewProcess struct {
+	*Process
+}
+
 // StatusChange represents a change in the status of a voting process. It
 // includes the old and new status values.
 type StatusChange struct {
@@ -51,6 +56,7 @@ type CensusRootChange struct {
 // the process ID.
 type ProcessWithChanges struct {
 	ProcessID ProcessID
+	*NewProcess
 	*StatusChange
 	*StateRootChange
 	*MaxVotersChange
