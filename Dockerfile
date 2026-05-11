@@ -69,7 +69,7 @@ COPY --from=webapp /app/dist ./webapp
 # Create entrypoint script
 RUN echo '#!/bin/sh' > entrypoint.sh && \
     echo 'export SEQUENCER_API_URL=${SEQUENCER_API_URL:-http://localhost:9090}' >> entrypoint.sh && \
-    echo 'export BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io/address}' >> entrypoint.sh && \
+    echo 'export BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-11155111:https://sepolia.etherscan.io/address}' >> entrypoint.sh && \
     echo 'if [ -f webapp/config.js ]; then' >> entrypoint.sh && \
     echo '  sed -i "s|__SEQUENCER_API_URL__|${SEQUENCER_API_URL}|g" webapp/config.js' >> entrypoint.sh && \
     echo '  sed -i "s|__BLOCK_EXPLORER_URL__|${BLOCK_EXPLORER_URL}|g" webapp/config.js' >> entrypoint.sh && \
