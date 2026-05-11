@@ -35,9 +35,10 @@ type ContractAddresses struct {
 
 // SequencerNetworkInfo contains the network label and contract addresses for a runtime.
 type SequencerNetworkInfo struct {
-	ChainID                 uint64 `json:"chainID"`
-	ShortName               string `json:"shortName"`
-	ProcessRegistryContract string `json:"processRegistryContract"`
+	ChainID                 uint64         `json:"chainID"`
+	ShortName               string         `json:"shortName"`
+	ProcessRegistryContract string         `json:"processRegistryContract"`
+	ProcessIDVersion        types.HexBytes `json:"processIDVersion"`
 }
 
 // SequencerInfo contains any relevant information about the current sequencer for a client.

@@ -279,6 +279,7 @@ func apiRuntimeData(router *web3.RuntimeRouter) (map[uint64]SequencerNetworkInfo
 			ChainID:                 runtime.ChainID,
 			ShortName:               runtime.ShortName,
 			ProcessRegistryContract: contractsInfo.ProcessRegistry,
+			ProcessIDVersion:        runtime.ProcessIDVersion[:],
 		}
 	}
 	return runtimeInfos, nil
