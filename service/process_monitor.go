@@ -146,7 +146,7 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 }
 
 // syncActiveProcessesFromBlockchain fetches current state from blockchain for
-// all processes that are accepting votes. This ensures that after a restart,
+// all processes that are alive on-chain. This ensures that after a restart,
 // any missed state transitions are reflected in local storage.
 func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 	processIDs, err := pm.storage.ListProcesses()
@@ -166,9 +166,11 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 			skippedCount++
 			continue
 		}
-		// Check if process is accepting votes
-		isAccepting, err := pm.storage.ProcessIsAcceptingVotes(processID)
-		if err != nil || !isAccepting {
+		// Check if process is alive on-chain (has state root, not expired, Ready status)
+		// This does NOT check RegisteredForSequencing — the sync runs at startup
+		// before the sequencer registers any processes.
+		isAlive, err := pm.storage.ProcessIsOnChainAlive(processID)
+		if err != nil || !isAlive {
 			continue
 		}
 

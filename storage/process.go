@@ -28,6 +28,27 @@ func (s *Storage) process(processID types.ProcessID) (*types.Process, error) {
 	return p, nil
 }
 
+// ProcessExists checks if a process exists in the storage. It returns false if
+// the process is not found. If an error occurs, it returns the error.
+func (s *Storage) ProcessExists(processID types.ProcessID) (bool, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.processExists(processID)
+}
+
+// processExists checks if a process exists in the storage without acquiring
+// the globalLock. It assumes the caller already holds the lock.
+func (s *Storage) processExists(processID types.ProcessID) (bool, error) {
+	p := &types.Process{}
+	if err := s.getArtifact(processPrefix, processID.Bytes(), p); err != nil {
+		if err == ErrNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // NewProcess stores a new process and its metadata into the storage.
 // It checks that the process doesn't already exist to prevent accidental overwrites.
 // For updating existing processes, use UpdateProcess instead to avoid race conditions.
@@ -137,8 +158,19 @@ func (s *Storage) ListProcesses() ([]types.ProcessID, error) {
 	return processIDs, nil
 }
 
+// ProcessIsOnChainAlive checks whether the process is considered alive by
+// on-chain criteria (state root, not expired, Ready status) without requiring
+// sequencer registration. This is used for startup blockchain catch-up.
+func (s *Storage) ProcessIsOnChainAlive(processID types.ProcessID) (bool, error) {
+	stgProcess, err := s.Process(processID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get process %s: %w", processID.String(), err)
+	}
+	return s.processIsOnChainAlive(processID, stgProcess)
+}
+
 // ProcessIsAcceptingVotes checks if the process is ready to accept votes,
-// which means that the process is in the "Ready" state.
+// which requires the process to be on-chain alive and registered for sequencing.
 func (s *Storage) ProcessIsAcceptingVotes(processID types.ProcessID) (bool, error) {
 	// Get the process from storage
 	stgProcess, err := s.Process(processID)
@@ -148,9 +180,12 @@ func (s *Storage) ProcessIsAcceptingVotes(processID types.ProcessID) (bool, erro
 	return s.processIsAcceptingVotes(processID, stgProcess)
 }
 
-// processIsAcceptingVotes checks if the process is ready to accept votes
-// without acquiring the globalLock. It assumes the caller already holds the lock.
-func (s *Storage) processIsAcceptingVotes(processID types.ProcessID, stgProcess *types.Process) (bool, error) {
+// processIsOnChainAlive checks whether the process is considered alive by
+// on-chain criteria: it has a state root, is not expired, and is in the Ready
+// state. This is the core validity check used by the process monitor during
+// blockchain catch-up — it intentionally omits the RegisteredForSequencing
+// check so that startup sync works before the sequencer registers processes.
+func (s *Storage) processIsOnChainAlive(processID types.ProcessID, stgProcess *types.Process) (bool, error) {
 	// Check that the process has a state root
 	if stgProcess.StateRoot == nil {
 		return false, fmt.Errorf("process %s has no state root", processID.String())
@@ -162,6 +197,20 @@ func (s *Storage) processIsAcceptingVotes(processID types.ProcessID, stgProcess 
 	// Check if process is in ready state
 	if stgProcess.Status != types.ProcessStatusReady {
 		return false, fmt.Errorf("process %s status: %s", processID.String(), stgProcess.Status)
+	}
+	return true, nil
+}
+
+// processIsAcceptingVotes checks if the provided process data is ready to
+// accept votes. It only evaluates the supplied stgProcess and does not acquire
+// or require holding globalLock.
+func (s *Storage) processIsAcceptingVotes(processID types.ProcessID, stgProcess *types.Process) (bool, error) {
+	if ok, err := s.processIsOnChainAlive(processID, stgProcess); !ok {
+		return ok, err
+	}
+	// Check if process is registered for sequencing
+	if !stgProcess.RegisteredForSequencing {
+		return false, fmt.Errorf("process %s is not registered for sequencing", processID.String())
 	}
 	return true, nil
 }
