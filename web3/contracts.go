@@ -660,6 +660,20 @@ func (c *Contracts) RegisterKnownProcess(processID types.ProcessID) {
 	c.knownProcesses[processID] = struct{}{}
 }
 
+// RegisterUnknownProcess adds a process ID to the knownProcesses map, but
+// only if it's not already there. It returns true if the process ID was added
+// and false otherwise.
+func (c *Contracts) RegisterUnknownProcess(processID types.ProcessID) bool {
+	c.knownProcessesMutex.Lock()
+	defer c.knownProcessesMutex.Unlock()
+
+	if _, exists := c.knownProcesses[processID]; exists {
+		return false
+	}
+	c.knownProcesses[processID] = struct{}{}
+	return true
+}
+
 // knownPIDs returns a slice of known process IDs as [types.ProcessIDLen]byte arrays, ready to
 // be used as filter topics.
 func (c *Contracts) knownPIDs() [][types.ProcessIDLen]byte {

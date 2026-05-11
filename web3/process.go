@@ -339,68 +339,11 @@ func (c *Contracts) SetProcessCensus(processID types.ProcessID, census types.Cen
 	return &hash, nil
 }
 
-// MonitorProcessCreation monitors the creation of new processes by polling the
-// ProcessRegistry contract every interval.
-func (c *Contracts) MonitorProcessCreation(ctx context.Context, interval time.Duration) (<-chan *types.Process, error) {
-	ch := make(chan *types.Process)
-	go func() {
-		defer close(ch)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				log.Infow("exiting monitor process creation")
-				return
-			case <-ticker.C:
-				end := c.CurrentBlock()
-				// Use dedicated cursor for process creation events to avoid race conditions
-				c.watchBlockMutex.RLock()
-				start := c.lastWatchProcessCreationBlock
-				c.watchBlockMutex.RUnlock()
-				if end <= start {
-					continue
-				}
-				ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-				iter, err := c.processes.FilterProcessCreated(&bind.FilterOpts{Start: start, End: &end, Context: ctxQuery}, nil, nil)
-				cancel()
-				if err != nil || iter == nil {
-					log.Debugw("failed to filter process created, retrying", "error", err)
-					continue
-				}
-				// Update cursor after successful query
-				c.watchBlockMutex.Lock()
-				c.lastWatchProcessCreationBlock = end
-				c.watchBlockMutex.Unlock()
-				for iter.Next() {
-					// Thread-safe check and update of knownProcesses map
-					c.knownProcessesMutex.RLock()
-					_, exists := c.knownProcesses[iter.Event.ProcessId]
-					c.knownProcessesMutex.RUnlock()
-					if exists {
-						continue
-					}
-					c.knownProcessesMutex.Lock()
-					c.knownProcesses[iter.Event.ProcessId] = struct{}{}
-					c.knownProcessesMutex.Unlock()
-					process, err := c.Process(iter.Event.ProcessId)
-					if err != nil {
-						log.Errorw(err, "failed to get process while monitoring process creation")
-						continue
-					}
-					ch <- process
-				}
-			}
-		}
-	}()
-	return ch, nil
-}
-
-// MonitorProcessChanges monitors changes to processes by polling the
+// MonitorProcessUpdates monitors changes to processes by polling the
 // ProcessRegistry contract every interval. It applies the provided filter
 // functions to detect specific types of changes. It returns a channel that
 // emits ProcessWithChanges objects representing the detected changes.
-func (c *Contracts) MonitorProcessChanges(
+func (c *Contracts) MonitorProcessUpdates(
 	ctx context.Context,
 	interval time.Duration,
 	retries int,
@@ -433,19 +376,30 @@ func (c *Contracts) MonitorProcessChanges(
 					continue
 				}
 				// Iterate over each filter function
+				var filterErr error
 				for _, filter := range filters {
 					// Retry the filter function up to the specified number of retries
 					for range retries {
 						// Call the filter function with a new context
 						ctxQuery, cancel := context.WithTimeout(ctx, web3QueryTimeout)
-						err := filter(ctxQuery, start, end, updatedProcChan)
+						filterErr = filter(ctxQuery, start, end, updatedProcChan)
 						cancel()
 						// If the filter function succeeds, break out of the retry loop
-						if err == nil {
+						if filterErr == nil {
 							break
 						}
-
 					}
+					// If any filter function fails after retries, break out of the
+					// loop
+					if filterErr != nil {
+						log.Warnw("process updates filter fails", "error", filterErr)
+						break
+					}
+				}
+				// If any filter function fails, do not advance the last
+				// processed block
+				if filterErr != nil {
+					continue
 				}
 				// Update the last processed block after processing all filters
 				c.watchBlockMutex.Lock()
