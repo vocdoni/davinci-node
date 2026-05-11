@@ -14,9 +14,15 @@ export const Navbar = () => {
 
     const parts = raw.split(',')
     for (const part of parts) {
-      const [id, ...rest] = part.split(':')
-      if (id === chainId && rest.length > 0) {
-        return rest.join(':')
+      const trimmedPart = part.trim()
+      if (!trimmedPart) continue
+
+      const [id, ...rest] = trimmedPart.split(':')
+      const trimmedId = id.trim()
+      const url = rest.join(':').trim()
+
+      if (trimmedId === chainId && url) {
+        return url
       }
     }
 
