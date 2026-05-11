@@ -1,14 +1,10 @@
 // API Response Types
 
-export interface ContractAddresses {
-  process: string
-  stateTransitionVerifier: string
-  resultsVerifier: string
-}
-
-export interface RuntimeInfo {
-  network: string
-  contracts: ContractAddresses
+export interface NetworkInfo {
+  chainID: number
+  shortName: string
+  processRegistryContract: string
+  processIDVersion: string
 }
 
 export interface InfoResponse {
@@ -18,7 +14,7 @@ export interface InfoResponse {
   provingKeyHash: string
   verificationKeyUrl: string
   verificationKeyHash: string
-  runtimes: Record<string, RuntimeInfo>
+  networks: Record<string, NetworkInfo>
 }
 
 export interface SequencerStatsResponse {

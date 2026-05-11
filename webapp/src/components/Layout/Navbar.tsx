@@ -4,25 +4,26 @@ import { useSequencerInfo } from '~hooks/useSequencerAPI'
 
 export const Navbar = () => {
   const { data: info, isLoading } = useSequencerInfo()
-  const runtimes = Object.entries(info?.runtimes ?? {})
+  const networks = Object.entries(info?.networks ?? {})
   
-  // Get block explorer URL from runtime config (injected by Docker) or fallback to build-time env var
-  const getBlockExplorerUrl = (): string => {
-    // 1. Check runtime config (injected by Docker)
-    if (window.__RUNTIME_CONFIG__?.BLOCK_EXPLORER_URL) {
-      return window.__RUNTIME_CONFIG__.BLOCK_EXPLORER_URL
+  // Parse block explorer URLs from chainID-prefixed format: "11155111:https://...,1:https://..."
+  const getBlockExplorerUrl = (chainId: string): string => {
+    // Sources of the raw config (tried in order)
+    const raw = window.__RUNTIME_CONFIG__?.BLOCK_EXPLORER_URL || import.meta.env.BLOCK_EXPLORER_URL || ''
+    if (!raw) return 'https://sepolia.etherscan.io/address'
+
+    const parts = raw.split(',')
+    for (const part of parts) {
+      const [id, ...rest] = part.split(':')
+      if (id === chainId && rest.length > 0) {
+        return rest.join(':')
+      }
     }
-    
-    // 2. Check build-time env var
-    if (import.meta.env.BLOCK_EXPLORER_URL) {
-      return import.meta.env.BLOCK_EXPLORER_URL
-    }
-    
-    // 3. Default fallback
+
     return 'https://sepolia.etherscan.io/address'
   }
-  
-  const blockExplorerUrl = getBlockExplorerUrl()
+
+  const shortAddr = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
 
   return (
     <Box bg="white" shadow="sm" borderBottom="1px" borderColor="gray.200">
@@ -41,43 +42,34 @@ export const Navbar = () => {
             {/* Compact contract links */}
             <HStack spacing={4} fontSize="sm" color="gray.600">
               {isLoading ? (
-                <>
-                  <Skeleton height="20px" width="100px" />
-                </>
+                <Skeleton height="20px" width="100px" />
               ) : (
                 <>
-                  {runtimes.length === 0 ? (
+                  {networks.length === 0 ? (
                     <Text color="gray.400" fontSize="xs">N/A</Text>
                   ) : (
-                    runtimes.map(([chainId, runtime]) => {
-                      const processAddress = runtime.contracts.process
-                      const processLabel = `${runtime.network} (${chainId})`
+                    networks.map(([chainId, network]) => {
+                      const addr = network.processRegistryContract
 
                       return (
-                        <Tooltip key={chainId} label={processAddress || 'Not available'}>
+                        <Tooltip key={chainId} label={addr || 'Not available'}>
                           <HStack spacing={1}>
-                            <Text>{processLabel}:</Text>
-                            {processAddress ? (
-                              runtimes.length === 1 ? (
-                                <Link
-                                  href={`${blockExplorerUrl}/${processAddress}`}
-                                  isExternal
-                                  display="inline-flex"
-                                  alignItems="center"
-                                  gap={1}
-                                  color="purple.500"
-                                  _hover={{ color: 'purple.600' }}
-                                >
-                                  <Badge colorScheme="purple" fontSize="xs" fontFamily="mono">
-                                    {processAddress.slice(0, 6)}...{processAddress.slice(-4)}
-                                  </Badge>
-                                  <FaExternalLinkAlt size={10} />
-                                </Link>
-                              ) : (
+                            <Text>{network.shortName}:</Text>
+                            {addr ? (
+                              <Link
+                                href={`${getBlockExplorerUrl(chainId)}/${addr}`}
+                                isExternal
+                                display="inline-flex"
+                                alignItems="center"
+                                gap={1}
+                                color="purple.500"
+                                _hover={{ color: 'purple.600' }}
+                              >
                                 <Badge colorScheme="purple" fontSize="xs" fontFamily="mono">
-                                  {processAddress.slice(0, 6)}...{processAddress.slice(-4)}
+                                  {shortAddr(addr)}
                                 </Badge>
-                              )
+                                <FaExternalLinkAlt size={10} />
+                              </Link>
                             ) : (
                               <Text color="gray.400" fontSize="xs">N/A</Text>
                             )}
