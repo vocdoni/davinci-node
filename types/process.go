@@ -174,7 +174,7 @@ type Process struct {
 	OverwrittenVotesCount   *BigInt               `json:"overwrittenVotesCount"    cbor:"13,keyasint,omitempty"`
 	MaxVoters               *BigInt               `json:"maxVoters"                cbor:"14,keyasint,omitempty"`
 	SequencerStats          SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
-	RegisteredForSequencing bool                  `json:"-"  cbor:"17,keyasint,omitempty"` // It should be omitted from JSON serialization
+	RegisteredForSequencing bool                  `json:"-"                        cbor:"17,keyasint,omitempty"` // It should be omitted from JSON serialization
 }
 
 type SequencerProcessStats struct {
