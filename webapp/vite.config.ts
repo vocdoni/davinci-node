@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
       react(),
     ],
     server: {
-      port: 3000,
+      port: 3001,
       cors: true,
     },
   }
