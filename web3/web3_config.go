@@ -73,6 +73,10 @@ func (web3Cfg Web3Config) addressesByChainID(chainID uint64) *Addresses {
 	if len(parts) != 2 {
 		return nil
 	}
+	// Ensure that both parts are not empty
+	if len(parts[0]) == 0 || len(parts[1]) == 0 {
+		return nil
+	}
 	// Parse the chain ID from the contract prefix
 	parsedChainID, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil || parsedChainID != chainID {
