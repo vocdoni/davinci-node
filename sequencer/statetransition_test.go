@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -12,11 +13,15 @@ import (
 	stc "github.com/vocdoni/davinci-node/circuits/statetransition"
 	statetransitiontest "github.com/vocdoni/davinci-node/circuits/test/statetransition"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	spechash "github.com/vocdoni/davinci-node/spec/hash"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
+	"github.com/vocdoni/davinci-node/state"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
+	leanimt "github.com/vocdoni/lean-imt-go"
+	leancensus "github.com/vocdoni/lean-imt-go/census"
 )
 
 func testVariableAsBigInt(t *testing.T, v interface{}) *big.Int {
@@ -326,4 +331,134 @@ func publicStateTransitionCircuitFromInputs(inputs storage.StateTransitionBatchP
 	circuit.BlobCommitmentLimbs[1] = inputs.BlobCommitmentLimbs[1]
 	circuit.BlobCommitmentLimbs[2] = inputs.BlobCommitmentLimbs[2]
 	return circuit
+}
+
+// makeTestProcessWithCensus creates a process in storage with the given MerkleTree census root.
+func makeTestProcessWithCensus(t *testing.T, stg *storage.Storage, processID types.ProcessID, censusRoot types.HexBytes) {
+	t.Helper()
+	encryptionKey := testutil.RandomEncryptionPubKey()
+	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
+	stateRoot, err := spechash.StateRoot(
+		processID.MathBigInt(),
+		censusOrigin.BigInt().MathBigInt(),
+		encryptionKey.X.MathBigInt(),
+		encryptionKey.Y.MathBigInt(),
+		testutil.BallotModePacked(),
+	)
+	if err != nil {
+		t.Fatalf("spechash.StateRoot: %v", err)
+	}
+	proc := &types.Process{
+		ID:            &processID,
+		Status:        types.ProcessStatusReady,
+		StartTime:     time.Now(),
+		Duration:      time.Hour,
+		MetadataURI:   "http://example.com/metadata",
+		BallotMode:    testutil.BallotMode(),
+		EncryptionKey: &encryptionKey,
+		StateRoot:     types.BigIntConverter(stateRoot),
+		Census: &types.Census{
+			CensusOrigin: censusOrigin,
+			CensusRoot:   censusRoot,
+		},
+	}
+	if err := stg.NewProcess(proc); err != nil {
+		t.Fatalf("NewProcess: %v", err)
+	}
+}
+
+// TestProcessCensusProofsNilRootReturnsError verifies that processCensusProofs
+// returns an error when the census tree exists in storage but has no root
+// (empty tree, no entries).
+func TestProcessCensusProofsNilRootReturnsError(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestSequencerStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+	censusRoot := types.HexBytes(testutil.RandomCensusRoot().Bytes())
+
+	// Register an empty census (no entries) so LoadCensus succeeds but
+	// Tree().Root() returns (nil, false).
+	_, err := stg.CensusDB().NewByRoot(censusRoot)
+	c.Assert(err, qt.IsNil)
+	makeTestProcessWithCensus(t, stg, processID, censusRoot)
+
+	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
+
+	_, _, _, err = seq.processCensusProofs(processID, nil, nil)
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "census tree has no root")
+}
+
+// TestProcessCensusProofsMissingAddressSkipsBallot verifies that a vote whose
+// address is absent from the census tree is silently skipped while the
+// remaining valid votes are returned without error.
+func TestProcessCensusProofsMissingAddressSkipsBallot(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestSequencerStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+
+	addr0 := testutil.DeterministicAddress(0)
+	addr1 := testutil.DeterministicAddress(1)
+	sourceTree, err := leancensus.NewCensusIMT(nil, leanimt.PoseidonHasher)
+	c.Assert(err, qt.IsNil)
+	c.Assert(sourceTree.Add(addr0, big.NewInt(1)), qt.IsNil)
+	c.Assert(sourceTree.Add(addr1, big.NewInt(1)), qt.IsNil)
+	root, ok := sourceTree.Root()
+	c.Assert(ok, qt.IsTrue)
+
+	censusRoot := types.HexBytes(root.Bytes())
+	_, err = stg.CensusDB().Import(censusRoot, sourceTree.Dump())
+	c.Assert(err, qt.IsNil)
+	makeTestProcessWithCensus(t, stg, processID, censusRoot)
+
+	// addr0 and addr1 are in the census; addr2 (index 999) is not.
+	addr2 := testutil.DeterministicAddress(999)
+	votes := []*state.Vote{
+		{Address: addr0.Big(), Weight: big.NewInt(1)},
+		{Address: addr1.Big(), Weight: big.NewInt(1)},
+		{Address: addr2.Big(), Weight: big.NewInt(1)},
+	}
+
+	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
+	_, _, filtered, err := seq.processCensusProofs(processID, votes, nil)
+	c.Assert(err, qt.IsNil)
+	c.Assert(filtered, qt.HasLen, 2)
+}
+
+// TestProcessCensusProofsAllValidReturnsAllVotes verifies that when every vote
+// address is present in the census tree, all votes are returned unchanged.
+func TestProcessCensusProofsAllValidReturnsAllVotes(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestSequencerStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+
+	addr0 := testutil.DeterministicAddress(0)
+	addr1 := testutil.DeterministicAddress(1)
+	sourceTree, err := leancensus.NewCensusIMT(nil, leanimt.PoseidonHasher)
+	c.Assert(err, qt.IsNil)
+	c.Assert(sourceTree.Add(addr0, big.NewInt(1)), qt.IsNil)
+	c.Assert(sourceTree.Add(addr1, big.NewInt(1)), qt.IsNil)
+	root, ok := sourceTree.Root()
+	c.Assert(ok, qt.IsTrue)
+
+	censusRoot := types.HexBytes(root.Bytes())
+	_, err = stg.CensusDB().Import(censusRoot, sourceTree.Dump())
+	c.Assert(err, qt.IsNil)
+	makeTestProcessWithCensus(t, stg, processID, censusRoot)
+
+	votes := []*state.Vote{
+		{Address: addr0.Big(), Weight: big.NewInt(1)},
+		{Address: addr1.Big(), Weight: big.NewInt(1)},
+	}
+
+	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
+	_, _, filtered, err := seq.processCensusProofs(processID, votes, nil)
+	c.Assert(err, qt.IsNil)
+	c.Assert(filtered, qt.HasLen, 2)
 }
