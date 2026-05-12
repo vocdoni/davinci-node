@@ -410,7 +410,11 @@ func (s *Sequencer) processCensusProofs(
 		censusTree := censusRef.Tree()
 		var ok bool
 		if root, ok = censusTree.Root(); !ok {
-			log.Warnw("census tree has no root?", "censusRoot", process.Census.CensusRoot.String(), "fetchedRoot", root)
+			log.Warnw("census tree has no root",
+				"censusRoot", process.Census.CensusRoot.String(),
+				"fetchedRoot", root)
+			return nil, nil, nil, fmt.Errorf("census tree has no root for process %s (censusRoot=%s)",
+				processID.String(), process.Census.CensusRoot.String())
 		}
 		// iterate over the votes to generate the merkle proofs of each voter;
 		// skip any vote whose address is absent from the census tree.
