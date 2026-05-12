@@ -19,7 +19,7 @@ import (
 	"github.com/vocdoni/davinci-node/web3"
 )
 
-func testVariableAsBigInt(t *testing.T, v interface{}) *big.Int {
+func testVariableAsBigInt(t *testing.T, v any) *big.Int {
 	t.Helper()
 	switch x := v.(type) {
 	case *big.Int:

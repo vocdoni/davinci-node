@@ -10,6 +10,7 @@ import (
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/vocdoni/davinci-node/internal"
+	"github.com/vocdoni/davinci-node/web3"
 )
 
 const (
@@ -35,7 +36,7 @@ var Version = internal.Version
 
 // Config holds the application configuration
 type Config struct {
-	Web3         Web3Config
+	Web3         web3.Web3Config
 	API          APIConfig
 	Batch        BatchConfig
 	Log          LogConfig
@@ -43,15 +44,6 @@ type Config struct {
 	Metadata     MetadataConfig
 	Datadir      string
 	ForceCleanup bool `mapstructure:"forceCleanup"` // Force cleanup of all pending items at startup
-}
-
-// Web3Config holds Ethereum-related configuration
-type Web3Config struct {
-	PrivKey       string   `mapstructure:"privkey"`       // Private key for the Ethereum account
-	ChainIDs      []uint   `mapstructure:"chainIDs"`      // Chain IDs to use, if defined, limits RPCs and BeaconAPIs, if empty, use all
-	RPCs          []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
-	BeaconAPIs    []string `mapstructure:"bapi"`          // Web3 Consensus Beacon API endpoints, can be multiple
-	GasMultiplier float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
 }
 
 // APIConfig holds the API-specific configuration
@@ -112,7 +104,7 @@ func loadConfig() (*Config, error) {
 	flag.StringSliceP("web3.rpc", "r", []string{defaultRPC}, "web3 rpc endpoint(s), comma-separated")
 	flag.StringSliceP("web3.capi", "c", []string{defaultConsensusAPI}, "consensus api endpoints(s), comma-separated")
 	flag.Float64("web3.gasMultiplier", defaultGasMultiplier, "gas price multiplier for transactions (1.0 = default, 2.0 = double gas prices)")
-	flag.String("web3.processRegistryAddress", "", "Address of the process registry contract to be used by the sequencer (overrides network default)")
+	flag.String("web3.processRegistryContract", "", "'chainID:0xaddress' of the process registry smart contract, if defined, it will be included in the available networks")
 	// sequencer API
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
