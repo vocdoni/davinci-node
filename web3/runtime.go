@@ -34,12 +34,21 @@ type ProcessBlobFetcherResolver interface {
 // NetworkRuntime groups all chain-specific runtime state needed by the
 // sequencer for one enabled network.
 type NetworkRuntime struct {
-	ChainID            uint64
-	ShortName          string
-	ProcessIDVersion   [4]byte
-	Contracts          *Contracts
-	TxManager          *txmanager.TxManager
-	AvailableEndpoints int
+	ChainID          uint64
+	ShortName        string
+	ProcessIDVersion [4]byte
+	Contracts        *Contracts
+	TxManager        *txmanager.TxManager
+}
+
+// AvailableEndpoints returns the number of available endpoints for this
+// network. It wraps the web3pool NumberOfEndpoints method for the current
+// runtime chain ID.
+func (r *NetworkRuntime) AvailableEndpoints() int {
+	if r.Contracts == nil || r.Contracts.web3pool == nil {
+		return 0
+	}
+	return r.Contracts.web3pool.NumberOfEndpoints(r.ChainID, true)
 }
 
 // NewNetworkRuntime builds a network runtime and computes its ProcessIDVersion
@@ -64,12 +73,11 @@ func NewNetworkRuntime(
 	}
 
 	return &NetworkRuntime{
-		ChainID:            contracts.ChainID,
-		ShortName:          chainlist.ShortNameByChainID(contracts.ChainID),
-		ProcessIDVersion:   types.ProcessIDVersion(uint32(contracts.ChainID), processRegistry),
-		Contracts:          contracts,
-		TxManager:          txManager,
-		AvailableEndpoints: contracts.web3pool.NumberOfEndpoints(contracts.ChainID, true),
+		ChainID:          contracts.ChainID,
+		ShortName:        chainlist.ShortNameByChainID(contracts.ChainID),
+		ProcessIDVersion: types.ProcessIDVersion(uint32(contracts.ChainID), processRegistry),
+		Contracts:        contracts,
+		TxManager:        txManager,
 	}, nil
 }
 

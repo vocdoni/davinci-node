@@ -186,7 +186,7 @@ func setupServices(ctx context.Context, cfg *Config) (services *Services, err er
 			"chainID", runtime.ChainID,
 			"account", runtime.Contracts.AccountAddress().Hex(),
 			"gasMultiplier", runtime.Contracts.GasMultiplier,
-			"availableEndpoints", runtime.AvailableEndpoints,
+			"availableEndpoints", runtime.AvailableEndpoints(),
 			"processRegistry", runtime.Contracts.ContractsAddresses.ProcessRegistry.Hex(),
 			"consensusAPI", runtime.Contracts.Web3ConsensusAPIEndpoint,
 		)
