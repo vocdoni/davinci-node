@@ -95,6 +95,23 @@ func (s *Sequencer) processPendingTransitions() {
 			"ballotCount", len(batch.Ballots),
 		)
 
+		// Pre-flight census check: remove any ballot whose address is absent
+		// from the census tree before the more expensive reencrypt+proof path.
+		batch.Ballots, err = s.filterBallotsByCensus(batch.ProcessID, batch.Ballots)
+		if err != nil {
+			log.Errorw(err, "pre-flight census check failed",
+				"processID", processID.String())
+			s.markAggregatorBatchFailed(batchID)
+			return true // Continue to next process ID
+		}
+		if len(batch.Ballots) == 0 {
+			log.Errorw(fmt.Errorf("all ballots removed by pre-flight census check"),
+				"failed state transition batch",
+				"processID", processID.String())
+			s.markAggregatorBatchFailed(batchID)
+			return true // Continue to next process ID
+		}
+
 		// Reencrypt the votes with a new k
 		reencryptedVotes, kSeed, err := s.reencryptVotes(batch.ProcessID, batch.Ballots)
 		if err != nil {
