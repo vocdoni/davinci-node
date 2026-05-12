@@ -257,7 +257,7 @@ func TestProcessMonitorDoesNotCreateProcessWhenInitialCensusDownloadFails(t *tes
 	c.Assert(err, qt.Equals, storage.ErrNotFound)
 }
 
-func TestProcessMonitorInitializeActiveProcessesRegistersOnlyMatchingVersion(t *testing.T) {
+func TestProcessMonitorInitializeActiveProcessesRegistersWatchableProcessesOnlyMatchingVersion(t *testing.T) {
 	c := qt.New(t)
 
 	store := storage.New(memdb.New())
@@ -265,12 +265,24 @@ func TestProcessMonitorInitializeActiveProcessesRegistersOnlyMatchingVersion(t *
 
 	contracts := NewMockContracts()
 	activeProcessID := testMonitorProcessID(defaultMockProcessIDVersion, 1)
+	awaitingResultsProcessID := testMonitorProcessID(defaultMockProcessIDVersion, 11)
+	endedProcessID := testMonitorProcessID(defaultMockProcessIDVersion, 12)
 	terminalProcessID := testMonitorProcessID(defaultMockProcessIDVersion, 2)
 	foreignProcessID := testMonitorProcessID([4]byte{0xaa, 0xbb, 0xcc, 0xdd}, 3)
 
 	activeProcess := testutil.RandomProcess(activeProcessID)
 	activeProcess.Status = types.ProcessStatusPaused
 	c.Assert(store.NewProcess(activeProcess), qt.IsNil)
+
+	awaitingResultsProcess := testutil.RandomProcess(awaitingResultsProcessID)
+	awaitingResultsProcess.Status = types.ProcessStatusReady
+	awaitingResultsProcess.StartTime = time.Now().Add(-2 * time.Hour)
+	awaitingResultsProcess.Duration = time.Hour
+	c.Assert(store.NewProcess(awaitingResultsProcess), qt.IsNil)
+
+	endedProcess := testutil.RandomProcess(endedProcessID)
+	endedProcess.Status = types.ProcessStatusEnded
+	c.Assert(store.NewProcess(endedProcess), qt.IsNil)
 
 	terminalProcess := testutil.RandomProcess(terminalProcessID)
 	terminalProcess.Status = types.ProcessStatusResults
@@ -284,9 +296,11 @@ func TestProcessMonitorInitializeActiveProcessesRegistersOnlyMatchingVersion(t *
 
 	c.Assert(monitor.initializeActiveProcesses(), qt.IsNil)
 	c.Assert(contracts.activeProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
-		activeProcessID: {},
+		activeProcessID:          {},
+		awaitingResultsProcessID: {},
+		endedProcessID:           {},
 	})
-	c.Assert(contracts.processLookups, qt.HasLen, 0)
+	c.Assert(contracts.processLookups, qt.DeepEquals, []types.ProcessID{activeProcessID})
 }
 
 func TestProcessMonitorRemovesActiveProcessWhenFinalized(t *testing.T) {

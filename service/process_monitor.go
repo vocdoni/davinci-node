@@ -74,7 +74,7 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 		return fmt.Errorf("service already running")
 	}
 
-	// Initialize active processes from storage before starting monitors
+	// Initialize tracked processes from storage before starting monitors
 	if err := pm.initializeActiveProcesses(); err != nil {
 		return fmt.Errorf("failed to initialize active processes: %w", err)
 	}
@@ -104,10 +104,10 @@ func (pm *ProcessMonitor) Stop() {
 }
 
 // initializeActiveProcesses loads all existing process IDs from storage and
-// registers the non-terminal ones in the contracts' activeProcesses map. This
-// ensures that after a restart, state transition events for active processes are
-// not filtered out. It also syncs active processes from the blockchain to catch
-// up on any missed state transitions.
+// registers every non-terminal process in the contracts' activeProcesses map.
+// Active state is only used for vote-accepting decisions; awaiting-results
+// processes stay in the watch set so later status changes are not missed after
+// a restart.
 func (pm *ProcessMonitor) initializeActiveProcesses() error {
 	// Get all process IDs from storage
 	processIDs, err := pm.storage.ListProcesses()
@@ -115,7 +115,7 @@ func (pm *ProcessMonitor) initializeActiveProcesses() error {
 		return fmt.Errorf("failed to list processes: %w", err)
 	}
 
-	// Register each active process ID in the contracts' activeProcesses map.
+	// Register each trackable process ID in the contracts' activeProcesses map.
 	registeredCount := 0
 	skippedCount := 0
 	for _, processID := range processIDs {
@@ -144,7 +144,7 @@ func (pm *ProcessMonitor) initializeActiveProcesses() error {
 		registeredCount++
 	}
 
-	log.Infow("initialized active processes from storage",
+	log.Infow("initialized tracked processes from storage",
 		"registeredProcesses", registeredCount,
 		"skippedProcesses", skippedCount,
 		"processIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
@@ -320,7 +320,7 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 			"error", err.Error())
 	}
 
-	log.Debugw("new active process found",
+	log.Debugw("new process found",
 		"processID", process.ID.String(),
 		"stateRoot", process.StateRoot.HexBytes().String())
 

@@ -652,8 +652,8 @@ func (c *Contracts) ResultsVerifierAddress() (string, error) {
 }
 
 // AddActiveProcess adds a process ID to the activeProcesses map.
-// This is used during initialization to seed processes that are already
-// active before the monitor starts, ensuring their events are not filtered out.
+// This is used during initialization to seed processes that should still be
+// tracked before the monitor starts, ensuring their events are not filtered out.
 func (c *Contracts) AddActiveProcess(processID types.ProcessID) {
 	c.activeProcessesMutex.Lock()
 	defer c.activeProcessesMutex.Unlock()
@@ -663,9 +663,9 @@ func (c *Contracts) AddActiveProcess(processID types.ProcessID) {
 	c.activeProcesses[processID] = struct{}{}
 }
 
-// AddActiveProcessIfNew adds a process ID to the activeProcesses map, but
-// only if it's not already there. It returns true if the process ID was added
-// and false otherwise.
+// AddActiveProcessIfNew adds a process ID to the activeProcesses map, but only
+// if it's not already there. It returns true if the process ID was added and
+// false otherwise.
 func (c *Contracts) AddActiveProcessIfNew(processID types.ProcessID) bool {
 	c.activeProcessesMutex.Lock()
 	defer c.activeProcessesMutex.Unlock()

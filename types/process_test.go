@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestNestedMetadata(t *testing.T) {
@@ -62,6 +63,84 @@ func TestIsTerminalProcessStatus(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := IsTerminalProcessStatus(tc.status); got != tc.want {
 				t.Fatalf("IsTerminalProcessStatus(%s) = %t, want %t", tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestProcessIsActive(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name    string
+		process *Process
+		want    bool
+	}{
+		{
+			name: "ready and before deadline",
+			process: &Process{
+				Status:    ProcessStatusReady,
+				StartTime: now.Add(-time.Minute),
+				Duration:  2 * time.Hour,
+			},
+			want: true,
+		},
+		{
+			name: "ready but past deadline",
+			process: &Process{
+				Status:    ProcessStatusReady,
+				StartTime: now.Add(-2 * time.Hour),
+				Duration:  time.Hour,
+			},
+			want: false,
+		},
+		{
+			name: "ended",
+			process: &Process{
+				Status:    ProcessStatusEnded,
+				StartTime: now.Add(-time.Minute),
+				Duration:  2 * time.Hour,
+			},
+			want: false,
+		},
+		{
+			name: "paused and before deadline",
+			process: &Process{
+				Status:    ProcessStatusPaused,
+				StartTime: now.Add(-time.Minute),
+				Duration:  2 * time.Hour,
+			},
+			want: true,
+		},
+		{
+			name: "canceled",
+			process: &Process{
+				Status:    ProcessStatusCanceled,
+				StartTime: now.Add(-time.Minute),
+				Duration:  2 * time.Hour,
+			},
+			want: false,
+		},
+		{
+			name: "results",
+			process: &Process{
+				Status:    ProcessStatusResults,
+				StartTime: now.Add(-time.Minute),
+				Duration:  2 * time.Hour,
+			},
+			want: false,
+		},
+		{
+			name:    "nil process",
+			process: nil,
+			want:    false,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.process.IsActive(); got != tc.want {
+				t.Fatalf("IsActive() = %t, want %t", got, tc.want)
 			}
 		})
 	}

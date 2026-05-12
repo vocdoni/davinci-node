@@ -35,10 +35,13 @@ func (c *Contracts) NewProcessFilter(ctx context.Context, start, end uint64, ch 
 				"error", err.Error())
 			continue
 		}
+		// Terminal processes are never trackable. Non-terminal processes remain
+		// in the watch set so later status changes still flow through the monitor.
 		if types.IsTerminalProcessStatus(process.Status) {
 			continue
 		}
-		// Try to add the process ID to the active list. If it already exists, skip.
+		// Try to add the process ID to the watch list. If it already exists,
+		// skip.
 		if !c.AddActiveProcessIfNew(iter.Event.ProcessId) {
 			continue
 		}
