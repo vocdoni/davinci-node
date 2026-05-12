@@ -659,10 +659,9 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 		if err != nil {
 			return fmt.Errorf("failed to get process for validation: %w", err)
 		}
-		if isAccepting, err := s.processIsAcceptingVotes(stb.ProcessID, process); err != nil || !isAccepting {
+		if !process.IsAcceptingVotes() {
 			log.Warnw("process is no longer accepting votes, marking batch as permanently failed",
-				"processID", stb.ProcessID.String(),
-				"error", err)
+				"processID", stb.ProcessID.String())
 			// Mark all ballots in the batch as error
 			for _, v := range stb.Ballots {
 				if err := s.setVoteIDStatus(stb.ProcessID, v.VoteID, VoteIDStatusError); err != nil {

@@ -454,17 +454,14 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		return fmt.Errorf("process not supported: %s", processID.String())
 	}
 
-	// Ensure the process is accepting votes
-	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(processID); err != nil {
-		return fmt.Errorf("failed to check if process is accepting votes: %w", err)
-	} else if !isAcceptingVotes {
-		return fmt.Errorf("process '%s' is not accepting votes", processID.String())
+	process, err := s.stg.Process(processID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch process from local storage: %w", err)
 	}
 
-	// Check if the process has reached max voters
-	maxVotersReached, err := s.stg.ProcessMaxVotersReached(processID)
-	if err != nil {
-		return fmt.Errorf("failed to check if process max voters reached: %w", err)
+	// Ensure this sequencer is still accepting votes for this process
+	if !process.IsAcceptingVotes() {
+		return fmt.Errorf("process '%s' is not accepting votes", processID.String())
 	}
 
 	// Pull verified ballots from storage
@@ -524,7 +521,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		ballots,
 		keys,
 		processState,
-		maxVotersReached,
+		process.MaxVotersReached(),
 		proofToRecursion,
 		verifyVoteVerifierProof,
 	)

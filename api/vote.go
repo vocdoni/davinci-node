@@ -254,11 +254,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 	// the vote will be accepted, but it is a precondition to accept the vote,
 	// for example, if the process is not in this sequencer, the vote will be
 	// rejected
-	if ok, err := a.storage.ProcessIsAcceptingVotes(vote.ProcessID); !ok {
-		if err != nil {
-			ErrProcessNotAcceptingVotes.WithErr(err).Write(w)
-			return
-		}
+	if !process.IsAcceptingVotes() {
 		ErrProcessNotAcceptingVotes.Write(w)
 		return
 	}
@@ -310,10 +306,7 @@ func (a *API) newVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isOverwrite {
-		if maxVotersReached, err := a.storage.ProcessMaxVotersReached(vote.ProcessID); err != nil {
-			ErrGenericInternalServerError.Withf("could not check max voters: %v", err).Write(w)
-			return
-		} else if maxVotersReached {
+		if process.MaxVotersReached() {
 			ErrProcessMaxVotersReached.Write(w)
 			return
 		}

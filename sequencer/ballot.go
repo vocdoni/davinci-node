@@ -146,10 +146,12 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		return nil, fmt.Errorf("invalid ballot structure")
 	}
 
-	// Ensure the process is accepting votes
-	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(b.ProcessID); err != nil {
-		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
-	} else if !isAcceptingVotes {
+	// Ensure this sequencer is still accepting votes for this process
+	process, err := s.stg.Process(b.ProcessID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process metadata: %w", err)
+	}
+	if !process.IsAcceptingVotes() {
 		return nil, fmt.Errorf("process is not accepting votes")
 	}
 	// Process public key
