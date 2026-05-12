@@ -63,11 +63,10 @@ func (a *API) process(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isAcceptingVotes, _ := a.storage.ProcessIsAcceptingVotes(processID)
 	// Write the response
 	httpWriteJSON(w, &ProcessResponse{
 		Process:          *proc,
-		IsAcceptingVotes: isAcceptingVotes,
+		IsAcceptingVotes: proc.IsAcceptingVotes(),
 	})
 }
 

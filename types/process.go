@@ -47,6 +47,12 @@ func (s ProcessStatus) String() string {
 	}
 }
 
+// IsTerminal reports whether the process status is terminal.
+// Terminal statuses are canceled and results.
+func (s ProcessStatus) IsTerminal() bool {
+	return s == ProcessStatusCanceled || s == ProcessStatusResults
+}
+
 type (
 	GenericMetadata    map[string]any
 	MultilingualString map[string]string
@@ -158,33 +164,59 @@ func (m *Metadata) String() string {
 }
 
 type Process struct {
-	ID                      *ProcessID            `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
-	Status                  ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
-	OrganizationID          common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
-	EncryptionKey           *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
-	StateRoot               *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
-	Result                  []*BigInt             `json:"result"                   cbor:"5,keyasint,omitempty"`
-	StartTime               time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
-	Duration                time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
-	MetadataURI             string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
-	BallotMode              spec.BallotMode       `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
-	Census                  *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
-	Metadata                *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
-	VotersCount             *BigInt               `json:"votersCount"              cbor:"12,keyasint,omitempty"`
-	OverwrittenVotesCount   *BigInt               `json:"overwrittenVotesCount"    cbor:"13,keyasint,omitempty"`
-	MaxVoters               *BigInt               `json:"maxVoters"                cbor:"14,keyasint,omitempty"`
-	SequencerStats          SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
-	RegisteredForSequencing bool                  `json:"-"                        cbor:"17,keyasint,omitempty"` // It should be omitted from JSON serialization
+	ID                    *ProcessID            `json:"id,omitempty"             cbor:"0,keyasint,omitempty"`
+	Status                ProcessStatus         `json:"status"                   cbor:"1,keyasint,omitempty"`
+	OrganizationID        common.Address        `json:"organizationId"           cbor:"2,keyasint,omitempty"`
+	EncryptionKey         *EncryptionKey        `json:"encryptionKey"            cbor:"3,keyasint,omitempty"`
+	StateRoot             *BigInt               `json:"stateRoot"                cbor:"4,keyasint,omitempty"`
+	Result                []*BigInt             `json:"result"                   cbor:"5,keyasint,omitempty"`
+	StartTime             time.Time             `json:"startTime"                cbor:"6,keyasint,omitempty"`
+	Duration              time.Duration         `json:"duration"                 cbor:"7,keyasint,omitempty"`
+	MetadataURI           string                `json:"metadataURI"              cbor:"8,keyasint,omitempty"`
+	BallotMode            spec.BallotMode       `json:"ballotMode"               cbor:"9,keyasint,omitempty"`
+	Census                *Census               `json:"census"                   cbor:"10,keyasint,omitempty"`
+	Metadata              *Metadata             `json:"metadata,omitempty"       cbor:"11,keyasint,omitempty"`
+	VotersCount           *BigInt               `json:"votersCount"              cbor:"12,keyasint,omitempty"`
+	OverwrittenVotesCount *BigInt               `json:"overwrittenVotesCount"    cbor:"13,keyasint,omitempty"`
+	MaxVoters             *BigInt               `json:"maxVoters"                cbor:"14,keyasint,omitempty"`
+	SequencerStats        SequencerProcessStats `json:"sequencerStats"           cbor:"16,keyasint,omitempty"`
 }
 
-// IsActive returns true if the process is active which means that it has a status of ProcessStatusReady
-// and the current time is before the start time plus the duration
+// IsActive returns true if the process is active, which means that it has a
+// status of ProcessStatusReady or ProcessStatusPaused and the current time is
+// before the start time plus the duration.
 func (p *Process) IsActive() bool {
 	if p == nil {
 		return false
 	}
 	endTime := p.StartTime.Add(p.Duration)
-	return p.Status == ProcessStatusReady && time.Now().Before(endTime)
+	return (p.Status == ProcessStatusReady || p.Status == ProcessStatusPaused) &&
+		time.Now().Before(endTime)
+}
+
+// IsAcceptingVotes returns true if the process has a status of ProcessStatusReady,
+// and the current time is between StartTime and EndTime (StartTime+Duration).
+func (p *Process) IsAcceptingVotes() bool {
+	if p == nil {
+		return false
+	}
+	now := time.Now()
+	endTime := p.StartTime.Add(p.Duration)
+	return p.Status == ProcessStatusReady &&
+		now.After(p.StartTime) &&
+		now.Before(endTime)
+}
+
+// MaxVotersReached returns true if the process VotersCount has reached or surpassed MaxVoters.
+func (p *Process) MaxVotersReached() bool {
+	if p == nil {
+		return false
+	}
+	// If VotersCount is nil, it means no voters have been counted yet.
+	if p.VotersCount == nil {
+		return false
+	}
+	return !p.VotersCount.LessThan(p.MaxVoters)
 }
 
 type SequencerProcessStats struct {

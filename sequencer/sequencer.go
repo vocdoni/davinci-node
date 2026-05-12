@@ -20,14 +20,9 @@ var (
 	// This value can be changed before starting the sequencer.
 	AggregatorTickerInterval = 10 * time.Second
 
-	// NewProcessMonitorInterval is the interval at which the sequencer will check for new processes to participate in.
+	// NewProcessMonitorInterval is the interval at which the sequencer will check for new processes to track.
 	// This value can be changed before starting the sequencer.
 	NewProcessMonitorInterval = 10 * time.Second
-
-	// ParticipateInAllProcesses determines if the sequencer should process ballots from all processes that are registered.
-	// This is a temporary flag to simplify testing and will be removed in the future. The Sequencer caller must somehow
-	// decide which processes to participate in.
-	ParticipateInAllProcesses = true
 )
 
 // Sequencer is a worker that takes verified ballots and aggregates them into a single proof.
@@ -226,7 +221,7 @@ func (s *Sequencer) workerMode() (bool, bool) {
 	return workerMode, validConf
 }
 
-// monitorNewProcesses checks for new processes immediately and then periodically registers them with the sequencer.
+// monitorNewProcesses checks for new processes immediately and then periodically registers tracked processes with the sequencer.
 func (s *Sequencer) monitorNewProcesses(ctx context.Context, tickerInterval time.Duration) {
 	// Check for processes immediately at startup
 	s.checkAndRegisterProcesses()
@@ -249,24 +244,23 @@ func (s *Sequencer) monitorNewProcesses(ctx context.Context, tickerInterval time
 
 // checkAndRegisterProcesses fetches the list of processes and registers new ones with the sequencer.
 func (s *Sequencer) checkAndRegisterProcesses() {
-	procesList, err := s.stg.ListProcesses()
+	processList, err := s.stg.ListProcesses()
 	if err != nil {
 		log.Errorw(err, "failed to list processes")
 		return
 	}
 
-	for _, processID := range procesList {
+	for _, processID := range processList {
 		proc, err := s.stg.Process(processID) // Ensure the process is loaded in storage
 		if err != nil {
 			log.Warnw("failed to get process for registration", "processID", processID.String(), "error", err)
 			continue
 		}
-		if s.ExistsProcessID(processID) && proc.Status != types.ProcessStatusReady {
-			s.DelProcessID(processID) // Unregister if the process
-			continue
-		}
-		if ParticipateInAllProcesses && !s.ExistsProcessID(processID) && proc.Status == types.ProcessStatusReady {
+		switch proc.Status {
+		case types.ProcessStatusReady:
 			s.AddProcessID(processID)
+		default:
+			s.DelProcessID(processID)
 		}
 	}
 }
@@ -275,22 +269,6 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 // Only ballots belonging to registered process IDs will be processed.
 // If the process ID is already registered, this operation has no effect.
 func (s *Sequencer) AddProcessID(processID types.ProcessID) {
-	if s.ExistsProcessID(processID) {
-		return
-	}
-	// Check if there is a process with the given ID in storage
-	if isStored, _ := s.stg.ProcessExists(processID); isStored {
-		// Update the process in storage by setting the RegisteredForSequencing field.
-		if err := s.stg.UpdateProcess(processID, func(p *types.Process) error {
-			p.RegisteredForSequencing = true
-			return nil
-		}); err != nil {
-			log.Warnw("failed to persist RegisteredForSequencing",
-				"processID", processID.String(), "error", err)
-			return
-		}
-	}
-	// Try to register it in the processIDs map
 	if !s.processIDs.Add(processID) {
 		return
 	}
@@ -300,22 +278,6 @@ func (s *Sequencer) AddProcessID(processID types.ProcessID) {
 // DelProcessID unregisters a process ID from the sequencer.
 // If the process ID is not registered, this operation has no effect.
 func (s *Sequencer) DelProcessID(processID types.ProcessID) {
-	// Check if the process ID is registered, if not return
-	if !s.processIDs.Exists(processID) {
-		return
-	}
-	if exists, _ := s.stg.ProcessExists(processID); exists {
-		// Update the process in storage by clearing the RegisteredForSequencing field.
-		if err := s.stg.UpdateProcess(processID, func(p *types.Process) error {
-			p.RegisteredForSequencing = false
-			return nil
-		}); err != nil {
-			log.Warnw("failed to persist RegisteredForSequencing for unregistered process",
-				"processID", processID.String(), "error", err)
-			return
-		}
-	}
-	// If the process ID is registered, try to remove it
 	if !s.processIDs.Remove(processID) {
 		return
 	}

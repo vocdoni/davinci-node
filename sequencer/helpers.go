@@ -18,13 +18,6 @@ func (s *Sequencer) currentProcessState(processID types.ProcessID) (*state.State
 	if err != nil {
 		return nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
-	isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(processID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
-	}
-	if !isAcceptingVotes {
-		return nil, fmt.Errorf("process %x is not accepting votes", processID)
-	}
 
 	// Open the state tree - this gives us the in-construction root
 	st, err := state.New(s.stg.StateDB(), processID)

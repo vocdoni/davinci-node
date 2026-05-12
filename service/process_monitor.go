@@ -33,7 +33,8 @@ type ContractsService interface {
 	CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error)
 	Process(processID types.ProcessID) (*types.Process, error)
 	ValidVersion(processID types.ProcessID) bool
-	RegisterKnownProcess(processID types.ProcessID)
+	AddMonitoredProcess(processID types.ProcessID)
+	RemoveMonitoredProcess(processID types.ProcessID)
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
@@ -73,9 +74,9 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 		return fmt.Errorf("service already running")
 	}
 
-	// Initialize known processes from storage before starting monitors
-	if err := pm.initializeKnownProcesses(); err != nil {
-		return fmt.Errorf("failed to initialize known processes: %w", err)
+	// Initialize monitored processes from storage before starting monitors.
+	if err := pm.initializeMonitoredProcesses(); err != nil {
+		return fmt.Errorf("failed to initialize monitored processes: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -102,19 +103,16 @@ func (pm *ProcessMonitor) Stop() {
 	}
 }
 
-// initializeKnownProcesses loads all existing process IDs from storage and
-// registers them in the contracts' knownProcesses map. This ensures that after
-// a restart, state transition events for existing processes are not filtered out.
-// It also syncs active processes from the blockchain to catch up on any missed
-// state transitions.
-func (pm *ProcessMonitor) initializeKnownProcesses() error {
+// initializeMonitoredProcesses loads all existing process IDs from storage and
+// registers every non-terminal process in the contracts' monitoredProcesses map.
+func (pm *ProcessMonitor) initializeMonitoredProcesses() error {
 	// Get all process IDs from storage
 	processIDs, err := pm.storage.ListProcesses()
 	if err != nil {
 		return fmt.Errorf("failed to list processes: %w", err)
 	}
 
-	// Register each process ID in the contracts' knownProcesses map
+	// Register each trackable process ID in the contracts' monitoredProcesses map.
 	registeredCount := 0
 	skippedCount := 0
 	for _, processID := range processIDs {
@@ -127,17 +125,29 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 			skippedCount++
 			continue
 		}
-		pm.contracts.RegisterKnownProcess(processID)
+		process, err := pm.storage.Process(processID)
+		if err != nil {
+			log.Warnw("failed to fetch stored process during monitored process initialization",
+				"processID", processID.String(),
+				"error", err.Error())
+			skippedCount++
+			continue
+		}
+		if process.Status.IsTerminal() {
+			skippedCount++
+			continue
+		}
+		pm.contracts.AddMonitoredProcess(processID)
 		registeredCount++
 	}
 
-	log.Infow("initialized known processes from storage",
+	log.Infow("initialized monitored processes from storage",
 		"registeredProcesses", registeredCount,
 		"skippedProcesses", skippedCount,
 		"processIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
 
-	// Sync active processes from blockchain to catch up on missed state transitions
-	if err := pm.syncActiveProcessesFromBlockchain(); err != nil {
+	// Sync monitored processes from blockchain to catch up on missed state transitions.
+	if err := pm.syncMonitoredProcessesFromBlockchain(); err != nil {
 		log.Warnw("failed to sync processes from blockchain", "error", err)
 		// Don't fail startup - log warning and continue
 	}
@@ -145,10 +155,10 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 	return nil
 }
 
-// syncActiveProcessesFromBlockchain fetches current state from blockchain for
+// syncMonitoredProcessesFromBlockchain fetches current state from blockchain for
 // all processes that are alive on-chain. This ensures that after a restart,
 // any missed state transitions are reflected in local storage.
-func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
+func (pm *ProcessMonitor) syncMonitoredProcessesFromBlockchain() error {
 	processIDs, err := pm.storage.ListProcesses()
 	if err != nil {
 		return fmt.Errorf("failed to list processes: %w", err)
@@ -166,11 +176,16 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 			skippedCount++
 			continue
 		}
-		// Check if process is alive on-chain (has state root, not expired,
-		// Ready status) This does NOT check RegisteredForSequencing — the sync
-		// runs at startup before the sequencer registers any processes.
-		isAlive, err := pm.storage.ProcessIsOnChainAlive(processID)
-		if err != nil || !isAlive {
+
+		// Fetch from local storage
+		localProcess, err := pm.storage.Process(processID)
+		if err != nil {
+			log.Warnw("failed to fetch process from storage during sync",
+				"processID", processID.String(), "error", err)
+			continue
+		}
+		// Check if process is still active.
+		if !localProcess.IsActive() {
 			continue
 		}
 
@@ -178,14 +193,6 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		blockchainProcess, err := pm.contracts.Process(processID)
 		if err != nil {
 			log.Warnw("failed to fetch process from blockchain during sync",
-				"processID", processID.String(), "error", err)
-			continue
-		}
-
-		// Fetch from local storage
-		localProcess, err := pm.storage.Process(processID)
-		if err != nil {
-			log.Warnw("failed to fetch process from storage during sync",
 				"processID", processID.String(), "error", err)
 			continue
 		}
@@ -296,17 +303,14 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 	if _, err := pm.storage.Process(*process.ID); err == nil {
 		return
 	}
-	log.Debugw("new process found",
-		"processID", process.ID.String(),
-		"stateRoot", process.StateRoot.HexBytes().String())
 
 	if latestProcess, err := pm.contracts.Process(*process.ID); err == nil {
-		switch latestProcess.Status {
-		case types.ProcessStatusResults, types.ProcessStatusCanceled:
+		if latestProcess.Status.IsTerminal() {
 			log.Infow("skipping process creation event",
 				"processID", process.ID.String(),
 				"creationStatus", process.Status.String(),
 				"latestStatus", latestProcess.Status.String())
+			pm.contracts.RemoveMonitoredProcess(*process.ID)
 			return
 		}
 	} else {
@@ -315,8 +319,13 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 			"error", err.Error())
 	}
 
+	log.Debugw("new process found",
+		"processID", process.ID.String(),
+		"stateRoot", process.StateRoot.HexBytes().String())
+
 	if process.Census == nil {
 		log.Warnw("skipping process creation without census", "processID", process.ID.String())
+		pm.contracts.RemoveMonitoredProcess(*process.ID)
 		return
 	}
 
@@ -324,6 +333,7 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 	processSetup := func(p *types.Process) {
 		if err := pm.storage.NewProcess(p); err != nil {
 			log.Errorw(err, fmt.Sprintf("failed to store new process %s", p.ID.String()))
+			pm.contracts.RemoveMonitoredProcess(*process.ID)
 			return
 		}
 		log.Debugw("process created",
@@ -349,6 +359,7 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 					"processID", process.ID.String(),
 					"censusRoot", processCensus.CensusRoot.String(),
 					"error", err.Error())
+				pm.contracts.RemoveMonitoredProcess(*process.ID)
 				return
 			}
 			processCensus.CensusRoot = resolvedRoot
@@ -369,6 +380,7 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 					"processID", process.ID.String(),
 					"censusRoot", processCensus.CensusRoot.String(),
 					"error", err.Error())
+				pm.contracts.RemoveMonitoredProcess(*process.ID)
 			})
 		}(process)
 	} else {
@@ -402,6 +414,7 @@ func (pm *ProcessMonitor) statusChangeCallback(update *types.ProcessWithChanges)
 			log.Warnw("failed to update process results",
 				"processID", update.ProcessID.String(),
 				"error", err.Error())
+			pm.contracts.RemoveMonitoredProcess(update.ProcessID)
 			return
 		}
 		// Clean up any stale votes
@@ -409,15 +422,19 @@ func (pm *ProcessMonitor) statusChangeCallback(update *types.ProcessWithChanges)
 			log.Warnw("failed to clean stale votes after process finalization",
 				"processID", update.ProcessID.String(), "error", err.Error())
 		}
+		pm.contracts.RemoveMonitoredProcess(update.ProcessID)
 		return
 	}
-	// Just update the status if is not results
+	// Just update the status for non-results updates.
 	if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
 		update.NewStatus,
 	)); err != nil {
 		log.Warnw("failed to update process status",
 			"processID", update.ProcessID.String(),
 			"error", err.Error())
+	}
+	if update.NewStatus.IsTerminal() {
+		pm.contracts.RemoveMonitoredProcess(update.ProcessID)
 	}
 }
 
