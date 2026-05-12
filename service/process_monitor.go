@@ -33,7 +33,8 @@ type ContractsService interface {
 	CreateProcess(process *types.Process) (types.ProcessID, *common.Hash, error)
 	Process(processID types.ProcessID) (*types.Process, error)
 	ValidVersion(processID types.ProcessID) bool
-	RegisterKnownProcess(processID types.ProcessID)
+	AddActiveProcess(processID types.ProcessID)
+	RemoveActiveProcess(processID types.ProcessID)
 	AccountAddress() common.Address
 	WaitTxByHash(hash common.Hash, timeout time.Duration, cb ...func(error)) error
 	WaitTxByID(id []byte, timeout time.Duration, cb ...func(error)) error
@@ -73,9 +74,9 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 		return fmt.Errorf("service already running")
 	}
 
-	// Initialize known processes from storage before starting monitors
-	if err := pm.initializeKnownProcesses(); err != nil {
-		return fmt.Errorf("failed to initialize known processes: %w", err)
+	// Initialize active processes from storage before starting monitors
+	if err := pm.initializeActiveProcesses(); err != nil {
+		return fmt.Errorf("failed to initialize active processes: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -102,19 +103,19 @@ func (pm *ProcessMonitor) Stop() {
 	}
 }
 
-// initializeKnownProcesses loads all existing process IDs from storage and
-// registers them in the contracts' knownProcesses map. This ensures that after
-// a restart, state transition events for existing processes are not filtered out.
-// It also syncs active processes from the blockchain to catch up on any missed
-// state transitions.
-func (pm *ProcessMonitor) initializeKnownProcesses() error {
+// initializeActiveProcesses loads all existing process IDs from storage and
+// registers the non-terminal ones in the contracts' activeProcesses map. This
+// ensures that after a restart, state transition events for active processes are
+// not filtered out. It also syncs active processes from the blockchain to catch
+// up on any missed state transitions.
+func (pm *ProcessMonitor) initializeActiveProcesses() error {
 	// Get all process IDs from storage
 	processIDs, err := pm.storage.ListProcesses()
 	if err != nil {
 		return fmt.Errorf("failed to list processes: %w", err)
 	}
 
-	// Register each process ID in the contracts' knownProcesses map
+	// Register each active process ID in the contracts' activeProcesses map.
 	registeredCount := 0
 	skippedCount := 0
 	for _, processID := range processIDs {
@@ -127,11 +128,23 @@ func (pm *ProcessMonitor) initializeKnownProcesses() error {
 			skippedCount++
 			continue
 		}
-		pm.contracts.RegisterKnownProcess(processID)
+		process, err := pm.storage.Process(processID)
+		if err != nil {
+			log.Warnw("failed to fetch stored process during active process initialization",
+				"processID", processID.String(),
+				"error", err.Error())
+			skippedCount++
+			continue
+		}
+		if types.IsTerminalProcessStatus(process.Status) {
+			skippedCount++
+			continue
+		}
+		pm.contracts.AddActiveProcess(processID)
 		registeredCount++
 	}
 
-	log.Infow("initialized known processes from storage",
+	log.Infow("initialized active processes from storage",
 		"registeredProcesses", registeredCount,
 		"skippedProcesses", skippedCount,
 		"processIDVersion", fmt.Sprintf("%x", pm.processIDVersion))
@@ -296,17 +309,9 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 	if _, err := pm.storage.Process(*process.ID); err == nil {
 		return
 	}
-	log.Debugw("new process found",
-		"processID", process.ID.String(),
-		"stateRoot", process.StateRoot.HexBytes().String())
 
 	if latestProcess, err := pm.contracts.Process(*process.ID); err == nil {
-		switch latestProcess.Status {
-		case types.ProcessStatusResults, types.ProcessStatusCanceled:
-			log.Infow("skipping process creation event",
-				"processID", process.ID.String(),
-				"creationStatus", process.Status.String(),
-				"latestStatus", latestProcess.Status.String())
+		if types.IsTerminalProcessStatus(latestProcess.Status) {
 			return
 		}
 	} else {
@@ -314,6 +319,10 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 			"processID", process.ID.String(),
 			"error", err.Error())
 	}
+
+	log.Debugw("new active process found",
+		"processID", process.ID.String(),
+		"stateRoot", process.StateRoot.HexBytes().String())
 
 	if process.Census == nil {
 		log.Warnw("skipping process creation without census", "processID", process.ID.String())
@@ -382,6 +391,9 @@ func (pm *ProcessMonitor) statusChangeCallback(update *types.ProcessWithChanges)
 		"processID", update.ProcessID.String(),
 		"old", update.OldStatus.String(),
 		"new", update.NewStatus.String())
+	if types.IsTerminalProcessStatus(update.NewStatus) {
+		defer pm.contracts.RemoveActiveProcess(update.ProcessID)
+	}
 	if update.NewStatus == types.ProcessStatusResults {
 		// For finalization, first fetch and store results, then mark status as
 		// Results. Get the results from the contract.
@@ -411,7 +423,7 @@ func (pm *ProcessMonitor) statusChangeCallback(update *types.ProcessWithChanges)
 		}
 		return
 	}
-	// Just update the status if is not results
+	// Just update the status for non-results updates.
 	if err := pm.storage.UpdateProcess(update.ProcessID, storage.ProcessUpdateCallbackSetStatus(
 		update.NewStatus,
 	)); err != nil {

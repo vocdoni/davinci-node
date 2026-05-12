@@ -43,3 +43,26 @@ func TestNestedMetadata(t *testing.T) {
 		t.Errorf("expected key to be 'value', got %s", keyValue)
 	}
 }
+
+func TestIsTerminalProcessStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		status ProcessStatus
+		want   bool
+	}{
+		{name: "ready", status: ProcessStatusReady, want: false},
+		{name: "ended", status: ProcessStatusEnded, want: false},
+		{name: "paused", status: ProcessStatusPaused, want: false},
+		{name: "canceled", status: ProcessStatusCanceled, want: true},
+		{name: "results", status: ProcessStatusResults, want: true},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsTerminalProcessStatus(tc.status); got != tc.want {
+				t.Fatalf("IsTerminalProcessStatus(%s) = %t, want %t", tc.status, got, tc.want)
+			}
+		})
+	}
+}

@@ -146,7 +146,7 @@ func TestProcessAtBlockUsesHistoricalSnapshot(t *testing.T) {
 		processes:              &npbindings.ProcessRegistry{ProcessRegistryCaller: *processes},
 		currentBlock:           99,
 		currentBlockLastUpdate: time.Now(),
-		knownProcesses:         make(map[types.ProcessID]struct{}),
+		activeProcesses:        make(map[types.ProcessID]struct{}),
 	}
 
 	got, err := contracts.ProcessAtBlock(processID, 42)
@@ -193,7 +193,7 @@ func TestProcessAtBlockUsesCreationSnapshot(t *testing.T) {
 		processes:              &npbindings.ProcessRegistry{ProcessRegistryCaller: *processes},
 		currentBlock:           99,
 		currentBlockLastUpdate: time.Now(),
-		knownProcesses:         make(map[types.ProcessID]struct{}),
+		activeProcesses:        make(map[types.ProcessID]struct{}),
 	}
 
 	got, err := contracts.ProcessAtBlock(processID, 10)
@@ -206,6 +206,30 @@ type testProcessRegistryBackend struct {
 	creation   npbindings.DAVINCITypesProcess
 	historical npbindings.DAVINCITypesProcess
 	latest     npbindings.DAVINCITypesProcess
+}
+
+func TestActiveProcessRegistry(t *testing.T) {
+	c := qt.New(t)
+
+	contracts := &Contracts{
+		activeProcesses: make(map[types.ProcessID]struct{}),
+	}
+
+	pid1 := testutil.RandomProcessID()
+	pid2 := testutil.RandomProcessID()
+
+	c.Assert(contracts.AddActiveProcessIfNew(pid1), qt.IsTrue)
+	c.Assert(contracts.AddActiveProcessIfNew(pid1), qt.IsFalse)
+	contracts.AddActiveProcess(pid2)
+	c.Assert(contracts.activeProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+		pid1: {},
+		pid2: {},
+	})
+
+	contracts.RemoveActiveProcess(pid1)
+	c.Assert(contracts.activeProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+		pid2: {},
+	})
 }
 
 func (b *testProcessRegistryBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {

@@ -47,6 +47,12 @@ func (s ProcessStatus) String() string {
 	}
 }
 
+// IsTerminalProcessStatus reports whether a process status is terminal.
+// Terminal statuses are canceled and results.
+func IsTerminalProcessStatus(status ProcessStatus) bool {
+	return status == ProcessStatusCanceled || status == ProcessStatusResults
+}
+
 type (
 	GenericMetadata    map[string]any
 	MultilingualString map[string]string
