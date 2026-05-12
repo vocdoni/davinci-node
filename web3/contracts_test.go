@@ -146,7 +146,7 @@ func TestProcessAtBlockUsesHistoricalSnapshot(t *testing.T) {
 		processes:              &npbindings.ProcessRegistry{ProcessRegistryCaller: *processes},
 		currentBlock:           99,
 		currentBlockLastUpdate: time.Now(),
-		activeProcesses:        make(map[types.ProcessID]struct{}),
+		monitoredProcesses:     make(map[types.ProcessID]struct{}),
 	}
 
 	got, err := contracts.ProcessAtBlock(processID, 42)
@@ -193,7 +193,7 @@ func TestProcessAtBlockUsesCreationSnapshot(t *testing.T) {
 		processes:              &npbindings.ProcessRegistry{ProcessRegistryCaller: *processes},
 		currentBlock:           99,
 		currentBlockLastUpdate: time.Now(),
-		activeProcesses:        make(map[types.ProcessID]struct{}),
+		monitoredProcesses:     make(map[types.ProcessID]struct{}),
 	}
 
 	got, err := contracts.ProcessAtBlock(processID, 10)
@@ -208,26 +208,26 @@ type testProcessRegistryBackend struct {
 	latest     npbindings.DAVINCITypesProcess
 }
 
-func TestActiveProcessRegistry(t *testing.T) {
+func TestMonitoredProcessRegistry(t *testing.T) {
 	c := qt.New(t)
 
 	contracts := &Contracts{
-		activeProcesses: make(map[types.ProcessID]struct{}),
+		monitoredProcesses: make(map[types.ProcessID]struct{}),
 	}
 
 	pid1 := testutil.RandomProcessID()
 	pid2 := testutil.RandomProcessID()
 
-	c.Assert(contracts.AddActiveProcessIfNew(pid1), qt.IsTrue)
-	c.Assert(contracts.AddActiveProcessIfNew(pid1), qt.IsFalse)
-	contracts.AddActiveProcess(pid2)
-	c.Assert(contracts.activeProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+	c.Assert(contracts.AddMonitoredProcessIfNew(pid1), qt.IsTrue)
+	c.Assert(contracts.AddMonitoredProcessIfNew(pid1), qt.IsFalse)
+	contracts.AddMonitoredProcess(pid2)
+	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
 		pid1: {},
 		pid2: {},
 	})
 
-	contracts.RemoveActiveProcess(pid1)
-	c.Assert(contracts.activeProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+	contracts.RemoveMonitoredProcess(pid1)
+	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
 		pid2: {},
 	})
 }

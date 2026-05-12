@@ -257,7 +257,7 @@ func TestProcessMonitorDoesNotCreateProcessWhenInitialCensusDownloadFails(t *tes
 	c.Assert(err, qt.Equals, storage.ErrNotFound)
 }
 
-func TestProcessMonitorInitializeActiveProcessesRegistersWatchableProcessesOnlyMatchingVersion(t *testing.T) {
+func TestProcessMonitorInitializeMonitoredProcessesRegistersWatchableProcessesOnlyMatchingVersion(t *testing.T) {
 	c := qt.New(t)
 
 	store := storage.New(memdb.New())
@@ -294,8 +294,8 @@ func TestProcessMonitorInitializeActiveProcessesRegistersWatchableProcessesOnlyM
 
 	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
 
-	c.Assert(monitor.initializeActiveProcesses(), qt.IsNil)
-	c.Assert(contracts.activeProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+	c.Assert(monitor.initializeMonitoredProcesses(), qt.IsNil)
+	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
 		activeProcessID:          {},
 		awaitingResultsProcessID: {},
 		endedProcessID:           {},
@@ -303,7 +303,7 @@ func TestProcessMonitorInitializeActiveProcessesRegistersWatchableProcessesOnlyM
 	c.Assert(contracts.processLookups, qt.DeepEquals, []types.ProcessID{activeProcessID})
 }
 
-func TestProcessMonitorRemovesActiveProcessWhenFinalized(t *testing.T) {
+func TestProcessMonitorRemovesMonitoredProcessWhenFinalized(t *testing.T) {
 	c := qt.New(t)
 
 	store := storage.New(memdb.New())
@@ -323,7 +323,7 @@ func TestProcessMonitorRemovesActiveProcessWhenFinalized(t *testing.T) {
 	latest.Status = types.ProcessStatusResults
 	latest.Result = []*types.BigInt{types.NewInt(7)}
 	contracts.SetLatestProcess(latest)
-	contracts.AddActiveProcess(processID)
+	contracts.AddMonitoredProcess(processID)
 
 	monitor.statusChangeCallback(&types.ProcessWithChanges{
 		ProcessID: processID,
@@ -337,10 +337,99 @@ func TestProcessMonitorRemovesActiveProcessWhenFinalized(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	c.Assert(storedProcess.Status, qt.Equals, types.ProcessStatusResults)
 	c.Assert(storedProcess.Result, qt.HasLen, 1)
-	c.Assert(contracts.activeProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{})
+	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{})
 }
 
-func TestProcessMonitorSyncActiveProcessesSkipsForeignVersion(t *testing.T) {
+func TestProcessMonitorKeepsMonitoredProcessWhenFinalizationFetchFails(t *testing.T) {
+	c := qt.New(t)
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
+
+	processID := testMonitorProcessID(defaultMockProcessIDVersion, 13)
+	process := testutil.RandomProcess(processID)
+	process.OrganizationID = contracts.AccountAddress()
+	process.Status = types.ProcessStatusReady
+	c.Assert(store.NewProcess(process), qt.IsNil)
+
+	contracts.AddMonitoredProcess(processID)
+
+	monitor.statusChangeCallback(&types.ProcessWithChanges{
+		ProcessID: processID,
+		StatusChange: &types.StatusChange{
+			OldStatus: types.ProcessStatusReady,
+			NewStatus: types.ProcessStatusResults,
+		},
+	})
+
+	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+		processID: {},
+	})
+}
+
+func TestProcessMonitorKeepsMonitoredProcessWhenFinalizationResultsMissing(t *testing.T) {
+	c := qt.New(t)
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
+
+	processID := testMonitorProcessID(defaultMockProcessIDVersion, 14)
+	process := testutil.RandomProcess(processID)
+	process.OrganizationID = contracts.AccountAddress()
+	process.Status = types.ProcessStatusReady
+	c.Assert(store.NewProcess(process), qt.IsNil)
+
+	latest := cloneProcess(process)
+	latest.Status = types.ProcessStatusResults
+	latest.Result = nil
+	contracts.SetLatestProcess(latest)
+	contracts.AddMonitoredProcess(processID)
+
+	monitor.statusChangeCallback(&types.ProcessWithChanges{
+		ProcessID: processID,
+		StatusChange: &types.StatusChange{
+			OldStatus: types.ProcessStatusReady,
+			NewStatus: types.ProcessStatusResults,
+		},
+	})
+
+	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+		processID: {},
+	})
+}
+
+func TestProcessMonitorKeepsMonitoredProcessWhenTerminalStatusUpdateFails(t *testing.T) {
+	c := qt.New(t)
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
+
+	processID := testMonitorProcessID(defaultMockProcessIDVersion, 15)
+	contracts.AddMonitoredProcess(processID)
+
+	monitor.statusChangeCallback(&types.ProcessWithChanges{
+		ProcessID: processID,
+		StatusChange: &types.StatusChange{
+			OldStatus: types.ProcessStatusReady,
+			NewStatus: types.ProcessStatusCanceled,
+		},
+	})
+
+	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+		processID: {},
+	})
+}
+
+func TestProcessMonitorSyncMonitoredProcessesSkipsForeignVersion(t *testing.T) {
 	c := qt.New(t)
 
 	store := storage.New(memdb.New())
@@ -368,7 +457,7 @@ func TestProcessMonitorSyncActiveProcessesSkipsForeignVersion(t *testing.T) {
 
 	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
 
-	c.Assert(monitor.syncActiveProcessesFromBlockchain(), qt.IsNil)
+	c.Assert(monitor.syncMonitoredProcessesFromBlockchain(), qt.IsNil)
 	c.Assert(contracts.processLookups, qt.DeepEquals, []types.ProcessID{matchingProcessID})
 
 	updatedMatchingProcess, err := store.Process(matchingProcessID)

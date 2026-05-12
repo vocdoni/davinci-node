@@ -45,7 +45,7 @@ func TestNestedMetadata(t *testing.T) {
 	}
 }
 
-func TestIsTerminalProcessStatus(t *testing.T) {
+func TestProcessStatusIsTerminal(t *testing.T) {
 	tests := []struct {
 		name   string
 		status ProcessStatus
@@ -61,8 +61,8 @@ func TestIsTerminalProcessStatus(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			if got := IsTerminalProcessStatus(tc.status); got != tc.want {
-				t.Fatalf("IsTerminalProcessStatus(%s) = %t, want %t", tc.status, got, tc.want)
+			if got := tc.status.IsTerminal(); got != tc.want {
+				t.Fatalf("IsTerminal() = %t, want %t", got, tc.want)
 			}
 		})
 	}

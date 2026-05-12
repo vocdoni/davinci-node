@@ -22,22 +22,22 @@ var (
 
 // MockContracts implements a mock version of web3.Contracts for testing
 type MockContracts struct {
-	processes       []*types.Process
-	latestProcesses map[types.ProcessID]*types.Process
-	blobs           map[common.Hash]*types.Blob
-	activeProcesses map[types.ProcessID]struct{}
-	processLookups  []types.ProcessID
-	chanPWC         chan *types.ProcessWithChanges
-	mu              sync.Mutex
+	processes          []*types.Process
+	latestProcesses    map[types.ProcessID]*types.Process
+	blobs              map[common.Hash]*types.Blob
+	monitoredProcesses map[types.ProcessID]struct{}
+	processLookups     []types.ProcessID
+	chanPWC            chan *types.ProcessWithChanges
+	mu                 sync.Mutex
 }
 
 func NewMockContracts() *MockContracts {
 	return &MockContracts{
-		processes:       make([]*types.Process, 0),
-		latestProcesses: make(map[types.ProcessID]*types.Process),
-		blobs:           make(map[common.Hash]*types.Blob),
-		activeProcesses: make(map[types.ProcessID]struct{}),
-		chanPWC:         make(chan *types.ProcessWithChanges),
+		processes:          make([]*types.Process, 0),
+		latestProcesses:    make(map[types.ProcessID]*types.Process),
+		blobs:              make(map[common.Hash]*types.Blob),
+		monitoredProcesses: make(map[types.ProcessID]struct{}),
+		chanPWC:            make(chan *types.ProcessWithChanges),
 	}
 }
 
@@ -108,21 +108,21 @@ func (m *MockContracts) ValidVersion(processID types.ProcessID) bool {
 	return true
 }
 
-func (m *MockContracts) AddActiveProcess(processID types.ProcessID) {
+func (m *MockContracts) AddMonitoredProcess(processID types.ProcessID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.activeProcesses == nil {
-		m.activeProcesses = make(map[types.ProcessID]struct{})
+	if m.monitoredProcesses == nil {
+		m.monitoredProcesses = make(map[types.ProcessID]struct{})
 	}
-	m.activeProcesses[processID] = struct{}{}
+	m.monitoredProcesses[processID] = struct{}{}
 }
 
-func (m *MockContracts) RemoveActiveProcess(processID types.ProcessID) {
+func (m *MockContracts) RemoveMonitoredProcess(processID types.ProcessID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	delete(m.activeProcesses, processID)
+	delete(m.monitoredProcesses, processID)
 }
 
 func (m *MockContracts) BlobsByTxHash(ctx context.Context, txHash common.Hash,

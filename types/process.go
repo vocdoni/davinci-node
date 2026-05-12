@@ -47,10 +47,10 @@ func (s ProcessStatus) String() string {
 	}
 }
 
-// IsTerminalProcessStatus reports whether a process status is terminal.
+// IsTerminal reports whether the process status is terminal.
 // Terminal statuses are canceled and results.
-func IsTerminalProcessStatus(status ProcessStatus) bool {
-	return status == ProcessStatusCanceled || status == ProcessStatusResults
+func (s ProcessStatus) IsTerminal() bool {
+	return s == ProcessStatusCanceled || s == ProcessStatusResults
 }
 
 type (

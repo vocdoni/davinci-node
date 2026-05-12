@@ -37,12 +37,12 @@ func (c *Contracts) NewProcessFilter(ctx context.Context, start, end uint64, ch 
 		}
 		// Terminal processes are never trackable. Non-terminal processes remain
 		// in the watch set so later status changes still flow through the monitor.
-		if types.IsTerminalProcessStatus(process.Status) {
+		if process.Status.IsTerminal() {
 			continue
 		}
 		// Try to add the process ID to the watch list. If it already exists,
 		// skip.
-		if !c.AddActiveProcessIfNew(iter.Event.ProcessId) {
+		if !c.AddMonitoredProcessIfNew(iter.Event.ProcessId) {
 			continue
 		}
 		// Emit the new process event
@@ -58,7 +58,7 @@ func (c *Contracts) NewProcessFilter(ctx context.Context, start, end uint64, ch 
 
 // ProcessStatusFilter monitors changes in process status.
 func (c *Contracts) ProcessStatusFilter(ctx context.Context, start, end uint64, ch chan<- *types.ProcessWithChanges) error {
-	iter, err := c.processes.FilterProcessStatusChanged(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, c.activePIDs())
+	iter, err := c.processes.FilterProcessStatusChanged(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, c.monitoredPIDs())
 	if err != nil || iter == nil {
 		return fmt.Errorf("failed to filter status change updated events: %w", err)
 	}
@@ -76,7 +76,7 @@ func (c *Contracts) ProcessStatusFilter(ctx context.Context, start, end uint64, 
 
 // ProcessStateRootFilter monitors changes in process state root.
 func (c *Contracts) ProcessStateRootFilter(ctx context.Context, start, end uint64, ch chan<- *types.ProcessWithChanges) error {
-	iter, err := c.processes.FilterProcessStateTransitioned(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, c.activePIDs(), nil)
+	iter, err := c.processes.FilterProcessStateTransitioned(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, c.monitoredPIDs(), nil)
 	if err != nil || iter == nil {
 		return fmt.Errorf("failed to filter state root updated events: %w", err)
 	}
@@ -97,7 +97,7 @@ func (c *Contracts) ProcessStateRootFilter(ctx context.Context, start, end uint6
 
 // ProcessMaxVotersFilter monitors changes in process max voters.
 func (c *Contracts) ProcessMaxVotersFilter(ctx context.Context, start, end uint64, ch chan<- *types.ProcessWithChanges) error {
-	iter, err := c.processes.FilterProcessMaxVotersChanged(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, c.activePIDs())
+	iter, err := c.processes.FilterProcessMaxVotersChanged(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, c.monitoredPIDs())
 	if err != nil || iter == nil {
 		return fmt.Errorf("failed to filter max voters updated events: %w", err)
 	}
@@ -114,7 +114,7 @@ func (c *Contracts) ProcessMaxVotersFilter(ctx context.Context, start, end uint6
 
 // ProcessCensusRootFilter monitors changes in process census root.
 func (c *Contracts) ProcessCensusRootFilter(ctx context.Context, start, end uint64, ch chan<- *types.ProcessWithChanges) error {
-	iter, err := c.processes.FilterCensusUpdated(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, c.activePIDs())
+	iter, err := c.processes.FilterCensusUpdated(&bind.FilterOpts{Start: start, End: &end, Context: ctx}, c.monitoredPIDs())
 	if err != nil || iter == nil {
 		return fmt.Errorf("failed to filter census updated events: %w", err)
 	}
