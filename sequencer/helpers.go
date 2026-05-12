@@ -3,9 +3,12 @@ package sequencer
 import (
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/state"
+	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -56,4 +59,58 @@ func (s *Sequencer) currentProcessState(processID types.ProcessID) (*state.State
 		"currentRoot", currentRoot.String())
 
 	return st, nil
+}
+
+// filterBallotsByCensus returns only the ballots whose voter address is
+// present in the process census tree. Ballots with absent addresses are
+// discarded and logged at WARN level. If the census tree is unavailable
+// (no root), an error is returned so the caller can retry rather than
+// silently discarding all ballots.
+//
+// For CSP-based censuses no local merkle lookup is possible; all ballots
+// are returned unchanged.
+func (s *Sequencer) filterBallotsByCensus(processID types.ProcessID, ballots []*storage.AggregatorBallot) ([]*storage.AggregatorBallot, error) {
+	process, err := s.stg.Process(processID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get process metadata: %w", err)
+	}
+	if !process.Census.CensusOrigin.IsMerkleTree() {
+		// CSP censuses are verified via the embedded proof; no local tree to query.
+		return ballots, nil
+	}
+
+	var chainID uint64
+	if process.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+		contracts, err := s.contractsForProcess(processID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve contracts for process %s: %w", processID.String(), err)
+		}
+		chainID = contracts.ChainID
+	}
+	censusRef, err := s.stg.LoadCensus(chainID, process.Census)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load census for process %s: %w", processID.String(), err)
+	}
+	censusTree := censusRef.Tree()
+	if _, ok := censusTree.Root(); !ok {
+		return nil, fmt.Errorf("census tree has no root for process %s (censusRoot=%s)",
+			processID.String(), process.Census.CensusRoot.String())
+	}
+
+	filtered := make([]*storage.AggregatorBallot, 0, len(ballots))
+	for _, b := range ballots {
+		addr := common.BigToAddress(b.Address)
+		if _, err := censusTree.GenerateProof(addr); err != nil {
+			if strings.Contains(err.Error(), "not found in census") {
+				log.Warnw("address not found in census, skipping ballot",
+					"processID", processID.String(),
+					"address", addr.Hex(),
+				)
+				continue
+			}
+			return nil, fmt.Errorf("census lookup failed for address %s: %w", addr.Hex(), err)
+		}
+		filtered = append(filtered, b)
+	}
+	return filtered, nil
 }
