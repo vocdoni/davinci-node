@@ -166,9 +166,9 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 			skippedCount++
 			continue
 		}
-		// Check if process is alive on-chain (has state root, not expired, Ready status)
-		// This does NOT check RegisteredForSequencing — the sync runs at startup
-		// before the sequencer registers any processes.
+		// Check if process is alive on-chain (has state root, not expired,
+		// Ready status) This does NOT check RegisteredForSequencing — the sync
+		// runs at startup before the sequencer registers any processes.
 		isAlive, err := pm.storage.ProcessIsOnChainAlive(processID)
 		if err != nil || !isAlive {
 			continue
@@ -194,7 +194,8 @@ func (pm *ProcessMonitor) syncActiveProcessesFromBlockchain() error {
 		if !localProcess.StateRoot.Equal(blockchainProcess.StateRoot) ||
 			!localProcess.VotersCount.Equal(blockchainProcess.VotersCount) ||
 			!localProcess.OverwrittenVotesCount.Equal(blockchainProcess.OverwrittenVotesCount) {
-			// Use ProcessUpdateCallbackSetStateRoot to set absolute values from blockchain
+			// Use ProcessUpdateCallbackSetStateRoot to set absolute values from
+			// blockchain
 			if err := pm.storage.UpdateProcess(processID,
 				storage.ProcessUpdateCallbackSetStateRoot(
 					blockchainProcess.StateRoot,
@@ -331,14 +332,13 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 			"censusRoot", p.Census.CensusRoot.String())
 	}
 
-	// If the process is ready, download census and import it
-	// first, then store the process. If not, just store the process
-	// directly.
-	if process.Status == types.ProcessStatusReady {
+	// If the process is active, download census and import it first, then store
+	// the process. If not, just store the process directly.
+	if process.IsActive() {
 		go func(process *types.Process) {
-			// Keep one census copy for the async downloader queue and a
-			// separate one for process state updates so the monitor does
-			// not race with worker goroutines over the same struct.
+			// Keep one census copy for the async downloader queue and a separate
+			// one for process state updates so the monitor does not race with
+			// worker goroutines over the same struct.
 			queuedCensus := process.Census.Clone()
 			processCensus := process.Census.Clone()
 
@@ -362,9 +362,9 @@ func (pm *ProcessMonitor) newProcessCallback(ctx context.Context, update *types.
 					processSetup(process)
 					return
 				}
-				// If the initial census download fails, skip process
-				// setup entirely. A process must not be created without
-				// a successful initial census import.
+				// If the initial census download fails, skip process setup
+				// entirely. A process must not be created without a successful
+				// initial census import.
 				log.Warnw("failed to download census for new process",
 					"processID", process.ID.String(),
 					"censusRoot", processCensus.CensusRoot.String(),
@@ -383,9 +383,8 @@ func (pm *ProcessMonitor) statusChangeCallback(update *types.ProcessWithChanges)
 		"old", update.OldStatus.String(),
 		"new", update.NewStatus.String())
 	if update.NewStatus == types.ProcessStatusResults {
-		// For finalization, first fetch and store results, then
-		// mark status as Results. Get the results from the
-		// contract.
+		// For finalization, first fetch and store results, then mark status as
+		// Results. Get the results from the contract.
 		process, err := pm.contracts.Process(update.ProcessID)
 		if err != nil {
 			log.Warnw("failed to fetch process from contract",
@@ -393,8 +392,7 @@ func (pm *ProcessMonitor) statusChangeCallback(update *types.ProcessWithChanges)
 				"error", err.Error())
 			return
 		}
-		// Ensure that results are actually present before updating
-		// storage.
+		// Ensure that results are actually present before updating storage.
 		if len(process.Result) == 0 {
 			log.Warnw("process results not yet available; skipping finalization update",
 				"processID", update.ProcessID.String())
@@ -489,8 +487,8 @@ func (pm *ProcessMonitor) censusRootChangeCallback(ctx context.Context, update *
 				"error", err.Error())
 			return
 		}
-		// wait for census to be downloaded and imported, then update
-		// process census info
+		// wait for census to be downloaded and imported, then update process
+		// census info
 		downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
 		pm.censusDownloader.OnCensusDownloaded(pid, censusInfo, downloadCtx, func(err error) {
 			defer downloadCtxCancel()
