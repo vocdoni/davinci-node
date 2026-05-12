@@ -3,6 +3,7 @@ package sequencer
 import (
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/consensys/gnark/backend/groth16"
@@ -107,9 +108,16 @@ func (s *Sequencer) processPendingTransitions() {
 		for i, b := range batch.Ballots {
 			censusProofs[i] = b.CensusProof
 		}
-		censusRoot, circuitCensusProofs, err := s.processCensusProofs(batch.ProcessID, reencryptedVotes, censusProofs)
+		censusRoot, circuitCensusProofs, reencryptedVotes, err := s.processCensusProofs(batch.ProcessID, reencryptedVotes, censusProofs)
 		if err != nil {
 			log.Errorw(err, "failed to get census proofs")
+			s.markAggregatorBatchFailed(batchID)
+			return true // Continue to next process ID
+		}
+		if len(reencryptedVotes) == 0 {
+			log.Errorw(fmt.Errorf("all votes in batch were skipped due to census proof failures"),
+				"failed state transition batch",
+				"processID", processID.String())
 			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
@@ -372,11 +380,11 @@ func (s *Sequencer) processCensusProofs(
 	processID types.ProcessID,
 	votes []*state.Vote,
 	censusProofs []*types.CensusProof,
-) (*types.BigInt, *statetransition.CensusProofs, error) {
+) (*types.BigInt, *statetransition.CensusProofs, []*state.Vote, error) {
 	// get the process from the storage
 	process, err := s.stg.Process(processID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get process metadata: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get process metadata: %w", err)
 	}
 
 	var root *big.Int
@@ -390,34 +398,48 @@ func (s *Sequencer) processCensusProofs(
 		if process.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
 			contracts, err := s.contractsForProcess(processID)
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed to resolve contracts for process %s: %w", processID.String(), err)
+				return nil, nil, nil, fmt.Errorf("failed to resolve contracts for process %s: %w", processID.String(), err)
 			}
 			chainID = contracts.ChainID
 		}
 		censusRef, err = s.stg.LoadCensus(chainID, process.Census)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to load census for process %s: %w", processID.String(), err)
+			return nil, nil, nil, fmt.Errorf("failed to load census for process %s: %w", processID.String(), err)
 		}
 		// get the merkle tree and its root
 		censusTree := censusRef.Tree()
 		var ok bool
 		if root, ok = censusTree.Root(); !ok {
-			log.Warnw("census tree has no root?", "censusRoot", process.Census.CensusRoot.String(), "fetchedRoot", root.String())
+			log.Warnw("census tree has no root?", "censusRoot", process.Census.CensusRoot.String(), "fetchedRoot", root)
 		}
-		// iterate over the votes to generate the merkle proofs of each voter
-		for i := range params.VotesPerBatch {
-			if i < len(votes) {
-				addr := common.BigToAddress(votes[i].Address)
-				proof, err := censusTree.GenerateProof(addr)
-				if err != nil {
-					return nil, nil, fmt.Errorf("error generating census proof for address %s: %w", addr.Hex(), err)
+		// iterate over the votes to generate the merkle proofs of each voter;
+		// skip any vote whose address is absent from the census tree.
+		filteredVotes := make([]*state.Vote, 0, len(votes))
+		proofIdx := 0
+		for _, v := range votes {
+			addr := common.BigToAddress(v.Address)
+			proof, err := censusTree.GenerateProof(addr)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found in census") {
+					log.Warnw("address not found in census, skipping ballot",
+						"processID", processID.String(),
+						"address", addr.Hex(),
+					)
+					continue
 				}
-				merkleProofs[i] = imtcircuit.CensusProofToMerkleProof(proof)
-			} else {
-				merkleProofs[i] = statetransition.DummyMerkleProof()
+				return nil, nil, nil, fmt.Errorf("error generating census proof for address %s: %w", addr.Hex(), err)
 			}
+			filteredVotes = append(filteredVotes, v)
+			merkleProofs[proofIdx] = imtcircuit.CensusProofToMerkleProof(proof)
+			proofIdx++
+		}
+		for i := proofIdx; i < params.VotesPerBatch; i++ {
+			merkleProofs[i] = statetransition.DummyMerkleProof()
+		}
+		for i := range params.VotesPerBatch {
 			cspProofs[i] = statetransition.DummyCSPProof()
 		}
+		votes = filteredVotes
 	case process.Census.CensusOrigin.IsCSP():
 		// iterate over the votes to get the CSP proofs
 		root = process.Census.CensusRoot.BigInt().MathBigInt()
@@ -425,7 +447,7 @@ func (s *Sequencer) processCensusProofs(
 			if i < len(votes) {
 				proof, err := csp.CensusProofToCSPProof(process.Census.CensusOrigin.CurveID(), censusProofs[i])
 				if err != nil {
-					return nil, nil, fmt.Errorf("error transforming census proof for address %s: %w", common.BigToAddress(votes[i].Address).Hex(), err)
+					return nil, nil, nil, fmt.Errorf("error transforming census proof for address %s: %w", common.BigToAddress(votes[i].Address).Hex(), err)
 				}
 				cspProofs[i] = *proof
 			} else {
@@ -434,10 +456,10 @@ func (s *Sequencer) processCensusProofs(
 			merkleProofs[i] = statetransition.DummyMerkleProof()
 		}
 	default:
-		return nil, nil, fmt.Errorf("unsupported census origin: %s", process.Census.CensusOrigin.String())
+		return nil, nil, nil, fmt.Errorf("unsupported census origin: %s", process.Census.CensusOrigin.String())
 	}
 	return new(types.BigInt).SetBigInt(root), &statetransition.CensusProofs{
 		MerkleProofs: merkleProofs,
 		CSPProofs:    cspProofs,
-	}, nil
+	}, votes, nil
 }
