@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark/constraint/solver"
+	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/emulated"
 )
 
@@ -81,6 +82,20 @@ func splitNativeHint(_ *big.Int, nativeIn, emuOut []*big.Int) error {
 	}
 	emuOut[0].Set(nativeIn[0]) // vBN254 < pBLS so direct copy is safe
 	return nil
+}
+
+// hintNativeToEmu converts a native BN254 variable to an emulated element
+// using the copyNativeToEmu hint.
+// It is important to verify that the native input matches the emulated output
+// to ensure soundness, in the circuit.
+func hintNativeToEmu(_ frontend.API, fr *emulated.Field[FE],
+	vNat frontend.Variable,
+) (*emulated.Element[FE], error) {
+	emu, err := fr.NewHintWithNativeInput(copyNativeToEmu, 1, vNat)
+	if err != nil {
+		return nil, err
+	}
+	return emu[0], nil
 }
 
 // copyNativeToEmu is a gnark hint that copies a native BN254 variable
