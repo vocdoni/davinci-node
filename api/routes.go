@@ -13,12 +13,13 @@ const (
 	PingEndpoint = "/ping" // Health check endpoint
 
 	// Process endpoints
-	ProcessURLParam           = "processId"                                                                   // URL parameter for process ID
-	AddressURLParam           = "address"                                                                     // URL parameter for address
-	ProcessesEndpoint         = "/processes"                                                                  // GET: List processes, POST: Create process
-	ProcessEndpoint           = "/processes/{" + ProcessURLParam + "}"                                        // GET: Get process info
-	CensusParticipantEndpoint = "/processes/{" + ProcessURLParam + "}/participants/{" + AddressURLParam + "}" // GET: Get participant info for a process
-	NewEncryptionKeysEndpoint = "/processes/keys"                                                             // POST: Create new encryption keys for a process
+	ProcessURLParam            = "processId"                                                                   // URL parameter for process ID
+	AddressURLParam            = "address"                                                                     // URL parameter for address
+	ProcessesEndpoint          = "/processes"                                                                  // GET: List processes, POST: Create process
+	ProcessEndpoint            = "/processes/{" + ProcessURLParam + "}"                                        // GET: Get process info
+	CensusParticipantsEndpoint = "/processes/{" + ProcessURLParam + "}/participants"                           // GET: Get all participants info for a process
+	CensusParticipantEndpoint  = "/processes/{" + ProcessURLParam + "}/participants/{" + AddressURLParam + "}" // GET: Get participant info for a process
+	NewEncryptionKeysEndpoint  = "/processes/keys"                                                             // POST: Create new encryption keys for a process
 
 	// Vote endpoints
 	VotesEndpoint = "/votes" // POST: Submit a vote

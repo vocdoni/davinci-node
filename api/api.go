@@ -159,6 +159,8 @@ func (a *API) registerHandlers() {
 	a.router.Get(ProcessesEndpoint, a.processList)
 	log.Infow("register handler", "endpoint", CensusParticipantEndpoint, "method", "GET")
 	a.router.Get(CensusParticipantEndpoint, a.processParticipant)
+	log.Infow("register handler", "endpoint", CensusParticipantsEndpoint, "method", "GET")
+	a.router.Get(CensusParticipantsEndpoint, a.processParticipants)
 	log.Infow("register handler", "endpoint", NewEncryptionKeysEndpoint, "method", "POST")
 	a.router.Post(NewEncryptionKeysEndpoint, a.processEncryptionKeys)
 
