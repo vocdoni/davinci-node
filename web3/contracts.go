@@ -96,8 +96,8 @@ type Contracts struct {
 	currentBlockLastUpdate time.Time
 	currentBlockMutex      sync.Mutex
 
-	knownProcesses                map[types.ProcessID]struct{}
-	knownProcessesMutex           sync.RWMutex
+	monitoredProcesses            map[types.ProcessID]struct{}
+	monitoredProcessesMutex       sync.RWMutex
 	lastWatchProcessCreationBlock uint64
 	lastWatchProcessChangesBlock  uint64
 	watchBlockMutex               sync.RWMutex
@@ -111,7 +111,7 @@ type Contracts struct {
 }
 
 // New creates a new Contracts instance with the given web3 endpoints.
-// It initializes the web3 pool and the client, and sets up the known processes
+// It initializes the web3 pool and the client, and sets up the monitored process set.
 func New(web3rpcs []string, web3cApi string, gasMultiplier float64) (*Contracts, error) {
 	w3pool := rpc.NewWeb3Pool()
 	var chainID *uint64
@@ -170,7 +170,7 @@ func New(web3rpcs []string, web3cApi string, gasMultiplier float64) (*Contracts,
 		cli:                           cli,
 		Web3ConsensusAPIEndpoint:      web3cApi,
 		GasMultiplier:                 gasMultiplier,
-		knownProcesses:                make(map[types.ProcessID]struct{}),
+		monitoredProcesses:            make(map[types.ProcessID]struct{}),
 		knownOrganizations:            make(map[string]struct{}),
 		lastWatchProcessCreationBlock: uint64(startBlock),
 		lastWatchProcessChangesBlock:  uint64(startBlock),
@@ -651,36 +651,49 @@ func (c *Contracts) ResultsVerifierAddress() (string, error) {
 	return npbindings.GetContractAddress(npbindings.ResultsVerifierGroth16Contract, chainName), nil
 }
 
-// RegisterKnownProcess adds a process ID to the knownProcesses map.
-// This is used during initialization to register processes that were
-// created before the monitor started, ensuring their events are not filtered out.
-func (c *Contracts) RegisterKnownProcess(processID types.ProcessID) {
-	c.knownProcessesMutex.Lock()
-	defer c.knownProcessesMutex.Unlock()
-	c.knownProcesses[processID] = struct{}{}
+// AddMonitoredProcess adds a process ID to the monitoredProcesses map.
+// This is used during initialization to seed processes that should still be
+// tracked before the monitor starts, ensuring their events are not filtered out.
+func (c *Contracts) AddMonitoredProcess(processID types.ProcessID) {
+	c.monitoredProcessesMutex.Lock()
+	defer c.monitoredProcessesMutex.Unlock()
+	if c.monitoredProcesses == nil {
+		c.monitoredProcesses = make(map[types.ProcessID]struct{})
+	}
+	c.monitoredProcesses[processID] = struct{}{}
 }
 
-// RegisterUnknownProcess adds a process ID to the knownProcesses map, but
-// only if it's not already there. It returns true if the process ID was added
-// and false otherwise.
-func (c *Contracts) RegisterUnknownProcess(processID types.ProcessID) bool {
-	c.knownProcessesMutex.Lock()
-	defer c.knownProcessesMutex.Unlock()
+// AddMonitoredProcessIfNew adds a process ID to the monitoredProcesses map, but only
+// if it's not already there. It returns true if the process ID was added and
+// false otherwise.
+func (c *Contracts) AddMonitoredProcessIfNew(processID types.ProcessID) bool {
+	c.monitoredProcessesMutex.Lock()
+	defer c.monitoredProcessesMutex.Unlock()
+	if c.monitoredProcesses == nil {
+		c.monitoredProcesses = make(map[types.ProcessID]struct{})
+	}
 
-	if _, exists := c.knownProcesses[processID]; exists {
+	if _, exists := c.monitoredProcesses[processID]; exists {
 		return false
 	}
-	c.knownProcesses[processID] = struct{}{}
+	c.monitoredProcesses[processID] = struct{}{}
 	return true
 }
 
-// knownPIDs returns a slice of known process IDs as [types.ProcessIDLen]byte arrays, ready to
+// RemoveMonitoredProcess removes a process ID from the monitoredProcesses map.
+func (c *Contracts) RemoveMonitoredProcess(processID types.ProcessID) {
+	c.monitoredProcessesMutex.Lock()
+	defer c.monitoredProcessesMutex.Unlock()
+	delete(c.monitoredProcesses, processID)
+}
+
+// monitoredPIDs returns a slice of monitored process IDs as [types.ProcessIDLen]byte arrays, ready to
 // be used as filter topics.
-func (c *Contracts) knownPIDs() [][types.ProcessIDLen]byte {
-	c.knownProcessesMutex.RLock()
-	defer c.knownProcessesMutex.RUnlock()
-	pids := make([][types.ProcessIDLen]byte, 0, len(c.knownProcesses))
-	for processID := range c.knownProcesses {
+func (c *Contracts) monitoredPIDs() [][types.ProcessIDLen]byte {
+	c.monitoredProcessesMutex.RLock()
+	defer c.monitoredProcessesMutex.RUnlock()
+	pids := make([][types.ProcessIDLen]byte, 0, len(c.monitoredProcesses))
+	for processID := range c.monitoredProcesses {
 		pids = append(pids, processID)
 	}
 	return pids

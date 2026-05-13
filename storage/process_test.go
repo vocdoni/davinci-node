@@ -3,11 +3,13 @@ package storage
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestProcess(t *testing.T) {
@@ -86,4 +88,53 @@ func TestNewProcessRejectsNilCensus(t *testing.T) {
 	err = st.NewProcess(process)
 	c.Assert(err, qt.Not(qt.IsNil))
 	c.Assert(err.Error(), qt.Contains, "no census provided")
+}
+
+func TestProcessIsOnChainAliveAcceptsPausedProcess(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	process := testutil.RandomProcess(testutil.DeterministicProcessID(44))
+	process.Status = types.ProcessStatusPaused
+	process.StartTime = time.Now().Add(-time.Minute)
+	process.Duration = 2 * time.Hour
+
+	err = st.NewProcess(process)
+	c.Assert(err, qt.IsNil)
+
+	ok, err := st.ProcessIsOnChainAlive(*process.ID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(ok, qt.IsTrue)
+}
+
+func TestProcessIsAcceptingVotesRejectsPausedProcess(t *testing.T) {
+	c := qt.New(t)
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "db")
+
+	db, err := metadb.New(db.TypePebble, dbPath)
+	c.Assert(err, qt.IsNil)
+
+	st := New(db)
+	defer st.Close()
+
+	process := testutil.RandomProcess(testutil.DeterministicProcessID(45))
+	process.Status = types.ProcessStatusPaused
+	process.RegisteredForSequencing = true
+	process.StartTime = time.Now().Add(-time.Minute)
+	process.Duration = 2 * time.Hour
+
+	err = st.NewProcess(process)
+	c.Assert(err, qt.IsNil)
+
+	ok, err := st.ProcessIsAcceptingVotes(*process.ID)
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(ok, qt.IsFalse)
 }

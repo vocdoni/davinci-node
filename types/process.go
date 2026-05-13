@@ -47,6 +47,12 @@ func (s ProcessStatus) String() string {
 	}
 }
 
+// IsTerminal reports whether the process status is terminal.
+// Terminal statuses are canceled and results.
+func (s ProcessStatus) IsTerminal() bool {
+	return s == ProcessStatusCanceled || s == ProcessStatusResults
+}
+
 type (
 	GenericMetadata    map[string]any
 	MultilingualString map[string]string
@@ -177,14 +183,15 @@ type Process struct {
 	RegisteredForSequencing bool                  `json:"-"                        cbor:"17,keyasint,omitempty"` // It should be omitted from JSON serialization
 }
 
-// IsActive returns true if the process is active which means that it has a status of ProcessStatusReady
-// and the current time is before the start time plus the duration
+// IsActive returns true if the process is active, which means that it has a
+// status of ProcessStatusReady or ProcessStatusPaused and the current time is
+// before the start time plus the duration.
 func (p *Process) IsActive() bool {
 	if p == nil {
 		return false
 	}
 	endTime := p.StartTime.Add(p.Duration)
-	return p.Status == ProcessStatusReady && time.Now().Before(endTime)
+	return (p.Status == ProcessStatusReady || p.Status == ProcessStatusPaused) && time.Now().Before(endTime)
 }
 
 type SequencerProcessStats struct {

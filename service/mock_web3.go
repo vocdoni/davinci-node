@@ -25,7 +25,7 @@ type MockContracts struct {
 	processes          []*types.Process
 	latestProcesses    map[types.ProcessID]*types.Process
 	blobs              map[common.Hash]*types.Blob
-	registeredKnownIDs []types.ProcessID
+	monitoredProcesses map[types.ProcessID]struct{}
 	processLookups     []types.ProcessID
 	chanPWC            chan *types.ProcessWithChanges
 	mu                 sync.Mutex
@@ -33,10 +33,11 @@ type MockContracts struct {
 
 func NewMockContracts() *MockContracts {
 	return &MockContracts{
-		processes:       make([]*types.Process, 0),
-		latestProcesses: make(map[types.ProcessID]*types.Process),
-		blobs:           make(map[common.Hash]*types.Blob),
-		chanPWC:         make(chan *types.ProcessWithChanges),
+		processes:          make([]*types.Process, 0),
+		latestProcesses:    make(map[types.ProcessID]*types.Process),
+		blobs:              make(map[common.Hash]*types.Blob),
+		monitoredProcesses: make(map[types.ProcessID]struct{}),
+		chanPWC:            make(chan *types.ProcessWithChanges),
 	}
 }
 
@@ -107,11 +108,21 @@ func (m *MockContracts) ValidVersion(processID types.ProcessID) bool {
 	return true
 }
 
-func (m *MockContracts) RegisterKnownProcess(processID types.ProcessID) {
+func (m *MockContracts) AddMonitoredProcess(processID types.ProcessID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.registeredKnownIDs = append(m.registeredKnownIDs, processID)
+	if m.monitoredProcesses == nil {
+		m.monitoredProcesses = make(map[types.ProcessID]struct{})
+	}
+	m.monitoredProcesses[processID] = struct{}{}
+}
+
+func (m *MockContracts) RemoveMonitoredProcess(processID types.ProcessID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.monitoredProcesses, processID)
 }
 
 func (m *MockContracts) BlobsByTxHash(ctx context.Context, txHash common.Hash,

@@ -165,7 +165,7 @@ func (s *Storage) ListProcesses() ([]types.ProcessID, error) {
 }
 
 // ProcessIsOnChainAlive checks whether the process is considered alive by
-// on-chain criteria (state root, not expired, Ready status) without requiring
+// on-chain criteria (state root plus active status) without requiring
 // sequencer registration. This is used for startup blockchain catch-up.
 func (s *Storage) ProcessIsOnChainAlive(processID types.ProcessID) (bool, error) {
 	stgProcess, err := s.Process(processID)
@@ -187,22 +187,18 @@ func (s *Storage) ProcessIsAcceptingVotes(processID types.ProcessID) (bool, erro
 }
 
 // processIsOnChainAlive checks whether the process is considered alive by
-// on-chain criteria: it has a state root, is not expired, and is in the Ready
-// state. This is the core validity check used by the process monitor during
-// blockchain catch-up — it intentionally omits the RegisteredForSequencing
-// check so that startup sync works before the sequencer registers processes.
+// on-chain criteria: it has a state root and is active. This is the core
+// validity check used by the process monitor during blockchain catch-up — it
+// intentionally omits the RegisteredForSequencing check so that startup sync
+// works before the sequencer registers processes.
 func (s *Storage) processIsOnChainAlive(processID types.ProcessID, stgProcess *types.Process) (bool, error) {
 	// Check that the process has a state root
 	if stgProcess.StateRoot == nil {
 		return false, fmt.Errorf("process %s has no state root", processID.String())
 	}
-	// Check if process has expired
-	if stgProcess.StartTime.Add(stgProcess.Duration).Before(time.Now()) {
-		return false, fmt.Errorf("process %s has expired", processID.String())
-	}
-	// Check if process is in ready state
-	if stgProcess.Status != types.ProcessStatusReady {
-		return false, fmt.Errorf("process %s status: %s", processID.String(), stgProcess.Status)
+	// Check if process is still active.
+	if !stgProcess.IsActive() {
+		return false, fmt.Errorf("process %s is not active", processID.String())
 	}
 	return true, nil
 }
@@ -213,6 +209,10 @@ func (s *Storage) processIsOnChainAlive(processID types.ProcessID, stgProcess *t
 func (s *Storage) processIsAcceptingVotes(processID types.ProcessID, stgProcess *types.Process) (bool, error) {
 	if ok, err := s.processIsOnChainAlive(processID, stgProcess); !ok {
 		return ok, err
+	}
+	// Accepting votes requires a ready process, not a paused one.
+	if stgProcess.Status != types.ProcessStatusReady {
+		return false, fmt.Errorf("process %s status: %s", processID.String(), stgProcess.Status)
 	}
 	// Check if process is registered for sequencing
 	if !stgProcess.RegisteredForSequencing {
