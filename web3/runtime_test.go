@@ -6,6 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
 func TestNewNetworkRuntime(t *testing.T) {
@@ -16,6 +17,7 @@ func TestNewNetworkRuntime(t *testing.T) {
 		ContractsAddresses: &Addresses{
 			ProcessRegistry: common.HexToAddress("0x015eac820688da203a0bd730a8a7a4cdb97e1a02"),
 		},
+		web3pool: rpc.NewWeb3Pool(),
 	}
 
 	runtime, err := NewNetworkRuntime(contracts, nil)
@@ -151,6 +153,7 @@ func testRuntime(c *qt.C, chainID uint64, processRegistry string) *NetworkRuntim
 		ContractsAddresses: &Addresses{
 			ProcessRegistry: common.HexToAddress(processRegistry),
 		},
+		web3pool: rpc.NewWeb3Pool(),
 	}
 	runtime, err := NewNetworkRuntime(contracts, nil)
 	c.Assert(err, qt.IsNil)

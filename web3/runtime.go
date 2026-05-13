@@ -41,6 +41,16 @@ type NetworkRuntime struct {
 	TxManager        *txmanager.TxManager
 }
 
+// AvailableEndpoints returns the number of available endpoints for this
+// network. It wraps the web3pool NumberOfEndpoints method for the current
+// runtime chain ID.
+func (r *NetworkRuntime) AvailableEndpoints() int {
+	if r.Contracts == nil || r.Contracts.web3pool == nil {
+		return 0
+	}
+	return r.Contracts.web3pool.NumberOfEndpoints(r.ChainID, true)
+}
+
 // NewNetworkRuntime builds a network runtime and computes its ProcessIDVersion
 // from the contracts chain ID and ProcessRegistry address.
 func NewNetworkRuntime(
