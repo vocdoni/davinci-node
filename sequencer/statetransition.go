@@ -376,7 +376,7 @@ func (s *Sequencer) processCensusProofs(
 	// get the process from the storage
 	process, err := s.stg.Process(processID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get process metadata: %w", err)
+		return nil, nil, fmt.Errorf(errGetProcessMetadata, err)
 	}
 
 	var root *big.Int

@@ -483,7 +483,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 
 	// Ensure the process is accepting votes
 	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(processID); err != nil {
-		return fmt.Errorf("failed to check if process is accepting votes: %w", err)
+		return fmt.Errorf(errCheckProcessAcceptingVotes, err)
 	} else if !isAcceptingVotes {
 		return fmt.Errorf("process '%s' is not accepting votes", processID.String())
 	}

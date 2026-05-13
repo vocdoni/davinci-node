@@ -11,6 +11,11 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+const (
+	errGetProcessMetadata         = "failed to get process metadata: %w"
+	errCheckProcessAcceptingVotes = "failed to check if process is accepting votes: %w"
+)
+
 // currentProcessState retrieves the current in-construction state for a given
 // process ID. This state includes all locally processed batches, even if they
 // haven't been confirmed on-chain yet. Use this for processing new votes.
@@ -18,11 +23,11 @@ func (s *Sequencer) currentProcessState(processID types.ProcessID) (*state.State
 	// get the process from the storage
 	process, err := s.stg.Process(processID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process metadata: %w", err)
+		return nil, fmt.Errorf(errGetProcessMetadata, err)
 	}
 	isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(processID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
+		return nil, fmt.Errorf(errCheckProcessAcceptingVotes, err)
 	}
 	if !isAcceptingVotes {
 		return nil, fmt.Errorf("process %x is not accepting votes", processID)
@@ -71,7 +76,7 @@ func (s *Sequencer) currentProcessState(processID types.ProcessID) (*state.State
 func (s *Sequencer) filterBallotsByCensus(processID types.ProcessID, ballots []*storage.AggregatorBallot) ([]*storage.AggregatorBallot, error) {
 	process, err := s.stg.Process(processID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get process metadata: %w", err)
+		return nil, fmt.Errorf(errGetProcessMetadata, err)
 	}
 	if !process.Census.CensusOrigin.IsMerkleTree() {
 		// CSP censuses are verified via the embedded proof; no local tree to query.
