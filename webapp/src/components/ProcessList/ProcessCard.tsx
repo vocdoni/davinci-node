@@ -40,7 +40,8 @@ import {
   FaCheckCircle,
   FaExternalLinkAlt,
 } from 'react-icons/fa'
-import { Process, ProcessStatus, ProcessStatusLabel, ProcessStatusColor } from '~types/api'
+import { Process, ProcessStatus, ProcessStatusLabel, ProcessStatusColor, processIDVersion } from '~types/api'
+import { useSequencerInfo } from '~hooks/useSequencerAPI'
 
 interface ProcessCardProps {
   process: Process
@@ -50,6 +51,24 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const bgColor = useColorModeValue('white', 'gray.800')
+
+  // Resolve the network for this process by matching processIDVersion
+  const { data: info } = useSequencerInfo()
+  const networkLabel = useMemo(() => {
+    if (!info?.networks) return null
+    let version: string
+    try {
+      version = processIDVersion(process.id)
+    } catch {
+      return null
+    }
+    for (const [, net] of Object.entries(info.networks)) {
+      if (net.processIDVersion.toLowerCase() === version.toLowerCase()) {
+        return `${net.shortName}:${net.chainID}`
+      }
+    }
+    return null
+  }, [info, process.id])
   const borderColor = useColorModeValue(
     isExpanded ? 'purple.200' : 'gray.200',
     isExpanded ? 'purple.600' : 'gray.600'
@@ -316,6 +335,13 @@ export const ProcessCard = ({ process }: ProcessCardProps) => {
             <VStack align="flex-start" spacing={2} flex={1}>
               <HexField label="Process ID" value={process.id} fieldName="processId" />
               <Wrap spacing={2}>
+                {networkLabel && (
+                  <WrapItem>
+                    <Badge colorScheme="purple" variant="subtle" fontSize="xs" fontFamily="mono">
+                      {networkLabel}
+                    </Badge>
+                  </WrapItem>
+                )}
                 <WrapItem>
                   <Badge colorScheme={ProcessStatusColor[process.status]} size="sm">
                     {ProcessStatusLabel[process.status]}

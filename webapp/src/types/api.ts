@@ -110,6 +110,30 @@ export const ProcessStatusLabel: Record<number, string> = {
   [ProcessStatus.RESULTS]: 'Results',
 }
 
+/**
+ * Extracts the version bytes from a process ID hex string and returns them
+ * as a lowercase hex string (e.g. "0x12345678").
+ * The version occupies bytes 20-23 (4 bytes / 8 hex chars) of the 31-byte process ID.
+ */
+export function processIDVersion(processIDHex: string): string {
+  const hex = processIDHex.startsWith("0x")
+    ? processIDHex.slice(2)
+    : processIDHex
+
+  // ProcessIDLen = 31 bytes = 62 hex chars
+  if (hex.length !== 62) {
+    throw new Error(`invalid process ID hex length ${hex.length}, want 62`)
+  }
+
+  if (!/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new Error("invalid process ID hex string")
+  }
+
+  // address = 20 bytes = 40 hex chars
+  // version = next 4 bytes = 8 hex chars
+  return "0x" + hex.slice(40, 48).toLowerCase()
+}
+
 export const ProcessStatusColor: Record<number, string> = {
   [ProcessStatus.READY]: 'green',
   [ProcessStatus.ENDED]: 'gray',
