@@ -19,7 +19,7 @@ type Web3Config struct {
 	RPCs                    []string `mapstructure:"rpc"`                     // Web3 RPC endpoints, can be multiple
 	BeaconAPIs              []string `mapstructure:"bapi"`                    // Web3 Consensus Beacon API endpoints, can be multiple
 	GasMultiplier           float64  `mapstructure:"gasMultiplier"`           // Gas price multiplier for transactions (default: 1.0)
-	ProcessRegistryContract string   `mapstructure:"processRegistryContract"` // Process registry smart contract reference (<chainID>:<address>)
+	ProcessRegistryContract []string `mapstructure:"processRegistryContract"` // Process registry smart contract reference (<chainID>:<address>)
 }
 
 func (web3Cfg Web3Config) InitRuntimes(ctx context.Context) ([]*NetworkRuntime, error) {
@@ -64,27 +64,29 @@ func (web3Cfg Web3Config) InitRuntimes(ctx context.Context) ([]*NetworkRuntime, 
 // config, it will be used if the chain ID matches.
 func (web3Cfg Web3Config) addressesByChainID(chainID uint64) *Addresses {
 	// If no process registry contract is specified, return nil
-	if web3Cfg.ProcessRegistryContract == "" {
+	if len(web3Cfg.ProcessRegistryContract) == 0 {
 		return nil
 	}
-	// Ensure that the contract definition is in the expected format:
-	//    <chainID>:<address>
-	parts := strings.Split(web3Cfg.ProcessRegistryContract, ":")
-	if len(parts) != 2 {
-		return nil
-	}
-	// Ensure that both parts are not empty
-	if len(parts[0]) == 0 || len(parts[1]) == 0 {
-		return nil
-	}
-	// Parse the chain ID from the contract prefix
-	parsedChainID, err := strconv.ParseUint(parts[0], 10, 64)
-	if err != nil || parsedChainID != chainID {
-		return nil
-	}
-	// Parse the address from the contract suffix
-	if addr := common.HexToAddress(parts[1]); addr != (common.Address{}) {
-		return &Addresses{ProcessRegistry: addr}
+	for _, contract := range web3Cfg.ProcessRegistryContract {
+		// Ensure that the contract definition is in the expected format:
+		//    <chainID>:<address>
+		parts := strings.Split(contract, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		// Ensure that both parts are not empty
+		if len(parts[0]) == 0 || len(parts[1]) == 0 {
+			continue
+		}
+		// Parse the chain ID from the contract prefix
+		parsedChainID, err := strconv.ParseUint(parts[0], 10, 64)
+		if err != nil || parsedChainID != chainID {
+			continue
+		}
+		// Parse the address from the contract suffix
+		if addr := common.HexToAddress(parts[1]); addr != (common.Address{}) {
+			return &Addresses{ProcessRegistry: addr}
+		}
 	}
 	return nil
 }

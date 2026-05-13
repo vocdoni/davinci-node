@@ -102,9 +102,9 @@ func loadConfig() (*Config, error) {
 	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account, should have funds for each available network (required)")
 	flag.UintSlice("web3.chainIDs", nil, "chainIDs to limit RPCs and BeaconAPIs, comma-separated, empty for all")
 	flag.StringSliceP("web3.rpc", "r", []string{defaultRPC}, "web3 rpc endpoint(s), comma-separated")
-	flag.StringSliceP("web3.bapi", "b", []string{defaultConsensusAPI}, "consensus api endpoints(s), comma-separated")
+	flag.StringSlice("web3.bapi", []string{defaultConsensusAPI}, "consensus api endpoints(s), comma-separated")
 	flag.Float64("web3.gasMultiplier", defaultGasMultiplier, "gas price multiplier for transactions (1.0 = default, 2.0 = double gas prices)")
-	flag.String("web3.processRegistryContract", "", "'chainID:0xaddress' of the process registry smart contract, if defined, it will be included in the available networks if a valid RPC endpoint is provided")
+	flag.StringSlice("web3.processRegistryContract", nil, "'chainID:0xaddress' of the process registry smart contract, if defined, it will be included in the available networks if a valid RPC endpoint is provided")
 	// sequencer API
 	flag.StringP("api.host", "h", defaultAPIHost, "API host")
 	flag.IntP("api.port", "p", defaultAPIPort, "API port")
