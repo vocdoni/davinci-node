@@ -3,7 +3,6 @@ package sequencer
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/log"
@@ -100,15 +99,12 @@ func (s *Sequencer) filterBallotsByCensus(processID types.ProcessID, ballots []*
 	filtered := make([]*storage.AggregatorBallot, 0, len(ballots))
 	for _, b := range ballots {
 		addr := common.BigToAddress(b.Address)
-		if _, err := censusTree.GenerateProof(addr); err != nil {
-			if strings.Contains(err.Error(), "not found in census") {
-				log.Warnw("address not found in census, skipping ballot",
-					"processID", processID.String(),
-					"address", addr.Hex(),
-				)
-				continue
-			}
-			return nil, fmt.Errorf("census lookup failed for address %s: %w", addr.Hex(), err)
+		if _, ok := censusTree.GetWeight(addr); !ok {
+			log.Warnw("address not found in census, skipping ballot",
+				"processID", processID.String(),
+				"address", addr.Hex(),
+			)
+			continue
 		}
 		filtered = append(filtered, b)
 	}

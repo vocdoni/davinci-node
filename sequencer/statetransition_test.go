@@ -386,15 +386,16 @@ func TestProcessCensusProofsNilRootReturnsError(t *testing.T) {
 
 	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
 
-	_, _, _, err = seq.processCensusProofs(processID, nil, nil)
+	_, _, err = seq.processCensusProofs(processID, nil, nil)
 	c.Assert(err, qt.Not(qt.IsNil))
 	c.Assert(err.Error(), qt.Contains, "census tree has no root")
 }
 
-// TestProcessCensusProofsMissingAddressSkipsBallot verifies that a vote whose
-// address is absent from the census tree is silently skipped while the
-// remaining valid votes are returned without error.
-func TestProcessCensusProofsMissingAddressSkipsBallot(t *testing.T) {
+// TestProcessCensusProofsMissingAddressReturnsError verifies that processCensusProofs
+// returns an error when a vote's address is absent from the census tree. Census
+// filtering must happen before aggregation (to preserve the aggregator proof's
+// BatchHash public input); a missing address at state-transition time is fatal.
+func TestProcessCensusProofsMissingAddressReturnsError(t *testing.T) {
 	c := qt.New(t)
 	stg := newTestSequencerStorage(t)
 	defer stg.Close()
@@ -424,9 +425,8 @@ func TestProcessCensusProofsMissingAddressSkipsBallot(t *testing.T) {
 	}
 
 	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
-	_, _, filtered, err := seq.processCensusProofs(processID, votes, nil)
-	c.Assert(err, qt.IsNil)
-	c.Assert(filtered, qt.HasLen, 2)
+	_, _, err = seq.processCensusProofs(processID, votes, nil)
+	c.Assert(err, qt.Not(qt.IsNil))
 }
 
 // TestProcessCensusProofsAllValidReturnsAllVotes verifies that when every vote
@@ -458,7 +458,6 @@ func TestProcessCensusProofsAllValidReturnsAllVotes(t *testing.T) {
 	}
 
 	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
-	_, _, filtered, err := seq.processCensusProofs(processID, votes, nil)
+	_, _, err = seq.processCensusProofs(processID, votes, nil)
 	c.Assert(err, qt.IsNil)
-	c.Assert(filtered, qt.HasLen, 2)
 }

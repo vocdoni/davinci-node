@@ -300,7 +300,7 @@ func TestEnhancedHealthCheck(t *testing.T) {
 			supportsGetLogs  bool
 			correctChainID   bool
 		}{
-			testValidBlockAndLogsEndpoint:               {true, true, true},
+			testValidBlockAndLogsEndpoint: {true, true, true},
 			"https://valid-block-no-logs.example.com":   {true, false, true},
 			"https://zero-block-valid-logs.example.com": {false, true, true},
 			"https://zero-block-no-logs.example.com":    {false, false, true},

@@ -11,6 +11,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
@@ -43,6 +44,7 @@ func collectAggregationBatchInputs(
 	maxVotersReached bool,
 	proofToRecursion proofToRecursionFn,
 	verifyVoteVerifierProof voteVerifierProofValidatorFn,
+	checkCensusMembership func(b *storage.VerifiedBallot) bool,
 ) (*aggregator.AggregatorInputs, error) {
 	// Prepare data structures for the aggregator circuit
 	proofs := [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
@@ -278,6 +280,31 @@ func collectAggregationBatchInputs(
 				}
 				continue
 			}
+		}
+
+		if checkCensusMembership != nil && !checkCensusMembership(b) {
+			log.Warnw("skipping ballot: address not found in census tree at aggregation time",
+				"processID", processID.String(),
+				"voteID", b.VoteID.String(),
+				"address", types.HexBytes(b.Address.Bytes()),
+			)
+			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+				log.Warnw("failed to mark census-absent ballot as failed",
+					"error", err.Error(),
+					"processID", processID.String(),
+					"voteID", b.VoteID.String(),
+					"address", types.HexBytes(b.Address.Bytes()),
+				)
+				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+					log.Warnw("failed to release ballot reservation after census-absent failure marking",
+						"error", err.Error(),
+						"processID", processID.String(),
+						"voteID", b.VoteID.String(),
+						"address", types.HexBytes(b.Address.Bytes()),
+					)
+				}
+			}
+			continue
 		}
 
 		batchIdx := len(aggBallots)
@@ -518,6 +545,33 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		return s.voteVerifier.Verify(vb.Proof, pubAssignment)
 	}
 
+	// Build a census membership checker for merkle-tree censuses so that
+	// any address absent from the census is filtered out before the
+	// aggregator proof is generated. Filtering after proof generation would
+	// invalidate the BatchHash public input of the aggregator circuit.
+	// For CSP censuses no local tree is available, so the check is skipped.
+	var checkCensusMembership func(*storage.VerifiedBallot) bool
+	if proc, pErr := s.stg.Process(processID); pErr == nil && proc.Census.CensusOrigin.IsMerkleTree() {
+		var chainID uint64
+		if proc.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+			if contracts, cErr := s.contractsForProcess(processID); cErr == nil {
+				chainID = contracts.ChainID
+			}
+		}
+		if censusRef, cErr := s.stg.LoadCensus(chainID, proc.Census); cErr == nil {
+			censusTree := censusRef.Tree()
+			checkCensusMembership = func(b *storage.VerifiedBallot) bool {
+				_, ok := censusTree.GetWeight(common.BigToAddress(b.Address))
+				return ok
+			}
+		} else {
+			log.Warnw("could not load census for pre-aggregation check; census filter skipped",
+				"processID", processID.String(),
+				"error", cErr.Error(),
+			)
+		}
+	}
+
 	batchInputs, err := collectAggregationBatchInputs(
 		s.stg,
 		processID,
@@ -527,6 +581,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		maxVotersReached,
 		proofToRecursion,
 		verifyVoteVerifierProof,
+		checkCensusMembership,
 	)
 	if err != nil {
 		return err
