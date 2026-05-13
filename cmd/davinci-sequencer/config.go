@@ -50,7 +50,7 @@ type Web3Config struct {
 	PrivKey       string   `mapstructure:"privkey"`       // Private key for the Ethereum account
 	ChainIDs      []uint   `mapstructure:"chainIDs"`      // Chain IDs to use, if defined, limits RPCs and BeaconAPIs, if empty, use all
 	RPCs          []string `mapstructure:"rpc"`           // Web3 RPC endpoints, can be multiple
-	BeaconAPIs    []string `mapstructure:"bapi"`          // Web3 Consensus Beacon API endpoints, can be multiple
+	BeaconAPIs    []string `mapstructure:"capi"`          // Web3 Consensus Beacon API endpoints, can be multiple
 	GasMultiplier float64  `mapstructure:"gasMultiplier"` // Gas price multiplier for transactions (default: 1.0)
 }
 
