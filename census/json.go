@@ -29,6 +29,8 @@ const (
 	UnknownJSON
 )
 
+const contentTypeHeader = "Content-Type"
+
 // String returns the string representation of the JSONFormat.
 func (format JSONFormat) String() string {
 	switch format {
@@ -127,7 +129,7 @@ func requestRawDump(ctx context.Context, targetURL string) (*http.Response, erro
 // cannot be determined, it returns UnknownJSON.
 func jsonReader(res *http.Response) (io.Reader, JSONFormat, error) {
 	// Check Content-Type header first
-	contentType := strings.ToLower(res.Header.Get("Content-Type"))
+	contentType := strings.ToLower(res.Header.Get(contentTypeHeader))
 
 	if strings.Contains(contentType, "ndjson") || strings.Contains(contentType, "jsonl") {
 		return res.Body, JSONL, nil

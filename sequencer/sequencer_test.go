@@ -211,7 +211,7 @@ func createReadyProcess(t *testing.T, pid types.ProcessID) *types.Process {
 		Status:        types.ProcessStatusReady,
 		StartTime:     time.Now(),
 		Duration:      time.Hour,
-		MetadataURI:   "http://example.com/metadata",
+		MetadataURI:   testMetadataURI,
 		BallotMode:    testutil.BallotMode(),
 		EncryptionKey: &encryptionKey,
 		StateRoot:     types.BigIntConverter(stateRoot),

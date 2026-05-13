@@ -13,7 +13,7 @@ func TestMarshalCircomProofJSON(t *testing.T) {
 		PiA:      []string{"1", "2", "1"},
 		PiB:      [][]string{{"1", "2"}, {"3", "4"}, {"1", "0"}},
 		PiC:      []string{"5", "6", "1"},
-		Protocol: "groth16",
+		Protocol: testProtocol,
 	}
 
 	data, err := MarshalCircomProofJSON(proof)
@@ -28,7 +28,7 @@ func TestMarshalCircomVerificationKeyJSON(t *testing.T) {
 	c := qt.New(t)
 
 	vk := &CircomVerificationKey{
-		Protocol:      "groth16",
+		Protocol:      testProtocol,
 		Curve:         "bn128",
 		NPublic:       3,
 		VkAlpha1:      []string{"1", "2", "1"},

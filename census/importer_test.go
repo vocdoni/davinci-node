@@ -14,6 +14,8 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+const testCensusURI = "https://example.invalid/dump"
+
 func testNewCensusDB(c *qt.C) *censusdb.CensusDB {
 	c.Helper()
 	internalDB, err := metadb.New(db.TypeInMem, "")
@@ -73,7 +75,7 @@ func TestCensusImporter(t *testing.T) {
 			importer := NewCensusImporter(nil)
 			_, err := importer.ImportCensus(c.Context(), 0, &types.Census{
 				CensusOrigin: types.CensusOriginUnknown,
-				CensusURI:    "https://example.invalid/dump",
+				CensusURI:    testCensusURI,
 				CensusRoot:   types.HexBytes{0x01},
 			}, 0)
 			c.Assert(err, qt.Not(qt.IsNil))
@@ -104,13 +106,13 @@ func TestCensusImporter(t *testing.T) {
 				validFn: func(string) bool { return false },
 			}
 			plugin2 := &testImporterPlugin{
-				validFn: func(uri string) bool { return uri == "https://example.invalid/dump" },
+				validFn: func(uri string) bool { return uri == testCensusURI },
 			}
 
 			importer := NewCensusImporter(stg, plugin1, plugin2)
 			census := &types.Census{
 				CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-				CensusURI:    "https://example.invalid/dump",
+				CensusURI:    testCensusURI,
 				CensusRoot:   types.HexBytes{0xaa, 0xbb},
 			}
 
@@ -136,7 +138,7 @@ func TestCensusImporter(t *testing.T) {
 			importer := NewCensusImporter(stg, plugin)
 			_, err := importer.ImportCensus(c.Context(), 0, &types.Census{
 				CensusOrigin: types.CensusOriginMerkleTreeOffchainDynamicV1,
-				CensusURI:    "https://example.invalid/dump",
+				CensusURI:    testCensusURI,
 				CensusRoot:   types.HexBytes{0x01},
 			}, 0)
 			c.Assert(err, qt.ErrorIs, sentinelErr)
@@ -150,7 +152,7 @@ func TestCensusImporter(t *testing.T) {
 			importer := NewCensusImporter(stg, plugin)
 			_, err := importer.ImportCensus(c.Context(), 0, &types.Census{
 				CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
-				CensusURI:    "https://example.invalid/dump",
+				CensusURI:    testCensusURI,
 				CensusRoot:   types.HexBytes{0x01},
 			}, 0)
 			c.Assert(err, qt.Not(qt.IsNil))

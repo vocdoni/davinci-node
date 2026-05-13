@@ -248,7 +248,7 @@ func queryEvents(
 			if err != nil {
 				return nil, fmt.Errorf("error creating request: %v", err)
 			}
-			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(contentTypeHeader, "application/json")
 			res, err := client.Do(req)
 			if err != nil {
 				return nil, fmt.Errorf("error executing request: %v", err)

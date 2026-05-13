@@ -69,7 +69,7 @@ func TestWorkerIsBanned(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			worker := &Worker{
-				Address:          "test-worker",
+				Address:          testWorkerAddr,
 				consecutiveFails: int64(tt.consecutiveFails),
 			}
 
@@ -113,8 +113,8 @@ func TestWorkerManagerGetWorker(t *testing.T) {
 	c.Assert(exists, qt.IsFalse)
 
 	// Add a worker and test getting it
-	addedWorker := wm.AddWorker("test-worker", testWorkerName)
-	retrievedWorker, exists := wm.GetWorker("test-worker")
+	addedWorker := wm.AddWorker(testWorkerAddr, testWorkerName)
+	retrievedWorker, exists := wm.GetWorker(testWorkerAddr)
 	c.Assert(retrievedWorker, qt.IsNotNil)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(retrievedWorker, qt.Equals, addedWorker)
@@ -259,8 +259,8 @@ func TestWorkerManagerStartStop(t *testing.T) {
 	c.Assert(wm.cancelFunc, qt.IsNotNil)
 
 	// Add a worker to verify it exists
-	wm.AddWorker("test-worker", testWorkerName)
-	worker, exists := wm.GetWorker("test-worker")
+	wm.AddWorker(testWorkerAddr, testWorkerName)
+	worker, exists := wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 	c.Assert(worker, qt.IsNotNil)
 
@@ -268,7 +268,7 @@ func TestWorkerManagerStartStop(t *testing.T) {
 	wm.Stop()
 
 	// Verify workers are cleared
-	worker, exists = wm.GetWorker("test-worker")
+	worker, exists = wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsFalse)
 	c.Assert(worker, qt.IsNil)
 }
@@ -568,8 +568,8 @@ func TestWorkerManagerContextCancellation(t *testing.T) {
 	c.Assert(wm.innerCtx, qt.IsNotNil)
 
 	// Add a worker
-	wm.AddWorker("test-worker", testWorkerName)
-	_, exists := wm.GetWorker("test-worker")
+	wm.AddWorker(testWorkerAddr, testWorkerName)
+	_, exists := wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsTrue)
 
 	// Cancel context
@@ -579,7 +579,7 @@ func TestWorkerManagerContextCancellation(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Worker should be cleared because context cancellation calls stop() which clears workers
-	_, exists = wm.GetWorker("test-worker")
+	_, exists = wm.GetWorker(testWorkerAddr)
 	c.Assert(exists, qt.IsFalse)
 }
 

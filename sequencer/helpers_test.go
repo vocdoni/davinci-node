@@ -12,6 +12,8 @@ import (
 	leancensus "github.com/vocdoni/lean-imt-go/census"
 )
 
+const testMetadataURI = "http://example.com/metadata"
+
 // buildCensusForTest creates an in-memory census tree with the given addresses
 // (all with weight 1), imports it into stg, and returns the census root bytes.
 func buildCensusForTest(t *testing.T, stg *storage.Storage, addrs ...uint64) types.HexBytes {

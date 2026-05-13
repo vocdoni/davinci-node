@@ -353,7 +353,7 @@ func makeTestProcessWithCensus(t *testing.T, stg *storage.Storage, processID typ
 		Status:        types.ProcessStatusReady,
 		StartTime:     time.Now(),
 		Duration:      time.Hour,
-		MetadataURI:   "http://example.com/metadata",
+		MetadataURI:   testMetadataURI,
 		BallotMode:    testutil.BallotMode(),
 		EncryptionKey: &encryptionKey,
 		StateRoot:     types.BigIntConverter(stateRoot),

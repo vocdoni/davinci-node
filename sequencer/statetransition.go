@@ -99,15 +99,13 @@ func (s *Sequencer) processPendingTransitions() {
 		// from the census tree before the more expensive reencrypt+proof path.
 		batch.Ballots, err = s.filterBallotsByCensus(batch.ProcessID, batch.Ballots)
 		if err != nil {
-			log.Errorw(err, "pre-flight census check failed",
-				"processID", processID.String())
+			log.Errorw(err, "pre-flight census check failed")
 			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
 		if len(batch.Ballots) == 0 {
-			log.Errorw(fmt.Errorf("all ballots removed by pre-flight census check"),
-				"failed state transition batch",
-				"processID", processID.String())
+			log.Errorw(fmt.Errorf("all ballots removed by pre-flight census check for process %s", processID.String()),
+				"failed state transition batch")
 			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}
@@ -132,9 +130,8 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 		if len(reencryptedVotes) == 0 {
-			log.Errorw(fmt.Errorf("all votes in batch were skipped due to census proof failures"),
-				"failed state transition batch",
-				"processID", processID.String())
+			log.Errorw(fmt.Errorf("all votes in batch were skipped due to census proof failures for process %s", processID.String()),
+				"failed state transition batch")
 			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
 		}

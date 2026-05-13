@@ -7,6 +7,8 @@ import (
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 )
 
+const testProtocol = "groth16"
+
 func TestUnmarshalCircomVerificationKeyJSONCachesByInput(t *testing.T) {
 	c := qt.New(t)
 
@@ -59,7 +61,7 @@ func TestToGnarkRecursionFixedVkSkipsVerificationKeyConversion(t *testing.T) {
 			"4110411832118690910191887320272248494012149664813960539989768130756673868858",
 			"1",
 		},
-		Protocol: "groth16",
+		Protocol: testProtocol,
 	}
 
 	recursionProof, err := proof.ToGnarkRecursion(&CircomVerificationKey{}, []string{
