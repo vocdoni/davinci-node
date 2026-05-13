@@ -30,7 +30,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/emulated"
 )
@@ -38,8 +37,6 @@ import (
 const (
 	N = 1 << 12 // 4096 evaluation points
 )
-
-var maxCanonicalBN254Scalar = emulated.ValueOf[FE](new(big.Int).Sub(ecc.BN254.ScalarField(), big.NewInt(1)))
 
 // FE is type modulus for BLS12‑381 Fr.
 type FE = emulated.BLS12381Fr
@@ -178,18 +175,22 @@ func VerifyFullBlobEvaluationBN254(
 	// Convert all native scalars => emulated via the hint
 	var blobEmu [N]emulated.Element[FE]
 	for i := range N {
-		e, err := liftNativeBN254ToEmulated(api, fr, blob[i])
+		e, err := hintNativeToEmu(api, fr, blob[i])
 		if err != nil {
 			return err
 		}
 		blobEmu[i] = *e
+		// verify that the native input matches the emulated one created by the hint
+		api.AssertIsEqual(emulatedToNative(api, &blobEmu[i]), blob[i])
 	}
 
 	// Convert the native evaluation point z => emulated
-	zEmu, err := liftNativeBN254ToEmulated(api, fr, z)
+	zEmu, err := hintNativeToEmu(api, fr, z)
 	if err != nil {
 		return err
 	}
+	// verify that the native input matches the emulated one created by the hint
+	api.AssertIsEqual(emulatedToNative(api, zEmu), z)
 
 	// Verify the barycentric evaluation (does NOT check KZG commitment/proof)
 	if err := VerifyBarycentricEvaluation(api, zEmu, y, blobEmu); err != nil {
@@ -200,20 +201,8 @@ func VerifyFullBlobEvaluationBN254(
 	return VerifyKZGProof(api, commitment, proof, *zEmu, *y)
 }
 
-// liftNativeBN254ToEmulated lifts a native BN254 scalar into the emulated
-// field, constraining the witness to the canonical BN254 scalar (Fr) range [0, rBN254)
-// (i.e. the BN254 Fr modulus) and proving it recomposes back to the original native input.
-func liftNativeBN254ToEmulated(api frontend.API, fr *emulated.Field[FE], native frontend.Variable) (*emulated.Element[FE], error) {
-	emu, err := fr.NewHintWithNativeInput(copyNativeToEmu, 1, native)
-	if err != nil {
-		return nil, err
-	}
-	fr.AssertIsLessOrEqual(emu[0], &maxCanonicalBN254Scalar)
-	api.AssertIsEqual(emulatedToNative(api, emu[0]), native)
-	return emu[0], nil
-}
-
 // emulatedToNative converts an emulated element to a native BN254 variable.
+// This is used to ensure that the native input matches the emulated output.
 func emulatedToNative(api frontend.API, e *emulated.Element[FE]) frontend.Variable {
 	nbBits := FE{}.BitsPerLimb()
 	acc := frontend.Variable(0)
