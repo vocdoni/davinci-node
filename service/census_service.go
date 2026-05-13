@@ -260,6 +260,12 @@ func (cd *CensusDownloader) OnCensusDownloaded(processID types.ProcessID, census
 			status, exists := cd.downloadCensusStatus(chainID, census)
 			if exists {
 				switch {
+				case status.Complete:
+					// If the census download is complete, clean up the pending
+					// status and call the callback with nil error.
+					cd.CleanUp(status.chainID, status.census)
+					callback(nil)
+					return
 				case status.Terminal && status.LastErr != nil:
 					// Return the last error if the downloader has reached a
 					// terminal error.
@@ -269,12 +275,6 @@ func (cd *CensusDownloader) OnCensusDownloaded(processID types.ProcessID, census
 					// Return the last error if the downloader has reached the
 					// maximum number of attempts.
 					callback(status.LastErr)
-					return
-				case status.Complete:
-					// If the census download is complete, clean up the pending
-					// status and call the callback with nil error.
-					cd.CleanUp(status.chainID, status.census)
-					callback(nil)
 					return
 				}
 			}
@@ -401,8 +401,11 @@ func (cd *CensusDownloader) addPendingCensus(icensus internalCensus) bool {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
 	key := censusKey(icensus.Census, icensus.ChainID)
-	if _, exists := cd.censusStatus[key]; exists {
-		return false
+	if status, exists := cd.censusStatus[key]; exists {
+		// Allow retrying a census after a previous terminal failure.
+		if !status.Terminal {
+			return false
+		}
 	}
 	cd.censusStatus[key] = DownloadStatus{
 		Attempts: 0,
@@ -456,6 +459,11 @@ func (cd *CensusDownloader) updateInternalStatus(icensus internalCensus, err err
 		status.Complete = err == nil
 		status.Terminal = isTerminalDownloadError(err)
 		status.Attempts++
+		if err == nil {
+			status.LastErr = nil
+			cd.censusStatus[key] = status
+			return
+		}
 		if status.Terminal {
 			status.LastErr = fmt.Errorf("terminal census download failure: %w", err)
 		} else if status.Attempts < cd.attempts() {
@@ -531,9 +539,6 @@ func (cd *CensusDownloader) cleanUpPendingCensuses() {
 
 	now := time.Now()
 	for _, status := range cd.censusStatus {
-		if status.Terminal {
-			continue
-		}
 		if status.lastUpdated.Add(cd.config.Expiration).Before(now) {
 			cd.cleanUpStatusUnsafe(status.chainID, status.census)
 		}

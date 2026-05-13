@@ -58,8 +58,17 @@ func (d *CensusImporter) ImportCensus(ctx context.Context, chainID uint64, censu
 		if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 && chainID == 0 {
 			return 0, fmt.Errorf("chain ID is required for dynamic on-chain census import")
 		}
-		// If the census already exists, skip the import.
-		if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
+		// If the census already exists, skip the import. Dynamic on-chain
+		// censuses are scoped by chain+contract address instead of root.
+		if census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+			if d.storage.CensusDB().ExistsByScopedAddress(chainID, census.ContractAddress) {
+				log.Infow("scoped census already exists, skipping import",
+					"chainID", chainID,
+					"address", census.ContractAddress.Hex(),
+					"root", census.CensusRoot.String())
+				return processedElements, nil
+			}
+		} else if d.storage.CensusDB().ExistsByRoot(census.CensusRoot) {
 			log.Infow("census root already exists, skipping import",
 				"root", census.CensusRoot.String())
 			return processedElements, nil
