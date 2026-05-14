@@ -230,7 +230,7 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// processParticipants retrieves information about all participants in a voting
+// processParticipants retrieves information about all participants in a voting process
 // GET /processes/{processId}/participants
 func (a *API) processParticipants(w http.ResponseWriter, r *http.Request) {
 	// Unmarshal the process ID from URL parameter
