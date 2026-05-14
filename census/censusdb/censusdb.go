@@ -785,6 +785,11 @@ func unpackSiblings(packed []byte) []*big.Int {
 // CensusRef and any error encountered during the process, such as decoding
 // errors or tree creation/import errors.
 func (c *CensusDB) Import(root types.HexBytes, reader io.Reader) (*CensusRef, error) {
+	// Early exit: census already exists in memory or persistent DB.
+	if c.ExistsByRoot(root) {
+		return c.LoadByRoot(root)
+	}
+
 	// Create a new census tree by its root
 	censusID := rootToCensusID(root.Bytes())
 	treeDB := prefixeddb.NewPrefixedDatabase(c.db, censusTreeDBPrefix(censusID))
@@ -799,8 +804,12 @@ func (c *CensusDB) Import(root types.HexBytes, reader io.Reader) (*CensusRef, er
 	if err := tree.Sync(); err != nil {
 		return nil, fmt.Errorf("failed to sync census tree after import: %w", err)
 	}
-	// Create a new CensusRef with the imported tree
-	return c.newCensus(censusID, rootDBPrefix(root), tree)
+	// Create or reuse a CensusRef with the imported tree.
+	ref, err := c.newCensus(censusID, rootDBPrefix(root), tree)
+	if errors.Is(err, ErrCensusAlreadyExists) {
+		return c.LoadByRoot(root)
+	}
+	return ref, err
 }
 
 // ImportByScopedAddress imports a census from a JSON-encoded census dump read
@@ -843,8 +852,17 @@ func (c *CensusDB) ImportAll(data []byte) (*CensusRef, error) {
 	if dump.Root == nil {
 		return nil, fmt.Errorf("census dump root is nil")
 	}
+
+	// Early exit: census already exists in memory or persistent DB.
+	// This prevents creating and resetting a shared Pebble tree that is
+	// already open by another goroutine.
+	censusRoot := dump.Root.Bytes()
+	if c.ExistsByRoot(censusRoot) {
+		return c.LoadByRoot(censusRoot)
+	}
+
 	// Create a new census tree by its root
-	censusID := rootToCensusID(dump.Root.Bytes())
+	censusID := rootToCensusID(censusRoot)
 	tree, err := census.NewCensusIMTWithPebble(
 		censusPrefix(censusID),
 		censusHasher,
@@ -856,8 +874,16 @@ func (c *CensusDB) ImportAll(data []byte) (*CensusRef, error) {
 	if err := tree.ImportAll(&dump); err != nil {
 		return nil, fmt.Errorf("failed to import census dump into tree: %w", err)
 	}
-	// Create a new CensusRef with the imported tree
-	return c.newCensus(censusID, rootDBPrefix(dump.Root.Bytes()), tree)
+	// Create or reuse a CensusRef with the imported tree. Under the CensusDB
+	// mutex, newCensus atomically checks for existence and creates the ref.
+	// If another goroutine raced past the ExistsByRoot check above, the
+	// ErrCensusAlreadyExists branch handles it safely.
+	ref, err := c.newCensus(censusID, rootDBPrefix(censusRoot), tree)
+	if errors.Is(err, ErrCensusAlreadyExists) {
+		_ = tree.Close()
+		return c.LoadByRoot(censusRoot)
+	}
+	return ref, err
 }
 
 // ImportAllByScopedAddress imports a JSON-encoded census dump and stores it

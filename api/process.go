@@ -229,3 +229,59 @@ func (a *API) processParticipant(w http.ResponseWriter, r *http.Request) {
 		Weight: (*types.BigInt)(weight),
 	})
 }
+
+// processParticipants retrieves information about all participants in a voting process
+// GET /processes/{processId}/participants
+func (a *API) processParticipants(w http.ResponseWriter, r *http.Request) {
+	// Unmarshal the process ID from URL parameter
+	processID, err := types.HexStringToProcessID(chi.URLParam(r, ProcessURLParam))
+	if err != nil {
+		ErrMalformedProcessID.Withf("could not parse process ID: %v", err).Write(w)
+		return
+	}
+
+	// Load the process from storage
+	process, err := a.storage.Process(processID)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			ErrProcessNotFound.Withf("could not retrieve process: %v", err).Write(w)
+			return
+		}
+		ErrGenericInternalServerError.Withf("could not retrieve process: %v", err).Write(w)
+		return
+	}
+
+	// Retrieve the participant info
+	runtime, err := a.runtimes.RuntimeForProcess(processID)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not resolve process runtime: %v", err).Write(w)
+		return
+	}
+	censusRef, err := a.storage.LoadCensus(runtime.Contracts.ChainID, process.Census)
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not retrieve participant info: %v", err).Write(w)
+		return
+	}
+	if censusRef == nil {
+		ErrMalformedParam.With("census not compatible with local processing").Write(w)
+		return
+	}
+
+	// Get the participants weights
+	participants := []CensusParticipant{}
+	dump, err := censusRef.Tree().DumpAll()
+	if err != nil {
+		ErrGenericInternalServerError.Withf("could not get census participants: %v", err).Write(w)
+		return
+	}
+	for _, participant := range dump.Participants {
+		participants = append(participants, CensusParticipant{
+			Key:    participant.Address.Bytes(),
+			Weight: (*types.BigInt)(participant.Weight),
+		})
+	}
+	// Write the response
+	httpWriteJSON(w, map[string][]CensusParticipant{
+		"participants": participants,
+	})
+}
