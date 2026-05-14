@@ -269,62 +269,29 @@ func apiRuntimeData(router *web3.RuntimeRouter) (map[uint64]SequencerNetworkInfo
 		if _, exists := runtimeInfos[runtime.ChainID]; exists {
 			return nil, fmt.Errorf("duplicate runtime chain ID %d", runtime.ChainID)
 		}
-
-		contractsInfo, err := apiContractAddresses(runtime.Contracts)
+		contract, err := processRegistryContract(runtime)
 		if err != nil {
-			return nil, fmt.Errorf("runtime for chainID  %d: %w", runtime.ChainID, err)
+			return nil, fmt.Errorf("runtime for chainID %d has invalid process registry contract: %w", runtime.ChainID, err)
 		}
-
 		runtimeInfos[runtime.ChainID] = SequencerNetworkInfo{
 			ChainID:                 runtime.ChainID,
 			ShortName:               runtime.ShortName,
-			ProcessRegistryContract: contractsInfo.ProcessRegistry,
+			ProcessRegistryContract: contract.String(),
 			ProcessIDVersion:        runtime.ProcessIDVersion[:],
 		}
 	}
 	return runtimeInfos, nil
 }
 
-func apiContractAddresses(contracts *web3.Contracts) (ContractAddresses, error) {
-	if contracts == nil {
-		return ContractAddresses{}, fmt.Errorf("nil contracts")
+func processRegistryContract(runtime *web3.NetworkRuntime) (common.Address, error) {
+	if runtime.Contracts == nil {
+		return common.Address{}, fmt.Errorf("nil contracts")
 	}
-	if contracts.ContractsAddresses == nil {
-		return ContractAddresses{}, fmt.Errorf("nil contract addresses")
+	if runtime.Contracts.ContractsAddresses == nil {
+		return common.Address{}, fmt.Errorf("nil contract addresses")
 	}
-
-	processRegistry := contracts.ContractsAddresses.ProcessRegistry
-	if processRegistry == (common.Address{}) {
-		return ContractAddresses{}, fmt.Errorf("process registry address is required")
+	if runtime.Contracts.ContractsAddresses.ProcessRegistry == (common.Address{}) {
+		return common.Address{}, fmt.Errorf("process registry address is required")
 	}
-
-	stateTransition := contracts.ContractsAddresses.StateTransitionZKVerifier
-	if stateTransition == (common.Address{}) {
-		addr, err := contracts.StateTransitionVerifierAddress()
-		if err != nil {
-			return ContractAddresses{}, fmt.Errorf("resolve state transition verifier address: %w", err)
-		}
-		stateTransition = common.HexToAddress(addr)
-	}
-	if stateTransition == (common.Address{}) {
-		return ContractAddresses{}, fmt.Errorf("state transition verifier address is required")
-	}
-
-	results := contracts.ContractsAddresses.ResultsZKVerifier
-	if results == (common.Address{}) {
-		addr, err := contracts.ResultsVerifierAddress()
-		if err != nil {
-			return ContractAddresses{}, fmt.Errorf("resolve results verifier address: %w", err)
-		}
-		results = common.HexToAddress(addr)
-	}
-	if results == (common.Address{}) {
-		return ContractAddresses{}, fmt.Errorf("results verifier address is required")
-	}
-
-	return ContractAddresses{
-		ProcessRegistry:           processRegistry.String(),
-		StateTransitionZKVerifier: stateTransition.String(),
-		ResultsZKVerifier:         results.String(),
-	}, nil
+	return runtime.Contracts.ContractsAddresses.ProcessRegistry, nil
 }
