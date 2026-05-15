@@ -7,3 +7,4 @@ letsencrypt
 .worktrees
 go.work
 go.work.sum
+davinci-sequencer

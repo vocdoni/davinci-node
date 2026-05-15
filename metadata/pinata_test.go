@@ -14,6 +14,13 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+const (
+	testGatewayURL = "gateway.example"
+	testJWT        = "jwt"
+	testToken      = "token"
+	testStatusOK   = "200 OK"
+)
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -40,7 +47,7 @@ func newTestPinataProvider() *PinataMetadataProvider {
 	return NewPinataMetadataProvider(PinataMetadataProviderConfig{
 		HostnameURL:  "https://pinata.example/upload",
 		HostnameJWT:  "jwt-token",
-		GatewayURL:   "gateway.example",
+		GatewayURL:   testGatewayURL,
 		GatewayToken: "gateway-token",
 	})
 }
@@ -57,42 +64,42 @@ func TestPinataMetadataProviderConfigValid(t *testing.T) {
 			name: "valid with all fields",
 			config: PinataMetadataProviderConfig{
 				HostnameURL:  "https://pinata.example/upload",
-				HostnameJWT:  "jwt",
-				GatewayURL:   "gateway.example",
-				GatewayToken: "token",
+				HostnameJWT:  testJWT,
+				GatewayURL:   testGatewayURL,
+				GatewayToken: testToken,
 			},
 			valid: true,
 		},
 		{
 			name: "missing jwt",
 			config: PinataMetadataProviderConfig{
-				GatewayURL:   "gateway.example",
-				GatewayToken: "token",
+				GatewayURL:   testGatewayURL,
+				GatewayToken: testToken,
 			},
 			valid: false,
 		},
 		{
 			name: "missing gateway url",
 			config: PinataMetadataProviderConfig{
-				HostnameJWT:  "jwt",
-				GatewayToken: "token",
+				HostnameJWT:  testJWT,
+				GatewayToken: testToken,
 			},
 			valid: false,
 		},
 		{
 			name: "missing gateway token",
 			config: PinataMetadataProviderConfig{
-				HostnameJWT: "jwt",
-				GatewayURL:  "gateway.example",
+				HostnameJWT: testJWT,
+				GatewayURL:  testGatewayURL,
 			},
 			valid: false,
 		},
 		{
 			name: "missing hostname url",
 			config: PinataMetadataProviderConfig{
-				HostnameJWT:  "jwt",
-				GatewayURL:   "gateway.example",
-				GatewayToken: "token",
+				HostnameJWT:  testJWT,
+				GatewayURL:   testGatewayURL,
+				GatewayToken: testToken,
 			},
 			valid: false,
 		},
@@ -150,7 +157,7 @@ func TestPinataMetadataProviderSetMetadata(t *testing.T) {
 			respBody := fmt.Sprintf(`{"data":{"cid":"%s"}}`, mustCIDString(c, key))
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     testStatusOK,
 				Body:       io.NopCloser(strings.NewReader(respBody)),
 			}, nil
 		})
@@ -171,7 +178,7 @@ func TestPinataMetadataProviderSetMetadata(t *testing.T) {
 		provider := NewPinataMetadataProvider(PinataMetadataProviderConfig{
 			HostnameURL:  server.URL,
 			HostnameJWT:  "default-client-jwt",
-			GatewayURL:   "gateway.example",
+			GatewayURL:   testGatewayURL,
 			GatewayToken: "gateway-token",
 		})
 
@@ -204,7 +211,7 @@ func TestPinataMetadataProviderSetMetadata(t *testing.T) {
 		provider.httpClient = newTestHTTPClient(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     testStatusOK,
 				Body:       errReadCloser{err: expectedErr},
 			}, nil
 		})
@@ -236,7 +243,7 @@ func TestPinataMetadataProviderSetMetadata(t *testing.T) {
 		provider.httpClient = newTestHTTPClient(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     testStatusOK,
 				Body:       io.NopCloser(strings.NewReader("not-json")),
 			}, nil
 		})
@@ -254,7 +261,7 @@ func TestPinataMetadataProviderSetMetadata(t *testing.T) {
 		provider.httpClient = newTestHTTPClient(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     testStatusOK,
 				Body:       io.NopCloser(strings.NewReader(respBody)),
 			}, nil
 		})
@@ -286,7 +293,7 @@ func TestPinataMetadataProviderMetadata(t *testing.T) {
 			c.Assert(err, qt.IsNil)
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     testStatusOK,
 				Body:       io.NopCloser(strings.NewReader(string(body))),
 			}, nil
 		})
@@ -323,7 +330,7 @@ func TestPinataMetadataProviderMetadata(t *testing.T) {
 		provider.httpClient = newTestHTTPClient(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     testStatusOK,
 				Body:       errReadCloser{err: expectedErr},
 			}, nil
 		})
@@ -357,7 +364,7 @@ func TestPinataMetadataProviderMetadata(t *testing.T) {
 		provider.httpClient = newTestHTTPClient(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Status:     "200 OK",
+				Status:     testStatusOK,
 				Body:       io.NopCloser(strings.NewReader("not-json")),
 			}, nil
 		})

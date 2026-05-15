@@ -148,7 +148,7 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 
 	// Ensure the process is accepting votes
 	if isAcceptingVotes, err := s.stg.ProcessIsAcceptingVotes(b.ProcessID); err != nil {
-		return nil, fmt.Errorf("failed to check if process is accepting votes: %w", err)
+		return nil, fmt.Errorf(errCheckProcessAcceptingVotes, err)
 	} else if !isAcceptingVotes {
 		return nil, fmt.Errorf("process is not accepting votes")
 	}

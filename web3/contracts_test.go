@@ -21,6 +21,11 @@ import (
 	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
+const (
+	testMetadataURI = "https://example.com/metadata"
+	testCensusURI   = "https://example.com/census"
+)
+
 type testRPCRequest struct {
 	ID     json.RawMessage `json:"id"`
 	Method string          `json:"method"`
@@ -106,13 +111,13 @@ func TestProcessAtBlockUsesHistoricalSnapshot(t *testing.T) {
 			OverwrittenVotesCount: big.NewInt(0),
 			CreationBlock:         big.NewInt(10),
 			BatchNumber:           big.NewInt(0),
-			MetadataURI:           "https://example.com/metadata",
+			MetadataURI:           testMetadataURI,
 			BallotMode:            npbindings.DAVINCITypesBallotMode{UniqueValues: false, NumFields: 5, GroupSize: 0, CostExponent: 2, MaxValue: big.NewInt(10), MinValue: big.NewInt(0), MaxValueSum: big.NewInt(100), MinValueSum: big.NewInt(0)},
 			Census: npbindings.DAVINCITypesCensus{
 				CensusOrigin:    uint8(types.CensusOriginMerkleTreeOffchainStaticV1),
 				CensusRoot:      [32]byte{},
 				ContractAddress: common.Address{},
-				CensusURI:       "https://example.com/census",
+				CensusURI:       testCensusURI,
 			},
 		},
 		latest: npbindings.DAVINCITypesProcess{
@@ -128,13 +133,13 @@ func TestProcessAtBlockUsesHistoricalSnapshot(t *testing.T) {
 			OverwrittenVotesCount: big.NewInt(0),
 			CreationBlock:         big.NewInt(10),
 			BatchNumber:           big.NewInt(0),
-			MetadataURI:           "https://example.com/metadata",
+			MetadataURI:           testMetadataURI,
 			BallotMode:            npbindings.DAVINCITypesBallotMode{UniqueValues: false, NumFields: 5, GroupSize: 0, CostExponent: 2, MaxValue: big.NewInt(10), MinValue: big.NewInt(0), MaxValueSum: big.NewInt(100), MinValueSum: big.NewInt(0)},
 			Census: npbindings.DAVINCITypesCensus{
 				CensusOrigin:    uint8(types.CensusOriginMerkleTreeOffchainStaticV1),
 				CensusRoot:      [32]byte{},
 				ContractAddress: common.Address{},
-				CensusURI:       "https://example.com/census",
+				CensusURI:       testCensusURI,
 			},
 		},
 	}
@@ -175,13 +180,13 @@ func TestProcessAtBlockUsesCreationSnapshot(t *testing.T) {
 			OverwrittenVotesCount: big.NewInt(0),
 			CreationBlock:         big.NewInt(10),
 			BatchNumber:           big.NewInt(0),
-			MetadataURI:           "https://example.com/metadata",
+			MetadataURI:           testMetadataURI,
 			BallotMode:            npbindings.DAVINCITypesBallotMode{UniqueValues: false, NumFields: 5, GroupSize: 0, CostExponent: 2, MaxValue: big.NewInt(10), MinValue: big.NewInt(0), MaxValueSum: big.NewInt(100), MinValueSum: big.NewInt(0)},
 			Census: npbindings.DAVINCITypesCensus{
 				CensusOrigin:    uint8(types.CensusOriginMerkleTreeOffchainStaticV1),
 				CensusRoot:      [32]byte{},
 				ContractAddress: common.Address{},
-				CensusURI:       "https://example.com/census",
+				CensusURI:       testCensusURI,
 			},
 		},
 	}

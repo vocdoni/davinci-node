@@ -376,7 +376,7 @@ func (s *Sequencer) processCensusProofs(
 	// get the process from the storage
 	process, err := s.stg.Process(processID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get process metadata: %w", err)
+		return nil, nil, fmt.Errorf(errGetProcessMetadata, err)
 	}
 
 	var root *big.Int
@@ -402,7 +402,11 @@ func (s *Sequencer) processCensusProofs(
 		censusTree := censusRef.Tree()
 		var ok bool
 		if root, ok = censusTree.Root(); !ok {
-			log.Warnw("census tree has no root?", "censusRoot", process.Census.CensusRoot.String(), "fetchedRoot", root.String())
+			log.Warnw("census tree has no root",
+				"censusRoot", process.Census.CensusRoot.String(),
+				"fetchedRoot", root)
+			return nil, nil, fmt.Errorf("census tree has no root for process %s (censusRoot=%s)",
+				processID.String(), process.Census.CensusRoot.String())
 		}
 		// iterate over the votes to generate the merkle proofs of each voter
 		for i := range params.VotesPerBatch {
