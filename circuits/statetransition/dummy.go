@@ -19,12 +19,10 @@ func DummyMerkleProof() imt.MerkleProof {
 		dummySiblings[i] = big.NewInt(1) // dummy value for the siblings
 	}
 	return imt.MerkleProof{
-		Leaf:       big.NewInt(1), // dummy value for the key
-		PathBits:   big.NewInt(0), // single-leaf tree has no active path bits
-		LeafIndex:  big.NewInt(0), // the only valid index in a single-leaf tree
-		TreeSize:   big.NewInt(1), // single-leaf tree makes the proof trivially padded
-		LevelsMask: big.NewInt(0), // no active sibling levels in the dummy proof
-		Siblings:   dummySiblings,
+		Leaf:      big.NewInt(1), // dummy value for the key
+		PathBits:  big.NewInt(1), // dummy value for the path bits
+		LeafIndex: big.NewInt(1), // dummy value for the leaf index
+		Siblings:  dummySiblings,
 	}
 }
 
