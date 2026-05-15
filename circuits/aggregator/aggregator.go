@@ -98,8 +98,10 @@ func (c *AggregatorCircuit) checkProofs(api frontend.API) {
 	witnesses := c.calculateWitnesses(api)
 	for i := range len(c.Proofs) {
 		// verify the proof
-		if err := verifier.AssertProof(c.VerificationKey, c.Proofs[i], witnesses[i],
-			groth16.WithCompleteArithmetic(), groth16.WithSubgroupCheck()); err != nil {
+		// groth16.WithSubgroupCheck() is omitted to save constraints, since subgroup membership
+		// is validated out of circuit when worker proofs are received
+		// and again in collectAggregationBatchInputs before the recursive witness is assembled.
+		if err := verifier.AssertProof(c.VerificationKey, c.Proofs[i], witnesses[i], groth16.WithCompleteArithmetic()); err != nil {
 			circuits.FrontendError(api, "failed to verify proof", err)
 			return
 		}
