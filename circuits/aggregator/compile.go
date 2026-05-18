@@ -34,6 +34,11 @@ func Compile(voteVerifierCCS constraint.ConstraintSystem, voteVerifierVK groth16
 	if err != nil {
 		return nil, fmt.Errorf("compile aggregator circuit: %w", err)
 	}
-	log.DebugTime("circuit definition compiled", startTime, "circuit", Artifacts.Name())
+	log.DebugTime("circuit definition compiled", startTime,
+		"circuit", Artifacts.Name(),
+		"nbConstraints", ccs.GetNbConstraints(),
+		"nbPublicInputs", ccs.GetNbPublicVariables(),
+		"nbPrivateInputs", ccs.GetNbSecretVariables(),
+	)
 	return ccs, nil
 }
