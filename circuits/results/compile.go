@@ -19,6 +19,11 @@ func Compile() (constraint.ConstraintSystem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compile results verifier circuit: %w", err)
 	}
-	log.DebugTime("circuit definition compiled", startTime, "circuit", Artifacts.Name())
+	log.DebugTime("circuit definition compiled", startTime,
+		"circuit", Artifacts.Name(),
+		"nbConstraints", ccs.GetNbConstraints(),
+		"nbPublicInputs", ccs.GetNbPublicVariables(),
+		"nbPrivateInputs", ccs.GetNbSecretVariables(),
+	)
 	return ccs, nil
 }
