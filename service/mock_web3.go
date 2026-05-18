@@ -37,7 +37,7 @@ func NewMockContracts() *MockContracts {
 		latestProcesses:    make(map[types.ProcessID]*types.Process),
 		blobs:              make(map[common.Hash]*types.Blob),
 		monitoredProcesses: make(map[types.ProcessID]struct{}),
-		chanPWC:            make(chan *types.ProcessWithChanges),
+		chanPWC:            make(chan *types.ProcessWithChanges, 10),
 	}
 }
 
@@ -58,18 +58,27 @@ func (m *MockContracts) CreateProcess(process *types.Process) (types.ProcessID, 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	processID := types.NewProcessID(
-		process.OrganizationID,
-		defaultMockProcessIDVersion,
-		uint64(len(m.processes)),
-	)
-	process.ID = &processID
+	if process.ID == nil {
+		processID := types.NewProcessID(
+			process.OrganizationID,
+			defaultMockProcessIDVersion,
+			uint64(len(m.processes)),
+		)
+		process.ID = &processID
+
+	}
 	creationProcess := cloneProcess(process)
 	latestProcess := cloneProcess(process)
 	m.processes = append(m.processes, creationProcess)
-	m.latestProcesses[processID] = latestProcess
+	m.latestProcesses[*process.ID] = latestProcess
 	hash := common.HexToHash("0x1234567890")
-	return processID, &hash, nil
+	m.chanPWC <- &types.ProcessWithChanges{
+		ProcessID: *process.ID,
+		NewProcess: &types.NewProcess{
+			Process: cloneProcess(process),
+		},
+	}
+	return *process.ID, &hash, nil
 }
 
 func (m *MockContracts) AccountAddress() common.Address {

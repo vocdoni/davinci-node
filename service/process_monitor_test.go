@@ -13,12 +13,12 @@ import (
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/spec"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 )
 
 func TestProcessMonitor(t *testing.T) {
-	t.Skip("TODO: fix and re-enable")
 	c := qt.New(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -57,6 +57,7 @@ func TestProcessMonitor(t *testing.T) {
 	// Create a new encryption key for the process
 	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
 	c.Assert(err, qt.IsNil)
+	pubKeyX, pubKeyY := publicKey.Point()
 
 	// Create a new census
 	census := &types.Census{
@@ -65,24 +66,37 @@ func TestProcessMonitor(t *testing.T) {
 		CensusOrigin: types.CensusOriginCSPEdDSABabyJubJubV1,
 	}
 
+	processID := types.NewProcessID(contracts.AccountAddress(), defaultMockProcessIDVersion, 1)
+	// Compute the correct state root for this process configuration
+	initialRoot, err := spec.StateRoot(
+		processID.MathBigInt(),
+		census.CensusOrigin.BigInt().MathBigInt(),
+		pubKeyX, pubKeyY,
+		testutil.BallotModePacked(),
+	)
+	c.Assert(err, qt.IsNil)
 	// Create a new process
-	processID, createTx, err := contracts.CreateProcess(&types.Process{
+	_, createTx, err := contracts.CreateProcess(&types.Process{
+		ID:             &processID,
 		Status:         types.ProcessStatusReady,
 		OrganizationID: contracts.AccountAddress(),
-		StateRoot:      testutil.FixedStateRoot(),
+		StateRoot:      types.BigIntConverter(initialRoot),
 		StartTime:      time.Now().Add(5 * time.Minute),
 		Duration:       time.Hour,
 		MetadataURI:    "https://example.com/metadata",
 		BallotMode:     testutil.BallotMode(),
 		Census:         census,
+		EncryptionKey: &types.EncryptionKey{
+			X: (*types.BigInt)(pubKeyX),
+			Y: (*types.BigInt)(pubKeyY),
+		},
 	})
 	c.Assert(err, qt.IsNil)
 	c.Assert(createTx, qt.Not(qt.IsNil))
 
 	// Store the encryption keys for the process id
-	t.Log("TODO: fix SetEncryptionKeys", processID, publicKey, privateKey)
-	// err = store.SetEncryptionKeys(processID, publicKey, privateKey)
-	// c.Assert(err, qt.IsNil)
+	err = store.SetEncryptionKeys(publicKey, privateKey)
+	c.Assert(err, qt.IsNil)
 
 	// Wait for transaction to be mined
 	err = contracts.WaitTxByHash(*createTx, 30*time.Second)

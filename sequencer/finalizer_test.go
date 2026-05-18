@@ -1,10 +1,12 @@
 package sequencer
 
 import (
+	"context"
 	"errors"
 	"math/big"
 	"path/filepath"
 	"testing"
+	"time"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/circuits/results"
@@ -35,7 +37,7 @@ func TestMaxPossibleResult(t *testing.T) {
 			name: "returns zero when no votes can contribute",
 			process: &types.Process{
 				BallotMode:  spec.BallotMode{MaxValue: 16},
-				VotersCount: types.BigIntConverter(big.NewInt(0)),
+				VotersCount: types.NewInt(0),
 			},
 			want: 0,
 		},
@@ -43,7 +45,7 @@ func TestMaxPossibleResult(t *testing.T) {
 			name: "uses maxValue times votersCount",
 			process: &types.Process{
 				BallotMode:  spec.BallotMode{MaxValue: 16},
-				VotersCount: types.BigIntConverter(big.NewInt(3)),
+				VotersCount: types.NewInt(3),
 			},
 			want: 48,
 		},
@@ -51,7 +53,7 @@ func TestMaxPossibleResult(t *testing.T) {
 			name: "caps at fallback maximum",
 			process: &types.Process{
 				BallotMode:  spec.BallotMode{MaxValue: 1_000_000_000_000},
-				VotersCount: types.BigIntConverter(big.NewInt(2)),
+				VotersCount: types.NewInt(2),
 			},
 			want: maxPossibleResultCap,
 		},
@@ -79,43 +81,65 @@ func loadResultsVerifierArtifactsForTest(t *testing.T) *internalCircuits {
 
 // TestFinalize tests the finalize method of the Finalizer struct
 func TestFinalize(t *testing.T) {
-	t.Skip("TODO: fix and re-enable")
 	c := qt.New(t)
 
+	expectedResults := int64(5)
+
 	// Setup test environment
-	stg, stateDB, processID, _, _, cleanup := setupTestEnvironment(t, 5000)
+	stg, stateDB, processID, _, _, cleanup := setupTestEnvironment(t, expectedResults)
 	defer cleanup()
 
 	// Create a finalizer
 	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil, nil)
-	f.Start(t.Context(), 0)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	f.Start(ctx, 0)
 
-	// Test finalize
+	// Force to finalize the process
 	f.OndemandCh <- processID
-	_, err := f.WaitUntilResults(t.Context(), processID)
-	c.Assert(err, qt.IsNil, qt.Commentf("finalize failed: %v", err))
 
 	// Check that the process has been updated with the result
-	process, err := stg.Process(processID)
-	c.Assert(err, qt.IsNil)
-	c.Assert(process.Result, qt.Not(qt.IsNil))
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			c.Fatal("finalizer context done")
+		case <-ticker.C:
+			if stg.HasVerifiedResults(processID) {
+				for {
+					results, err := stg.NextVerifiedResults()
+					if err != nil {
+						c.Fatal(err)
+					}
 
-	// Verify the results are as expected
-	c.Assert(len(process.Result), qt.Equals, params.FieldsPerBallot)
-	expected := big.NewInt(5000)
-	c.Assert(process.Result[0].MathBigInt().Cmp(expected), qt.Equals, 0,
-		qt.Commentf("Expected first result to be 500, got %s", process.Result[0].String()))
+					if results.ProcessID != processID {
+						continue
+					}
+
+					c.Assert(len(results.Inputs.Results), qt.Equals, params.FieldsPerBallot)
+					c.Assert(results.Inputs.Results[0].Cmp(big.NewInt(expectedResults)), qt.Equals, 0)
+					return
+				}
+			}
+		}
+	}
 }
 
 func TestFinalizeMissingEncryptionKeysReturnsSequencerSentinel(t *testing.T) {
 	c := qt.New(t)
 
-	stg, stateDB, processID, _, _, cleanup := setupTestEnvironment(t, 5000)
+	stg, stateDB, processID, _, _, cleanup := setupTestEnvironment(t, 5)
 	defer cleanup()
+	err := stg.UpdateProcess(processID, func(p *types.Process) error {
+		p.EncryptionKey = nil
+		return nil
+	})
+	c.Assert(err, qt.IsNil)
 
-	f := newFinalizer(stg, stateDB, nil, nil, nil)
+	f := newFinalizer(stg, stateDB, loadResultsVerifierArtifactsForTest(t), nil, nil)
 
-	err := f.finalize(processID)
+	err = f.finalize(processID)
 	c.Assert(err, qt.IsNotNil)
 	c.Assert(errors.Is(err, ErrProcessEncryptionKeysMissing), qt.IsTrue)
 }
@@ -185,15 +209,14 @@ func setupTestEnvironment(t *testing.T, resultValue int64) (
 	ecc.Point,
 	func(),
 ) {
+	c := qt.New(t)
 	// Create temporary directory
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "db")
 
 	// Create database
 	mainDB, err := metadb.New(db.TypePebble, dbPath)
-	if err != nil {
-		t.Fatalf("failed to create database: %v", err)
-	}
+	c.Assert(err, qt.IsNil)
 
 	// Create storage
 	stg := storage.New(mainDB)
@@ -206,38 +229,29 @@ func setupTestEnvironment(t *testing.T, resultValue int64) (
 
 	// Create encryption keys
 	curve := curves.New(bjj.CurveType)
-	pubKey, _, err := elgamal.GenerateKey(curve)
-	if err != nil {
-		t.Fatalf("failed to generate key: %v", err)
-	}
-
-	// Store the keys in storage
-	t.Log("TODO: fix SetEncryptionKeys", processID, pubKey)
-	// err = stg.SetEncryptionKeys(processID, pubKey, privKey)
-	// if err != nil {
-	// 	t.Fatalf("failed to store encryption keys: %v", err)
-	// }
+	pubKey, privKey, err := elgamal.GenerateKey(curve)
+	c.Assert(err, qt.IsNil)
 
 	// Store the process
-	err = stg.NewProcess(testutil.RandomProcess(processID))
-	if err != nil {
-		t.Fatalf("failed to store process: %v", err)
-	}
+	x, y := pubKey.Point()
+	process := testutil.RandomProcessWithEncryptionKey(processID, types.EncryptionKey{
+		X: (*types.BigInt)(x),
+		Y: (*types.BigInt)(y),
+	})
+	err = stg.NewProcess(process)
+	c.Assert(err, qt.IsNil)
 
-	process, err := stg.Process(processID)
-	if err != nil {
-		t.Fatalf("failed to get process: %v", err)
-	}
+	// Store the keys in storage
+	err = stg.SetEncryptionKeys(pubKey, privKey)
+	c.Assert(err, qt.IsNil)
 
 	// Setup state with test data
-	process.StateRoot = setupTestState(t, stateDB, processID, pubKey, process.StateRoot.MathBigInt(), resultValue)
 	err = stg.UpdateProcess(processID, func(p *types.Process) error {
-		p.StateRoot = process.StateRoot
+		p.StateRoot = setupTestState(t, stateDB, processID, pubKey, process.StateRoot.MathBigInt(), resultValue)
+		p.VotersCount = types.NewInt(1)
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to store process: %v", err)
-	}
+	c.Assert(err, qt.IsNil)
 
 	// Return cleanup function
 	cleanup := func() {

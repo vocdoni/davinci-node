@@ -40,6 +40,14 @@ func (s *Storage) GenerateProcessEncryptionKeys() (ecc.Point, *big.Int, error) {
 	return s.generateEncryptionKeysUnsafe()
 }
 
+// SetEncryptionKeys stores the given encryption public and private keys in
+// storage, using the public key as the key.
+func (s *Storage) SetEncryptionKeys(publicKey ecc.Point, privateKey *big.Int) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.setEncryptionKeysUnsafe(publicKey, privateKey)
+}
+
 // setEncryptionKeysUnsafe stores the given encryption public and private keys,
 // without locking the storage and using the public key as the key in storage.
 func (s *Storage) setEncryptionKeysUnsafe(publicKey ecc.Point, privateKey *big.Int) error {

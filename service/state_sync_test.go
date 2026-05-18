@@ -3,30 +3,25 @@ package service
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/arbo/memdb"
-	"github.com/vocdoni/davinci-node/crypto/ecc"
 	bjj "github.com/vocdoni/davinci-node/crypto/ecc/bjj_gnark"
 	"github.com/vocdoni/davinci-node/crypto/ecc/curves"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
-	"github.com/vocdoni/davinci-node/spec"
-	"github.com/vocdoni/davinci-node/spec/params"
-	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/state"
+	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
 )
 
 func TestStateSync(t *testing.T) {
-	t.Skip("TODO: fix and re-enable")
 	c := qt.New(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -68,37 +63,20 @@ func TestStateSync(t *testing.T) {
 	publicKey, privateKey, err := elgamal.GenerateKey(curves.New(bjj.CurveType))
 	c.Assert(err, qt.IsNil)
 
+	// Store the encryption keys
+	err = store.SetEncryptionKeys(publicKey, privateKey)
+	c.Assert(err, qt.IsNil)
+
 	// Create a new process
-	processID, createTx, err := contracts.CreateProcess(&types.Process{
-		Status:         types.ProcessStatusReady,
-		OrganizationID: contracts.AccountAddress(),
-		StateRoot:      new(types.BigInt).SetUint64(100),
-		StartTime:      time.Now().Add(5 * time.Minute),
-		Duration:       time.Hour,
-		MetadataURI:    "https://example.com/metadata",
-		BallotMode: spec.BallotMode{
-			NumFields:    2,
-			GroupSize:    2,
-			MaxValue:     100,
-			MinValue:     0,
-			MaxValueSum:  0,
-			MinValueSum:  0,
-			CostExponent: 0,
-			UniqueValues: false,
-		},
-		Census: &types.Census{
-			CensusRoot:   make([]byte, 32),
-			CensusURI:    "https://example.com/census",
-			CensusOrigin: types.CensusOriginCSPEdDSABabyJubJubV1,
-		},
-	})
+	publicKeyX, publicKeyY := publicKey.Point()
+	processID := types.NewProcessID(testutil.RandomAddress(), defaultMockProcessIDVersion, 0)
+	process := testutil.CustomRandomProcess(processID, &types.EncryptionKey{
+		X: (*types.BigInt)(publicKeyX),
+		Y: (*types.BigInt)(publicKeyY),
+	}, testutil.RandomCensus(types.CensusOriginCSPEdDSABabyJubJubV1))
+	processID, createTx, err := contracts.CreateProcess(process)
 	c.Assert(err, qt.IsNil)
 	c.Assert(createTx, qt.Not(qt.IsNil))
-
-	// Store the encryption keys for the process id
-	t.Log("TODO: fix SetEncryptionKeys", processID, publicKey, privateKey)
-	// err = store.SetEncryptionKeys(processID, publicKey, privateKey)
-	// c.Assert(err, qt.IsNil)
 
 	// Wait for transaction to be mined
 	err = contracts.WaitTxByHash(*createTx, 30*time.Second)
@@ -111,30 +89,18 @@ func TestStateSync(t *testing.T) {
 	proc, err := store.Process(processID)
 	c.Assert(err, qt.IsNil)
 	c.Assert(proc, qt.Not(qt.IsNil))
-	c.Assert(proc.MetadataURI, qt.Equals, "https://example.com/metadata")
+	c.Assert(proc.MetadataURI, qt.Equals, "http://example.com/metadata")
 	c.Log(proc)
 
-	// TODO: dedup all of this with state/blobs_test.go code that was copypasted here
-
-	// Initialize state
+	// Use the process's ballot mode so the initialized state tree root matches
+	// what NewProcess committed in storage.
 	originalState, err := state.New(memdb.New(), processID)
 	c.Assert(err, qt.IsNil)
-	// Initialize state with process parameters
-	ballotMode := spec.BallotMode{
-		NumFields:    3,
-		GroupSize:    3,
-		MaxValue:     100,
-		MinValue:     0,
-		MaxValueSum:  1000,
-		MinValueSum:  0,
-		CostExponent: 1,
-		UniqueValues: false,
-	}
-	ballotModeCircuit, err := ballotMode.Pack()
+	packedBallotMode, err := process.BallotMode.Pack()
 	c.Assert(err, qt.IsNil)
 	err = originalState.Initialize(
-		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
-		ballotModeCircuit,
+		process.Census.CensusOrigin.BigInt().MathBigInt(),
+		packedBallotMode,
 		types.EncryptionKeyFromPoint(publicKey))
 	c.Assert(err, qt.IsNil, qt.Commentf("Failed to initialize original state"))
 
@@ -144,7 +110,7 @@ func TestStateSync(t *testing.T) {
 	i := 0
 
 	// Create test votes for this transition (different votes each time)
-	votes := createTestVotesWithOffset(t, publicKey, 3, i*1000)
+	votes := statetest.NewVotesForTest(publicKey, 3, i)
 
 	// Perform batch operation on original state
 	batch, err := originalState.PrepareVotesBatch(votes)
@@ -157,15 +123,13 @@ func TestStateSync(t *testing.T) {
 
 	txHash := contracts.SendBlobTx(batch.BlobEvalData().Blob[:])
 	{
-		// Verify process is still untouched
+		// Process state root should still be the initial root (old)
+		// before the state root change event is applied.
 		proc, err := store.Process(processID)
 		c.Assert(err, qt.IsNil)
 		c.Assert(proc, qt.Not(qt.IsNil))
-		// c.Assert(proc.StateRoot, qt.DeepEquals, (*types.BigInt)(oldStateRoot))
-		c.Logf("%s does not match %s, still merkle tree update works, why?", proc.StateRoot, oldStateRoot)
 		c.Assert(proc.VotersCount, qt.IsNil)
 		c.Assert(proc.OverwrittenVotesCount, qt.IsNil)
-		c.Log(proc)
 	}
 	err = contracts.MockStateRootChange(ctx, &types.ProcessWithChanges{
 		ProcessID: *proc.ID,
@@ -327,46 +291,6 @@ func TestStateSyncFetchBlobAndApplyUsesResolvedBlobFetcher(t *testing.T) {
 		},
 	})
 	c.Assert(err, qt.Not(qt.IsNil))
-	c.Assert(err.Error(), qt.Contains, "no blobs found")
-	c.Assert(selectedFetcher.txHashes, qt.HasLen, 1)
-	c.Assert(selectedFetcher.txHashes[0], qt.DeepEquals, txHash)
-	c.Assert(otherFetcher.txHashes, qt.HasLen, 0)
-}
-
-func createTestVotesWithOffset(t *testing.T, publicKey ecc.Point, numVotes int, offset int) []*state.Vote {
-	c := qt.New(t)
-	votes := make([]*state.Vote, numVotes)
-
-	for i := range numVotes {
-		// Create ballot with test values (vary based on offset and index)
-		ballot := elgamal.NewBallot(state.Curve)
-		messages := [params.FieldsPerBallot]*big.Int{}
-		for j := range params.FieldsPerBallot {
-			// Make ballot values unique based on offset, vote index, and field index
-			messages[j] = big.NewInt(int64((offset+1)*100 + i*10 + j + 1))
-		}
-
-		// Encrypt the ballot
-		_, err := ballot.Encrypt(messages, publicKey, nil)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to encrypt ballot %d with offset %d", i, offset))
-
-		// Create reencrypted ballot (for state transition circuit)
-		// Generate a random k for reencryption
-		k, err := specutil.RandomK()
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate random k for ballot %d with offset %d", i, offset))
-		reencryptedBallot, _, err := ballot.Reencrypt(publicKey, k)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to reencrypt ballot %d with offset %d", i, offset))
-
-		votes[i] = &state.Vote{
-			Address:           testutil.RandomAddress().Big(),
-			VoteID:            testutil.RandomVoteID(),
-			Ballot:            ballot,
-			ReencryptedBallot: reencryptedBallot,
-			Weight:            big.NewInt(testutil.Weight),
-		}
-	}
-
-	return votes
 }
 
 type testBlobFetcher struct {

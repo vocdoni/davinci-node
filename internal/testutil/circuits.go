@@ -20,9 +20,7 @@ import (
 	"github.com/vocdoni/davinci-node/util"
 )
 
-const (
-	Weight = 42
-)
+const Weight = 42
 
 // SepoliaChainID returns 11155111 (i.e. Sepolia)
 func SepoliaChainID() uint32 {
@@ -165,23 +163,39 @@ func RandomEncryptionPubKey() types.EncryptionKey {
 }
 
 func RandomProcess(processID types.ProcessID) *types.Process {
-	ek := RandomEncryptionPubKey()
+	return CustomRandomProcess(processID, nil, nil)
+}
+
+func RandomProcessWithEncryptionKey(processID types.ProcessID, ek types.EncryptionKey) *types.Process {
+	return CustomRandomProcess(processID, &ek, nil)
+}
+
+func CustomRandomProcess(processID types.ProcessID, ek *types.EncryptionKey, census *types.Census) *types.Process {
+	if ek == nil {
+		randEncKey := RandomEncryptionPubKey()
+		ek = &randEncKey
+	}
+	if census == nil {
+		census = RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1)
+	}
+
 	stateRoot, err := spec.StateRoot(processID.MathBigInt(),
-		types.CensusOriginMerkleTreeOffchainStaticV1.BigInt().MathBigInt(),
+		census.CensusOrigin.BigInt().MathBigInt(),
 		ek.X.MathBigInt(), ek.Y.MathBigInt(), BallotModePacked())
 	if err != nil {
 		panic(fmt.Sprintf("stateroot: %v", err))
 	}
 	return &types.Process{
-		ID:            &processID,
-		Status:        types.ProcessStatusReady,
-		StartTime:     time.Now(),
-		Duration:      time.Hour,
-		MetadataURI:   "http://example.com/metadata",
-		EncryptionKey: &ek,
-		StateRoot:     types.BigIntConverter(stateRoot),
-		BallotMode:    BallotMode(),
-		Census:        RandomCensus(types.CensusOriginMerkleTreeOffchainStaticV1),
+		ID:             &processID,
+		OrganizationID: RandomAddress(),
+		Status:         types.ProcessStatusReady,
+		StartTime:      time.Now(),
+		Duration:       time.Hour,
+		MetadataURI:    "http://example.com/metadata",
+		EncryptionKey:  ek,
+		StateRoot:      types.BigIntConverter(stateRoot),
+		BallotMode:     BallotMode(),
+		Census:         census,
 	}
 }
 
