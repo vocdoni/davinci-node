@@ -29,6 +29,11 @@ func Compile() (constraint.ConstraintSystem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compile vote verifier circuit: %w", err)
 	}
-	log.DebugTime("circuit definition compiled", startTime, "circuit", Artifacts.Name())
+	log.DebugTime("circuit definition compiled", startTime,
+		"circuit", Artifacts.Name(),
+		"nbConstraints", ccs.GetNbConstraints(),
+		"nbPublic", ccs.GetNbPublicVariables(),
+		"nbSecret", ccs.GetNbSecretVariables(),
+	)
 	return ccs, nil
 }
