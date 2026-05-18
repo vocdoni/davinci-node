@@ -1,0 +1,213 @@
+name: Circuit Constraints Review
+description: Compare circuit compile counts against main and keep one PR review updated
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout main branch for circuit comparison
+      uses: actions/checkout@v6
+      with:
+        ref: main
+        path: ${{ inputs.base-workdir }}
+        fetch-depth: 0
+
+    - name: Compile circuit artifacts on main
+      shell: bash
+      working-directory: ${{ inputs.base-workdir }}
+      run: go run ./cmd/circuit-compile --update-config 2>&1 | tee "${{ inputs.base-log-path }}"
+
+    - name: Review circuit constraint changes
+      uses: actions/github-script@v9
+      env:
+        BASE_LOG_PATH: ${{ inputs.base-workdir }}/${{ inputs.base-log-path }}
+        HEAD_LOG_PATH: ${{ inputs.head-log-path }}
+        REVIEW_MARKER: ${{ inputs.review-marker }}
+      with:
+        script: |
+          const fs = require('fs');
+
+          if (
+            context.payload.pull_request.head.repo.full_name !==
+            context.payload.pull_request.base.repo.full_name
+          ) {
+            core.notice('Skipping circuit constraint review for fork PR');
+            return;
+          }
+
+          const parseMetrics = (log) => {
+            const metrics = {};
+
+            for (const rawLine of log.split(/\r?\n/)) {
+              const line = rawLine.replace(/\u001B\[[0-9;]*[A-Za-z]/g, '');
+              if (!line.includes('circuit definition compiled')) {
+                continue;
+              }
+
+              const circuit = line.match(/\bcircuit=([^\s]+)/)?.[1];
+              const nbConstraints = Number(line.match(/\bnbConstraints=(\d+)/)?.[1]);
+              const nbPublic = Number(line.match(/\bnbPublic=(\d+)/)?.[1]);
+              const nbSecret = Number(line.match(/\bnbSecret=(\d+)/)?.[1]);
+
+              if (
+                !circuit ||
+                Number.isNaN(nbConstraints) ||
+                Number.isNaN(nbPublic) ||
+                Number.isNaN(nbSecret)
+              ) {
+                continue;
+              }
+
+              metrics[circuit] = { nbConstraints, nbPublic, nbSecret };
+            }
+
+            return metrics;
+          };
+
+          const formatDelta = (base, head) => {
+            const delta = head - base;
+            return delta > 0 ? `+${delta}` : `${delta}`;
+          };
+
+          const baseLog = fs.readFileSync(process.env.BASE_LOG_PATH, 'utf8');
+          const headLog = fs.readFileSync(process.env.HEAD_LOG_PATH, 'utf8');
+          const baseMetrics = parseMetrics(baseLog);
+          const headMetrics = parseMetrics(headLog);
+
+          if (Object.keys(baseMetrics).length === 0) {
+            throw new Error(`no circuit metrics found in ${process.env.BASE_LOG_PATH}`);
+          }
+
+          if (Object.keys(headMetrics).length === 0) {
+            throw new Error(`no circuit metrics found in ${process.env.HEAD_LOG_PATH}`);
+          }
+
+          const circuits = [...new Set([
+            ...Object.keys(baseMetrics),
+            ...Object.keys(headMetrics),
+          ])].sort();
+
+          const diffs = [];
+          for (const circuit of circuits) {
+            const base = baseMetrics[circuit];
+            const head = headMetrics[circuit];
+            const isDifferent =
+              !base ||
+              !head ||
+              base.nbConstraints !== head.nbConstraints ||
+              base.nbPublic !== head.nbPublic ||
+              base.nbSecret !== head.nbSecret;
+
+            if (isDifferent) {
+              diffs.push({ circuit, base, head });
+            }
+          }
+
+          const marker = process.env.REVIEW_MARKER;
+          const reviews = await github.paginate(github.rest.pulls.listReviews, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.payload.pull_request.number,
+            per_page: 100,
+          });
+
+          const existingReview = reviews.filter(
+            (review) =>
+              review.user &&
+              review.user.login === 'github-actions[bot]' &&
+              review.state === 'CHANGES_REQUESTED' &&
+              typeof review.body === 'string' &&
+              review.body.includes(marker)
+          ).at(-1) || null;
+
+          const dismissReview = async (review) => {
+            await github.rest.pulls.dismissReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              review_id: review.id,
+              message: 'Circuit constraints now match main',
+            });
+            await github.rest.pulls.updateReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              review_id: review.id,
+              body: '',
+            });
+          };
+
+          if (diffs.length === 0) {
+            if (!existingReview) {
+              core.notice('Circuit constraints match main');
+              return;
+            }
+
+            await dismissReview(existingReview);
+            core.notice('Dismissed circuit constraint review');
+            return;
+          }
+
+          const body = [
+            marker,
+            'Circuit constraint counts changed compared to `main`.',
+            '',
+            '| Circuit | main constraints | PR constraints | Δ constraints | main public | PR public | main secret | PR secret |',
+            '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+            ...diffs.map(({ circuit, base, head }) => {
+              const baseConstraints = base ? base.nbConstraints : 'n/a';
+              const headConstraints = head ? head.nbConstraints : 'n/a';
+              const basePublic = base ? base.nbPublic : 'n/a';
+              const headPublic = head ? head.nbPublic : 'n/a';
+              const baseSecret = base ? base.nbSecret : 'n/a';
+              const headSecret = head ? head.nbSecret : 'n/a';
+              const deltaConstraints = base && head ? formatDelta(base.nbConstraints, head.nbConstraints) : 'n/a';
+
+              return `| \`${circuit}\` | ${baseConstraints} | ${headConstraints} | ${deltaConstraints} | ${basePublic} | ${headPublic} | ${baseSecret} | ${headSecret} |`;
+            }),
+            '',
+            'Re-run `go run ./cmd/circuit-compile --update-config` after constraint-affecting changes.',
+          ].join('\n');
+
+          if (!existingReview) {
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'REQUEST_CHANGES',
+              body,
+            });
+            core.notice('Created circuit constraint review');
+            return;
+          }
+
+          if (existingReview.body !== body) {
+            await github.rest.pulls.updateReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              review_id: existingReview.id,
+              body,
+            });
+            core.notice('Updated circuit constraint review');
+            return;
+          }
+
+          core.notice('Circuit constraint review already up to date');
+
+inputs:
+  head-log-path:
+    description: Path to the PR head circuit compile log
+    required: false
+    default: circuit-compile.log
+  base-workdir:
+    description: Directory where the main branch checkout should live
+    required: false
+    default: base
+  base-log-path:
+    description: Path to the main branch circuit compile log
+    required: false
+    default: circuit-compile.log
+  review-marker:
+    description: Marker used to identify the bot review
+    required: false
+    default: '<!-- circuit-constraints -->'

@@ -151,7 +151,11 @@ jobs:
             -vet=off
 
       - name: Compile circuit artifacts
-        run: go run ./cmd/circuit-compile --update-config
+        run: go run ./cmd/circuit-compile --update-config 2>&1 | tee circuit-compile.log
+
+      - name: Review circuit constraint changes
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/circuit-constraints-review
 
       - name: Run integration tests
         env:
