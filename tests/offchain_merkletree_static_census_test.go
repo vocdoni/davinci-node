@@ -8,7 +8,6 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/api"
-	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/prover/debug"
@@ -31,13 +30,6 @@ func TestOffChainMerkleTreeStaticCensus(t *testing.T) {
 	c := qt.New(t)
 
 	var (
-		err           error
-		pid           types.ProcessID
-		encryptionKey *types.EncryptionKey
-		signers       []*ethereum.Signer
-		censusRoot    []byte
-		censusURI     string
-		// Store the voteIDs returned from the API to check their status later
 		voteIDs []types.VoteID
 		ks      []*big.Int
 	)
@@ -46,41 +38,8 @@ func TestOffChainMerkleTreeStaticCensus(t *testing.T) {
 		prover.SetProver(debug.NewDebugProver(t))
 	}
 
-	c.Run("create process", func(c *qt.C) {
-		censusCtx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-
-		// Create census with numVoters participants
-		censusRoot, censusURI, signers, err = helpers.NewCensusWithRandomVoters(censusCtx, types.CensusOriginMerkleTreeOffchainStaticV1, numVoters)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
-		c.Assert(len(signers), qt.Equals, numVoters)
-
-		// create process in the sequencer
-		pid, encryptionKey, err = helpers.NewProcess(services.Contracts, services.HTTPClient)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
-
-		// now create process in contracts
-		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainStaticV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, numVoters)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
-		c.Assert(onchainPID.String(), qt.Equals, pid.String())
-
-		if err := helpers.WaitUntilCondition(globalCtx, time.Millisecond*200, func() bool {
-			_, err := services.Storage.Process(pid)
-			return err == nil
-		}); err != nil {
-			c.Fatal("Timeout waiting for process to be created in storage")
-			c.FailNow()
-		}
-		t.Logf("Process ID: %s", pid.String())
-
-		// Wait for the process to be registered in the sequencer
-		if err := helpers.WaitUntilCondition(globalCtx, time.Millisecond*200, func() bool {
-			return services.Sequencer.ExistsProcessID(pid)
-		}); err != nil {
-			c.Fatal("Timeout waiting for process to be registered in sequencer")
-			c.FailNow()
-		}
-	})
+	setup := setupProcess(c, t, globalCtx, types.CensusOriginMerkleTreeOffchainStaticV1, numVoters, numVoters)
+	pid, encryptionKey, signers := setup.pid, setup.encryptionKey, setup.signers
 
 	votersFieldsValues := [][]*types.BigInt{}
 	c.Run("create votes", func(c *qt.C) {

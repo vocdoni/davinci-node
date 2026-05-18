@@ -32,56 +32,18 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 	c := qt.New(t)
 
 	var (
-		err           error
-		pid           types.ProcessID
-		encryptionKey *types.EncryptionKey
-		signers       []*ethereum.Signer
-		censusRoot    []byte
-		censusURI     string
-		// Store the voteIDs returned from the API to check their status later
-		voteIDs []types.VoteID
-		ks      []*big.Int
+		censusRoot []byte
+		censusURI  string
+		voteIDs    []types.VoteID
+		ks         []*big.Int
 	)
 
 	if helpers.IsDebugTest() {
 		prover.SetProver(debug.NewDebugProver(t))
 	}
 
-	c.Run("create process", func(c *qt.C) {
-		censusCtx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-
-		// Create census with numVoters participants
-		censusRoot, censusURI, signers, err = helpers.NewCensusWithRandomVoters(censusCtx, types.CensusOriginMerkleTreeOffchainDynamicV1, numVoters)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create census"))
-		c.Assert(len(signers), qt.Equals, numVoters)
-
-		// create process in sequencer
-		pid, encryptionKey, err = helpers.NewProcess(services.Contracts, services.HTTPClient)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
-
-		// now create process in contracts
-		onchainPID, err := helpers.NewProcessOnChain(services.Contracts, types.CensusOriginMerkleTreeOffchainDynamicV1, censusURI, censusRoot, defaultBallotMode, encryptionKey, numVoters)
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in contracts"))
-		c.Assert(onchainPID.String(), qt.Equals, pid.String())
-
-		if err := helpers.WaitUntilCondition(globalCtx, time.Millisecond*200, func() bool {
-			_, err := services.Storage.Process(pid)
-			return err == nil
-		}); err != nil {
-			c.Fatal("Timeout waiting for process to be created and registered")
-			c.FailNow()
-		}
-		t.Logf("Process ID: %s", pid.String())
-
-		// Wait for the process to be registered in the sequencer
-		if err := helpers.WaitUntilCondition(globalCtx, time.Millisecond*200, func() bool {
-			return services.Sequencer.ExistsProcessID(pid)
-		}); err != nil {
-			c.Fatal("Timeout waiting for process to be registered in sequencer")
-			c.FailNow()
-		}
-	})
+	setup := setupProcess(c, t, globalCtx, types.CensusOriginMerkleTreeOffchainDynamicV1, numVoters, numVoters)
+	pid, encryptionKey, signers := setup.pid, setup.encryptionKey, setup.signers
 
 	votersFieldsValues := [][]*types.BigInt{}
 	c.Run("create votes", func(c *qt.C) {
