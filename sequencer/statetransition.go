@@ -48,10 +48,6 @@ func (s *Sequencer) startStateTransitionProcessor() error {
 func (s *Sequencer) processPendingTransitions() {
 	// Process each registered process ID
 	s.processIDs.ForEach(func(processID types.ProcessID, _ time.Time) bool {
-		if !s.contractsResolver.SupportsProcess(processID) {
-			log.Debugw("process not supported", "processID", processID.String())
-			return true // Continue to next process ID
-		}
 		// If there are pending txs, skip this process ID before reserving more
 		// work. The queued batch must remain available after the pending tx is
 		// confirmed or fails.
