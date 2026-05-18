@@ -8,6 +8,8 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
+const testNilProcess = "nil process"
+
 func TestNestedMetadata(t *testing.T) {
 	metadata := Metadata{
 		Meta: GenericMetadata{
@@ -132,7 +134,7 @@ func TestProcessIsActive(t *testing.T) {
 			want: false,
 		},
 		{
-			name:    "nil process",
+			name:    testNilProcess,
 			process: nil,
 			want:    false,
 		},
@@ -219,7 +221,7 @@ func TestProcessIsAcceptingVotes(t *testing.T) {
 			want: false,
 		},
 		{
-			name:    "nil process",
+			name:    testNilProcess,
 			process: nil,
 			want:    false,
 		},
@@ -315,7 +317,7 @@ func TestProcessMaxVotersReached(t *testing.T) {
 			want: false,
 		},
 		{
-			name:    "nil process",
+			name:    testNilProcess,
 			process: nil,
 			want:    false,
 		},

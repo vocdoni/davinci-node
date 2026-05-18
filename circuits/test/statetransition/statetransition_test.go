@@ -37,11 +37,14 @@ import (
 	"github.com/vocdoni/davinci-node/util"
 )
 
-const falseString = "false"
+const (
+	falseString    = "false"
+	testTimeFormat = "15:04:05"
+)
 
 func TestMain(m *testing.M) {
 	// enable log to see nbConstraints
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: testTimeFormat}).With().Timestamp().Logger())
 	m.Run()
 }
 
@@ -50,7 +53,7 @@ func testCircuitCompile(t *testing.T, c frontend.Circuit) {
 		t.Skip("skipping circuit tests...")
 	}
 	// enable log to see nbConstraints
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: testTimeFormat}).With().Timestamp().Logger())
 	if _, err := frontend.Compile(params.StateTransitionCurve.ScalarField(), r1cs.NewBuilder, c); err != nil {
 		panic(err)
 	}
@@ -69,7 +72,7 @@ func testCircuitProve(t *testing.T, circuit, assignment frontend.Circuit) {
 }
 
 func TestStateTransitionCircuit(t *testing.T) {
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: testTimeFormat}).With().Timestamp().Logger())
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
 		t.Skip("skipping circuit tests...")
 	}
@@ -87,7 +90,7 @@ func TestStateTransitionCircuit(t *testing.T) {
 }
 
 func TestStateTransitionFullProvingCircuit(t *testing.T) {
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: testTimeFormat}).With().Timestamp().Logger())
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseString {
 		t.Skip("skipping circuit tests...")
 	}

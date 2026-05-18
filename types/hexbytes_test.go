@@ -7,6 +7,8 @@ import (
 	qt "github.com/frankban/quicktest"
 )
 
+const testNameEmpty = "empty"
+
 func TestHexBytes(t *testing.T) {
 	c := qt.New(t)
 
@@ -26,7 +28,7 @@ func TestHexBytes(t *testing.T) {
 			want string
 		}{
 			{name: "nil slice", in: nil, want: "0x"},
-			{name: "empty", in: HexBytes{}, want: "0x"},
+			{name: testNameEmpty, in: HexBytes{}, want: "0x"},
 			{name: "non-empty", in: HexBytes{0x00, 0xAB, 0xCD}, want: "0x00abcd"},
 		}
 
@@ -43,7 +45,7 @@ func TestHexBytes(t *testing.T) {
 			in   HexBytes
 			want string
 		}{
-			{name: "empty", in: HexBytes{}, want: "0"},
+			{name: testNameEmpty, in: HexBytes{}, want: "0"},
 			{name: "big-endian", in: HexBytes{0x01, 0x00}, want: "256"},
 			{name: "leading zeros", in: HexBytes{0x00, 0x00, 0x02}, want: "2"},
 		}
@@ -170,7 +172,7 @@ func TestHexBytes(t *testing.T) {
 				in   HexBytes
 				want string
 			}{
-				{name: "empty", in: HexBytes{}, want: `"0x"`},
+				{name: testNameEmpty, in: HexBytes{}, want: `"0x"`},
 				{name: "non-empty", in: HexBytes{0xDE, 0xAD, 0xBE, 0xEF}, want: `"0xdeadbeef"`},
 			}
 
@@ -196,7 +198,7 @@ func TestHexBytes(t *testing.T) {
 				{name: "with 0x prefix", in: `"0xdeadbeef"`, want: HexBytes{0xDE, 0xAD, 0xBE, 0xEF}},
 				{name: "with 0X prefix", in: `"0Xdeadbeef"`, want: HexBytes{0xDE, 0xAD, 0xBE, 0xEF}},
 				{name: "without prefix", in: `"deadbeef"`, want: HexBytes{0xDE, 0xAD, 0xBE, 0xEF}},
-				{name: "empty", in: `"0x"`, want: HexBytes{}},
+				{name: testNameEmpty, in: `"0x"`, want: HexBytes{}},
 			}
 
 			for _, tc := range testCases {
@@ -253,7 +255,7 @@ func TestHexBytes(t *testing.T) {
 			{name: "with prefix", in: "0xdeadbeef", want: HexBytes{0xDE, 0xAD, 0xBE, 0xEF}},
 			{name: "with uppercase prefix", in: "0Xdeadbeef", want: HexBytes{0xDE, 0xAD, 0xBE, 0xEF}},
 			{name: "without prefix", in: "deadbeef", want: HexBytes{0xDE, 0xAD, 0xBE, 0xEF}},
-			{name: "empty", in: "", want: HexBytes{}},
+			{name: testNameEmpty, in: "", want: HexBytes{}},
 		}
 
 		for _, tc := range testCases {

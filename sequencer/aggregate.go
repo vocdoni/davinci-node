@@ -11,6 +11,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls12377"
 	"github.com/consensys/gnark/std/math/emulated"
 	stdgroth16 "github.com/consensys/gnark/std/recursion/groth16"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/vocdoni/davinci-node/circuits/aggregator"
 	"github.com/vocdoni/davinci-node/circuits/voteverifier"
 	"github.com/vocdoni/davinci-node/log"
@@ -43,6 +44,7 @@ func collectAggregationBatchInputs(
 	maxVotersReached bool,
 	proofToRecursion proofToRecursionFn,
 	verifyVoteVerifierProof voteVerifierProofValidatorFn,
+	checkCensusMembership func(b *storage.VerifiedBallot) bool,
 ) (*aggregator.AggregatorInputs, error) {
 	// Prepare data structures for the aggregator circuit
 	proofs := [params.VotesPerBatch]stdgroth16.Proof[sw_bls12377.G1Affine, sw_bls12377.G2Affine]{}
@@ -54,19 +56,22 @@ func collectAggregationBatchInputs(
 
 	for i, b := range ballots {
 		if b == nil {
-			log.Warnw("skipping nil verified ballot",
+			log.Warnw(
+				"skipping nil verified ballot",
 				"processID", processID.String(),
 				"index", i,
 			)
 			if i < len(keys) {
 				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-					log.Warnw("failed to mark nil ballot as failed",
+					log.Warnw(
+						"failed to mark nil ballot as failed",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"index", i,
 					)
 					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-						log.Warnw("failed to release ballot reservation after nil ballot failure marking",
+						log.Warnw(
+							"failed to release ballot reservation after nil ballot failure marking",
 							"error", err.Error(),
 							"processID", processID.String(),
 							"index", i,
@@ -82,20 +87,23 @@ func collectAggregationBatchInputs(
 			if b.Address != nil {
 				addressStr = b.Address.String()
 			}
-			log.Warnw("skipping verified ballot with missing voteID",
+			log.Warnw(
+				"skipping verified ballot with missing voteID",
 				"processID", processID.String(),
 				"index", i,
 				"address", addressStr,
 			)
 			if i < len(keys) {
 				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-					log.Warnw("failed to mark ballot as failed",
+					log.Warnw(
+						"failed to mark ballot as failed",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"index", i,
 					)
 					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-						log.Warnw("failed to release ballot reservation after failure marking",
+						log.Warnw(
+							"failed to release ballot reservation after failure marking",
 							"error", err.Error(),
 							"processID", processID.String(),
 							"index", i,
@@ -106,20 +114,23 @@ func collectAggregationBatchInputs(
 			continue
 		}
 		if b.Address == nil {
-			log.Warnw("skipping verified ballot with missing address",
+			log.Warnw(
+				"skipping verified ballot with missing address",
 				"processID", processID.String(),
 				"index", i,
 				"voteID", b.VoteID.String(),
 			)
 			if i < len(keys) {
 				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-					log.Warnw("failed to mark ballot as failed",
+					log.Warnw(
+						"failed to mark ballot as failed",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
 					)
 					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-						log.Warnw("failed to release ballot reservation after failure marking",
+						log.Warnw(
+							"failed to release ballot reservation after failure marking",
 							"error", err.Error(),
 							"processID", processID.String(),
 							"voteID", b.VoteID.String(),
@@ -132,18 +143,21 @@ func collectAggregationBatchInputs(
 
 		// if the vote ID already exists in the state, skip it
 		if processState.ContainsVoteID(b.VoteID) {
-			log.Debugw("skipping ballot already in state",
+			log.Debugw(
+				"skipping ballot already in state",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-				log.Warnw("failed to mark ballot as failed",
+				log.Warnw(
+					"failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-					log.Warnw("failed to release ballot reservation after failure marking",
+					log.Warnw(
+						"failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
@@ -160,14 +174,16 @@ func collectAggregationBatchInputs(
 				"address", types.HexBytes(b.Address.Bytes()),
 				"processID", processID.String())
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-				log.Warnw("failed to mark ballot as failed",
+				log.Warnw(
+					"failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
 					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-					log.Warnw("failed to release ballot reservation after failure marking",
+					log.Warnw(
+						"failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
@@ -179,20 +195,23 @@ func collectAggregationBatchInputs(
 		}
 
 		if b.Proof == nil {
-			log.Warnw("skipping verified ballot with missing vote verifier proof",
+			log.Warnw(
+				"skipping verified ballot with missing vote verifier proof",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
 				"address", types.HexBytes(b.Address.Bytes()),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-				log.Warnw("failed to mark ballot as failed",
+				log.Warnw(
+					"failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
 					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-					log.Warnw("failed to release ballot reservation after failure marking",
+					log.Warnw(
+						"failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
@@ -203,20 +222,23 @@ func collectAggregationBatchInputs(
 			continue
 		}
 		if b.InputsHash == nil {
-			log.Warnw("skipping verified ballot with missing vote verifier inputs hash",
+			log.Warnw(
+				"skipping verified ballot with missing vote verifier inputs hash",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
 				"address", types.HexBytes(b.Address.Bytes()),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-				log.Warnw("failed to mark ballot as failed",
+				log.Warnw(
+					"failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
 					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-					log.Warnw("failed to release ballot reservation after failure marking",
+					log.Warnw(
+						"failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
@@ -228,20 +250,23 @@ func collectAggregationBatchInputs(
 		}
 
 		if !b.Proof.Ar.IsInSubGroup() || !b.Proof.Krs.IsInSubGroup() || !b.Proof.Bs.IsInSubGroup() {
-			log.Warnw("skipping verified ballot with malformed vote verifier proof (subgroup check failed)",
+			log.Warnw(
+				"skipping verified ballot with malformed vote verifier proof (subgroup check failed)",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
 				"address", types.HexBytes(b.Address.Bytes()),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-				log.Warnw("failed to mark ballot as failed",
+				log.Warnw(
+					"failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
 					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-					log.Warnw("failed to release ballot reservation after failure marking",
+					log.Warnw(
+						"failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
@@ -254,21 +279,24 @@ func collectAggregationBatchInputs(
 
 		if verifyVoteVerifierProof != nil {
 			if err := verifyVoteVerifierProof(b); err != nil {
-				log.Warnw("skipping verified ballot with invalid vote verifier proof",
+				log.Warnw(
+					"skipping verified ballot with invalid vote verifier proof",
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
 					"address", types.HexBytes(b.Address.Bytes()),
 					"error", err.Error(),
 				)
 				if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-					log.Warnw("failed to mark ballot as failed",
+					log.Warnw(
+						"failed to mark ballot as failed",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
 						"address", types.HexBytes(b.Address.Bytes()),
 					)
 					if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-						log.Warnw("failed to release ballot reservation after failure marking",
+						log.Warnw(
+							"failed to release ballot reservation after failure marking",
 							"error", err.Error(),
 							"processID", processID.String(),
 							"voteID", b.VoteID.String(),
@@ -278,6 +306,34 @@ func collectAggregationBatchInputs(
 				}
 				continue
 			}
+		}
+
+		if checkCensusMembership != nil && !checkCensusMembership(b) {
+			log.Warnw(
+				"skipping ballot: address not found in census tree at aggregation time",
+				"processID", processID.String(),
+				"voteID", b.VoteID.String(),
+				"address", types.HexBytes(b.Address.Bytes()),
+			)
+			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
+				log.Warnw(
+					"failed to mark census-absent ballot as failed",
+					"error", err.Error(),
+					"processID", processID.String(),
+					"voteID", b.VoteID.String(),
+					"address", types.HexBytes(b.Address.Bytes()),
+				)
+				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
+					log.Warnw(
+						"failed to release ballot reservation after census-absent failure marking",
+						"error", err.Error(),
+						"processID", processID.String(),
+						"voteID", b.VoteID.String(),
+						"address", types.HexBytes(b.Address.Bytes()),
+					)
+				}
+			}
+			continue
 		}
 
 		batchIdx := len(aggBallots)
@@ -293,21 +349,24 @@ func collectAggregationBatchInputs(
 		var err error
 		proofs[batchIdx], err = proofToRecursion(groth16.Proof(b.Proof))
 		if err != nil {
-			log.Warnw("failed to transform proof for recursion; marking ballot as failed",
+			log.Warnw(
+				"failed to transform proof for recursion; marking ballot as failed",
 				"processID", processID.String(),
 				"voteID", b.VoteID.String(),
 				"address", types.HexBytes(b.Address.Bytes()),
 				"error", err.Error(),
 			)
 			if err := stg.MarkVerifiedBallotsFailed(keys[i]); err != nil {
-				log.Warnw("failed to mark ballot as failed",
+				log.Warnw(
+					"failed to mark ballot as failed",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"voteID", b.VoteID.String(),
 					"address", types.HexBytes(b.Address.Bytes()),
 				)
 				if err := stg.ReleaseVerifiedBallotReservations([][]byte{keys[i]}); err != nil {
-					log.Warnw("failed to release ballot reservation after failure marking",
+					log.Warnw(
+						"failed to release ballot reservation after failure marking",
 						"error", err.Error(),
 						"processID", processID.String(),
 						"voteID", b.VoteID.String(),
@@ -515,6 +574,34 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		return s.voteVerifier.Verify(vb.Proof, pubAssignment)
 	}
 
+	// Build a census membership checker for merkle-tree censuses so that
+	// any address absent from the census is filtered out before the
+	// aggregator proof is generated. Filtering after proof generation would
+	// invalidate the BatchHash public input of the aggregator circuit.
+	// For CSP censuses no local tree is available, so the check is skipped.
+	var checkCensusMembership func(*storage.VerifiedBallot) bool
+	if proc, pErr := s.stg.Process(processID); pErr == nil && proc.Census.CensusOrigin.IsMerkleTree() {
+		var chainID uint64
+		if proc.Census.CensusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
+			if contracts, cErr := s.contractsForProcess(processID); cErr == nil {
+				chainID = contracts.ChainID
+			}
+		}
+		if censusRef, cErr := s.stg.LoadCensus(chainID, proc.Census); cErr == nil {
+			censusTree := censusRef.Tree()
+			checkCensusMembership = func(b *storage.VerifiedBallot) bool {
+				_, ok := censusTree.GetWeight(common.BigToAddress(b.Address))
+				return ok
+			}
+		} else {
+			log.Warnw(
+				"could not load census for pre-aggregation check; census filter skipped",
+				"processID", processID.String(),
+				"error", cErr.Error(),
+			)
+		}
+	}
+
 	batchInputs, err := collectAggregationBatchInputs(
 		s.stg,
 		processID,
@@ -524,6 +611,7 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		process.MaxVotersReached(),
 		proofToRecursion,
 		verifyVoteVerifierProof,
+		checkCensusMembership,
 	)
 	if err != nil {
 		return err
@@ -559,7 +647,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		log.Debugw("filling with dummy proofs", "count", params.VotesPerBatch-len(batchInputs.AggBallots))
 		if err := assignment.FillWithDummy(len(batchInputs.AggBallots), s.voteVerifierDummyProof); err != nil {
 			if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
-				log.Warnw("failed to release ballot reservations after dummy fill failure",
+				log.Warnw(
+					"failed to release ballot reservations after dummy fill failure",
 					"error", err.Error(),
 					"processID", processID.String(),
 				)
@@ -592,7 +681,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 						addressStr = vb.Address.String()
 					}
 				}
-				log.Warnw("vote verifier proof does not verify for aggregation batch; excluding ballot",
+				log.Warnw(
+					"vote verifier proof does not verify for aggregation batch; excluding ballot",
 					"processID", processID.String(),
 					"voteID", voteIDStr,
 					"address", addressStr,
@@ -604,7 +694,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 		// Mark any invalid ballots as failed
 		if len(invalidKeys) > 0 {
 			if err := s.stg.MarkVerifiedBallotsFailed(invalidKeys...); err != nil {
-				log.Warnw("failed to mark invalid ballots as failed after aggregation proving failure",
+				log.Warnw(
+					"failed to mark invalid ballots as failed after aggregation proving failure",
 					"error", err.Error(),
 					"processID", processID.String(),
 					"invalidCount", len(invalidKeys),
@@ -612,7 +703,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 			}
 		}
 		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
-			log.Warnw("failed to release ballot reservations after aggregation proving failure",
+			log.Warnw(
+				"failed to release ballot reservations after aggregation proving failure",
 				"error", err.Error(),
 				"processID", processID.String(),
 			)
@@ -627,7 +719,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 	proofBW6, ok := proof.(*groth16_bw6761.Proof)
 	if !ok {
 		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
-			log.Warnw("failed to release ballot reservations after unexpected aggregate proof type",
+			log.Warnw(
+				"failed to release ballot reservations after unexpected aggregate proof type",
 				"error", err.Error(),
 				"processID", processID.String(),
 			)
@@ -644,7 +737,8 @@ func (s *Sequencer) aggregateBatch(processID types.ProcessID) error {
 
 	if err := s.stg.PushAggregatorBatch(&abb); err != nil {
 		if err := s.stg.ReleaseVerifiedBallotReservations(batchInputs.ProcessedKeys); err != nil {
-			log.Warnw("failed to release ballot reservations after batch push failure",
+			log.Warnw(
+				"failed to release ballot reservations after batch push failure",
 				"error", err.Error(),
 				"processID", processID.String(),
 			)

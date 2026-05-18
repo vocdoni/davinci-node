@@ -27,7 +27,8 @@ func (s *Sequencer) debugAggregationFailure(
 		return
 	}
 
-	log.Warnw("aggregator proving failed; investigating batch inputs",
+	log.Warnw(
+		"aggregator proving failed; investigating batch inputs",
 		"processID", processID.String(),
 		"error", proveErr.Error(),
 		"votersCount", len(batchInputs.VerifiedBallots),
@@ -40,7 +41,8 @@ func (s *Sequencer) debugAggregationFailure(
 	if pubW, err := frontend.NewWitness(assignment, params.AggregatorCurve.ScalarField(), frontend.PublicOnly()); err != nil {
 		log.Warnw("failed to build aggregator public witness", "processID", processID.String(), "error", err.Error())
 	} else {
-		log.Debugw("aggregator public witness",
+		log.Debugw(
+			"aggregator public witness",
 			"processID", processID.String(),
 			"vector", witnessVectorStrings(pubW),
 		)
@@ -48,7 +50,8 @@ func (s *Sequencer) debugAggregationFailure(
 
 	proofInputsHashStrings := bigIntStrings(batchInputs.ProofsInputsHashInputs)
 	hashPrefix, hashSuffix := prefixSuffixStrings(proofInputsHashStrings, 5)
-	log.Debugw("aggregator inputs hash preimage (vote verifier inputs hashes)",
+	log.Debugw(
+		"aggregator inputs hash preimage (vote verifier inputs hashes)",
 		"processID", processID.String(),
 		"count", len(proofInputsHashStrings),
 		"prefix", hashPrefix,
@@ -57,14 +60,16 @@ func (s *Sequencer) debugAggregationFailure(
 
 	for i, vb := range batchInputs.VerifiedBallots {
 		if vb == nil {
-			log.Warnw("nil verified ballot in aggregation batch",
+			log.Warnw(
+				"nil verified ballot in aggregation batch",
 				"processID", processID.String(),
 				"index", i,
 			)
 			continue
 		}
 		if vb.Proof == nil {
-			log.Warnw("missing vote verifier proof in aggregation batch",
+			log.Warnw(
+				"missing vote verifier proof in aggregation batch",
 				"processID", processID.String(),
 				"index", i,
 				"voteID", vb.VoteID.String(),
@@ -73,7 +78,8 @@ func (s *Sequencer) debugAggregationFailure(
 			continue
 		}
 		if vb.InputsHash == nil {
-			log.Warnw("missing vote verifier inputs hash in aggregation batch",
+			log.Warnw(
+				"missing vote verifier inputs hash in aggregation batch",
 				"processID", processID.String(),
 				"index", i,
 				"voteID", vb.VoteID.String(),
@@ -87,7 +93,8 @@ func (s *Sequencer) debugAggregationFailure(
 			BallotHash: emulated.ValueOf[sw_bn254.ScalarField](vb.InputsHash),
 		}
 		if err := s.voteVerifier.Verify(vb.Proof, pubAssignment); err != nil {
-			log.Warnw("vote verifier proof does not verify (native)",
+			log.Warnw(
+				"vote verifier proof does not verify (native)",
 				"processID", processID.String(),
 				"index", i,
 				"voteID", vb.VoteID.String(),
@@ -97,7 +104,8 @@ func (s *Sequencer) debugAggregationFailure(
 			)
 			pubAssignment.IsValid = 0
 			if err := s.voteVerifier.Verify(vb.Proof, pubAssignment); err == nil {
-				log.Warnw("vote verifier proof verifies only with IsValid=0; aggregator treating it as real will fail",
+				log.Warnw(
+					"vote verifier proof verifies only with IsValid=0; aggregator treating it as real will fail",
 					"processID", processID.String(),
 					"index", i,
 					"voteID", vb.VoteID.String(),
@@ -108,7 +116,8 @@ func (s *Sequencer) debugAggregationFailure(
 			continue
 		}
 
-		log.Debugw("vote verifier proof verifies (native)",
+		log.Debugw(
+			"vote verifier proof verifies (native)",
 			"processID", processID.String(),
 			"index", i,
 			"voteID", vb.VoteID.String(),

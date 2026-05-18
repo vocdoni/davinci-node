@@ -18,6 +18,11 @@ import (
 	leancensus "github.com/vocdoni/lean-imt-go/census"
 )
 
+const (
+	testCensusURI2        = "https://example.invalid/dump"
+	testContentTypeNDJSON = "application/x-ndjson"
+)
+
 type testErrReader struct {
 	err error
 }
@@ -125,7 +130,7 @@ func TestRequestRawDump(t *testing.T) {
 			c.Assert(r.Header.Get("Accept"), qt.Equals, "application/x-ndjson, application/json;q=0.9, */*;q=0.1")
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"application/x-ndjson"}},
+				Header:     http.Header{contentTypeHeader: []string{testContentTypeNDJSON}},
 				Body:       io.NopCloser(strings.NewReader(`{"ok":true}` + "\n")),
 				Request:    r,
 			}, nil
@@ -192,7 +197,7 @@ func TestJSONReader(t *testing.T) {
 	c.Run("ContentTypeJSONL", func(c *qt.C) {
 		const body = `{"a":1}` + "\n"
 		res := &http.Response{
-			Header: http.Header{"Content-Type": []string{"application/x-ndjson"}},
+			Header: http.Header{contentTypeHeader: []string{testContentTypeNDJSON}},
 			Body:   io.NopCloser(strings.NewReader(body)),
 		}
 
@@ -208,7 +213,7 @@ func TestJSONReader(t *testing.T) {
 	c.Run("ContentTypeJSONArray", func(c *qt.C) {
 		const body = `[{"a":1}]`
 		res := &http.Response{
-			Header: http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
+			Header: http.Header{contentTypeHeader: []string{"application/json; charset=utf-8"}},
 			Body:   io.NopCloser(strings.NewReader(body)),
 		}
 
@@ -352,7 +357,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		http.DefaultTransport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Header:     http.Header{contentTypeHeader: []string{"application/json"}},
 				Body: &testReadCloser{
 					Reader:   bytes.NewReader(dumpJSON),
 					closeErr: fmt.Errorf("close error"),
@@ -382,7 +387,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
 		_, err := ji.ImportCensus(c.Context(), censusDB, 0, &types.Census{
-			CensusURI:  "https://example.invalid/dump",
+			CensusURI:  testCensusURI2,
 			CensusRoot: expectedRoot,
 		}, 0)
 		c.Assert(err, qt.Not(qt.IsNil))
@@ -402,7 +407,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		c.Cleanup(func() { http.DefaultTransport = oldTransport })
 
 		_, err := ji.ImportCensus(c.Context(), censusDB, 0, &types.Census{
-			CensusURI:  "https://example.invalid/dump",
+			CensusURI:  testCensusURI2,
 			CensusRoot: expectedRoot,
 		}, 0)
 		c.Assert(err, qt.Not(qt.IsNil))
@@ -414,7 +419,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		http.DefaultTransport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"application/x-ndjson"}},
+				Header:     http.Header{contentTypeHeader: []string{testContentTypeNDJSON}},
 				Body:       io.NopCloser(strings.NewReader("not json\n")),
 				Request:    r,
 			}, nil
@@ -435,7 +440,7 @@ func TestJSONDownloadAndImportCensus(t *testing.T) {
 		http.DefaultTransport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Header:     http.Header{contentTypeHeader: []string{"application/json"}},
 				Body:       io.NopCloser(bytes.NewReader(dumpJSON)),
 				Request:    r,
 			}, nil
