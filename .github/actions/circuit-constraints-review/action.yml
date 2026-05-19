@@ -60,10 +60,10 @@ runs:
               status: 'completed',
               per_page: 100,
             },
-            (response) => response.data.workflow_runs
+            (response) => response.data.workflow_runs ?? []
           );
 
-          const run = runs.find((candidate) => candidate.conclusion === 'success');
+          const run = runs.find((candidate) => candidate?.conclusion === 'success');
           if (!run) {
             core.notice(`No successful ${workflowId} run found on base branch ${baseBranch}; compiling fallback baseline`);
             core.setOutput('run_id', '');
@@ -78,7 +78,7 @@ runs:
             per_page: 100,
           });
 
-          const artifact = artifacts.find((item) => item.name === artifactName && !item.expired);
+          const artifact = artifacts.find((item) => item?.name === artifactName && !item?.expired);
           if (!artifact) {
             core.notice(`No artifact named ${artifactName} found for run ${run.id} on base branch ${baseBranch}; compiling fallback baseline`);
             core.setOutput('run_id', '');
