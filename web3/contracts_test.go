@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -16,14 +17,16 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	qt "github.com/frankban/quicktest"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
+	"github.com/vocdoni/davinci-node/config"
 	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3/rpc"
 )
 
 type testRPCRequest struct {
-	ID     json.RawMessage `json:"id"`
-	Method string          `json:"method"`
+	ID     json.RawMessage   `json:"id"`
+	Method string            `json:"method"`
+	Params []json.RawMessage `json:"params"`
 }
 
 type testRPCResponse struct {
@@ -232,6 +235,56 @@ func TestMonitoredProcessRegistry(t *testing.T) {
 	})
 }
 
+func TestLoadContractsContinuesWhenBeaconTimingFails(t *testing.T) {
+	c := qt.New(t)
+
+	oldTransport := http.DefaultTransport
+	http.DefaultTransport = testRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Host {
+		case "web3.test":
+			return handleTestWeb3RPC(req)
+		case "beacon.test":
+			return &http.Response{
+				StatusCode: http.StatusServiceUnavailable,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("beacon unavailable")),
+				Request:    req,
+			}, nil
+		default:
+			return &http.Response{
+				StatusCode: http.StatusNotFound,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("not found")),
+				Request:    req,
+			}, nil
+		}
+	})
+	c.Cleanup(func() {
+		http.DefaultTransport = oldTransport
+	})
+
+	pool := rpc.NewWeb3Pool()
+	chainID, err := pool.AddEndpoint("http://web3.test")
+	c.Assert(err, qt.IsNil)
+
+	client, err := pool.Client(chainID)
+	c.Assert(err, qt.IsNil)
+
+	contracts := &Contracts{
+		ChainID:                  chainID,
+		web3pool:                 pool,
+		cli:                      client,
+		Web3ConsensusAPIEndpoint: "http://beacon.test",
+	}
+
+	err = contracts.LoadContracts(nil)
+	c.Assert(err, qt.IsNil)
+	c.Assert(contracts.SupportBlobTxs(), qt.IsTrue)
+	c.Assert(contracts.beaconSlotSeconds, qt.Equals, uint64(0))
+	c.Assert(contracts.ContractsAddresses, qt.Not(qt.IsNil))
+	c.Assert(contracts.processes, qt.Not(qt.IsNil))
+}
+
 func (b *testProcessRegistryBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
 	return []byte{0x1}, nil
 }
@@ -272,6 +325,94 @@ func testContractsForReceipt(c *qt.C, txHash common.Hash, receiptStatus uint64) 
 		ChainID:  chainID,
 		web3pool: pool,
 		cli:      client,
+	}
+}
+
+type testRoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f testRoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func handleTestWeb3RPC(req *http.Request) (*http.Response, error) {
+	defer func() {
+		_ = req.Body.Close()
+	}()
+
+	var rpcReq testRPCRequest
+	if err := json.NewDecoder(req.Body).Decode(&rpcReq); err != nil {
+		return nil, err
+	}
+
+	resp := testRPCResponse{
+		JSONRPC: "2.0",
+		ID:      rpcReq.ID,
+	}
+
+	switch rpcReq.Method {
+	case "eth_chainId":
+		resp.Result = "0x1"
+	case "eth_blockNumber":
+		resp.Result = "0x2"
+	case "eth_getBlockByNumber":
+		resp.Result = map[string]any{
+			"hash":         common.HexToHash("0x1111").Hex(),
+			"number":       "0x1",
+			"transactions": []any{},
+		}
+	case "eth_getBlockTransactionCountByHash":
+		resp.Result = "0x0"
+	case "eth_getCode":
+		resp.Result = "0x60006000"
+	case "eth_call":
+		if len(rpcReq.Params) == 0 {
+			resp.Result = "0x"
+			break
+		}
+		var callMsg struct {
+			To    string `json:"to"`
+			Data  string `json:"data"`
+			Input string `json:"input"`
+		}
+		if err := json.Unmarshal(rpcReq.Params[0], &callMsg); err != nil {
+			return nil, err
+		}
+		callData := callMsg.Data
+		if callData == "" {
+			callData = callMsg.Input
+		}
+		switch {
+		case strings.HasPrefix(strings.ToLower(callData), "0xcdf497c8"):
+			resp.Result = common.BigToHash(big.NewInt(1)).Hex()
+		case strings.HasPrefix(strings.ToLower(callData), "0x4c0acc56"):
+			resp.Result = common.BytesToHash(types.HexStringToHexBytesMustUnmarshal(config.StateTransitionProvingKeyHash)).Hex()
+		case strings.HasPrefix(strings.ToLower(callData), "0xf9aa4499"):
+			resp.Result = common.BytesToHash(types.HexStringToHexBytesMustUnmarshal(config.ResultsVerifierProvingKeyHash)).Hex()
+		default:
+			resp.Result = "0x"
+		}
+	default:
+		resp.Result = "0x"
+	}
+
+	return jsonResponse(req, resp), nil
+}
+
+func jsonResponse(req *http.Request, value any) *http.Response {
+	body, err := json.Marshal(value)
+	if err != nil {
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(err.Error())),
+			Request:    req,
+		}
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(string(body))),
+		Request:    req,
 	}
 }
 

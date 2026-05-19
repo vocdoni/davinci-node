@@ -108,6 +108,9 @@ type Contracts struct {
 	txManager *txmanager.TxManager
 	// Whether the current contracts support blob transactions
 	supportForBlobTxs bool
+
+	beaconGenesisUnix uint64
+	beaconSlotSeconds uint64
 }
 
 // New creates a new Contracts instance with the given web3 endpoints.
@@ -298,6 +301,47 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 	if err != nil {
 		log.Warnw("failed to check blob transaction support, defaulting to false", "error", err)
 	}
+
+	if err := c.initBeaconTiming(context.Background()); err != nil {
+		log.Warnw("failed to initialize beacon timing, blob fetching (and thus statesync) will not work",
+			"error", err,
+			"consensusAPI", c.Web3ConsensusAPIEndpoint,
+		)
+	}
+	return nil
+}
+
+func (c *Contracts) initBeaconTiming(ctx context.Context) error {
+	if c.Web3ConsensusAPIEndpoint == "" {
+		return nil
+	}
+	if c.beaconSlotSeconds != 0 {
+		return nil
+	}
+	if !c.supportForBlobTxs {
+		return nil
+	}
+
+	genesisUnix, slotDuration, err := rpc.BeaconTiming(ctx, c.Web3ConsensusAPIEndpoint)
+	if err != nil {
+		return fmt.Errorf("beacon timing: %w", err)
+	}
+	if slotDuration <= 0 {
+		return fmt.Errorf("invalid beacon slot duration %s", slotDuration)
+	}
+	if slotDuration%time.Second != 0 {
+		return fmt.Errorf("beacon slot duration must be a whole number of seconds, got %s", slotDuration)
+	}
+
+	c.beaconGenesisUnix = genesisUnix
+	c.beaconSlotSeconds = uint64(slotDuration / time.Second)
+
+	log.Debugw("initialized beacon timing",
+		"endpoint", c.Web3ConsensusAPIEndpoint,
+		"genesisUnix", c.beaconGenesisUnix,
+		"slotSeconds", c.beaconSlotSeconds,
+	)
+
 	return nil
 }
 
