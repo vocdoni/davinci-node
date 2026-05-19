@@ -134,6 +134,13 @@ func (s *Sequencer) contractsForProcess(processID types.ProcessID) (*web3.Contra
 	return resolveContractsForProcess(s.contractsResolver, processID)
 }
 
+func (s *Sequencer) supportsProcess(processID types.ProcessID) bool {
+	if s.contractsResolver == nil {
+		return true
+	}
+	return s.contractsResolver.SupportsProcess(processID)
+}
+
 // Start begins the ballot processing and aggregation routines.
 // It creates a new context derived from the provided one and starts
 // the background goroutines for processing ballots and aggregating them.
@@ -256,19 +263,24 @@ func (s *Sequencer) checkAndRegisterProcesses() {
 			log.Warnw("failed to get process for registration", "processID", processID.String(), "error", err)
 			continue
 		}
-		switch proc.Status {
-		case types.ProcessStatusReady:
-			s.AddProcessID(processID)
-		default:
-			s.DelProcessID(processID)
+		// Check if it is not ready or it is not supported
+		if proc.Status != types.ProcessStatusReady || !s.supportsProcess(processID) {
+			s.DelProcessID(processID) // Unregister the process
+			continue
 		}
+		s.AddProcessID(processID)
 	}
 }
 
-// AddProcessID registers a process ID with the sequencer for ballot processing.
-// Only ballots belonging to registered process IDs will be processed.
-// If the process ID is already registered, this operation has no effect.
+// AddProcessID registers the provided process ID with the sequencer for ballot
+// processing. Only ballots belonging to registered process IDs will be
+// processed. If the process ID is already registered or it is not supported,
+// this operation has no effect.
 func (s *Sequencer) AddProcessID(processID types.ProcessID) {
+	if s.ExistsProcessID(processID) || !s.supportsProcess(processID) {
+		return
+	}
+	// Try to register it in the processIDs map
 	if !s.processIDs.Add(processID) {
 		return
 	}
