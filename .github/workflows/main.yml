@@ -107,6 +107,7 @@ jobs:
     runs-on: [self-hosted]
     permissions:
       contents: read
+      actions: read
       issues: write
       pull-requests: write
     env:
@@ -153,9 +154,18 @@ jobs:
       - name: Compile circuit artifacts
         run: go run ./cmd/circuit-compile --update-config 2>&1 | tee circuit-compile.log
 
+      - name: Store circuit constraints log
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: circuit-constraints-log
+          path: circuit-compile.log
+
       - name: Review circuit constraint changes
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
         uses: ./.github/actions/circuit-constraints-review
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run integration tests
         env:
