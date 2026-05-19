@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/attestantio/go-eth2-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	qt "github.com/frankban/quicktest"
 )
 
@@ -21,10 +26,10 @@ type testBeaconSpecData struct {
 }
 
 // testBeaconSpecServer creates a test HTTP server that responds to
-// /eth/v1/config/spec with the given chain ID.
+// beaconConfigSpecPath with the given chain ID.
 func testBeaconSpecServer(chainID uint64) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/eth/v1/config/spec" {
+		if r.URL.Path != beaconConfigSpecPath {
 			http.NotFound(w, r)
 			return
 		}
@@ -80,6 +85,107 @@ func TestBeaconChainID(t *testing.T) {
 		qt.Assert(t, err, qt.Not(qt.IsNil))
 		qt.Assert(t, err.Error(), qt.Contains, "empty")
 	})
+}
+
+func TestBeaconTimingRejectsOversizedSlotSeconds(t *testing.T) {
+	c := qt.New(t)
+	genesisTime := time.Unix(1_700_000_000, 0).UTC()
+	genesisBody, err := json.Marshal(map[string]any{
+		"data": &v1.Genesis{
+			GenesisTime:           genesisTime,
+			GenesisValidatorsRoot: phase0.Root{},
+			GenesisForkVersion:    phase0.Version{},
+		},
+	})
+	c.Assert(err, qt.IsNil)
+
+	oldTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		var body string
+		switch req.URL.Path {
+		case "/eth/v1/beacon/genesis":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(string(genesisBody))),
+				Request:    req,
+			}, nil
+		case beaconConfigSpecPath:
+			body = `{"data":{"SECONDS_PER_SLOT":"9223372036854775808"}}`
+		default:
+			return &http.Response{
+				StatusCode: http.StatusNotFound,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("not found")),
+				Request:    req,
+			}, nil
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})
+	c.Cleanup(func() {
+		http.DefaultTransport = oldTransport
+	})
+
+	_, _, err = BeaconTiming(t.Context(), "http://beacon.test")
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "parse SECONDS_PER_SLOT")
+}
+
+func TestBeaconTimingIgnoresBlobScheduleArrays(t *testing.T) {
+	c := qt.New(t)
+	genesisTime := time.Unix(1_700_000_000, 0).UTC()
+	genesisBody, err := json.Marshal(map[string]any{
+		"data": &v1.Genesis{
+			GenesisTime:           genesisTime,
+			GenesisValidatorsRoot: phase0.Root{},
+			GenesisForkVersion:    phase0.Version{},
+		},
+	})
+	c.Assert(err, qt.IsNil)
+
+	oldTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		var body string
+		switch req.URL.Path {
+		case "/eth/v1/beacon/genesis":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(string(genesisBody))),
+				Request:    req,
+			}, nil
+		case beaconConfigSpecPath:
+			body = `{"data":{"SECONDS_PER_SLOT":"12","BLOB_SCHEDULE":[{"EPOCH":"269568","MAX_BLOBS_PER_BLOCK":"6"}]}}`
+		default:
+			return &http.Response{
+				StatusCode: http.StatusNotFound,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("not found")),
+				Request:    req,
+			}, nil
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})
+	c.Cleanup(func() {
+		http.DefaultTransport = oldTransport
+	})
+
+	genesisUnix, slotDuration, err := BeaconTiming(t.Context(), "http://beacon.test")
+	c.Assert(err, qt.IsNil)
+	c.Assert(genesisUnix, qt.Equals, uint64(genesisTime.Unix()))
+	c.Assert(slotDuration, qt.Equals, 12*time.Second)
 }
 
 func TestBeaconChainIDErrors(t *testing.T) {
@@ -179,4 +285,10 @@ func TestBeaconChainIDErrors(t *testing.T) {
 		_, err := BeaconChainID(cancelCtx, srv.URL)
 		c.Assert(err, qt.Not(qt.IsNil))
 	})
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
