@@ -17,6 +17,10 @@ inputs:
     description: Directory where the baseline artifact should be downloaded
     required: false
     default: base-artifact
+  base-workdir:
+    description: Directory where the fallback base branch checkout should live
+    required: false
+    default: base-branch
   head-log-path:
     description: Path to the PR head circuit compile log
     required: false
@@ -47,7 +51,7 @@ runs:
           const artifactName = process.env.ARTIFACT_NAME;
 
           const runs = await github.paginate(
-            'GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs',
+            github.rest.actions.listWorkflowRunsForWorkflow,
             {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -61,8 +65,9 @@ runs:
 
           const run = runs.find((candidate) => candidate.conclusion === 'success');
           if (!run) {
-            core.notice(`No successful ${workflowId} run found on base branch ${baseBranch}`);
+            core.notice(`No successful ${workflowId} run found on base branch ${baseBranch}; compiling fallback baseline`);
             core.setOutput('run_id', '');
+            core.setOutput('baseline_mode', 'compile');
             return;
           }
 
@@ -75,16 +80,19 @@ runs:
 
           const artifact = artifacts.find((item) => item.name === artifactName && !item.expired);
           if (!artifact) {
-            core.notice(`No artifact named ${artifactName} found for run ${run.id} on base branch ${baseBranch}`);
+            core.notice(`No artifact named ${artifactName} found for run ${run.id} on base branch ${baseBranch}; compiling fallback baseline`);
             core.setOutput('run_id', '');
+            core.setOutput('baseline_mode', 'compile');
             return;
           }
 
           core.setOutput('run_id', String(run.id));
+          core.setOutput('baseline_mode', 'artifact');
           core.notice(`Using baseline artifact from run ${run.id} on base branch ${baseBranch}`);
 
     - name: Download baseline circuit log
       if: steps.find-baseline.outputs.run_id != ''
+      id: download-baseline
       uses: actions/download-artifact@v5
       continue-on-error: true
       with:
@@ -94,10 +102,25 @@ runs:
         github-token: ${{ inputs.github-token }}
         path: ${{ inputs.base-artifact-dir }}
 
+    - name: Checkout base branch fallback
+      if: steps.find-baseline.outputs.baseline_mode == 'compile' || steps.download-baseline.outcome == 'failure'
+      uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.pull_request.base.ref }}
+        path: ${{ inputs.base-workdir }}
+        fetch-depth: 0
+
+    - name: Compile fallback baseline
+      if: steps.find-baseline.outputs.baseline_mode == 'compile' || steps.download-baseline.outcome == 'failure'
+      shell: bash
+      working-directory: ${{ inputs.base-workdir }}
+      run: go run ./cmd/circuit-compile --update-config 2>&1 | tee "${{ inputs.base-log-path }}"
+
     - name: Review circuit constraint changes
       uses: actions/github-script@v9
       env:
-        BASE_LOG_PATH: ${{ inputs.base-artifact-dir }}/${{ inputs.base-log-path }}
+        BASE_ARTIFACT_LOG_PATH: ${{ inputs.base-artifact-dir }}/${{ inputs.base-log-path }}
+        BASE_FALLBACK_LOG_PATH: ${{ inputs.base-workdir }}/${{ inputs.base-log-path }}
         HEAD_LOG_PATH: ${{ inputs.head-log-path }}
         REVIEW_MARKER: ${{ inputs.review-marker }}
       with:
@@ -144,25 +167,11 @@ runs:
             return delta > 0 ? `+${delta}` : `${delta}`;
           };
 
-          const formatUnavailableBody = () => [
-            marker,
-            `Circuit constraint comparison is unavailable because no baseline artifact was found for base branch \`${baseBranch}\`.`,
-            '',
-            `Publish a successful run on \`${baseBranch}\` to generate the baseline artifact.`,
-          ].join('\n');
-
-          const formatMatchBody = () => [
-            marker,
-            `Circuit constraint counts match base branch \`${baseBranch}\`.`,
-            '',
-            'Re-run `go run ./cmd/circuit-compile --update-config` after constraint-affecting changes.',
-          ].join('\n');
-
           const formatComparisonBody = (diffs) => [
             marker,
-            `Circuit constraint counts changed compared to base branch \`${baseBranch}\`.`,
+            `Circuit constraint counts changed compared to base branch \`${baseBranch}\` (${baselineSource}).`,
             '',
-            '| Circuit | base constraints | PR constraints | Δ constraints | base public | PR public | base secret | PR secret |',
+            `| Circuit | ${baselineLabel} constraints | PR constraints | Δ constraints | ${baselineLabel} public | PR public | ${baselineLabel} secret | PR secret |`,
             '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
             ...diffs.map(({ circuit, base, head }) => {
               const baseConstraints = base ? base.nbConstraints : 'n/a';
@@ -185,12 +194,23 @@ runs:
             throw new Error(`no circuit metrics found in ${process.env.HEAD_LOG_PATH}`);
           }
 
-          let baseMetrics = {};
-          let baselineAvailable = false;
-          if (fs.existsSync(process.env.BASE_LOG_PATH)) {
-            const baseLog = fs.readFileSync(process.env.BASE_LOG_PATH, 'utf8');
-            baseMetrics = parseMetrics(baseLog);
-            baselineAvailable = Object.keys(baseMetrics).length > 0;
+          let baselineSource = 'artifact';
+          let baselineLabel = 'base';
+          let baseLogPath = process.env.BASE_ARTIFACT_LOG_PATH;
+          if (!fs.existsSync(baseLogPath)) {
+            baselineSource = 'compiled base branch';
+            baselineLabel = 'base branch';
+            baseLogPath = process.env.BASE_FALLBACK_LOG_PATH;
+          }
+
+          if (!fs.existsSync(baseLogPath)) {
+            throw new Error(`no baseline circuit log found in ${process.env.BASE_ARTIFACT_LOG_PATH} or ${process.env.BASE_FALLBACK_LOG_PATH}`);
+          }
+
+          const baseLog = fs.readFileSync(baseLogPath, 'utf8');
+          const baseMetrics = parseMetrics(baseLog);
+          if (Object.keys(baseMetrics).length === 0) {
+            throw new Error(`no circuit metrics found in ${baseLogPath}`);
           }
 
           const circuits = [...new Set([
@@ -203,7 +223,6 @@ runs:
             const base = baseMetrics[circuit];
             const head = headMetrics[circuit];
             const isDifferent =
-              !baselineAvailable ||
               !base ||
               !head ||
               base.nbConstraints !== head.nbConstraints ||
@@ -215,11 +234,14 @@ runs:
             }
           }
 
-          const body = !baselineAvailable
-            ? formatUnavailableBody()
-            : diffs.length === 0
-              ? formatMatchBody()
-              : formatComparisonBody(diffs);
+          const body = diffs.length === 0
+            ? [
+                marker,
+                `Circuit constraint counts match ${baselineSource === 'artifact' ? `the artifact baseline for base branch \`${baseBranch}\`` : `the compiled base branch \`${baseBranch}\``}.`,
+                '',
+                'Re-run `go run ./cmd/circuit-compile --update-config` after constraint-affecting changes.',
+              ].join('\n')
+            : formatComparisonBody(diffs);
 
           const reviews = await github.paginate(github.rest.pulls.listReviews, {
             owner: context.repo.owner,
