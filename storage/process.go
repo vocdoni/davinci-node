@@ -61,32 +61,34 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	}
 
 	// Check if process already exists
-	existing := &types.Process{}
-	if err := s.getArtifact(processPrefix, process.ID.Bytes(), existing); err == nil {
+	if err := s.getArtifact(processPrefix, process.ID.Bytes(), &types.Process{}); err == nil {
 		return fmt.Errorf("process already exists: %x", process.ID)
 	} else if err != ErrNotFound {
 		return fmt.Errorf("failed to check process existence: %w", err)
 	}
 
-	// Create the process state
-	pState, err := state.New(s.StateDB(), *process.ID)
-	if err != nil {
-		return fmt.Errorf("failed to create process state: %w", err)
-	}
-
-	// If process already has an EncryptionKey, store it
+	// Ensure the process has encryption keys
 	if process.EncryptionKey == nil {
-		return fmt.Errorf("invalid process: no encryption keys provided")
+		return fmt.Errorf("invalid process: no encryption key provided")
 	}
-	if process.Census == nil {
-		return fmt.Errorf("invalid process: no census provided")
-	}
+	// Try to store the encryption keys
 	if err := s.setEncryptionPubKeyUnsafe(ProcessEncryptionKeyToPoint(process.EncryptionKey)); err != nil {
 		log.Warnw("failed to store encryption keys for process",
 			"processID", process.ID.String(), "error", err.Error())
 	}
-
-	// Initialize the process state to store the process data
+	// Ensure the process has a census
+	if process.Census == nil {
+		return fmt.Errorf("invalid process: no census provided")
+	}
+	// Ensure the process has a state root
+	if process.StateRoot == nil {
+		return fmt.Errorf("invalid process: no initial state root provided")
+	}
+	// Initialize the state tree and persist the initial root
+	pState, err := state.New(s.StateDB(), *process.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create process state: %w", err)
+	}
 	packedBallotMode, err := process.BallotMode.Pack()
 	if err != nil {
 		return fmt.Errorf("failed to pack ballot mode: %w", err)
@@ -98,12 +100,14 @@ func (s *Storage) NewProcess(process *types.Process) error {
 	); err != nil {
 		return fmt.Errorf("failed to initialize process state: %w", err)
 	}
-	if process.StateRoot == nil {
-		return fmt.Errorf("invalid process: no initial state root provided")
+	// Verify the computed root matches the process claim
+	computedRoot, err := pState.RootAsBigInt()
+	if err != nil {
+		return fmt.Errorf("failed to get process state root: %w", err)
 	}
-	// Set the process state root with the initial snapshot root.
-	if err := pState.SetRootAsBigInt(process.StateRoot.MathBigInt()); err != nil {
-		return fmt.Errorf("failed to set process state root: %w", err)
+	if !process.StateRoot.Equal((*types.BigInt)(computedRoot)) {
+		return fmt.Errorf("process state root mismatch: expected %s, got %s",
+			process.StateRoot.String(), computedRoot.String())
 	}
 	return s.setArtifact(processPrefix, process.ID.Bytes(), process)
 }
