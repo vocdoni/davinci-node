@@ -28,6 +28,7 @@ func TestProcessIDMap(t *testing.T) {
 	// Test Remove
 	c.Assert(pidMap.Remove(pid1), qt.IsTrue, qt.Commentf("Should return true when removing an existing process ID"))
 	c.Assert(pidMap.Exists(pid1), qt.IsFalse, qt.Commentf("Should return false after removal"))
+	c.Assert(pidMap.Remove(pid1), qt.IsFalse, qt.Commentf("Should return false when removing a missing process ID"))
 
 	// Test ForEach
 	c.Assert(pidMap.Add(pid1), qt.IsTrue, qt.Commentf("Should return true when adding a new process ID"))
