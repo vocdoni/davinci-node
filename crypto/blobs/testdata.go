@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bls12381"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/vocdoni/davinci-node/types"
@@ -54,7 +53,6 @@ type blobEvalCircuitBarycentricOnly struct {
 }
 
 func (c *blobEvalCircuitBarycentricOnly) Define(api frontend.API) error {
-	std.RegisterHints()
 	return VerifyBarycentricEvaluation(api, &c.Z, &c.Y, c.Blob)
 }
 
@@ -73,7 +71,6 @@ type blobEvalCircuitBN254 struct {
 }
 
 func (c *blobEvalCircuitBN254) Define(api frontend.API) error {
-	std.RegisterHints()
 	return VerifyFullBlobEvaluationBN254(
 		api,
 		c.ProcessID,

@@ -11,7 +11,6 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
-	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/test"
 	qt "github.com/frankban/quicktest"
@@ -67,7 +66,6 @@ func TestBlobEvaluationCircuitProgressive(t *testing.T) {
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == falseStr {
 		t.Skip("skipping circuit tests...")
 	}
-	std.RegisterHints()
 	c := qt.New(t)
 
 	testCounts := []int{10, 100}
