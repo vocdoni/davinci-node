@@ -6,21 +6,16 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
-	"github.com/rs/zerolog"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
+	"github.com/vocdoni/davinci-node/web3/rpc"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
-
-	eth2client "github.com/attestantio/go-eth2-client"
-	eth2api "github.com/attestantio/go-eth2-client/api"
-	eth2http "github.com/attestantio/go-eth2-client/http"
 )
 
 const (
@@ -186,49 +181,6 @@ func (c *Contracts) TransactionAndBlockHeader(ctx context.Context, txHash common
 	return tx, blockHeader, nil
 }
 
-// BlobSidecarsOfBlock returns the blob sidecars stored in consensus layer,
-// of a block identified by a parentBeaconRoot
-func (c *Contracts) BlobSidecarsOfBlock(ctx context.Context, parentBeaconRoot *common.Hash) ([]*types.BlobSidecar, error) {
-	// CL: Beacon client
-	bc, err := eth2http.New(ctx,
-		eth2http.WithAddress(strings.TrimRight(c.Web3ConsensusAPIEndpoint, "/")),
-		eth2http.WithLogLevel(zerolog.DebugLevel), // zerolog.TraceLevel is useful for debugging
-	)
-	if err != nil {
-		return nil, fmt.Errorf("beacon client: %w", err)
-	}
-
-	// CL: resolve parent root -> parent slot
-	// Block IDs can be roots, slots, or keywords; use the root string directly.
-	var parentSlot uint64
-	if provider, isProvider := bc.(eth2client.BeaconBlockHeadersProvider); isProvider {
-		headers, err := provider.BeaconBlockHeader(ctx, &eth2api.BeaconBlockHeaderOpts{
-			Block: parentBeaconRoot.Hex(),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("beacon headers(%s): %w", parentBeaconRoot, err)
-		}
-		parentSlot = uint64(headers.Data.Header.Message.Slot)
-	}
-	slot := parentSlot + 1 // slot of our EL block
-
-	// CL: fetch blob sidecars for that slot
-	var sidecars []*types.BlobSidecar
-	if provider, isProvider := bc.(eth2client.BlobSidecarsProvider); isProvider {
-		resp, err := provider.BlobSidecars(ctx, &eth2api.BlobSidecarsOpts{
-			Block: fmt.Sprintf("%d", slot),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("blob sidecars(slot=%d): %w", slot, err)
-		}
-		for _, sc := range resp.Data {
-			sidecars = append(sidecars, types.NewBlobSidecarFromDeneb(sc))
-		}
-	}
-
-	return sidecars, nil
-}
-
 // BlobsByTxHash returns all the blobs sidecars of a tx, given a `txHash`.
 func (c *Contracts) BlobsByTxHash(
 	ctx context.Context,
@@ -236,13 +188,15 @@ func (c *Contracts) BlobsByTxHash(
 ) ([]*types.BlobSidecar, error) {
 	tx, blockHeader, err := c.TransactionAndBlockHeader(ctx, txHash)
 	if err != nil {
-		return nil, fmt.Errorf("tx parent beacon root: %w", err)
+		return nil, fmt.Errorf("transaction and block header: %w", err)
 	}
 	if tx.Type() != gethtypes.BlobTxType {
 		return nil, fmt.Errorf("not a blob tx (type=%d)", tx.Type())
 	}
-	if blockHeader.ParentBeaconRoot == nil {
-		return nil, fmt.Errorf("parent beacon root missing (EL client too old?)")
+
+	slot, err := c.beaconSlotFromBlockTime(blockHeader.Time)
+	if err != nil {
+		return nil, fmt.Errorf("derive beacon slot from block time: %w", err)
 	}
 
 	var sidecars []*types.BlobSidecar
@@ -255,7 +209,7 @@ func (c *Contracts) BlobsByTxHash(
 			case <-time.After(sleep):
 			}
 		}
-		sidecars, err = c.BlobSidecarsOfBlock(ctx, blockHeader.ParentBeaconRoot)
+		sidecars, err = c.blobSidecarsAtSlot(ctx, slot)
 		if err == nil {
 			break
 		}
@@ -274,4 +228,62 @@ func (c *Contracts) BlobsByTxHash(
 		}
 	}
 	return blobs, nil
+}
+
+func (c *Contracts) beaconSlotFromBlockTime(blockTime uint64) (uint64, error) {
+	if c.Web3ConsensusAPIEndpoint == "" {
+		return 0, fmt.Errorf("consensus API endpoint is empty")
+	}
+	if c.beaconSlotSeconds == 0 {
+		return 0, fmt.Errorf("beacon timing not initialized")
+	}
+
+	genesisUnix := c.beaconGenesisUnix
+	if blockTime < genesisUnix {
+		return 0, fmt.Errorf("block time %d is before beacon genesis time %d", blockTime, genesisUnix)
+	}
+
+	deltaSeconds := blockTime - genesisUnix
+	if deltaSeconds%c.beaconSlotSeconds != 0 {
+		return 0, fmt.Errorf(
+			"block time %d does not align with beacon slots (genesis=%d, slotSeconds=%d)",
+			blockTime,
+			genesisUnix,
+			c.beaconSlotSeconds,
+		)
+	}
+
+	slot := deltaSeconds / c.beaconSlotSeconds
+	log.Debugw("derived beacon slot from execution block time",
+		"blockTime", blockTime,
+		"genesisTime", genesisUnix,
+		"slotSeconds", c.beaconSlotSeconds,
+		"slot", slot,
+	)
+
+	return slot, nil
+}
+
+func (c *Contracts) blobSidecarsAtSlot(ctx context.Context, slot uint64) ([]*types.BlobSidecar, error) {
+	if c.Web3ConsensusAPIEndpoint == "" {
+		return nil, fmt.Errorf("consensus API endpoint is empty")
+	}
+	if c.beaconSlotSeconds == 0 {
+		return nil, fmt.Errorf("beacon timing not initialized")
+	}
+
+	resp, err := rpc.BeaconBlobSidecars(ctx, c.Web3ConsensusAPIEndpoint, slot)
+	if err != nil {
+		return nil, fmt.Errorf("blob sidecars(slot=%d): %w", slot, err)
+	}
+
+	sidecars := make([]*types.BlobSidecar, 0, len(resp))
+	for _, sc := range resp {
+		if sc == nil {
+			continue
+		}
+		sidecars = append(sidecars, types.NewBlobSidecarFromDeneb(sc))
+	}
+
+	return sidecars, nil
 }
