@@ -57,7 +57,12 @@ func (p *ProcessIDMap) Remove(processID types.ProcessID) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if _, exists := p.data[processID]; !exists {
+		return false
+	}
+
 	delete(p.data, processID)
+	delete(p.firstBallotTimes, processID)
 	return true
 }
 

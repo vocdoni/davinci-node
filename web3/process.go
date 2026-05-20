@@ -137,36 +137,18 @@ func (c *Contracts) sendProcessTransition(processID types.ProcessID, proof, inpu
 	}
 
 	// Use transaction manager for automatic nonce management
-	var sentTx *gethtypes.Transaction
 	txID, txHash, err := c.txManager.SendTx(ctx, func(nonce uint64) (*gethtypes.Transaction, error) {
 		internalCtx, cancel := context.WithTimeout(context.Background(), web3WaitTimeout)
 		defer cancel()
 		// Build the transaction based on whether blobs are provided
 		switch blobsSidecar {
 		case nil: // Regular transaction
-			// No blobs so we dont not need to track sidecar, sentTx will be nil
 			return c.txManager.BuildDynamicFeeTx(internalCtx, c.ContractsAddresses.ProcessRegistry, data, nonce)
 		default: // Blob transaction
-			// Store tx in sentTx for tracking sidecar later
-			sentTx, err = c.NewEIP4844TransactionWithNonce(internalCtx, c.ContractsAddresses.ProcessRegistry,
+			return c.NewEIP4844TransactionWithNonce(internalCtx, c.ContractsAddresses.ProcessRegistry,
 				data, nonce, blobsSidecar)
-			return sentTx, err
 		}
 	})
-	// If blob transaction sent successfully, store sidecar for recovery
-	if err == nil && sentTx != nil && sentTx.BlobTxSidecar() != nil {
-		if err := c.txManager.TrackBlobTxWithSidecar(sentTx); err != nil {
-			log.Warnw("failed to track blob sidecar for recovery",
-				"error", err,
-				"hash", txHash.Hex(),
-				"txID", txID.String())
-		} else {
-			log.Infow("blob sidecar tracked for stuck transaction recovery",
-				"hash", txHash.Hex(),
-				"txID", txID.String(),
-				"blobCount", len(blobsSidecar.Blobs))
-		}
-	}
 	log.Infow("state transition submitted, wait to be mined",
 		"processID", processID.String())
 	return txID, txHash, err

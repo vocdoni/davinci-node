@@ -79,33 +79,6 @@ func (tm *TxManager) SendTx(
 	return id, &hash, nil
 }
 
-// TrackBlobTxWithSidecar tracks a blob transaction with its sidecar for
-// potential recovery. This should be called immediately after sending a blob
-// transaction if recovery is desired.
-func (tm *TxManager) TrackBlobTxWithSidecar(tx *gethtypes.Transaction) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	if tx.Type() != gethtypes.BlobTxType {
-		return fmt.Errorf("transaction is not a blob transaction")
-	}
-	// Check if transaction is already tracked
-	ptx, exists := tm.pendingTxs[tx.Nonce()]
-	if !exists {
-		return fmt.Errorf("transaction not tracked, call SendTransactionWithFallback first")
-	}
-	// Update with sidecar
-	sidecar := tx.BlobTxSidecar()
-	if sidecar == nil {
-		return fmt.Errorf("transaction has no blob sidecar")
-	}
-	ptx.BlobSidecar = types.NewBlobTxSidecarFromGeth(sidecar)
-	log.Infow("blob transaction sidecar stored for recovery",
-		"nonce", tx.Nonce(),
-		"hash", tx.Hash().Hex(),
-		"blobCount", len(sidecar.Blobs))
-	return nil
-}
-
 // trackTx adds a transaction to the pending list for tracking and potential
 // recovery. It extracts necessary information from the transaction and stores
 // it in the pending transactions map.
@@ -128,15 +101,16 @@ func (tm *TxManager) trackTx(id []byte, tx *gethtypes.Transaction) {
 		ptx.OriginalGasPrice = tx.GasFeeCap()
 		ptx.OriginalBlobFee = tx.BlobGasFeeCap()
 		ptx.BlobHashes = tx.BlobHashes()
-		// NOTE: Cannot extract sidecar from transaction after creation due
-		// to unexported fields in go-ethereum. Blob sidecars must be stored
-		// separately via TrackBlobTxWithSidecar() to enable recovery.
-		// WARNING: Without the sidecar, stuck blob transactions CANNOT be
-		// recovered (they cannot be cancelled like regular txs, only replaced
-		// with same blob data).
-		log.Debugw("tracking blob transaction (sidecar not stored - recovery not possible)",
-			"nonce", tx.Nonce(),
-			"blobCount", len(tx.BlobHashes()))
+		if sidecar := tx.BlobTxSidecar(); sidecar != nil {
+			ptx.BlobSidecar = types.NewBlobTxSidecarFromGeth(sidecar)
+			log.Debugw("tracking blob transaction with sidecar",
+				"nonce", tx.Nonce(),
+				"blobCount", len(sidecar.Blobs))
+		} else {
+			log.Warnw("tracking blob transaction without sidecar; recovery not possible",
+				"nonce", tx.Nonce(),
+				"blobCount", len(ptx.BlobHashes))
+		}
 	case gethtypes.DynamicFeeTxType:
 		ptx.OriginalGasPrice = tx.GasFeeCap()
 	case gethtypes.LegacyTxType:

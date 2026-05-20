@@ -52,8 +52,6 @@ func (s *Sequencer) processPendingTransitions() {
 		// work. The queued batch must remain available after the pending tx is
 		// confirmed or fails.
 		if s.stg.HasPendingTx(storage.StateTransitionTx, processID) {
-			log.Debugw("skipping state transition processing due to pending txs",
-				"processID", processID.String())
 			return true // Continue to next process ID
 		}
 

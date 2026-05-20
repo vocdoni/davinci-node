@@ -2,7 +2,6 @@ package statetransition
 
 import (
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bn254"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_bw6761"
 	"github.com/consensys/gnark/std/math/emulated"
@@ -117,7 +116,6 @@ func (v Vote) OverwrittenBallotLeafValues() []frontend.Variable {
 
 // Define declares the circuit's constraints
 func (circuit StateTransitionCircuit) Define(api frontend.API) error {
-	std.RegisterHints()
 	// compute the isRealVote for real votes
 	isRealVote := circuit.VoteMask(api)
 	// recursive proof
