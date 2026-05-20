@@ -43,13 +43,14 @@ ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
 RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 
-# Copy go mod files and local gnark replacement to leverage cache
+# Copy go mod files to leverage cache.
 COPY go.mod go.sum ./
 
-# Download dependencies with cache
+# Prime the Icicle module cache so go list can resolve its source dir.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/icicle-cache \
     bash -lc 'set -euo pipefail; \
+    go mod download github.com/ingonyama-zk/icicle-gnark/v3; \
     ICICLE_DIR=$(go list -m -f "{{.Dir}}" github.com/ingonyama-zk/icicle-gnark/v3)/wrappers/golang; \
     echo "Preparing Icicle from $ICICLE_DIR"; \
     if [ ! -d /icicle-cache/backend ]; then \
