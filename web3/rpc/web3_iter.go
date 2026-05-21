@@ -34,15 +34,18 @@ type Web3Iterator struct {
 	mtx       sync.Mutex
 }
 
-// NewWeb3Iterator creates a new Web3Iterator with the given endpoints.
+// NewWeb3Iterator creates a new Web3Iterator with the given endpoints,
+// deduplicating URIs while preserving the first occurrence order.
 func NewWeb3Iterator(endpoints ...*Web3Endpoint) *Web3Iterator {
 	if endpoints == nil {
 		endpoints = make([]*Web3Endpoint, 0)
 	}
-	return &Web3Iterator{
-		available: endpoints,
+	iter := &Web3Iterator{
+		available: make([]*Web3Endpoint, 0, len(endpoints)),
 		disabled:  make([]*Web3Endpoint, 0),
 	}
+	iter.Add(endpoints...)
+	return iter
 }
 
 // Available returns the number of available endpoints.
@@ -60,11 +63,35 @@ func (w3pp *Web3Iterator) Disabled() int {
 }
 
 // Add adds a new endpoint to the pool, making it available for the next
-// requests.
+// requests. Duplicate URIs are ignored.
 func (w3pp *Web3Iterator) Add(endpoint ...*Web3Endpoint) {
 	w3pp.mtx.Lock()
 	defer w3pp.mtx.Unlock()
-	w3pp.available = append(w3pp.available, endpoint...)
+	for _, ep := range endpoint {
+		if ep == nil {
+			continue
+		}
+		if w3pp.containsURI(ep.URI) {
+			continue
+		}
+		w3pp.available = append(w3pp.available, ep)
+	}
+}
+
+// containsURI reports whether the iterator already knows about the given URI.
+// The caller must hold the mutex when the iterator is shared.
+func (w3pp *Web3Iterator) containsURI(uri string) bool {
+	for _, ep := range w3pp.available {
+		if ep.URI == uri {
+			return true
+		}
+	}
+	for _, ep := range w3pp.disabled {
+		if ep.URI == uri {
+			return true
+		}
+	}
+	return false
 }
 
 // Next returns the next available endpoint in a round-robin fashion. If
@@ -144,7 +171,7 @@ func (w3pp *Web3Iterator) Disable(uri string) {
 		return
 	}
 
-	// Get the endpoint to disable and move it to the disabled list
+	// Move the endpoint to the disabled list.
 	disabledEndpoint := w3pp.available[index]
 	disabledEndpoint.disabledAt = time.Now() // Record when it was disabled
 	w3pp.available = append(w3pp.available[:index], w3pp.available[index+1:]...)

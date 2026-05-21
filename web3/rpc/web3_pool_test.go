@@ -320,3 +320,56 @@ func TestPoolInitialization(t *testing.T) {
 	c.Assert(pool.endpoints, qt.Not(qt.IsNil))
 	c.Assert(len(pool.endpoints), qt.Equals, 0)
 }
+
+// TestNewWeb3IteratorDeduplicatesURIs tests that the iterator drops duplicate
+// URIs when it is created.
+func TestNewWeb3IteratorDeduplicatesURIs(t *testing.T) {
+	c := qt.New(t)
+	endpoints := []*Web3Endpoint{
+		{ChainID: 1, URI: "http://same.example.com"},
+		{ChainID: 1, URI: "http://same.example.com"}, // duplicate
+		{ChainID: 1, URI: "http://other.example.com"},
+	}
+
+	iter := NewWeb3Iterator(endpoints...)
+	c.Assert(iter.Available(), qt.Equals, 2)
+
+	ep1, err := iter.Next()
+	c.Assert(err, qt.IsNil)
+	c.Assert(ep1.URI, qt.Equals, "http://same.example.com")
+
+	ep2, err := iter.Next()
+	c.Assert(err, qt.IsNil)
+	c.Assert(ep2.URI, qt.Equals, "http://other.example.com")
+
+	ep3, err := iter.Next()
+	c.Assert(err, qt.IsNil)
+	c.Assert(ep3.URI, qt.Equals, "http://same.example.com")
+}
+
+// TestAddIgnoresDuplicateURIs tests that adding a URI already present in the
+// iterator does not create another entry, even if the original is disabled.
+func TestAddIgnoresDuplicateURIs(t *testing.T) {
+	c := qt.New(t)
+	endpoints := []*Web3Endpoint{
+		{ChainID: 1, URI: "http://same.example.com"},
+		{ChainID: 1, URI: "http://other.example.com"},
+	}
+
+	iter := NewWeb3Iterator(endpoints...)
+
+	iter.Disable("http://same.example.com")
+
+	c.Assert(iter.Available(), qt.Equals, 1)
+	c.Assert(iter.Disabled(), qt.Equals, 1)
+
+	iter.Add(&Web3Endpoint{ChainID: 1, URI: "http://same.example.com"})
+
+	c.Assert(iter.Available(), qt.Equals, 1)
+	c.Assert(iter.Disabled(), qt.Equals, 1)
+
+	iter.Add(&Web3Endpoint{ChainID: 1, URI: "http://third.example.com"})
+
+	c.Assert(iter.Available(), qt.Equals, 2)
+	c.Assert(iter.Disabled(), qt.Equals, 1)
+}
