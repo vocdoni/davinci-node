@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/vocdoni/davinci-node/log"
@@ -26,6 +27,8 @@ const (
 	// Maximum number of retries for uploading verified results
 	maxResultsUploadRetries = 3
 )
+
+var errStateTransitionBatchOutdated = errors.New("state transition batch outdated")
 
 // startOnchainProcessor starts the on-chain processor that periodically
 // processes state transitions and verified results to be uploaded to the
@@ -115,6 +118,15 @@ func (s *Sequencer) processTransitionOnChain() {
 
 		// send the proof to the contract with the public witness
 		if err := s.pushTransitionToContract(contracts, processID, batchID, solidityCommitmentProof, batch.Inputs, batch.BlobSidecar); err != nil {
+			if errors.Is(err, errStateTransitionBatchOutdated) {
+				log.Warnw("process state transition simulation failed with invalid state root, marking batch outdated",
+					"processID", processID.String(),
+					"batchID", fmt.Sprintf("%x", batchID))
+				if err := s.stg.MarkStateTransitionBatchOutdated(batchID); err != nil {
+					log.Errorw(err, "failed to mark state transition batch as outdated")
+				}
+				return true
+			}
 			log.Errorw(err, "failed to push to contract")
 			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
 				log.Errorw(err, "failed to mark state transition batch as failed")
@@ -179,6 +191,9 @@ func (s *Sequencer) pushTransitionToContract(
 
 	// Simulate tx to the contract to check if it will fail
 	if err := contracts.SimulateProcessTransition(s.ctx, processID, abiProof, abiInputs, blobSidecar); err != nil {
+		if reason, ok := contracts.DecodeError(err); ok && strings.Contains(reason, "InvalidStateRoot") {
+			return errStateTransitionBatchOutdated
+		}
 		log.Warnw("process state transition simulation failed",
 			"processID", processID.String(),
 			"error", err)
@@ -216,10 +231,9 @@ func (s *Sequencer) pushStateTransitionCallback(processID types.ProcessID, batch
 			}
 			log.Infow("pending tx released", "processID", processID.String())
 		}()
-		// If there was an error, log it and mark the batch as failed
+		// If there was an error, log it and handle recovery
 		if err != nil {
-			log.Errorf("failed to wait for state transition of %s: %s", processID.String(), err)
-			// Use MarkStateTransitionBatchFailed for consistent recovery logic
+			log.Errorw(err, fmt.Sprintf("failed to wait for state transition of %s", processID.String()))
 			if err := s.stg.MarkStateTransitionBatchFailed(batchID, processID); err != nil {
 				log.Warnw("failed to mark state transition batch as failed after callback error",
 					"error", err, "processID", processID.String())

@@ -93,6 +93,36 @@ func TestBallotQueue_MarkBallotBatchFailed(t *testing.T) {
 	}
 }
 
+func TestReleaseAggregatorBatchReservationMakesBatchAvailableAgain(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+	ensureProcess(t, stg, processID)
+
+	batch := &AggregatorBallotBatch{
+		ProcessID: processID,
+		Ballots: []*AggregatorBallot{
+			mkAggBallot(testutil.RandomVoteID()),
+		},
+	}
+	c.Assert(stg.PushAggregatorBatch(batch), qt.IsNil)
+
+	retrievedBatch, batchID, err := stg.NextAggregatorBatch(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(retrievedBatch, qt.Not(qt.IsNil))
+	c.Assert(stg.ReleaseAggregatorBatchReservation(batchID), qt.IsNil)
+
+	requeuedBatch, requeuedID, err := stg.NextAggregatorBatch(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(requeuedBatch, qt.Not(qt.IsNil))
+	c.Assert(requeuedBatch.ProcessID, qt.Equals, processID)
+	c.Assert(requeuedBatch.Ballots, qt.HasLen, 1)
+	c.Assert(requeuedBatch.Ballots[0].VoteID, qt.Equals, batch.Ballots[0].VoteID)
+	c.Assert(stg.MarkAggregatorBatchDone(requeuedID), qt.IsNil)
+}
+
 func TestBallotQueue_RemoveStateTransitionBatchesByProcess(t *testing.T) {
 	c := qt.New(t)
 	stg := newTestStorage(t)

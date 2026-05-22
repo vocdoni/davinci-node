@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	qt "github.com/frankban/quicktest"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/config"
@@ -86,6 +87,32 @@ func TestWaitTxByHashReturnsOnRevert(t *testing.T) {
 	c.Assert(err, qt.Not(qt.IsNil))
 	c.Assert(err.Error(), qt.Contains, "reverted")
 	c.Assert(time.Since(start) < 1500*time.Millisecond, qt.IsTrue)
+}
+
+func TestDecodeErrorInvalidStateRoot(t *testing.T) {
+	c := qt.New(t)
+
+	invalidStateRoot, ok := processRegistryABI.Errors["InvalidStateRoot"]
+	c.Assert(ok, qt.IsTrue)
+
+	contracts := &Contracts{
+		ContractABIs: &ContractABIs{
+			ProcessRegistry: processRegistryABI,
+		},
+	}
+
+	reason, ok := contracts.DecodeError(&rpc.RPCError{
+		Message: "execution reverted",
+		Data:    hexutil.Bytes(invalidStateRoot.ID.Bytes()[:4]),
+	})
+	c.Assert(ok, qt.IsTrue)
+	c.Assert(reason, qt.Contains, "InvalidStateRoot")
+
+	_, ok = contracts.DecodeError(&rpc.RPCError{
+		Message: "execution reverted",
+		Data:    hexutil.Bytes([]byte{0xde, 0xad, 0xbe, 0xef}),
+	})
+	c.Assert(ok, qt.IsFalse)
 }
 
 func TestProcessAtBlockUsesHistoricalSnapshot(t *testing.T) {

@@ -71,6 +71,48 @@ func TestProcessPendingTransitionsDoesNotReserveAggregatorBatchWhenTransitionTxP
 	c.Assert(stg.MarkAggregatorBatchDone(batchID), qt.IsNil)
 }
 
+func TestProcessPendingTransitionsReleasesAggregatorBatchOnStateRootMismatch(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestSequencerStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+	ensureSequencerTestProcess(t, stg, processID)
+
+	batch := &storage.AggregatorBallotBatch{
+		ProcessID: processID,
+		Ballots: []*storage.AggregatorBallot{
+			{VoteID: testutil.RandomVoteID()},
+		},
+	}
+	c.Assert(stg.PushAggregatorBatch(batch), qt.IsNil)
+
+	seq := &Sequencer{
+		stg: stg,
+		contractsResolver: &testContractsResolver{
+			contractsByProcess: map[types.ProcessID]*web3.Contracts{
+				processID: {},
+			},
+		},
+		finalizer: &finalizer{
+			getStateRoot: func(types.ProcessID) (*types.BigInt, error) {
+				return new(types.BigInt).SetBigInt(big.NewInt(999)), nil
+			},
+		},
+		processIDs: NewProcessIDMap(),
+	}
+	c.Assert(seq.processIDs.Add(processID), qt.IsTrue)
+
+	seq.processPendingTransitions()
+
+	got, batchID, err := stg.NextAggregatorBatch(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(got, qt.Not(qt.IsNil))
+	c.Assert(got.Ballots, qt.HasLen, 1)
+	c.Assert(got.Ballots[0].VoteID, qt.Equals, batch.Ballots[0].VoteID)
+	c.Assert(stg.MarkAggregatorBatchDone(batchID), qt.IsNil)
+}
+
 func TestProcessStateTransitionBatchRollsBackRootOnAssignmentError(t *testing.T) {
 	c := qt.New(t)
 
