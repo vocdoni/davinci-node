@@ -50,3 +50,26 @@ func (s *Sequencer) currentProcessState(processID types.ProcessID) (*state.State
 
 	return st, nil
 }
+
+// remoteStateRoot returns the current on-chain state root for a process.
+// It prefers the finalizer's injected getter when available, and falls back to
+// resolving the process contracts directly.
+func (s *Sequencer) remoteStateRoot(processID types.ProcessID) (*types.BigInt, error) {
+	if s.finalizer != nil && s.finalizer.getStateRoot != nil {
+		root, err := s.finalizer.getStateRoot(processID)
+		if err != nil {
+			return nil, err
+		}
+		return root, nil
+	}
+
+	contracts, err := s.contractsForProcess(processID)
+	if err != nil {
+		return nil, err
+	}
+	root, err := contracts.StateRoot(processID)
+	if err != nil {
+		return nil, err
+	}
+	return root, nil
+}

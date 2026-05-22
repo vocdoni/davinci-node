@@ -592,6 +592,15 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 	return nil
 }
 
+// ReleaseAggregatorBatchReservation removes the reservation for an aggregated
+// ballot batch without deleting the batch itself. This allows the batch to be
+// picked up again on a later processing tick.
+func (s *Storage) ReleaseAggregatorBatchReservation(k []byte) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.releaseAggregatorBatchReservation(k)
+}
+
 // MarkStateTransitionBatchFailed marks a state transition batch as failed,
 // sets all ballots in the batch to error status, removes the reservation,
 // and deletes the batch from the state transition queue. This is typically

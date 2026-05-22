@@ -75,11 +75,48 @@ func (s *Sequencer) processPendingTransitions() {
 		defer s.workInProgressLock.Unlock()
 		startTime := time.Now()
 
+		// Check the remote state root after reserving a batch.
+		// If another sequencer has settled a transition, our local state root is
+		// stale and the proof would be invalid, so we release the reservation and
+		// let the next tick retry once the local state has caught up.
+		remoteRoot, err := s.remoteStateRoot(processID)
+		if err != nil {
+			log.Errorw(err, "failed to get remote state root")
+			if releaseErr := s.stg.ReleaseAggregatorBatchReservation(batchID); releaseErr != nil {
+				log.Errorw(releaseErr, "failed to release reserved aggregator batch")
+			}
+			return true // Continue to next process ID
+		}
+		if remoteRoot == nil {
+			log.Warnw("remote state root is nil", "processID", processID.String())
+			if releaseErr := s.stg.ReleaseAggregatorBatchReservation(batchID); releaseErr != nil {
+				log.Errorw(releaseErr, "failed to release reserved aggregator batch")
+			}
+			return true // Continue to next process ID
+		}
+
 		// Initialize the process state (use current in-construction state)
 		processState, err := s.currentProcessState(processID)
 		if err != nil {
 			log.Errorw(err, "failed to load process state")
 			s.markAggregatorBatchFailed(batchID)
+			return true // Continue to next process ID
+		}
+		localRoot, err := processState.RootAsBigInt()
+		if err != nil {
+			log.Errorw(err, "failed to get local state root")
+			s.markAggregatorBatchFailed(batchID)
+			return true // Continue to next process ID
+		}
+		localRootBI := new(types.BigInt).SetBigInt(localRoot)
+		if !remoteRoot.Equal(localRootBI) {
+			log.Warnw("state root mismatch detected before proof generation, releasing reserved batch",
+				"processID", processID.String(),
+				"localRoot", localRootBI.HexBytes().String(),
+				"remoteRoot", remoteRoot.HexBytes().String())
+			if releaseErr := s.stg.ReleaseAggregatorBatchReservation(batchID); releaseErr != nil {
+				log.Errorw(releaseErr, "failed to release reserved aggregator batch")
+			}
 			return true // Continue to next process ID
 		}
 
