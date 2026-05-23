@@ -91,7 +91,8 @@ func (s *Sequencer) processAvailableBallots() bool {
 			continue
 		}
 
-		log.Infow("processing ballot",
+		log.Infow(
+			"processing ballot",
 			"address", types.HexBytes(ballot.Address.Bytes()),
 			"voteID", ballot.VoteID.String(),
 			"processID", ballot.ProcessID.String(),
@@ -99,7 +100,8 @@ func (s *Sequencer) processAvailableBallots() bool {
 
 		verifiedBallot, err := s.processBallot(ballot)
 		if err != nil {
-			log.Warnw("invalid ballot",
+			log.Warnw(
+				"invalid ballot",
 				"error", err.Error(),
 				"ballot", ballot.String(),
 			)
@@ -111,7 +113,8 @@ func (s *Sequencer) processAvailableBallots() bool {
 
 		// Mark the ballot as processed
 		if err := s.stg.MarkBallotVerified(key, verifiedBallot); err != nil {
-			log.Warnw("failed to mark ballot as processed",
+			log.Warnw(
+				"failed to mark ballot as processed",
 				"error", err.Error(),
 				"address", types.HexBytes(ballot.Address.Bytes()),
 				"processID", ballot.ProcessID.String(),
@@ -177,7 +180,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		CircomProof: b.BallotProof,
 	}
 
-	log.Debugw("vote verifier inputs ready",
+	log.Debugw(
+		"vote verifier inputs ready",
 		"processID", b.ProcessID.String(),
 		"voteID", b.VoteID.String(),
 		"address", types.HexBytes(b.Address.Bytes()),
@@ -190,7 +194,8 @@ func (s *Sequencer) processBallot(b *storage.Ballot) (*storage.VerifiedBallot, e
 		return nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
 
-	log.InfoTime("vote verification proof generated", startTime,
+	log.InfoTime(
+		"vote verification proof generated", startTime,
 		"processID", b.ProcessID.String(),
 		"voteID", b.VoteID.String(),
 		"address", types.HexBytes(b.Address.Bytes()),

@@ -281,6 +281,75 @@ func (c *CensusDB) LoadByScopedAddress(chainID uint64, address common.Address) (
 	return c.loadCensusRef(scopedAddressToCensusID(chainID, address), scopedAddressDBPrefix(chainID, address))
 }
 
+// LoadFromPersistentTree loads a census tree directly from the persistent KV
+// storage (censusTreeDBPrefix) for the given root hash, bypassing the
+// ephemeral Pebble cache. This recovers census state after a node restart
+// when the Pebble tree on disk is empty but the KV-backed tree still holds
+// all leaves from the original Import call.
+//
+// If the census is already in the in-memory cache but its tree has no root
+// (i.e. the cached ref holds an empty Pebble tree), the cached tree is
+// replaced with the persistent KV-backed tree.
+func (c *CensusDB) LoadFromPersistentTree(root types.HexBytes) (*CensusRef, error) {
+	censusID := rootToCensusID(root)
+
+	// Check in-memory cache, but only return the cached ref if its tree has a
+	// valid root. If the cached tree is empty (happens after restart when the
+	// Pebble store has been wiped), fall through and reload from the KV backend.
+	c.mu.RLock()
+	if ref, exists := c.loadedCensus[censusID]; exists {
+		if _, ok := ref.tree.Root(); ok {
+			c.mu.RUnlock()
+			return ref, nil
+		}
+	}
+	c.mu.RUnlock()
+
+	// Open the persistent KV-backed tree.
+	treeDB := prefixeddb.NewPrefixedDatabase(c.db, censusTreeDBPrefix(censusID))
+	tree, err := census.NewCensusIMT(treeDB, censusHasher)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open persistent census tree: %w", err)
+	}
+	treeRoot, ok := tree.Root()
+	if !ok {
+		return nil, fmt.Errorf("%w: persistent tree has no root for census root %s",
+			ErrCensusNotFound, root.String())
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Re-check under write lock.
+	if ref, exists := c.loadedCensus[censusID]; exists {
+		if _, ok := ref.tree.Root(); ok {
+			return ref, nil
+		}
+		// Cached ref has an empty tree — replace it with the persistent tree.
+		ref.SetTree(tree)
+		ref.currentRoot = treeRoot.Bytes()
+		ref.LastUsed = time.Now()
+		return ref, nil
+	}
+
+	ref := &CensusRef{
+		ID:                censusID,
+		HashType:          censusHasherName,
+		LastUsed:          time.Now(),
+		updateRootRequest: c.updateRootChan,
+	}
+	ref.currentRoot = treeRoot.Bytes()
+	ref.SetTree(tree)
+
+	c.loadedCensus[censusID] = ref
+	rk := rootKey(ref.currentRoot)
+	if _, exists := c.rootIndex[rk]; !exists {
+		c.rootIndex[rk] = censusID
+	}
+
+	return ref, nil
+}
+
 // loadCensusRef loads a census reference from memory or persistent DB using a
 // double‑check. It takes the censusID and the key to use.
 func (c *CensusDB) loadCensusRef(censusID uuid.UUID, key types.HexBytes) (*CensusRef, error) {

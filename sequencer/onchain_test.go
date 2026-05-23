@@ -51,7 +51,7 @@ func ensureSequencerTestProcess(t *testing.T, stg *storage.Storage, pid types.Pr
 		Status:        types.ProcessStatusReady,
 		StartTime:     time.Now(),
 		Duration:      time.Hour,
-		MetadataURI:   "http://example.com/metadata",
+		MetadataURI:   testMetadataURI,
 		BallotMode:    testutil.BallotMode(),
 		EncryptionKey: &encryptionKey,
 		StateRoot:     types.BigIntConverter(stateRoot),
@@ -97,7 +97,7 @@ func TestPushStateTransitionCallbackMarksBatchDoneAfterSuccess(t *testing.T) {
 		Status:      types.ProcessStatusReady,
 		StartTime:   time.Now(),
 		Duration:    time.Hour,
-		MetadataURI: "http://example.com/metadata",
+		MetadataURI: testMetadataURI,
 		BallotMode:  ballotMode,
 		EncryptionKey: func() *types.EncryptionKey {
 			key := types.EncryptionKeyFromPoint(encryptionKey)

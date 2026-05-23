@@ -5,18 +5,25 @@ import (
 	"math/big"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	qt "github.com/frankban/quicktest"
 	stc "github.com/vocdoni/davinci-node/circuits/statetransition"
 	statetransitiontest "github.com/vocdoni/davinci-node/circuits/test/statetransition"
+	"github.com/vocdoni/davinci-node/db"
+	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	spechash "github.com/vocdoni/davinci-node/spec/hash"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
+	"github.com/vocdoni/davinci-node/state"
 	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/web3"
+	leanimt "github.com/vocdoni/lean-imt-go"
+	leancensus "github.com/vocdoni/lean-imt-go/census"
 )
 
 func testVariableAsBigInt(t *testing.T, v any) *big.Int {
@@ -326,4 +333,190 @@ func publicStateTransitionCircuitFromInputs(inputs storage.StateTransitionBatchP
 	circuit.BlobCommitmentLimbs[1] = inputs.BlobCommitmentLimbs[1]
 	circuit.BlobCommitmentLimbs[2] = inputs.BlobCommitmentLimbs[2]
 	return circuit
+}
+
+// makeTestProcessWithCensus creates a process in storage with the given MerkleTree census root.
+func makeTestProcessWithCensus(t *testing.T, stg *storage.Storage, processID types.ProcessID, censusRoot types.HexBytes) {
+	t.Helper()
+	encryptionKey := testutil.RandomEncryptionPubKey()
+	censusOrigin := types.CensusOriginMerkleTreeOffchainStaticV1
+	stateRoot, err := spechash.StateRoot(
+		processID.MathBigInt(),
+		censusOrigin.BigInt().MathBigInt(),
+		encryptionKey.X.MathBigInt(),
+		encryptionKey.Y.MathBigInt(),
+		testutil.BallotModePacked(),
+	)
+	if err != nil {
+		t.Fatalf("spechash.StateRoot: %v", err)
+	}
+	proc := &types.Process{
+		ID:            &processID,
+		Status:        types.ProcessStatusReady,
+		StartTime:     time.Now(),
+		Duration:      time.Hour,
+		MetadataURI:   testMetadataURI,
+		BallotMode:    testutil.BallotMode(),
+		EncryptionKey: &encryptionKey,
+		StateRoot:     types.BigIntConverter(stateRoot),
+		Census: &types.Census{
+			CensusOrigin: censusOrigin,
+			CensusRoot:   censusRoot,
+		},
+	}
+	if err := stg.NewProcess(proc); err != nil {
+		t.Fatalf("NewProcess: %v", err)
+	}
+}
+
+// TestProcessCensusProofsNilRootReturnsError verifies that processCensusProofs
+// returns an error when the census tree exists in storage but has no root
+// (empty tree, no entries).
+func TestProcessCensusProofsNilRootReturnsError(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestSequencerStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+	censusRoot := types.HexBytes(testutil.RandomCensusRoot().Bytes())
+
+	// Register an empty census (no entries) so LoadCensus succeeds but
+	// Tree().Root() returns (nil, false).
+	_, err := stg.CensusDB().NewByRoot(censusRoot)
+	c.Assert(err, qt.IsNil)
+	makeTestProcessWithCensus(t, stg, processID, censusRoot)
+
+	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
+
+	_, _, err = seq.processCensusProofs(processID, nil, nil)
+	c.Assert(err, qt.Not(qt.IsNil))
+	c.Assert(err.Error(), qt.Contains, "census tree unavailable")
+}
+
+// TestProcessCensusProofsMissingAddressReturnsError verifies that processCensusProofs
+// returns an error when a vote's address is absent from the census tree. Census
+// filtering must happen before aggregation (to preserve the aggregator proof's
+// BatchHash public input); a missing address at state-transition time is fatal.
+func TestProcessCensusProofsMissingAddressReturnsError(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestSequencerStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+
+	addr0 := testutil.DeterministicAddress(0)
+	addr1 := testutil.DeterministicAddress(1)
+	sourceTree, err := leancensus.NewCensusIMT(nil, leanimt.PoseidonHasher)
+	c.Assert(err, qt.IsNil)
+	c.Assert(sourceTree.Add(addr0, big.NewInt(1)), qt.IsNil)
+	c.Assert(sourceTree.Add(addr1, big.NewInt(1)), qt.IsNil)
+	root, ok := sourceTree.Root()
+	c.Assert(ok, qt.IsTrue)
+
+	censusRoot := types.HexBytes(root.Bytes())
+	_, err = stg.CensusDB().Import(censusRoot, sourceTree.Dump())
+	c.Assert(err, qt.IsNil)
+	makeTestProcessWithCensus(t, stg, processID, censusRoot)
+
+	// addr0 and addr1 are in the census; addr2 (index 999) is not.
+	addr2 := testutil.DeterministicAddress(999)
+	votes := []*state.Vote{
+		{Address: addr0.Big(), Weight: big.NewInt(1)},
+		{Address: addr1.Big(), Weight: big.NewInt(1)},
+		{Address: addr2.Big(), Weight: big.NewInt(1)},
+	}
+
+	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
+	_, _, err = seq.processCensusProofs(processID, votes, nil)
+	c.Assert(err, qt.Not(qt.IsNil))
+}
+
+// TestProcessCensusProofsAllValidReturnsAllVotes verifies that when every vote
+// address is present in the census tree, all votes are returned unchanged.
+func TestProcessCensusProofsAllValidReturnsAllVotes(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestSequencerStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+
+	addr0 := testutil.DeterministicAddress(0)
+	addr1 := testutil.DeterministicAddress(1)
+	sourceTree, err := leancensus.NewCensusIMT(nil, leanimt.PoseidonHasher)
+	c.Assert(err, qt.IsNil)
+	c.Assert(sourceTree.Add(addr0, big.NewInt(1)), qt.IsNil)
+	c.Assert(sourceTree.Add(addr1, big.NewInt(1)), qt.IsNil)
+	root, ok := sourceTree.Root()
+	c.Assert(ok, qt.IsTrue)
+
+	censusRoot := types.HexBytes(root.Bytes())
+	_, err = stg.CensusDB().Import(censusRoot, sourceTree.Dump())
+	c.Assert(err, qt.IsNil)
+	makeTestProcessWithCensus(t, stg, processID, censusRoot)
+
+	votes := []*state.Vote{
+		{Address: addr0.Big(), Weight: big.NewInt(1)},
+		{Address: addr1.Big(), Weight: big.NewInt(1)},
+	}
+
+	seq := &Sequencer{stg: stg, processIDs: NewProcessIDMap()}
+	_, _, err = seq.processCensusProofs(processID, votes, nil)
+	c.Assert(err, qt.IsNil)
+}
+
+// TestStateTransitionCensusTreeReload verifies that processCensusProofs
+// recovers when the census tree Pebble cache is empty after a node restart.
+//
+// Import stores tree data in the persistent KV DB (censusTreeDBPrefix). After
+// a restart the in-memory census cache is gone; loadCensusRef re-opens the
+// census by creating a fresh empty Pebble tree (in /tmp, never populated by
+// Import), so Tree().Root() returns (nil, false).
+//
+// The fix in T005 must reload from censusTreeDBPrefix so the state transition
+// is not permanently lost.
+//
+// Failure mode today: returns "census tree has no root" error.
+// Expected after T005:  returns (root, proofs, nil).
+func TestStateTransitionCensusTreeReload(t *testing.T) {
+	c := qt.New(t)
+
+	// Build a small census with one address so the imported tree has a valid root.
+	addr0 := testutil.DeterministicAddress(0)
+	sourceTree, err := leancensus.NewCensusIMT(nil, leanimt.PoseidonHasher)
+	c.Assert(err, qt.IsNil)
+	c.Assert(sourceTree.Add(addr0, big.NewInt(1)), qt.IsNil)
+	treeRoot, ok := sourceTree.Root()
+	c.Assert(ok, qt.IsTrue)
+	censusRoot := types.HexBytes(treeRoot.Bytes())
+
+	// Phase 1: persist the census and process, then close to simulate shutdown.
+	// Import writes tree nodes into the persistent KV DB (censusTreeDBPrefix),
+	// NOT into a Pebble /tmp directory. The persistent data survives the close.
+	dbDir := t.TempDir()
+	testdb1, err := metadb.New(db.TypePebble, dbDir)
+	c.Assert(err, qt.IsNil)
+	stg1 := storage.New(testdb1)
+	_, err = stg1.CensusDB().Import(censusRoot, sourceTree.Dump())
+	c.Assert(err, qt.IsNil)
+	processID := testutil.RandomProcessID()
+	makeTestProcessWithCensus(t, stg1, processID, censusRoot)
+	stg1.Close()
+
+	// Phase 2: reopen the same DB to simulate a node restart.
+	// The in-memory census cache is empty; loadCensusRef creates a NEW empty
+	// Pebble tree at censusPrefix (in /tmp) because Import never touched Pebble.
+	// Tree().Root() therefore returns (nil, false).
+	testdb2, err := metadb.New(db.TypePebble, dbDir)
+	c.Assert(err, qt.IsNil)
+	stg2 := storage.New(testdb2)
+	t.Cleanup(func() { stg2.Close() })
+
+	seq := &Sequencer{stg: stg2}
+
+	// Today this fails with "census tree has no root" because loadCensusRef
+	// creates an empty Pebble tree and T005's reload logic does not yet exist.
+	// After T005 the function must reload from censusTreeDBPrefix and return nil.
+	_, _, err = seq.processCensusProofs(processID, nil, nil)
+	c.Assert(err, qt.IsNil,
+		qt.Commentf("processCensusProofs must reload census from persistent KV DB when Pebble tree is empty after restart"))
 }

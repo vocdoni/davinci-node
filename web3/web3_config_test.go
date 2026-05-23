@@ -7,6 +7,12 @@ import (
 	qt "github.com/frankban/quicktest"
 )
 
+const (
+	testSepoliaContract = "11155111:0x015eac820688da203a0bd730a8a7a4cdb97e1a02"
+	testSepoliaPrefix   = "11155111:"
+	testMainnetContract = "1:0x9b7c0b5e1240373c2d8a1f3b7e0b2d8d4a6f3c2e"
+)
+
 func TestAddressesByChainID(t *testing.T) {
 	c := qt.New(t)
 
@@ -29,7 +35,7 @@ func TestAddressesByChainID(t *testing.T) {
 		},
 		{
 			desc:       "single valid match",
-			contracts:  []string{"11155111:0x015eac820688da203a0bd730a8a7a4cdb97e1a02"},
+			contracts:  []string{testSepoliaContract},
 			chainID:    11155111,
 			wantAddr:   sepoliaAddr,
 			wantResult: true,
@@ -43,7 +49,7 @@ func TestAddressesByChainID(t *testing.T) {
 		},
 		{
 			desc:       "chain ID mismatch returns nil",
-			contracts:  []string{"11155111:0x015eac820688da203a0bd730a8a7a4cdb97e1a02"},
+			contracts:  []string{testSepoliaContract},
 			chainID:    1,
 			wantResult: false,
 		},
@@ -67,14 +73,14 @@ func TestAddressesByChainID(t *testing.T) {
 		},
 		{
 			desc:       "empty address part skips entry",
-			contracts:  []string{"11155111:"},
+			contracts:  []string{testSepoliaPrefix},
 			chainID:    11155111,
 			wantResult: false,
 		},
 		{
 			desc: "multiple entries, first matching returns",
 			contracts: []string{
-				"11155111:0x015eac820688da203a0bd730a8a7a4cdb97e1a02",
+				testSepoliaContract,
 				"42220:0x68dac70af68aa0bed8cef36c523243941d7d7876",
 			},
 			chainID:    11155111,
@@ -84,8 +90,8 @@ func TestAddressesByChainID(t *testing.T) {
 		{
 			desc: "multiple entries, later entry matches",
 			contracts: []string{
-				"1:0x9b7c0b5e1240373c2d8a1f3b7e0b2d8d4a6f3c2e",
-				"11155111:0x015eac820688da203a0bd730a8a7a4cdb97e1a02",
+				testMainnetContract,
+				testSepoliaContract,
 			},
 			chainID:    11155111,
 			wantAddr:   sepoliaAddr,
@@ -95,7 +101,7 @@ func TestAddressesByChainID(t *testing.T) {
 			desc: "multiple entries, none match returns nil",
 			contracts: []string{
 				"42220:0x68dac70af68aa0bed8cef36c523243941d7d7876",
-				"1:0x9b7c0b5e1240373c2d8a1f3b7e0b2d8d4a6f3c2e",
+				testMainnetContract,
 			},
 			chainID:    11155111,
 			wantResult: false,
@@ -105,9 +111,9 @@ func TestAddressesByChainID(t *testing.T) {
 			contracts: []string{
 				"bad",
 				":",
-				"11155111:",
+				testSepoliaPrefix,
 				"11155111:0x0000000000000000000000000000000000000000",
-				"11155111:0x015eac820688da203a0bd730a8a7a4cdb97e1a02",
+				testSepoliaContract,
 			},
 			chainID:    11155111,
 			wantAddr:   sepoliaAddr,
@@ -118,7 +124,7 @@ func TestAddressesByChainID(t *testing.T) {
 			contracts: []string{
 				"bad",
 				"nope:0x015eac820688da203a0bd730a8a7a4cdb97e1a02",
-				"11155111:",
+				testSepoliaPrefix,
 			},
 			chainID:    11155111,
 			wantResult: false,
@@ -126,8 +132,8 @@ func TestAddressesByChainID(t *testing.T) {
 		{
 			desc: "matching entry with mainnet address",
 			contracts: []string{
-				"11155111:0x015eac820688da203a0bd730a8a7a4cdb97e1a02",
-				"1:0x9b7c0b5e1240373c2d8a1f3b7e0b2d8d4a6f3c2e",
+				testSepoliaContract,
+				testMainnetContract,
 			},
 			chainID:    1,
 			wantAddr:   mainnetAddr,

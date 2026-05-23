@@ -9,6 +9,12 @@ import (
 	qt "github.com/frankban/quicktest"
 )
 
+const (
+	testEndpoint1 = "http://endpoint1.example.com"
+	testEndpoint2 = "http://endpoint2.example.com"
+	testEndpoint3 = "http://endpoint3.example.com"
+)
+
 // TestEndpointSwitchingOnFailure tests that when an endpoint fails,
 // the retry mechanism switches to the next available endpoint
 func TestEndpointSwitchingOnFailure(t *testing.T) {
@@ -17,9 +23,9 @@ func TestEndpointSwitchingOnFailure(t *testing.T) {
 
 	// Create a mock iterator with multiple endpoints
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
-		{ChainID: 1, URI: "http://endpoint3.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
+		{ChainID: 1, URI: testEndpoint3},
 	}
 
 	pool.endpoints[1] = NewWeb3Iterator(endpoints...)
@@ -28,16 +34,16 @@ func TestEndpointSwitchingOnFailure(t *testing.T) {
 	c.Assert(pool.NumberOfEndpoints(1, true), qt.Equals, 3)
 
 	// Disable first endpoint
-	pool.DisableEndpoint(1, "http://endpoint1.example.com")
+	pool.DisableEndpoint(1, testEndpoint1)
 	c.Assert(pool.NumberOfEndpoints(1, true), qt.Equals, 2)
 	c.Assert(pool.NumberOfEndpoints(1, false), qt.Equals, 3)
 
 	// Disable second endpoint
-	pool.DisableEndpoint(1, "http://endpoint2.example.com")
+	pool.DisableEndpoint(1, testEndpoint2)
 	c.Assert(pool.NumberOfEndpoints(1, true), qt.Equals, 1)
 
 	// Disable third endpoint - should trigger reset
-	pool.DisableEndpoint(1, "http://endpoint3.example.com")
+	pool.DisableEndpoint(1, testEndpoint3)
 
 	// After disabling all endpoints, they should be reset to available
 	c.Assert(pool.NumberOfEndpoints(1, true), qt.Equals, 3)
@@ -50,8 +56,8 @@ func TestDisableNonExistentEndpoint(t *testing.T) {
 	pool := NewWeb3Pool()
 
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
 	}
 
 	pool.endpoints[1] = NewWeb3Iterator(endpoints...)
@@ -63,7 +69,7 @@ func TestDisableNonExistentEndpoint(t *testing.T) {
 	c.Assert(pool.NumberOfEndpoints(1, true), qt.Equals, 2)
 
 	// Try to disable from a chainID that doesn't exist
-	pool.DisableEndpoint(999, "http://endpoint1.example.com")
+	pool.DisableEndpoint(999, testEndpoint1)
 
 	// Original chain should still have 2 endpoints
 	c.Assert(pool.NumberOfEndpoints(1, true), qt.Equals, 2)
@@ -73,9 +79,9 @@ func TestDisableNonExistentEndpoint(t *testing.T) {
 func TestIteratorRoundRobin(t *testing.T) {
 	c := qt.New(t)
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
-		{ChainID: 1, URI: "http://endpoint3.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
+		{ChainID: 1, URI: testEndpoint3},
 	}
 
 	iter := NewWeb3Iterator(endpoints...)
@@ -83,29 +89,29 @@ func TestIteratorRoundRobin(t *testing.T) {
 	// Get endpoints in round-robin fashion
 	ep1, err := iter.Next()
 	c.Assert(err, qt.IsNil)
-	c.Assert(ep1.URI, qt.Equals, "http://endpoint1.example.com")
+	c.Assert(ep1.URI, qt.Equals, testEndpoint1)
 
 	ep2, err := iter.Next()
 	c.Assert(err, qt.IsNil)
-	c.Assert(ep2.URI, qt.Equals, "http://endpoint2.example.com")
+	c.Assert(ep2.URI, qt.Equals, testEndpoint2)
 
 	ep3, err := iter.Next()
 	c.Assert(err, qt.IsNil)
-	c.Assert(ep3.URI, qt.Equals, "http://endpoint3.example.com")
+	c.Assert(ep3.URI, qt.Equals, testEndpoint3)
 
 	// Should wrap around to first endpoint
 	ep4, err := iter.Next()
 	c.Assert(err, qt.IsNil)
-	c.Assert(ep4.URI, qt.Equals, "http://endpoint1.example.com")
+	c.Assert(ep4.URI, qt.Equals, testEndpoint1)
 }
 
 // TestIteratorDisableAndNext tests that disabling an endpoint properly updates the next index
 func TestIteratorDisableAndNext(t *testing.T) {
 	c := qt.New(t)
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
-		{ChainID: 1, URI: "http://endpoint3.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
+		{ChainID: 1, URI: testEndpoint3},
 	}
 
 	iter := NewWeb3Iterator(endpoints...)
@@ -113,32 +119,32 @@ func TestIteratorDisableAndNext(t *testing.T) {
 	// Get first endpoint (nextIndex moves to 1, pointing to endpoint2)
 	ep1, err := iter.Next()
 	c.Assert(err, qt.IsNil)
-	c.Assert(ep1.URI, qt.Equals, "http://endpoint1.example.com")
+	c.Assert(ep1.URI, qt.Equals, testEndpoint1)
 
 	// Disable the second endpoint (at index 1, which is where nextIndex points)
 	// After removal: [endpoint1, endpoint3], nextIndex stays at 1 but gets decremented to 0
 	// because we removed an element before it
-	iter.Disable("http://endpoint2.example.com")
+	iter.Disable(testEndpoint2)
 
 	// Next should return endpoint1 (at index 0, since nextIndex was adjusted)
 	// Then nextIndex moves to 1
 	ep2, err := iter.Next()
 	c.Assert(err, qt.IsNil)
-	c.Assert(ep2.URI, qt.Equals, "http://endpoint1.example.com")
+	c.Assert(ep2.URI, qt.Equals, testEndpoint1)
 
 	// Next should return endpoint3 (at index 1)
 	ep3, err := iter.Next()
 	c.Assert(err, qt.IsNil)
-	c.Assert(ep3.URI, qt.Equals, "http://endpoint3.example.com")
+	c.Assert(ep3.URI, qt.Equals, testEndpoint3)
 }
 
 // TestIteratorDisableCurrentEndpoint tests disabling the current endpoint
 func TestIteratorDisableCurrentEndpoint(t *testing.T) {
 	c := qt.New(t)
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
-		{ChainID: 1, URI: "http://endpoint3.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
+		{ChainID: 1, URI: testEndpoint3},
 	}
 
 	iter := NewWeb3Iterator(endpoints...)
@@ -153,7 +159,7 @@ func TestIteratorDisableCurrentEndpoint(t *testing.T) {
 	// Next should return endpoint2 (index 0 after removal, but nextIndex was adjusted)
 	ep2, err := iter.Next()
 	c.Assert(err, qt.IsNil)
-	c.Assert(ep2.URI, qt.Equals, "http://endpoint2.example.com")
+	c.Assert(ep2.URI, qt.Equals, testEndpoint2)
 }
 
 // TestIteratorEmptyPool tests behavior with no endpoints
@@ -171,17 +177,17 @@ func TestIteratorEmptyPool(t *testing.T) {
 func TestIteratorAllDisabled(t *testing.T) {
 	c := qt.New(t)
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
 	}
 
 	iter := NewWeb3Iterator(endpoints...)
 
 	// Disable all endpoints
-	iter.Disable("http://endpoint1.example.com")
+	iter.Disable(testEndpoint1)
 	c.Assert(iter.Available(), qt.Equals, 1)
 
-	iter.Disable("http://endpoint2.example.com")
+	iter.Disable(testEndpoint2)
 
 	// Should have reset all to available
 	c.Assert(iter.Available(), qt.Equals, 2)
@@ -192,9 +198,9 @@ func TestIteratorAllDisabled(t *testing.T) {
 func TestConcurrentAccess(t *testing.T) {
 	c := qt.New(t)
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
-		{ChainID: 1, URI: "http://endpoint3.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
+		{ChainID: 1, URI: testEndpoint3},
 	}
 
 	iter := NewWeb3Iterator(endpoints...)
@@ -214,7 +220,7 @@ func TestConcurrentAccess(t *testing.T) {
 	// Also disable endpoints concurrently
 	go func() {
 		for range 10 {
-			iter.Disable("http://endpoint1.example.com")
+			iter.Disable(testEndpoint1)
 			time.Sleep(time.Millisecond)
 		}
 		done <- true
@@ -235,8 +241,8 @@ func TestRetryLogic(t *testing.T) {
 	pool := NewWeb3Pool()
 
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
 	}
 
 	pool.endpoints[1] = NewWeb3Iterator(endpoints...)
@@ -272,8 +278,8 @@ func TestRetryAllEndpointsFail(t *testing.T) {
 	pool := NewWeb3Pool()
 
 	endpoints := []*Web3Endpoint{
-		{ChainID: 1, URI: "http://endpoint1.example.com"},
-		{ChainID: 1, URI: "http://endpoint2.example.com"},
+		{ChainID: 1, URI: testEndpoint1},
+		{ChainID: 1, URI: testEndpoint2},
 	}
 
 	pool.endpoints[1] = NewWeb3Iterator(endpoints...)

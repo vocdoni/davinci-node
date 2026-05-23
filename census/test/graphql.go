@@ -13,11 +13,16 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+const (
+	testAccountID1 = "0xdeb8699659be5d41a0e57e179d6cb42e00b9200c"
+	testAccountID2 = "0xb1f05b11ba3d892edd00f2e7689779e2b8841827"
+)
+
 var (
 	DefaultExpectedRoot  = types.HexStringToHexBytesMustUnmarshal("0x0b3600e19a4f5017dea4f91f03d8aa0dd6f4c797795e7a5aa542e81b2c5a9485")
 	DefaultGraphQLEvents = []TestWeightChangeEvent{
 		{
-			AccountID:      "0xdeb8699659be5d41a0e57e179d6cb42e00b9200c",
+			AccountID:      testAccountID1,
 			PreviousWeight: "0",
 			NewWeight:      "1",
 		},
@@ -27,7 +32,7 @@ var (
 			NewWeight:      "1",
 		},
 		{
-			AccountID:      "0xb1f05b11ba3d892edd00f2e7689779e2b8841827",
+			AccountID:      testAccountID2,
 			PreviousWeight: "0",
 			NewWeight:      "1",
 		},
@@ -47,12 +52,12 @@ var (
 			NewWeight:      "0",
 		},
 		{
-			AccountID:      "0xdeb8699659be5d41a0e57e179d6cb42e00b9200c",
+			AccountID:      testAccountID1,
 			PreviousWeight: "1",
 			NewWeight:      "0",
 		},
 		{
-			AccountID:      "0xb1f05b11ba3d892edd00f2e7689779e2b8841827",
+			AccountID:      testAccountID2,
 			PreviousWeight: "1",
 			NewWeight:      "2",
 		},
@@ -62,12 +67,12 @@ var (
 			NewWeight:      "1",
 		},
 		{
-			AccountID:      "0xb1f05b11ba3d892edd00f2e7689779e2b8841827",
+			AccountID:      testAccountID2,
 			PreviousWeight: "2",
 			NewWeight:      "1",
 		},
 		{
-			AccountID:      "0xdeb8699659be5d41a0e57e179d6cb42e00b9200c",
+			AccountID:      testAccountID1,
 			PreviousWeight: "0",
 			NewWeight:      "1",
 		},

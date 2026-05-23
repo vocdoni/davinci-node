@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -22,6 +23,11 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 	imtcircuit "github.com/vocdoni/lean-imt-go/circuit"
 )
+
+// errCensusTreeUnavailable is returned by processCensusProofs when the census
+// tree cannot be loaded even after a reload attempt. The caller must not
+// permanently fail the batch; it should retry on the next tick instead.
+var errCensusTreeUnavailable = errors.New("census tree unavailable, retry next tick")
 
 func (s *Sequencer) startStateTransitionProcessor() error {
 	const tickInterval = time.Second
@@ -83,7 +89,8 @@ func (s *Sequencer) processPendingTransitions() {
 			return true // Continue to next process ID
 		}
 
-		log.Debugw("state transition ready for processing",
+		log.Debugw(
+			"state transition ready for processing",
 			"processID", batch.ProcessID.String(),
 			"ballotCount", len(batch.Ballots),
 		)
@@ -103,6 +110,14 @@ func (s *Sequencer) processPendingTransitions() {
 		}
 		censusRoot, circuitCensusProofs, err := s.processCensusProofs(batch.ProcessID, reencryptedVotes, censusProofs)
 		if err != nil {
+			if errors.Is(err, errCensusTreeUnavailable) {
+				// Census tree is temporarily unavailable (e.g. after restart);
+				// leave the batch intact so it is retried on the next tick.
+				log.Warnw("census tree unavailable, batch will be retried",
+					"processID", batch.ProcessID.String(),
+					"error", err)
+				return true // Continue to next process ID
+			}
 			log.Errorw(err, "failed to get census proofs")
 			s.markAggregatorBatchFailed(batchID)
 			return true // Continue to next process ID
@@ -116,7 +131,8 @@ func (s *Sequencer) processPendingTransitions() {
 			*circuitCensusProofs,
 			reencryptedVotes,
 			kSeed,
-			batch.Proof)
+			batch.Proof,
+		)
 		if err != nil {
 			log.Errorw(err, "failed to process state transition batch")
 			s.markAggregatorBatchFailed(batchID)
@@ -139,7 +155,8 @@ func (s *Sequencer) processPendingTransitions() {
 		// Get blob sidecar and hash
 		blobSidecar := stateBatch.BlobEvalData().TxSidecar()
 
-		log.InfoTime("state transition proof generated", startTime,
+		log.InfoTime(
+			"state transition proof generated", startTime,
 			"processID", processID.String(),
 			"rootHashBefore", stateBatch.RootHashBefore().String(),
 			"rootHashAfter", stateBatch.RootHashAfter().String(),
@@ -229,7 +246,8 @@ func (s *Sequencer) processStateTransitionBatch(
 		return nil, nil, fmt.Errorf("failed to generate assignment: %w", err)
 	}
 	defer batch.Discard()
-	log.DebugTime("state transition assignment ready for proof generation", startTime,
+	log.DebugTime(
+		"state transition assignment ready for proof generation", startTime,
 		"processID", processState.ProcessID(),
 		"votersCount", assignment.VotersCount,
 		"overwrittenVotesCount", assignment.OverwrittenVotesCount,
@@ -261,7 +279,8 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 ) {
 	log.Errorw(err, "STATE TRANSITION CONSTRAINT ERROR - DEBUG INFO")
 	if assignment != nil {
-		log.Infow("constraint error details",
+		log.Infow(
+			"constraint error details",
 			"processID", processState.ProcessID().String(),
 			"rootHashBefore", assignment.RootHashBefore,
 			"rootHashAfter", assignment.RootHashAfter,
@@ -279,7 +298,8 @@ func (s *Sequencer) logStateTransitionDebugInfo(
 
 	// Log vote details
 	for i, v := range votes {
-		log.Infow("vote details",
+		log.Infow(
+			"vote details",
 			"index", i,
 			"voteID", v.VoteID.String(),
 			"address", types.HexBytes(v.Address.Bytes()),
@@ -370,7 +390,7 @@ func (s *Sequencer) processCensusProofs(
 	// get the process from the storage
 	process, err := s.stg.Process(processID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get process metadata: %w", err)
+		return nil, nil, fmt.Errorf(errGetProcessMetadata, err)
 	}
 
 	var root *big.Int
@@ -396,7 +416,29 @@ func (s *Sequencer) processCensusProofs(
 		censusTree := censusRef.Tree()
 		var ok bool
 		if root, ok = censusTree.Root(); !ok {
-			log.Warnw("census tree has no root?", "censusRoot", process.Census.CensusRoot.String(), "fetchedRoot", root.String())
+			// The ephemeral Pebble tree is empty (e.g. after a node restart).
+			// Attempt to reload from the persistent KV-backed storage.
+			log.Warnw("census tree has no root, attempting reload from persistent storage",
+				"processID", processID.String(),
+				"censusRoot", process.Census.CensusRoot.String())
+			reloadedRef, reloadErr := s.stg.CensusDB().LoadFromPersistentTree(process.Census.CensusRoot)
+			if reloadErr != nil {
+				log.Errorw(reloadErr, fmt.Sprintf("census tree reload failed for process %s (censusRoot=%s)",
+					processID.String(), process.Census.CensusRoot.String()))
+				return nil, nil, fmt.Errorf("%w: process %s (censusRoot=%s): %w",
+					errCensusTreeUnavailable, processID.String(), process.Census.CensusRoot.String(), reloadErr)
+			}
+			censusTree = reloadedRef.Tree()
+			if root, ok = censusTree.Root(); !ok {
+				log.Warnw("census tree still has no root after reload",
+					"processID", processID.String(),
+					"censusRoot", process.Census.CensusRoot.String())
+				return nil, nil, fmt.Errorf("%w: process %s (censusRoot=%s): tree empty after reload",
+					errCensusTreeUnavailable, processID.String(), process.Census.CensusRoot.String())
+			}
+			log.Infow("census tree successfully reloaded from persistent storage",
+				"processID", processID.String(),
+				"censusRoot", process.Census.CensusRoot.String())
 		}
 		// iterate over the votes to generate the merkle proofs of each voter
 		for i := range params.VotesPerBatch {

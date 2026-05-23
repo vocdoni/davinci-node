@@ -21,8 +21,10 @@ import (
 	"github.com/vocdoni/davinci-node/types"
 )
 
+const testTimeFormat = "15:04:05"
+
 func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: testTimeFormat}).With().Timestamp().Logger())
 	c := qt.New(t)
 	// Generate a deterministic voter account for reproducible test data.
 	s, err := ballottest.GenDeterministicECDSAaccountForTest(0)
@@ -45,7 +47,7 @@ func TestVerifyMerkletreeVoteCircuit(t *testing.T) {
 }
 
 func TestVerifyCSPVoteCircuit(t *testing.T) {
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: testTimeFormat}).With().Timestamp().Logger())
 	c := qt.New(t)
 	// Generate a deterministic voter account for reproducible test data.
 	s, err := ballottest.GenDeterministicECDSAaccountForTest(0)
@@ -81,7 +83,7 @@ func TestVerifyNoValidVoteCircuit(t *testing.T) {
 }
 
 func TestVerifyMultipleVotesCircuit(t *testing.T) {
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: testTimeFormat}).With().Timestamp().Logger())
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
 		t.Skip("skipping circuit tests...")
 	}
@@ -109,7 +111,7 @@ func TestCompileAndPrintConstraints(t *testing.T) {
 	if os.Getenv("RUN_CIRCUIT_TESTS") == "" || os.Getenv("RUN_CIRCUIT_TESTS") == "false" {
 		t.Skip("skipping circuit tests...")
 	}
-	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
+	logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: testTimeFormat}).With().Timestamp().Logger())
 	c := qt.New(t)
 	// generate vote verifier circuit and inputs with deterministic ProcessID
 	vvPlaceholder, err := voteverifier.DummyPlaceholder()

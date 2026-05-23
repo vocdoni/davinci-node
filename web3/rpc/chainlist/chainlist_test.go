@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+const (
+	testArbRPC1                   = "https://arb-rpc-1.example.com"
+	testArbRPC2                   = "https://arb-rpc-2.example.com"
+	testValidBlockAndLogsEndpoint = "https://valid-block-and-logs.example.com"
+)
+
 // testRand is a package-level random number generator for consistent test results
 var testRand = rand.New(rand.NewSource(1234))
 
@@ -81,8 +87,8 @@ func TestEndpointList(t *testing.T) {
 			ShortName: "arb1",
 			ChainID:   42161,
 			RPC: []RPCEntry{
-				{URL: "https://arb-rpc-1.example.com"},
-				{URL: "https://arb-rpc-2.example.com"},
+				{URL: testArbRPC1},
+				{URL: testArbRPC2},
 			},
 		},
 	}
@@ -104,8 +110,8 @@ func TestEndpointList(t *testing.T) {
 
 		// Verify all endpoints are present (in any order due to randomization)
 		expectURLs := map[string]bool{
-			"https://arb-rpc-1.example.com": true,
-			"https://arb-rpc-2.example.com": true,
+			testArbRPC1: true,
+			testArbRPC2: true,
 		}
 
 		for _, url := range endpoints {
@@ -128,8 +134,8 @@ func TestEndpointList(t *testing.T) {
 		}
 
 		expectURLs := map[string]bool{
-			"https://arb-rpc-1.example.com": true,
-			"https://arb-rpc-2.example.com": true,
+			testArbRPC1: true,
+			testArbRPC2: true,
 		}
 		for _, url := range endpoints {
 			if !expectURLs[url] {
@@ -257,7 +263,7 @@ func TestEnhancedHealthCheck(t *testing.T) {
 			ShortName: "test",
 			ChainID:   1,
 			RPC: []RPCEntry{
-				{URL: "https://valid-block-and-logs.example.com"},  // Both valid
+				{URL: testValidBlockAndLogsEndpoint},               // Both valid
 				{URL: "https://valid-block-no-logs.example.com"},   // Only valid block but no getLogs
 				{URL: "https://zero-block-valid-logs.example.com"}, // Zero block but valid getLogs
 				{URL: "https://zero-block-no-logs.example.com"},    // Neither valid
@@ -294,7 +300,7 @@ func TestEnhancedHealthCheck(t *testing.T) {
 			supportsGetLogs  bool
 			correctChainID   bool
 		}{
-			"https://valid-block-and-logs.example.com":  {true, true, true},
+			testValidBlockAndLogsEndpoint:               {true, true, true},
 			"https://valid-block-no-logs.example.com":   {true, false, true},
 			"https://zero-block-valid-logs.example.com": {false, true, true},
 			"https://zero-block-no-logs.example.com":    {false, false, true},
@@ -324,8 +330,8 @@ func TestEnhancedHealthCheck(t *testing.T) {
 		}
 
 		// Verify it's the correct endpoint
-		if len(endpoints) > 0 && endpoints[0] != "https://valid-block-and-logs.example.com" {
-			t.Errorf("Expected healthy endpoint 'https://valid-block-and-logs.example.com', got %s", endpoints[0])
+		if len(endpoints) > 0 && endpoints[0] != testValidBlockAndLogsEndpoint {
+			t.Errorf("Expected healthy endpoint '%s', got %s", testValidBlockAndLogsEndpoint, endpoints[0])
 		}
 	})
 }

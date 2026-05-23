@@ -24,6 +24,8 @@ const (
 	MongodbTimeoutCommit = 12 * time.Second
 	// MongodbTimeoutQuery is the timeout for querying the database
 	MongodbTimeoutQuery = 4 * time.Second
+	// mongoIDField is the MongoDB field name for the document ID
+	mongoIDField = "_id"
 )
 
 // MongoDB is a MongoDB implementation of the db.DB interface
@@ -110,7 +112,7 @@ func (tx *WriteTx) Get(k []byte) ([]byte, error) {
 	}
 	collection := tx.db.Collection(tx.collection)
 
-	filter := bson.M{"_id": string(k)} // Convert to string
+	filter := bson.M{mongoIDField: string(k)} // Convert to string
 	var result KeyVal
 	ctx, cancel := context.WithTimeout(context.Background(), MongodbTimeoutQuery)
 	defer cancel()
@@ -137,7 +139,7 @@ func (tx *WriteTx) Iterate(prefix []byte, callback func(key, value []byte) bool)
 	filter := bson.M{}
 	if len(prefix) > 0 {
 		filter = bson.M{
-			"_id": bson.M{
+			mongoIDField: bson.M{
 				"$regex": primitive.Regex{
 					Pattern: "^" + string(prefix),
 				},
@@ -182,7 +184,7 @@ func (tx *WriteTx) Set(k, v []byte) error {
 	model := mongo.NewUpdateOneModel().SetFilter(
 		bson.D{
 			primitive.E{
-				Key:   "_id",
+				Key:   mongoIDField,
 				Value: string(k),
 			},
 		},
@@ -194,7 +196,7 @@ func (tx *WriteTx) Set(k, v []byte) error {
 }
 
 func (tx *WriteTx) Delete(k []byte) error {
-	model := mongo.NewDeleteOneModel().SetFilter(bson.M{"_id": string(k)}) // Convert to string
+	model := mongo.NewDeleteOneModel().SetFilter(bson.M{mongoIDField: string(k)}) // Convert to string
 	tx.batch = append(tx.batch, model)
 	delete(tx.inMem, string(k))
 	return nil

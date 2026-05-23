@@ -98,7 +98,8 @@ func NewWorker(stg *storage.Storage, rawSequencerURL, workerAddr, workerToken, w
 		return nil, fmt.Errorf("failed to load vote verifier artifacts: %w", err)
 	}
 
-	log.DebugTime("worker sequencer initialized", startTime,
+	log.DebugTime(
+		"worker sequencer initialized", startTime,
 		"sequencerURL", sequencerURL,
 		"workerAddress", workerAddr,
 		"workerName", workerName,
@@ -339,7 +340,8 @@ func (s *Sequencer) submitJobToMaster(vb *storage.VerifiedBallot) error {
 		return fmt.Errorf("failed to decode worker response: %w", err)
 	}
 
-	log.Infow("submitted job to master",
+	log.Infow(
+		"submitted job to master",
 		"voteID", fmt.Sprintf("%x", vb.VoteID),
 		"processID", vb.ProcessID.String(),
 		"success", workerResponse.SuccessCount,
