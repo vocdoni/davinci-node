@@ -1,0 +1,250 @@
+name: Sticky Review
+description: Keep one bot review updated for a marker and body, or remove it when dismiss-if is true
+
+inputs:
+  github-token:
+    description: Token used to list, create, and update the review
+    required: true
+  review-marker:
+    description: Marker used to identify the bot review
+    required: false
+    default: '<!-- sticky-review -->'
+  review-event:
+    description: GitHub review event to submit when a review is created
+    required: false
+    default: COMMENT
+  review-body:
+    description: Optional review body to submit directly
+    required: false
+  review-body-path:
+    description: Optional file path whose contents should be submitted as the review body
+    required: false
+  dismiss-if:
+    description: Optional boolean-like flag that controls whether the existing sticky review should be dismissed or minimized instead of submitted
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Upsert sticky review
+      uses: actions/github-script@v9
+      env:
+        REVIEW_BODY: ${{ inputs.review-body }}
+        REVIEW_BODY_PATH: ${{ inputs.review-body-path }}
+        REVIEW_MARKER: ${{ inputs.review-marker }}
+        REVIEW_EVENT: ${{ inputs.review-event }}
+        DISMISS_IF: ${{ inputs.dismiss-if }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const {
+            formatStickyReviewBody,
+            resolveStickyReviewPlan,
+          } = require(`${process.env.GITHUB_WORKSPACE}/.github/actions/sticky-review/sticky-review`);
+
+          const marker = process.env.REVIEW_MARKER;
+          const reviewEvent = process.env.REVIEW_EVENT || 'COMMENT';
+          const dismissIf = process.env.DISMISS_IF === 'true';
+          const reviewBody = process.env.REVIEW_BODY || '';
+          const reviewBodyPath = process.env.REVIEW_BODY_PATH;
+          const bodyText = dismissIf ? '' : reviewBodyPath
+            ? fs.readFileSync(reviewBodyPath, 'utf8')
+            : reviewBody;
+
+          const reviews = await github.paginate(github.rest.pulls.listReviews, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.payload.pull_request.number,
+            per_page: 100,
+          });
+
+          const existingReview = reviews.filter(
+            (review) =>
+              review.user &&
+              review.user.login === 'github-actions[bot]' &&
+              review.state !== 'DISMISSED' &&
+              typeof review.body === 'string' &&
+              review.body.includes(marker)
+          ).at(-1) || null;
+
+          const getReviewNode = async (nodeId) => {
+            if (!nodeId) {
+              return null;
+            }
+
+            const result = await github.graphql(
+              `
+                query($id: ID!) {
+                  node(id: $id) {
+                    ... on PullRequestReview {
+                      isMinimized
+                      viewerCanMinimize
+                      viewerCanUnminimize
+                    }
+                  }
+                }
+              `,
+              { id: nodeId }
+            );
+
+            return result.node;
+          };
+
+          const existingReviewNodeId = existingReview?.node_id || existingReview?.nodeId || null;
+          const existingReviewNode = await getReviewNode(existingReviewNodeId);
+          const plan = resolveStickyReviewPlan({
+            marker,
+            bodyText,
+            dismissIf,
+            existingReview,
+            isMinimized: existingReviewNode?.isMinimized ?? false,
+          });
+
+          if (plan.action === 'noop') {
+            core.notice('Sticky review already up to date');
+            return;
+          }
+
+          if (plan.action === 'cleanup') {
+            if (plan.cleanup === 'dismiss') {
+              await github.rest.pulls.dismissReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                review_id: plan.reviewId,
+                message: 'Sticky review is no longer needed',
+              });
+              await github.rest.pulls.updateReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                review_id: plan.reviewId,
+                body: '',
+              });
+              core.notice('Dismissed sticky review');
+              return;
+            }
+
+            if (existingReviewNode?.isMinimized) {
+              core.notice('Sticky review already minimized');
+              return;
+            }
+
+            if (!existingReviewNodeId) {
+              core.notice('Existing sticky review node id is unavailable');
+              return;
+            }
+
+            if (!existingReviewNode?.viewerCanMinimize) {
+              core.notice('Existing sticky review cannot be minimized');
+              return;
+            }
+
+            await github.graphql(
+              `
+                mutation($input: MinimizeCommentInput!) {
+                  minimizeComment(input: $input) {
+                    minimizedComment {
+                      __typename
+                    }
+                  }
+                }
+              `,
+              {
+                input: {
+                  subjectId: existingReviewNodeId,
+                  classifier: 'OUTDATED',
+                },
+              }
+            );
+            core.notice('Minimized sticky review');
+            return;
+          }
+
+          const body = formatStickyReviewBody({ marker, body: bodyText });
+
+          if (plan.action === 'create') {
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: reviewEvent,
+              body,
+            });
+            core.notice('Created sticky review');
+            return;
+          }
+
+          if (plan.action === 'restore') {
+            if (!existingReviewNodeId) {
+              core.notice('Existing sticky review node id is unavailable');
+              return;
+            }
+
+            if (!existingReviewNode?.viewerCanUnminimize) {
+              core.notice('Existing sticky review cannot be unminimized');
+              return;
+            }
+
+            await github.graphql(
+              `
+                mutation($input: UnminimizeCommentInput!) {
+                  unminimizeComment(input: $input) {
+                    unminimizedComment {
+                      __typename
+                    }
+                  }
+                }
+              `,
+              {
+                input: {
+                  subjectId: existingReviewNodeId,
+                },
+              }
+            );
+            core.notice('Restored sticky review');
+            return;
+          }
+
+          if (plan.action === 'update') {
+            if (!existingReviewNodeId) {
+              core.notice('Existing sticky review node id is unavailable');
+              return;
+            }
+
+            if (existingReviewNode?.isMinimized) {
+              if (!existingReviewNode.viewerCanUnminimize) {
+                core.notice('Existing sticky review cannot be unminimized');
+                return;
+              }
+
+              await github.graphql(
+                `
+                  mutation($input: UnminimizeCommentInput!) {
+                    unminimizeComment(input: $input) {
+                      unminimizedComment {
+                        __typename
+                      }
+                    }
+                  }
+                `,
+                {
+                  input: {
+                    subjectId: existingReviewNodeId,
+                  },
+                }
+              );
+            }
+
+            await github.rest.pulls.updateReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              review_id: plan.reviewId,
+              body,
+            });
+            core.notice('Updated sticky review');
+            return;
+          }
