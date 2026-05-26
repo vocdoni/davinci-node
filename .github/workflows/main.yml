@@ -101,7 +101,21 @@ jobs:
         run: cat deadcode.out | reviewdog -f=golint -name=deadcode -reporter=github-pr-review -filter-mode=diff_context
 
       - name: Compare circuit verifier hashes in pinned contracts
-        run: sh scripts/check_contract_hashes.sh
+        id: contract_hashes
+        run: |
+          set +e
+          sh scripts/check_contract_hashes.sh 2>&1 | tee contract-hashes.log
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Review pinned contract hashes
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+        uses: ./.github/actions/sticky-review
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          review-event: REQUEST_CHANGES
+          review-marker: '<!-- contract-hashes -->'
+          review-body-path: contract-hashes.log
+          dismiss-if: ${{ steps.contract_hashes.outputs.exit_code == '0' }}
 
   job_go_test:
     runs-on: [self-hosted]
@@ -167,6 +181,34 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Detect stale circuit artifacts
+        id: circuit_artifacts
+        run: |
+          if git diff --quiet -- config/circuit_artifacts.go; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "changed_files<<EOF"
+            git diff --name-only -- config/circuit_artifacts.go
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Review stale circuit artifacts
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+        uses: ./.github/actions/sticky-review
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          review-event: REQUEST_CHANGES
+          review-marker: '<!-- stale-circuit-artifacts -->'
+          dismiss-if: ${{ steps.circuit_artifacts.outputs.changed != 'true' }}
+          review-body: |
+            Circuit sources changed in this PR, so the artifacts hashes in config are stale.
+
+            Apply the `trigger-upload-circuits` label to run the circuit upload workflow and obtain fresh hashes.
+
       - name: Run integration tests
         env:
           RUN_INTEGRATION_TESTS: true
@@ -197,30 +239,24 @@ jobs:
             verifiers:
               - 'config/*_vkey.sol'
 
-      - name: Comment on PR
-        uses: actions/github-script@v9
-        if: steps.solidity_changes.outputs.verifiers == 'true' && github.event_name == 'pull_request'
+      - name: Review stale verifier contracts
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+        uses: ./.github/actions/sticky-review
         with:
-          script: |
-            const name = 'TestInputs.t.sol';
-            const runId = context.runId || process.env.GITHUB_RUN_ID || 'UNKNOWN_RUN_ID';
-            const body =
-              `Verifier contracts changed in this PR, when you pull this at davinci-contracts you'll need an updated \`${name}\`.\n\n` +
-              `Download the one just generated:\n\n` +
-              `\`\`\`bash\n` +
-              `gh run download -R ${context.repo.owner}/${context.repo.repo} ${runId} -n ${name}\n` +
-              `\`\`\`\n` +
-              `then:\n\n` +
-              `\`\`\`bash\n` +
-              `mv ${name} test/\n` +
-              `\`\`\`\n`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body,
-            });
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          review-event: COMMENT
+          review-marker: '<!-- stale-verifier-contracts -->'
+          dismiss-if: ${{ steps.solidity_changes.outputs.verifiers != 'true' }}
+          review-body: |
+            Verifier contracts changed in this PR, when you pull this at davinci-contracts you'll need an updated `TestInputs.t.sol`.
 
+            Download the one just generated:
+
+            ```bash
+            gh run download -R ${{ github.repository }} ${{ github.run_id }} -n TestInputs.t.sol
+
+            mv TestInputs.t.sol test/
+            ```
 
   call-docker-build:
     name: Docker

@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check stacked PR
+        id: stacked_pr
         uses: actions/github-script@v9
         with:
           script: |
@@ -22,60 +23,10 @@ jobs:
             const prNumber = context.payload.pull_request.number;
             const baseRef = context.payload.pull_request.base.ref;
             const isMain = baseRef === "main";
-
-            const isStackedBody = (body) =>
-              typeof body === "string" &&
-              /^This PR is stacked on top of #[0-9]+, please merge that one first$/.test(body);
-
-            const stackedBodyFor = (prNumber) =>
-              `This PR is stacked on top of #${prNumber}, please merge that one first`;
-
-            const listReviews = async () =>
-              github.paginate(github.rest.pulls.listReviews, {
-                owner,
-                repo,
-                pull_number: prNumber,
-                per_page: 100,
-              });
-
-            const findLatestBotReview = (reviews) => {
-              const matches = reviews.filter(
-                (review) =>
-                  review.user &&
-                  review.user.login === "github-actions[bot]" &&
-                  review.state === "CHANGES_REQUESTED" &&
-                  isStackedBody(review.body)
-              );
-              return matches.length > 0 ? matches[matches.length - 1] : null;
-            };
-
-            const dismissReview = async (existingReview) => {
-              if (!existingReview) {
-                core.notice("Nothing to do: PR is not stacked");
-                return;
-              }
-              await github.rest.pulls.dismissReview({
-                owner,
-                repo,
-                pull_number: prNumber,
-                review_id: existingReview.id,
-                message: "PR is now based on main; unblocking",
-              });
-              await github.rest.pulls.updateReview({
-                owner,
-                repo,
-                pull_number: prNumber,
-                review_id: existingReview.id,
-                body: "",
-              });
-              core.notice("Dismissed review");
-            };
-
-            const reviews = await listReviews();
-            const existingReview = findLatestBotReview(reviews);
-
             if (isMain) {
-              await dismissReview(existingReview);
+              core.setOutput("stacked_on", "");
+              core.setOutput("review_body", "");
+              core.notice("PR is on main");
               return;
             }
 
@@ -91,34 +42,26 @@ jobs:
             );
 
             if (!stackedOn) {
-              await dismissReview(existingReview);
+              core.setOutput("stacked_on", "");
+              core.setOutput("review_body", "");
+              core.notice("PR is not stacked");
               return;
             }
 
-            const body = stackedBodyFor(stackedOn.number);
-
-            if (!existingReview) {
-              await github.rest.pulls.createReview({
-                owner,
-                repo,
-                pull_number: prNumber,
-                event: "REQUEST_CHANGES",
-                body: body,
-              });
-              core.notice("Created review");
-              return;
-            }
-
-            if (existingReview.body !== body) {
-              await github.rest.pulls.updateReview({
-                owner,
-                repo,
-                pull_number: prNumber,
-                review_id: existingReview.id,
-                body: body,
-              });
-              core.notice("Updated review body");
-              return;
-            }
-
+            core.setOutput("stacked_on", String(stackedOn.number));
+            core.setOutput(
+              "review_body",
+              `This PR is stacked on top of #${stackedOn.number}, please merge that one first`
+            );
             core.notice("PR is stacked");
+
+      - uses: actions/checkout@v6
+
+      - name: Review stacked PRs
+        uses: ./.github/actions/sticky-review
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          review-event: REQUEST_CHANGES
+          review-marker: '<!-- stacked-pr -->'
+          dismiss-if: ${{ steps.stacked_pr.outputs.stacked_on == '' }}
+          review-body: ${{ steps.stacked_pr.outputs.review_body }}
