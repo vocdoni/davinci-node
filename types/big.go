@@ -139,6 +139,14 @@ func (i *BigInt) SetBigInt(x *big.Int) *BigInt {
 	return (*BigInt)(i.MathBigInt().Set(x))
 }
 
+// Set sets the value of x to the big number
+func (i *BigInt) Set(x *BigInt) *BigInt {
+	if x == nil {
+		return nil
+	}
+	return (*BigInt)(i.MathBigInt().Set(x.MathBigInt()))
+}
+
 // Equal helps us with go-cmp.
 func (i *BigInt) Equal(j *BigInt) bool {
 	if i == nil || j == nil {

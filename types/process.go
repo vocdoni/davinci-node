@@ -69,6 +69,12 @@ func (g GenericMetadata) MarshalJSON() ([]byte, error) {
 	return json.Marshal(normalized)
 }
 
+// Empty method returns false if the GenericMetadata map has any item or true if
+// it does not.
+func (g GenericMetadata) Empty() bool {
+	return len(g) == 0
+}
+
 func normalizeMaps(m map[string]any) map[string]any {
 	out := make(map[string]any, len(m))
 	for k, v := range m {
@@ -122,15 +128,33 @@ func (m MultilingualString) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]string(m))
 }
 
+// Empty method returns false if the MultilingualString map has any item or true
+// if it does not.
+func (m MultilingualString) Empty() bool {
+	return len(m) == 0
+}
+
 type MediaMetadata struct {
 	Header string `json:"header" cbor:"0,keyasint,omitempty"`
 	Logo   string `json:"logo"   cbor:"1,keyasint,omitempty"`
+}
+
+// Empty method returns if the MediaMetadata is empty or not (if it contains
+// any header or logo info).
+func (m MediaMetadata) Empty() bool {
+	return m.Header == "" && m.Logo == ""
 }
 
 type Choice struct {
 	Title MultilingualString `json:"title" cbor:"0,keyasint,omitempty"`
 	Value int                `json:"value" cbor:"1,keyasint,omitempty"`
 	Meta  GenericMetadata    `json:"meta"  cbor:"2,keyasint,omitempty"`
+}
+
+// Empty method returns if the Choice struct is empty or not based the value
+// and the Empty method of the title and meta attributes.
+func (c Choice) Empty() bool {
+	return c.Title.Empty() && c.Meta.Empty() && c.Value == 0
 }
 
 type Question struct {
@@ -140,9 +164,22 @@ type Question struct {
 	Meta        GenericMetadata    `json:"meta"        cbor:"3,keyasint,omitempty"`
 }
 
+// Empty method returns if the Question struct is empty or not based on the
+// number of choices that it has and the Empty method of the title, description
+// and meta attributes.
+func (q Question) Empty() bool {
+	return q.Title.Empty() && q.Description.Empty() && q.Meta.Empty() && len(q.Choices) == 0
+}
+
 type ProcessType struct {
 	Name       string          `json:"name"       cbor:"0,keyasint,omitempty"`
 	Properties GenericMetadata `json:"properties" cbor:"1,keyasint,omitempty"`
+}
+
+// Empty method returns if the ProcessType is empty or not based on the name
+// content and the Empty method of the properties.
+func (p ProcessType) Empty() bool {
+	return p.Name == "" && p.Properties.Empty()
 }
 
 type Metadata struct {
@@ -153,6 +190,14 @@ type Metadata struct {
 	Type        ProcessType        `json:"type" cbor:"4,keyasint,omitempty"`
 	Version     string             `json:"version" cbor:"5,keyasint,omitempty"`
 	Meta        GenericMetadata    `json:"meta" cbor:"6,keyasint,omitempty"`
+}
+
+// Empty method returns if the Metadata is empty or not based on the number of
+// questions that it has and the Empty method of the title, description, media,
+// type and meta properties.
+func (m Metadata) Empty() bool {
+	return m.Title.Empty() && m.Description.Empty() && m.Media.Empty() &&
+		len(m.Questions) == 0 && m.Type.Empty() && m.Meta.Empty()
 }
 
 func (m *Metadata) String() string {
