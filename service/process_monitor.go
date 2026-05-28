@@ -74,21 +74,22 @@ func (pm *ProcessMonitor) Start(ctx context.Context) error {
 		return fmt.Errorf("service already running")
 	}
 
+	runCtx, cancel := context.WithCancel(ctx)
+
 	// Initialize monitored processes from storage before starting monitors.
-	if err := pm.initializeMonitoredProcesses(); err != nil {
+	if err := pm.initializeMonitoredProcesses(runCtx); err != nil {
+		cancel()
 		return fmt.Errorf("failed to initialize monitored processes: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	pm.cancel = cancel
-
-	updatedProcChan, err := pm.contracts.MonitorProcessUpdates(ctx, pm.interval, 3, pm.contracts.ProcessUpdatesFilters()...)
+	updatedProcChan, err := pm.contracts.MonitorProcessUpdates(runCtx, pm.interval, 3, pm.contracts.ProcessUpdatesFilters()...)
 	if err != nil {
-		pm.cancel = nil
+		cancel()
 		return fmt.Errorf("failed to start monitor of process updates: %w", err)
 	}
 
-	go pm.monitorProcesses(ctx, updatedProcChan)
+	pm.cancel = cancel
+	go pm.monitorProcesses(runCtx, updatedProcChan)
 	return nil
 }
 
@@ -104,8 +105,10 @@ func (pm *ProcessMonitor) Stop() {
 }
 
 // initializeMonitoredProcesses loads all existing process IDs from storage and
-// registers every non-terminal process in the contracts' monitoredProcesses map.
-func (pm *ProcessMonitor) initializeMonitoredProcesses() error {
+// registers every non-terminal process in the contracts' monitoredProcesses
+// map. Active Merkle-tree censuses are also requeued so startup restores the
+// current participant set for processes that were already present on disk.
+func (pm *ProcessMonitor) initializeMonitoredProcesses(ctx context.Context) error {
 	// Get all process IDs from storage
 	processIDs, err := pm.storage.ListProcesses()
 	if err != nil {
@@ -139,6 +142,9 @@ func (pm *ProcessMonitor) initializeMonitoredProcesses() error {
 		}
 		pm.contracts.AddMonitoredProcess(processID)
 		registeredCount++
+		if process.IsActive() {
+			pm.restoreStoredProcessCensus(ctx, process)
+		}
 	}
 
 	log.Infow("initialized monitored processes from storage",
@@ -153,6 +159,71 @@ func (pm *ProcessMonitor) initializeMonitoredProcesses() error {
 	}
 
 	return nil
+}
+
+func (pm *ProcessMonitor) restoreStoredProcessCensus(ctx context.Context, process *types.Process) {
+	if pm.censusDownloader == nil || process == nil || process.ID == nil || process.Census == nil {
+		return
+	}
+	if !process.Census.CensusOrigin.IsMerkleTree() {
+		return
+	}
+
+	go func(process *types.Process) {
+		queuedCensus := process.Census.Clone()
+		processCensus := process.Census.Clone()
+		if queuedCensus == nil || processCensus == nil {
+			log.Warnw("failed to clone stored process census",
+				"processID", process.ID.String())
+			return
+		}
+
+		log.Debugw("restoring census for stored active process",
+			"processID", process.ID.String(),
+			"origin", processCensus.CensusOrigin.String(),
+			"censusRoot", processCensus.CensusRoot.String(),
+			"censusURI", processCensus.CensusURI)
+
+		resolvedRoot, err := pm.censusDownloader.DownloadCensus(*process.ID, queuedCensus)
+		if err != nil {
+			log.Warnw("failed to start census download for stored process",
+				"processID", process.ID.String(),
+				"censusRoot", processCensus.CensusRoot.String(),
+				"origin", processCensus.CensusOrigin.String(),
+				"error", err.Error())
+			return
+		}
+		processCensus.CensusRoot = resolvedRoot
+
+		downloadCtx, downloadCtxCancel := context.WithTimeout(ctx, pm.censusDownloader.waitTimeout())
+		pm.censusDownloader.OnCensusDownloaded(*process.ID, processCensus, downloadCtx, func(err error) {
+			defer downloadCtxCancel()
+			if err != nil {
+				log.Warnw("failed to restore census for stored process",
+					"processID", process.ID.String(),
+					"censusRoot", processCensus.CensusRoot.String(),
+					"origin", processCensus.CensusOrigin.String(),
+					"error", err.Error())
+				return
+			}
+			if err := pm.storage.UpdateProcess(*process.ID, storage.ProcessUpdateCallbackSetCensusRoot(
+				processCensus.CensusRoot,
+				processCensus.CensusURI,
+			)); err != nil {
+				log.Warnw("failed to update stored process census",
+					"processID", process.ID.String(),
+					"censusRoot", processCensus.CensusRoot.String(),
+					"origin", processCensus.CensusOrigin.String(),
+					"error", err.Error())
+				return
+			}
+			log.Infow("stored process census restored",
+				"processID", process.ID.String(),
+				"censusRoot", processCensus.CensusRoot.String(),
+				"censusURI", processCensus.CensusURI,
+				"origin", processCensus.CensusOrigin.String())
+		})
+	}(process)
 }
 
 // syncMonitoredProcessesFromBlockchain fetches current state from blockchain for

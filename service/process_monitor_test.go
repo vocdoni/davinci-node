@@ -234,6 +234,77 @@ func TestProcessMonitorDoesNotCreateProcessWhenInitialCensusDownloadFails(t *tes
 	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{})
 }
 
+func TestProcessMonitorRestoresStoredActiveProcessCensusOnStart(t *testing.T) {
+	c := qt.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	contracts := NewMockContracts()
+
+	readyDump, readyRoot := testJSONDump(c)
+	censusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(readyDump)
+	}))
+	c.Cleanup(censusServer.Close)
+
+	processID := testMonitorProcessID(defaultMockProcessIDVersion, 21)
+	census := &types.Census{
+		CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
+		CensusRoot:   readyRoot,
+		CensusURI:    censusServer.URL,
+	}
+	process := testutil.CustomRandomProcess(processID, nil, census)
+	process.OrganizationID = contracts.AccountAddress()
+	c.Assert(store.NewProcess(process), qt.IsNil)
+	contracts.SetLatestProcess(process)
+
+	censusDownloader := NewCensusDownloader(nil, store, CensusDownloaderConfig{
+		CleanUpInterval:      time.Minute,
+		OnchainCheckInterval: time.Minute,
+		Cooldown:             10 * time.Millisecond,
+		Expiration:           time.Minute,
+		Attempts:             1,
+		AttemptTimeout:       time.Second,
+		ConcurrentDownloads:  1,
+	})
+	c.Assert(censusDownloader.Start(ctx), qt.IsNil)
+	c.Cleanup(censusDownloader.Stop)
+
+	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, censusDownloader, nil, 10*time.Millisecond)
+	c.Assert(monitor.Start(ctx), qt.IsNil)
+	c.Cleanup(monitor.Stop)
+
+	deadline := time.After(5 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-deadline:
+			c.Fatal("timed out waiting for stored census to be restored")
+		case <-ctx.Done():
+			c.Fatal("timed out waiting for stored census to be restored")
+		case <-ticker.C:
+			if !store.CensusDB().ExistsByRoot(readyRoot) {
+				continue
+			}
+			storedProcess, err := store.Process(processID)
+			c.Assert(err, qt.IsNil)
+			c.Assert(storedProcess.Census.CensusRoot, qt.DeepEquals, readyRoot)
+			c.Assert(storedProcess.Census.CensusURI, qt.Equals, censusServer.URL)
+			c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
+				processID: {},
+			})
+			return
+		}
+	}
+}
+
 func TestProcessMonitorInitializeMonitoredProcessesRegistersWatchableProcessesOnlyMatchingVersion(t *testing.T) {
 	c := qt.New(t)
 
@@ -271,7 +342,7 @@ func TestProcessMonitorInitializeMonitoredProcessesRegistersWatchableProcessesOn
 
 	monitor := NewProcessMonitor(contracts, defaultMockProcessIDVersion, store, nil, nil, time.Second)
 
-	c.Assert(monitor.initializeMonitoredProcesses(), qt.IsNil)
+	c.Assert(monitor.initializeMonitoredProcesses(context.Background()), qt.IsNil)
 	c.Assert(contracts.monitoredProcesses, qt.DeepEquals, map[types.ProcessID]struct{}{
 		activeProcessID:          {},
 		awaitingResultsProcessID: {},
