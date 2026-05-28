@@ -149,10 +149,6 @@ func (d *graphqlImporter) ImportCensus(
 	if err != nil {
 		return 0, fmt.Errorf("failed to query GraphQL events from %s: %w", census.CensusURI, err)
 	}
-	// Do not return error if no events are found
-	if len(events) == 0 {
-		return processedElements, nil
-	}
 	// If the census does not exists, import all the received events as new census, otherwise
 	// update the existing census with the new events
 	if !censusDB.ExistsByScopedAddress(chainID, census.ContractAddress) {

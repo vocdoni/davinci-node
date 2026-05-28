@@ -45,4 +45,31 @@ func TestGraphQLDownloadAndImportCensus(t *testing.T) {
 		c.Assert(err, qt.IsNil)
 		c.Assert(ref, qt.IsNotNil)
 	})
+
+	c.Run("emptySnapshotCreatesScopedCensus", func(c *qt.C) {
+		testServer.SetEvents(nil)
+
+		censusURI, err := testServer.GraphQLEndpoint()
+		c.Assert(err, qt.IsNil)
+		chainID := uint64(11155111)
+		contractAddress := testutil.RandomAddress()
+
+		_, err = gi.ImportCensus(
+			c.Context(),
+			censusDB,
+			chainID,
+			&types.Census{
+				CensusOrigin:    types.CensusOriginMerkleTreeOnchainDynamicV1,
+				ContractAddress: contractAddress,
+				CensusURI:       censusURI,
+			},
+			0,
+		)
+		c.Assert(err, qt.IsNil)
+
+		ref, err := censusDB.LoadByScopedAddress(chainID, contractAddress)
+		c.Assert(err, qt.IsNil)
+		c.Assert(ref, qt.Not(qt.IsNil))
+		c.Assert(ref.Size(), qt.Equals, 0)
+	})
 }
