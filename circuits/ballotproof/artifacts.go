@@ -10,11 +10,9 @@ import (
 // Artifacts contains the circuit artifacts for the ballot proof verification,
 // it only contains the verification key because the proving key is used by
 // the voter to generate the proof.
-var Artifacts = circuits.NewCircuitArtifacts(
+var Artifacts = circuits.NewCircomCircuitArtifacts(
 	"ballotproof",
 	params.BallotProofCurve,
-	nil,
-	nil,
 	&circuits.Artifact{
 		RemoteURL: config.BallotProofCircuitURL,
 		Hash:      types.HexStringToHexBytesMustUnmarshal(config.BallotProofCircuitHash),
