@@ -357,6 +357,14 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census in
 				"address", census.ContractAddress.String())
 			return importErr
 		}
+
+		if attempt+1 < cd.attempts() && cd.config.Cooldown > 0 {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("census download canceled: %w", ctx.Err())
+			case <-time.After(cd.config.Cooldown):
+			}
+		}
 	}
 
 	log.Warnw("census import failed",

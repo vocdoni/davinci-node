@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -150,6 +151,79 @@ func TestOnCensusDownloadedWaitsForQueuedCensus(t *testing.T) {
 	}
 
 	c.Assert(store.CensusDB().ExistsByRoot(readyRoot), qt.IsTrue)
+}
+
+func TestCensusDownloaderRespectsCooldownBetweenAttempts(t *testing.T) {
+	c := qt.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	downloader := NewCensusDownloader(nil, store, CensusDownloaderConfig{
+		CleanUpInterval:      time.Minute,
+		OnchainCheckInterval: time.Minute,
+		Expiration:           time.Minute,
+		Cooldown:             150 * time.Millisecond,
+		Attempts:             3,
+		AttemptTimeout:       time.Second,
+		ConcurrentDownloads:  1,
+	})
+	c.Assert(downloader.Start(ctx), qt.IsNil)
+	c.Cleanup(downloader.Stop)
+
+	readyDump, readyRoot := testJSONDump(c)
+
+	var (
+		requestsMu   sync.Mutex
+		requestTimes []time.Time
+		requestCount atomic.Int32
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestsMu.Lock()
+		requestTimes = append(requestTimes, time.Now())
+		requestsMu.Unlock()
+
+		if requestCount.Add(1) < 3 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("retry later"))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(readyDump)
+	}))
+	c.Cleanup(server.Close)
+
+	census := &types.Census{
+		CensusOrigin: types.CensusOriginMerkleTreeOffchainStaticV1,
+		CensusRoot:   readyRoot,
+		CensusURI:    server.URL,
+	}
+	processID := testutil.FixedProcessID()
+
+	_, err := downloader.DownloadCensus(processID, census)
+	c.Assert(err, qt.IsNil)
+
+	downloaded := make(chan error, 1)
+	downloader.OnCensusDownloaded(processID, census, ctx, func(err error) {
+		downloaded <- err
+	})
+
+	select {
+	case err := <-downloaded:
+		c.Assert(err, qt.IsNil)
+	case <-ctx.Done():
+		c.Fatal("timed out waiting for census download to finish")
+	}
+
+	requestsMu.Lock()
+	c.Assert(requestTimes, qt.HasLen, 3)
+	c.Assert(requestTimes[1].Sub(requestTimes[0]) >= 120*time.Millisecond, qt.IsTrue)
+	c.Assert(requestTimes[2].Sub(requestTimes[1]) >= 120*time.Millisecond, qt.IsTrue)
+	requestsMu.Unlock()
 }
 
 func TestCensusKeyUsesChainScopedContractAddressForOnchainDynamicCensuses(t *testing.T) {
