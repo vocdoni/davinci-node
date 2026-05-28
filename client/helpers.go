@@ -20,8 +20,13 @@ func RandomBallotFields(bm spec.BallotMode) []*types.BigInt {
 		fields = append(fields, types.NewInt(0))
 	}
 	stored := map[string]bool{}
-	maxRandValue := big.NewInt(int64(bm.MaxValue - bm.MinValue))
-	valuePadding := big.NewInt(int64(bm.MinValue))
+	// rand.Int requires a strictly positive max; treat [MinValue, MaxValue] as an inclusive range.
+	span := bm.MaxValue - bm.MinValue + 1
+	if bm.UniqueValues && uint64(bm.NumFields) > span {
+		panic(fmt.Errorf("ballotMode requires %d unique values but range only has %d", bm.NumFields, span))
+	}
+	maxRandValue := new(big.Int).SetUint64(span)
+	valuePadding := new(big.Int).SetUint64(bm.MinValue)
 	for i := range bm.NumFields {
 		for {
 			// generate random field
@@ -45,7 +50,7 @@ func RandomBallotFields(bm spec.BallotMode) []*types.BigInt {
 // WaitUntilCondition helper blocks the execution until a condition is met.
 // It checks the condition in a loop with a ticker defined with the provided
 // interval until the condition is met or the context provided is done.
-func WaitUntilCondition(ctx context.Context, interval time.Duration, condition func() bool) error {
+func WaitUntilCondition(ctx context.Context, interval time.Duration, condition func() (bool, error)) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -53,7 +58,11 @@ func WaitUntilCondition(ctx context.Context, interval time.Duration, condition f
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for condition")
 		case <-ticker.C:
-			if condition() {
+			stop, err := condition()
+			if err != nil {
+				return err
+			}
+			if stop {
 				return nil
 			}
 		}

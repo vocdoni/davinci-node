@@ -93,9 +93,9 @@ func (web3Cfg Web3Config) addressesByChainID(chainID uint64) *Addresses {
 	return nil
 }
 
-// DefautlWeb3Config returns the Web3Config for the chainID provided fetching
+// DefaultWeb3Config returns the Web3Config for the chainID provided fetching
 // RPC endpoints for it from ChainList and using the given private key.
-func DefautlWeb3Config(chainIDs []uint, privKey string) (Web3Config, error) {
+func DefaultWeb3Config(chainIDs []uint, privKey string) (Web3Config, error) {
 	// Fetch RPC endpoints from ChainList
 	var rpcs []string
 	for _, chainID := range chainIDs {

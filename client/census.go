@@ -41,6 +41,11 @@ func (c *Client) CreateCensus(processConfig *ProcessConfig) (*types.Census, erro
 		}, nil
 	}
 
+	// Validate census origin
+	if !processConfig.CensusConfig.Origin().Valid() {
+		return nil, fmt.Errorf("invalid census origin")
+	}
+
 	// Convert voters info to participants
 	participants := []census3.CensusParticipant{}
 	for _, voter := range processConfig.VotersConfig.VotersInfo {

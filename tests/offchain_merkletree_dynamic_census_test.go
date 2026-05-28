@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -61,19 +62,19 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 		c.Logf("%d votes sent, waiting for 'settled' status...", len(voteIDs))
 
 		// Wait for settled status
-		if err := client.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
-			if allSettled, failed, err := services.SequencerClient.EnsureVotesStatus(processConfig.ProcessID, voteIDs, client.VoteIDStatusSettled); !allSettled {
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
-				if len(failed) > 0 {
-					t.Fatalf("Some votes failed to be settled: %v", failed)
-				}
+		if err := client.WaitUntilCondition(globalCtx, 10*time.Second, func() (bool, error) {
+			allSettled, failed, err := services.SequencerClient.EnsureVotesStatus(processConfig.ProcessID, voteIDs, client.VoteIDStatusSettled)
+			if err != nil {
+				return false, err
+			}
+			if !allSettled && len(failed) > 0 {
+				return false, fmt.Errorf("at least %d votes failed: %v", len(failed), failed)
 			}
 
 			votersCount, err := services.SequencerClient.OnchainProcessVotersCount(processConfig.ProcessID)
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published votes from contract"))
-			return votersCount == numVoters
+			return votersCount == numVoters, err
 		}); err != nil {
-			c.Fatalf("Timeout waiting for votes to be settled and published at contract")
+			c.Fatalf("Error waiting for votes to be settled: %v", err)
 			c.FailNow()
 		}
 
@@ -123,13 +124,9 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 			err := services.SequencerClient.UpdateCensus(processConfig.ProcessID, *newCensus)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to update process census"))
 
-			if err := client.WaitUntilCondition(globalCtx, 2*time.Second, func() bool {
+			if err := client.WaitUntilCondition(globalCtx, 2*time.Second, func() (bool, error) {
 				process, err := services.Storage.Process(processConfig.ProcessID)
-				if err != nil {
-					c.Error(err)
-					return false
-				}
-				return process.Census.CensusRoot.Equal(newCensus.CensusRoot)
+				return process.Census.CensusRoot.Equal(newCensus.CensusRoot), err
 			}); err != nil {
 				c.Fatalf("Timeout waiting for census to be updated")
 				c.FailNow()
@@ -156,19 +153,19 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 
 		c.Run("wait for settled new votes", func(c *qt.C) {
 			t.Logf("Waiting for %d votes to be settled", numVoters)
-			if err := client.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
-				if allSettled, failed, err := services.SequencerClient.EnsureVotesStatus(processConfig.ProcessID, voteIDs, client.VoteIDStatusSettled); !allSettled {
-					c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
-					if len(failed) > 0 {
-						t.Fatalf("Some votes failed to be settled: %v", failed)
-					}
+			if err := client.WaitUntilCondition(globalCtx, 10*time.Second, func() (bool, error) {
+				allSettled, failed, err := services.SequencerClient.EnsureVotesStatus(processConfig.ProcessID, voteIDs, client.VoteIDStatusSettled)
+				if err != nil {
+					return false, err
+				}
+				if !allSettled && len(failed) > 0 {
+					return false, fmt.Errorf("at least %d votes failed: %v", len(failed), failed)
 				}
 
 				votersCount, err := services.SequencerClient.OnchainProcessVotersCount(processConfig.ProcessID)
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published votes from contract"))
-				return votersCount == numVoters*2
+				return votersCount == numVoters*2, err
 			}); err != nil {
-				c.Fatalf("Timeout waiting for votes to be settled and published at contract")
+				c.Fatalf("Error waiting for votes to be settled: %v", err)
 				c.FailNow()
 			}
 			t.Log("All votes settled.")
@@ -185,12 +182,11 @@ func TestOffChainMerkleTreeDynamicCensus(t *testing.T) {
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to finish process on contract"))
 
 		var results []*types.BigInt
-		if err := client.WaitUntilCondition(globalCtx, 2*time.Second, func() bool {
+		if err := client.WaitUntilCondition(globalCtx, 2*time.Second, func() (bool, error) {
 			results, err = services.SequencerClient.OnchainProcessResults(processConfig.ProcessID)
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published results from contract"))
-			return results != nil
+			return results != nil, err
 		}); err != nil {
-			c.Fatalf("Timeout waiting for process to finish")
+			c.Fatalf("Error waiting for results: %v", err)
 			c.FailNow()
 		}
 		t.Logf("Results published: %v", results)

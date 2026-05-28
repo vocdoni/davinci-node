@@ -439,14 +439,14 @@ func (ca *CircuitArtifacts) RawCircuitDefinition() ([]byte, error) {
 // serialized.
 func (ca *CircuitArtifacts) RawProvingKey() ([]byte, error) {
 	if ca.provingKey == nil {
-		return nil, fmt.Errorf("verifying key not configured")
+		return nil, fmt.Errorf("proving key not configured")
 	}
 	// Cannot guarantee context is available here, so we load from cache only.
 	// The caller should have called LoadOrDownloadProvingKey previously if
 	// remote fetching was desired.
 	content, err := ca.provingKey.loadFromCache()
 	if err != nil {
-		return nil, fmt.Errorf("load verifying key: %w", err)
+		return nil, fmt.Errorf("load proving key: %w", err)
 	}
 	return content, nil
 }

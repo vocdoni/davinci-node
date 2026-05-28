@@ -68,7 +68,7 @@ func (c *Client) initWeb3() error {
 			chainIDs = append(chainIDs, uint(network.ChainID))
 		}
 		var err error
-		c.config.Web3, err = web3.DefautlWeb3Config(chainIDs, c.config.Web3.PrivKey)
+		c.config.Web3, err = web3.DefaultWeb3Config(chainIDs, c.config.Web3.PrivKey)
 		if err != nil {
 			return err
 		}

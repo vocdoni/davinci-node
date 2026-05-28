@@ -109,7 +109,7 @@ type VotersConfig struct {
 // voters and default weight). For the SubmitVoteAction it checks that all the
 // voters information is valid.
 func (v VotersConfig) Valid(action string) bool {
-	allVotersValid := true
+	allVotersValid := len(v.VotersInfo) > 0
 	for _, voter := range v.VotersInfo {
 		allVotersValid = allVotersValid && voter.Valid(action)
 	}

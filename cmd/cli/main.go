@@ -33,7 +33,7 @@ func loadConfig() (*client.ClientConfig, error) {
 	// Web3 config
 	flag.String("web3.privkey", "", "private key to use for the Ethereum account, should have funds for each available network (required)")
 	flag.StringSlice("web3.rpc", nil, "web3 rpc endpoint(s), comma-separated")
-	flag.StringSlice("web3.beaconAPI", nil, "consensus api endpoints(s), comma-separated")
+	flag.StringSlice("web3.bapi", nil, "consensus api endpoints(s), comma-separated")
 	flag.StringSlice("web3.processRegistryContract", nil, "'chainID:0xaddress' of the process registry smart contract, if defined, it will be included in the available networks if a valid RPC endpoint is provided")
 	// Sequencer config
 	flag.String("sequencer", "https://sequencer-dev.davinci.vote", "Davinci sequencer endpoint")
@@ -134,13 +134,12 @@ func submitAction(ctx context.Context, cli *client.Client, conf *client.ProcessC
 	log.Infow("votes submitted", "voteIDs", voteIDs)
 
 	// Confirm votes
-	if err := client.WaitUntilCondition(ctx, time.Second, func() bool {
+	if err := client.WaitUntilCondition(ctx, time.Second, func() (bool, error) {
 		ok, _, err := cli.EnsureVotesStatus(conf.ProcessID, voteIDs, client.VoteIDStatusSettled)
 		if err != nil {
-			log.Errorf("failed to check vote status: %v", err)
-			return true
+			return false, err
 		}
-		return ok
+		return ok, nil
 	}); err != nil {
 		log.Errorf("failed to wait for votes to be settled: %v", err)
 		return
@@ -157,13 +156,12 @@ func stopAction(ctx context.Context, cli *client.Client, conf *client.ProcessCon
 	log.Infow("process stopped", "processID", conf.ProcessID.String())
 
 	// Wait for results
-	if err := client.WaitUntilCondition(ctx, time.Second, func() bool {
+	if err := client.WaitUntilCondition(ctx, time.Second, func() (bool, error) {
 		process, err := cli.OnChainProcess(conf.ProcessID)
 		if err != nil {
-			log.Errorf("failed to get process: %v", err)
-			return true
+			return false, err
 		}
-		return process.Status == types.ProcessStatusResults
+		return process.Status == types.ProcessStatusResults, nil
 	}); err != nil {
 		log.Errorf("failed to wait for process to stop: %v", err)
 		return
@@ -205,13 +203,12 @@ func all(ctx context.Context, cli *client.Client, conf *client.ProcessConfig) {
 	log.Infow("votes submitted", "voteIDs", voteIDs)
 
 	// Confirm votes
-	if err := client.WaitUntilCondition(ctx, time.Second, func() bool {
+	if err := client.WaitUntilCondition(ctx, time.Second, func() (bool, error) {
 		ok, _, err := cli.EnsureVotesStatus(conf.ProcessID, voteIDs, client.VoteIDStatusSettled)
 		if err != nil {
-			log.Errorf("failed to check vote status: %v", err)
-			return true
+			return false, err
 		}
-		return ok
+		return ok, nil
 	}); err != nil {
 		log.Errorf("failed to wait for votes to be settled: %v", err)
 		return
@@ -226,13 +223,12 @@ func all(ctx context.Context, cli *client.Client, conf *client.ProcessConfig) {
 	log.Infow("process stopped", "processID", conf.ProcessID.String())
 
 	// Wait for results
-	if err := client.WaitUntilCondition(ctx, time.Second, func() bool {
+	if err := client.WaitUntilCondition(ctx, time.Second, func() (bool, error) {
 		process, err := cli.OnChainProcess(conf.ProcessID)
 		if err != nil {
-			log.Errorf("failed to get process: %v", err)
-			return true
+			return false, err
 		}
-		return process.Status == types.ProcessStatusResults
+		return process.Status == types.ProcessStatusResults, nil
 	}); err != nil {
 		log.Errorf("failed to wait for process to stop: %v", err)
 		return

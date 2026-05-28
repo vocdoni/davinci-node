@@ -178,6 +178,10 @@ func (c *HTTPclient) Request(method string, jsonBody any, params []string, urlPa
 		break
 	}
 
+	if resp == nil {
+		return nil, 0, fmt.Errorf("http request failed after %d attempts: %w", c.retries, err)
+	}
+
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			log.Warnw("failed to close response body", "error", err)

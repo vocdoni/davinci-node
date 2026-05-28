@@ -35,15 +35,14 @@ func setupProcess(c *qt.C, ctx context.Context, chainID uint64, origin types.Cen
 		processConfig.ProcessID, err = services.SequencerClient.CreateProcess(processConfig)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create process in sequencer"))
 
-		if err := client.WaitUntilCondition(ctx, time.Second, func() bool {
+		if err := client.WaitUntilCondition(ctx, time.Second, func() (bool, error) {
 			process, err := services.SequencerClient.OnChainProcess(processConfig.ProcessID)
 			if err != nil {
-				c.Errorf("error getting process info: %v", err)
-				return false
+				return false, err
 			}
-			return process.IsAcceptingVotes()
+			return process.IsAcceptingVotes(), nil
 		}); err != nil {
-			c.Fatal("Timeout waiting for process to be created in storage")
+			c.Errorf("process is not accepting votes: %v", err)
 			c.FailNow()
 		}
 	})

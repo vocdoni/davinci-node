@@ -1,41 +1,44 @@
 {
     "chainID": 11155111,
+    "censusConfig": {
+        "censusOrigin": "merkle_tree_offchain_static_v1"
+    },
     "votersConfig": {
         "votersInfo": [
             {
-                "address": "0xee7feceFae7020FC56B850e0F87193a001d7CF6A",
-                "weight": "1",
-                "privKey": "072908cdaf9c87b1a4c56a2cac1a0cee73016dc8b7c11a8a7466123edeca438a"
+                "address": "<hex_address>",
+                "weight": "<string_bigint>",
+                "privKey": "<hex_private_key>"
             },
             {
-                "address": "0x3E3B219f961B25399301283CA85156FbDDf5597c",
-                "weight": "1",
-                "privKey": "ce9dfcba9054ec77e367a7875f6ae7571c1388c5d857962fc965ff79361b585b"
+                "address": "<hex_address>",
+                "weight": "<string_bigint>",
+                "privKey": "<hex_private_key>"
             },
             {
-                "address": "0xeaaBe976395Fd639582d5Ccf4a31681F1CFD8558",
-                "weight": "1",
-                "privKey": "e24f7f5798c94d9be63dd4c9720360bd8cb37c655cb40905907274ba7190c45f"
+                "address": "<hex_address>",
+                "weight": "<string_bigint>",
+                "privKey": "<hex_private_key>"
             },
             {
-                "address": "0xB2Ecf62Abbb253e4b96b1d6033ee51e7915674Ac",
-                "weight": "1",
-                "privKey": "39b44fcb0d95e65d84a7ce8c77c347f22b3c9a78f025508fbeccd0896904f866"
+                "address": "<hex_address>",
+                "weight": "<string_bigint>",
+                "privKey": "<hex_private_key>"
             },
             {
-                "address": "0x883F0A1c202047F3365B4c48a1be894aBe9Ba149",
-                "weight": "1",
-                "privKey": "1b39ca2a630a67cc8a997d1cd04ce3917d9ba745b9e9cbd48bf29363f1454c0a"
+                "address": "<hex_address>",
+                "weight": "<string_bigint>",
+                "privKey": "<hex_private_key>"
             },
             {
-                "address": "0xC7200cCDFa6897ffeB3CE60866A78b0822F7fBbc",
-                "weight": "1",
-                "privKey": "0c897ea0bde8063a3904541c36768005c88a55cdab68c2f82d50b050c83fa277"
+                "address": "<hex_address>",
+                "weight": "<string_bigint>",
+                "privKey": "<hex_private_key>"
             },
             {
-                "address": "0x582A83e76B46c1e27C1B01337539731c5e6067Df",
-                "weight": "1",
-                "privKey": "1f4a0e5a13c9766c30f5e015a72e8db6ec4917a7b9b88faba54c149a181fb1c4"
+                "address": "<hex_address>",
+                "weight": "<string_bigint>",
+                "privKey": "<hex_private_key>"
             }
         ]
     },

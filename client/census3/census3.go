@@ -147,12 +147,12 @@ func (c *Census3Client) publishCensus(censusID string) (types.HexBytes, int, str
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("error getting census size: %w", err)
 	}
+	if status != http.StatusOK {
+		return nil, 0, "", fmt.Errorf("unexpected status code publishing census: %d", status)
+	}
 	var publishRes c3api.PublishCensusResponse
 	if err := json.Unmarshal(body, &publishRes); err != nil {
 		return nil, 0, "", fmt.Errorf("error decoding publish census response: %w", err)
-	}
-	if status != http.StatusOK {
-		return nil, 0, "", fmt.Errorf("unexpected status code publishing census: %d", status)
 	}
 	return publishRes.Root, publishRes.Size, publishRes.CensusURI, nil
 }

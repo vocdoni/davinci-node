@@ -14,7 +14,6 @@ import (
 	"github.com/vocdoni/davinci-node/crypto"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/log"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
@@ -153,7 +152,6 @@ func (c *Client) NewVote(
 		Weight:        weight,
 		FieldValues:   fields,
 	}
-	log.Info(wasmInputs)
 
 	// Generate the inputs for the ballot proof circuit
 	wasmResult, err := ballotproof.GenerateBallotProofInputs(wasmInputs)
