@@ -308,12 +308,19 @@ func (c *Contracts) LoadContracts(addresses *Addresses) error {
 func (c *Contracts) CheckTxStatus(txHash common.Hash) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), web3QueryTimeout)
 	defer cancel()
-	receipt, err := c.cli.TransactionReceipt(ctx, txHash)
+	ethcli, err := c.cli.EthClient()
+	if err != nil {
+		return false, fmt.Errorf("failed to get eth client: %w", err)
+	}
+	receipt, err := ethcli.TransactionReceipt(ctx, txHash)
 	if err != nil {
 		if errors.Is(err, ethereum.NotFound) {
 			return false, nil
 		}
-		return false, fmt.Errorf("failed to get transaction receipt: %w", err)
+		log.Warnw("failed to get transaction receipt, will retry",
+			"txHash", txHash.Hex(),
+			"error", err)
+		return false, nil
 	}
 	if receipt.Status != gethtypes.ReceiptStatusSuccessful {
 		return false, fmt.Errorf("transaction %s reverted with status %d", txHash.Hex(), receipt.Status)

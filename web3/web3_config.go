@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/web3/rpc"
+	"github.com/vocdoni/davinci-node/web3/rpc/chainlist"
 	"github.com/vocdoni/davinci-node/web3/txmanager"
 )
 
@@ -22,7 +24,7 @@ type Web3Config struct {
 	ProcessRegistryContract []string `mapstructure:"processRegistryContract"` // Process registry smart contract reference (<chainID>:<address>)
 }
 
-func (web3Cfg Web3Config) InitRuntimes(ctx context.Context) ([]*NetworkRuntime, error) {
+func (web3Cfg Web3Config) InitRuntimes(ctx context.Context, enableTxManager bool) ([]*NetworkRuntime, error) {
 	// Group RPC endpoints by chain ID
 	rpcsMap, err := rpc.GroupEndpointsByChainID(web3Cfg.RPCs)
 	if err != nil {
@@ -49,7 +51,7 @@ func (web3Cfg Web3Config) InitRuntimes(ctx context.Context) ([]*NetworkRuntime, 
 		}
 		// Try to initialize web3 runtime
 		addresses := web3Cfg.addressesByChainID(chainID)
-		runtime, err := initializeNetworkRuntime(ctx, addresses, rpcs, beaconAPI, web3Cfg.PrivKey, web3Cfg.GasMultiplier)
+		runtime, err := initializeNetworkRuntime(ctx, addresses, rpcs, beaconAPI, web3Cfg.PrivKey, web3Cfg.GasMultiplier, enableTxManager)
 		if err != nil {
 			return nil, fmt.Errorf("initialize web3 runtime for chain ID %d: %w", chainID, err)
 		}
@@ -91,6 +93,31 @@ func (web3Cfg Web3Config) addressesByChainID(chainID uint64) *Addresses {
 	return nil
 }
 
+// DefautlWeb3Config returns the Web3Config for the chainID provided fetching
+// RPC endpoints for it from ChainList and using the given private key.
+func DefautlWeb3Config(chainIDs []uint, privKey string) (Web3Config, error) {
+	// Fetch RPC endpoints from ChainList
+	var rpcs []string
+	for _, chainID := range chainIDs {
+		chainRPCs, err := chainlist.EndpointListByChainID(uint64(chainID), 5)
+		if err != nil {
+			return Web3Config{}, fmt.Errorf("error fetching RPC endpoints for chainID %d: %w", chainID, err)
+		}
+		rpcs = append(rpcs, chainRPCs...)
+	}
+	// Validate private key
+	if _, err := ethereum.NewSignerFromHex(privKey); err != nil {
+		return Web3Config{}, fmt.Errorf("invalid private key provided: %w", err)
+	}
+	// Define base configuration
+	conf := Web3Config{
+		PrivKey:  privKey,
+		ChainIDs: chainIDs,
+		RPCs:     rpcs,
+	}
+	return conf, nil
+}
+
 func initializeNetworkRuntime(
 	ctx context.Context,
 	addresses *Addresses,
@@ -98,6 +125,7 @@ func initializeNetworkRuntime(
 	beaconAPIEndpoint string,
 	privKey string,
 	gasMultiplier float64,
+	enableTxManager bool,
 ) (*NetworkRuntime, error) {
 	// Load contracts for this network
 	contracts, err := New(rpcEndpoints, beaconAPIEndpoint, gasMultiplier)
@@ -113,18 +141,20 @@ func initializeNetworkRuntime(
 		return nil, fmt.Errorf("set account private key: %w", err)
 	}
 
-	txManager, err := txmanager.New(
-		ctx,
-		contracts.Web3Pool(),
-		contracts.Client(),
-		contracts.Signer(),
-		txmanager.DefaultConfig(contracts.ChainID),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create transaction manager: %w", err)
+	var txManager *txmanager.TxManager
+	if enableTxManager {
+		if txManager, err = txmanager.New(
+			ctx,
+			contracts.Web3Pool(),
+			contracts.Client(),
+			contracts.Signer(),
+			txmanager.DefaultConfig(contracts.ChainID),
+		); err != nil {
+			return nil, fmt.Errorf("create transaction manager: %w", err)
+		}
+		txManager.Start(ctx)
+		contracts.SetTxManager(txManager)
 	}
-	txManager.Start(ctx)
-	contracts.SetTxManager(txManager)
 
 	runtime, err := NewNetworkRuntime(contracts, txManager)
 	if err != nil {
