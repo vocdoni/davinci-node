@@ -8,12 +8,11 @@ import (
 
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/api"
+	"github.com/vocdoni/davinci-node/client"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/prover"
 	"github.com/vocdoni/davinci-node/prover/debug"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
-	"github.com/vocdoni/davinci-node/storage"
-	"github.com/vocdoni/davinci-node/tests/helpers"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -23,7 +22,7 @@ func TestMaxVoters(t *testing.T) {
 	defer log.RestoreLogger(previousLogger)
 
 	// Create a global context to be used throughout the test
-	globalCtx, globalCancel := context.WithTimeout(t.Context(), helpers.MaxTestTimeout(t))
+	globalCtx, globalCancel := context.WithTimeout(t.Context(), maxTestTimeout())
 	defer globalCancel()
 
 	initialVoters := 2
@@ -35,98 +34,89 @@ func TestMaxVoters(t *testing.T) {
 		ks      []*big.Int
 	)
 
-	if helpers.IsDebugTest() {
+	if isDebugTest() {
 		prover.SetProver(debug.NewDebugProver(t))
 	}
 
-	setup := setupProcess(c, t, globalCtx, types.CensusOriginMerkleTreeOffchainStaticV1, totalVoters, initialVoters)
-	pid, encryptionKey, signers, stateRoot := setup.pid, setup.encryptionKey, setup.signers, setup.stateRoot
+	processConfig := setupProcess(c, globalCtx, services.Contracts.ChainID, types.CensusOriginMerkleTreeOffchainStaticV1, totalVoters, initialVoters)
+	encKey, err := services.SequencerClient.EncryptionKeys(processConfig.ProcessID)
+	c.Assert(err, qt.IsNil)
 
+	signers, err := processConfig.VotersConfig.Signers()
+	c.Assert(err, qt.IsNil)
+
+	votes := []api.Vote{}
 	votersFieldsValues := [][]*types.BigInt{}
 	c.Run("create votes", func(c *qt.C) {
-		for i, signer := range signers[:initialVoters] {
-			// generate a vote for the first participant
+		for _, signer := range signers[:initialVoters] {
+			// Generate voter secret
 			k, err := specutil.RandomK()
 			c.Assert(err, qt.IsNil)
-			vote, randFields, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, signer, k)
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
-			// generate census proof
-			vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainStaticV1, pid, signers[i].Address())
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
-			// Make the request to cast the vote
-			_, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
-			c.Assert(err, qt.IsNil)
-			c.Assert(status, qt.Equals, 200)
-
-			// Save the voteID for status checks
-			voteIDs = append(voteIDs, vote.VoteID)
 			ks = append(ks, k)
-			// Save vote fields for results checks
-			votersFieldsValues = append(votersFieldsValues, randFields)
+			// Generate random ballot fields and save them for results checks
+			fields := client.RandomBallotFields(processConfig.BallotMode)
+			votersFieldsValues = append(votersFieldsValues, fields)
+			// Generate vote
+			vote, err := services.SequencerClient.NewVote(processConfig, encKey, signer, k, fields, nil)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
+			votes = append(votes, vote)
 		}
 	})
 
-	c.Run("wait for settled votes", func(c *qt.C) {
-		t.Logf("Waiting for %d votes to be settled", initialVoters)
-		if err := helpers.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
-			// Check that votes are settled (state transitions confirmed on blockchain)
-			if allSettled, failed, err := helpers.EnsureVotesStatus(services.HTTPClient, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
+	c.Run("send votes and wait for settled", func(c *qt.C) {
+		// Submit the votes
+		voteIDs, err = services.SequencerClient.SubmitVotes(votes...)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to submit vote"))
+		c.Logf("%d votes sent, waiting for 'settled' status...", len(voteIDs))
+
+		// Wait for settled status
+		if err := client.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
+			if allSettled, failed, err := services.SequencerClient.EnsureVotesStatus(processConfig.ProcessID, voteIDs, client.VoteIDStatusSettled); !allSettled {
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
 				if len(failed) > 0 {
-					hexFailed := types.SliceOf(failed, func(v types.VoteID) string { return v.String() })
-					t.Fatalf("Some votes failed to be settled: %v", hexFailed)
+					t.Fatalf("Some votes failed to be settled: %v", failed)
 				}
 			}
-			votersCount, err := helpers.FetchProcessVotersCountOnChain(services.Contracts, pid)
+
+			votersCount, err := services.SequencerClient.OnchainProcessVotersCount(processConfig.ProcessID)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published votes from contract"))
 			return votersCount == initialVoters
 		}); err != nil {
 			c.Fatalf("Timeout waiting for votes to be settled and published at contract")
 			c.FailNow()
 		}
-		t.Log("All votes settled.")
-	})
 
-	c.Run("wait until the stateroot is updated", func(c *qt.C) {
-		if err := helpers.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
-			// Get the process from storage
-			process, err := services.Storage.Process(pid)
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to get process from storage"))
-			return process.StateRoot.String() != stateRoot.String()
-		}); err != nil {
-			c.Fatalf("Timeout waiting for process state root to be updated")
-			c.FailNow()
-		}
-		t.Logf("Process state root updated.")
+		// Check that the number of voters is the expected
+		votersCount, err := services.SequencerClient.OnchainProcessVotersCount(processConfig.ProcessID)
+		c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published votes from contract"))
+		c.Assert(votersCount, qt.Equals, initialVoters)
+
+		t.Log("All votes settled.")
 	})
 
 	c.Run("handle maxVoters reached", func(c *qt.C) {
 		voteIDs = []types.VoteID{} // reset voteIDs slice to only store new vote
 
 		extraSigner := signers[initialVoters] // get an extra signer from the created census
-		// generate a vote for the new participant
-		vote, randFields, err := helpers.NewVoteWithRandomFields(pid, defaultBallotMode, encryptionKey, extraSigner, nil)
+		// Generate a vote for the new participant
+		randFields := client.RandomBallotFields(processConfig.BallotMode)
+		vote, err := services.SequencerClient.NewVote(processConfig, encKey, extraSigner, nil, randFields, nil)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to create vote"))
-		// generate census proof for the participant
-		vote.CensusProof, err = helpers.CreateCensusProof(types.CensusOriginMerkleTreeOffchainStaticV1, pid, extraSigner.Address())
-		c.Assert(err, qt.IsNil, qt.Commentf("Failed to generate census proof"))
 
 		c.Run("try to create a new vote even the maxVoters is reached", func(c *qt.C) {
-			// Make the request to cast the vote
-			body, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
-			c.Assert(err, qt.IsNil)
-			c.Assert(status, qt.Equals, api.ErrProcessMaxVotersReached.HTTPstatus)
-			c.Assert(string(body), qt.Contains, api.ErrProcessMaxVotersReached.Error())
+			_, err := services.SequencerClient.SubmitVotes(vote)
+			c.Assert(err, qt.IsNotNil, qt.Commentf("Expected error when submitting vote"))
+			c.Assert(err.Error(), qt.Contains, api.ErrProcessMaxVotersReached.Error())
 		})
 
 		c.Run("update maxVoters", func(c *qt.C) {
 			// Set the max voters to a higher number to allow new votes
-			err = helpers.UpdateMaxVotersOnChain(services.Contracts, pid, totalVoters)
+			err = services.SequencerClient.UpdateMaxVoters(processConfig.ProcessID, totalVoters)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to update max voters"))
 
-			if err := helpers.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
+			if err := client.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
 				// Get the process from storage
-				process, err := services.Storage.Process(pid)
+				process, err := services.Storage.Process(processConfig.ProcessID)
 				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get process from storage"))
 				return process.MaxVoters.MathBigInt().Int64() == int64(totalVoters)
 			}); err != nil {
@@ -138,58 +128,52 @@ func TestMaxVoters(t *testing.T) {
 
 		c.Run("update maxVoters and create a new vote", func(c *qt.C) {
 			// Make the request to cast the vote again
-			_, status, err := services.HTTPClient.Request("POST", vote, nil, api.VotesEndpoint)
-			c.Assert(err, qt.IsNil)
-			c.Assert(status, qt.Equals, 200)
+			newVoteIDs, err := services.SequencerClient.SubmitVotes(vote)
+			c.Assert(err, qt.IsNil, qt.Commentf("Failed to submit vote"))
+			c.Assert(newVoteIDs, qt.HasLen, 1)
 
-			// append the new vote stuff to the lists for later checks
-			voteIDs = append(voteIDs, vote.VoteID)
 			// Save vote fields for results checks
 			votersFieldsValues = append(votersFieldsValues, randFields)
-		})
-	})
 
-	c.Run("wait for settled extra votes", func(c *qt.C) {
-		if err := helpers.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
-			// Check that votes are settled (state transitions confirmed on blockchain)
-			if allSettled, failed, err := helpers.EnsureVotesStatus(services.HTTPClient, pid, voteIDs, storage.VoteIDStatusName(storage.VoteIDStatusSettled)); !allSettled {
-				c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
-				if len(failed) > 0 {
-					hexFailed := types.SliceOf(failed, func(v types.VoteID) string { return v.String() })
-					t.Fatalf("Some votes failed to be settled: %v", hexFailed)
+			// Wait for settled status of extra votes
+			if err := client.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
+				if allSettled, failed, err := services.SequencerClient.EnsureVotesStatus(processConfig.ProcessID, newVoteIDs, client.VoteIDStatusSettled); !allSettled {
+					c.Assert(err, qt.IsNil, qt.Commentf("Failed to check vote status"))
+					if len(failed) > 0 {
+						t.Fatalf("Some votes failed to be settled: %v", failed)
+					}
 				}
+
+				votersCount, err := services.SequencerClient.OnchainProcessVotersCount(processConfig.ProcessID)
+				c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published votes from contract"))
+				return votersCount == totalVoters
+			}); err != nil {
+				c.Fatalf("Timeout waiting for votes to be settled and published at contract")
+				c.FailNow()
 			}
-			votersCount, err := helpers.FetchProcessVotersCountOnChain(services.Contracts, pid)
-			c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published votes from contract"))
-			return votersCount == totalVoters
-		}); err != nil {
-			c.Fatalf("Timeout waiting for votes to be settled and published at contract")
-			c.FailNow()
-		}
-		t.Log("All extra votes settled.")
+			t.Log("All extra votes settled.")
+		})
 	})
 
 	c.Run("finish process and wait for results", func(c *qt.C) {
 		// Calculate expected results
-		expectedResults := helpers.CalculateExpectedResults(votersFieldsValues)
+		expectedResults := client.CalculateExpectedResults(votersFieldsValues)
 		t.Logf("Expected results: %v", expectedResults)
 
-		err := helpers.FinishProcessOnChain(services.Contracts, pid)
+		// Finish the process
+		err := services.SequencerClient.StopProcess(processConfig.ProcessID)
 		c.Assert(err, qt.IsNil, qt.Commentf("Failed to finish process on contract"))
-		results, err := services.Sequencer.WaitUntilResults(t.Context(), pid)
-		c.Assert(err, qt.IsNil)
-		c.Logf("Results calculated: %v, waiting for onchain results...", results)
 
-		var pubResults []*types.BigInt
-		if err := helpers.WaitUntilCondition(globalCtx, 10*time.Second, func() bool {
-			pubResults, err = helpers.FetchResultsOnChain(services.Contracts, pid)
+		var results []*types.BigInt
+		if err := client.WaitUntilCondition(globalCtx, 2*time.Second, func() bool {
+			results, err = services.SequencerClient.OnchainProcessResults(processConfig.ProcessID)
 			c.Assert(err, qt.IsNil, qt.Commentf("Failed to get published results from contract"))
-			return pubResults != nil
+			return results != nil
 		}); err != nil {
-			c.Fatalf("Timeout waiting for votes to be processed and published at contract")
+			c.Fatalf("Timeout waiting for process to finish")
 			c.FailNow()
 		}
-		t.Logf("Results published: %v", pubResults)
-		c.Assert(pubResults, qt.DeepEquals, expectedResults)
+		t.Logf("Results published: %v", results)
+		c.Assert(results, qt.DeepEquals, expectedResults)
 	})
 }

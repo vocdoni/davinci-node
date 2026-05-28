@@ -6,17 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vocdoni/davinci-node/internal/testutil"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/service"
-	"github.com/vocdoni/davinci-node/tests/helpers"
 	"github.com/vocdoni/davinci-node/workers"
 )
 
-var (
-	services          *helpers.TestServices
-	defaultBallotMode = testutil.BallotMode()
-)
+var services *TestServices
 
 const artifactsTimeout = 20 * time.Minute
 
@@ -41,10 +36,10 @@ func TestMain(m *testing.M) {
 
 	var err error
 	var cleanup func()
-	services, cleanup, err = helpers.NewTestServices(ctx, tempDir,
-		helpers.WorkerSeed,
-		helpers.WorkerTokenExpiration,
-		helpers.WorkerTimeout,
+	services, cleanup, err = NewTestServices(ctx, tempDir,
+		WorkerSeed,
+		WorkerTokenExpiration,
+		WorkerTimeout,
 		workers.DefaultWorkerBanRules)
 	if err != nil {
 		log.Fatalf("failed to setup test services: %v", err)
