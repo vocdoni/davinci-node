@@ -336,6 +336,14 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census in
 					"newElements", census.ProcessedElements-initialProcessedElements,
 					"origin", census.CensusOrigin.String(),
 					"address", census.ContractAddress.String())
+			} else {
+				log.Debugw("census import completed without new elements",
+					"attempt", attempt+1,
+					"root", census.CensusRoot.String(),
+					"uri", census.CensusURI,
+					"eventsSeen", census.ProcessedElements,
+					"origin", census.CensusOrigin.String(),
+					"address", census.ContractAddress.String())
 			}
 			return nil
 		}

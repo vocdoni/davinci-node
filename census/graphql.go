@@ -144,19 +144,46 @@ func (d *graphqlImporter) ImportCensus(
 	if err != nil {
 		return 0, fmt.Errorf("invalid GraphQL URI: %w", err)
 	}
+	log.Debugw("starting GraphQL census import",
+		"chainID", chainID,
+		"address", census.ContractAddress.String(),
+		"origin", census.CensusOrigin.String(),
+		"root", census.CensusRoot.String(),
+		"uri", census.CensusURI,
+		"processedElements", processedElements)
 	// Get the graphql events from the target URI
 	events, err := queryEvents(ctx, endpoint, processedElements, d.pageSize, d.queryTimeout, d.insecure)
 	if err != nil {
 		return 0, fmt.Errorf("failed to query GraphQL events from %s: %w", census.CensusURI, err)
 	}
+	log.Debugw("GraphQL census events fetched",
+		"chainID", chainID,
+		"address", census.ContractAddress.String(),
+		"origin", census.CensusOrigin.String(),
+		"root", census.CensusRoot.String(),
+		"uri", census.CensusURI,
+		"events", len(events),
+		"processedElements", processedElements)
 	// If the census does not exists, import all the received events as new census, otherwise
 	// update the existing census with the new events
 	if !censusDB.ExistsByScopedAddress(chainID, census.ContractAddress) {
+		log.Debugw("creating new scoped census from GraphQL events",
+			"chainID", chainID,
+			"address", census.ContractAddress.String(),
+			"root", census.CensusRoot.String(),
+			"events", len(events),
+			"uri", census.CensusURI)
 		// Import all the available events into the census DB
 		if _, err := censusDB.ImportEventsByScopedAddress(chainID, census.ContractAddress, census.CensusRoot, events); err != nil {
 			return 0, fmt.Errorf("failed to import census from events: %w", err)
 		}
 	} else {
+		log.Debugw("updating scoped census from GraphQL events",
+			"chainID", chainID,
+			"address", census.ContractAddress.String(),
+			"root", census.CensusRoot.String(),
+			"events", len(events),
+			"uri", census.CensusURI)
 		// Get the reference of the census by its old root
 		ref, err := censusDB.LoadByScopedAddress(chainID, census.ContractAddress)
 		if err != nil {
@@ -164,11 +191,11 @@ func (d *graphqlImporter) ImportCensus(
 		}
 		// Update the census with the new events
 		if err = ref.ApplyEvents(events); err != nil {
-			return 0, fmt.Errorf("failed to update census from events: %w", err)
+			return 0, fmt.Errorf("failed to update census from %d GraphQL events: %w", len(events), err)
 		}
 		if finalRoot := ref.Root(); !finalRoot.Equal(census.CensusRoot) {
-			return 0, fmt.Errorf("final root mismatch after applying events: expected %s, got %s",
-				census.CensusRoot.String(), finalRoot.String())
+			return 0, fmt.Errorf("final root mismatch after applying %d GraphQL events: expected %s, got %s",
+				len(events), census.CensusRoot.String(), finalRoot.String())
 		}
 	}
 	return processedElements + len(events), nil
@@ -234,6 +261,10 @@ func queryEvents(
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
+			log.Debugw("querying GraphQL census page",
+				"uri", url,
+				"skip", skip,
+				"pageSize", first)
 			// Build the query body
 			queryBody, err := queryPageBody(first, skip)
 			if err != nil {
@@ -292,6 +323,13 @@ func queryEvents(
 					}
 					results = append(results, event)
 				}
+				log.Debugw("GraphQL census page fetched",
+					"uri", url,
+					"skip", skip,
+					"pageSize", first,
+					"receivedEvents", receivedEvents,
+					"totalEvents", len(results),
+					"lastPage", receivedEvents < pageSize)
 				return nil
 			}(); err != nil {
 				return nil, err
