@@ -114,6 +114,11 @@ func (s *Sequencer) processPendingTransitions() {
 				"processID", processID.String(),
 				"localRoot", localRootBI.HexBytes().String(),
 				"remoteRoot", remoteRoot.HexBytes().String())
+			if err := s.stg.RestoreProcessStateRoot(processID); err != nil {
+				log.Warnw("failed to restore confirmed state root after mismatch",
+					"processID", processID.String(),
+					"error", err)
+			}
 			if releaseErr := s.stg.ReleaseAggregatorBatchReservation(batchID); releaseErr != nil {
 				log.Errorw(releaseErr, "failed to release reserved aggregator batch")
 			}

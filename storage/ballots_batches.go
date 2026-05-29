@@ -561,6 +561,13 @@ func (s *Storage) MarkStateTransitionBatchOutdated(key []byte) error {
 	}
 
 	if stb.ProcessID.IsValid() {
+		if err := s.restoreProcessStateRootLocked(stb.ProcessID); err != nil {
+			log.Warnw("failed to restore confirmed state root after marking state transition batch as outdated",
+				"error", err.Error(),
+				"processID", stb.ProcessID.String(),
+			)
+		}
+
 		if err := s.prunePendingTx(StateTransitionTx, stb.ProcessID); err != nil && !errors.Is(err, ErrNotFound) {
 			return fmt.Errorf("prune pending state transition tx: %w", err)
 		}
@@ -601,6 +608,14 @@ func (s *Storage) ReleaseAggregatorBatchReservation(k []byte) error {
 	return s.releaseAggregatorBatchReservation(k)
 }
 
+// RestoreProcessStateRoot resets the in-construction state tree root to the
+// confirmed root stored in process metadata.
+func (s *Storage) RestoreProcessStateRoot(processID types.ProcessID) error {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
+	return s.restoreProcessStateRootLocked(processID)
+}
+
 // MarkStateTransitionBatchFailed marks a state transition batch as failed,
 // sets all ballots in the batch to error status, removes the reservation,
 // and deletes the batch from the state transition queue. This is typically
@@ -625,6 +640,13 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 		if err := s.removeStateTransitionArtifact(stb.ProcessID, stb.Inputs.RootHashAfter); err != nil && !errors.Is(err, ErrNotFound) {
 			return fmt.Errorf("delete state transition artifact: %w", err)
 		}
+	}
+
+	if err := s.restoreProcessStateRootLocked(processID); err != nil {
+		log.Warnw("failed to restore confirmed state root after state transition failure",
+			"error", err.Error(),
+			"processID", processID.String(),
+		)
 	}
 
 	// Remove the state transition batch any way
@@ -745,6 +767,33 @@ func (s *Storage) MarkStateTransitionBatchFailed(key []byte, processID types.Pro
 func (s *Storage) releaseAggregatorBatchReservation(k []byte) error {
 	if err := s.deleteReservation(aggregBatchPrefix, k); err != nil && !errors.Is(err, ErrNotFound) {
 		return err
+	}
+	return nil
+}
+
+// restoreProcessStateRootLocked resets the in-construction state tree root to
+// the confirmed root stored in process metadata. The caller must already hold
+// s.globalLock.
+func (s *Storage) restoreProcessStateRootLocked(processID types.ProcessID) error {
+	process, err := s.process(processID)
+	if err != nil {
+		return fmt.Errorf("get process: %w", err)
+	}
+	if process.StateRoot == nil {
+		return fmt.Errorf("process %s has no state root", processID.String())
+	}
+
+	root := process.StateRoot.MathBigInt()
+	if err := state.RootExists(s.StateDB(), processID, root); err != nil {
+		return fmt.Errorf("confirmed state root does not exist: %w", err)
+	}
+
+	st, err := state.New(s.StateDB(), processID)
+	if err != nil {
+		return fmt.Errorf("open state for process %s: %w", processID.String(), err)
+	}
+	if err := st.SetRootAsBigInt(root); err != nil {
+		return fmt.Errorf("restore state root for process %s: %w", processID.String(), err)
 	}
 	return nil
 }

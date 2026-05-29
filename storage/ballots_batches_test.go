@@ -8,7 +8,10 @@ import (
 	qt "github.com/frankban/quicktest"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
+	"github.com/vocdoni/davinci-node/db/prefixeddb"
 	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/vocdoni/davinci-node/state"
+	statetest "github.com/vocdoni/davinci-node/state/testutil"
 	"github.com/vocdoni/davinci-node/types"
 )
 
@@ -399,6 +402,86 @@ func TestMarkStateTransitionBatchOutdatedRequeuesPendingBatchAndClearsPendingTx(
 	c.Assert(requeuedBatch.ProcessID, qt.Equals, processID)
 	c.Assert(requeuedBatch.Ballots, qt.HasLen, 1)
 	c.Assert(requeuedBatch.Ballots[0].VoteID, qt.Equals, voteID)
+}
+
+func TestMarkStateTransitionBatchFailedRestoresConfirmedStateRootAndRequeuesPendingBatch(t *testing.T) {
+	c := qt.New(t)
+	stg := newTestStorage(t)
+	defer stg.Close()
+
+	processID := testutil.RandomProcessID()
+	ensureProcess(t, stg, processID)
+
+	pubKey, _, err := stg.ProcessEncryptionKeys(processID)
+	c.Assert(err, qt.IsNil)
+
+	processState, err := state.New(stg.StateDB(), processID)
+	c.Assert(err, qt.IsNil)
+	confirmedRoot, err := processState.RootAsBigInt()
+	c.Assert(err, qt.IsNil)
+
+	votes := statetest.NewVotesForTest(pubKey, 1, 7)
+	batch, err := processState.PrepareVotesBatch(votes)
+	c.Assert(err, qt.IsNil)
+	speculativeRoot, err := batch.RootAsBigInt()
+	c.Assert(err, qt.IsNil)
+	c.Assert(batch.Commit(), qt.IsNil)
+
+	currentState, err := state.New(stg.StateDB(), processID)
+	c.Assert(err, qt.IsNil)
+	currentRoot, err := currentState.RootAsBigInt()
+	c.Assert(err, qt.IsNil)
+	c.Assert(currentRoot.Cmp(speculativeRoot), qt.Equals, 0)
+
+	aggBatch := &AggregatorBallotBatch{
+		ProcessID: processID,
+		Ballots: []*AggregatorBallot{
+			mkAggBallot(votes[0].VoteID),
+		},
+	}
+	c.Assert(stg.PushAggregatorBatch(aggBatch), qt.IsNil)
+
+	retrievedBatch, batchID, err := stg.NextAggregatorBatch(processID)
+	c.Assert(err, qt.IsNil)
+	c.Assert(retrievedBatch, qt.Not(qt.IsNil))
+
+	c.Assert(stg.SetPendingTx(StateTransitionTx, processID), qt.IsNil)
+	c.Assert(stg.MarkAggregatorBatchPending(retrievedBatch), qt.IsNil)
+	c.Assert(stg.MarkAggregatorBatchDone(batchID), qt.IsNil)
+
+	c.Assert(stg.PushStateTransitionBatch(&StateTransitionBatch{
+		ProcessID: processID,
+		BatchID:   batchID,
+		Ballots:   retrievedBatch.Ballots,
+		Inputs: StateTransitionBatchProofInputs{
+			RootHashBefore: confirmedRoot,
+			RootHashAfter:  speculativeRoot,
+			CensusRoot:     big.NewInt(3),
+		},
+	}), qt.IsNil)
+
+	_, stateTransitionKey, err := stg.NextStateTransitionBatch(processID)
+	c.Assert(err, qt.IsNil)
+
+	c.Assert(stg.MarkStateTransitionBatchFailed(stateTransitionKey, processID), qt.IsNil)
+
+	c.Assert(stg.HasPendingTx(StateTransitionTx, processID), qt.IsFalse)
+	_, err = stg.PendingAggregatorBatch(processID)
+	c.Assert(err, qt.Equals, ErrNotFound)
+
+	restoredState, err := state.New(stg.StateDB(), processID)
+	c.Assert(err, qt.IsNil)
+	restoredRoot, err := restoredState.RootAsBigInt()
+	c.Assert(err, qt.IsNil)
+	c.Assert(restoredRoot.Cmp(confirmedRoot), qt.Equals, 0)
+
+	rd := prefixeddb.NewPrefixedReader(stg.db, aggregBatchPrefix)
+	requeuedCount := 0
+	c.Assert(rd.Iterate(processID.Bytes(), func(_, _ []byte) bool {
+		requeuedCount++
+		return true
+	}), qt.IsNil)
+	c.Assert(requeuedCount, qt.Equals, 1)
 }
 
 // TestMarkStateTransitionOutdatedVsMarkDone tests the difference between outdated and done
