@@ -4,43 +4,8 @@
         "censusOrigin": "merkle_tree_offchain_static_v1"
     },
     "votersConfig": {
-        "votersInfo": [
-            {
-                "address": "<hex_address>",
-                "weight": "<string_bigint>",
-                "privKey": "<hex_private_key>"
-            },
-            {
-                "address": "<hex_address>",
-                "weight": "<string_bigint>",
-                "privKey": "<hex_private_key>"
-            },
-            {
-                "address": "<hex_address>",
-                "weight": "<string_bigint>",
-                "privKey": "<hex_private_key>"
-            },
-            {
-                "address": "<hex_address>",
-                "weight": "<string_bigint>",
-                "privKey": "<hex_private_key>"
-            },
-            {
-                "address": "<hex_address>",
-                "weight": "<string_bigint>",
-                "privKey": "<hex_private_key>"
-            },
-            {
-                "address": "<hex_address>",
-                "weight": "<string_bigint>",
-                "privKey": "<hex_private_key>"
-            },
-            {
-                "address": "<hex_address>",
-                "weight": "<string_bigint>",
-                "privKey": "<hex_private_key>"
-            }
-        ]
+        "numVoters": 2,
+        "defaultWeight": "1"
     },
     "ballotMode": {
         "numFields": 6,
@@ -52,6 +17,6 @@
         "maxValueSum": 60,
         "minValueSum": 0
     },
-    "maxVoters": 6,
+    "maxVoters": 10,
     "duration": "1h"
 }
