@@ -177,7 +177,7 @@ func setupServices(ctx context.Context, cfg *Config) (services *Services, err er
 		log.Info("force cleanup completed successfully")
 	}
 
-	runtimes, err := cfg.Web3.InitRuntimes(ctx)
+	runtimes, err := cfg.Web3.InitRuntimes(ctx, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize runtimes: %w", err)
 	}

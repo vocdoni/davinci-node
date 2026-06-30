@@ -147,6 +147,22 @@ func (c *Census) Clone() *Census {
 	return &newCensus
 }
 
+// Valid checks that the Census is well-formed.
+func (c *Census) Valid() bool {
+	// Every census must have a valid origin and a non empty URI
+	if !c.CensusOrigin.Valid() || len(c.CensusURI) == 0 {
+		return false
+	}
+	switch c.CensusOrigin {
+	case CensusOriginMerkleTreeOnchainDynamicV1:
+		// Onchain dynamic census must have a non empty contract address
+		return c.ContractAddress != (common.Address{})
+	default:
+		// Every other census must have a non empty root
+		return len(c.CensusRoot) > 0
+	}
+}
+
 // CensusProof is the struct to represent a proof of inclusion in the census
 // merkle tree. For example, it will be provided by the user to verify that he
 // or she can vote in the process.

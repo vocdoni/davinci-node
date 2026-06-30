@@ -10,7 +10,7 @@ const (
 	BallotMinValue     = 0
 	BallotMaxValueSum  = 1280 // (maxValue ^ costExponent) * numFields
 	BallotMinValueSum  = BallotNumFields
-	BallotCostExponent = 2
+	BallotCostExponent = 1
 )
 
 // FixedBallotMode returns a fixed ballot mode fixture used in tests.

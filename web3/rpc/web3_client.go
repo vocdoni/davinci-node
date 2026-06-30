@@ -325,20 +325,29 @@ func retrySwitchingEndpoints[T any](c *Client, fn func(*ethclient.Client) (T, er
 
 	var lastErr error
 	endpointAttempts := 0
+	maxEndpointAttempts := totalEndpoints * defaultRetries
 
-	// Try all available endpoints
-	for endpointAttempts < totalEndpoints {
+	// Try endpoints, re-evaluating on each iteration. Since endpoints can be
+	// re-enabled by the pool when all become disabled (e.g. single-endpoint
+	// pools), we allow up to totalEndpoints * defaultRetries attempts to
+	// survive transient failures without looping forever.
+	for endpointAttempts < maxEndpointAttempts {
 		// Get current endpoint
 		endpoint, err := c.w3p.Endpoint(c.chainID)
 		if err != nil {
 			return zero, fmt.Errorf("error getting endpoint for chainID %d: %w", c.chainID, err)
 		}
 
-		// Check if we've already tried this endpoint
+		// If the iterator returned an endpoint we've already tried, the pool
+		// may have reset (e.g. single-endpoint pools re-enable on disable).
+		// Clear tracking to allow a new retry cycle; bounded by maxEndpointAttempts.
 		if triedEndpoints[endpoint.URI] {
-			log.Errorw(lastErr, fmt.Sprintf("endpoint rotation returned already-tried endpoint %s for chainID %d",
-				endpoint.URI, c.chainID))
-			return zero, fmt.Errorf("endpoint rotation failed for chainID %d: %w", c.chainID, lastErr)
+			log.Warnw("endpoint rotation cycle completed, starting new retry cycle",
+				"chainID", c.chainID,
+				"uri", endpoint.URI,
+				"endpointAttempts", endpointAttempts,
+				"maxAttempts", maxEndpointAttempts)
+			triedEndpoints = make(map[string]bool)
 		}
 		triedEndpoints[endpoint.URI] = true
 
@@ -397,10 +406,10 @@ func retrySwitchingEndpoints[T any](c *Client, fn func(*ethclient.Client) (T, er
 		endpointAttempts++
 	}
 
-	// All endpoints exhausted
-	log.Errorw(lastErr, fmt.Sprintf("no more endpoints available after failures for chainID %d, tried %d endpoints",
-		c.chainID, len(triedEndpoints)))
-	return zero, fmt.Errorf("all endpoints exhausted for chainID %d after %d attempts: %w",
+	// All endpoint attempts exhausted
+	log.Errorw(lastErr, fmt.Sprintf("no more endpoint attempts available after failures for chainID %d, tried %d endpoints over %d attempts",
+		c.chainID, len(triedEndpoints), endpointAttempts))
+	return zero, fmt.Errorf("all endpoint attempts exhausted for chainID %d after %d attempts: %w",
 		c.chainID, endpointAttempts, lastErr)
 }
 

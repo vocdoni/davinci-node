@@ -1,4 +1,4 @@
-package client
+package httpclient
 
 import (
 	"bytes"
@@ -16,15 +16,7 @@ import (
 )
 
 const (
-	// HTTPGET is the method string used for calling Request()
-	HTTPGET = http.MethodGet
-	// HTTPPOST is the method string used for calling Request()
-	HTTPPOST = http.MethodPost
-	// HTTPDELETE is the method string used for calling
-	HTTPDELETE = http.MethodDelete
-
 	errCodeNot200 = "API error"
-
 	// DefaultRetries this enables Request() to handle the situation where the server connection fails
 	DefaultRetries = 3
 	// DefaultTimeout is the default timeout for the HTTP client
@@ -38,8 +30,8 @@ type HTTPclient struct {
 	retries int
 }
 
-// New connects to the API host with a random bearer token and returns the handle
-func New(host string) (*HTTPclient, error) {
+// NewHTTPClient connects to the API host with a random bearer token and returns the handle
+func NewHTTPClient(host string) (*HTTPclient, error) {
 	hostURL, err := url.Parse(host)
 	if err != nil {
 		return nil, err
@@ -57,20 +49,25 @@ func New(host string) (*HTTPclient, error) {
 		retries: DefaultRetries,
 	}
 	log.Debugw("http client created", "host", hostURL.String())
-	data, status, err := c.Request(HTTPGET, nil, nil, api.PingEndpoint)
+
+	return c, nil
+}
+
+func (c *HTTPclient) Ping(endpoint string) error {
+	data, status, err := c.Request(http.MethodGet, nil, nil, endpoint)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("%s: %d (%s)", errCodeNot200, status, data)
+		return fmt.Errorf("%s: %d (%s)", errCodeNot200, status, data)
 	}
-	return c, nil
+	return nil
 }
 
 // SetHostAddr configures the host address of the API server.
 func (c *HTTPclient) SetHostAddr(host *url.URL) error {
 	c.host = host
-	data, status, err := c.Request(HTTPGET, nil, nil, api.PingEndpoint)
+	data, status, err := c.Request(http.MethodGet, nil, nil, api.PingEndpoint)
 	if err != nil {
 		return err
 	}
@@ -179,6 +176,10 @@ func (c *HTTPclient) Request(method string, jsonBody any, params []string, urlPa
 
 		// Successfully got a response, break out of the retry loop
 		break
+	}
+
+	if resp == nil {
+		return nil, 0, fmt.Errorf("http request failed after %d attempts: %w", c.retries, err)
 	}
 
 	defer func() {

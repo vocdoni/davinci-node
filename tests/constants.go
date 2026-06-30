@@ -1,4 +1,4 @@
-package helpers
+package tests
 
 import (
 	"fmt"
@@ -32,5 +32,6 @@ const (
 var (
 	DefaultAPIPort     = util.RandomInt(40000, 60000)
 	DefaultCensus3Port = util.RandomInt(40000, 60000)
+	DefaultAPIURL      = fmt.Sprintf("http://localhost:%d", DefaultAPIPort)
 	DefaultCensus3URL  = fmt.Sprintf("http://localhost:%d", DefaultCensus3Port)
 )

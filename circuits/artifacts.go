@@ -288,7 +288,11 @@ type CircuitArtifacts struct {
 
 // NewCircuitArtifacts creates a new CircuitArtifacts struct with the circuit
 // artifacts provided. It returns the struct with the artifacts set.
-func NewCircuitArtifacts(name string, curve ecc.ID, proverOpts []backend.ProverOption, verifierOpts []backend.VerifierOption,
+func NewCircuitArtifacts(
+	name string,
+	curve ecc.ID,
+	proverOpts []backend.ProverOption,
+	verifierOpts []backend.VerifierOption,
 	circuit, provingKey, verifyingKey *Artifact,
 ) *CircuitArtifacts {
 	return &CircuitArtifacts{
@@ -302,6 +306,14 @@ func NewCircuitArtifacts(name string, curve ecc.ID, proverOpts []backend.ProverO
 		provingKey:        provingKey,
 		verifyingKey:      verifyingKey,
 	}
+}
+
+func NewCircomCircuitArtifacts(
+	name string,
+	curve ecc.ID,
+	circuit, provingKey, verifyingKey *Artifact,
+) *CircuitArtifacts {
+	return NewCircuitArtifacts(name, curve, nil, nil, circuit, provingKey, verifyingKey)
 }
 
 // Download ensures all artifacts are available, downloading them if necessary.
@@ -405,14 +417,50 @@ func (ca *CircuitArtifacts) LoadOrDownloadProvingKey(ctx context.Context) (groth
 	return pk, nil
 }
 
+// RawCircuitDefinition returns the content of the circuit definition as
+// types.HexBytes. It returns an error if the circuit definition is not locally
+// available or cannot be serialized.
+func (ca *CircuitArtifacts) RawCircuitDefinition() ([]byte, error) {
+	if ca.circuitDefinition == nil {
+		return nil, fmt.Errorf("circuit definition not configured")
+	}
+	// Cannot guarantee context is available here, so we load from cache only.
+	// The caller should have called LoadOrDownloadVerifyingKey previously if
+	// remote fetching was desired.
+	content, err := ca.circuitDefinition.loadFromCache()
+	if err != nil {
+		return nil, fmt.Errorf("load circuit definition: %w", err)
+	}
+	return content, nil
+}
+
+// RawProvingKey returns the content of the proving key as types.HexBytes.
+// It returns an error if the proving key is not locally available or cannot be
+// serialized.
+func (ca *CircuitArtifacts) RawProvingKey() ([]byte, error) {
+	if ca.provingKey == nil {
+		return nil, fmt.Errorf("proving key not configured")
+	}
+	// Cannot guarantee context is available here, so we load from cache only.
+	// The caller should have called LoadOrDownloadProvingKey previously if
+	// remote fetching was desired.
+	content, err := ca.provingKey.loadFromCache()
+	if err != nil {
+		return nil, fmt.Errorf("load proving key: %w", err)
+	}
+	return content, nil
+}
+
 // RawVerifyingKey returns the content of the verifying key as types.HexBytes.
-// It returns an error if the verifying key is not locally available or cannot be serialized.
+// It returns an error if the verifying key is not locally available or cannot
+// be serialized.
 func (ca *CircuitArtifacts) RawVerifyingKey() ([]byte, error) {
 	if ca.verifyingKey == nil {
 		return nil, fmt.Errorf("verifying key not configured")
 	}
 	// Cannot guarantee context is available here, so we load from cache only.
-	// The caller should have called LoadOrDownloadVerifyingKey previously if remote fetching was desired.
+	// The caller should have called LoadOrDownloadVerifyingKey previously if
+	// remote fetching was desired.
 	content, err := ca.verifyingKey.loadFromCache()
 	if err != nil {
 		return nil, fmt.Errorf("load verifying key: %w", err)

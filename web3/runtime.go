@@ -150,6 +150,16 @@ func (r *RuntimeRouter) RuntimeForProcess(processID types.ProcessID) (*NetworkRu
 	return runtime, nil
 }
 
+// RuntimeForChainID returns the runtime associated with the provided chain ID.
+func (r *RuntimeRouter) RuntimeForChainID(chainID uint64) (*NetworkRuntime, error) {
+	for _, runtime := range r.runtimes {
+		if runtime.ChainID == chainID {
+			return runtime, nil
+		}
+	}
+	return nil, fmt.Errorf("runtime not found for chain ID %d", chainID)
+}
+
 // ContractsForProcess resolves the contracts instance associated with the
 // provided process ID.
 func (r *RuntimeRouter) ContractsForProcess(processID types.ProcessID) (*Contracts, error) {

@@ -1,0 +1,22 @@
+{
+    "chainID": 11155111,
+    "censusConfig": {
+        "censusOrigin": "merkle_tree_offchain_static_v1"
+    },
+    "votersConfig": {
+        "numVoters": 2,
+        "defaultWeight": "1"
+    },
+    "ballotMode": {
+        "numFields": 6,
+        "groupSize": 1,
+        "uniqueValues": false,
+        "costExponent": 1,
+        "maxValue": 10,
+        "minValue": 0,
+        "maxValueSum": 60,
+        "minValueSum": 0
+    },
+    "maxVoters": 10,
+    "duration": "1h"
+}

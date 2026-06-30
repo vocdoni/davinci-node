@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"net/http"
 	"time"
 
@@ -15,10 +14,10 @@ import (
 	"github.com/vocdoni/arbo/memdb"
 	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
 	"github.com/vocdoni/davinci-node/api"
-	"github.com/vocdoni/davinci-node/api/client"
-	censustest "github.com/vocdoni/davinci-node/census/test"
 	"github.com/vocdoni/davinci-node/circuits/ballotproof"
 	ballotprooftest "github.com/vocdoni/davinci-node/circuits/test/ballotproof"
+	"github.com/vocdoni/davinci-node/client/census3"
+	"github.com/vocdoni/davinci-node/client/httpclient"
 	"github.com/vocdoni/davinci-node/crypto/elgamal"
 	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
 	"github.com/vocdoni/davinci-node/internal/testutil"
@@ -28,7 +27,6 @@ import (
 	"github.com/vocdoni/davinci-node/service"
 	"github.com/vocdoni/davinci-node/spec"
 	specutil "github.com/vocdoni/davinci-node/spec/util"
-	"github.com/vocdoni/davinci-node/state"
 	"github.com/vocdoni/davinci-node/storage"
 	"github.com/vocdoni/davinci-node/types"
 	"github.com/vocdoni/davinci-node/util"
@@ -165,7 +163,7 @@ func main() {
 		sequencers = append(sequencers, localSequencerEndpoint)
 	}
 	// Create a API client
-	cli, err := client.New(sequencers[0])
+	cli, err := httpclient.NewHTTPClient(sequencers[0])
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -375,7 +373,7 @@ func (s *localService) Stop() {
 
 func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime time.Duration, votes []VoteWithValues) error {
 	// Create a API client
-	cli, err := client.New(seqEndpoint)
+	cli, err := httpclient.NewHTTPClient(seqEndpoint)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
 	}
@@ -426,29 +424,34 @@ func sendVotesToSequencer(ctx context.Context, seqEndpoint string, sleepTime tim
 func createCensus(ctx context.Context, size int, weight uint64, c3URL string) (types.HexBytes, string, []*ethereum.Signer, error) {
 	// Generate random participants
 	signers := []*ethereum.Signer{}
-	votes := []state.Vote{}
+	participants := []census3.CensusParticipant{}
 	for range size {
 		signer, err := ethereum.NewSigner()
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("failed to generate signer: %w", err)
 		}
 		signers = append(signers, signer)
-		votes = append(votes, state.Vote{
-			Address: signer.Address().Big(),
-			Weight:  new(big.Int).SetUint64(weight),
+		participants = append(participants, census3.CensusParticipant{
+			Key:    signer.Address().Bytes(),
+			Weight: types.NewInt(int(weight)),
 		})
 	}
-	censusRoot, censusURI, err := censustest.NewCensus3MerkleTreeForTest(ctx, types.CensusOriginMerkleTreeOffchainStaticV1, votes, c3URL)
+
+	c3CLI, err := census3.NewClient(ctx, c3URL)
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("failed to create census3 client: %w", err)
+	}
+	census, err := c3CLI.NewCensus(types.CensusOriginMerkleTreeOffchainStaticV1, participants)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("failed to serve census merkle tree: %w", err)
 	}
-	return censusRoot, censusURI, signers, nil
+	return census.CensusRoot, census.CensusURI, signers, nil
 }
 
 func createProcess(
 	ctx context.Context,
 	contracts *web3.Contracts,
-	cli *client.HTTPclient,
+	cli *httpclient.HTTPclient,
 	censusRoot types.HexBytes,
 	censusURI string,
 	ballotMode spec.BallotMode,
@@ -587,7 +590,7 @@ func createVote(
 	}
 
 	// Generate the proof using the circom circuit
-	rawProof, pubInputs, err := ballotprooftest.CompileAndGenerateProofForTest(encodedCircomInputs)
+	rawProof, pubInputs, err := ballotproof.GenerateProofWithDefaults(encodedCircomInputs)
 	if err != nil {
 		return VoteWithValues{}, fmt.Errorf("failed to generate proof: %v", err)
 	}
@@ -653,7 +656,7 @@ func compareResults(expected, actual []*types.BigInt) error {
 	return nil
 }
 
-func sendVote(cli *client.HTTPclient, vote api.Vote) (types.VoteID, error) {
+func sendVote(cli *httpclient.HTTPclient, vote api.Vote) (types.VoteID, error) {
 	// Make the request to cast the vote
 	body, status, err := cli.Request(http.MethodPost, vote, nil, api.VotesEndpoint)
 	if err != nil {
@@ -664,7 +667,7 @@ func sendVote(cli *client.HTTPclient, vote api.Vote) (types.VoteID, error) {
 	return vote.VoteID, nil
 }
 
-func hasAlreadyVoted(cli *client.HTTPclient, pid types.ProcessID, address common.Address) (bool, error) {
+func hasAlreadyVoted(cli *httpclient.HTTPclient, pid types.ProcessID, address common.Address) (bool, error) {
 	// get participant from the sequencer
 	voteByAddressProcessEndpoint := api.EndpointWithParam(api.VoteByAddressEndpoint, api.ProcessURLParam, pid.String())
 	voteByAddressEndpoint := api.EndpointWithParam(voteByAddressProcessEndpoint, api.AddressURLParam, address.Hex())
@@ -686,7 +689,7 @@ func hasAlreadyVoted(cli *client.HTTPclient, pid types.ProcessID, address common
 	return voteByAddressResponse != nil, nil
 }
 
-func waitForAddressHasAlreadyVoted(ctx context.Context, cli *client.HTTPclient, pid types.ProcessID, address types.HexBytes) error {
+func waitForAddressHasAlreadyVoted(ctx context.Context, cli *httpclient.HTTPclient, pid types.ProcessID, address types.HexBytes) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	ticker := time.NewTicker(time.Second)

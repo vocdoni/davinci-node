@@ -3,151 +3,218 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	flag "github.com/spf13/pflag"
-	npbindings "github.com/vocdoni/davinci-contracts/golang-types"
-	"github.com/vocdoni/davinci-node/crypto/signatures/ethereum"
-	"github.com/vocdoni/davinci-node/internal/testutil"
+	"github.com/spf13/viper"
+	"github.com/vocdoni/davinci-node/client"
 	"github.com/vocdoni/davinci-node/log"
 	"github.com/vocdoni/davinci-node/types"
 )
 
-const (
-	defaultNetwork    = "sepolia"
-	defaultCAPI       = "https://ethereum-sepolia-beacon-api.publicnode.com"
-	defaultCensus3URL = "https://c3-dev.davinci.vote"
-)
-
 var (
-	userWeight = uint64(testutil.Weight)
-	ballotMode = testutil.BallotMode()
-
-	privKey                          = flag.String("privkey", "", "private key to use for the Ethereum account")
-	web3rpcs                         = flag.StringSlice("web3rpcs", nil, "web3 rpc http endpoints")
-	consensusAPI                     = flag.String("consensusAPI", defaultCAPI, "web3 consensus API http endpoint")
-	processRegistryAddress           = flag.String("processRegistryAddress", "", "process registry smart contract address")
-	stateTransitionZKVerifierAddress = flag.String("stateTransitionZKVerifierAddress", "", "state transition zk verifier smart contract address")
-	resultsZKVerifierAddress         = flag.String("resultsZKVerifierAddress", "", " results zk verifier smart contract address")
-	testTimeout                      = flag.Duration("timeout", 20*time.Minute, "timeout for the test")
-	sequencerEndpoints               = flag.StringSlice("sequencerEndpoint", []string{}, "sequencer endpoint(s)")
-	census3URL                       = flag.String("census3URL", defaultCensus3URL, "census3 endpoint")
-	cAddress                         = flag.BytesHex("censusContractAddress", nil, "census manager contract address")
-	cOrigin                          = flag.String("censusOrigin", types.CensusOriginMerkleTreeOffchainStaticV1.String(), "census origin to use")
-	cRoot                            = flag.BytesHex("censusRoot", nil, "census root to use (if empty, a new census will be created)")
-	cURI                             = flag.String("censusURI", "", "census URI to use (if empty, a new census will be created)")
-	votersCount                      = flag.Int("votersCount", 10, "number of voters that will cast a vote (half of them will rewrite it)")
-	web3Network                      = flag.StringP("web3.network", "n", defaultNetwork, fmt.Sprintf("network to use %v", npbindings.AvailableNetworksByName))
-	action                           = flag.String("action", "create", "create|stop|vote")
-	pid                              = flag.String("pid", "", "process ID to perform the action on")
-	voterPrivkey                     = flag.String("voterPrivkey", "", "private key to use for the voter account")
+	action            string
+	logLevel          string
+	globalTimeout     time.Duration
+	processConfigPath string
 )
+
+type actionHandler func(context.Context, *client.Client, *client.ProcessConfig) bool
+
+var availableActions = map[string]actionHandler{
+	client.CreateProcessAction: createAction,
+	client.SubmitVoteAction:    submitAction,
+	client.StopProcessAction:   stopAction,
+}
+
+func loadConfig() (*client.ClientConfig, error) {
+	conf := new(client.ClientConfig)
+	// Web3 config
+	flag.StringP("web3.privkey", "k", "", "private key to use for the Ethereum account, should have funds for each available network (required)")
+	flag.StringSliceP("web3.rpc", "r", nil, "web3 rpc endpoint(s), comma-separated")
+	flag.StringSlice("web3.bapi", nil, "consensus api endpoints(s), comma-separated")
+	flag.StringSlice("web3.processRegistryContract", nil, "'chainID:0xaddress' of the process registry smart contract, if defined, it will be included in the available networks if a valid RPC endpoint is provided")
+	// Sequencer config
+	flag.StringP("sequencer", "s", "https://sequencer5.davinci.vote", "Davinci sequencer endpoint")
+	flag.String("census3", "https://c3-dev.davinci.vote", "Census3 service endpoint")
+	// Global config
+	flag.DurationVar(&globalTimeout, "globalTimeout", 20*time.Minute, "global timeout for all requests")
+	flag.StringVarP(&action, "action", "a", "all", "action to perform (create|stop|vote)")
+	flag.StringVar(&logLevel, "logLevel", log.LogLevelInfo, "debug level (debug, info, warn, error)")
+	flag.StringVarP(&processConfigPath, "processConfig", "c", "cmd/cli/process-config.example.json", "path to process config file")
+	// Parse flags
+	flag.Parse()
+	// Customize environment variables with prefix and replacer
+	viper.SetEnvPrefix("DAVINCI_CLI")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
+	// Bind flags
+	if err := viper.BindPFlags(flag.CommandLine); err != nil {
+		return nil, fmt.Errorf("error binding flags: %w", err)
+	}
+	// Unmarshal config
+	if err := viper.Unmarshal(conf); err != nil {
+		return nil, fmt.Errorf("error unmarshalling config: %w", err)
+	}
+	return conf, nil
+}
 
 func main() {
-	flag.Parse()
-	log.Init("debug", "stdout", nil)
+	// Load and check config
+	config, err := loadConfig()
+	if err != nil {
+		log.Errorf("error loading config: %v", err)
+		return
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), *testTimeout)
+	// Init logger
+	log.Init(logLevel, "stdout", nil)
+
+	// Load process config
+	processConfig := new(client.ProcessConfig)
+	if err := processConfig.Load(processConfigPath); err != nil {
+		log.Errorf("error loading process config: %v", err)
+		return
+	}
+
+	// Create a context with the defined timeout
+	ctx, cancel := context.WithTimeout(context.Background(), globalTimeout)
 	defer cancel()
 
 	// Initialize CLI services
-	cliSrv := NewCLIServices(ctx)
-	if err := cliSrv.Init(
-		*web3Network,
-		*web3rpcs,
-		*consensusAPI,
-		*processRegistryAddress,
-		*stateTransitionZKVerifierAddress,
-		*resultsZKVerifierAddress,
-		*privKey,
-	); err != nil {
-		log.Fatalf("failed to initialize web3 contracts: %w", err)
+	cliSrv, err := client.NewClient(ctx, config)
+	if err != nil {
+		log.Errorf("failed to initialize client: %v", err)
+		return
 	}
 
-	switch *action {
-	case "create":
-		censusOrigin := types.CensusOriginFromString(*cOrigin)
-		if !censusOrigin.Valid() {
-			log.Errorw(fmt.Errorf("invalid census origin: %s", *cOrigin), "failed to create census")
-			return
-		}
-
-		var (
-			err                   error
-			censusContractAddress common.Address
-			censusRoot            types.HexBytes
-			censusURI             string
-			signers               []*ethereum.Signer
-		)
-		switch {
-		case cRoot == nil || len(*cURI) == 0:
-			// Create a new census with numBallot participants
-			censusRoot, censusURI, signers, err = cliSrv.CreateCensus(censusOrigin, *votersCount, userWeight, *census3URL, *voterPrivkey)
-			if err != nil {
-				log.Errorw(err, "failed to create census")
-				return
-			}
-			log.Infow("census created",
-				"root", censusRoot.String(),
-				"size", len(signers))
-		default:
-			if censusOrigin == types.CensusOriginMerkleTreeOnchainDynamicV1 {
-				censusContractAddress = common.BytesToAddress(*cAddress)
-			}
-			censusRoot = *cRoot
-			censusURI = *cURI
-		}
-		log.Debugw("census parameters",
-			"origin", censusOrigin.String(),
-			"root", censusRoot.String(),
-			"uri", censusURI)
-		// Create a new process with mocked ballot mode
-		pid, _, err := cliSrv.CreateProcess(&types.Census{
-			CensusOrigin:    censusOrigin,
-			CensusRoot:      censusRoot,
-			CensusURI:       censusURI,
-			ContractAddress: censusContractAddress,
-		}, ballotMode, new(types.BigInt).SetInt(*votersCount))
-		if err != nil {
-			log.Errorw(err, "failed to create process")
-			return
-		}
-		log.Infow("process created", "processID", pid.String())
-	case "vote":
-		processID, err := types.HexStringToProcessID(*pid)
-		if err != nil {
-			log.Errorw(err, "invalid process ID")
-			return
-		}
-		signer, err := ethereum.NewSignerFromHex(*voterPrivkey)
-		if err != nil {
-			log.Errorw(err, "invalid voter private key")
-			return
-		}
-		// Cast votes for an existing process
-		vote, err := cliSrv.CreateVote(signer, processID, ballotMode)
-		if err != nil {
-			log.Errorw(err, "failed to create vote")
-			return
-		}
-		voteID, err := cliSrv.SubmitVote(vote)
-		if err != nil {
-			log.Errorw(err, "failed to submit vote")
-			return
-		}
-		log.Infow("vote submitted", "voteID", voteID.String())
-	case "stop":
-		// Stop an existing process
-		processID, err := types.HexStringToProcessID(*pid)
-		if err != nil {
-			log.Errorw(err, "invalid process ID")
-			return
-		}
-		if err := cliSrv.StopProcess(processID); err != nil {
-			log.Errorw(err, "failed to stop process")
-			return
-		}
-		log.Infow("process stopped", "processID", processID.String())
+	// Get the handler for the desired action, by default all handler
+	handler, ok := availableActions[action]
+	if !ok {
+		handler = all
+		// Use CreateProcessAction by default to validate the process config
+		action = client.CreateProcessAction
 	}
+
+	// Check if process config is valid for the desired action
+	if !processConfig.Valid(action) {
+		log.Error("no valid process config provided")
+		return
+	}
+
+	_ = handler(ctx, cliSrv, processConfig)
+}
+
+func createAction(ctx context.Context, cli *client.Client, conf *client.ProcessConfig) bool {
+	// Create process
+	var err error
+	conf.ProcessID, err = cli.CreateProcess(conf)
+	if err != nil {
+		log.Errorf("failed to create process: %v", err)
+		return false
+	}
+	log.Infow("process created", "processID", conf.ProcessID.String())
+	return true
+}
+
+func submitAction(ctx context.Context, cli *client.Client, conf *client.ProcessConfig) bool {
+	// Create votes
+	votes, _, err := cli.CreateRandomVotes(conf)
+	if err != nil {
+		log.Errorf("failed to create vote: %v", err)
+		return false
+	}
+	log.Infow("votes created, submitting...", "votes", len(votes))
+
+	// Submit votes
+	voteIDs, err := cli.SubmitVotes(votes...)
+	if err != nil {
+		log.Errorf("failed to submit vote: %v", err)
+		return false
+	}
+	log.Infow("votes submitted", "voteIDs", voteIDs)
+
+	// Confirm votes
+	if err := client.WaitUntilCondition(ctx, time.Second, func() (bool, error) {
+		ok, _, err := cli.EnsureVotesStatus(conf.ProcessID, voteIDs, client.VoteIDStatusSettled)
+		if err != nil {
+			return false, err
+		}
+		return ok, nil
+	}); err != nil {
+		log.Errorf("failed to wait for votes to be settled: %v", err)
+		return false
+	}
+	log.Infow("all votes settled", "processID", conf.ProcessID.String())
+
+	// Create overwrites
+	votes, _, err = cli.CreateRandomVotes(conf)
+	if err != nil {
+		log.Errorf("failed to create vote: %v", err)
+		return false
+	}
+	log.Infow("vote overwrites created, submitting...", "overwrites", len(votes))
+
+	// Submit overwrites
+	overwriteIDs, err := cli.SubmitVotes(votes...)
+	if err != nil {
+		log.Errorf("failed to submit overwrite: %v", err)
+		return false
+	}
+	log.Infow("overwrites submitted", "overwriteIDs", overwriteIDs)
+
+	// Confirm overwrites
+	if err := client.WaitUntilCondition(ctx, time.Second, func() (bool, error) {
+		ok, _, err := cli.EnsureVotesStatus(conf.ProcessID, overwriteIDs, client.VoteIDStatusSettled)
+		if err != nil {
+			return false, err
+		}
+		return ok, nil
+	}); err != nil {
+		log.Errorf("failed to wait for overwrites to be settled: %v", err)
+		return false
+	}
+	log.Infow("all overwrites settled", "processID", conf.ProcessID.String())
+	return true
+}
+
+func stopAction(ctx context.Context, cli *client.Client, conf *client.ProcessConfig) bool {
+	// Stop process
+	if err := cli.StopProcess(conf.ProcessID); err != nil {
+		log.Errorf("failed to stop process: %v", err)
+		return false
+	}
+	log.Infow("process stopped", "processID", conf.ProcessID.String())
+
+	// Wait for results
+	if err := client.WaitUntilCondition(ctx, time.Second, func() (bool, error) {
+		process, err := cli.OnChainProcess(conf.ProcessID)
+		if err != nil {
+			return false, err
+		}
+		return process.Status == types.ProcessStatusResults, nil
+	}); err != nil {
+		log.Errorf("failed to wait for process to stop: %v", err)
+		return false
+	}
+
+	// Fetch results
+	results, err := cli.OnchainProcessResults(conf.ProcessID)
+	if err != nil {
+		log.Errorf("failed to fetch results: %v", err)
+		return false
+	}
+	log.Infow("results fetched", "results", results)
+	return true
+}
+
+func all(ctx context.Context, cli *client.Client, conf *client.ProcessConfig) bool {
+	if !createAction(ctx, cli, conf) {
+		return false
+	}
+	if !submitAction(ctx, cli, conf) {
+		return false
+	}
+	return stopAction(ctx, cli, conf)
 }

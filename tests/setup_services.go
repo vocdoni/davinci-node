@@ -1,4 +1,4 @@
-package helpers
+package tests
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
 	c3config "github.com/vocdoni/census3-bigquery/config"
 	c3service "github.com/vocdoni/census3-bigquery/service"
-	"github.com/vocdoni/davinci-node/api/client"
+	"github.com/vocdoni/davinci-node/client"
 	"github.com/vocdoni/davinci-node/db"
 	"github.com/vocdoni/davinci-node/db/metadb"
 	"github.com/vocdoni/davinci-node/log"
@@ -40,7 +40,7 @@ type TestServices struct {
 	CensusDownloader *service.CensusDownloader
 	Storage          *storage.Storage
 	Contracts        *web3.Contracts
-	HTTPClient       *client.HTTPclient
+	SequencerClient  *client.Client
 }
 
 func NewTestServices(
@@ -57,7 +57,7 @@ func NewTestServices(
 		return nil, nil, fmt.Errorf("failed to setup census3 service: %w", err)
 	}
 	// Initialize the web3 contracts
-	contracts, web3Cleanup, err := setupWeb3(ctx)
+	contracts, web3Conf, web3Cleanup, err := setupWeb3(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to setup web3: %w", err)
 	}
@@ -101,7 +101,7 @@ func NewTestServices(
 	}
 	services.Sequencer = vp.Sequencer
 
-	if IsDebugTest() {
+	if isDebugTest() {
 		logger.Set(zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"}).With().Timestamp().Logger())
 		log.Info("Debug prover is disabled in non-testing context")
 	}
@@ -138,6 +138,7 @@ func NewTestServices(
 	// Start API service
 	api, err := setupAPI(ctx, stg, runtimeRouter, workerSecret, workerTokenExpiration, workerTimeout, banRules)
 	if err != nil {
+		api.Stop()
 		pm.Stop()
 		cd.Stop()
 		vp.Stop()
@@ -146,16 +147,22 @@ func NewTestServices(
 		return nil, nil, fmt.Errorf("failed to setup API: %w", err)
 	}
 	services.API = api
-	services.HTTPClient, err = httpClient(DefaultAPIPort)
+
+	sequencerClient, err := client.NewClient(ctx, &client.ClientConfig{
+		Web3:              *web3Conf,
+		SequencerEndpoint: DefaultAPIURL,
+		Census3Endpoint:   DefaultCensus3URL,
+	})
 	if err != nil {
 		api.Stop()
 		pm.Stop()
 		cd.Stop()
 		vp.Stop()
 		seqCancel()
-		web3Cleanup()
-		return nil, nil, fmt.Errorf("failed to create HTTP client: %w", err)
+		web3Cleanup() // Clean up web3 if API fails to start
+		return nil, nil, fmt.Errorf("failed to setup sequencer client: %w", err)
 	}
+	services.SequencerClient = sequencerClient
 
 	// Create a combined cleanup function
 	cleanup := func() {
@@ -170,11 +177,6 @@ func NewTestServices(
 	}
 
 	return services, cleanup, nil
-}
-
-// httpClient creates a new API client for testing.
-func httpClient(port int) (*client.HTTPclient, error) {
-	return client.New(fmt.Sprintf("http://127.0.0.1:%d", port))
 }
 
 // setupAPI creates and starts a new API server for testing.
@@ -234,7 +236,7 @@ func setupCensusService() (*c3service.Service, func(), error) {
 // if the environment variables are not set, if they are set it loads the
 // contracts from the environment variables. It returns the contracts object
 // and a cleanup function that should be called when done.
-func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
+func setupWeb3(ctx context.Context) (*web3.Contracts, *web3.Web3Config, func(), error) {
 	// Get the environment variables
 	var (
 		privKey                       = os.Getenv(PrivKeyEnvVarName)
@@ -268,6 +270,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		composeEnv[AnvilPortEnvVarName] = fmt.Sprintf("%d", anvilPort)
 		composeEnv[DeployerServerPortEnvVarName] = fmt.Sprintf("%d", anvilPort+1)
 		composeEnv[PrivKeyEnvVarName] = LocalAccountPrivKey
+		privKey = LocalAccountPrivKey
 
 		// get branch and commit from the environment variables
 		if branchName := os.Getenv(ContractsBranchNameEnvVarName); branchName != "" {
@@ -279,11 +282,11 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 			// get it from the go mod file
 			modData, err := os.ReadFile("../go.mod")
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed to read go.mod file: %w", err)
+				return nil, nil, nil, fmt.Errorf("failed to read go.mod file: %w", err)
 			}
 			modFile, err := modfile.Parse("go.mod", modData, nil)
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed to parse go.mod file: %w", err)
+				return nil, nil, nil, fmt.Errorf("failed to parse go.mod file: %w", err)
 			}
 			// get the commit hash from the replace directive
 			for _, r := range modFile.Require {
@@ -298,7 +301,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 					composeEnv[ContractsCommitHashEnvVarName] = r.Mod.Version
 					break
 				}
-				return nil, nil, fmt.Errorf("cannot parse davinci-contracts version: %s", r.Mod.Version)
+				return nil, nil, nil, fmt.Errorf("cannot parse davinci-contracts version: %s", r.Mod.Version)
 
 			}
 		}
@@ -310,7 +313,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		// Create docker-compose instance
 		compose, err := tc.NewDockerCompose("docker/docker-compose.yml")
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create docker compose: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to create docker compose: %w", err)
 		}
 		ctx2, cancel := context.WithCancel(ctx)
 		// Register cleanup for context cancellation
@@ -321,7 +324,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		err = compose.WithEnv(composeEnv).Up(ctx2, tc.Wait(true), tc.RemoveOrphans(true))
 		if err != nil {
 			cleanup() // Clean up what we've done so far
-			return nil, nil, fmt.Errorf("failed to start docker compose: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to start docker compose: %w", err)
 		}
 
 		// Register cleanup for docker compose shutdown
@@ -339,12 +342,12 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		deployerContainer, err = compose.ServiceContainer(deployerCtx, "deployer")
 		if err != nil {
 			cleanup() // Clean up what we've done so far
-			return nil, nil, fmt.Errorf("failed to get deployer container: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to get deployer container: %w", err)
 		}
 		deployerUrl, err = deployerContainer.Endpoint(deployerCtx, "http")
 		if err != nil {
 			cleanup() // Clean up what we've done so far
-			return nil, nil, fmt.Errorf("failed to get deployer endpoint: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to get deployer endpoint: %w", err)
 		}
 	}
 
@@ -352,14 +355,14 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 	err := web3.WaitReadyRPC(ctx, rpcUrl)
 	if err != nil {
 		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to wait for RPC: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to wait for RPC: %w", err)
 	}
 
 	// Initialize the contracts object
 	contracts, err := web3.New([]string{rpcUrl}, "", 1.0)
 	if err != nil {
 		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to create web3 contracts: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to create web3 contracts: %w", err)
 	}
 
 	// Define contracts addresses or deploy them
@@ -381,7 +384,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 			case <-contractsCtx.Done():
 				printLogs(ctx, deployerContainer)
 				cleanup() // Clean up what we've done so far
-				return nil, nil, fmt.Errorf("timeout waiting for contracts to be deployed")
+				return nil, nil, nil, fmt.Errorf("timeout waiting for contracts to be deployed")
 			case <-time.After(5 * time.Second):
 				// Check if the contracts are deployed making an http request
 				// to /addresses.json
@@ -410,7 +413,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 				}
 				if err != nil {
 					cleanup() // Clean up what we've done so far
-					return nil, nil, fmt.Errorf("failed to decode deployer response: %w", err)
+					return nil, nil, nil, fmt.Errorf("failed to decode deployer response: %w", err)
 				}
 				contractsAddresses = new(web3.Addresses)
 				log.Infow("contracts addresses from deployer",
@@ -431,13 +434,13 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		err = contracts.SetAccountPrivateKey(util.TrimHex(LocalAccountPrivKey))
 		if err != nil {
 			cleanup() // Clean up what we've done so far
-			return nil, nil, fmt.Errorf("failed to set account private key: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to set account private key: %w", err)
 		}
 		// Load the contracts addresses into the contracts object
 		err = contracts.LoadContracts(contractsAddresses)
 		if err != nil {
 			cleanup() // Clean up what we've done so far
-			return nil, nil, fmt.Errorf("failed to load contracts: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to load contracts: %w", err)
 		}
 		log.Infow("contracts deployed and loaded",
 			"chainId", contracts.ChainID,
@@ -447,7 +450,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		err = contracts.SetAccountPrivateKey(util.TrimHex(privKey))
 		if err != nil {
 			cleanup() // Clean up what we've done so far
-			return nil, nil, fmt.Errorf("failed to set account private key: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to set account private key: %w", err)
 		}
 		// Create the contracts object with the addresses from the environment
 		err = contracts.LoadContracts(&web3.Addresses{
@@ -457,7 +460,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		})
 		if err != nil {
 			cleanup() // Clean up what we've done so far
-			return nil, nil, fmt.Errorf("failed to load contracts: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to load contracts: %w", err)
 		}
 	}
 
@@ -465,7 +468,7 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 	txm, err := txmanager.New(ctx, contracts.Web3Pool(), contracts.Client(), contracts.Signer(), txmanager.DefaultConfig(contracts.ChainID))
 	if err != nil {
 		cleanup() // Clean up what we've done so far
-		return nil, nil, fmt.Errorf("failed to create transaction manager: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to create transaction manager: %w", err)
 	}
 	txm.Start(ctx)
 	contracts.SetTxManager(txm)
@@ -479,7 +482,11 @@ func setupWeb3(ctx context.Context) (*web3.Contracts, func(), error) {
 		ResultsZKVerifier:         contracts.ResultsVerifierABI(),
 	}
 	// Return the contracts object and cleanup function
-	return contracts, cleanup, nil
+	return contracts, &web3.Web3Config{
+		PrivKey:                 contracts.Signer().HexPrivateKey().Hex(),
+		RPCs:                    []string{rpcUrl},
+		ProcessRegistryContract: []string{fmt.Sprintf("%d:%s", contracts.ChainID, contracts.ContractsAddresses.ProcessRegistry.Hex())},
+	}, cleanup, nil
 }
 
 // printLogs is a helper function that will print the logs of a Docker container
