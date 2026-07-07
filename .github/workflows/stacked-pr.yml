@@ -55,7 +55,7 @@ jobs:
             );
             core.notice("PR is stacked");
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Review stacked PRs
         uses: ./.github/actions/sticky-review
