@@ -22,14 +22,19 @@ import (
 //     censuses.
 //   - Expiration: time duration after which a pending census is considered
 //     expired (completed or failed).
-//   - Cooldown: time duration to wait before retrying a failed census download.
+//   - Cooldown: initial time duration to wait before retrying a failed census
+//     download. Each subsequent retry doubles the wait (exponential backoff),
+//     capped at MaxCooldown.
+//   - MaxCooldown: maximum cooldown between retries. Also used as the delay
+//     before re-queuing exhausted on-chain censuses for a new round of retries.
 //   - AttemptTimeout: maximum time allowed for a single download/import attempt.
-//   - Attempts: maximum number of attempts to download and import a census.
+//   - Attempts: maximum number of attempts per download round.
 type CensusDownloaderConfig struct {
 	CleanUpInterval      time.Duration
 	OnchainCheckInterval time.Duration
 	Expiration           time.Duration
 	Cooldown             time.Duration
+	MaxCooldown          time.Duration
 	AttemptTimeout       time.Duration
 	Attempts             int
 	ConcurrentDownloads  int
@@ -39,10 +44,11 @@ type CensusDownloaderConfig struct {
 var DefaultCensusDownloaderConfig = CensusDownloaderConfig{
 	CleanUpInterval:      time.Second * 5,
 	OnchainCheckInterval: time.Second * 5,
-	Attempts:             5,
+	Attempts:             8,
 	AttemptTimeout:       30 * time.Second,
-	Expiration:           time.Minute * 2,
+	Expiration:           time.Minute * 10,
 	Cooldown:             time.Second * 5,
+	MaxCooldown:          time.Second * 60,
 	ConcurrentDownloads:  4,
 }
 
@@ -265,11 +271,6 @@ func (cd *CensusDownloader) OnCensusDownloaded(processID types.ProcessID, census
 					// terminal error.
 					callback(status.LastErr)
 					return
-				case status.LastErr != nil && status.Attempts >= cd.attempts():
-					// Return the last error if the downloader has reached the
-					// maximum number of attempts.
-					callback(status.LastErr)
-					return
 				case status.Complete:
 					// If the census download is complete, clean up the pending
 					// status and call the callback with nil error.
@@ -359,10 +360,14 @@ func (cd *CensusDownloader) processCensusDownload(ctx context.Context, census in
 		}
 
 		if attempt+1 < cd.attempts() && cd.config.Cooldown > 0 {
+			cooldown := cd.config.Cooldown << attempt
+			if cd.config.MaxCooldown > 0 && cooldown > cd.config.MaxCooldown {
+				cooldown = cd.config.MaxCooldown
+			}
 			select {
 			case <-ctx.Done():
 				return fmt.Errorf("census download canceled: %w", ctx.Err())
-			case <-time.After(cd.config.Cooldown):
+			case <-time.After(cooldown):
 			}
 		}
 	}
@@ -388,17 +393,12 @@ func (cd *CensusDownloader) downloaderContext() (context.Context, error) {
 }
 
 // waitTimeout returns the total time budget that the downloader will wait
-// for a census to be imported, based on the configured number of attempts,
-// per-attempt timeout and cooldown between attempts.
-//
-// The returned duration is:
+// for a census to be imported. It covers one full round of attempts with
+// exponential backoff:
 //
 //	1s (to cover the 1s OnCensusDownloaded polling tick) +
 //	Attempts * AttemptTimeout +
-//	(Attempts - 1) * Cooldown   (when Attempts > 1).
-//
-// Note that the per-attempt timeout does not increase between attempts; each
-// attempt uses the same AttemptTimeout value.
+//	sum of per-attempt cooldowns: Cooldown<<0, Cooldown<<1, ..., capped at MaxCooldown
 func (cd *CensusDownloader) waitTimeout() time.Duration {
 	timeout := time.Second
 	attempts := cd.attempts()
@@ -406,7 +406,13 @@ func (cd *CensusDownloader) waitTimeout() time.Duration {
 		timeout += time.Duration(attempts) * cd.config.AttemptTimeout
 	}
 	if cd.config.Cooldown > 0 && attempts > 1 {
-		timeout += time.Duration(attempts-1) * cd.config.Cooldown
+		for i := range attempts - 1 {
+			cooldown := cd.config.Cooldown << i
+			if cd.config.MaxCooldown > 0 && cooldown > cd.config.MaxCooldown {
+				cooldown = cd.config.MaxCooldown
+			}
+			timeout += cooldown
+		}
 	}
 	return timeout
 }
@@ -497,9 +503,15 @@ func (cd *CensusDownloader) checkOnchainCensuses() {
 		if !ok {
 			return true
 		}
-		// Skip censuses that are currently being downloaded (in progress)
-		if status, exists := cd.DownloadCensusStatus(icensus.ProcessID, icensus.Census); exists && !status.Complete {
-			return true
+
+		status, exists := cd.DownloadCensusStatus(icensus.ProcessID, icensus.Census)
+		if exists {
+			if status.Terminal {
+				return true // permanent failure, never re-queue
+			}
+			if !status.Complete && status.Attempts < cd.attempts() {
+				return true // still actively retrying
+			}
 		}
 
 		// Save the old root before re-fetching
@@ -512,13 +524,28 @@ func (cd *CensusDownloader) checkOnchainCensuses() {
 			return true
 		}
 
-		// Only re-queue when the root actually changed
-		if icensus.CensusRoot.Equal(oldRoot) {
-			return true
+		rootChanged := !icensus.CensusRoot.Equal(oldRoot)
+
+		if exists {
+			if status.Complete && !rootChanged {
+				return true // already up to date
+			}
+			if !status.Complete && !rootChanged {
+				// Attempts exhausted but root unchanged — wait MaxCooldown before
+				// giving the indexer another chance.
+				if cd.config.MaxCooldown <= 0 || time.Since(status.lastUpdated) < cd.config.MaxCooldown {
+					return true
+				}
+				log.Infow("re-queuing on-chain census after exhausted attempts",
+					"address", icensus.ContractAddress.Hex(),
+					"chainID", icensus.ChainID,
+					"root", icensus.CensusRoot.String(),
+					"sinceLastAttempt", time.Since(status.lastUpdated).Round(time.Second),
+				)
+			}
 		}
 
-		// Clean up the previous Complete status so addPendingCensus accepts
-		// the new root under the same chain+contract key.
+		// Clean up the previous status so addPendingCensus accepts the new entry.
 		cd.CleanUp(icensus.ChainID, icensus.Census)
 
 		select {
