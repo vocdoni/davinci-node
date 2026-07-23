@@ -312,6 +312,43 @@ func TestCensusDownloaderNotFoundIsTerminal(t *testing.T) {
 	c.Assert(requests.Load(), qt.Equals, int32(1))
 }
 
+func TestCensusDownloaderOnchainCheckResolverErrorDoesNotPanic(t *testing.T) {
+	c := qt.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store := storage.New(memdb.New())
+	c.Cleanup(store.Close)
+
+	downloader := NewCensusDownloader(nil, store, CensusDownloaderConfig{
+		CleanUpInterval:      time.Minute,
+		OnchainCheckInterval: time.Minute,
+		Expiration:           time.Minute,
+		Cooldown:             10 * time.Millisecond,
+		Attempts:             5,
+		AttemptTimeout:       time.Second,
+		ConcurrentDownloads:  1,
+	})
+	c.Assert(downloader.Start(ctx), qt.IsNil)
+	c.Cleanup(downloader.Stop)
+
+	icensus := internalCensus{
+		Census: &types.Census{
+			CensusOrigin:    types.CensusOriginMerkleTreeOnchainDynamicV1,
+			CensusRoot:      types.HexBytes{0x01},
+			ContractAddress: testutil.RandomAddress(),
+		},
+		ProcessID: testutil.FixedProcessID(),
+		ChainID:   1,
+	}
+	downloader.onchainCensuses.Store(dynamicOnchainCensusKey(icensus.ChainID, icensus.ContractAddress), icensus)
+
+	// The nil resolver makes addOnchainCensus fail; the re-check must log the
+	// error and keep the original census instead of panicking on a zeroed one.
+	downloader.checkOnchainCensuses()
+}
+
 func testJSONDump(c *qt.C) ([]byte, types.HexBytes) {
 	c.Helper()
 
