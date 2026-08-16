@@ -505,12 +505,15 @@ func (cd *CensusDownloader) checkOnchainCensuses() {
 		// Save the old root before re-fetching
 		oldRoot := icensus.CensusRoot
 
-		// Re-fetch the on-chain root to check for updates
-		icensus, err = cd.addOnchainCensus(icensus)
+		// Re-fetch the on-chain root to check for updates. Keep the original
+		// icensus on error: addOnchainCensus returns a zero internalCensus
+		// whose embedded *types.Census is nil, and logging its fields panics.
+		updated, err := cd.addOnchainCensus(icensus)
 		if err != nil {
 			log.Warnw("failed to check on-chain census", "address", icensus.ContractAddress.Hex(), "error", err)
 			return true
 		}
+		icensus = updated
 
 		// Only re-queue when the root actually changed
 		if icensus.CensusRoot.Equal(oldRoot) {
