@@ -337,7 +337,7 @@ func TestCensusDownloaderOnchainCheckResolverErrorDoesNotPanic(t *testing.T) {
 		Census: &types.Census{
 			CensusOrigin:    types.CensusOriginMerkleTreeOnchainDynamicV1,
 			CensusRoot:      types.HexBytes{0x01},
-			ContractAddress: testutil.RandomAddress(),
+			ContractAddress: testutil.DeterministicAddress(1),
 		},
 		ProcessID: testutil.FixedProcessID(),
 		ChainID:   1,
